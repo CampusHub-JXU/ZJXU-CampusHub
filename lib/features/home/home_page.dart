@@ -8,6 +8,7 @@ import '../notice/notice_model.dart';
 import '../schedule/schedule_model.dart';
 import '../schedule/schedule_service.dart';
 import '../../core/auth/zhengfang_auth.dart';
+import '../../core/semester/semester_calendar.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -41,18 +42,32 @@ class _HomePageState extends State<HomePage> {
       _courseColors[name.hashCode.abs() % _courseColors.length];
 
   int get _currentWeek {
-    final now = DateTime.now();
-    final semStart = DateTime(now.year, 2, 24);
-    final diff = now.difference(semStart).inDays;
-    return ((diff ~/ 7) + 1).clamp(1, 20);
+    return SemesterCalendar.instance.weekForDate(DateTime.now());
   }
 
   @override
   void initState() {
     super.initState();
+    SemesterCalendar.instance.semesterStartDate.addListener(
+      _onSemesterStartChanged,
+    );
     _refreshCampusCardBalance();
     _refreshDormElectricity();
     _refreshNotices();
+    _refreshNextCourse();
+  }
+
+  @override
+  void dispose() {
+    SemesterCalendar.instance.semesterStartDate.removeListener(
+      _onSemesterStartChanged,
+    );
+    super.dispose();
+  }
+
+  void _onSemesterStartChanged() {
+    if (!mounted) return;
+    setState(() {});
     _refreshNextCourse();
   }
 
@@ -158,10 +173,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   int _weekForDate(DateTime date) {
-    final day = DateTime(date.year, date.month, date.day);
-    final semStart = DateTime(day.year, 2, 24);
-    final diff = day.difference(semStart).inDays;
-    return ((diff ~/ 7) + 1).clamp(1, 20);
+    return SemesterCalendar.instance.weekForDate(date);
   }
 
   int _nextStartLesson(DateTime now) {

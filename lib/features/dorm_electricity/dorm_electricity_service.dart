@@ -4,6 +4,9 @@ import 'package:dio/dio.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/network/network_settings.dart';
+import '../../core/network/proxy_mode.dart';
+
 class DormRoomConfig {
   final String communityId;
   final String buildingId;
@@ -55,20 +58,17 @@ class DormElectricityService {
   static const _keyFloorId = 'dorm_floor_id';
   static const _keyRoomId = 'dorm_room_id';
 
-  final _dio = Dio(BaseOptions(
-    connectTimeout: const Duration(seconds: 10),
-    receiveTimeout: const Duration(seconds: 10),
-    headers: {
-      'User-Agent':
-          'Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 '
-          '(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-      'X-Requested-With': 'XMLHttpRequest',
-    },
-    responseType: ResponseType.bytes,
-  ));
+  late final Dio _dio = _createDio();
 
   double? _cachedElectricity;
   double? get cachedElectricity => _cachedElectricity;
+
+  void applyProxyMode() {
+    applyProxyModeToDio(
+      _dio,
+      ignoreSystemProxy: NetworkSettings.instance.ignoreSystemProxy.value,
+    );
+  }
 
   Future<bool> hasRoomConfig() async {
     final prefs = await SharedPreferences.getInstance();
@@ -168,20 +168,23 @@ class DormElectricityService {
       'http://jdhq.wap.zjxu.edu.cn/dormcharge/base_elect/getParkBuild/ele_id/1',
       options: Options(contentType: 'application/x-www-form-urlencoded'),
     );
-    final json = jsonDecode(utf8.decode(resp.data!, allowMalformed: true))
-        as Map<String, dynamic>;
+    final json =
+        jsonDecode(utf8.decode(resp.data!, allowMalformed: true))
+            as Map<String, dynamic>;
     final data = json['data'] as List<dynamic>;
     final result = <DormBuilding>[];
     for (final community in data) {
       final communityId = community['id'].toString();
       final communityName = community['value'] as String;
       for (final building in community['childs'] as List<dynamic>) {
-        result.add(DormBuilding(
-          communityId: communityId,
-          buildingId: building['id'].toString(),
-          communityName: communityName,
-          buildingName: building['value'] as String,
-        ));
+        result.add(
+          DormBuilding(
+            communityId: communityId,
+            buildingId: building['id'].toString(),
+            communityName: communityName,
+            buildingName: building['value'] as String,
+          ),
+        );
       }
     }
     return result;
@@ -194,22 +197,46 @@ class DormElectricityService {
       data: 'building_id=$buildingId',
       options: Options(contentType: 'application/x-www-form-urlencoded'),
     );
-    final json = jsonDecode(utf8.decode(resp.data!, allowMalformed: true))
-        as Map<String, dynamic>;
+    final json =
+        jsonDecode(utf8.decode(resp.data!, allowMalformed: true))
+            as Map<String, dynamic>;
     final data = json['data'] as List<dynamic>;
     final result = <DormRoom>[];
     for (final floor in data) {
       final floorId = floor['id'].toString();
       final floorName = floor['value'] as String;
       for (final room in floor['childs'] as List<dynamic>) {
-        result.add(DormRoom(
-          floorId: floorId,
-          roomId: room['id'].toString(),
-          floorName: floorName,
-          roomName: room['value'] as String,
-        ));
+        result.add(
+          DormRoom(
+            floorId: floorId,
+            roomId: room['id'].toString(),
+            floorName: floorName,
+            roomName: room['value'] as String,
+          ),
+        );
       }
     }
     return result;
+  }
+
+  Dio _createDio() {
+    final client = Dio(
+      BaseOptions(
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 10),
+        headers: {
+          'User-Agent':
+              'Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 '
+              '(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        responseType: ResponseType.bytes,
+      ),
+    );
+    applyProxyModeToDio(
+      client,
+      ignoreSystemProxy: NetworkSettings.instance.ignoreSystemProxy.value,
+    );
+    return client;
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 
 import '../../core/auth/zhengfang_auth.dart';
+import '../../core/semester/semester_calendar.dart';
 import '../../shared/widgets/login_widget.dart';
 import 'schedule_model.dart';
 import 'schedule_service.dart';
@@ -23,10 +24,7 @@ class _SchedulePageState extends State<SchedulePage> {
   int _weekSlideDirection = 1;
 
   int get _currentWeek {
-    final now = DateTime.now();
-    final semStart = DateTime(now.year, 2, 24);
-    final diff = now.difference(semStart).inDays;
-    return ((diff ~/ 7) + 1).clamp(1, 20);
+    return SemesterCalendar.instance.weekForDate(DateTime.now());
   }
 
   /// Academic year start: for spring semester (Feb-Jul), use previous year.

@@ -4,6 +4,8 @@ import 'package:dio/dio.dart';
 import 'package:html/parser.dart' as html_parser;
 
 import '../../core/network/dio_client.dart';
+import '../../core/network/network_settings.dart';
+import '../../core/network/proxy_mode.dart';
 import 'notice_model.dart';
 
 class NoticeService {
@@ -75,6 +77,10 @@ class NoticeService {
         },
         responseType: ResponseType.bytes,
       ),
+    );
+    applyProxyModeToDio(
+      newsDio,
+      ignoreSystemProxy: NetworkSettings.instance.ignoreSystemProxy.value,
     );
 
     final url = page == 1

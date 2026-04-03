@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../../core/network/dio_client.dart';
+import '../../core/semester/semester_calendar.dart';
 import 'schedule_model.dart';
 
 class ScheduleRequestException implements Exception {
@@ -54,10 +55,7 @@ class ScheduleService {
 
   /// 获取当前周次
   int getCurrentWeek() {
-    final now = DateTime.now();
-    final semStart = DateTime(now.year, 2, 24);
-    final diff = now.difference(semStart).inDays;
-    return ((diff ~/ 7) + 1).clamp(1, 20);
+    return SemesterCalendar.instance.weekForDate(DateTime.now());
   }
 
   /// [term]: 3 = first semester, 12 = second semester
