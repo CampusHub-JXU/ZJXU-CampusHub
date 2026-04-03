@@ -21,7 +21,7 @@ class _SchedulePageState extends State<SchedulePage> {
   List<CourseEntry> _courses = [];
   int _term = 12; // 3=first, 12=second
   int _displayWeek = 1;
-  int _weekSlideDirection = 1;
+  final PageController _weekPageController = PageController(initialPage: 1);
 
   int get _currentWeek {
     return SemesterCalendar.instance.weekForDate(DateTime.now());
@@ -42,23 +42,37 @@ class _SchedulePageState extends State<SchedulePage> {
     if (_loggedIn) _fetchSchedule();
   }
 
-  void _changeWeekBySwipe(int delta) {
-    final nextWeek = (_displayWeek + delta).clamp(1, 20);
-    if (nextWeek == _displayWeek) return;
-    setState(() {
-      _weekSlideDirection = delta >= 0 ? 1 : -1;
-      _displayWeek = nextWeek;
+  @override
+  void dispose() {
+    _weekPageController.dispose();
+    super.dispose();
+  }
+
+  void _jumpWeekPageToCenter() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_weekPageController.hasClients) return;
+      _weekPageController.jumpToPage(1);
     });
   }
 
-  void _onHorizontalSwipeEnd(DragEndDetails details) {
-    final velocity = details.primaryVelocity ?? 0;
-    if (velocity.abs() < 240) return;
-    if (velocity < 0) {
-      _changeWeekBySwipe(1);
-      return;
+  void _onWeekPageChanged(int index) {
+    if (index == 1) return;
+
+    if (index == 0 && _displayWeek > 1) {
+      setState(() => _displayWeek -= 1);
+    } else if (index == 2 && _displayWeek < 20) {
+      setState(() => _displayWeek += 1);
     }
-    _changeWeekBySwipe(-1);
+
+    _jumpWeekPageToCenter();
+  }
+
+  List<int> _buildWeekWindow() {
+    return [
+      (_displayWeek - 1).clamp(1, 20),
+      _displayWeek,
+      (_displayWeek + 1).clamp(1, 20),
+    ];
   }
 
   Future<void> _fetchSchedule() async {
@@ -116,6 +130,7 @@ class _SchedulePageState extends State<SchedulePage> {
                       _term = v;
                       _displayWeek = _currentWeek;
                     });
+                    _jumpWeekPageToCenter();
                     _fetchSchedule();
                   },
                   itemBuilder: (_) => const [
@@ -152,60 +167,25 @@ class _SchedulePageState extends State<SchedulePage> {
         ),
       );
     }
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onHorizontalDragEnd: _onHorizontalSwipeEnd,
-      child: _buildAnimatedScheduleGrid(),
-    );
+    return _buildWeekPager();
   }
 
-  Widget _buildAnimatedScheduleGrid() {
-    final currentKey = ValueKey<int>(_displayWeek);
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 240),
-      switchInCurve: Curves.easeOutCubic,
-      switchOutCurve: Curves.easeOutCubic,
-      layoutBuilder: (currentChild, previousChildren) {
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            ...previousChildren,
-            ...[currentChild].whereType<Widget>(),
-          ],
-        );
-      },
-      transitionBuilder: (child, animation) {
-        final isIncoming = child.key == currentKey;
-        final beginX = isIncoming
-            ? (_weekSlideDirection > 0 ? 1.0 : -1.0)
-            : 0.0;
-        final endX = isIncoming ? 0.0 : (_weekSlideDirection > 0 ? -1.0 : 1.0);
-        final curve = CurvedAnimation(
-          parent: animation,
-          curve: Curves.easeOutCubic,
-        );
-
-        return ClipRect(
-          child: SlideTransition(
-            position: Tween<Offset>(
-              begin: Offset(beginX, 0),
-              end: Offset(endX, 0),
-            ).animate(curve),
-            child: FadeTransition(
-              opacity: Tween<double>(
-                begin: isIncoming ? 0.9 : 1.0,
-                end: isIncoming ? 1.0 : 0.9,
-              ).animate(curve),
-              child: child,
-            ),
+  Widget _buildWeekPager() {
+    final weekWindow = _buildWeekWindow();
+    return PageView.builder(
+      controller: _weekPageController,
+      itemCount: 3,
+      onPageChanged: _onWeekPageChanged,
+      itemBuilder: (context, index) {
+        return RepaintBoundary(
+          child: _ScheduleGrid(
+            key: ValueKey('week-grid-${weekWindow[index]}-$index'),
+            courses: _courses,
+            currentWeek: weekWindow[index],
+            actualCurrentWeek: _currentWeek,
           ),
         );
       },
-      child: _ScheduleGrid(
-        key: currentKey,
-        courses: _courses,
-        currentWeek: _displayWeek,
-      ),
     );
   }
 }
@@ -217,11 +197,14 @@ class _ScheduleGrid extends StatelessWidget {
     super.key,
     required this.courses,
     required this.currentWeek,
+    required this.actualCurrentWeek,
   });
   final List<CourseEntry> courses;
   final int currentWeek;
+  final int actualCurrentWeek;
 
   static const _slotColumnWidth = 54.0;
+  static const _slotHeight = 70.0; // 每节课的高度
 
   // 柔和的配色方案，与截图类似
   static const _courseColors = [
@@ -280,6 +263,7 @@ class _ScheduleGrid extends StatelessWidget {
       children: [
         _WeekHeader(
           currentWeek: currentWeek,
+          actualCurrentWeek: actualCurrentWeek,
           slotColumnWidth: _slotColumnWidth,
           dayColumnWidth: dayColumnWidth,
         ),
@@ -311,28 +295,65 @@ class _ScheduleGrid extends StatelessWidget {
 class _WeekHeader extends StatelessWidget {
   const _WeekHeader({
     required this.currentWeek,
+    required this.actualCurrentWeek,
     required this.slotColumnWidth,
     required this.dayColumnWidth,
   });
 
   final int currentWeek;
+  final int actualCurrentWeek;
   final double slotColumnWidth;
   final double dayColumnWidth;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isCurrentWeek = currentWeek == actualCurrentWeek;
+    final weekDiff = currentWeek - actualCurrentWeek;
+
     return Container(
-      color: cs.primaryContainer,
+      color: isCurrentWeek ? cs.primaryContainer : cs.secondaryContainer,
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         children: [
           SizedBox(
             width: slotColumnWidth,
-            child: Text(
-              '第$currentWeek周',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 11, color: cs.onPrimaryContainer),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '第$currentWeek周',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: isCurrentWeek
+                        ? cs.onPrimaryContainer
+                        : cs.onSecondaryContainer,
+                  ),
+                ),
+                if (!isCurrentWeek)
+                  Container(
+                    margin: const EdgeInsets.only(top: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 1,
+                    ),
+                    decoration: BoxDecoration(
+                      color: weekDiff > 0 ? Colors.orange : Colors.blue,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      weekDiff > 0 ? '+$weekDiff' : '$weekDiff',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 9,
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
           for (int i = 0; i < 7; i++)
@@ -343,7 +364,9 @@ class _WeekHeader extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 12,
-                  color: cs.onPrimaryContainer,
+                  color: isCurrentWeek
+                      ? cs.onPrimaryContainer
+                      : cs.onSecondaryContainer,
                   fontWeight: i >= 5 ? FontWeight.bold : FontWeight.normal,
                 ),
               ),
@@ -383,7 +406,7 @@ class _SlotColumn extends StatelessWidget {
         for (int i = 0; i < 13; i++)
           Container(
             width: slotColumnWidth,
-            height: 90,
+            height: _ScheduleGrid._slotHeight,
             alignment: Alignment.center,
             decoration: BoxDecoration(
               border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
@@ -599,7 +622,7 @@ class _CourseCell extends StatelessWidget {
 
     return Container(
       width: dayColumnWidth,
-      height: 90.0 * span,
+      height: _ScheduleGrid._slotHeight * span,
       padding: const EdgeInsets.all(2),
       child: Material(
         color: Colors.white,
@@ -743,7 +766,7 @@ class _EmptyCell extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: dayColumnWidth,
-      height: 90,
+      height: _ScheduleGrid._slotHeight,
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: Colors.grey.shade100)),
       ),
