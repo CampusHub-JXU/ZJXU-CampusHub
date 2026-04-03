@@ -4,8 +4,10 @@ class CampusCardService {
   static final CampusCardService instance = CampusCardService._();
 
   double? _cachedBalance;
+  DateTime? _lastUpdated;
 
   double? get cachedBalance => _cachedBalance;
+  DateTime? get lastUpdated => _lastUpdated;
 
   static const statusPageUrl =
       'https://mobilehall.zjxu.edu.cn/webroot/decision/view/form?op=h5&viewlet=xxkj%252Fmobile%252Fykt.frm#/form';
@@ -16,6 +18,7 @@ class CampusCardService {
   void updateCachedBalance(double? balance) {
     if (balance == null) return;
     _cachedBalance = balance;
+    _lastUpdated = DateTime.now();
   }
 
   double? parseBalanceFromPageText(String rawText) {
@@ -34,7 +37,10 @@ class CampusCardService {
     String normalize(String value) => value.replaceAll(RegExp(r'\s+'), '');
 
     double? parseAmount(String value) {
-      final match = RegExp(r'([0-9]+(?:\.[0-9]+)?)\s*元?').firstMatch(value);
+      final cleaned = value.replaceAll(',', '');
+      final match = RegExp(
+        r'[¥￥]?\s*([0-9]+(?:\.[0-9]+)?)\s*元?',
+      ).firstMatch(cleaned);
       if (match == null) return null;
       return double.tryParse(match.group(1)!);
     }
@@ -49,6 +55,9 @@ class CampusCardService {
     }
 
     if (labelIndex >= 0) {
+      final sameLineAmount = parseAmount(lines[labelIndex]);
+      if (sameLineAmount != null) return sameLineAmount;
+
       for (int i = labelIndex - 1; i >= 0 && i >= labelIndex - 3; i--) {
         final amount = parseAmount(lines[i]);
         if (amount != null) return amount;
@@ -64,9 +73,9 @@ class CampusCardService {
       }
     }
 
-    final compact = normalize(text);
+    final compact = normalize(text).replaceAll(',', '');
     final inlineMatch = RegExp(
-      r'卡内余额([0-9]+(?:\.[0-9]+)?)',
+      r'卡内余额[^0-9¥￥]{0,12}[¥￥]?([0-9]+(?:\.[0-9]+)?)',
     ).firstMatch(compact);
     if (inlineMatch != null) {
       return double.tryParse(inlineMatch.group(1)!);

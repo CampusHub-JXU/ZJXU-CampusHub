@@ -1,4 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../shared/widgets/webview_page.dart';
+import 'campus_card_service.dart';
 
 class CampusCardPage extends StatefulWidget {
   const CampusCardPage({super.key});
@@ -8,185 +13,206 @@ class CampusCardPage extends StatefulWidget {
 }
 
 class _CampusCardPageState extends State<CampusCardPage> {
-  static const _actions = [
-    _CardAction(label: '充值', icon: Icons.add_card),
-    _CardAction(label: '消费记录', icon: Icons.receipt_long),
-    _CardAction(label: '挂失', icon: Icons.lock),
-    _CardAction(label: '解挂', icon: Icons.lock_open),
-  ];
+  static const _serviceHallHost = 'mobilehall.zjxu.edu.cn';
+  static const _statusPathKeyword = '/decision/view/form';
 
-  static const _records = [
-    _RecordItem(
-      title: '食堂消费',
-      time: '今日 12:30',
-      amount: '-¥8.50',
-      icon: Icons.restaurant,
-    ),
-    _RecordItem(
-      title: '图书馆打印',
-      time: '昨日 09:15',
-      amount: '-¥2.00',
-      icon: Icons.print,
-    ),
-    _RecordItem(
-      title: '超市购物',
-      time: '前日 18:45',
-      amount: '-¥23.60',
-      icon: Icons.store,
-    ),
-  ];
-
-  void _showComingSoon() {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('功能开发中')));
-  }
+  bool _capturedInCurrentDetailPage = false;
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final service = CampusCardService.instance;
+    final balance = service.formatBalance(service.cachedBalance);
+    final lastUpdated = service.lastUpdated;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('校园卡'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _showComingSoon,
-          ),
+      appBar: AppBar(title: const Text('校园卡')),
+      body: Column(
+        children: [
+          _buildBalanceHeader(context, balance, lastUpdated),
+          const SizedBox(height: 24),
+          _buildActions(context),
         ],
       ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF1565C0), Color(0xFF1E88E5)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Row(
-                  children: [
-                    Text(
-                      '嘉兴大学校园卡',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    Spacer(),
-                    Icon(Icons.school, color: Colors.white),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                const Text(
-                  '¥ --',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 36,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text(
-                  '账户余额',
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
-                ),
-                const SizedBox(height: 24),
-                const Row(
-                  children: [
-                    Text(
-                      '**** **** **** 1234',
-                      style: TextStyle(color: Colors.white),
-                    ),
-                    Spacer(),
-                    Text('持卡人 --', style: TextStyle(color: Colors.white)),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                for (int i = 0; i < _actions.length; i++) ...[
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _showComingSoon,
-                      icon: Icon(_actions[i].icon, size: 18),
-                      label: Text(_actions[i].label),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        textStyle: const TextStyle(fontSize: 12),
-                      ),
-                    ),
-                  ),
-                  if (i != _actions.length - 1) const SizedBox(width: 8),
-                ],
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Text(
-              '最近消费记录',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-          ),
-          Expanded(
-            child: ListView.builder(
-              itemCount: _records.length,
-              itemBuilder: (context, index) {
-                final record = _records[index];
-                return ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: colorScheme.primaryContainer,
-                    child: Icon(record.icon, color: colorScheme.primary),
-                  ),
-                  title: Text(record.title),
-                  subtitle: Text(record.time),
-                  trailing: Text(
-                    record.amount,
+    );
+  }
+
+  Future<void> _openCampusCardDetail() async {
+    _capturedInCurrentDetailPage = false;
+
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => WebViewPage(
+          title: '校园卡详情',
+          url: CampusCardService.statusPageUrl,
+          onLoadStop: _captureBalanceFromDetailPage,
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  Future<void> _captureBalanceFromDetailPage(
+    InAppWebViewController controller,
+    String currentUrl,
+  ) async {
+    if (_capturedInCurrentDetailPage) return;
+
+    final uri = Uri.tryParse(currentUrl);
+    final path = uri?.path.toLowerCase();
+    if (uri == null ||
+        uri.host.toLowerCase() != _serviceHallHost ||
+        path == null ||
+        !path.contains(_statusPathKeyword)) {
+      return;
+    }
+
+    final balance = await _extractBalanceWithRetry(controller);
+    if (balance == null) return;
+
+    CampusCardService.instance.updateCachedBalance(balance);
+    _capturedInCurrentDetailPage = true;
+
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  Future<double?> _extractBalanceWithRetry(
+    InAppWebViewController controller,
+  ) async {
+    const delaysInMs = [0, 700, 1400, 2200];
+
+    for (final delayInMs in delaysInMs) {
+      if (delayInMs > 0) {
+        await Future<void>.delayed(Duration(milliseconds: delayInMs));
+      }
+
+      try {
+        final rawText = await controller.evaluateJavascript(
+          source: '''
+            (() => {
+              const texts = [];
+              const bodyText = document.body?.innerText;
+              if (bodyText) {
+                texts.push(bodyText);
+              }
+
+              const frames = document.querySelectorAll('iframe');
+              for (const frame of frames) {
+                try {
+                  const frameText = frame.contentDocument?.body?.innerText;
+                  if (frameText) {
+                    texts.push(frameText);
+                  }
+                } catch (_) {}
+              }
+
+              return texts.join('\\n');
+            })();
+          ''',
+        );
+
+        final text = rawText is String ? rawText : '${rawText ?? ''}';
+        final balance = CampusCardService.instance.parseBalanceFromPageText(
+          text,
+        );
+        if (balance != null) {
+          return balance;
+        }
+      } catch (_) {
+        continue;
+      }
+    }
+
+    return null;
+  }
+
+  Widget _buildBalanceHeader(
+    BuildContext context,
+    String balance,
+    DateTime? lastUpdated,
+  ) {
+    final timeText = lastUpdated != null
+        ? '上次更新: ${lastUpdated.hour.toString().padLeft(2, '0')}:${lastUpdated.minute.toString().padLeft(2, '0')}'
+        : '暂未获取余额';
+
+    return Container(
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF1565C0), Color(0xFF42A5F5)],
+        ),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 32, 24, 32),
+          child: Column(
+            children: [
+              const Icon(Icons.payment, size: 48, color: Colors.white70),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  const Text(
+                    '¥ ',
                     style: TextStyle(
-                      color: Colors.red.shade700,
-                      fontWeight: FontWeight.w600,
+                      fontSize: 24,
+                      color: Colors.white70,
+                      fontWeight: FontWeight.w300,
                     ),
                   ),
-                );
+                  Text(
+                    balance,
+                    style: const TextStyle(
+                      fontSize: 48,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                timeText,
+                style: const TextStyle(fontSize: 13, color: Colors.white60),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActions(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Row(
+        children: [
+          Expanded(
+            child: FilledButton.tonalIcon(
+              onPressed: () => context.pushNamed('campus-card-payment'),
+              icon: const Icon(Icons.qr_code_2),
+              label: const Text('消费码'),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: FilledButton.tonalIcon(
+              onPressed: () {
+                _openCampusCardDetail();
               },
+              icon: const Icon(Icons.open_in_new),
+              label: const Text('查看详情'),
             ),
           ),
         ],
       ),
     );
   }
-}
-
-class _CardAction {
-  const _CardAction({required this.label, required this.icon});
-
-  final String label;
-  final IconData icon;
-}
-
-class _RecordItem {
-  const _RecordItem({
-    required this.title,
-    required this.time,
-    required this.amount,
-    required this.icon,
-  });
-
-  final String title;
-  final String time;
-  final String amount;
-  final IconData icon;
 }

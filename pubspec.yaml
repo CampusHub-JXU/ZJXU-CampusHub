@@ -1,5 +1,5 @@
-name: jiadatong
-description: "嘉兴大学 - 校园门户 App"
+name: jiaxing_university_portal
+description: "嘉兴大学-校园门户 App"
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -15,6 +15,10 @@ dependencies:
   dio_cookie_manager: ^3.1.1
   flutter_secure_storage: ^9.2.2
   pointycastle: ^3.9.1
+  flutter_inappwebview: ^6.1.5
+  url_launcher: ^6.3.1
+  html: ^0.15.6
+  shared_preferences: ^2.3.0
 
 dev_dependencies:
   flutter_test:

@@ -1,4 +1,4 @@
-package edu.zjxu.jiadatong
+package edu.zjxu.jiaxinguniversityportal
 
 import io.flutter.embedding.android.FlutterActivity
 

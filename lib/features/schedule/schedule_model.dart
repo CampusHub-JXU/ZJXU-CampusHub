@@ -21,6 +21,24 @@ class CourseEntry {
   final String campus;
   final String typeSymbol; // ◆★□●◇
 
+  /// 判断课程是否在指定周次
+  bool isInWeek(int week) {
+    // weekRange 格式: "1-9周,11-16周" 或 "1-16周"
+    final ranges = weekRange.replaceAll('周', '').split(',');
+    for (final range in ranges) {
+      final parts = range.trim().split('-');
+      if (parts.length == 2) {
+        final start = int.tryParse(parts[0]) ?? 0;
+        final end = int.tryParse(parts[1]) ?? 0;
+        if (week >= start && week <= end) return true;
+      } else if (parts.length == 1) {
+        final single = int.tryParse(parts[0]) ?? 0;
+        if (week == single) return true;
+      }
+    }
+    return false;
+  }
+
   factory CourseEntry.fromJson(Map<String, dynamic> json) {
     final jcs = (json['jcs'] as String? ?? '1-1');
     final parts = jcs.split('-');
