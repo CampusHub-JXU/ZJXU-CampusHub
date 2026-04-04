@@ -101,6 +101,12 @@ if ($proxyEnable -eq 1) {
     Write-Host "System proxy is OFF. Cleared *_PROXY env vars in current shell."
 }
 
+# Always prefer China mirrors for Flutter SDK artifacts and pub packages.
+Set-Item Env:PUB_HOSTED_URL "https://pub.flutter-io.cn"
+Set-Item Env:FLUTTER_STORAGE_BASE_URL "https://storage.flutter-io.cn"
+Write-Host "PUB_HOSTED_URL=$($env:PUB_HOSTED_URL)"
+Write-Host "FLUTTER_STORAGE_BASE_URL=$($env:FLUTTER_STORAGE_BASE_URL)"
+
 if (-not $SkipFlutter) {
     & flutter @FlutterArgs
     exit $LASTEXITCODE
