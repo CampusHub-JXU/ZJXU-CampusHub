@@ -18,6 +18,9 @@ class NoticeService {
   /// Total pages on the news site (descending numbering).
   static const _totalPages = 233;
 
+  /// 缓存的新闻 Dio 实例（避免每次创建新实例）
+  late final Dio _newsDio = _createNewsDio();
+
   List<Notice>? get cachedNotices => _cachedNotices;
 
   /// 获取通知列表（调课信息 + 第一页综合新闻）— used by home page ticker
@@ -66,28 +69,11 @@ class NoticeService {
   }
 
   Future<List<Notice>> _fetchNewsPage(int page) async {
-    final newsDio = Dio(
-      BaseOptions(
-        connectTimeout: const Duration(seconds: 10),
-        receiveTimeout: const Duration(seconds: 10),
-        headers: {
-          'User-Agent':
-              'Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 '
-              '(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-        },
-        responseType: ResponseType.bytes,
-      ),
-    );
-    applyProxyModeToDio(
-      newsDio,
-      ignoreSystemProxy: NetworkSettings.instance.ignoreSystemProxy.value,
-    );
-
     final url = page == 1
         ? 'https://news.zjxu.edu.cn/zhxw.htm'
         : 'https://news.zjxu.edu.cn/zhxw/${_totalPages - page + 1}.htm';
 
-    final resp = await newsDio.get<List<int>>(url);
+    final resp = await _newsDio.get<List<int>>(url);
     if (resp.data == null) return [];
 
     final html = utf8.decode(resp.data!, allowMalformed: true);
@@ -141,5 +127,25 @@ class NoticeService {
     if (fallback == null) return null;
 
     return fallback.group(0)!.replaceAll('/', '-').replaceAll('.', '-');
+  }
+
+  Dio _createNewsDio() {
+    final client = Dio(
+      BaseOptions(
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 10),
+        headers: {
+          'User-Agent':
+              'Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 '
+              '(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+        },
+        responseType: ResponseType.bytes,
+      ),
+    );
+    applyProxyModeToDio(
+      client,
+      ignoreSystemProxy: NetworkSettings.instance.ignoreSystemProxy.value,
+    );
+    return client;
   }
 }

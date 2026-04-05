@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../app/theme.dart';
+import '../../shared/widgets/ship_card.dart';
 import '../campus_card/campus_card_service.dart';
 import '../dorm_electricity/dorm_electricity_service.dart';
 import '../notice/notice_service.dart';
@@ -19,31 +21,18 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   String _campusCardBalance = '--';
+  double? _campusCardBalanceValue;
   String _dormElectricity = '--';
   List<Notice> _notices = [];
   int _currentNoticeIndex = 0;
   CourseEntry? _nextCourse;
-  String _nextCourseLabel = ''; // '今天' or '明天'
+  String _nextCourseLabel = '';
   bool _courseLoggedIn = false;
+  bool _headerSolid = false;
 
   static const _weekdayLabels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-  static const _courseColors = [
-    Color(0xFF64B5F6),
-    Color(0xFF81C784),
-    Color(0xFFE57373),
-    Color(0xFFFFB74D),
-    Color(0xFFBA68C8),
-    Color(0xFF4DB6AC),
-    Color(0xFFFF8A65),
-    Color(0xFF7986CB),
-  ];
 
-  Color _colorForCourse(String name) =>
-      _courseColors[name.hashCode.abs() % _courseColors.length];
-
-  int get _currentWeek {
-    return SemesterCalendar.instance.weekForDate(DateTime.now());
-  }
+  int get _currentWeek => SemesterCalendar.instance.weekForDate(DateTime.now());
 
   @override
   void initState() {
@@ -51,10 +40,16 @@ class _HomePageState extends State<HomePage> {
     SemesterCalendar.instance.semesterStartDate.addListener(
       _onSemesterStartChanged,
     );
-    _refreshCampusCardBalance();
-    _refreshDormElectricity();
-    _refreshNotices();
-    _refreshNextCourse();
+    _refreshAll();
+  }
+
+  Future<void> _refreshAll() async {
+    await Future.wait([
+      _refreshCampusCardBalance(),
+      _refreshDormElectricity(),
+      _refreshNotices(),
+      _refreshNextCourse(),
+    ]);
   }
 
   @override
@@ -87,7 +82,6 @@ class _HomePageState extends State<HomePage> {
       });
       return;
     }
-
     final value = await DormElectricityService.instance.fetchElectricity();
     if (!mounted) return;
     setState(() {
@@ -109,20 +103,36 @@ class _HomePageState extends State<HomePage> {
     _refreshDormElectricity();
   }
 
-  void _openDormElectricitySettings(BuildContext context) {
-    context.pushNamed('dorm-electricity-settings');
-  }
-
   static const _slotStartTimes = [
-    '08:00', '08:45', '09:45', '10:30', '11:15', // 1-5
-    '13:30', '14:15', '15:15', '16:00', '16:45', // 6-10
-    '18:30', '19:15', '20:00', // 11-13
+    '08:00',
+    '08:45',
+    '09:45',
+    '10:30',
+    '11:15',
+    '13:30',
+    '14:15',
+    '15:15',
+    '16:00',
+    '16:45',
+    '18:30',
+    '19:15',
+    '20:00',
   ];
 
   static const _slotEndTimes = [
-    '08:40', '09:25', '10:25', '11:10', '11:55', // 1-5
-    '14:10', '14:55', '15:55', '16:40', '17:25', // 6-10
-    '19:10', '19:55', '20:40', // 11-13
+    '08:40',
+    '09:25',
+    '10:25',
+    '11:10',
+    '11:55',
+    '14:10',
+    '14:55',
+    '15:55',
+    '16:40',
+    '17:25',
+    '19:10',
+    '19:55',
+    '20:40',
   ];
 
   String _normalizeCourseName(String value) {
@@ -145,23 +155,14 @@ class _HomePageState extends State<HomePage> {
     List<CourseCancellationRule> cancellationRules,
   ) {
     for (final rule in cancellationRules) {
-      if (rule.week != week || rule.weekday != course.weekday) {
-        continue;
-      }
+      if (rule.week != week || rule.weekday != course.weekday) continue;
       final isOverlap =
           course.startLesson <= rule.endLesson &&
           course.endLesson >= rule.startLesson;
-      if (!isOverlap) {
-        continue;
-      }
-
+      if (!isOverlap) continue;
       final ruleCourseName = rule.courseName;
-      if (ruleCourseName == null || ruleCourseName.isEmpty) {
-        return true;
-      }
-      if (_matchesCourseName(course.courseName, ruleCourseName)) {
-        return true;
-      }
+      if (ruleCourseName == null || ruleCourseName.isEmpty) return true;
+      if (_matchesCourseName(course.courseName, ruleCourseName)) return true;
     }
     return false;
   }
@@ -172,9 +173,8 @@ class _HomePageState extends State<HomePage> {
     return '$s-$e';
   }
 
-  int _weekForDate(DateTime date) {
-    return SemesterCalendar.instance.weekForDate(date);
-  }
+  int _weekForDate(DateTime date) =>
+      SemesterCalendar.instance.weekForDate(date);
 
   int _nextStartLesson(DateTime now) {
     for (int i = 0; i < _slotStartTimes.length; i++) {
@@ -200,38 +200,31 @@ class _HomePageState extends State<HomePage> {
   Future<void> _refreshNextCourse() async {
     final studentId = ZhengfangAuth.instance.currentStudentId ?? '';
     if (studentId.isEmpty) {
-      if (mounted) {
+      if (mounted)
         setState(() {
           _courseLoggedIn = false;
           _nextCourse = null;
           _nextCourseLabel = '';
         });
-      }
       return;
     }
-
     try {
       final now = DateTime.now();
       final academicYear = now.month < 8 ? now.year - 1 : now.year;
       final term = now.month >= 2 && now.month < 8 ? 12 : 3;
-
       final courses = await ScheduleService.instance.fetchSchedule(
         studentId,
         academicYear,
         term,
       );
-
       List<CourseCancellationRule> cancellationRules = const [];
       try {
         cancellationRules = await ScheduleService.instance
             .fetchCancellationRules(studentId);
       } catch (_) {}
-
       if (!mounted) return;
-
       final today = DateTime(now.year, now.month, now.day);
       final nextLessonToday = _nextStartLesson(now);
-
       for (int offset = 0; offset < 14; offset++) {
         final date = today.add(Duration(days: offset));
         final week = _weekForDate(date);
@@ -242,7 +235,6 @@ class _HomePageState extends State<HomePage> {
                 .where((c) => offset > 0 || c.startLesson >= nextLessonToday)
                 .toList()
               ..sort((a, b) => a.startLesson.compareTo(b.startLesson));
-
         if (dayCourses.isNotEmpty) {
           setState(() {
             _courseLoggedIn = true;
@@ -252,7 +244,6 @@ class _HomePageState extends State<HomePage> {
           return;
         }
       }
-
       setState(() {
         _courseLoggedIn = true;
         _nextCourse = null;
@@ -260,22 +251,39 @@ class _HomePageState extends State<HomePage> {
       });
     } on ScheduleAuthExpiredException {
       ZhengfangAuth.instance.markLoggedOut();
-      if (mounted) {
+      if (mounted)
         setState(() {
           _courseLoggedIn = false;
           _nextCourse = null;
           _nextCourseLabel = '';
         });
-      }
     } catch (_) {
-      if (mounted) {
+      if (mounted)
         setState(() {
           _courseLoggedIn = true;
           _nextCourse = null;
           _nextCourseLabel = '';
         });
-      }
     }
+  }
+
+  Future<void> _refreshCampusCardBalance() async {
+    final cached = CampusCardService.instance.cachedBalance;
+    if (cached != null && mounted) {
+      setState(() {
+        _campusCardBalanceValue = cached;
+        _campusCardBalance = CampusCardService.instance.formatBalance(cached);
+      });
+      return;
+    }
+    final networkBalance = await CampusCardService.instance.fetchBalance();
+    if (!mounted) return;
+    setState(() {
+      _campusCardBalanceValue = networkBalance;
+      _campusCardBalance = CampusCardService.instance.formatBalance(
+        networkBalance,
+      );
+    });
   }
 
   Future<void> _openSchedule(BuildContext context) async {
@@ -290,726 +298,835 @@ class _HomePageState extends State<HomePage> {
     _refreshNextCourse();
   }
 
-  Future<void> _refreshCampusCardBalance() async {
-    final cached = CampusCardService.instance.cachedBalance;
-    if (cached != null && mounted) {
-      setState(() {
-        _campusCardBalance = CampusCardService.instance.formatBalance(cached);
-      });
-
-      return;
-    }
-
-    final networkBalance = await CampusCardService.instance.fetchBalance();
-    final balance = networkBalance;
-
-    if (!mounted) return;
-
-    setState(() {
-      _campusCardBalance = CampusCardService.instance.formatBalance(balance);
-    });
-  }
-
-  Future<void> _openCampusCardStatus(BuildContext context) async {
-    await context.pushNamed('campus-card');
-    if (!mounted) return;
-    _refreshCampusCardBalance();
-  }
-
-  void _openCampusCardPayment(BuildContext context) {
-    context.pushNamed('campus-card-payment');
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Column(
-        children: [
-          _buildHeader(context),
-          Expanded(
-            child: SingleChildScrollView(
+      body: NotificationListener<ScrollNotification>(
+        onNotification: (notification) {
+          final shouldSolid = notification.metrics.pixels > 60;
+          if (shouldSolid != _headerSolid) {
+            setState(() => _headerSolid = shouldSolid);
+          }
+          return false;
+        },
+        child: CustomScrollView(
+          slivers: [
+            _buildSliverAppBar(context),
+            SliverToBoxAdapter(child: _buildNextClassCard(context)),
+            SliverToBoxAdapter(child: _buildTodayOverview(context)),
+            SliverToBoxAdapter(child: _buildServiceGrid(context)),
+            SliverToBoxAdapter(child: _buildTodoReminders(context)),
+            SliverToBoxAdapter(child: _buildCampusNews(context)),
+            const SliverToBoxAdapter(child: SizedBox(height: 32)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSliverAppBar(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return SliverAppBar(
+      expandedHeight: 120,
+      floating: false,
+      pinned: true,
+      elevation: _headerSolid ? 2 : 0,
+      backgroundColor: _headerSolid
+          ? (isDark ? AppColors.darkSurface : AppColors.surfaceL3)
+          : Colors.transparent,
+      flexibleSpace: FlexibleSpaceBar(
+        titlePadding: const EdgeInsets.only(left: 20, bottom: 14),
+        title: Row(
+          children: [
+            Text(
+              '第 $_currentWeek 周',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: _headerSolid
+                    ? Theme.of(context).colorScheme.onSurface
+                    : Colors.white,
+              ),
+            ),
+          ],
+        ),
+        background: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: isDark
+                  ? [AppColors.primaryDark, const Color(0xFF3D1520)]
+                  : [AppColors.primary, AppColors.primaryDark],
+            ),
+          ),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildNoticeCard(context),
-                  _buildFunctionGrid(context),
+                  const SizedBox(height: 8),
+                  Text(
+                    '方正为人、勤慎治学',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.7),
+                      fontSize: 13,
+                    ),
+                  ),
                 ],
               ),
             ),
+          ),
+        ),
+      ),
+      actions: [
+        IconButton(
+          icon: Icon(Icons.search, color: _headerSolid ? null : Colors.white),
+          onPressed: () {},
+        ),
+        IconButton(
+          icon: Icon(
+            Icons.notifications_outlined,
+            color: _headerSolid ? null : Colors.white,
+          ),
+          onPressed: () => context.pushNamed('notice-list'),
+        ),
+        IconButton(
+          icon: Icon(
+            Icons.settings_outlined,
+            color: _headerSolid ? null : Colors.white,
+          ),
+          onPressed: () => context.pushNamed('settings'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNextClassCard(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      child: _NextClassCard(
+        course: _nextCourse,
+        label: _nextCourseLabel,
+        loggedIn: _courseLoggedIn,
+        slotTimeRange: _slotTimeRange,
+        onTap: () => _openSchedule(context),
+      ),
+    );
+  }
+
+  Widget _buildTodayOverview(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final items = [
+      _OverviewItem(
+        icon: Icons.class_outlined,
+        label: '今日课程',
+        value: '3节',
+        color: AppColors.primary,
+      ),
+      _OverviewItem(
+        icon: Icons.check_circle_outline,
+        label: '待办事项',
+        value: '2项',
+        color: AppColors.warning,
+      ),
+      _OverviewItem(
+        icon: Icons.account_balance_wallet_outlined,
+        label: '卡余额',
+        value: '¥$_campusCardBalance',
+        color: AppColors.success,
+      ),
+      _OverviewItem(
+        icon: Icons.wifi,
+        label: '校园网',
+        value: '已连接',
+        color: AppColors.info,
+      ),
+    ];
+
+    return SizedBox(
+      height: 100,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        itemCount: items.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        itemBuilder: (context, index) {
+          final item = items[index];
+          return Container(
+            width: 140,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerLowest,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Row(
+              children: [
+                Icon(item.icon, size: 20, color: item.color),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.value,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: cs.onSurface,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        item.label,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: cs.onSurfaceVariant,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildServiceGrid(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final services = [
+      _ServiceItem(
+        icon: Icons.calendar_today,
+        label: '课表',
+        color: AppColors.primary,
+        route: 'schedule',
+      ),
+      _ServiceItem(
+        icon: Icons.grade_outlined,
+        label: '成绩',
+        color: AppColors.warning,
+        route: 'grades',
+      ),
+      _ServiceItem(
+        icon: Icons.local_library_outlined,
+        label: '图书馆',
+        color: AppColors.info,
+        route: null,
+      ),
+      _ServiceItem(
+        icon: Icons.meeting_room_outlined,
+        label: '空教室',
+        color: AppColors.success,
+        route: null,
+      ),
+      _ServiceItem(
+        icon: Icons.credit_card,
+        label: '校园卡',
+        color: AppColors.primary,
+        route: 'campus-card',
+      ),
+      _ServiceItem(
+        icon: Icons.build_outlined,
+        label: '报修',
+        color: AppColors.error,
+        route: null,
+      ),
+      _ServiceItem(
+        icon: Icons.directions_bus_outlined,
+        label: '校车',
+        color: AppColors.gold,
+        route: null,
+      ),
+      _ServiceItem(
+        icon: Icons.apps,
+        label: '更多',
+        color: cs.onSurfaceVariant,
+        route: 'service-hall',
+      ),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: ShipCard(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '服务',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: cs.onSurface,
+              ),
+            ),
+            const SizedBox(height: 14),
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 4,
+                mainAxisSpacing: 16,
+                crossAxisSpacing: 8,
+                childAspectRatio: 0.85,
+              ),
+              itemCount: services.length,
+              itemBuilder: (context, index) {
+                final s = services[index];
+                return _ServiceGridItem(
+                  item: s,
+                  onTap: s.route != null
+                      ? () => context.pushNamed(s.route!)
+                      : null,
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTodoReminders(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: ShipCard(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.checklist, size: 20, color: AppColors.primary),
+                const SizedBox(width: 8),
+                Text(
+                  '待办提醒',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: cs.onSurface,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  '查看全部',
+                  style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _TodoItem(title: '高等数学作业', deadline: '今天 23:59', isUrgent: true),
+            const SizedBox(height: 8),
+            _TodoItem(title: '大学英语作文', deadline: '明天 17:00', isUrgent: false),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCampusNews(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 10),
+            child: Text(
+              '校园动态',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: cs.onSurface,
+              ),
+            ),
+          ),
+          SizedBox(
+            height: 160,
+            child: _notices.isEmpty
+                ? Center(
+                    child: Text(
+                      '加载中...',
+                      style: TextStyle(color: cs.onSurfaceVariant),
+                    ),
+                  )
+                : ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _notices.length.clamp(0, 5),
+                    separatorBuilder: (_, __) => const SizedBox(width: 10),
+                    itemBuilder: (context, index) {
+                      final notice = _notices[index];
+                      return _NewsCard(
+                        title: notice.title,
+                        category: notice.category,
+                        onTap: () => context.pushNamed('notice-list'),
+                      );
+                    },
+                  ),
           ),
         ],
       ),
     );
   }
+}
 
-  Widget _buildHeader(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFF1565C0), Color(0xFF42A5F5)],
-        ),
-      ),
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 12, 32),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Align(
-                alignment: Alignment.topRight,
-                child: IconButton(
-                  icon: const Icon(
-                    Icons.settings_outlined,
-                    color: Colors.white,
-                  ),
-                  onPressed: () => context.pushNamed('settings'),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                '第 $_currentWeek 周',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 24),
-              const Text(
-                '方正为人、勤慎治学。',
-                style: TextStyle(color: Colors.white70, fontSize: 15),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                '——嘉兴大学校训',
-                style: TextStyle(color: Colors.white60, fontSize: 13),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+// ── Next Class Card ─────────────────────────────────────────────────────────
+
+class _NextClassCard extends StatelessWidget {
+  const _NextClassCard({
+    required this.course,
+    required this.label,
+    required this.loggedIn,
+    required this.slotTimeRange,
+    required this.onTap,
+  });
+
+  final CourseEntry? course;
+  final String label;
+  final bool loggedIn;
+  final String Function(int, int) slotTimeRange;
+  final VoidCallback onTap;
+
+  String _locationText(CourseEntry course) {
+    final campus = course.campus.trim();
+    final classroom = course.classroom.trim();
+    if (campus.isEmpty && classroom.isEmpty) return '地点待定';
+    if (campus.isEmpty) return classroom;
+    if (classroom.isEmpty) return campus;
+    return '$campus $classroom';
   }
 
-  Widget _buildNoticeCard(BuildContext context) {
-    // 如果没有通知数据，显示默认占位
-    if (_notices.isEmpty) {
-      return Container(
-        margin: const EdgeInsets.all(16),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
+  @override
+  Widget build(BuildContext context) {
+    if (!loggedIn) {
+      return ShipCard(
+        onTap: onTap,
+        gradient: const LinearGradient(
+          colors: [AppColors.primary, AppColors.primaryDark],
         ),
+        padding: const EdgeInsets.all(20),
         child: Row(
           children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.red,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: const Text(
-                '教学',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '下节课',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.white.withValues(alpha: 0.7),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '登录后查看课程',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Text(
-                '加载中...',
-                style: TextStyle(fontSize: 14, color: Colors.grey),
-              ),
+            Icon(
+              Icons.arrow_forward_ios,
+              color: Colors.white.withValues(alpha: 0.5),
+              size: 18,
             ),
           ],
         ),
       );
     }
 
-    final notice = _notices[_currentNoticeIndex % _notices.length];
-    final categoryColor = notice.category == '教学' ? Colors.red : Colors.blue;
-
-    return GestureDetector(
-      onTap: () {
-        context.pushNamed('notice-list');
-      },
-      onHorizontalDragEnd: (details) {
-        if (details.primaryVelocity != null) {
-          setState(() {
-            _currentNoticeIndex = (_currentNoticeIndex + 1) % _notices.length;
-          });
-        }
-      },
-      child: Container(
-        margin: const EdgeInsets.all(16),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
+    if (course == null) {
+      return ShipCard(
+        onTap: onTap,
+        color: Theme.of(context).colorScheme.surfaceContainerLowest,
+        padding: const EdgeInsets.all(20),
         child: Row(
           children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: categoryColor,
-                borderRadius: BorderRadius.circular(4),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '下节课',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '近期无课',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
+                  ),
+                ],
               ),
-              child: Text(
-                notice.category,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
+            ),
+            Icon(
+              Icons.check_circle_outline,
+              color: AppColors.success,
+              size: 24,
+            ),
+          ],
+        ),
+      );
+    }
+
+    final time = slotTimeRange(course!.startLesson, course!.endLesson);
+    final whenText = label.isEmpty ? time : '$label $time';
+    final location = _locationText(course!);
+
+    return ShipCard(
+      onTap: onTap,
+      gradient: const LinearGradient(
+        colors: [AppColors.primary, AppColors.primaryDark],
+      ),
+      padding: const EdgeInsets.all(20),
+      child: Stack(
+        children: [
+          // Ship watermark
+          Positioned(
+            right: -8,
+            bottom: -12,
+            child: Icon(
+              Icons.sailing_outlined,
+              size: 80,
+              color: Colors.white.withValues(alpha: 0.06),
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Subject tag
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  course!.courseName,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                notice.title,
-                style: const TextStyle(fontSize: 14),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              const SizedBox(height: 14),
+              // Time
+              Row(
+                children: [
+                  Icon(
+                    Icons.schedule,
+                    size: 16,
+                    color: Colors.white.withValues(alpha: 0.8),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    whenText,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.white.withValues(alpha: 0.9),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '第 ${course!.startLesson}-${course!.endLesson} 节',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.white.withValues(alpha: 0.6),
+                    ),
+                  ),
+                ],
               ),
+              const SizedBox(height: 8),
+              // Location
+              Row(
+                children: [
+                  Icon(
+                    Icons.location_on_outlined,
+                    size: 16,
+                    color: Colors.white.withValues(alpha: 0.8),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      location,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.white.withValues(alpha: 0.9),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              // Action buttons
+              Row(
+                children: [
+                  _CardActionButton(
+                    icon: Icons.how_to_reg_outlined,
+                    label: '签到',
+                    onTap: () {},
+                  ),
+                  const SizedBox(width: 10),
+                  _CardActionButton(
+                    icon: Icons.directions_outlined,
+                    label: '导航去这里',
+                    onTap: () {},
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CardActionButton extends StatelessWidget {
+  const _CardActionButton({
+    required this.icon,
+    required this.label,
+    this.onTap,
+  });
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: Colors.white),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: const TextStyle(fontSize: 13, color: Colors.white),
             ),
-            const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
           ],
         ),
       ),
     );
   }
-
-  Widget _buildFunctionGrid(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: _FunctionCard(
-                  icon: Icons.calendar_today,
-                  iconColor: Colors.blue,
-                  title: '课表查询',
-                  subtitle: '查看本周课程安排',
-                  onTap: () => _openSchedule(context),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _FunctionCard(
-                  icon: Icons.grade,
-                  iconColor: Colors.orange,
-                  title: '成绩查询',
-                  subtitle: '查看成绩与绩点',
-                  onTap: () => _openGrades(context),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _CampusCardWidget(
-                  balanceText: _campusCardBalance,
-                  onTap: () => _openCampusCardStatus(context),
-                  onPaymentTap: () => _openCampusCardPayment(context),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _FunctionCard(
-                  icon: Icons.school,
-                  iconColor: Colors.grey,
-                  title: '服务大厅',
-                  subtitle: '学生事务办理',
-                  onTap: () => context.pushNamed('service-hall'),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _DormElectricityWidget(
-                  electricityText: _dormElectricity,
-                  onTap: () => _openDormElectricity(context),
-                  onSettingsTap: () => _openDormElectricitySettings(context),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _UpcomingCourseWidget(
-                  course: _nextCourse,
-                  label: _nextCourseLabel,
-                  loggedIn: _courseLoggedIn,
-                  courseColor: _nextCourse == null
-                      ? null
-                      : _colorForCourse(_nextCourse!.courseName),
-                  slotTimeRange: _slotTimeRange,
-                  onTap: () => _openSchedule(context),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
 }
 
-class _CampusCardWidget extends StatelessWidget {
-  final String balanceText;
-  final VoidCallback onTap;
-  final VoidCallback onPaymentTap;
+// ── Overview Item ───────────────────────────────────────────────────────────
 
-  const _CampusCardWidget({
-    required this.balanceText,
-    required this.onTap,
-    required this.onPaymentTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: onTap,
-        child: Container(
-          height: 140,
-          padding: const EdgeInsets.all(16),
-          child: Stack(
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(Icons.payment, size: 32, color: Colors.pink),
-                  const Spacer(),
-                  const Text(
-                    '校园卡',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Text(
-                        balanceText,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        '元',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              Positioned(
-                right: 0,
-                bottom: 0,
-                child: InkWell(
-                  onTap: onPaymentTap,
-                  borderRadius: BorderRadius.circular(4),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.qr_code_2,
-                          size: 14,
-                          color: Colors.blue[700],
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '消费码',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.blue[700],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _FunctionCard extends StatelessWidget {
-  final IconData icon;
-  final Color iconColor;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  const _FunctionCard({
+class _OverviewItem {
+  const _OverviewItem({
     required this.icon,
-    required this.iconColor,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: onTap,
-        child: Container(
-          height: 140,
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(icon, size: 32, color: iconColor),
-              const Spacer(),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                subtitle,
-                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _DormElectricityWidget extends StatelessWidget {
-  final String electricityText;
-  final VoidCallback onTap;
-  final VoidCallback onSettingsTap;
-
-  const _DormElectricityWidget({
-    required this.electricityText,
-    required this.onTap,
-    required this.onSettingsTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: onTap,
-        child: Container(
-          height: 140,
-          padding: const EdgeInsets.all(16),
-          child: Stack(
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(Icons.bolt, size: 32, color: Colors.amber),
-                  const Spacer(),
-                  const Text(
-                    '寝室电费',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Text(
-                        electricityText,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        electricityText == '--' ? '未配置' : '度',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              Positioned(
-                right: 0,
-                bottom: 0,
-                child: InkWell(
-                  onTap: onSettingsTap,
-                  borderRadius: BorderRadius.circular(4),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.home_outlined,
-                          size: 14,
-                          color: Colors.blue[700],
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '选房',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.blue[700],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _UpcomingCourseWidget extends StatelessWidget {
-  final CourseEntry? course;
-  final String label; // '今天' or '明天'
-  final bool loggedIn;
-  final Color? courseColor;
-  final String Function(int, int) slotTimeRange;
-  final VoidCallback onTap;
-
-  const _UpcomingCourseWidget({
-    required this.course,
     required this.label,
-    required this.loggedIn,
-    required this.courseColor,
-    required this.slotTimeRange,
-    required this.onTap,
+    required this.value,
+    required this.color,
   });
-
-  String _locationText(CourseEntry course) {
-    final campus = course.campus.trim();
-    final classroom = course.classroom.trim();
-    if (campus.isEmpty && classroom.isEmpty) {
-      return '地点待定';
-    }
-    if (campus.isEmpty) {
-      return classroom;
-    }
-    if (classroom.isEmpty) {
-      return campus;
-    }
-    return '$campus $classroom';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final textMutedColor = Colors.grey[600];
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: onTap,
-        child: Container(
-          height: 140,
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                '下节课',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 6),
-              if (!loggedIn)
-                Expanded(
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      '登录后查看',
-                      style: TextStyle(fontSize: 12, color: textMutedColor),
-                    ),
-                  ),
-                )
-              else if (course == null)
-                Expanded(
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      '近期无课',
-                      style: TextStyle(fontSize: 12, color: textMutedColor),
-                    ),
-                  ),
-                )
-              else ...[
-                Expanded(
-                  child: _NextCourseHighlight(
-                    course: course!,
-                    label: label,
-                    color: courseColor ?? Theme.of(context).colorScheme.primary,
-                    slotTimeRange: slotTimeRange,
-                    locationText: _locationText(course!),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
 }
 
-class _NextCourseHighlight extends StatelessWidget {
-  const _NextCourseHighlight({
-    required this.course,
+// ── Service Grid ────────────────────────────────────────────────────────────
+
+class _ServiceItem {
+  const _ServiceItem({
+    required this.icon,
     required this.label,
     required this.color,
-    required this.slotTimeRange,
-    required this.locationText,
+    this.route,
   });
-
-  final CourseEntry course;
+  final IconData icon;
   final String label;
   final Color color;
-  final String Function(int, int) slotTimeRange;
-  final String locationText;
+  final String? route;
+}
+
+class _ServiceGridItem extends StatelessWidget {
+  const _ServiceGridItem({required this.item, this.onTap});
+  final _ServiceItem item;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    final time = slotTimeRange(course.startLesson, course.endLesson);
-    final whenAndTime = label.isEmpty ? time : '$label $time';
-    final typeSuffix = course.typeSymbol.trim().isEmpty
-        ? ''
-        : ' ${course.typeSymbol}';
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: item.color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(item.icon, color: item.color, size: 22),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            item.label,
+            style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
+            maxLines: 1,
+          ),
+        ],
+      ),
+    );
+  }
+}
 
+// ── Todo Item ───────────────────────────────────────────────────────────────
+
+class _TodoItem extends StatelessWidget {
+  const _TodoItem({
+    required this.title,
+    required this.deadline,
+    required this.isUrgent,
+  });
+  final String title;
+  final String deadline;
+  final bool isUrgent;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
-      width: double.infinity,
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
+        color: isUrgent
+            ? AppColors.error.withValues(alpha: 0.06)
+            : cs.surfaceContainerLow,
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            width: 4,
-            margin: const EdgeInsets.fromLTRB(6, 6, 0, 6),
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(2),
-            ),
+          Icon(
+            isUrgent
+                ? Icons.warning_amber_rounded
+                : Icons.radio_button_unchecked,
+            size: 20,
+            color: isUrgent ? AppColors.error : cs.onSurfaceVariant,
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 10),
           Expanded(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(0, 8, 8, 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    '${course.courseName}$typeSuffix',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: color,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: cs.onSurface,
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    whenAndTime,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: color.withValues(alpha: 0.9),
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  deadline,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isUrgent ? AppColors.error : cs.onSurfaceVariant,
                   ),
-                  const SizedBox(height: 1),
-                  Text(
-                    locationText,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: color.withValues(alpha: 0.9),
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── News Card ───────────────────────────────────────────────────────────────
+
+class _NewsCard extends StatelessWidget {
+  const _NewsCard({required this.title, required this.category, this.onTap});
+  final String title;
+  final String category;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final categoryColor = category == '教学' ? AppColors.error : AppColors.info;
+
+    return ShipCard(
+      onTap: onTap,
+      padding: const EdgeInsets.all(16),
+      color: cs.surfaceContainerLowest,
+      child: SizedBox(
+        width: 200,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: categoryColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                category,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: categoryColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: cs.onSurface,
+                ),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

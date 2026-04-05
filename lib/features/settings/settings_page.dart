@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../app/theme_mode_controller.dart';
 import '../../core/logging/app_logger.dart';
@@ -37,8 +38,11 @@ class SettingsPage extends StatelessWidget {
 
   Future<void> _setIgnoreSystemProxy(bool value) async {
     await NetworkSettings.instance.setIgnoreSystemProxy(value);
-    DioClient.instance.applyProxyMode();
-    DormElectricityService.instance.applyProxyMode();
+    // 延迟到下一微任务，避免阻塞切换动画
+    Future.microtask(() {
+      DioClient.instance.applyProxyMode();
+      DormElectricityService.instance.applyProxyMode();
+    });
   }
 
   @override
@@ -162,6 +166,23 @@ class SettingsPage extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Text('设置会立即生效。', style: textTheme.bodySmall),
+          const SizedBox(height: 24),
+          FutureBuilder<PackageInfo>(
+            future: PackageInfo.fromPlatform(),
+            builder: (context, snapshot) {
+              final version = snapshot.hasData
+                  ? 'v${snapshot.data!.version}+${snapshot.data!.buildNumber}'
+                  : '';
+              return Center(
+                child: Text(
+                  '嘉兴大学-校园门户 $version',
+                  style: textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              );
+            },
+          ),
           if (kDebugMode) ...[
             const SizedBox(height: 16),
             Text('调试', style: textTheme.titleMedium),
