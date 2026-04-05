@@ -4,9 +4,6 @@ import 'package:go_router/go_router.dart';
 import '../../app/theme.dart';
 import '../../shared/widgets/ship_card.dart';
 import '../campus_card/campus_card_service.dart';
-import '../dorm_electricity/dorm_electricity_service.dart';
-import '../notice/notice_service.dart';
-import '../notice/notice_model.dart';
 import '../schedule/schedule_model.dart';
 import '../schedule/schedule_service.dart';
 import '../../core/auth/zhengfang_auth.dart';
@@ -21,10 +18,6 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   String _campusCardBalance = '--';
-  double? _campusCardBalanceValue;
-  String _dormElectricity = '--';
-  List<Notice> _notices = [];
-  int _currentNoticeIndex = 0;
   CourseEntry? _nextCourse;
   String _nextCourseLabel = '';
   bool _courseLoggedIn = false;
@@ -44,12 +37,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _refreshAll() async {
-    await Future.wait([
-      _refreshCampusCardBalance(),
-      _refreshDormElectricity(),
-      _refreshNotices(),
-      _refreshNextCourse(),
-    ]);
+    await Future.wait([_refreshCampusCardBalance(), _refreshNextCourse()]);
   }
 
   @override
@@ -64,43 +52,6 @@ class _HomePageState extends State<HomePage> {
     if (!mounted) return;
     setState(() {});
     _refreshNextCourse();
-  }
-
-  Future<void> _refreshNotices() async {
-    final notices = await NoticeService.instance.fetchNotices();
-    if (!mounted) return;
-    setState(() => _notices = notices);
-  }
-
-  Future<void> _refreshDormElectricity() async {
-    final cached = DormElectricityService.instance.cachedElectricity;
-    if (cached != null && mounted) {
-      setState(() {
-        _dormElectricity = DormElectricityService.instance.formatElectricity(
-          cached,
-        );
-      });
-      return;
-    }
-    final value = await DormElectricityService.instance.fetchElectricity();
-    if (!mounted) return;
-    setState(() {
-      _dormElectricity = DormElectricityService.instance.formatElectricity(
-        value,
-      );
-    });
-  }
-
-  Future<void> _openDormElectricity(BuildContext context) async {
-    final hasConfig = await DormElectricityService.instance.hasRoomConfig();
-    if (!context.mounted) return;
-    if (hasConfig) {
-      await context.pushNamed('dorm-electricity');
-    } else {
-      await context.pushNamed('dorm-electricity-settings');
-    }
-    if (!mounted) return;
-    _refreshDormElectricity();
   }
 
   static const _slotStartTimes = [
@@ -271,7 +222,6 @@ class _HomePageState extends State<HomePage> {
     final cached = CampusCardService.instance.cachedBalance;
     if (cached != null && mounted) {
       setState(() {
-        _campusCardBalanceValue = cached;
         _campusCardBalance = CampusCardService.instance.formatBalance(cached);
       });
       return;
@@ -279,7 +229,6 @@ class _HomePageState extends State<HomePage> {
     final networkBalance = await CampusCardService.instance.fetchBalance();
     if (!mounted) return;
     setState(() {
-      _campusCardBalanceValue = networkBalance;
       _campusCardBalance = CampusCardService.instance.formatBalance(
         networkBalance,
       );
@@ -315,8 +264,6 @@ class _HomePageState extends State<HomePage> {
             SliverToBoxAdapter(child: _buildNextClassCard(context)),
             SliverToBoxAdapter(child: _buildTodayOverview(context)),
             SliverToBoxAdapter(child: _buildServiceGrid(context)),
-            SliverToBoxAdapter(child: _buildTodoReminders(context)),
-            SliverToBoxAdapter(child: _buildCampusNews(context)),
             const SliverToBoxAdapter(child: SizedBox(height: 32)),
           ],
         ),
@@ -592,90 +539,6 @@ class _HomePageState extends State<HomePage> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildTodoReminders(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-      child: ShipCard(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.checklist, size: 20, color: AppColors.primary),
-                const SizedBox(width: 8),
-                Text(
-                  '待办提醒',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: cs.onSurface,
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  '查看全部',
-                  style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            _TodoItem(title: '高等数学作业', deadline: '今天 23:59', isUrgent: true),
-            const SizedBox(height: 8),
-            _TodoItem(title: '大学英语作文', deadline: '明天 17:00', isUrgent: false),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCampusNews(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 4, bottom: 10),
-            child: Text(
-              '校园动态',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: cs.onSurface,
-              ),
-            ),
-          ),
-          SizedBox(
-            height: 160,
-            child: _notices.isEmpty
-                ? Center(
-                    child: Text(
-                      '加载中...',
-                      style: TextStyle(color: cs.onSurfaceVariant),
-                    ),
-                  )
-                : ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: _notices.length.clamp(0, 5),
-                    separatorBuilder: (_, __) => const SizedBox(width: 10),
-                    itemBuilder: (context, index) {
-                      final notice = _notices[index];
-                      return _NewsCard(
-                        title: notice.title,
-                        category: notice.category,
-                        onTap: () => context.pushNamed('notice-list'),
-                      );
-                    },
-                  ),
-          ),
-        ],
       ),
     );
   }
@@ -1009,124 +872,6 @@ class _ServiceGridItem extends StatelessWidget {
             maxLines: 1,
           ),
         ],
-      ),
-    );
-  }
-}
-
-// ── Todo Item ───────────────────────────────────────────────────────────────
-
-class _TodoItem extends StatelessWidget {
-  const _TodoItem({
-    required this.title,
-    required this.deadline,
-    required this.isUrgent,
-  });
-  final String title;
-  final String deadline;
-  final bool isUrgent;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: isUrgent
-            ? AppColors.error.withValues(alpha: 0.06)
-            : cs.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            isUrgent
-                ? Icons.warning_amber_rounded
-                : Icons.radio_button_unchecked,
-            size: 20,
-            color: isUrgent ? AppColors.error : cs.onSurfaceVariant,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: cs.onSurface,
-                  ),
-                ),
-                Text(
-                  deadline,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isUrgent ? AppColors.error : cs.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── News Card ───────────────────────────────────────────────────────────────
-
-class _NewsCard extends StatelessWidget {
-  const _NewsCard({required this.title, required this.category, this.onTap});
-  final String title;
-  final String category;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final categoryColor = category == '教学' ? AppColors.error : AppColors.info;
-
-    return ShipCard(
-      onTap: onTap,
-      padding: const EdgeInsets.all(16),
-      color: cs.surfaceContainerLowest,
-      child: SizedBox(
-        width: 200,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: categoryColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                category,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: categoryColor,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            Expanded(
-              child: Text(
-                title,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: cs.onSurface,
-                ),
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
