@@ -35,6 +35,46 @@ $AndroidSdk = "$env:LOCALAPPDATA\Android\Sdk"
 $EmulatorPath = "$AndroidSdk\emulator\emulator.exe"
 $AdbPath = "$AndroidSdk\platform-tools\adb.exe"
 
+function Set-ChinaTimezone {
+    param(
+        [string]$AdbExe
+    )
+
+    Write-Host ""
+    Write-Host "配置时区为东八区..." -ForegroundColor Green
+
+    # 禁用自动时间和时区
+    & $AdbExe shell settings put global auto_time 0 | Out-Null
+    & $AdbExe shell settings put global auto_time_zone 0 | Out-Null
+
+    # 设置时区为 GMT+8 (东八区)
+    & $AdbExe shell settings put global time_zone GMT+8 | Out-Null
+
+    # 设置24小时制
+    & $AdbExe shell settings put system time_12_24 24 | Out-Null
+
+    # 验证设置
+    Write-Host ""
+    Write-Host "验证时区配置:" -ForegroundColor Cyan
+    $currentTimezone = & $AdbExe shell settings get global time_zone
+    $currentTime = & $AdbExe shell date
+
+    Write-Host "  时区设置: $currentTimezone" -ForegroundColor White
+    Write-Host "  当前时间: $currentTime" -ForegroundColor White
+
+    if ($currentTimezone -eq "GMT+8") {
+        Write-Host ""
+        Write-Host "==========================================" -ForegroundColor Green
+        Write-Host "✓ 时区配置成功!" -ForegroundColor Green
+        Write-Host "==========================================" -ForegroundColor Green
+    } else {
+        Write-Host ""
+        Write-Host "==========================================" -ForegroundColor Yellow
+        Write-Host "⚠ 时区配置可能未生效，当前时区: $currentTimezone" -ForegroundColor Yellow
+        Write-Host "==========================================" -ForegroundColor Yellow
+    }
+}
+
 # 检查必要的工具是否存在
 if (-not (Test-Path $EmulatorPath)) {
     Write-Error "找不到 emulator.exe，请检查 Android SDK 是否已安装"
@@ -65,13 +105,16 @@ if ($runningDevices) {
         Start-Sleep -Seconds 3
     } else {
         Write-Host "跳过启动，直接配置时区..." -ForegroundColor Gray
-        goto :configure_timezone
+        Set-ChinaTimezone -AdbExe $AdbPath
+        Write-Host ""
+        Write-Host "模拟器已就绪，可以开始 Flutter 开发了!" -ForegroundColor Cyan
+        exit 0
     }
 }
 
 # 启动模拟器
 Write-Host "启动模拟器: $EmulatorName ..." -ForegroundColor Green
-Start-Process -FilePath $EmulatorPath -ArgumentList "-avd", $EmulatorName, "-timezone", "Asia/Shanghai" -WindowStyle Normal
+Start-Process -FilePath $EmulatorPath -ArgumentList "-avd", $EmulatorName, "-timezone", "Asia/Shanghai", "-no-snapshot-load", "-no-snapshot-save", "-gpu", "swiftshader_indirect" -WindowStyle Normal
 
 # 等待设备连接
 Write-Host "等待设备启动..." -ForegroundColor Gray
@@ -102,41 +145,7 @@ if ($attempt -ge $maxAttempts) {
     exit 1
 }
 
-:configure_timezone
-
-Write-Host ""
-Write-Host "配置时区为东八区..." -ForegroundColor Green
-
-# 禁用自动时间和时区
-& $AdbPath shell settings put global auto_time 0 | Out-Null
-& $AdbPath shell settings put global auto_time_zone 0 | Out-Null
-
-# 设置时区为 GMT+8 (东八区)
-& $AdbPath shell settings put global time_zone GMT+8 | Out-Null
-
-# 设置24小时制
-& $AdbPath shell settings put system time_12_24 24 | Out-Null
-
-# 验证设置
-Write-Host ""
-Write-Host "验证时区配置:" -ForegroundColor Cyan
-$currentTimezone = & $AdbPath shell settings get global time_zone
-$currentTime = & $AdbPath shell date
-
-Write-Host "  时区设置: $currentTimezone" -ForegroundColor White
-Write-Host "  当前时间: $currentTime" -ForegroundColor White
-
-if ($currentTimezone -eq "GMT+8") {
-    Write-Host ""
-    Write-Host "==========================================" -ForegroundColor Green
-    Write-Host "✓ 时区配置成功!" -ForegroundColor Green
-    Write-Host "==========================================" -ForegroundColor Green
-} else {
-    Write-Host ""
-    Write-Host "==========================================" -ForegroundColor Yellow
-    Write-Host "⚠ 时区配置可能未生效，当前时区: $currentTimezone" -ForegroundColor Yellow
-    Write-Host "==========================================" -ForegroundColor Yellow
-}
+Set-ChinaTimezone -AdbExe $AdbPath
 
 Write-Host ""
 Write-Host "模拟器已就绪，可以开始 Flutter 开发了!" -ForegroundColor Cyan
