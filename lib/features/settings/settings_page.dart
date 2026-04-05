@@ -1,6 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../app/theme_mode_controller.dart';
+import '../../core/logging/app_logger.dart';
 import '../../core/network/dio_client.dart';
 import '../../core/network/network_settings.dart';
 import '../../core/semester/semester_calendar.dart';
@@ -160,6 +162,27 @@ class SettingsPage extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Text('设置会立即生效。', style: textTheme.bodySmall),
+          if (kDebugMode) ...[
+            const SizedBox(height: 16),
+            Text('调试', style: textTheme.titleMedium),
+            const SizedBox(height: 12),
+            ValueListenableBuilder<bool>(
+              valueListenable: AppLogger.instance.loggingEnabled,
+              builder: (context, loggingEnabled, child) {
+                return Card(
+                  clipBehavior: Clip.antiAlias,
+                  child: SwitchListTile.adaptive(
+                    title: const Text('调试日志'),
+                    subtitle: const Text('开启后记录网络请求和错误日志'),
+                    value: loggingEnabled,
+                    onChanged: (value) {
+                      AppLogger.instance.setEnabled(value);
+                    },
+                  ),
+                );
+              },
+            ),
+          ],
         ],
       ),
     );

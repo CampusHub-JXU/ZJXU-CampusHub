@@ -1,6 +1,7 @@
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
 
+import '../logging/app_logger.dart';
 import 'cookie_interceptor.dart';
 import 'network_settings.dart';
 import 'proxy_mode.dart';
@@ -39,6 +40,26 @@ class DioClient {
       ),
     );
     client.interceptors.add(buildCookieInterceptor(cookieJar));
+    client.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          AppLogger.instance.debug('→ ${options.method} ${options.uri}');
+          handler.next(options);
+        },
+        onResponse: (response, handler) {
+          AppLogger.instance.debug(
+            '← ${response.statusCode} ${response.requestOptions.uri}',
+          );
+          handler.next(response);
+        },
+        onError: (error, handler) {
+          AppLogger.instance.error(
+            '✖ ${error.requestOptions.uri}: ${error.message}',
+          );
+          handler.next(error);
+        },
+      ),
+    );
     _applyProxyMode(client);
     return client;
   }

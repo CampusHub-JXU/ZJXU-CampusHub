@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/logging/app_logger.dart';
+
 typedef WebViewLoadStopCallback =
     Future<void> Function(InAppWebViewController controller, String currentUrl);
 
@@ -127,7 +129,9 @@ class _WebViewPageState extends State<WebViewPage> {
   ) {
     final message = consoleMessage.message;
 
-    debugPrint('WebView console [${consoleMessage.messageLevel}]: $message');
+    AppLogger.instance.debug(
+      'WebView console [${consoleMessage.messageLevel}]: $message',
+    );
 
     if (!_hasShownEnvHint && message.contains('notInDingTalk')) {
       _hasShownEnvHint = true;
