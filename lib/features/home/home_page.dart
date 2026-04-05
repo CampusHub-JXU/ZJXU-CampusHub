@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/theme.dart';
-import '../../shared/widgets/ship_card.dart';
 import '../campus_card/campus_card_service.dart';
 import '../schedule/schedule_model.dart';
 import '../schedule/schedule_service.dart';
@@ -572,6 +571,9 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildServiceGrid(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = isDark ? cs.surfaceContainerLowest : Colors.white;
+
     final services = [
       _ServiceItem(
         icon: Icons.calendar_today,
@@ -625,41 +627,29 @@ class _HomePageState extends State<HomePage> {
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: ShipCard(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '服务',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: cs.onSurface,
-              ),
-            ),
-            const SizedBox(height: 14),
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 4,
-                mainAxisSpacing: 16,
-                crossAxisSpacing: 8,
-                childAspectRatio: 0.85,
-              ),
-              itemCount: services.length,
-              itemBuilder: (context, index) {
-                final s = services[index];
-                return _ServiceGridItem(
-                  item: s,
-                  onTap: s.route != null
-                      ? () => context.pushNamed(s.route!)
-                      : null,
-                );
-              },
-            ),
-          ],
+      child: Container(
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        padding: const EdgeInsets.all(12),
+        child: GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 4,
+            mainAxisSpacing: 8,
+            crossAxisSpacing: 8,
+            childAspectRatio: 0.85,
+          ),
+          itemCount: services.length,
+          itemBuilder: (context, index) {
+            final s = services[index];
+            return _ServiceGridItem(
+              item: s,
+              onTap: s.route != null ? () => context.pushNamed(s.route!) : null,
+            );
+          },
         ),
       ),
     );
@@ -744,18 +734,18 @@ class _ServiceGridItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(8),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            width: 44,
-            height: 44,
+            width: 40,
+            height: 40,
             decoration: BoxDecoration(
-              color: item.color.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
+              color: item.color.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(item.icon, color: item.color, size: 22),
+            child: Icon(item.icon, color: item.color, size: 20),
           ),
           const SizedBox(height: 6),
           Text(
