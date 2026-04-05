@@ -21,7 +21,6 @@ class _HomePageState extends State<HomePage> {
   CourseEntry? _nextCourse;
   String _nextCourseLabel = '';
   bool _courseLoggedIn = false;
-  bool _headerSolid = false;
 
   static const _weekdayLabels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
@@ -249,117 +248,204 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      body: NotificationListener<ScrollNotification>(
-        onNotification: (notification) {
-          final shouldSolid = notification.metrics.pixels > 60;
-          if (shouldSolid != _headerSolid) {
-            setState(() => _headerSolid = shouldSolid);
-          }
-          return false;
-        },
-        child: CustomScrollView(
-          slivers: [
-            _buildSliverAppBar(context),
-            SliverToBoxAdapter(child: _buildNextClassCard(context)),
-            SliverToBoxAdapter(child: _buildTodayOverview(context)),
-            SliverToBoxAdapter(child: _buildServiceGrid(context)),
-            const SliverToBoxAdapter(child: SizedBox(height: 32)),
-          ],
+      backgroundColor: isDark ? null : const Color(0xFFF5F5F5),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildHeader(context),
+              const SizedBox(height: 8),
+              _buildTodayOverview(context),
+              const SizedBox(height: 8),
+              _buildServiceGrid(context),
+              const SizedBox(height: 32),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildSliverAppBar(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return SliverAppBar(
-      expandedHeight: 120,
-      floating: false,
-      pinned: true,
-      elevation: _headerSolid ? 2 : 0,
-      backgroundColor: _headerSolid
-          ? (isDark ? AppColors.darkSurface : AppColors.surfaceL3)
-          : Colors.transparent,
-      flexibleSpace: FlexibleSpaceBar(
-        titlePadding: const EdgeInsets.only(left: 20, bottom: 14),
-        title: Row(
-          children: [
-            Text(
-              '第 $_currentWeek 周',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: _headerSolid
-                    ? Theme.of(context).colorScheme.onSurface
-                    : Colors.white,
-              ),
-            ),
-          ],
-        ),
-        background: Container(
+  Widget _buildHeader(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      child: GestureDetector(
+        onTap: () => _openSchedule(context),
+        child: Container(
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: isDark
-                  ? [AppColors.primaryDark, const Color(0xFF3D1520)]
-                  : [AppColors.primary, AppColors.primaryDark],
-            ),
+            color: AppColors.primary,
+            borderRadius: BorderRadius.circular(12),
           ),
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Top row: label + week + action icons
+              Row(
                 children: [
-                  const SizedBox(height: 8),
-                  Text(
-                    '方正为人、勤慎治学',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.7),
-                      fontSize: 13,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '下节课',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.white.withValues(alpha: 0.7),
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '第 $_currentWeek 周',
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
                     ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.notifications_outlined, color: Colors.white, size: 22),
+                    onPressed: () => context.pushNamed('notice-list'),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: const Icon(Icons.settings_outlined, color: Colors.white, size: 22),
+                    onPressed: () => context.pushNamed('settings'),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
                   ),
                 ],
               ),
-            ),
+              const SizedBox(height: 12),
+              // Course content based on state
+              _buildCourseContent(context),
+            ],
           ),
         ),
       ),
-      actions: [
-        IconButton(
-          icon: Icon(Icons.search, color: _headerSolid ? null : Colors.white),
-          onPressed: () {},
-        ),
-        IconButton(
-          icon: Icon(
-            Icons.notifications_outlined,
-            color: _headerSolid ? null : Colors.white,
-          ),
-          onPressed: () => context.pushNamed('notice-list'),
-        ),
-        IconButton(
-          icon: Icon(
-            Icons.settings_outlined,
-            color: _headerSolid ? null : Colors.white,
-          ),
-          onPressed: () => context.pushNamed('settings'),
-        ),
-      ],
     );
   }
 
-  Widget _buildNextClassCard(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-      child: _NextClassCard(
-        course: _nextCourse,
-        label: _nextCourseLabel,
-        loggedIn: _courseLoggedIn,
-        slotTimeRange: _slotTimeRange,
-        onTap: () => _openSchedule(context),
-      ),
+  Widget _buildCourseContent(BuildContext context) {
+    if (!_courseLoggedIn) {
+      return Row(
+        children: [
+          Expanded(
+            child: Text(
+              '登录后查看课程',
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          Icon(
+            Icons.arrow_forward_ios,
+            color: Colors.white.withValues(alpha: 0.5),
+            size: 18,
+          ),
+        ],
+      );
+    }
+
+    if (_nextCourse == null) {
+      return Row(
+        children: [
+          Expanded(
+            child: Text(
+              '近期无课',
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          const Icon(
+            Icons.check_circle_outline,
+            color: AppColors.success,
+            size: 24,
+          ),
+        ],
+      );
+    }
+
+    final course = _nextCourse!;
+    final time = _slotTimeRange(course.startLesson, course.endLesson);
+    final whenText = _nextCourseLabel.isEmpty ? time : '$_nextCourseLabel $time';
+    final campus = course.campus.trim();
+    final classroom = course.classroom.trim();
+    final location = (campus.isEmpty && classroom.isEmpty)
+        ? '地点待定'
+        : (campus.isEmpty ? classroom : (classroom.isEmpty ? campus : '$campus $classroom'));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.2),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(
+            course.courseName,
+            style: const TextStyle(
+              fontSize: 13,
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Icon(Icons.schedule, size: 16, color: Colors.white.withValues(alpha: 0.8)),
+            const SizedBox(width: 6),
+            Text(
+              whenText,
+              style: TextStyle(fontSize: 14, color: Colors.white.withValues(alpha: 0.9)),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              '第 ${course.startLesson}-${course.endLesson} 节',
+              style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.6)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            Icon(Icons.location_on_outlined, size: 16, color: Colors.white.withValues(alpha: 0.8)),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                location,
+                style: TextStyle(fontSize: 14, color: Colors.white.withValues(alpha: 0.9)),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            _CardActionButton(icon: Icons.how_to_reg_outlined, label: '签到', onTap: () {}),
+            const SizedBox(width: 10),
+            _CardActionButton(icon: Icons.directions_outlined, label: '导航去这里', onTap: () {}),
+          ],
+        ),
+      ],
     );
   }
 
@@ -544,234 +630,7 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-// ── Next Class Card ─────────────────────────────────────────────────────────
-
-class _NextClassCard extends StatelessWidget {
-  const _NextClassCard({
-    required this.course,
-    required this.label,
-    required this.loggedIn,
-    required this.slotTimeRange,
-    required this.onTap,
-  });
-
-  final CourseEntry? course;
-  final String label;
-  final bool loggedIn;
-  final String Function(int, int) slotTimeRange;
-  final VoidCallback onTap;
-
-  String _locationText(CourseEntry course) {
-    final campus = course.campus.trim();
-    final classroom = course.classroom.trim();
-    if (campus.isEmpty && classroom.isEmpty) return '地点待定';
-    if (campus.isEmpty) return classroom;
-    if (classroom.isEmpty) return campus;
-    return '$campus $classroom';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (!loggedIn) {
-      return ShipCard(
-        onTap: onTap,
-        gradient: const LinearGradient(
-          colors: [AppColors.primary, AppColors.primaryDark],
-        ),
-        padding: const EdgeInsets.all(20),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '下节课',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.white.withValues(alpha: 0.7),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    '登录后查看课程',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Icon(
-              Icons.arrow_forward_ios,
-              color: Colors.white.withValues(alpha: 0.5),
-              size: 18,
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (course == null) {
-      return ShipCard(
-        onTap: onTap,
-        color: Theme.of(context).colorScheme.surfaceContainerLowest,
-        padding: const EdgeInsets.all(20),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '下节课',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '近期无课',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.onSurface,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Icon(
-              Icons.check_circle_outline,
-              color: AppColors.success,
-              size: 24,
-            ),
-          ],
-        ),
-      );
-    }
-
-    final time = slotTimeRange(course!.startLesson, course!.endLesson);
-    final whenText = label.isEmpty ? time : '$label $time';
-    final location = _locationText(course!);
-
-    return ShipCard(
-      onTap: onTap,
-      gradient: const LinearGradient(
-        colors: [AppColors.primary, AppColors.primaryDark],
-      ),
-      padding: const EdgeInsets.all(20),
-      child: Stack(
-        children: [
-          // Ship watermark
-          Positioned(
-            right: -8,
-            bottom: -12,
-            child: Icon(
-              Icons.sailing_outlined,
-              size: 80,
-              color: Colors.white.withValues(alpha: 0.06),
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Subject tag
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  course!.courseName,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-              // Time
-              Row(
-                children: [
-                  Icon(
-                    Icons.schedule,
-                    size: 16,
-                    color: Colors.white.withValues(alpha: 0.8),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    whenText,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.white.withValues(alpha: 0.9),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    '第 ${course!.startLesson}-${course!.endLesson} 节',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.white.withValues(alpha: 0.6),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              // Location
-              Row(
-                children: [
-                  Icon(
-                    Icons.location_on_outlined,
-                    size: 16,
-                    color: Colors.white.withValues(alpha: 0.8),
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      location,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.white.withValues(alpha: 0.9),
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              // Action buttons
-              Row(
-                children: [
-                  _CardActionButton(
-                    icon: Icons.how_to_reg_outlined,
-                    label: '签到',
-                    onTap: () {},
-                  ),
-                  const SizedBox(width: 10),
-                  _CardActionButton(
-                    icon: Icons.directions_outlined,
-                    label: '导航去这里',
-                    onTap: () {},
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
+// ── Card Action Button ──────────────────────────────────────────────────────
 
 class _CardActionButton extends StatelessWidget {
   const _CardActionButton({
