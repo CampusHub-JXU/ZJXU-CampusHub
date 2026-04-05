@@ -15,6 +15,7 @@ class _DormElectricityPageState extends State<DormElectricityPage> {
   double? _electricity;
   bool _loading = true;
   bool _hasConfig = false;
+  String? _error;
 
   @override
   void initState() {
@@ -27,6 +28,7 @@ class _DormElectricityPageState extends State<DormElectricityPage> {
     _hasConfig = await _service.hasRoomConfig();
     if (_hasConfig) {
       _electricity = await _service.fetchElectricity();
+      _error = _service.lastError;
     }
     if (!mounted) return;
     setState(() => _loading = false);
@@ -52,71 +54,95 @@ class _DormElectricityPageState extends State<DormElectricityPage> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : !_hasConfig
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.home_outlined,
-                          size: 64, color: colorScheme.outline),
-                      const SizedBox(height: 16),
-                      const Text('尚未配置寝室'),
-                      const SizedBox(height: 16),
-                      FilledButton(
-                        onPressed: () async {
-                          await context
-                              .pushNamed('dorm-electricity-settings');
-                          _load();
-                        },
-                        child: const Text('去选择寝室'),
-                      ),
-                    ],
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.home_outlined,
+                    size: 64,
+                    color: colorScheme.outline,
                   ),
-                )
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView(
-                    padding: const EdgeInsets.all(24),
-                    children: [
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                              vertical: 40, horizontal: 24),
-                          child: Column(
-                            children: [
-                              Icon(Icons.bolt,
-                                  size: 56, color: Colors.amber[600]),
-                              const SizedBox(height: 16),
-                              Text(
-                                _service.formatElectricity(_electricity),
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .displayMedium
-                                    ?.copyWith(
-                                      fontWeight: FontWeight.bold,
-                                      color: colorScheme.primary,
-                                    ),
+                  const SizedBox(height: 16),
+                  const Text('尚未配置寝室'),
+                  const SizedBox(height: 16),
+                  FilledButton(
+                    onPressed: () async {
+                      await context.pushNamed('dorm-electricity-settings');
+                      _load();
+                    },
+                    child: const Text('去选择寝室'),
+                  ),
+                ],
+              ),
+            )
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: ListView(
+                padding: const EdgeInsets.all(24),
+                children: [
+                  if (_error != null)
+                    Card(
+                      color: colorScheme.errorContainer,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.wifi_off,
+                              color: colorScheme.onErrorContainer,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                '请确认已连接校园网络',
+                                style: TextStyle(
+                                  color: colorScheme.onErrorContainer,
+                                ),
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '度（剩余电量）',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodyMedium
-                                    ?.copyWith(color: colorScheme.outline),
-                              ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 16),
-                      OutlinedButton.icon(
-                        onPressed: _load,
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('刷新'),
+                    ),
+                  if (_error != null) const SizedBox(height: 16),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 40,
+                        horizontal: 24,
                       ),
-                    ],
+                      child: Column(
+                        children: [
+                          Icon(Icons.bolt, size: 56, color: Colors.amber[600]),
+                          const SizedBox(height: 16),
+                          Text(
+                            _service.formatElectricity(_electricity),
+                            style: Theme.of(context).textTheme.displayMedium
+                                ?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: colorScheme.primary,
+                                ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '度（剩余电量）',
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(color: colorScheme.outline),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 16),
+                  OutlinedButton.icon(
+                    onPressed: _load,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('刷新'),
+                  ),
+                ],
+              ),
+            ),
     );
   }
 }

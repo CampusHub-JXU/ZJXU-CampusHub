@@ -63,6 +63,9 @@ class DormElectricityService {
   double? _cachedElectricity;
   double? get cachedElectricity => _cachedElectricity;
 
+  String? _lastError;
+  String? get lastError => _lastError;
+
   void applyProxyMode() {
     applyProxyModeToDio(
       _dio,
@@ -145,11 +148,26 @@ class DormElectricityService {
         final value = double.tryParse(match.group(1)!);
         if (value != null) {
           _cachedElectricity = value;
+          _lastError = null;
           return value;
         }
       }
+      _lastError = null;
+      return _cachedElectricity;
+    } on DioException catch (e) {
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout) {
+        _lastError = '网络超时';
+        return _cachedElectricity;
+      }
+      if (e.type == DioExceptionType.connectionError) {
+        _lastError = '网络不可达';
+        return null;
+      }
+      _lastError = '未知错误';
       return _cachedElectricity;
     } catch (e) {
+      _lastError = '未知错误';
       return _cachedElectricity;
     }
   }

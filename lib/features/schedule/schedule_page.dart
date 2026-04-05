@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 
+import '../../app/theme.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/semester/semester_calendar.dart';
 import '../../shared/widgets/login_widget.dart';
@@ -19,18 +20,14 @@ class _SchedulePageState extends State<SchedulePage> {
   bool _loading = false;
   String? _error;
   List<CourseEntry> _courses = [];
-  int _term = 12; // 3=first, 12=second
+  int _term = 12;
   int _displayWeek = 1;
-  final PageController _weekPageController = PageController(initialPage: 1);
+  late final PageController _weekPageController;
 
-  int get _currentWeek {
-    return SemesterCalendar.instance.weekForDate(DateTime.now());
-  }
+  int get _currentWeek => SemesterCalendar.instance.weekForDate(DateTime.now());
 
-  /// Academic year start: for spring semester (Feb-Jul), use previous year.
   int get _academicYear {
     final now = DateTime.now();
-    // Spring semester (Feb-Jul) belongs to previous year's academic year
     return now.month < 8 ? now.year - 1 : now.year;
   }
 
@@ -38,6 +35,7 @@ class _SchedulePageState extends State<SchedulePage> {
   void initState() {
     super.initState();
     _displayWeek = _currentWeek;
+    _weekPageController = PageController(initialPage: _displayWeek - 1);
     _loggedIn = ZhengfangAuth.instance.isLoggedIn;
     if (_loggedIn) _fetchSchedule();
   }
@@ -48,31 +46,10 @@ class _SchedulePageState extends State<SchedulePage> {
     super.dispose();
   }
 
-  void _jumpWeekPageToCenter() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_weekPageController.hasClients) return;
-      _weekPageController.jumpToPage(1);
-    });
-  }
-
   void _onWeekPageChanged(int index) {
-    if (index == 1) return;
-
-    if (index == 0 && _displayWeek > 1) {
-      setState(() => _displayWeek -= 1);
-    } else if (index == 2 && _displayWeek < 20) {
-      setState(() => _displayWeek += 1);
-    }
-
-    _jumpWeekPageToCenter();
-  }
-
-  List<int> _buildWeekWindow() {
-    return [
-      (_displayWeek - 1).clamp(1, 20),
-      _displayWeek,
-      (_displayWeek + 1).clamp(1, 20),
-    ];
+    final nextWeek = index + 1;
+    if (nextWeek == _displayWeek) return;
+    setState(() => _displayWeek = nextWeek);
   }
 
   Future<void> _fetchSchedule() async {
@@ -90,13 +67,12 @@ class _SchedulePageState extends State<SchedulePage> {
       if (mounted) setState(() => _courses = courses);
     } on ScheduleAuthExpiredException catch (_) {
       ZhengfangAuth.instance.markLoggedOut();
-      if (mounted) {
+      if (mounted)
         setState(() {
           _loggedIn = false;
           _courses = [];
           _error = null;
         });
-      }
     } on ScheduleRequestException catch (e) {
       if (mounted) setState(() => _error = e.message);
     } on DioException catch (e) {
@@ -119,7 +95,7 @@ class _SchedulePageState extends State<SchedulePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('课表查询'),
+        title: const Text('课表'),
         actions: _loggedIn
             ? [
                 PopupMenuButton<int>(
@@ -130,7 +106,9 @@ class _SchedulePageState extends State<SchedulePage> {
                       _term = v;
                       _displayWeek = _currentWeek;
                     });
-                    _jumpWeekPageToCenter();
+                    if (_weekPageController.hasClients) {
+                      _weekPageController.jumpToPage(_displayWeek - 1);
+                    }
                     _fetchSchedule();
                   },
                   itemBuilder: (_) => const [
@@ -149,9 +127,7 @@ class _SchedulePageState extends State<SchedulePage> {
     );
   }
 
-  Widget _buildLoginBody() {
-    return LoginWidget(onLoginSuccess: _onLoginSuccess);
-  }
+  Widget _buildLoginBody() => LoginWidget(onLoginSuccess: _onLoginSuccess);
 
   Widget _buildScheduleBody() {
     if (_loading) return const Center(child: CircularProgressIndicator());
@@ -160,28 +136,43 @@ class _SchedulePageState extends State<SchedulePage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(_error!, style: const TextStyle(color: Colors.red)),
+            Text(_error!, style: const TextStyle(color: AppColors.error)),
             const SizedBox(height: 12),
             FilledButton(onPressed: _fetchSchedule, child: const Text('重试')),
           ],
         ),
       );
     }
-    return _buildWeekPager();
+    return Column(
+      children: [
+        _WeekSelector(
+          currentWeek: _displayWeek,
+          actualCurrentWeek: _currentWeek,
+          onWeekChanged: (w) {
+            setState(() => _displayWeek = w);
+            if (_weekPageController.hasClients) {
+              _weekPageController.jumpToPage(w - 1);
+            }
+          },
+        ),
+        Expanded(child: _buildWeekPager()),
+      ],
+    );
   }
 
   Widget _buildWeekPager() {
-    final weekWindow = _buildWeekWindow();
     return PageView.builder(
       controller: _weekPageController,
-      itemCount: 3,
+      itemCount: 20,
       onPageChanged: _onWeekPageChanged,
+      allowImplicitScrolling: true,
       itemBuilder: (context, index) {
+        final week = index + 1;
         return RepaintBoundary(
           child: _ScheduleGrid(
-            key: ValueKey('week-grid-${weekWindow[index]}-$index'),
+            key: ValueKey('week-grid-$week'),
             courses: _courses,
-            currentWeek: weekWindow[index],
+            currentWeek: week,
             actualCurrentWeek: _currentWeek,
           ),
         );
@@ -190,7 +181,79 @@ class _SchedulePageState extends State<SchedulePage> {
   }
 }
 
-// ── Schedule Grid ─────────────────────────────────────────────────────────────
+// ── Week Selector ───────────────────────────────────────────────────────────
+
+class _WeekSelector extends StatelessWidget {
+  const _WeekSelector({
+    required this.currentWeek,
+    required this.actualCurrentWeek,
+    required this.onWeekChanged,
+  });
+
+  final int currentWeek;
+  final int actualCurrentWeek;
+  final ValueChanged<int> onWeekChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return Container(
+      height: 48,
+      color: cs.surfaceContainerLowest,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        itemCount: 20,
+        itemBuilder: (context, index) {
+          final week = index + 1;
+          final isSelected = week == currentWeek;
+          final isActual = week == actualCurrentWeek;
+
+          return GestureDetector(
+            onTap: () => onWeekChanged(week),
+            child: Container(
+              width: 48,
+              margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 8),
+              decoration: BoxDecoration(
+                color: isSelected ? AppColors.primary : Colors.transparent,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              alignment: Alignment.center,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    '$week',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: isSelected
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                      color: isSelected ? Colors.white : cs.onSurface,
+                    ),
+                  ),
+                  if (isActual && !isSelected)
+                    Container(
+                      width: 4,
+                      height: 4,
+                      margin: const EdgeInsets.only(top: 2),
+                      decoration: const BoxDecoration(
+                        color: AppColors.primary,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ── Schedule Grid ───────────────────────────────────────────────────────────
 
 class _ScheduleGrid extends StatelessWidget {
   const _ScheduleGrid({
@@ -199,44 +262,39 @@ class _ScheduleGrid extends StatelessWidget {
     required this.currentWeek,
     required this.actualCurrentWeek,
   });
+
   final List<CourseEntry> courses;
   final int currentWeek;
   final int actualCurrentWeek;
 
-  static const _slotColumnWidth = 54.0;
-  static const _slotHeight = 70.0; // 每节课的高度
+  static const _slotColumnWidth = 48.0;
+  static const _slotHeight = 68.0;
 
-  // 柔和的配色方案，与截图类似
   static const _courseColors = [
-    Color(0xFF5B9BD5), // 柔和蓝
-    Color(0xFF70AD47), // 柔和绿
-    Color(0xFFE74C3C), // 柔和红
-    Color(0xFFF39C12), // 柔和橙
-    Color(0xFF9B59B6), // 柔和紫
-    Color(0xFF1ABC9C), // 柔和青
-    Color(0xFFE67E22), // 柔和珊瑚
-    Color(0xFF3498DB), // 柔和靛蓝
+    Color(0xFF8B1A2D), // Wine Red (primary)
+    Color(0xFF1565C0), // Blue
+    Color(0xFF2E7D32), // Green
+    Color(0xFFD4AF37), // Gold
+    Color(0xFF7B1FA2), // Purple
+    Color(0xFF00838F), // Teal
+    Color(0xFFE65100), // Orange
+    Color(0xFFAD1457), // Pink
   ];
 
-  // 柔和的非本周课程颜色（浅灰色系）
-  static const _inactiveCourseColors = [
-    Color(0xFFB0C4DE), // 浅灰蓝
-    Color(0xFFB8D4B8), // 浅灰绿
-    Color(0xFFD4B8B8), // 浅灰红
-    Color(0xFFE8D4B8), // 浅灰橙
-    Color(0xFFD4B8D4), // 浅灰紫
-    Color(0xFFB8D4D4), // 浅灰青
-    Color(0xFFE8C4B8), // 浅灰珊瑚
-    Color(0xFFB8C8E8), // 浅灰靛蓝
+  static const _inactiveColors = [
+    Color(0xFFD4A5B0),
+    Color(0xFFA5C4E0),
+    Color(0xFFA5D4A5),
+    Color(0xFFE0D4A5),
+    Color(0xFFC4A5D4),
+    Color(0xFFA5D4D4),
+    Color(0xFFE0BFA5),
+    Color(0xFFD4A5C4),
   ];
 
   Color _colorForCourse(String name, bool isCurrentWeek) {
     final index = name.hashCode.abs() % _courseColors.length;
-    return isCurrentWeek ? _courseColors[index] : _inactiveCourseColors[index];
-  }
-
-  Color _textColorForCourse(String name, bool isCurrentWeek) {
-    return isCurrentWeek ? Colors.white : Colors.grey.shade600;
+    return isCurrentWeek ? _courseColors[index] : _inactiveColors[index];
   }
 
   @override
@@ -244,28 +302,12 @@ class _ScheduleGrid extends StatelessWidget {
     final screenWidth = MediaQuery.of(context).size.width;
     final dayColumnWidth = (screenWidth - _slotColumnWidth) / 7;
 
-    // 计算每天每节有多少门课程（用于显示徽章）
-    final daySlotCounts = <int, Map<int, int>>{};
-    for (int day = 1; day <= 7; day++) {
-      daySlotCounts[day] = {};
-      final dayCourses = courses.where((c) => c.weekday == day).toList();
-      for (int slot = 1; slot <= 13; slot++) {
-        final count = dayCourses
-            .where((c) => c.startLesson <= slot && c.endLesson >= slot)
-            .length;
-        if (count > 1) {
-          daySlotCounts[day]![slot] = count;
-        }
-      }
-    }
-
     return Column(
       children: [
-        _WeekHeader(
-          currentWeek: currentWeek,
-          actualCurrentWeek: actualCurrentWeek,
+        _DayHeaders(
           slotColumnWidth: _slotColumnWidth,
           dayColumnWidth: dayColumnWidth,
+          isCurrentWeek: currentWeek == actualCurrentWeek,
         ),
         Expanded(
           child: SingleChildScrollView(
@@ -278,10 +320,8 @@ class _ScheduleGrid extends StatelessWidget {
                     day: day,
                     courses: courses.where((c) => c.weekday == day).toList(),
                     colorFor: _colorForCourse,
-                    textColorFor: _textColorForCourse,
                     dayColumnWidth: dayColumnWidth,
                     currentWeek: currentWeek,
-                    slotCounts: daySlotCounts[day] ?? {},
                   ),
               ],
             ),
@@ -292,83 +332,63 @@ class _ScheduleGrid extends StatelessWidget {
   }
 }
 
-class _WeekHeader extends StatelessWidget {
-  const _WeekHeader({
-    required this.currentWeek,
-    required this.actualCurrentWeek,
+class _DayHeaders extends StatelessWidget {
+  const _DayHeaders({
     required this.slotColumnWidth,
     required this.dayColumnWidth,
+    required this.isCurrentWeek,
   });
 
-  final int currentWeek;
-  final int actualCurrentWeek;
   final double slotColumnWidth;
   final double dayColumnWidth;
+  final bool isCurrentWeek;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final isCurrentWeek = currentWeek == actualCurrentWeek;
-    final weekDiff = currentWeek - actualCurrentWeek;
+    final today = DateTime.now().weekday; // 1=Mon
 
     return Container(
-      color: isCurrentWeek ? cs.primaryContainer : cs.secondaryContainer,
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      color: cs.surfaceContainerLowest,
+      padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
         children: [
           SizedBox(
             width: slotColumnWidth,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '第$currentWeek周',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: isCurrentWeek
-                        ? cs.onPrimaryContainer
-                        : cs.onSecondaryContainer,
-                  ),
-                ),
-                if (!isCurrentWeek)
-                  Container(
-                    margin: const EdgeInsets.only(top: 2),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 4,
-                      vertical: 1,
-                    ),
-                    decoration: BoxDecoration(
-                      color: weekDiff > 0 ? Colors.orange : Colors.blue,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      weekDiff > 0 ? '+$weekDiff' : '$weekDiff',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 9,
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-              ],
+            child: Text(
+              isCurrentWeek ? '本周' : '非本周',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
             ),
           ),
           for (int i = 0; i < 7; i++)
             SizedBox(
               width: dayColumnWidth,
-              child: Text(
-                '周${'一二三四五六日'[i]}',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: isCurrentWeek
-                      ? cs.onPrimaryContainer
-                      : cs.onSecondaryContainer,
-                  fontWeight: i >= 5 ? FontWeight.bold : FontWeight.normal,
-                ),
+              child: Column(
+                children: [
+                  Text(
+                    '周${'一二三四五六日'[i]}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: (i + 1) == today
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                      color: (i + 1) == today
+                          ? AppColors.primary
+                          : cs.onSurfaceVariant,
+                    ),
+                  ),
+                  if ((i + 1) == today)
+                    Container(
+                      width: 6,
+                      height: 6,
+                      margin: const EdgeInsets.only(top: 3),
+                      decoration: const BoxDecoration(
+                        color: AppColors.primary,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                ],
               ),
             ),
         ],
@@ -382,25 +402,25 @@ class _SlotColumn extends StatelessWidget {
 
   final double slotColumnWidth;
 
-  // 每节课的起止时间（默认）
   static const _slotTimes = [
-    ['08:00', '08:40'], // 第1节
-    ['08:45', '09:25'], // 第2节
-    ['09:45', '10:25'], // 第3节
-    ['10:30', '11:10'], // 第4节
-    ['11:15', '11:55'], // 第5节
-    ['13:30', '14:10'], // 第6节
-    ['14:15', '14:55'], // 第7节
-    ['15:15', '15:55'], // 第8节
-    ['16:00', '16:40'], // 第9节
-    ['16:45', '17:25'], // 第10节
-    ['18:30', '19:10'], // 第11节
-    ['19:15', '19:55'], // 第12节
-    ['20:00', '20:40'], // 第13节
+    ['08:00', '08:40'],
+    ['08:45', '09:25'],
+    ['09:45', '10:25'],
+    ['10:30', '11:10'],
+    ['11:15', '11:55'],
+    ['13:30', '14:10'],
+    ['14:15', '14:55'],
+    ['15:15', '15:55'],
+    ['16:00', '16:40'],
+    ['16:45', '17:25'],
+    ['18:30', '19:10'],
+    ['19:15', '19:55'],
+    ['20:00', '20:40'],
   ];
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Column(
       children: [
         for (int i = 0; i < 13; i++)
@@ -408,28 +428,21 @@ class _SlotColumn extends StatelessWidget {
             width: slotColumnWidth,
             height: _ScheduleGrid._slotHeight,
             alignment: Alignment.center,
-            decoration: BoxDecoration(
-              border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
-            ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
                   '${i + 1}',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: cs.onSurface,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 Text(
                   _slotTimes[i][0],
-                  style: const TextStyle(fontSize: 10, color: Colors.grey),
-                ),
-                Text(
-                  _slotTimes[i][1],
-                  style: const TextStyle(fontSize: 10, color: Colors.grey),
+                  style: TextStyle(fontSize: 9, color: cs.onSurfaceVariant),
                 ),
               ],
             ),
@@ -444,55 +457,137 @@ class _DayColumn extends StatelessWidget {
     required this.day,
     required this.courses,
     required this.colorFor,
-    required this.textColorFor,
     required this.dayColumnWidth,
     required this.currentWeek,
-    required this.slotCounts,
   });
 
   final int day;
   final List<CourseEntry> courses;
   final Color Function(String, bool) colorFor;
-  final Color Function(String, bool) textColorFor;
   final double dayColumnWidth;
   final int currentWeek;
-  final Map<int, int> slotCounts;
 
   @override
   Widget build(BuildContext context) {
-    final Map<int, CourseEntry> slotMap = {};
+    // Map each slot to all courses occupying it (handles overlapping courses)
+    final Map<int, List<CourseEntry>> slotMap = {};
     for (final c in courses) {
       for (int s = c.startLesson; s <= c.endLesson && s <= 13; s++) {
-        slotMap[s] = c;
+        slotMap.putIfAbsent(s, () => []);
+        slotMap[s]!.add(c);
       }
     }
 
+    // Union-find to detect conflict groups (connected components of overlapping courses)
+    final rep = List<int>.generate(courses.length, (i) => i);
+
+    int find(int x) {
+      while (rep[x] != x) {
+        rep[x] = rep[rep[x]];
+        x = rep[x];
+      }
+      return x;
+    }
+
+    void union(int a, int b) {
+      final ra = find(a);
+      final rb = find(b);
+      if (ra != rb) rep[ra] = rb;
+    }
+
+    for (final slotCourses in slotMap.values) {
+      if (slotCourses.length > 1) {
+        final indices = slotCourses.map((c) => courses.indexOf(c)).toList();
+        for (int i = 1; i < indices.length; i++) {
+          union(indices[0], indices[i]);
+        }
+      }
+    }
+
+    // Build conflict groups map
+    final Map<int, List<CourseEntry>> conflictGroups = {};
+    for (int i = 0; i < courses.length; i++) {
+      final root = find(i);
+      conflictGroups.putIfAbsent(root, () => []);
+      conflictGroups[root]!.add(courses[i]);
+    }
+
+    // Determine group size for each course
+    final Map<String, int> courseGroupSize = {};
+    for (final group in conflictGroups.values) {
+      for (final c in group) {
+        courseGroupSize[c.courseName] = group.length;
+      }
+    }
+
+    // Render cells
     final cells = <Widget>[];
+    final rendered = <String>{};
+
     int slot = 1;
     while (slot <= 13) {
-      final course = slotMap[slot];
-      if (course != null && course.startLesson == slot) {
-        final span = (course.endLesson - course.startLesson + 1).clamp(
-          1,
-          13 - slot + 1,
-        );
-        // 获取这节课开始时的课程数量（用于徽章）
-        final courseCount = slotCounts[slot];
-        cells.add(
-          _CourseCell(
-            course: course,
-            span: span,
-            color: colorFor(course.courseName, course.isInWeek(currentWeek)),
-            textColor: textColorFor(
-              course.courseName,
-              course.isInWeek(currentWeek),
-            ),
-            dayColumnWidth: dayColumnWidth,
-            isCurrentWeek: course.isInWeek(currentWeek),
-            courseCount: courseCount,
-          ),
-        );
-        slot += span;
+      final slotCourses = slotMap[slot];
+      if (slotCourses != null && slotCourses.isNotEmpty) {
+        final first = slotCourses.first;
+        if (first.startLesson == slot && !rendered.contains(first.courseName)) {
+          final groupSize = courseGroupSize[first.courseName] ?? 1;
+          final group = conflictGroups[courses.indexOf(first)]!;
+          final span = (first.endLesson - first.startLesson + 1).clamp(
+            1,
+            13 - slot + 1,
+          );
+
+          if (groupSize == 1) {
+            // Solo course — full width
+            cells.add(
+              _CourseCell(
+                course: first,
+                span: span,
+                color: colorFor(first.courseName, first.isInWeek(currentWeek)),
+                dayColumnWidth: dayColumnWidth,
+                isCurrentWeek: first.isInWeek(currentWeek),
+              ),
+            );
+          } else {
+            // Conflict group — render side by side in Row
+            cells.add(
+              SizedBox(
+                width: dayColumnWidth,
+                height: _ScheduleGrid._slotHeight * span,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: group.map((c) {
+                    final idx = group.indexOf(c);
+                    rendered.add(c.courseName);
+                    return Expanded(
+                      child: Padding(
+                        padding: EdgeInsets.only(left: idx > 0 ? 1.0 : 0),
+                        child: _CourseCell(
+                          course: c,
+                          span: span,
+                          color: colorFor(
+                            c.courseName,
+                            c.isInWeek(currentWeek),
+                          ),
+                          dayColumnWidth: dayColumnWidth / groupSize,
+                          isCurrentWeek: c.isInWeek(currentWeek),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            );
+          }
+
+          for (final c in group) {
+            rendered.add(c.courseName);
+          }
+          slot += span;
+        } else {
+          cells.add(_EmptyCell(dayColumnWidth: dayColumnWidth));
+          slot++;
+        }
       } else {
         cells.add(_EmptyCell(dayColumnWidth: dayColumnWidth));
         slot++;
@@ -508,19 +603,15 @@ class _CourseCell extends StatelessWidget {
     required this.course,
     required this.span,
     required this.color,
-    required this.textColor,
     required this.dayColumnWidth,
     required this.isCurrentWeek,
-    this.courseCount,
   });
 
   final CourseEntry course;
   final int span;
   final Color color;
-  final Color textColor;
   final double dayColumnWidth;
   final bool isCurrentWeek;
-  final int? courseCount;
 
   void _showCourseDetail(BuildContext context) {
     showModalBottomSheet<void>(
@@ -530,12 +621,24 @@ class _CourseCell extends StatelessWidget {
       ),
       builder: (context) {
         final textTheme = Theme.of(context).textTheme;
+        final cs = Theme.of(context).colorScheme;
         return Padding(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: cs.outlineVariant,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
               Text(
                 course.courseName,
                 style: textTheme.titleLarge?.copyWith(
@@ -543,34 +646,29 @@ class _CourseCell extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              _buildDetailRow(
-                context,
-                Icons.person_outline,
-                '教师：${course.teacherName}',
+              _DetailRow(
+                icon: Icons.person_outline,
+                text: '教师：${course.teacherName}',
               ),
               const SizedBox(height: 10),
-              _buildDetailRow(
-                context,
-                Icons.meeting_room_outlined,
-                '教室：${course.classroom}',
+              _DetailRow(
+                icon: Icons.meeting_room_outlined,
+                text: '教室：${course.classroom}',
               ),
               const SizedBox(height: 10),
-              _buildDetailRow(
-                context,
-                Icons.place_outlined,
-                '校区：${course.campus}',
+              _DetailRow(
+                icon: Icons.place_outlined,
+                text: '校区：${course.campus}',
               ),
               const SizedBox(height: 10),
-              _buildDetailRow(
-                context,
-                Icons.schedule,
-                '节次：第 ${course.startLesson} - ${course.endLesson} 节',
+              _DetailRow(
+                icon: Icons.schedule,
+                text: '节次：第 ${course.startLesson} - ${course.endLesson} 节',
               ),
               const SizedBox(height: 10),
-              _buildDetailRow(
-                context,
-                Icons.calendar_view_week,
-                '周次：${course.weekRange}',
+              _DetailRow(
+                icon: Icons.calendar_view_week,
+                text: '周次：${course.weekRange}',
               ),
             ],
           ),
@@ -579,45 +677,12 @@ class _CourseCell extends StatelessWidget {
     );
   }
 
-  Widget _buildDetailRow(BuildContext context, IconData icon, String text) {
-    final color = Theme.of(context).colorScheme.onSurfaceVariant;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 18, color: color),
-        const SizedBox(width: 8),
-        Expanded(child: Text(text)),
-      ],
-    );
-  }
-
-  // 菱形符号
-  Widget _buildDiamond(Color diamondColor) {
-    return Transform.rotate(
-      angle: 0.785398, // 45度
-      child: Container(
-        width: 6,
-        height: 6,
-        decoration: BoxDecoration(
-          color: diamondColor,
-          borderRadius: BorderRadius.circular(1),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    // 本周课程：白色背景+淡课程色遮罩
-    // 非本周课程：白色背景+灰色
-    final stripColor = isCurrentWeek ? color : Colors.grey.shade300;
+    final cs = Theme.of(context).colorScheme;
     final overlayColor = isCurrentWeek
-        ? color.withValues(alpha: 0.12)
+        ? color.withValues(alpha: 0.1)
         : Colors.transparent;
-    final borderColor = isCurrentWeek
-        ? color.withValues(alpha: 0.3)
-        : Colors.grey.shade200;
-    // 文本颜色：当前周用对应颜色，非本周用灰色
     final contentColor = isCurrentWeek ? color : Colors.grey.shade500;
 
     return Container(
@@ -625,9 +690,8 @@ class _CourseCell extends StatelessWidget {
       height: _ScheduleGrid._slotHeight * span,
       padding: const EdgeInsets.all(2),
       child: Material(
-        color: Colors.white,
+        color: cs.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(8),
-        elevation: isCurrentWeek ? 1 : 0,
         child: InkWell(
           onTap: () => _showCourseDetail(context),
           borderRadius: BorderRadius.circular(8),
@@ -635,117 +699,61 @@ class _CourseCell extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(8),
               color: overlayColor,
-              border: Border.all(color: borderColor),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // 左侧颜色条
                 Container(
                   width: 4,
                   decoration: BoxDecoration(
-                    color: stripColor,
+                    color: isCurrentWeek ? color : Colors.grey.shade300,
                     borderRadius: const BorderRadius.only(
                       topLeft: Radius.circular(8),
                       bottomLeft: Radius.circular(8),
                     ),
                   ),
                 ),
-                // 内容区域
                 Expanded(
-                  child: Stack(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(6, 6, 6, 6),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              course.courseName,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: contentColor,
-                                height: 1.2,
-                              ),
-                              maxLines: span > 1 ? 4 : 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            // 校区
-                            if (course.campus.isNotEmpty) ...[
-                              const SizedBox(height: 3),
-                              Text(
-                                course.campus,
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: contentColor.withValues(alpha: 0.8),
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                            // 教室
-                            if (course.classroom.isNotEmpty) ...[
-                              const SizedBox(height: 2),
-                              Row(
-                                children: [
-                                  _buildDiamond(contentColor),
-                                  const SizedBox(width: 3),
-                                  Expanded(
-                                    child: Text(
-                                      course.classroom,
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        color: contentColor.withValues(
-                                          alpha: 0.8,
-                                        ),
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                            // 非本周标记
-                            if (!isCurrentWeek) ...[
-                              const SizedBox(height: 2),
-                              Text(
-                                '[非本周]',
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  color: Colors.grey.shade400,
-                                ),
-                              ),
-                            ],
-                          ],
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(6, 6, 4, 6),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          course.courseName,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: contentColor,
+                            height: 1.2,
+                          ),
+                          maxLines: span > 1 ? 4 : 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                      ),
-                      // 课程数量徽章（右上角）
-                      if (courseCount != null && courseCount! > 1)
-                        Positioned(
-                          top: 4,
-                          right: 4,
-                          child: Container(
-                            width: 16,
-                            height: 16,
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: stripColor, width: 1.5),
+                        if (course.classroom.isNotEmpty) ...[
+                          const SizedBox(height: 3),
+                          Text(
+                            course.classroom,
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: contentColor.withValues(alpha: 0.8),
                             ),
-                            alignment: Alignment.center,
-                            child: Text(
-                              '$courseCount',
-                              style: TextStyle(
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold,
-                                color: stripColor,
-                              ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                        if (!isCurrentWeek) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            '[非本周]',
+                            style: TextStyle(
+                              fontSize: 9,
+                              color: Colors.grey.shade400,
                             ),
                           ),
-                        ),
-                    ],
+                        ],
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -757,19 +765,31 @@ class _CourseCell extends StatelessWidget {
   }
 }
 
+class _DetailRow extends StatelessWidget {
+  const _DetailRow({required this.icon, required this.text});
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Theme.of(context).colorScheme.onSurfaceVariant;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 18, color: color),
+        const SizedBox(width: 8),
+        Expanded(child: Text(text)),
+      ],
+    );
+  }
+}
+
 class _EmptyCell extends StatelessWidget {
   const _EmptyCell({required this.dayColumnWidth});
-
   final double dayColumnWidth;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: dayColumnWidth,
-      height: _ScheduleGrid._slotHeight,
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: Colors.grey.shade100)),
-      ),
-    );
+    return Container(width: dayColumnWidth, height: _ScheduleGrid._slotHeight);
   }
 }
