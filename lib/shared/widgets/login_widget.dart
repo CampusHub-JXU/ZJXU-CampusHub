@@ -42,12 +42,16 @@ class _LoginWidgetState extends State<LoginWidget> {
     try {
       final bytes = await ZhengfangAuth.instance.fetchCaptcha();
       if (mounted) setState(() => _captchaBytes = bytes);
-    } catch (_) {}
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error = '验证码加载失败，请点击图片重试');
+      }
+    }
   }
 
   Future<void> _login() async {
     final username = _usernameCtrl.text.trim();
-    final password = _passwordCtrl.text.trim();
+    final password = _passwordCtrl.text;
     final captcha = _captchaCtrl.text.trim();
     if (username.isEmpty || password.isEmpty || captcha.isEmpty) {
       setState(() => _error = '请填写学号、密码和验证码');
@@ -57,7 +61,11 @@ class _LoginWidgetState extends State<LoginWidget> {
       _loading = true;
       _error = null;
     });
-    final result = await ZhengfangAuth.instance.login(username, password, captcha);
+    final result = await ZhengfangAuth.instance.login(
+      username,
+      password,
+      captcha,
+    );
     if (!mounted) return;
     switch (result) {
       case LoginSuccess():
@@ -178,10 +186,9 @@ class _LoginWidgetState extends State<LoginWidget> {
           Text(
             '点击验证码图片可刷新',
             textAlign: TextAlign.center,
-            style: Theme.of(context)
-                .textTheme
-                .bodySmall
-                ?.copyWith(color: colorScheme.onSurfaceVariant),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
           ),
         ],
       ),
