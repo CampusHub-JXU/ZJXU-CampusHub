@@ -149,12 +149,13 @@ class _HomePageState extends State<HomePage> {
   Future<void> _refreshNextCourse() async {
     final studentId = ZhengfangAuth.instance.currentStudentId ?? '';
     if (studentId.isEmpty) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _courseLoggedIn = false;
           _nextCourse = null;
           _nextCourseLabel = '';
         });
+      }
       return;
     }
     try {
@@ -200,19 +201,21 @@ class _HomePageState extends State<HomePage> {
       });
     } on ScheduleAuthExpiredException {
       ZhengfangAuth.instance.markLoggedOut();
-      if (mounted)
+      if (mounted) {
         setState(() {
           _courseLoggedIn = false;
           _nextCourse = null;
           _nextCourseLabel = '';
         });
+      }
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _courseLoggedIn = true;
           _nextCourse = null;
           _nextCourseLabel = '';
         });
+      }
     }
   }
 
@@ -235,12 +238,6 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _openSchedule(BuildContext context) async {
     await context.pushNamed('schedule');
-    if (!mounted) return;
-    _refreshNextCourse();
-  }
-
-  Future<void> _openGrades(BuildContext context) async {
-    await context.pushNamed('grades');
     if (!mounted) return;
     _refreshNextCourse();
   }
