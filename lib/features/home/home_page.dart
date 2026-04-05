@@ -310,14 +310,22 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.notifications_outlined, color: Colors.white, size: 22),
+                    icon: const Icon(
+                      Icons.notifications_outlined,
+                      color: Colors.white,
+                      size: 22,
+                    ),
                     onPressed: () => context.pushNamed('notice-list'),
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
                   ),
                   const SizedBox(width: 8),
                   IconButton(
-                    icon: const Icon(Icons.settings_outlined, color: Colors.white, size: 22),
+                    icon: const Icon(
+                      Icons.settings_outlined,
+                      color: Colors.white,
+                      size: 22,
+                    ),
                     onPressed: () => context.pushNamed('settings'),
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
@@ -381,12 +389,16 @@ class _HomePageState extends State<HomePage> {
 
     final course = _nextCourse!;
     final time = _slotTimeRange(course.startLesson, course.endLesson);
-    final whenText = _nextCourseLabel.isEmpty ? time : '$_nextCourseLabel $time';
+    final whenText = _nextCourseLabel.isEmpty
+        ? time
+        : '$_nextCourseLabel $time';
     final campus = course.campus.trim();
     final classroom = course.classroom.trim();
     final location = (campus.isEmpty && classroom.isEmpty)
         ? '地点待定'
-        : (campus.isEmpty ? classroom : (classroom.isEmpty ? campus : '$campus $classroom'));
+        : (campus.isEmpty
+              ? classroom
+              : (classroom.isEmpty ? campus : '$campus $classroom'));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -409,28 +421,45 @@ class _HomePageState extends State<HomePage> {
         const SizedBox(height: 10),
         Row(
           children: [
-            Icon(Icons.schedule, size: 16, color: Colors.white.withValues(alpha: 0.8)),
+            Icon(
+              Icons.schedule,
+              size: 16,
+              color: Colors.white.withValues(alpha: 0.8),
+            ),
             const SizedBox(width: 6),
             Text(
               whenText,
-              style: TextStyle(fontSize: 14, color: Colors.white.withValues(alpha: 0.9)),
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.white.withValues(alpha: 0.9),
+              ),
             ),
             const SizedBox(width: 4),
             Text(
               '第 ${course.startLesson}-${course.endLesson} 节',
-              style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.6)),
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.white.withValues(alpha: 0.6),
+              ),
             ),
           ],
         ),
         const SizedBox(height: 6),
         Row(
           children: [
-            Icon(Icons.location_on_outlined, size: 16, color: Colors.white.withValues(alpha: 0.8)),
+            Icon(
+              Icons.location_on_outlined,
+              size: 16,
+              color: Colors.white.withValues(alpha: 0.8),
+            ),
             const SizedBox(width: 6),
             Expanded(
               child: Text(
                 location,
-                style: TextStyle(fontSize: 14, color: Colors.white.withValues(alpha: 0.9)),
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.white.withValues(alpha: 0.9),
+                ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -440,9 +469,17 @@ class _HomePageState extends State<HomePage> {
         const SizedBox(height: 12),
         Row(
           children: [
-            _CardActionButton(icon: Icons.how_to_reg_outlined, label: '签到', onTap: () {}),
+            _CardActionButton(
+              icon: Icons.how_to_reg_outlined,
+              label: '签到',
+              onTap: () {},
+            ),
             const SizedBox(width: 10),
-            _CardActionButton(icon: Icons.directions_outlined, label: '导航去这里', onTap: () {}),
+            _CardActionButton(
+              icon: Icons.directions_outlined,
+              label: '导航去这里',
+              onTap: () {},
+            ),
           ],
         ),
       ],
@@ -451,85 +488,84 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildTodayOverview(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final items = [
-      _OverviewItem(
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final dividerColor = isDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : const Color(0xFFE0E0E0);
+    final bgColor = isDark ? cs.surfaceContainerLowest : Colors.white;
+
+    final stats = [
+      _StatItem(
         icon: Icons.class_outlined,
-        label: '今日课程',
         value: '3节',
+        label: '今日课程',
         color: AppColors.primary,
       ),
-      _OverviewItem(
+      _StatItem(
         icon: Icons.check_circle_outline,
-        label: '待办事项',
         value: '2项',
+        label: '待办事项',
         color: AppColors.warning,
       ),
-      _OverviewItem(
+      _StatItem(
         icon: Icons.account_balance_wallet_outlined,
-        label: '卡余额',
         value: '¥$_campusCardBalance',
+        label: '卡余额',
         color: AppColors.success,
       ),
-      _OverviewItem(
+      _StatItem(
         icon: Icons.wifi,
-        label: '校园网',
         value: '已连接',
+        label: '校园网',
         color: AppColors.info,
       ),
     ];
 
-    return SizedBox(
-      height: 100,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        itemCount: items.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 10),
-        itemBuilder: (context, index) {
-          final item = items[index];
-          return Container(
-            width: 140,
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: cs.surfaceContainerLowest,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Row(
-              children: [
-                Icon(item.icon, size: 20, color: item.color),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        item.value,
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                          color: cs.onSurface,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Container(
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+        child: Row(
+          children: [
+            for (int i = 0; i < stats.length; i++) ...[
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(stats[i].icon, size: 18, color: stats[i].color),
+                    const SizedBox(height: 4),
+                    Text(
+                      stats[i].value,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: cs.onSurface,
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        item.label,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: cs.onSurfaceVariant,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      stats[i].label,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: cs.onSurfaceVariant,
                       ),
-                    ],
-                  ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          );
-        },
+              ),
+              if (i < stats.length - 1)
+                Container(width: 1, height: 36, color: dividerColor),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -669,18 +705,18 @@ class _CardActionButton extends StatelessWidget {
   }
 }
 
-// ── Overview Item ───────────────────────────────────────────────────────────
+// ── Stat Item ────────────────────────────────────────────────────────────
 
-class _OverviewItem {
-  const _OverviewItem({
+class _StatItem {
+  const _StatItem({
     required this.icon,
-    required this.label,
     required this.value,
+    required this.label,
     required this.color,
   });
   final IconData icon;
-  final String label;
   final String value;
+  final String label;
   final Color color;
 }
 
