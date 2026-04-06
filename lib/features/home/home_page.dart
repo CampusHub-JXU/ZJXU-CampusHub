@@ -233,18 +233,18 @@ class _HomePageState extends State<HomePage> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Left column - taller cards first
                     Expanded(
                       child: Column(
                         children: [
                           _buildCampusCardBalance(context),
                           const SizedBox(height: 10),
-                          _buildQuickServices(context),
+                          _buildDormElectricityCard(context),
+                          const SizedBox(height: 10),
+                          _buildLearningServicesCard(context),
                         ],
                       ),
                     ),
                     const SizedBox(width: 12),
-                    // Right column - shorter cards first (stagger effect)
                     Expanded(
                       child: Column(
                         children: [
@@ -570,39 +570,109 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildQuickServices(BuildContext context) {
+  Widget _buildDormElectricityCard(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bgColor = isDark ? cs.surfaceContainerLowest : Colors.white;
 
+    return GestureDetector(
+      onTap: () => context.pushNamed('dorm-electricity'),
+      child: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: AppColors.success.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.bolt_outlined,
+                color: AppColors.success,
+                size: 22,
+              ),
+            ),
+            const SizedBox(height: 18),
+            Text(
+              '宿舍电费',
+              style: TextStyle(
+                fontSize: 19,
+                fontWeight: FontWeight.w700,
+                color: cs.onSurface,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '查看余额、用电状态与宿舍设置',
+              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.success.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: const Text(
+                    '寝室服务',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.success,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                Icon(
+                  Icons.arrow_forward_ios,
+                  size: 14,
+                  color: cs.onSurfaceVariant,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLearningServicesCard(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = isDark ? cs.surfaceContainerLowest : Colors.white;
     final services = [
-      _ServiceItem(
-        icon: Icons.calendar_today_outlined,
-        label: '课表',
-        color: AppColors.primary,
-        route: 'schedule',
+      const _ServiceItem(
+        icon: Icons.workspace_premium_outlined,
+        label: '第二课堂',
+        color: AppColors.gold,
       ),
-      _ServiceItem(
-        icon: Icons.grade_outlined,
-        label: '成绩',
-        color: AppColors.warning,
-        route: 'grades',
-      ),
-      _ServiceItem(
+      const _ServiceItem(
         icon: Icons.local_library_outlined,
         label: '图书馆',
         color: AppColors.info,
-        route: null,
       ),
-      _ServiceItem(
+      const _ServiceItem(
         icon: Icons.meeting_room_outlined,
         label: '空教室',
         color: AppColors.success,
-        route: null,
       ),
     ];
 
     return Container(
+      width: double.infinity,
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: BorderRadius.circular(16),
@@ -612,58 +682,57 @@ class _HomePageState extends State<HomePage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '快捷服务',
+            '学习服务',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
               color: cs.onSurface,
             ),
           ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(child: _buildServiceButton(context, services[0])),
-              const SizedBox(width: 8),
-              Expanded(child: _buildServiceButton(context, services[1])),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(child: _buildServiceButton(context, services[2])),
-              const SizedBox(width: 8),
-              Expanded(child: _buildServiceButton(context, services[3])),
-            ],
-          ),
+          const SizedBox(height: 14),
+          for (int i = 0; i < services.length; i++) ...[
+            _buildServiceListTile(context, services[i]),
+            if (i != services.length - 1) const SizedBox(height: 8),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildServiceButton(BuildContext context, _ServiceItem item) {
+  Widget _buildServiceListTile(BuildContext context, _ServiceItem item) {
     final cs = Theme.of(context).colorScheme;
     return InkWell(
-      onTap: item.route != null ? () => context.pushNamed(item.route!) : null,
+      onTap: null,
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         decoration: BoxDecoration(
           color: item.color.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        child: Row(
           children: [
-            Icon(item.icon, color: item.color, size: 22),
-            const SizedBox(height: 6),
-            Text(
-              item.label,
-              style: TextStyle(
-                fontSize: 12,
-                color: cs.onSurface,
-                fontWeight: FontWeight.w500,
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: item.color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(item.icon, color: item.color, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                item.label,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: cs.onSurface,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
+            Icon(Icons.arrow_forward_ios, size: 14, color: cs.onSurfaceVariant),
           ],
         ),
       ),
@@ -775,44 +844,101 @@ class _HomePageState extends State<HomePage> {
     return GestureDetector(
       onTap: () => context.pushNamed('service-hall'),
       child: Container(
+        width: double.infinity,
         decoration: BoxDecoration(
           color: bgColor,
           borderRadius: BorderRadius.circular(16),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        child: Row(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(Icons.apps, size: 20, color: cs.onSurfaceVariant),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                '更多服务',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: cs.onSurface,
+            Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: cs.primary.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(Icons.apps_rounded, color: cs.primary, size: 22),
                 ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    '更多服务',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: cs.onSurface,
+                    ),
+                  ),
+                ),
+                Icon(
+                  Icons.arrow_forward_ios,
+                  size: 14,
+                  color: cs.onSurfaceVariant,
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            Text(
+              '打开服务大厅查看更多校内应用',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: cs.onSurface,
               ),
             ),
-            Icon(Icons.arrow_forward_ios, size: 14, color: cs.onSurfaceVariant),
+            const SizedBox(height: 6),
+            Text(
+              '校园办事、生活服务和统一认证入口都在这里',
+              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+            ),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _buildServiceTag(context, '办事大厅'),
+                _buildServiceTag(context, '校园应用'),
+                _buildServiceTag(context, '统一认证'),
+              ],
+            ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildServiceTag(BuildContext context, String label) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: cs.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: cs.primary,
         ),
       ),
     );
   }
 }
 
-// ── Service Grid ────────────────────────────────────────────────────────────
-
 class _ServiceItem {
   const _ServiceItem({
     required this.icon,
     required this.label,
     required this.color,
-    this.route,
   });
   final IconData icon;
   final String label;
   final Color color;
-  final String? route;
 }
