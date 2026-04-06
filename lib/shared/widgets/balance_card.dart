@@ -134,11 +134,7 @@ class _BalanceCardState extends State<BalanceCard> {
 }
 
 class _ActionChip extends StatelessWidget {
-  const _ActionChip({
-    required this.icon,
-    required this.label,
-    this.onTap,
-  });
+  const _ActionChip({required this.icon, required this.label, this.onTap});
 
   final IconData icon;
   final String label;
@@ -146,7 +142,6 @@ class _ActionChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),

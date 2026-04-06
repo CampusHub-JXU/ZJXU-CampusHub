@@ -26,7 +26,6 @@ class _CampusCardPageState extends State<CampusCardPage> {
     final service = CampusCardService.instance;
     final balance = service.cachedBalance;
     final lastUpdated = service.lastUpdated;
-    final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
       appBar: AppBar(title: const Text('校园卡')),
@@ -45,8 +44,11 @@ class _CampusCardPageState extends State<CampusCardPage> {
     );
   }
 
-  Widget _buildBalanceCard(BuildContext context, double? balance, DateTime? lastUpdated) {
-    final cs = Theme.of(context).colorScheme;
+  Widget _buildBalanceCard(
+    BuildContext context,
+    double? balance,
+    DateTime? lastUpdated,
+  ) {
     final balanceText = balance != null ? balance.toStringAsFixed(2) : '--';
     final timeText = lastUpdated != null
         ? '上次更新 ${lastUpdated.hour.toString().padLeft(2, '0')}:${lastUpdated.minute.toString().padLeft(2, '0')}'
@@ -65,7 +67,11 @@ class _CampusCardPageState extends State<CampusCardPage> {
           Positioned(
             right: -16,
             top: -16,
-            child: Icon(Icons.credit_card, size: 100, color: Colors.white.withValues(alpha: 0.06)),
+            child: Icon(
+              Icons.credit_card,
+              size: 100,
+              color: Colors.white.withValues(alpha: 0.06),
+            ),
           ),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -74,7 +80,14 @@ class _CampusCardPageState extends State<CampusCardPage> {
                 children: [
                   const Icon(Icons.credit_card, color: Colors.white, size: 22),
                   const SizedBox(width: 8),
-                  const Text('校园卡', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white)),
+                  const Text(
+                    '校园卡',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
                   const Spacer(),
                   GestureDetector(
                     onTap: () => setState(() => _obscured = !_obscured),
@@ -91,7 +104,13 @@ class _CampusCardPageState extends State<CampusCardPage> {
                 crossAxisAlignment: CrossAxisAlignment.baseline,
                 textBaseline: TextBaseline.alphabetic,
                 children: [
-                  Text('¥ ', style: TextStyle(fontSize: 20, color: Colors.white.withValues(alpha: 0.7))),
+                  Text(
+                    '¥ ',
+                    style: TextStyle(
+                      fontSize: 20,
+                      color: Colors.white.withValues(alpha: 0.7),
+                    ),
+                  ),
                   Text(
                     _obscured ? '****' : balanceText,
                     style: const TextStyle(
@@ -104,7 +123,13 @@ class _CampusCardPageState extends State<CampusCardPage> {
                 ],
               ),
               const SizedBox(height: 8),
-              Text(timeText, style: TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.5))),
+              Text(
+                timeText,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.white.withValues(alpha: 0.5),
+                ),
+              ),
             ],
           ),
         ],
@@ -113,7 +138,6 @@ class _CampusCardPageState extends State<CampusCardPage> {
   }
 
   Widget _buildQuickActions(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return ShipCard(
       padding: const EdgeInsets.all(20),
       child: Row(
@@ -160,7 +184,14 @@ class _CampusCardPageState extends State<CampusCardPage> {
             children: [
               Icon(Icons.history, size: 20, color: AppColors.primary),
               const SizedBox(width: 8),
-              Text('最近交易', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: cs.onSurface)),
+              Text(
+                '最近交易',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: cs.onSurface,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 16),
@@ -238,7 +269,9 @@ class _CampusCardPageState extends State<CampusCardPage> {
     setState(() {});
   }
 
-  Future<double?> _extractBalanceWithRetry(InAppWebViewController controller) async {
+  Future<double?> _extractBalanceWithRetry(
+    InAppWebViewController controller,
+  ) async {
     const delaysInMs = [0, 700, 1400, 2200];
 
     for (final delayInMs in delaysInMs) {
@@ -247,7 +280,8 @@ class _CampusCardPageState extends State<CampusCardPage> {
       }
 
       try {
-        final rawText = await controller.evaluateJavascript(source: '''
+        final rawText = await controller.evaluateJavascript(
+          source: '''
           (() => {
             const texts = [];
             const bodyText = document.body?.innerText;
@@ -261,10 +295,13 @@ class _CampusCardPageState extends State<CampusCardPage> {
             }
             return texts.join('\\n');
           })();
-        ''');
+        ''',
+        );
 
         final text = rawText is String ? rawText : '${rawText ?? ''}';
-        final balance = CampusCardService.instance.parseBalanceFromPageText(text);
+        final balance = CampusCardService.instance.parseBalanceFromPageText(
+          text,
+        );
         if (balance != null) return balance;
       } catch (_) {
         continue;
@@ -309,7 +346,13 @@ class _QuickAction extends StatelessWidget {
               child: Icon(icon, color: color, size: 22),
             ),
             const SizedBox(height: 6),
-            Text(label, style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurface)),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
+            ),
           ],
         ),
       ),
@@ -349,15 +392,29 @@ class _TransactionItem extends StatelessWidget {
             color: cs.surfaceContainerLow,
             borderRadius: BorderRadius.circular(10),
           ),
-          child: Icon(icon, size: 20, color: isExpense ? AppColors.error : AppColors.success),
+          child: Icon(
+            icon,
+            size: 20,
+            color: isExpense ? AppColors.error : AppColors.success,
+          ),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: cs.onSurface)),
-              Text(subtitle, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: cs.onSurface,
+                ),
+              ),
+              Text(
+                subtitle,
+                style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+              ),
             ],
           ),
         ),
@@ -372,7 +429,10 @@ class _TransactionItem extends StatelessWidget {
                 color: isExpense ? cs.onSurface : AppColors.success,
               ),
             ),
-            Text(time, style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+            Text(
+              time,
+              style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+            ),
           ],
         ),
       ],

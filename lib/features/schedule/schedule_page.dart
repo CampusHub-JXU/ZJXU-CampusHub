@@ -67,12 +67,13 @@ class _SchedulePageState extends State<SchedulePage> {
       if (mounted) setState(() => _courses = courses);
     } on ScheduleAuthExpiredException catch (_) {
       ZhengfangAuth.instance.markLoggedOut();
-      if (mounted)
+      if (mounted) {
         setState(() {
           _loggedIn = false;
           _courses = [];
           _error = null;
         });
+      }
     } on ScheduleRequestException catch (e) {
       if (mounted) setState(() => _error = e.message);
     } on DioException catch (e) {
@@ -792,6 +793,6 @@ class _EmptyCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(width: dayColumnWidth, height: _ScheduleGrid._slotHeight);
+    return SizedBox(width: dayColumnWidth, height: _ScheduleGrid._slotHeight);
   }
 }

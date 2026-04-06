@@ -245,7 +245,6 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       backgroundColor: isDark ? null : const Color(0xFFF5F5F5),
       body: SafeArea(
