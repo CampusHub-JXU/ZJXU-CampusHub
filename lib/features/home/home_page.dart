@@ -725,6 +725,7 @@ class _HomePageState extends State<HomePage> {
     return GestureDetector(
       onTap: () => context.pushNamed('grades'),
       child: Container(
+        width: double.infinity,
         decoration: BoxDecoration(
           color: bgColor,
           borderRadius: BorderRadius.circular(16),
@@ -746,7 +747,7 @@ class _HomePageState extends State<HomePage> {
                 size: 22,
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 20),
             Text(
               '成绩查询',
               style: TextStyle(
