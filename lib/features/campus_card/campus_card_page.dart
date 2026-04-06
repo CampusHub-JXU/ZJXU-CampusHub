@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../app/theme.dart';
 import '../../shared/widgets/ship_card.dart';
@@ -35,9 +34,7 @@ class _CampusCardPageState extends State<CampusCardPage> {
           children: [
             _buildBalanceCard(context, balance, lastUpdated),
             const SizedBox(height: 16),
-            _buildQuickActions(context),
-            const SizedBox(height: 16),
-            _buildRecentTransactions(context),
+            _buildActionCards(context),
           ],
         ),
       ),
@@ -137,103 +134,39 @@ class _CampusCardPageState extends State<CampusCardPage> {
     );
   }
 
-  Widget _buildQuickActions(BuildContext context) {
-    return ShipCard(
-      padding: const EdgeInsets.all(20),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _QuickAction(
-            icon: Icons.qr_code_2,
-            label: '付款码',
-            color: AppColors.primary,
-            onTap: () => context.pushNamed('campus-card-payment'),
-          ),
-          _QuickAction(
+  Widget _buildActionCards(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _CampusCardActionCard(
             icon: Icons.add_circle_outline,
-            label: '充值',
+            title: '充值',
+            subtitle: '进入校园卡充值',
             color: AppColors.success,
-            onTap: () => _openCampusCardDetail(),
+            onTap: () => _openCampusCardWebView(title: '校园卡充值'),
           ),
-          _QuickAction(
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _CampusCardActionCard(
             icon: Icons.receipt_long_outlined,
-            label: '账单',
+            title: '账单',
+            subtitle: '查看余额与明细',
             color: AppColors.info,
-            onTap: () => _openCampusCardDetail(),
+            onTap: () => _openCampusCardWebView(title: '校园卡账单'),
           ),
-          _QuickAction(
-            icon: Icons.open_in_new,
-            label: '详情',
-            color: AppColors.gold,
-            onTap: () => _openCampusCardDetail(),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
-  Widget _buildRecentTransactions(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    return ShipCard(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.history, size: 20, color: AppColors.primary),
-              const SizedBox(width: 8),
-              Text(
-                '最近交易',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: cs.onSurface,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          // Placeholder transactions
-          _TransactionItem(
-            icon: Icons.restaurant,
-            title: '食堂消费',
-            subtitle: '梁林校区第一食堂',
-            amount: '-¥12.50',
-            time: '今天 12:30',
-            isExpense: true,
-          ),
-          const SizedBox(height: 12),
-          _TransactionItem(
-            icon: Icons.local_cafe,
-            title: '超市消费',
-            subtitle: '校园超市',
-            amount: '-¥8.00',
-            time: '今天 15:20',
-            isExpense: true,
-          ),
-          const SizedBox(height: 12),
-          _TransactionItem(
-            icon: Icons.add_circle,
-            title: '在线充值',
-            subtitle: '支付宝',
-            amount: '+¥100.00',
-            time: '昨天 09:15',
-            isExpense: false,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _openCampusCardDetail() async {
+  Future<void> _openCampusCardWebView({required String title}) async {
     _capturedInCurrentDetailPage = false;
 
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => WebViewPage(
-          title: '校园卡详情',
+          title: title,
           url: CampusCardService.statusPageUrl,
           onLoadStop: _captureBalanceFromDetailPage,
         ),
@@ -312,105 +245,56 @@ class _CampusCardPageState extends State<CampusCardPage> {
   }
 }
 
-// ── Quick Action Button ─────────────────────────────────────────────────────
+// ── Campus Card Action ──────────────────────────────────────────────────────
 
-class _QuickAction extends StatelessWidget {
-  const _QuickAction({
+class _CampusCardActionCard extends StatelessWidget {
+  const _CampusCardActionCard({
     required this.icon,
-    required this.label,
+    required this.title,
+    required this.subtitle,
     required this.color,
     this.onTap,
   });
 
   final IconData icon;
-  final String label;
+  final String title;
+  final String subtitle;
   final Color color;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: Column(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: color, size: 22),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                color: Theme.of(context).colorScheme.onSurface,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Transaction Item ────────────────────────────────────────────────────────
-
-class _TransactionItem extends StatelessWidget {
-  const _TransactionItem({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.amount,
-    required this.time,
-    required this.isExpense,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final String amount;
-  final String time;
-  final bool isExpense;
-
-  @override
-  Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return Row(
-      children: [
-        Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: cs.surfaceContainerLow,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(
-            icon,
-            size: 20,
-            color: isExpense ? AppColors.error : AppColors.success,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
+    return ShipCard(
+      padding: EdgeInsets.zero,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(18),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: color, size: 24),
+              ),
+              const SizedBox(height: 18),
               Text(
                 title,
                 style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
                   color: cs.onSurface,
                 ),
               ),
+              const SizedBox(height: 4),
               Text(
                 subtitle,
                 style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
@@ -418,24 +302,7 @@ class _TransactionItem extends StatelessWidget {
             ],
           ),
         ),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(
-              amount,
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color: isExpense ? cs.onSurface : AppColors.success,
-              ),
-            ),
-            Text(
-              time,
-              style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
-            ),
-          ],
-        ),
-      ],
+      ),
     );
   }
 }

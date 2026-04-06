@@ -9,7 +9,8 @@ class ServiceHallPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return const WebViewPage(
       title: '服务大厅',
-      url: 'https://mobilehall.zjxu.edu.cn/mportal/start/index.html',
+      url:
+          'https://mobilehall.zjxu.edu.cn/mportal/start/index.html#/business/ydd/portal/home',
     );
   }
 }

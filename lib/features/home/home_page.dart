@@ -509,44 +509,87 @@ class _HomePageState extends State<HomePage> {
         ),
         padding: const EdgeInsets.all(16),
         height: 140,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        child: Stack(
           children: [
-            Row(
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(
-                    Icons.account_balance_wallet_outlined,
-                    color: AppColors.primary,
-                    size: 20,
-                  ),
+                Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.account_balance_wallet_outlined,
+                        color: AppColors.primary,
+                        size: 20,
+                      ),
+                    ),
+                  ],
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '¥$_campusCardBalance',
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: cs.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '校园卡余额',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '¥$_campusCardBalance',
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: cs.onSurface,
+            Positioned(
+              right: 0,
+              bottom: 0,
+              child: GestureDetector(
+                onTap: () => context.pushNamed('campus-card-payment'),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.qr_code_2_rounded,
+                        size: 16,
+                        color: AppColors.primary,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        '付款码',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: cs.onSurface,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  '校园卡余额',
-                  style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
-                ),
-              ],
+              ),
             ),
           ],
         ),

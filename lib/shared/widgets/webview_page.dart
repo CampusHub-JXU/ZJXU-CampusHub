@@ -76,7 +76,6 @@ class _WebViewPageState extends State<WebViewPage> {
       window.dd.device = window.dd.device || {};
       window.dd.device.notification = window.dd.device.notification || {};
       window.dd.device.notification.alert = function() {};
-      console.log('[DingTalk Bridge] Injected');
     ''',
     );
   }
@@ -128,17 +127,31 @@ class _WebViewPageState extends State<WebViewPage> {
     ConsoleMessage consoleMessage,
   ) {
     final message = consoleMessage.message;
+    final lowerMessage = message.toLowerCase();
 
-    AppLogger.instance.debug(
-      'WebView console [${consoleMessage.messageLevel}]: $message',
-    );
-
-    if (!_hasShownEnvHint && message.contains('notInDingTalk')) {
-      _hasShownEnvHint = true;
-      _showHint('当前页面依赖钉钉环境，部分功能可能受限');
+    if (lowerMessage.contains('dingtalk bridge')) {
+      return;
     }
 
-    final lowerMessage = message.toLowerCase();
+    if (!_hasShownEnvHint && lowerMessage.contains('notindingtalk')) {
+      _hasShownEnvHint = true;
+      AppLogger.instance.info('WebView 环境提示：$_currentUrl 需要钉钉环境');
+      _showHint('当前页面依赖钉钉环境，部分功能可能受限');
+      return;
+    }
+
+    final errorLike =
+        consoleMessage.messageLevel == ConsoleMessageLevel.ERROR ||
+        consoleMessage.messageLevel == ConsoleMessageLevel.WARNING ||
+        lowerMessage.contains('error') ||
+        lowerMessage.contains('exception') ||
+        lowerMessage.contains('failed');
+
+    if (errorLike) {
+      AppLogger.instance.error(
+        'WebView console [${consoleMessage.messageLevel}] $_currentUrl :: $message',
+      );
+    }
 
     if (_isCampusCardDeepLink &&
         !_hasFallbackToHome &&
@@ -155,6 +168,57 @@ class _WebViewPageState extends State<WebViewPage> {
         lowerMessage.contains('laytpl error') &&
         lowerMessage.contains('no data')) {
       _fallbackToServiceHallHome(controller, '校园卡入口返回空数据，已切换到服务大厅首页');
+    }
+  }
+
+  Future<void> _inspectLoadedPage(InAppWebViewController controller) async {
+    try {
+      final snapshot = await controller.evaluateJavascript(
+        source: '''
+        (() => {
+          const title = document.title || '';
+          const readyState = document.readyState || '';
+          const bodyText = document.body?.innerText?.trim() || '';
+          const childCount = document.body?.children?.length || 0;
+          return {
+            title,
+            readyState,
+            textLength: bodyText.length,
+            childCount,
+          };
+        })();
+      ''',
+      );
+
+      final map = snapshot is Map
+          ? Map<Object?, Object?>.from(snapshot)
+          : const {};
+      final title = '${map['title'] ?? ''}'.trim();
+      final readyState = '${map['readyState'] ?? ''}'.trim();
+      final textLength = int.tryParse('${map['textLength'] ?? 0}') ?? 0;
+      final childCount = int.tryParse('${map['childCount'] ?? 0}') ?? 0;
+
+      AppLogger.instance.info(
+        'WebView load stop: url=$_currentUrl readyState=$readyState title=${title.isEmpty ? '[empty]' : title} textLength=$textLength childCount=$childCount',
+      );
+
+      final isBlankLike = textLength == 0 && childCount == 0;
+      if (!isBlankLike) return;
+
+      AppLogger.instance.error('WebView 疑似白屏：url=$_currentUrl');
+
+      final uri = Uri.tryParse(_currentUrl);
+      final isServiceHallEntry =
+          uri != null &&
+          uri.host.toLowerCase() == _serviceHallHost &&
+          uri.path == '/mportal/start/index.html' &&
+          uri.fragment.isEmpty;
+
+      if (isServiceHallEntry && !_hasFallbackToHome) {
+        _fallbackToServiceHallHome(controller, '服务大厅入口未渲染，已尝试切换到首页');
+      }
+    } catch (error) {
+      AppLogger.instance.debug('WebView 页面快照失败：$_currentUrl :: $error');
     }
   }
 
@@ -181,6 +245,7 @@ class _WebViewPageState extends State<WebViewPage> {
                 javaScriptEnabled: true,
                 domStorageEnabled: true,
                 useShouldOverrideUrlLoading: true,
+                useHybridComposition: true,
                 allowsInlineMediaPlayback: true,
                 mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
                 thirdPartyCookiesEnabled: true,
@@ -196,10 +261,18 @@ class _WebViewPageState extends State<WebViewPage> {
                   callback: (args) => {'success': true},
                 );
               },
-              onLoadStart: (_, url) => _trackCurrentUrl(url),
+              onLoadStart: (_, url) {
+                _trackCurrentUrl(url);
+                AppLogger.instance.info('WebView load start: $_currentUrl');
+                setState(() {
+                  _hasError = false;
+                  _progress = 0;
+                });
+              },
               onLoadStop: (controller, url) async {
                 _trackCurrentUrl(url);
                 await _injectDingTalkBridge(controller);
+                await _inspectLoadedPage(controller);
 
                 final callback = widget.onLoadStop;
                 if (callback != null) {
@@ -227,8 +300,26 @@ class _WebViewPageState extends State<WebViewPage> {
               onProgressChanged: (_, p) {
                 setState(() => _progress = p / 100);
               },
-              onReceivedError: (_, request, _) {
+              onReceivedHttpError: (_, request, response) {
                 if (!(request.isForMainFrame ?? false)) return;
+
+                AppLogger.instance.error(
+                  'WebView HTTP 错误: ${response.statusCode} ${response.reasonPhrase ?? ''} url=${request.url}',
+                );
+
+                setState(() {
+                  _hasError = true;
+                  _controller = null;
+                  _progress = 0;
+                });
+              },
+              onReceivedError: (_, request, error) {
+                if (!(request.isForMainFrame ?? false)) return;
+
+                AppLogger.instance.error(
+                  'WebView 加载失败: code=${error.type} desc=${error.description} url=${request.url}',
+                );
+
                 setState(() {
                   _hasError = true;
                   _controller = null;
