@@ -144,21 +144,7 @@ class _SchedulePageState extends State<SchedulePage> {
         ),
       );
     }
-    return Column(
-      children: [
-        _WeekSelector(
-          currentWeek: _displayWeek,
-          actualCurrentWeek: _currentWeek,
-          onWeekChanged: (w) {
-            setState(() => _displayWeek = w);
-            if (_weekPageController.hasClients) {
-              _weekPageController.jumpToPage(w - 1);
-            }
-          },
-        ),
-        Expanded(child: _buildWeekPager()),
-      ],
-    );
+    return _buildWeekPager();
   }
 
   Widget _buildWeekPager() {
@@ -178,78 +164,6 @@ class _SchedulePageState extends State<SchedulePage> {
           ),
         );
       },
-    );
-  }
-}
-
-// ── Week Selector ───────────────────────────────────────────────────────────
-
-class _WeekSelector extends StatelessWidget {
-  const _WeekSelector({
-    required this.currentWeek,
-    required this.actualCurrentWeek,
-    required this.onWeekChanged,
-  });
-
-  final int currentWeek;
-  final int actualCurrentWeek;
-  final ValueChanged<int> onWeekChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    return Container(
-      height: 48,
-      color: cs.surfaceContainerLowest,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        itemCount: 20,
-        itemBuilder: (context, index) {
-          final week = index + 1;
-          final isSelected = week == currentWeek;
-          final isActual = week == actualCurrentWeek;
-
-          return GestureDetector(
-            onTap: () => onWeekChanged(week),
-            child: Container(
-              width: 48,
-              margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 8),
-              decoration: BoxDecoration(
-                color: isSelected ? AppColors.primary : Colors.transparent,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              alignment: Alignment.center,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    '$week',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: isSelected
-                          ? FontWeight.bold
-                          : FontWeight.normal,
-                      color: isSelected ? Colors.white : cs.onSurface,
-                    ),
-                  ),
-                  if (isActual && !isSelected)
-                    Container(
-                      width: 4,
-                      height: 4,
-                      margin: const EdgeInsets.only(top: 2),
-                      decoration: const BoxDecoration(
-                        color: AppColors.primary,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
     );
   }
 }

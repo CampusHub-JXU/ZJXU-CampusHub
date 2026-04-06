@@ -491,22 +491,6 @@ class _HomePageState extends State<HomePage> {
             ),
           ],
         ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            _CardActionButton(
-              icon: Icons.how_to_reg_outlined,
-              label: '签到',
-              onTap: () {},
-            ),
-            const SizedBox(width: 10),
-            _CardActionButton(
-              icon: Icons.directions_outlined,
-              label: '导航去这里',
-              onTap: () {},
-            ),
-          ],
-        ),
       ],
     );
   }
@@ -795,45 +779,6 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
             Icon(Icons.arrow_forward_ios, size: 14, color: cs.onSurfaceVariant),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Card Action Button ──────────────────────────────────────────────────────
-
-class _CardActionButton extends StatelessWidget {
-  const _CardActionButton({
-    required this.icon,
-    required this.label,
-    this.onTap,
-  });
-  final IconData icon;
-  final String label;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 16, color: Colors.white),
-            const SizedBox(width: 4),
-            Text(
-              label,
-              style: const TextStyle(fontSize: 13, color: Colors.white),
-            ),
           ],
         ),
       ),
