@@ -300,35 +300,40 @@ class _ScheduleGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final dayColumnWidth = (screenWidth - _slotColumnWidth) / 7;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final dayColumnWidth = (constraints.maxWidth - _slotColumnWidth) / 7;
 
-    return Column(
-      children: [
-        _DayHeaders(
-          slotColumnWidth: _slotColumnWidth,
-          dayColumnWidth: dayColumnWidth,
-          isCurrentWeek: currentWeek == actualCurrentWeek,
-        ),
-        Expanded(
-          child: SingleChildScrollView(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _SlotColumn(slotColumnWidth: _slotColumnWidth),
-                for (int day = 1; day <= 7; day++)
-                  _DayColumn(
-                    day: day,
-                    courses: courses.where((c) => c.weekday == day).toList(),
-                    colorFor: _colorForCourse,
-                    dayColumnWidth: dayColumnWidth,
-                    currentWeek: currentWeek,
-                  ),
-              ],
+        return Column(
+          children: [
+            _DayHeaders(
+              slotColumnWidth: _slotColumnWidth,
+              dayColumnWidth: dayColumnWidth,
+              currentWeek: currentWeek,
+              isCurrentWeek: currentWeek == actualCurrentWeek,
             ),
-          ),
-        ),
-      ],
+            Expanded(
+              child: SingleChildScrollView(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _SlotColumn(slotColumnWidth: _slotColumnWidth),
+                    for (int day = 1; day <= 7; day++)
+                      _DayColumn(
+                        courses: courses
+                            .where((c) => c.weekday == day)
+                            .toList(),
+                        colorFor: _colorForCourse,
+                        dayColumnWidth: dayColumnWidth,
+                        currentWeek: currentWeek,
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -337,60 +342,103 @@ class _DayHeaders extends StatelessWidget {
   const _DayHeaders({
     required this.slotColumnWidth,
     required this.dayColumnWidth,
+    required this.currentWeek,
     required this.isCurrentWeek,
   });
 
   final double slotColumnWidth;
   final double dayColumnWidth;
+  final int currentWeek;
   final bool isCurrentWeek;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final today = DateTime.now().weekday; // 1=Mon
+    final weekStartDate = SemesterCalendar.instance.semesterStartDate.value.add(
+      Duration(days: (currentWeek - 1) * 7),
+    );
 
     return Container(
       color: cs.surfaceContainerLowest,
-      padding: const EdgeInsets.symmetric(vertical: 10),
+      padding: const EdgeInsets.fromLTRB(0, 10, 0, 12),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
             width: slotColumnWidth,
-            child: Text(
-              isCurrentWeek ? '本周' : '非本周',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '第$currentWeek周',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: cs.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  isCurrentWeek ? '本周' : '非本周',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
+                ),
+              ],
             ),
           ),
           for (int i = 0; i < 7; i++)
-            SizedBox(
-              width: dayColumnWidth,
-              child: Column(
-                children: [
-                  Text(
-                    '周${'一二三四五六日'[i]}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: (i + 1) == today
-                          ? FontWeight.bold
-                          : FontWeight.normal,
-                      color: (i + 1) == today
-                          ? AppColors.primary
-                          : cs.onSurfaceVariant,
-                    ),
-                  ),
-                  if ((i + 1) == today)
-                    Container(
-                      width: 6,
-                      height: 6,
-                      margin: const EdgeInsets.only(top: 3),
-                      decoration: const BoxDecoration(
-                        color: AppColors.primary,
-                        shape: BoxShape.circle,
+            Builder(
+              builder: (context) {
+                final date = weekStartDate.add(Duration(days: i));
+                final isToday = isCurrentWeek && (i + 1) == today;
+
+                return SizedBox(
+                  width: dayColumnWidth,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isToday ? 12 : 0,
+                          vertical: isToday ? 6 : 0,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isToday
+                              ? AppColors.primary
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          '${date.day}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: isToday
+                                ? FontWeight.w700
+                                : FontWeight.w500,
+                            color: isToday ? Colors.white : cs.onSurface,
+                          ),
+                        ),
                       ),
-                    ),
-                ],
-              ),
+                      const SizedBox(height: 6),
+                      Text(
+                        '周${'一二三四五六日'[i]}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: isToday
+                              ? FontWeight.w700
+                              : FontWeight.normal,
+                          color: isToday
+                              ? AppColors.primary
+                              : cs.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
             ),
         ],
       ),
@@ -455,14 +503,12 @@ class _SlotColumn extends StatelessWidget {
 
 class _DayColumn extends StatelessWidget {
   const _DayColumn({
-    required this.day,
     required this.courses,
     required this.colorFor,
     required this.dayColumnWidth,
     required this.currentWeek,
   });
 
-  final int day;
   final List<CourseEntry> courses;
   final Color Function(String, bool) colorFor;
   final double dayColumnWidth;
@@ -470,135 +516,128 @@ class _DayColumn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Map each slot to all courses occupying it (handles overlapping courses)
-    final Map<int, List<CourseEntry>> slotMap = {};
-    for (final c in courses) {
-      for (int s = c.startLesson; s <= c.endLesson && s <= 13; s++) {
-        slotMap.putIfAbsent(s, () => []);
-        slotMap[s]!.add(c);
-      }
-    }
+    final placements = _buildCoursePlacements();
 
-    // Union-find to detect conflict groups (connected components of overlapping courses)
-    final rep = List<int>.generate(courses.length, (i) => i);
-
-    int find(int x) {
-      while (rep[x] != x) {
-        rep[x] = rep[rep[x]];
-        x = rep[x];
-      }
-      return x;
-    }
-
-    void union(int a, int b) {
-      final ra = find(a);
-      final rb = find(b);
-      if (ra != rb) rep[ra] = rb;
-    }
-
-    for (final slotCourses in slotMap.values) {
-      if (slotCourses.length > 1) {
-        final indices = slotCourses.map((c) => courses.indexOf(c)).toList();
-        for (int i = 1; i < indices.length; i++) {
-          union(indices[0], indices[i]);
-        }
-      }
-    }
-
-    // Build conflict groups map
-    final Map<int, List<CourseEntry>> conflictGroups = {};
-    for (int i = 0; i < courses.length; i++) {
-      final root = find(i);
-      conflictGroups.putIfAbsent(root, () => []);
-      conflictGroups[root]!.add(courses[i]);
-    }
-
-    // Determine group size for each course
-    final Map<String, int> courseGroupSize = {};
-    for (final group in conflictGroups.values) {
-      for (final c in group) {
-        courseGroupSize[c.courseName] = group.length;
-      }
-    }
-
-    // Render cells
-    final cells = <Widget>[];
-    final rendered = <String>{};
-
-    int slot = 1;
-    while (slot <= 13) {
-      final slotCourses = slotMap[slot];
-      if (slotCourses != null && slotCourses.isNotEmpty) {
-        final first = slotCourses.first;
-        if (first.startLesson == slot && !rendered.contains(first.courseName)) {
-          final groupSize = courseGroupSize[first.courseName] ?? 1;
-          final firstIdx = courses.indexOf(first);
-          final rootIdx = find(firstIdx);
-          final group = conflictGroups[rootIdx] ?? [first];
-          final span = (first.endLesson - first.startLesson + 1).clamp(
-            1,
-            13 - slot + 1,
-          );
-
-          if (groupSize == 1) {
-            // Solo course — full width
-            cells.add(
-              _CourseCell(
-                course: first,
-                span: span,
-                color: colorFor(first.courseName, first.isInWeek(currentWeek)),
-                dayColumnWidth: dayColumnWidth,
-                isCurrentWeek: first.isInWeek(currentWeek),
-              ),
-            );
-          } else {
-            // Conflict group — render side by side in Row
-            cells.add(
-              SizedBox(
-                width: dayColumnWidth,
-                height: _ScheduleGrid._slotHeight * span,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: group.map((c) {
-                    final idx = group.indexOf(c);
-                    rendered.add(c.courseName);
-                    return Expanded(
-                      child: Padding(
-                        padding: EdgeInsets.only(left: idx > 0 ? 1.0 : 0),
-                        child: _CourseCell(
-                          course: c,
-                          span: span,
-                          color: colorFor(
-                            c.courseName,
-                            c.isInWeek(currentWeek),
-                          ),
-                          dayColumnWidth: dayColumnWidth / groupSize,
-                          isCurrentWeek: c.isInWeek(currentWeek),
-                        ),
-                      ),
-                    );
-                  }).toList(),
+    return SizedBox(
+      width: dayColumnWidth,
+      height: _ScheduleGrid._slotHeight * 13,
+      child: Stack(
+        children: [
+          for (final placement in placements)
+            Positioned(
+              left:
+                  placement.column * (dayColumnWidth / placement.totalColumns),
+              top:
+                  (placement.course.startLesson - 1) *
+                  _ScheduleGrid._slotHeight,
+              width: dayColumnWidth / placement.totalColumns,
+              height: _ScheduleGrid._slotHeight * placement.span,
+              child: _CourseCell(
+                course: placement.course,
+                span: placement.span,
+                color: colorFor(
+                  placement.course.courseName,
+                  placement.course.isInWeek(currentWeek),
                 ),
+                dayColumnWidth: dayColumnWidth / placement.totalColumns,
+                isCurrentWeek: placement.course.isInWeek(currentWeek),
               ),
-            );
-          }
+            ),
+        ],
+      ),
+    );
+  }
 
-          for (final c in group) {
-            rendered.add(c.courseName);
+  List<_PlacedCourse> _buildCoursePlacements() {
+    if (courses.isEmpty) return const [];
+
+    final sortedCourses = [...courses]
+      ..sort((a, b) {
+        final byStart = a.startLesson.compareTo(b.startLesson);
+        if (byStart != 0) return byStart;
+
+        final byEnd = a.endLesson.compareTo(b.endLesson);
+        if (byEnd != 0) return byEnd;
+
+        return a.courseName.compareTo(b.courseName);
+      });
+
+    final placements = <_PlacedCourse>[];
+    final clusters = <List<CourseEntry>>[];
+    var currentCluster = <CourseEntry>[];
+    var clusterEnd = 0;
+
+    for (final course in sortedCourses) {
+      if (currentCluster.isEmpty || course.startLesson > clusterEnd) {
+        if (currentCluster.isNotEmpty) clusters.add(currentCluster);
+        currentCluster = [course];
+        clusterEnd = course.endLesson;
+        continue;
+      }
+
+      currentCluster.add(course);
+      if (course.endLesson > clusterEnd) clusterEnd = course.endLesson;
+    }
+
+    if (currentCluster.isNotEmpty) clusters.add(currentCluster);
+
+    for (final cluster in clusters) {
+      final columnEndLessons = <int>[];
+      final assignments = <({CourseEntry course, int column})>[];
+
+      for (final course in cluster) {
+        var targetColumn = -1;
+
+        for (var i = 0; i < columnEndLessons.length; i++) {
+          if (columnEndLessons[i] < course.startLesson) {
+            targetColumn = i;
+            break;
           }
-          slot += span;
-        } else {
-          cells.add(_EmptyCell(dayColumnWidth: dayColumnWidth));
-          slot++;
         }
-      } else {
-        cells.add(_EmptyCell(dayColumnWidth: dayColumnWidth));
-        slot++;
+
+        if (targetColumn == -1) {
+          targetColumn = columnEndLessons.length;
+          columnEndLessons.add(course.endLesson);
+        } else {
+          columnEndLessons[targetColumn] = course.endLesson;
+        }
+
+        assignments.add((course: course, column: targetColumn));
+      }
+
+      final totalColumns = columnEndLessons.length;
+      for (final assignment in assignments) {
+        final span =
+            (assignment.course.endLesson - assignment.course.startLesson + 1)
+                .clamp(1, 13 - assignment.course.startLesson + 1);
+
+        placements.add(
+          _PlacedCourse(
+            course: assignment.course,
+            column: assignment.column,
+            totalColumns: totalColumns,
+            span: span,
+          ),
+        );
       }
     }
 
-    return Column(children: cells);
+    return placements;
   }
+}
+
+class _PlacedCourse {
+  const _PlacedCourse({
+    required this.course,
+    required this.column,
+    required this.totalColumns,
+    required this.span,
+  });
+
+  final CourseEntry course;
+  final int column;
+  final int totalColumns;
+  final int span;
 }
 
 class _CourseCell extends StatelessWidget {
@@ -703,63 +742,97 @@ class _CourseCell extends StatelessWidget {
               borderRadius: BorderRadius.circular(8),
               color: overlayColor,
             ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Container(
-                  width: 4,
-                  decoration: BoxDecoration(
-                    color: isCurrentWeek ? color : Colors.grey.shade300,
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(8),
-                      bottomLeft: Radius.circular(8),
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(6, 6, 4, 6),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          course.courseName,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: contentColor,
-                            height: 1.2,
-                          ),
-                          maxLines: span > 1 ? 4 : 2,
-                          overflow: TextOverflow.ellipsis,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final narrow = constraints.maxWidth < 24;
+                final compact =
+                    constraints.maxWidth < 34 || constraints.maxHeight < 110;
+                final dense = constraints.maxHeight < 92;
+                final titleFontSize = narrow ? 10.5 : 12.0;
+                final titleLines = constraints.maxHeight >= 180
+                    ? (narrow ? 7 : 6)
+                    : constraints.maxHeight >= 120
+                    ? (narrow ? 5 : 4)
+                    : 3;
+                final showClassroom =
+                    course.classroom.isNotEmpty &&
+                    !narrow &&
+                    constraints.maxHeight >= 88;
+                final showWeekTag =
+                    !isCurrentWeek && !compact && constraints.maxHeight >= 112;
+
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Container(
+                      width: 4,
+                      decoration: BoxDecoration(
+                        color: isCurrentWeek ? color : Colors.grey.shade300,
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(8),
+                          bottomLeft: Radius.circular(8),
                         ),
-                        if (course.classroom.isNotEmpty) ...[
-                          const SizedBox(height: 3),
-                          Text(
-                            course.classroom,
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: contentColor.withValues(alpha: 0.8),
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                        if (!isCurrentWeek) ...[
-                          const SizedBox(height: 2),
-                          Text(
-                            '[非本周]',
-                            style: TextStyle(
-                              fontSize: 9,
-                              color: Colors.grey.shade400,
-                            ),
-                          ),
-                        ],
-                      ],
+                      ),
                     ),
-                  ),
-                ),
-              ],
+                    Expanded(
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          narrow ? 4 : 6,
+                          6,
+                          narrow ? 2 : 4,
+                          6,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Align(
+                                alignment: Alignment.topLeft,
+                                child: Text(
+                                  course.courseName,
+                                  style: TextStyle(
+                                    fontSize: titleFontSize,
+                                    fontWeight: FontWeight.w600,
+                                    color: contentColor,
+                                    height: dense ? 1.1 : 1.18,
+                                  ),
+                                  maxLines: titleLines,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ),
+                            if (showClassroom) ...[
+                              const SizedBox(height: 3),
+                              Text(
+                                course.classroom,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: contentColor.withValues(alpha: 0.8),
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                            if (showWeekTag) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                '非本周',
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  color: Colors.grey.shade400,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                softWrap: false,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
           ),
         ),
@@ -784,15 +857,5 @@ class _DetailRow extends StatelessWidget {
         Expanded(child: Text(text)),
       ],
     );
-  }
-}
-
-class _EmptyCell extends StatelessWidget {
-  const _EmptyCell({required this.dayColumnWidth});
-  final double dayColumnWidth;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(width: dayColumnWidth, height: _ScheduleGrid._slotHeight);
   }
 }
