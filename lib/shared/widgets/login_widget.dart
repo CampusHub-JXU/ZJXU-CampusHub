@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
@@ -41,10 +42,31 @@ class _LoginWidgetState extends State<LoginWidget> {
   Future<void> _refreshCaptcha() async {
     try {
       final bytes = await ZhengfangAuth.instance.fetchCaptcha();
-      if (mounted) setState(() => _captchaBytes = bytes);
-    } catch (_) {
+      // Validate that the bytes can actually be decoded as an image before
+      // handing them to Image.memory — avoids "Invalid image data" crashes
+      // that occur when the server returns non-image data on non-campus networks.
+      final codec = await ui.instantiateImageCodec(bytes);
+      codec.dispose();
       if (mounted) {
-        setState(() => _error = '验证码加载失败，请点击图片重试');
+        setState(() {
+          _captchaBytes = bytes;
+          _error = null;
+        });
+      }
+    } on CaptchaException catch (e) {
+      if (mounted) {
+        setState(() {
+          _captchaBytes = null;
+          _error = e.message;
+        });
+      }
+    } catch (_) {
+      // Covers DioException (network unreachable) and image decode failures
+      if (mounted) {
+        setState(() {
+          _captchaBytes = null;
+          _error = '无法加载验证码，请确保在校园网环境或已连接VPN后点击重试';
+        });
       }
     }
   }
@@ -150,13 +172,25 @@ class _LoginWidgetState extends State<LoginWidget> {
                   width: 120,
                   height: 56,
                   decoration: BoxDecoration(
-                    border: Border.all(color: colorScheme.outline),
+                    border: Border.all(
+                      color: _error != null && _captchaBytes == null
+                          ? colorScheme.error
+                          : colorScheme.outline,
+                    ),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: _captchaBytes != null
                       ? ClipRRect(
                           borderRadius: BorderRadius.circular(3),
                           child: Image.memory(_captchaBytes!, fit: BoxFit.fill),
+                        )
+                      : _error != null
+                      ? Center(
+                          child: Icon(
+                            Icons.refresh,
+                            color: colorScheme.error,
+                            size: 28,
+                          ),
                         )
                       : const Center(child: CircularProgressIndicator()),
                 ),

@@ -30,9 +30,13 @@ class AppColors {
 class AppTheme {
   AppTheme._();
 
-  // ── Light Theme ──────────────────────────────────────────────────────────
+  // ── Cached Themes ────────────────────────────────────────────────────────
+  // Pre-computed once; avoids rebuilding ThemeData + ColorScheme on every toggle.
 
-  static ThemeData get lightTheme {
+  static final ThemeData lightTheme = _buildLightTheme();
+  static final ThemeData darkTheme = _buildDarkTheme();
+
+  static ThemeData _buildLightTheme() {
     final colorScheme = ColorScheme(
       brightness: Brightness.light,
       primary: AppColors.primary,
@@ -93,9 +97,7 @@ class AppTheme {
       cardTheme: CardThemeData(
         color: AppColors.surfaceL3,
         elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         margin: EdgeInsets.zero,
       ),
 
@@ -106,10 +108,7 @@ class AppTheme {
           foregroundColor: Colors.white,
           shape: const StadiumBorder(),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-          textStyle: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-          ),
+          textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
         ),
       ),
 
@@ -147,7 +146,10 @@ class AppTheme {
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: AppColors.gold, width: 2),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
       ),
 
       // BottomSheet
@@ -213,15 +215,21 @@ class AppTheme {
 
   // ── Dark Theme ───────────────────────────────────────────────────────────
 
-  static ThemeData get darkTheme {
-    // Desaturated primary for dark mode
-    const primaryDark = Color(0xFFB85C6E);
+  // Pre-computed colors to avoid repeated withValues() allocations.
+  static const Color _darkPrimary = Color(0xFFB85C6E);
+  static final _darkAppBarBg = AppColors.darkSurface.withValues(alpha: 0.8);
+  static final _darkNavBg = AppColors.darkSurface.withValues(alpha: 0.8);
+  static final _darkNavIndicator = _darkPrimary.withValues(alpha: 0.2);
+  static final _darkDivider = Colors.white.withValues(alpha: 0.08);
+  static final _darkChipSelected = _darkPrimary.withValues(alpha: 0.2);
+  static final _darkCardBorder = Colors.white.withValues(alpha: 0.08);
 
+  static ThemeData _buildDarkTheme() {
     final colorScheme = ColorScheme(
       brightness: Brightness.dark,
-      primary: primaryDark,
+      primary: _darkPrimary,
       onPrimary: Colors.white,
-      primaryContainer: AppColors.primaryDark,
+      primaryContainer: AppColors.primaryLight,
       onPrimaryContainer: const Color(0xFFFFDAD9),
       secondary: AppColors.gold,
       onSecondary: Colors.white,
@@ -262,7 +270,7 @@ class AppTheme {
         centerTitle: true,
         elevation: 0,
         scrolledUnderElevation: 0,
-        backgroundColor: AppColors.darkSurface.withValues(alpha: 0.8),
+        backgroundColor: _darkAppBarBg,
         foregroundColor: colorScheme.onSurface,
         surfaceTintColor: Colors.transparent,
         titleTextStyle: const TextStyle(
@@ -277,31 +285,25 @@ class AppTheme {
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: BorderSide(
-            color: Colors.white.withValues(alpha: 0.08),
-            width: 0.5,
-          ),
+          side: BorderSide(color: _darkCardBorder, width: 0.5),
         ),
         margin: EdgeInsets.zero,
       ),
 
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: primaryDark,
+          backgroundColor: _darkPrimary,
           foregroundColor: Colors.white,
           shape: const StadiumBorder(),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-          textStyle: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-          ),
+          textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
         ),
       ),
 
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: primaryDark,
-          side: const BorderSide(color: primaryDark),
+          foregroundColor: _darkPrimary,
+          side: const BorderSide(color: _darkPrimary),
           shape: const StadiumBorder(),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
         ),
@@ -309,7 +311,7 @@ class AppTheme {
 
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: primaryDark,
+          foregroundColor: _darkPrimary,
           textStyle: const TextStyle(fontWeight: FontWeight.w600),
         ),
       ),
@@ -329,7 +331,10 @@ class AppTheme {
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: AppColors.gold, width: 2),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
       ),
 
       bottomSheetTheme: BottomSheetThemeData(
@@ -340,42 +345,42 @@ class AppTheme {
       ),
 
       navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: AppColors.darkSurface.withValues(alpha: 0.8),
-        indicatorColor: primaryDark.withValues(alpha: 0.2),
+        backgroundColor: _darkNavBg,
+        indicatorColor: _darkNavIndicator,
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
             return const TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: primaryDark,
+              color: _darkPrimary,
             );
           }
           return const TextStyle(fontSize: 12, color: Color(0xFFCAC4D0));
         }),
         iconTheme: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return const IconThemeData(color: primaryDark);
+            return const IconThemeData(color: _darkPrimary);
           }
           return const IconThemeData(color: Color(0xFF938F99));
         }),
       ),
 
       dividerTheme: DividerThemeData(
-        color: Colors.white.withValues(alpha: 0.08),
+        color: _darkDivider,
         thickness: 0.5,
         space: 1,
       ),
 
       chipTheme: ChipThemeData(
         backgroundColor: const Color(0xFF35272C),
-        selectedColor: primaryDark.withValues(alpha: 0.2),
+        selectedColor: _darkChipSelected,
         labelStyle: const TextStyle(fontSize: 13, color: Color(0xFFE6E1E5)),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         side: BorderSide.none,
       ),
 
       progressIndicatorTheme: const ProgressIndicatorThemeData(
-        color: primaryDark,
+        color: _darkPrimary,
       ),
 
       snackBarTheme: SnackBarThemeData(

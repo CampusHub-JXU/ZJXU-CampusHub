@@ -15,6 +15,15 @@ class LoginFailure extends LoginResult {
   LoginFailure(this.message);
 }
 
+/// Thrown when captcha loading fails due to network or server issues.
+class CaptchaException implements Exception {
+  final String message;
+  CaptchaException(this.message);
+
+  @override
+  String toString() => message;
+}
+
 class ZhengfangAuth {
   ZhengfangAuth._();
   static final ZhengfangAuth instance = ZhengfangAuth._();
@@ -52,6 +61,20 @@ class ZhengfangAuth {
     return base64.encode(encrypted);
   }
 
+  // ── Image validation ─────────────────────────────────────────────────────────
+
+  /// Check PNG (89 50 4E 47), JPEG (FF D8 FF), or GIF (47 49 46) magic bytes.
+  static bool _isValidImage(Uint8List data) {
+    if (data.length < 4) return false;
+    // PNG
+    if (data[0] == 0x89 && data[1] == 0x50 && data[2] == 0x4E && data[3] == 0x47) return true;
+    // JPEG
+    if (data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF) return true;
+    // GIF
+    if (data[0] == 0x47 && data[1] == 0x49 && data[2] == 0x46) return true;
+    return false;
+  }
+
   // ── Public API ───────────────────────────────────────────────────────────────
 
   Future<Uint8List> fetchCaptcha() async {
@@ -65,7 +88,27 @@ class ZhengfangAuth {
         headers: {'Referer': _loginPageUrl},
       ),
     );
-    return Uint8List.fromList(resp.data!);
+
+    // Check content-type: if HTML is returned, it's likely a redirect/error page
+    // (happens when not on campus network)
+    final contentType = resp.headers.value('content-type') ?? '';
+    if (contentType.contains('text/html')) {
+      throw CaptchaException('无法连接到教务系统，请确保在校园网环境或已连接VPN');
+    }
+
+    final bytes = resp.data;
+    if (bytes == null || bytes.isEmpty) {
+      throw CaptchaException('验证码数据为空，请重试');
+    }
+
+    final data = Uint8List.fromList(bytes);
+
+    // Validate image magic bytes (PNG / JPEG / GIF)
+    if (!_isValidImage(data)) {
+      throw CaptchaException('无法连接到教务系统，请确保在校园网环境或已连接VPN');
+    }
+
+    return data;
   }
 
   Future<LoginResult> login(

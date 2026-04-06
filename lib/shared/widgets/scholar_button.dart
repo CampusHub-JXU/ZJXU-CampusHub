@@ -21,7 +21,7 @@ class ScholarButton extends StatelessWidget {
     required VoidCallback? onPressed,
     required String text,
     IconData? icon,
-    bool expanded = false,
+    bool expanded,
   }) = _ScholarButtonText;
 
   @override
@@ -49,7 +49,9 @@ class ScholarButton extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
             child: icon != null
                 ? Row(
-                    mainAxisSize: expanded ? MainAxisSize.max : MainAxisSize.min,
+                    mainAxisSize: expanded
+                        ? MainAxisSize.max
+                        : MainAxisSize.min,
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(icon, color: Colors.white, size: 18),
@@ -77,7 +79,15 @@ class _ScholarButtonText extends ScholarButton {
     required String text,
     super.icon,
     super.expanded,
-  }) : super(child: Text(text, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)));
+  }) : super(
+         child: Text(
+           text,
+           style: const TextStyle(
+             color: Colors.white,
+             fontWeight: FontWeight.w600,
+           ),
+         ),
+       );
 }
 
 /// Secondary button: surface-container-high bg, primary text.
@@ -100,7 +110,7 @@ class ScholarSecondaryButton extends StatelessWidget {
     required VoidCallback? onPressed,
     required String text,
     IconData? icon,
-    bool expanded = false,
+    bool expanded,
   }) = _ScholarSecondaryButtonText;
 
   @override
@@ -120,7 +130,9 @@ class ScholarSecondaryButton extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
             child: icon != null
                 ? Row(
-                    mainAxisSize: expanded ? MainAxisSize.max : MainAxisSize.min,
+                    mainAxisSize: expanded
+                        ? MainAxisSize.max
+                        : MainAxisSize.min,
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(icon, color: cs.primary, size: 18),
@@ -148,7 +160,15 @@ class _ScholarSecondaryButtonText extends ScholarSecondaryButton {
     required String text,
     super.icon,
     super.expanded,
-  }) : super(child: Builder(
-          builder: (context) => Text(text,
-              style: TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w600))));
+  }) : super(
+         child: Builder(
+           builder: (context) => Text(
+             text,
+             style: TextStyle(
+               color: Theme.of(context).colorScheme.primary,
+               fontWeight: FontWeight.w600,
+             ),
+           ),
+         ),
+       );
 }

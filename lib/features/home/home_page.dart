@@ -245,6 +245,7 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       backgroundColor: isDark ? null : const Color(0xFFF5F5F5),
       body: SafeArea(
@@ -253,10 +254,39 @@ class _HomePageState extends State<HomePage> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _buildHeader(context),
-              const SizedBox(height: 8),
-              _buildTodayOverview(context),
-              const SizedBox(height: 8),
-              _buildServiceGrid(context),
+              const SizedBox(height: 16),
+              // Two-column staggered waterfall layout
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Left column - taller cards first
+                    Expanded(
+                      child: Column(
+                        children: [
+                          _buildCampusCardBalance(context),
+                          const SizedBox(height: 10),
+                          _buildQuickServices(context),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    // Right column - shorter cards first (stagger effect)
+                    Expanded(
+                      child: Column(
+                        children: [
+                          _buildNoticeCard(context),
+                          const SizedBox(height: 10),
+                          _buildGradesCard(context),
+                          const SizedBox(height: 10),
+                          _buildMoreServicesCard(context),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               const SizedBox(height: 32),
             ],
           ),
@@ -482,98 +512,73 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildTodayOverview(BuildContext context) {
+  Widget _buildCampusCardBalance(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final dividerColor = isDark
-        ? Colors.white.withValues(alpha: 0.08)
-        : const Color(0xFFE0E0E0);
     final bgColor = isDark ? cs.surfaceContainerLowest : Colors.white;
 
-    final stats = [
-      _StatItem(
-        icon: Icons.class_outlined,
-        value: '3节',
-        label: '今日课程',
-        color: AppColors.primary,
-      ),
-      _StatItem(
-        icon: Icons.check_circle_outline,
-        value: '2项',
-        label: '待办事项',
-        color: AppColors.warning,
-      ),
-      _StatItem(
-        icon: Icons.account_balance_wallet_outlined,
-        value: '¥$_campusCardBalance',
-        label: '卡余额',
-        color: AppColors.success,
-      ),
-      _StatItem(
-        icon: Icons.wifi,
-        value: '已连接',
-        label: '校园网',
-        color: AppColors.info,
-      ),
-    ];
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+    return GestureDetector(
+      onTap: () => context.pushNamed('campus-card'),
       child: Container(
         decoration: BoxDecoration(
           color: bgColor,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(16),
         ),
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-        child: Row(
+        padding: const EdgeInsets.all(16),
+        height: 140,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            for (int i = 0; i < stats.length; i++) ...[
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(stats[i].icon, size: 18, color: stats[i].color),
-                    const SizedBox(height: 4),
-                    Text(
-                      stats[i].value,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: cs.onSurface,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      stats[i].label,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: cs.onSurfaceVariant,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
+            Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.account_balance_wallet_outlined,
+                    color: AppColors.primary,
+                    size: 20,
+                  ),
                 ),
-              ),
-              if (i < stats.length - 1)
-                Container(width: 1, height: 36, color: dividerColor),
-            ],
+              ],
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '¥$_campusCardBalance',
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: cs.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '校园卡余额',
+                  style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+                ),
+              ],
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildServiceGrid(BuildContext context) {
+  Widget _buildQuickServices(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bgColor = isDark ? cs.surfaceContainerLowest : Colors.white;
 
     final services = [
       _ServiceItem(
-        icon: Icons.calendar_today,
+        icon: Icons.calendar_today_outlined,
         label: '课表',
         color: AppColors.primary,
         route: 'schedule',
@@ -596,57 +601,201 @@ class _HomePageState extends State<HomePage> {
         color: AppColors.success,
         route: null,
       ),
-      _ServiceItem(
-        icon: Icons.credit_card,
-        label: '校园卡',
-        color: AppColors.primary,
-        route: 'campus-card',
-      ),
-      _ServiceItem(
-        icon: Icons.build_outlined,
-        label: '报修',
-        color: AppColors.error,
-        route: null,
-      ),
-      _ServiceItem(
-        icon: Icons.directions_bus_outlined,
-        label: '校车',
-        color: AppColors.gold,
-        route: null,
-      ),
-      _ServiceItem(
-        icon: Icons.apps,
-        label: '更多',
-        color: cs.onSurfaceVariant,
-        route: 'service-hall',
-      ),
     ];
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+    return Container(
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '快捷服务',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: cs.onSurface,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(child: _buildServiceButton(context, services[0])),
+              const SizedBox(width: 8),
+              Expanded(child: _buildServiceButton(context, services[1])),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(child: _buildServiceButton(context, services[2])),
+              const SizedBox(width: 8),
+              Expanded(child: _buildServiceButton(context, services[3])),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildServiceButton(BuildContext context, _ServiceItem item) {
+    final cs = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: item.route != null ? () => context.pushNamed(item.route!) : null,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: item.color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(item.icon, color: item.color, size: 22),
+            const SizedBox(height: 6),
+            Text(
+              item.label,
+              style: TextStyle(
+                fontSize: 12,
+                color: cs.onSurface,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNoticeCard(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = isDark ? cs.surfaceContainerLowest : Colors.white;
+
+    return GestureDetector(
+      onTap: () => context.pushNamed('notice-list'),
       child: Container(
         decoration: BoxDecoration(
           color: bgColor,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(16),
         ),
-        padding: const EdgeInsets.all(12),
-        child: GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 4,
-            mainAxisSpacing: 8,
-            crossAxisSpacing: 8,
-            childAspectRatio: 0.85,
-          ),
-          itemCount: services.length,
-          itemBuilder: (context, index) {
-            final s = services[index];
-            return _ServiceGridItem(
-              item: s,
-              onTap: s.route != null ? () => context.pushNamed(s.route!) : null,
-            );
-          },
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+        height: 80,
+        child: Row(
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: AppColors.gold.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(
+                Icons.campaign_outlined,
+                color: AppColors.gold,
+                size: 18,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                '校园公告',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: cs.onSurface,
+                ),
+              ),
+            ),
+            Icon(Icons.arrow_forward_ios, size: 14, color: cs.onSurfaceVariant),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGradesCard(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = isDark ? cs.surfaceContainerLowest : Colors.white;
+
+    return GestureDetector(
+      onTap: () => context.pushNamed('grades'),
+      child: Container(
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(
+                Icons.school_outlined,
+                color: AppColors.warning,
+                size: 22,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '成绩查询',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: cs.onSurface,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '查看各科成绩与绩点',
+              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMoreServicesCard(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = isDark ? cs.surfaceContainerLowest : Colors.white;
+
+    return GestureDetector(
+      onTap: () => context.pushNamed('service-hall'),
+      child: Container(
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            Icon(Icons.apps, size: 20, color: cs.onSurfaceVariant),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                '更多服务',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: cs.onSurface,
+                ),
+              ),
+            ),
+            Icon(Icons.arrow_forward_ios, size: 14, color: cs.onSurfaceVariant),
+          ],
         ),
       ),
     );
@@ -692,21 +841,6 @@ class _CardActionButton extends StatelessWidget {
   }
 }
 
-// ── Stat Item ────────────────────────────────────────────────────────────
-
-class _StatItem {
-  const _StatItem({
-    required this.icon,
-    required this.value,
-    required this.label,
-    required this.color,
-  });
-  final IconData icon;
-  final String value;
-  final String label;
-  final Color color;
-}
-
 // ── Service Grid ────────────────────────────────────────────────────────────
 
 class _ServiceItem {
@@ -720,41 +854,4 @@ class _ServiceItem {
   final String label;
   final Color color;
   final String? route;
-}
-
-class _ServiceGridItem extends StatelessWidget {
-  const _ServiceGridItem({required this.item, this.onTap});
-  final _ServiceItem item;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: item.color.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(item.icon, color: item.color, size: 20),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            item.label,
-            style: TextStyle(
-              fontSize: 12,
-              color: Theme.of(context).colorScheme.onSurface,
-            ),
-            maxLines: 1,
-          ),
-        ],
-      ),
-    );
-  }
 }

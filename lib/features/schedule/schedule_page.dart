@@ -531,7 +531,9 @@ class _DayColumn extends StatelessWidget {
         final first = slotCourses.first;
         if (first.startLesson == slot && !rendered.contains(first.courseName)) {
           final groupSize = courseGroupSize[first.courseName] ?? 1;
-          final group = conflictGroups[courses.indexOf(first)]!;
+          final firstIdx = courses.indexOf(first);
+          final rootIdx = find(firstIdx);
+          final group = conflictGroups[rootIdx] ?? [first];
           final span = (first.endLesson - first.startLesson + 1).clamp(
             1,
             13 - slot + 1,

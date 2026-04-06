@@ -1,6 +1,7 @@
 gradle-wrapper.jar
 /.gradle
 /.gradle-user-home/
+/.kotlin/
 /captures/
 /gradlew
 /gradlew.bat
