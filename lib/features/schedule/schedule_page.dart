@@ -235,7 +235,10 @@ class _ScheduleGrid extends StatelessWidget {
                     for (int day = 1; day <= 7; day++)
                       _DayColumn(
                         courses: courses
-                            .where((c) => c.weekday == day)
+                            .where(
+                              (c) =>
+                                  c.weekday == day && c.isInWeek(currentWeek),
+                            )
                             .toList(),
                         colorFor: _colorForCourse,
                         dayColumnWidth: dayColumnWidth,
