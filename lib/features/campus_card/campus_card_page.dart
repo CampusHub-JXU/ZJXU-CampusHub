@@ -3,7 +3,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../../app/theme.dart';
 import '../../shared/widgets/ship_card.dart';
-import '../../shared/widgets/webview_page.dart';
+import '../../shared/widgets/unified_auth_protected_webview_page.dart';
 import 'campus_card_service.dart';
 
 class CampusCardPage extends StatefulWidget {
@@ -165,9 +165,10 @@ class _CampusCardPageState extends State<CampusCardPage> {
 
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => WebViewPage(
+        builder: (_) => UnifiedAuthProtectedWebViewPage(
           title: title,
           url: CampusCardService.statusPageUrl,
+          loginDescription: '校园卡服务使用统一认证登录，账号为校园一卡通号',
           onLoadStop: _captureBalanceFromDetailPage,
         ),
       ),

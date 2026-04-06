@@ -84,38 +84,6 @@ class _HomePageState extends State<HomePage> {
     '20:40',
   ];
 
-  String _normalizeCourseName(String value) {
-    return value.toLowerCase().replaceAll(
-      RegExp('[\\s\\-—_（）()【】\\[\\]<>《》,，.。:：;；"\\\'、/+]+'),
-      '',
-    );
-  }
-
-  bool _matchesCourseName(String left, String right) {
-    final a = _normalizeCourseName(left);
-    final b = _normalizeCourseName(right);
-    if (a.isEmpty || b.isEmpty) return false;
-    return a.contains(b) || b.contains(a);
-  }
-
-  bool _isCancelledCourse(
-    CourseEntry course,
-    int week,
-    List<CourseCancellationRule> cancellationRules,
-  ) {
-    for (final rule in cancellationRules) {
-      if (rule.week != week || rule.weekday != course.weekday) continue;
-      final isOverlap =
-          course.startLesson <= rule.endLesson &&
-          course.endLesson >= rule.startLesson;
-      if (!isOverlap) continue;
-      final ruleCourseName = rule.courseName;
-      if (ruleCourseName == null || ruleCourseName.isEmpty) return true;
-      if (_matchesCourseName(course.courseName, ruleCourseName)) return true;
-    }
-    return false;
-  }
-
   static String _slotTimeRange(int start, int end) {
     final s = (start >= 1 && start <= 13) ? _slotStartTimes[start - 1] : '??';
     final e = (end >= 1 && end <= 13) ? _slotEndTimes[end - 1] : '??';
@@ -167,10 +135,10 @@ class _HomePageState extends State<HomePage> {
         academicYear,
         term,
       );
-      List<CourseCancellationRule> cancellationRules = const [];
+      List<CourseChangeRule> courseChangeRules = const [];
       try {
-        cancellationRules = await ScheduleService.instance
-            .fetchCancellationRules(studentId);
+        courseChangeRules = await ScheduleService.instance
+            .fetchCourseChangeRules(studentId);
       } catch (_) {}
       if (!mounted) return;
       final today = DateTime(now.year, now.month, now.day);
@@ -178,10 +146,15 @@ class _HomePageState extends State<HomePage> {
       for (int offset = 0; offset < 14; offset++) {
         final date = today.add(Duration(days: offset));
         final week = _weekForDate(date);
+        final effectiveCourses = ScheduleService.instance
+            .buildEffectiveWeekCourses(
+              courses: courses,
+              week: week,
+              changeRules: courseChangeRules,
+            );
         final dayCourses =
-            courses
-                .where((c) => c.weekday == date.weekday && c.isInWeek(week))
-                .where((c) => !_isCancelledCourse(c, week, cancellationRules))
+            effectiveCourses
+                .where((c) => c.weekday == date.weekday)
                 .where((c) => offset > 0 || c.startLesson >= nextLessonToday)
                 .toList()
               ..sort((a, b) => a.startLesson.compareTo(b.startLesson));

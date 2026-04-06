@@ -1,5 +1,5 @@
-import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
 
 import '../../app/theme.dart';
 import '../../core/auth/zhengfang_auth.dart';
@@ -20,6 +20,7 @@ class _SchedulePageState extends State<SchedulePage> {
   bool _loading = false;
   String? _error;
   List<CourseEntry> _courses = [];
+  List<CourseChangeRule> _courseChangeRules = const [];
   int _term = 12;
   int _displayWeek = 1;
   late final PageController _weekPageController;
@@ -64,13 +65,26 @@ class _SchedulePageState extends State<SchedulePage> {
         _academicYear,
         _term,
       );
-      if (mounted) setState(() => _courses = courses);
+
+      List<CourseChangeRule> courseChangeRules = const [];
+      try {
+        courseChangeRules = await ScheduleService.instance
+            .fetchCourseChangeRules(studentId);
+      } catch (_) {}
+
+      if (mounted) {
+        setState(() {
+          _courses = courses;
+          _courseChangeRules = courseChangeRules;
+        });
+      }
     } on ScheduleAuthExpiredException catch (_) {
       ZhengfangAuth.instance.markLoggedOut();
       if (mounted) {
         setState(() {
           _loggedIn = false;
           _courses = [];
+          _courseChangeRules = const [];
           _error = null;
         });
       }
@@ -80,7 +94,7 @@ class _SchedulePageState extends State<SchedulePage> {
       final code = e.response?.statusCode;
       final msg = code == null ? '网络请求失败，请稍后重试' : '网络请求失败（状态码：$code）';
       if (mounted) setState(() => _error = msg);
-    } catch (e) {
+    } catch (_) {
       if (mounted) setState(() => _error = '获取课表失败，请稍后重试');
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -159,6 +173,7 @@ class _SchedulePageState extends State<SchedulePage> {
           child: _ScheduleGrid(
             key: ValueKey('week-grid-$week'),
             courses: _courses,
+            courseChangeRules: _courseChangeRules,
             currentWeek: week,
             actualCurrentWeek: _currentWeek,
           ),
@@ -168,17 +183,17 @@ class _SchedulePageState extends State<SchedulePage> {
   }
 }
 
-// ── Schedule Grid ───────────────────────────────────────────────────────────
-
 class _ScheduleGrid extends StatelessWidget {
   const _ScheduleGrid({
     super.key,
     required this.courses,
+    required this.courseChangeRules,
     required this.currentWeek,
     required this.actualCurrentWeek,
   });
 
   final List<CourseEntry> courses;
+  final List<CourseChangeRule> courseChangeRules;
   final int currentWeek;
   final int actualCurrentWeek;
 
@@ -186,14 +201,14 @@ class _ScheduleGrid extends StatelessWidget {
   static const _slotHeight = 68.0;
 
   static const _courseColors = [
-    Color(0xFF8B1A2D), // Wine Red (primary)
-    Color(0xFF1565C0), // Blue
-    Color(0xFF2E7D32), // Green
-    Color(0xFFD4AF37), // Gold
-    Color(0xFF7B1FA2), // Purple
-    Color(0xFF00838F), // Teal
-    Color(0xFFE65100), // Orange
-    Color(0xFFAD1457), // Pink
+    Color(0xFF8B1A2D),
+    Color(0xFF1565C0),
+    Color(0xFF2E7D32),
+    Color(0xFFD4AF37),
+    Color(0xFF7B1FA2),
+    Color(0xFF00838F),
+    Color(0xFFE65100),
+    Color(0xFFAD1457),
   ];
 
   static const _inactiveColors = [
@@ -214,6 +229,13 @@ class _ScheduleGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final effectiveWeekCourses = ScheduleService.instance
+        .buildEffectiveWeekCourses(
+          courses: courses,
+          week: currentWeek,
+          changeRules: courseChangeRules,
+        );
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final dayColumnWidth = (constraints.maxWidth - _slotColumnWidth) / 7;
@@ -234,15 +256,18 @@ class _ScheduleGrid extends StatelessWidget {
                     _SlotColumn(slotColumnWidth: _slotColumnWidth),
                     for (int day = 1; day <= 7; day++)
                       _DayColumn(
-                        courses: courses
+                        currentWeekCourses: effectiveWeekCourses
+                            .where((course) => course.weekday == day)
+                            .toList(),
+                        otherWeekCourses: courses
                             .where(
-                              (c) =>
-                                  c.weekday == day && c.isInWeek(currentWeek),
+                              (course) =>
+                                  course.weekday == day &&
+                                  !course.isInWeek(currentWeek),
                             )
                             .toList(),
                         colorFor: _colorForCourse,
                         dayColumnWidth: dayColumnWidth,
-                        currentWeek: currentWeek,
                       ),
                   ],
                 ),
@@ -271,7 +296,7 @@ class _DayHeaders extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final today = DateTime.now().weekday; // 1=Mon
+    final today = DateTime.now().weekday;
     final weekStartDate = SemesterCalendar.instance.semesterStartDate.value.add(
       Duration(days: (currentWeek - 1) * 7),
     );
@@ -420,20 +445,29 @@ class _SlotColumn extends StatelessWidget {
 
 class _DayColumn extends StatelessWidget {
   const _DayColumn({
-    required this.courses,
+    required this.currentWeekCourses,
+    required this.otherWeekCourses,
     required this.colorFor,
     required this.dayColumnWidth,
-    required this.currentWeek,
   });
 
-  final List<CourseEntry> courses;
+  final List<CourseEntry> currentWeekCourses;
+  final List<CourseEntry> otherWeekCourses;
   final Color Function(String, bool) colorFor;
   final double dayColumnWidth;
-  final int currentWeek;
 
   @override
   Widget build(BuildContext context) {
-    final placements = _buildCoursePlacements();
+    final displayCourses = [
+      ...currentWeekCourses.map(
+        (course) => _DisplayCourseEntry(course: course, isCurrentWeek: true),
+      ),
+      ...otherWeekCourses.map(
+        (course) => _DisplayCourseEntry(course: course, isCurrentWeek: false),
+      ),
+    ];
+
+    final placements = _buildCoursePlacements(displayCourses);
 
     return SizedBox(
       width: dayColumnWidth,
@@ -442,22 +476,21 @@ class _DayColumn extends StatelessWidget {
         children: [
           for (final placement in placements)
             Positioned(
-              left:
-                  placement.column * (dayColumnWidth / placement.totalColumns),
+              left: placement.left,
               top:
-                  (placement.course.startLesson - 1) *
+                  (placement.entry.course.startLesson - 1) *
                   _ScheduleGrid._slotHeight,
-              width: dayColumnWidth / placement.totalColumns,
+              width: placement.width,
               height: _ScheduleGrid._slotHeight * placement.span,
               child: _CourseCell(
-                course: placement.course,
+                course: placement.entry.course,
                 span: placement.span,
                 color: colorFor(
-                  placement.course.courseName,
-                  placement.course.isInWeek(currentWeek),
+                  placement.entry.course.courseName,
+                  placement.entry.isCurrentWeek,
                 ),
-                dayColumnWidth: dayColumnWidth / placement.totalColumns,
-                isCurrentWeek: placement.course.isInWeek(currentWeek),
+                dayColumnWidth: placement.width,
+                isCurrentWeek: placement.entry.isCurrentWeek,
               ),
             ),
         ],
@@ -465,95 +498,200 @@ class _DayColumn extends StatelessWidget {
     );
   }
 
-  List<_PlacedCourse> _buildCoursePlacements() {
-    if (courses.isEmpty) return const [];
+  List<_PlacedCourse> _buildCoursePlacements(
+    List<_DisplayCourseEntry> displayCourses,
+  ) {
+    if (displayCourses.isEmpty) return const [];
 
-    final sortedCourses = [...courses]
+    final sortedCourses = [...displayCourses]
       ..sort((a, b) {
-        final byStart = a.startLesson.compareTo(b.startLesson);
+        final byStart = a.course.startLesson.compareTo(b.course.startLesson);
         if (byStart != 0) return byStart;
 
-        final byEnd = a.endLesson.compareTo(b.endLesson);
+        if (a.isCurrentWeek != b.isCurrentWeek) {
+          return a.isCurrentWeek ? -1 : 1;
+        }
+
+        final byEnd = a.course.endLesson.compareTo(b.course.endLesson);
         if (byEnd != 0) return byEnd;
 
-        return a.courseName.compareTo(b.courseName);
+        return a.course.courseName.compareTo(b.course.courseName);
       });
 
     final placements = <_PlacedCourse>[];
-    final clusters = <List<CourseEntry>>[];
-    var currentCluster = <CourseEntry>[];
+    final clusters = <List<_DisplayCourseEntry>>[];
+    var currentCluster = <_DisplayCourseEntry>[];
     var clusterEnd = 0;
 
     for (final course in sortedCourses) {
-      if (currentCluster.isEmpty || course.startLesson > clusterEnd) {
+      if (currentCluster.isEmpty || course.course.startLesson > clusterEnd) {
         if (currentCluster.isNotEmpty) clusters.add(currentCluster);
         currentCluster = [course];
-        clusterEnd = course.endLesson;
+        clusterEnd = course.course.endLesson;
         continue;
       }
 
       currentCluster.add(course);
-      if (course.endLesson > clusterEnd) clusterEnd = course.endLesson;
+      if (course.course.endLesson > clusterEnd) {
+        clusterEnd = course.course.endLesson;
+      }
     }
 
     if (currentCluster.isNotEmpty) clusters.add(currentCluster);
 
     for (final cluster in clusters) {
-      final columnEndLessons = <int>[];
-      final assignments = <({CourseEntry course, int column})>[];
-
-      for (final course in cluster) {
-        var targetColumn = -1;
-
-        for (var i = 0; i < columnEndLessons.length; i++) {
-          if (columnEndLessons[i] < course.startLesson) {
-            targetColumn = i;
-            break;
-          }
-        }
-
-        if (targetColumn == -1) {
-          targetColumn = columnEndLessons.length;
-          columnEndLessons.add(course.endLesson);
-        } else {
-          columnEndLessons[targetColumn] = course.endLesson;
-        }
-
-        assignments.add((course: course, column: targetColumn));
-      }
-
-      final totalColumns = columnEndLessons.length;
-      for (final assignment in assignments) {
-        final span =
-            (assignment.course.endLesson - assignment.course.startLesson + 1)
-                .clamp(1, 13 - assignment.course.startLesson + 1);
-
-        placements.add(
-          _PlacedCourse(
-            course: assignment.course,
-            column: assignment.column,
-            totalColumns: totalColumns,
-            span: span,
-          ),
-        );
-      }
+      placements.addAll(_buildClusterPlacements(cluster));
     }
 
     return placements;
   }
+
+  List<_PlacedCourse> _buildClusterPlacements(
+    List<_DisplayCourseEntry> cluster,
+  ) {
+    final currentEntries = cluster
+        .where((entry) => entry.isCurrentWeek)
+        .toList();
+    final otherEntries = cluster
+        .where((entry) => !entry.isCurrentWeek)
+        .toList();
+
+    if (currentEntries.isEmpty) {
+      return _buildStandardPlacements(otherEntries, dayColumnWidth);
+    }
+
+    final placements = <_PlacedCourse>[
+      ..._buildStandardPlacements(currentEntries, dayColumnWidth),
+    ];
+
+    if (otherEntries.isEmpty) return placements;
+
+    final assignments = _assignColumns(otherEntries);
+    final previewWidth = _clampDouble(
+      dayColumnWidth * (currentEntries.length > 1 ? 0.24 : 0.28),
+      14,
+      20,
+    );
+    final previewStep = previewWidth * 0.56;
+    final maxLeft = dayColumnWidth - previewWidth;
+
+    for (final assignment in assignments) {
+      final span =
+          (assignment.entry.course.endLesson -
+                  assignment.entry.course.startLesson +
+                  1)
+              .clamp(1, 13 - assignment.entry.course.startLesson + 1);
+
+      placements.add(
+        _PlacedCourse(
+          entry: assignment.entry,
+          left: _clampDouble(
+            maxLeft - assignment.column * previewStep,
+            0,
+            maxLeft,
+          ),
+          width: previewWidth,
+          span: span,
+        ),
+      );
+    }
+
+    return placements;
+  }
+
+  List<_PlacedCourse> _buildStandardPlacements(
+    List<_DisplayCourseEntry> entries,
+    double availableWidth,
+  ) {
+    if (entries.isEmpty) return const [];
+
+    final assignments = _assignColumns(entries);
+    final totalColumns = assignments.fold<int>(
+      0,
+      (maxColumns, assignment) => assignment.column + 1 > maxColumns
+          ? assignment.column + 1
+          : maxColumns,
+    );
+    final columnWidth = availableWidth / totalColumns;
+
+    return assignments.map((assignment) {
+      final span =
+          (assignment.entry.course.endLesson -
+                  assignment.entry.course.startLesson +
+                  1)
+              .clamp(1, 13 - assignment.entry.course.startLesson + 1);
+
+      return _PlacedCourse(
+        entry: assignment.entry,
+        left: assignment.column * columnWidth,
+        width: columnWidth,
+        span: span,
+      );
+    }).toList();
+  }
+
+  List<_ColumnAssignment> _assignColumns(List<_DisplayCourseEntry> entries) {
+    final assignments = <_ColumnAssignment>[];
+    final columnEndLessons = <int>[];
+
+    for (final entry in entries) {
+      var targetColumn = -1;
+
+      for (var i = 0; i < columnEndLessons.length; i++) {
+        if (columnEndLessons[i] < entry.course.startLesson) {
+          targetColumn = i;
+          break;
+        }
+      }
+
+      if (targetColumn == -1) {
+        targetColumn = columnEndLessons.length;
+        columnEndLessons.add(entry.course.endLesson);
+      } else {
+        columnEndLessons[targetColumn] = entry.course.endLesson;
+      }
+
+      assignments.add(_ColumnAssignment(entry: entry, column: targetColumn));
+    }
+
+    return assignments;
+  }
+
+  double _clampDouble(double value, double min, double max) {
+    if (value < min) return min;
+    if (value > max) return max;
+    return value;
+  }
+}
+
+class _DisplayCourseEntry {
+  const _DisplayCourseEntry({
+    required this.course,
+    required this.isCurrentWeek,
+  });
+
+  final CourseEntry course;
+  final bool isCurrentWeek;
+}
+
+class _ColumnAssignment {
+  const _ColumnAssignment({required this.entry, required this.column});
+
+  final _DisplayCourseEntry entry;
+  final int column;
 }
 
 class _PlacedCourse {
   const _PlacedCourse({
-    required this.course,
-    required this.column,
-    required this.totalColumns,
+    required this.entry,
+    required this.left,
+    required this.width,
     required this.span,
   });
 
-  final CourseEntry course;
-  final int column;
-  final int totalColumns;
+  final _DisplayCourseEntry entry;
+  final double left;
+  final double width;
   final int span;
 }
 
@@ -607,17 +745,19 @@ class _CourseCell extends StatelessWidget {
               const SizedBox(height: 16),
               _DetailRow(
                 icon: Icons.person_outline,
-                text: '教师：${course.teacherName}',
+                text:
+                    '教师：${course.teacherName.isEmpty ? '待定' : course.teacherName}',
               ),
               const SizedBox(height: 10),
               _DetailRow(
                 icon: Icons.meeting_room_outlined,
-                text: '教室：${course.classroom}',
+                text:
+                    '教室：${course.classroom.isEmpty ? '待定' : course.classroom}',
               ),
               const SizedBox(height: 10),
               _DetailRow(
                 icon: Icons.place_outlined,
-                text: '校区：${course.campus}',
+                text: '校区：${course.campus.isEmpty ? '待定' : course.campus}',
               ),
               const SizedBox(height: 10),
               _DetailRow(
@@ -641,7 +781,7 @@ class _CourseCell extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final overlayColor = isCurrentWeek
         ? color.withValues(alpha: 0.1)
-        : Colors.transparent;
+        : Colors.grey.withValues(alpha: 0.06);
     final contentColor = isCurrentWeek ? color : Colors.grey.shade500;
 
     return Container(
