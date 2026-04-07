@@ -161,34 +161,54 @@ class ZhengfangAuth {
 
   String? _cachedCasExecution;
   String? _cachedCasLt;
+  String? _cachedCasLoginUrl;  // 保存重定向后的 CAS 登录 URL
 
   /// 获取 WebVPN CAS 验证码
   Future<Uint8List> fetchWebVpnCasCaptcha() async {
     AppLogger.instance.debug('正在获取 WebVPN CAS 登录页面...');
-    // 修正路径：_webVpnBase 末尾无斜杠，_webVpnCasPath 开头有斜杠
+    // WebVPN /login 会 302 重定向到 CAS 登录页面，需要跟随重定向
     final loginUri = '$_webVpnBase$_webVpnCasPath';
     final pageResp = await _dio.get<String>(
       loginUri,
       options: Options(
         responseType: ResponseType.plain,
+        followRedirects: false,  // 手动处理重定向
+        validateStatus: (s) => s != null && s < 400,
         headers: {'Referer': loginUri},
       ),
     );
-    final html = pageResp.data ?? '';
+
+    // 处理重定向，获取真实的 CAS 登录页面
+    var casLoginUrl = pageResp.headers.value('location') ?? '';
+    if (casLoginUrl.startsWith('/')) {
+      casLoginUrl = '$_webVpnBase$casLoginUrl';
+    }
+    AppLogger.instance.debug('CAS 登录页面: $casLoginUrl');
+
+    final casResp = await _dio.get<String>(
+      casLoginUrl,
+      options: Options(
+        responseType: ResponseType.plain,
+        headers: {'Referer': loginUri},
+      ),
+    );
+
+    final html = casResp.data ?? '';
     _cachedCasExecution = _extractHiddenField(html, 'execution');
     _cachedCasLt = _extractHiddenField(html, 'lt');
+    _cachedCasLoginUrl = casLoginUrl;  // 保存 CAS 登录 URL
     AppLogger.instance.debug('WebVPN CAS execution: ${_cachedCasExecution?.length ?? 0} 字符, lt: ${_cachedCasLt?.length ?? 0} 字符');
 
     final ts = DateTime.now().millisecondsSinceEpoch;
-    // 验证码URL：去掉双斜杠
-    final captchaUri = '$loginUri/captcha.html';
+    // 验证码 URL 基于 CAS 登录页面
+    final captchaUri = '$casLoginUrl/captcha.html';
     AppLogger.instance.debug('正在获取 WebVPN CAS 验证码 from: $captchaUri');
     final resp = await _dio.get<List<int>>(
       captchaUri,
       queryParameters: {'t': ts, 'vpn-1': ''},
       options: Options(
         responseType: ResponseType.bytes,
-        headers: {'Referer': loginUri},
+        headers: {'Referer': casLoginUrl},
       ),
     );
 
@@ -225,7 +245,7 @@ class ZhengfangAuth {
       }
 
       AppLogger.instance.info('正在通过 WebVPN CAS 登录 (一卡通认证)...');
-      final loginUri = '$_webVpnBase$_webVpnCasPath';
+      final loginUri = _cachedCasLoginUrl ?? '$_webVpnBase$_webVpnCasPath';
       final resp = await _dio.post<String>(
         loginUri,
         data: {
@@ -255,6 +275,7 @@ class ZhengfangAuth {
       if (statusCode == 200 && !uri.contains('login')) {
         _cachedCasExecution = null;
         _cachedCasLt = null;
+        _cachedCasLoginUrl = null;
         AppLogger.instance.info('WebVPN CAS 认证成功，正在同步 Cookie...');
         await syncWebVpnCookiesToWebView();
         AppLogger.instance.info('WebVPN CAS 认证成功，Cookie 同步完成');
