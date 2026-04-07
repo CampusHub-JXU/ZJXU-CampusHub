@@ -255,6 +255,7 @@ class ZhengfangAuth {
 
       AppLogger.instance.info('正在通过 WebVPN CAS 登录 (一卡通认证)...');
       final loginUri = _cachedCasLoginUrl ?? '$_webVpnBase$_webVpnCasPath';
+      AppLogger.instance.debug('WebVPN CAS 登录参数: username=$username, veriyCode=$captcha, lt=${lt?.substring(0, 10)}..., execution=${execution.substring(0, 20)}...');
       final resp = await _dio.post<String>(
         loginUri,
         data: {
@@ -280,6 +281,7 @@ class ZhengfangAuth {
       final statusCode = resp.statusCode;
       final uri = resp.realUri.toString();
       AppLogger.instance.debug('WebVPN CAS 响应: $statusCode $uri');
+      AppLogger.instance.debug('WebVPN CAS 响应 Body 前200字符: ${(resp.data ?? '').substring(0, resp.data!.length > 200 ? 200 : resp.data!.length)}');
 
       if (statusCode == 200 && !uri.contains('login')) {
         _cachedCasExecution = null;
