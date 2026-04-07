@@ -235,6 +235,11 @@ class _HomePageState extends State<HomePage> {
                   ],
                 ),
               ),
+              // 独立宽幅的寝室服务卡片
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: _buildDormServicesCard(context),
+              ),
               const SizedBox(height: 32),
             ],
           ),
@@ -602,45 +607,6 @@ class _HomePageState extends State<HomePage> {
                     size: 20,
                   ),
                 ),
-                const Spacer(),
-                GestureDetector(
-                  onTap: () => context.pushNamed(
-                    'news-detail',
-                    extra: {
-                      'title': '寝室服务',
-                      'url': 'http://jdhq.wap.zjxu.edu.cn/Base/Center/center/account_id/6',
-                    },
-                  ),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.success.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.home_outlined,
-                          size: 15,
-                          color: AppColors.success,
-                        ),
-                        SizedBox(width: 4),
-                        Text(
-                          '寝室服务',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.success,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
               ],
             ),
             const SizedBox(height: 14),
@@ -664,6 +630,77 @@ class _HomePageState extends State<HomePage> {
                 size: 14,
                 color: cs.onSurfaceVariant,
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 寝室服务卡片（独立宽幅）
+  Widget _buildDormServicesCard(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = isDark ? cs.surfaceContainerLowest : Colors.white;
+
+    return GestureDetector(
+      onTap: () => context.pushNamed(
+        'news-detail',
+        extra: {
+          'title': '寝室服务',
+          'url': 'http://jdhq.wap.zjxu.edu.cn/Base/Center/center/account_id/6',
+        },
+      ),
+      child: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: AppColors.success.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.home_outlined,
+                color: AppColors.success,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '寝室服务',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                      color: cs.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '电费查询、故障报修、离返校登记',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.arrow_forward_ios,
+              size: 16,
+              color: cs.onSurfaceVariant,
             ),
           ],
         ),
@@ -880,82 +917,34 @@ class _HomePageState extends State<HomePage> {
           borderRadius: BorderRadius.circular(16),
         ),
         padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
-            Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: cs.primary.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(Icons.apps_rounded, color: cs.primary, size: 22),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    '更多服务',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: cs.onSurface,
-                    ),
-                  ),
-                ),
-                Icon(
-                  Icons.arrow_forward_ios,
-                  size: 14,
-                  color: cs.onSurfaceVariant,
-                ),
-              ],
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: cs.primary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(Icons.apps_rounded, color: cs.primary, size: 22),
             ),
-            const SizedBox(height: 18),
-            Text(
-              '打开服务大厅查看更多校内应用',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: cs.onSurface,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                '更多服务',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: cs.onSurface,
+                ),
               ),
             ),
-            const SizedBox(height: 6),
-            Text(
-              '校园办事、生活服务和统一认证入口都在这里',
-              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-            ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _buildServiceTag(context, '办事大厅'),
-                _buildServiceTag(context, '校园应用'),
-                _buildServiceTag(context, '统一认证'),
-              ],
+            Icon(
+              Icons.arrow_forward_ios,
+              size: 14,
+              color: cs.onSurfaceVariant,
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildServiceTag(BuildContext context, String label) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: cs.primary.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: cs.primary,
         ),
       ),
     );
