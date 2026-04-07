@@ -162,6 +162,8 @@ class ZhengfangAuth {
   String? _cachedCasExecution;
   String? _cachedCasLt;
   String? _cachedCasLoginUrl;  // 保存重定向后的 CAS 登录 URL
+  String? _cachedAesKey;  // AES 加密密钥 aes1
+  String? _cachedAesIv;   // AES 加密 IV akey
 
   /// 获取 WebVPN CAS 验证码
   Future<Uint8List> fetchWebVpnCasCaptcha() async {
@@ -197,6 +199,12 @@ class ZhengfangAuth {
     _cachedCasExecution = _extractHiddenField(html, 'execution');
     _cachedCasLt = _extractHiddenField(html, 'lt');
     _cachedCasLoginUrl = casLoginUrl;  // 保存 CAS 登录 URL
+
+    // 提取 AES 加密密钥
+    _cachedAesKey = _extractAesKey(html, 'aes1');
+    _cachedAesIv = _extractAesKey(html, 'akey');
+    AppLogger.instance.debug('WebVPN CAS AES key: ${_cachedAesKey?.substring(0, 10) ?? "null"}..., iv: ${_cachedAesIv?.substring(0, 10) ?? "null"}...');
+
     AppLogger.instance.debug('WebVPN CAS execution: ${_cachedCasExecution?.length ?? 0} 字符, lt: ${_cachedCasLt?.length ?? 0} 字符');
 
     final ts = DateTime.now().millisecondsSinceEpoch;
@@ -255,12 +263,14 @@ class ZhengfangAuth {
 
       AppLogger.instance.info('正在通过 WebVPN CAS 登录 (一卡通认证)...');
       final loginUri = _cachedCasLoginUrl ?? '$_webVpnBase$_webVpnCasPath';
-      AppLogger.instance.debug('WebVPN CAS 登录参数: username=$username, veriyCode=$captcha, lt=${lt?.substring(0, 10)}..., execution=${execution.substring(0, 20)}...');
+      // AES 加密密码
+      final encryptedPassword = _encryptPasswordWithAes(password);
+      AppLogger.instance.debug('WebVPN CAS 登录参数: username=$username, veriyCode=$captcha, encryptedPassword=${encryptedPassword.substring(0, 20)}..., lt=${lt?.substring(0, 10)}..., execution=${execution.substring(0, 20)}...');
       final resp = await _dio.post<String>(
         loginUri,
         data: {
           'username': username,
-          'password': password,
+          'password': encryptedPassword,
           'veriyCode': captcha,  // 注意：这里是 veriyCode 不是 captcha
           if (lt != null && lt.isNotEmpty) 'lt': lt,
           'execution': execution,
@@ -328,6 +338,54 @@ class ZhengfangAuth {
       caseSensitive: false,
     );
     return pattern.firstMatch(html)?.group(1)?.trim() ?? '';
+  }
+
+  /// 从 HTML 中提取 AES 加密密钥
+  String? _extractAesKey(String html, String varName) {
+    final pattern = RegExp('var $varName = "(.+?)"');
+    return pattern.firstMatch(html)?.group(1);
+  }
+
+  /// AES 加密密码
+  String _encryptPasswordWithAes(String password) {
+    final key = _cachedAesKey;
+    final iv = _cachedAesIv;
+    if (key == null || iv == null || key.isEmpty || iv.isEmpty) {
+      AppLogger.instance.info('AES 密钥为空，使用原始密码');
+      return password;
+    }
+
+    try {
+      final keyBytes = Uint8List.fromList(utf8.encode(key));
+      final ivBytes = Uint8List.fromList(utf8.encode(iv));
+      final input = Uint8List.fromList(utf8.encode(password));
+      final paddedInput = _pkcs7Pad(input, 16);
+      final cipher = CBCBlockCipher(AESEngine())
+        ..init(true, ParametersWithIV(KeyParameter(keyBytes), ivBytes));
+
+      final output = Uint8List(paddedInput.length);
+      for (var offset = 0; offset < paddedInput.length; offset += 16) {
+        cipher.processBlock(paddedInput, offset, output, offset);
+      }
+
+      final buffer = StringBuffer();
+      for (final byte in output) {
+        buffer.write(byte.toRadixString(16).padLeft(2, '0').toUpperCase());
+      }
+      return buffer.toString();
+    } catch (e) {
+      AppLogger.instance.error('AES 加密失败: $e');
+      return password;
+    }
+  }
+
+  /// PKCS7 填充
+  Uint8List _pkcs7Pad(Uint8List input, int blockSize) {
+    final padding = blockSize - (input.length % blockSize);
+    return Uint8List.fromList([
+      ...input,
+      ...List<int>.filled(padding, padding),
+    ]);
   }
 
   /// 同步 WebVPN Cookie 到 WebView
