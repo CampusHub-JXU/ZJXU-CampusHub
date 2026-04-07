@@ -200,12 +200,17 @@ class ZhengfangAuth {
     AppLogger.instance.debug('WebVPN CAS execution: ${_cachedCasExecution?.length ?? 0} 字符, lt: ${_cachedCasLt?.length ?? 0} 字符');
 
     final ts = DateTime.now().millisecondsSinceEpoch;
-    // 验证码 URL 基于 CAS 登录页面
-    final captchaUri = '$casLoginUrl/captcha.html';
+    // 验证码 URL：基于 CAS 登录页面路径，去掉 query string
+    final casBaseUri = Uri.parse(casLoginUrl);
+    final captchaUri = Uri(
+      scheme: casBaseUri.scheme,
+      host: casBaseUri.host,
+      path: '${casBaseUri.path}/captcha.html',
+      queryParameters: {'t': ts.toString(), 'vpn-1': ''},
+    ).toString();
     AppLogger.instance.debug('正在获取 WebVPN CAS 验证码 from: $captchaUri');
     final resp = await _dio.get<List<int>>(
       captchaUri,
-      queryParameters: {'t': ts, 'vpn-1': ''},
       options: Options(
         responseType: ResponseType.bytes,
         headers: {'Referer': casLoginUrl},
