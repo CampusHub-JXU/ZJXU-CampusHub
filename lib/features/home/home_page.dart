@@ -258,14 +258,14 @@ class _HomePageState extends State<HomePage> {
             child: Stack(
               children: [
                 Positioned(
-                  right: -34,
-                  top: -24,
+                  right: -30,
+                  top: -20,
                   child: Opacity(
-                    opacity: 0.1,
+                    opacity: 0.12,
                     child: SvgPicture.asset(
                       'assets/header_texture.svg',
-                      width: 190,
-                      height: 190,
+                      width: 200,
+                      height: 200,
                     ),
                   ),
                 ),
@@ -293,7 +293,7 @@ class _HomePageState extends State<HomePage> {
                                 Text(
                                   '下节课',
                                   style: TextStyle(
-                                    fontSize: 12,
+                                    fontSize: 14,
                                     color: Colors.white.withValues(alpha: 0.7),
                                   ),
                                 ),
@@ -324,8 +324,21 @@ class _HomePageState extends State<HomePage> {
                         ],
                       ),
                       const SizedBox(height: 12),
-                      // Course content based on state
-                      _buildCourseContent(context),
+                      // Course content + action on the same bottom line
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Expanded(child: _buildCourseContent(context)),
+                          const SizedBox(width: 8),
+                          Text(
+                            '查看课表 →',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.white.withValues(alpha: 0.5),
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
@@ -409,26 +422,26 @@ class _HomePageState extends State<HomePage> {
             child: Text(
               course.courseName,
               style: const TextStyle(
-                fontSize: 14,
+                fontSize: 13,
                 color: Colors.white,
                 fontWeight: FontWeight.w600,
               ),
             ),
           ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 3),
         Row(
           children: [
             Icon(
               Icons.schedule,
-              size: 16,
+              size: 14,
               color: Colors.white.withValues(alpha: 0.8),
             ),
-            const SizedBox(width: 6),
+            const SizedBox(width: 4),
             Text(
               whenText,
               style: TextStyle(
-                fontSize: 14,
+                fontSize: 13,
                 color: Colors.white.withValues(alpha: 0.9),
               ),
             ),
@@ -436,26 +449,26 @@ class _HomePageState extends State<HomePage> {
             Text(
               '第 ${course.startLesson}-${course.endLesson} 节',
               style: TextStyle(
-                fontSize: 12,
+                fontSize: 11,
                 color: Colors.white.withValues(alpha: 0.6),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 4),
         Row(
           children: [
             Icon(
               Icons.location_on_outlined,
-              size: 16,
+              size: 14,
               color: Colors.white.withValues(alpha: 0.8),
             ),
-            const SizedBox(width: 6),
+            const SizedBox(width: 4),
             Expanded(
               child: Text(
                 location,
                 style: TextStyle(
-                  fontSize: 14,
+                  fontSize: 13,
                   color: Colors.white.withValues(alpha: 0.9),
                 ),
                 maxLines: 1,
