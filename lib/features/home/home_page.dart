@@ -352,46 +352,24 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildCourseContent(BuildContext context) {
     if (!_courseLoggedIn) {
-      return Row(
-        children: [
-          Expanded(
-            child: Text(
-              '登录后查看课程',
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-          ),
-          Icon(
-            Icons.arrow_forward_ios,
-            color: Colors.white.withValues(alpha: 0.5),
-            size: 18,
-          ),
-        ],
+      return Text(
+        '登录后查看课程',
+        style: const TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
+          color: Colors.white,
+        ),
       );
     }
 
     if (_nextCourse == null) {
-      return Row(
-        children: [
-          Expanded(
-            child: Text(
-              '近期无课',
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-          ),
-          const Icon(
-            Icons.check_circle_outline,
-            color: AppColors.success,
-            size: 24,
-          ),
-        ],
+      return Text(
+        '近期无课',
+        style: const TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
+          color: Colors.white,
+        ),
       );
     }
 
@@ -578,6 +556,14 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
             ],
+            Align(
+              alignment: Alignment.bottomRight,
+              child: Icon(
+                Icons.arrow_forward_ios,
+                size: 14,
+                color: cs.onSurfaceVariant,
+              ),
+            ),
           ],
         ),
       ),
@@ -670,6 +656,14 @@ class _HomePageState extends State<HomePage> {
             Text(
               '剩余 $_dormElectricity 度',
               style: TextStyle(fontSize: 14, color: cs.onSurfaceVariant),
+            ),
+            Align(
+              alignment: Alignment.bottomRight,
+              child: Icon(
+                Icons.arrow_forward_ios,
+                size: 14,
+                color: cs.onSurfaceVariant,
+              ),
             ),
           ],
         ),
@@ -857,6 +851,14 @@ class _HomePageState extends State<HomePage> {
             Text(
               '查看各科成绩与绩点',
               style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+            ),
+            Align(
+              alignment: Alignment.bottomRight,
+              child: Icon(
+                Icons.arrow_forward_ios,
+                size: 14,
+                color: cs.onSurfaceVariant,
+              ),
             ),
           ],
         ),
