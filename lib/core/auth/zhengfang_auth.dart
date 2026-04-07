@@ -283,6 +283,8 @@ class ZhengfangAuth {
       AppLogger.instance.debug('WebVPN CAS 响应: $statusCode $uri');
       AppLogger.instance.debug('WebVPN CAS 响应 Body 前200字符: ${(resp.data ?? '').substring(0, resp.data!.length > 200 ? 200 : resp.data!.length)}');
 
+      // 检查是否成功（不包含 login 或包含特定成功标识）
+      final html = resp.data ?? '';
       if (statusCode == 200 && !uri.contains('login')) {
         _cachedCasExecution = null;
         _cachedCasLt = null;
@@ -293,15 +295,18 @@ class ZhengfangAuth {
         return WebVpnCasSuccess();
       }
 
+      // 登录失败，检查错误信息
+      AppLogger.instance.debug('WebVPN CAS 登录失败，检查错误...');
       // 重新提取 execution 以备重试
-      final html = resp.data ?? '';
       final newExec = _extractHiddenField(html, 'execution');
       if (newExec.isNotEmpty) _cachedCasExecution = newExec;
 
-      if (html.contains('验证码')) {
+      // 检查错误消息
+      final lowerHtml = html.toLowerCase();
+      if (lowerHtml.contains('验证码')) {
         return WebVpnCasFailure('验证码错误或已过期，请刷新后重试');
       }
-      if (html.contains('密码错误') || html.contains('用户名或密码错误')) {
+      if (lowerHtml.contains('密码错误') || lowerHtml.contains('用户名或密码错误')) {
         AppLogger.instance.info('WebVPN CAS 一卡通密码错误');
         return WebVpnCasFailure('一卡通账号或密码错误');
       }
