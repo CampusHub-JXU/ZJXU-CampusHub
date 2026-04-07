@@ -72,6 +72,7 @@ class UnifiedAuthService {
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final referer = _buildLoginUri(serviceUrl).toString();
     final captchaUri = Uri.parse('$_newcaOrigin/cas/captcha.html?t=$timestamp');
+    AppLogger.instance.debug('正在获取统一认证验证码...');
     final resp = await _dio.getUri<List<int>>(
       captchaUri,
       options: Options(
@@ -82,6 +83,7 @@ class UnifiedAuthService {
 
     final contentType = resp.headers.value('content-type') ?? '';
     if (contentType.contains('text/html')) {
+      AppLogger.instance.info('统一认证验证码返回 HTML，可能服务不可用');
       throw UnifiedAuthCaptchaException('统一认证验证码加载失败，请稍后重试');
     }
 
@@ -92,9 +94,11 @@ class UnifiedAuthService {
 
     final data = Uint8List.fromList(bytes);
     if (!_isValidImage(data)) {
+      AppLogger.instance.info('统一认证验证码数据非有效图片');
       throw UnifiedAuthCaptchaException('统一认证验证码无效，请刷新后重试');
     }
 
+    AppLogger.instance.info('统一认证验证码获取成功, ${data.length} 字节');
     return data;
   }
 
@@ -107,11 +111,14 @@ class UnifiedAuthService {
     try {
       final context = await _ensureLoginContext(serviceUrl);
       if (context.lt.isEmpty || context.execution.isEmpty) {
+        AppLogger.instance.info('统一认证初始化上下文缺失');
         return UnifiedAuthLoginFailure('统一认证初始化失败，请刷新验证码后重试');
       }
 
+      AppLogger.instance.debug('正在加密统一认证密码...');
       final encryptedPassword = _encryptPassword(password);
       final referer = _buildLoginUri(serviceUrl).toString();
+      AppLogger.instance.debug('正在发送统一认证登录请求...');
       final response = await _dio.postUri<String>(
         context.actionUri,
         data: {
@@ -144,9 +151,12 @@ class UnifiedAuthService {
       }
 
       _cachedContext = null;
-      return UnifiedAuthLoginFailure(_extractLoginFailureMessage(html));
+      final msg = _extractLoginFailureMessage(html);
+      AppLogger.instance.info('统一认证登录失败: $msg');
+      return UnifiedAuthLoginFailure(msg);
     } on DioException catch (error) {
       _cachedContext = null;
+      AppLogger.instance.error('统一认证登录网络异常: ${error.type} ${error.message}');
       return UnifiedAuthLoginFailure('统一认证网络异常：${error.message}');
     } catch (error) {
       _cachedContext = null;
@@ -205,6 +215,7 @@ class UnifiedAuthService {
   Future<_UnifiedAuthLoginContext> _refreshLoginContext(
     String serviceUrl,
   ) async {
+    AppLogger.instance.debug('正在刷新统一认证登录上下文...');
     final loginUri = _buildLoginUri(serviceUrl);
     final response = await _dio.getUri<String>(
       loginUri,
@@ -225,6 +236,7 @@ class UnifiedAuthService {
       actionUri: _resolveUri(loginUri, action),
     );
     _cachedContext = context;
+    AppLogger.instance.debug('统一认证上下文: lt=${lt.length}字符 execution=${execution.length}字符');
     return context;
   }
 

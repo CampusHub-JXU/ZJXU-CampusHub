@@ -47,14 +47,23 @@ class DioClient {
           handler.next(options);
         },
         onResponse: (response, handler) {
-          AppLogger.instance.debug(
-            '← ${response.statusCode} ${response.requestOptions.uri}',
-          );
+          final code = response.statusCode;
+          final uri = response.requestOptions.uri;
+          if (code == 302 || code == 303) {
+            final location = response.headers.value('location') ?? '';
+            AppLogger.instance.info('← $code $uri → $location');
+            if (location.contains('login_slogin') ||
+                location.contains('kaptcha')) {
+              AppLogger.instance.info('检测到重定向到登录/验证码页面，可能未在校园网环境');
+            }
+          } else {
+            AppLogger.instance.debug('← $code $uri');
+          }
           handler.next(response);
         },
         onError: (error, handler) {
           AppLogger.instance.error(
-            '✖ ${error.requestOptions.uri}: ${error.message}',
+            '请求失败: ${error.type} - ${error.requestOptions.uri} - ${error.message}',
           );
           handler.next(error);
         },
