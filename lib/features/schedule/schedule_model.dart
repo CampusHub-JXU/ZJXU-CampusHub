@@ -1,3 +1,32 @@
+class ScheduleSlotTimes {
+  ScheduleSlotTimes._();
+
+  static const slotTimes = [
+    ['08:00', '08:40'],
+    ['08:45', '09:25'],
+    ['09:45', '10:25'],
+    ['10:30', '11:10'],
+    ['11:15', '11:55'],
+    ['13:30', '14:10'],
+    ['14:15', '14:55'],
+    ['15:15', '15:55'],
+    ['16:00', '16:40'],
+    ['16:45', '17:25'],
+    ['18:30', '19:10'],
+    ['19:15', '19:55'],
+    ['20:00', '20:40'],
+  ];
+
+  static String startTime(int lesson) =>
+      (lesson >= 1 && lesson <= 13) ? slotTimes[lesson - 1][0] : '??';
+
+  static String endTime(int lesson) =>
+      (lesson >= 1 && lesson <= 13) ? slotTimes[lesson - 1][1] : '??';
+
+  static String timeRange(int start, int end) =>
+      '${startTime(start)}-${endTime(end)}';
+}
+
 class CourseEntry {
   const CourseEntry({
     required this.courseName,
@@ -21,22 +50,58 @@ class CourseEntry {
   final String campus;
   final String typeSymbol; // ◆★□●◇
 
-  /// 判断课程是否在指定周次
+  /// 判断课程是否在指定周次（支持"单/双"周修饰符）
   bool isInWeek(int week) {
-    // weekRange 格式: "1-9周,11-16周" 或 "1-16周"
-    final ranges = weekRange.replaceAll('周', '').split(',');
-    for (final range in ranges) {
-      final parts = range.trim().split('-');
+    final segments = weekRange.replaceAll('周', '').split(',');
+    for (final segment in segments) {
+      final trimmed = segment.trim();
+      final isOddOnly = trimmed.contains('(单)');
+      final isEvenOnly = trimmed.contains('(双)');
+      final cleaned = trimmed.replaceAll(RegExp(r'\([单双]\)'), '');
+      final parts = cleaned.split('-');
       if (parts.length == 2) {
-        final start = int.tryParse(parts[0]) ?? 0;
-        final end = int.tryParse(parts[1]) ?? 0;
-        if (week >= start && week <= end) return true;
+        final start = int.tryParse(parts[0].trim()) ?? 0;
+        final end = int.tryParse(parts[1].trim()) ?? 0;
+        if (week >= start && week <= end) {
+          if (isOddOnly && week.isEven) continue;
+          if (isEvenOnly && week.isOdd) continue;
+          return true;
+        }
       } else if (parts.length == 1) {
-        final single = int.tryParse(parts[0]) ?? 0;
+        final single = int.tryParse(parts[0].trim()) ?? 0;
         if (week == single) return true;
       }
     }
     return false;
+  }
+
+  /// 计算课程最近活跃周与 [week] 的距离
+  int weekDistanceTo(int week) {
+    int minDist = 999;
+    final segments = weekRange.replaceAll('周', '').split(',');
+    for (final segment in segments) {
+      final trimmed = segment.trim();
+      final isOddOnly = trimmed.contains('(单)');
+      final isEvenOnly = trimmed.contains('(双)');
+      final cleaned = trimmed.replaceAll(RegExp(r'\([单双]\)'), '');
+      final parts = cleaned.split('-');
+      int start = 0, end = 0;
+      if (parts.length == 2) {
+        start = int.tryParse(parts[0].trim()) ?? 0;
+        end = int.tryParse(parts[1].trim()) ?? 0;
+      } else if (parts.length == 1) {
+        start = end = int.tryParse(parts[0].trim()) ?? 0;
+      }
+      if (start == 0 && end == 0) continue;
+      for (int w = start; w <= end; w++) {
+        if (isOddOnly && w.isEven) continue;
+        if (isEvenOnly && w.isOdd) continue;
+        final d = (w - week).abs();
+        if (d < minDist) minDist = d;
+        if (d == 0) return 0;
+      }
+    }
+    return minDist;
   }
 
   factory CourseEntry.fromJson(Map<String, dynamic> json) {
