@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/logging/app_logger.dart';
 import '../../core/network/network_settings.dart';
 import '../../core/network/proxy_mode.dart';
 
@@ -133,15 +134,19 @@ class DormElectricityService {
       if (config == null) return null;
 
       final url = _buildQueryUrl(config);
+      AppLogger.instance.debug('电费查询 → $url');
       final resp = await _dio.get<List<int>>(url);
+      AppLogger.instance.debug('电费响应 status=${resp.statusCode} bytes=${resp.data?.length}');
       if (resp.data == null) return _cachedElectricity;
 
       final html = utf8.decode(resp.data!, allowMalformed: true);
       final doc = html_parser.parse(html);
       final text = doc.body?.text ?? '';
+      AppLogger.instance.debug('电费页面文本(前200): ${text.length > 200 ? text.substring(0, 200) : text}');
 
       final match = RegExp(
-        r'实际剩余电量\s*[（(]度[)）]\s*[:：]\s*([0-9]+(?:\.[0-9]+)?)',
+        r'实际剩余电量\s*[（(]度[)）]\s*(?:[:：]\s*)?([0-9]+(?:\.[0-9]+)?)',
+        dotAll: true,
       ).firstMatch(text);
 
       if (match != null) {
@@ -149,12 +154,15 @@ class DormElectricityService {
         if (value != null) {
           _cachedElectricity = value;
           _lastError = null;
+          AppLogger.instance.info('电费解析成功: $value 度');
           return value;
         }
       }
-      _lastError = null;
+      AppLogger.instance.debug('电费正则未匹配，文本长度=${text.length}');
+      _lastError = '数据解析失败';
       return _cachedElectricity;
     } on DioException catch (e) {
+      AppLogger.instance.error('电费网络错误: ${e.type} ${e.message}');
       if (e.type == DioExceptionType.connectionTimeout ||
           e.type == DioExceptionType.receiveTimeout) {
         _lastError = '网络超时';

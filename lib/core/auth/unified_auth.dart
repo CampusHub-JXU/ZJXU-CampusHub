@@ -155,14 +155,16 @@ class UnifiedAuthService {
   }
 
   Future<void> syncCookiesToWebView() async {
+    // loadForRequest 需要带 path 的完整 URI 才能匹配到子路径 cookie
     final uris = [
-      Uri.parse(_newcaOrigin),
-      Uri.parse(_serviceHallOrigin),
+      Uri.parse('$_newcaOrigin/cas/login'),
+      Uri.parse('$_serviceHallOrigin/webroot/decision/view/form'),
       Uri.parse(_paymentOrigin),
     ];
 
     for (final uri in uris) {
       final cookies = await _cookieJar.loadForRequest(uri);
+      AppLogger.instance.debug('syncCookies ${uri.host}: ${cookies.map((c) => c.name).join(', ')}');
       for (final cookie in cookies) {
         await _setWebViewCookie(uri, cookie);
       }

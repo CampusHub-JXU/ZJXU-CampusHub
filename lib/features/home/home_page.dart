@@ -7,6 +7,7 @@ import '../schedule/schedule_model.dart';
 import '../schedule/schedule_service.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/semester/semester_calendar.dart';
+import '../dorm_electricity/dorm_electricity_service.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -17,6 +18,7 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   String _campusCardBalance = '--';
+  String _dormElectricity = '--';
   CourseEntry? _nextCourse;
   String _nextCourseLabel = '';
   bool _courseLoggedIn = false;
@@ -35,7 +37,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _refreshAll() async {
-    await Future.wait([_refreshCampusCardBalance(), _refreshNextCourse()]);
+    await Future.wait([_refreshCampusCardBalance(), _refreshNextCourse(), _refreshDormElectricity()]);
   }
 
   @override
@@ -52,50 +54,10 @@ class _HomePageState extends State<HomePage> {
     _refreshNextCourse();
   }
 
-  static const _slotStartTimes = [
-    '08:00',
-    '08:45',
-    '09:45',
-    '10:30',
-    '11:15',
-    '13:30',
-    '14:15',
-    '15:15',
-    '16:00',
-    '16:45',
-    '18:30',
-    '19:15',
-    '20:00',
-  ];
-
-  static const _slotEndTimes = [
-    '08:40',
-    '09:25',
-    '10:25',
-    '11:10',
-    '11:55',
-    '14:10',
-    '14:55',
-    '15:55',
-    '16:40',
-    '17:25',
-    '19:10',
-    '19:55',
-    '20:40',
-  ];
-
-  static String _slotTimeRange(int start, int end) {
-    final s = (start >= 1 && start <= 13) ? _slotStartTimes[start - 1] : '??';
-    final e = (end >= 1 && end <= 13) ? _slotEndTimes[end - 1] : '??';
-    return '$s-$e';
-  }
-
-  int _weekForDate(DateTime date) =>
-      SemesterCalendar.instance.weekForDate(date);
-
   int _nextStartLesson(DateTime now) {
-    for (int i = 0; i < _slotStartTimes.length; i++) {
-      final parts = _slotStartTimes[i].split(':');
+    final times = ScheduleSlotTimes.slotTimes;
+    for (int i = 0; i < times.length; i++) {
+      final parts = times[i][0].split(':');
       final hour = int.parse(parts[0]);
       final minute = int.parse(parts[1]);
       if (now.hour < hour || (now.hour == hour && now.minute < minute)) {
@@ -104,6 +66,9 @@ class _HomePageState extends State<HomePage> {
     }
     return 14;
   }
+
+  int _weekForDate(DateTime date) =>
+      SemesterCalendar.instance.weekForDate(date);
 
   String _labelForDate(DateTime date, DateTime today) {
     final day = DateTime(date.year, date.month, date.day);
@@ -209,6 +174,16 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  Future<void> _refreshDormElectricity() async {
+    final service = DormElectricityService.instance;
+    if (!await service.hasRoomConfig()) return;
+    final value = await service.fetchElectricity();
+    if (!mounted) return;
+    setState(() {
+      _dormElectricity = service.formatElectricity(value);
+    });
+  }
+
   Future<void> _openSchedule(BuildContext context) async {
     await context.pushNamed('schedule');
     if (!mounted) return;
@@ -289,19 +264,19 @@ class _HomePageState extends State<HomePage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '下节课',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.white.withValues(alpha: 0.7),
+                          '第 $_currentWeek 周',
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
                           ),
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          '第 $_currentWeek 周',
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
+                          '下节课',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.white.withValues(alpha: 0.7),
                           ),
                         ),
                       ],
@@ -386,7 +361,7 @@ class _HomePageState extends State<HomePage> {
     }
 
     final course = _nextCourse!;
-    final time = _slotTimeRange(course.startLesson, course.endLesson);
+    final time = ScheduleSlotTimes.timeRange(course.startLesson, course.endLesson);
     final whenText = _nextCourseLabel.isEmpty
         ? time
         : '$_nextCourseLabel $time';
@@ -474,63 +449,57 @@ class _HomePageState extends State<HomePage> {
     final bgColor = isDark ? cs.surfaceContainerLowest : Colors.white;
 
     return GestureDetector(
-      onTap: () => context.pushNamed('campus-card'),
+      onTap: () async {
+        await context.pushNamed('campus-card');
+        if (!mounted) return;
+        _refreshCampusCardBalance();
+      },
       child: Container(
         decoration: BoxDecoration(
           color: bgColor,
           borderRadius: BorderRadius.circular(16),
         ),
         padding: const EdgeInsets.all(16),
-        height: 140,
-        child: Stack(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            Row(
               children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        color: AppColors.primary.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(
-                        Icons.account_balance_wallet_outlined,
-                        color: AppColors.primary,
-                        size: 20,
-                      ),
-                    ),
-                  ],
-                ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '¥$_campusCardBalance',
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color: cs.onSurface,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '校园卡余额',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: cs.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.account_balance_wallet_outlined,
+                    color: AppColors.primary,
+                    size: 20,
+                  ),
                 ),
               ],
             ),
-            Positioned(
-              right: 0,
-              bottom: 0,
+            const SizedBox(height: 14),
+            Text(
+              '¥$_campusCardBalance',
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                color: cs.onSurface,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '校园卡余额',
+              style: TextStyle(
+                fontSize: 13,
+                color: cs.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Align(
+              alignment: Alignment.centerRight,
               child: GestureDetector(
                 onTap: () => context.pushNamed('campus-card-payment'),
                 child: Container(
@@ -611,7 +580,7 @@ class _HomePageState extends State<HomePage> {
             ),
             const SizedBox(height: 6),
             Text(
-              '查看余额、用电状态与宿舍设置',
+              '剩余 $_dormElectricity 度',
               style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
             ),
             const SizedBox(height: 14),

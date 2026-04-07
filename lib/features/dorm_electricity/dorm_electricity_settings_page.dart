@@ -39,12 +39,44 @@ class _DormElectricitySettingsPageState
         _buildings = buildings;
         _loadingBuildings = false;
       });
+      await _restoreSavedConfig();
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _error = '加载楼幢列表失败';
         _loadingBuildings = false;
       });
+    }
+  }
+
+  Future<void> _restoreSavedConfig() async {
+    final config = await _service.loadRoomConfig();
+    if (config == null || !mounted) return;
+
+    final building = _buildings.where(
+      (b) => b.communityId == config.communityId && b.buildingId == config.buildingId,
+    ).firstOrNull;
+    if (building == null) return;
+
+    setState(() {
+      _selectedBuilding = building;
+      _loadingRooms = true;
+    });
+
+    try {
+      final rooms = await _service.fetchRooms(building.buildingId);
+      if (!mounted) return;
+      final room = rooms.where(
+        (r) => r.floorId == config.floorId && r.roomId == config.roomId,
+      ).firstOrNull;
+      setState(() {
+        _rooms = rooms;
+        _selectedRoom = room;
+        _loadingRooms = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingRooms = false);
     }
   }
 
