@@ -375,7 +375,12 @@ class ZhengfangAuth {
       final keyBytes = Uint8List.fromList(utf8.encode(key));
       final ivBytes = Uint8List.fromList(utf8.encode(iv));
       final input = Uint8List.fromList(utf8.encode(password));
+
+      AppLogger.instance.debug('AES encrypt: key=${keyBytes.length}bytes, iv=${ivBytes.length}bytes, input=${input.length}bytes');
+
       final paddedInput = _pkcs7Pad(input, 16);
+      AppLogger.instance.debug('AES encrypt: paddedInput=${paddedInput.length}bytes');
+
       final cipher = CBCBlockCipher(AESEngine())
         ..init(true, ParametersWithIV(KeyParameter(keyBytes), ivBytes));
 
@@ -383,6 +388,8 @@ class ZhengfangAuth {
       for (var offset = 0; offset < paddedInput.length; offset += 16) {
         cipher.processBlock(paddedInput, offset, output, offset);
       }
+
+      AppLogger.instance.debug('AES encrypt: output=${output.length}bytes');
 
       final buffer = StringBuffer();
       for (final byte in output) {
