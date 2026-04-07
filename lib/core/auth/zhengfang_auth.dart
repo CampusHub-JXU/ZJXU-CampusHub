@@ -360,12 +360,16 @@ class ZhengfangAuth {
 
   /// AES 加密密码
   String _encryptPasswordWithAes(String password) {
-    final key = _cachedAesKey;
-    final iv = _cachedAesIv;
+    var key = _cachedAesKey;
+    var iv = _cachedAesIv;
     if (key == null || iv == null || key.isEmpty || iv.isEmpty) {
       AppLogger.instance.info('AES 密钥为空，使用原始密码');
       return password;
     }
+
+    // 截断到 16 字符 (AES-128 需要)
+    if (key.length > 16) key = key.substring(0, 16);
+    if (iv.length > 16) iv = iv.substring(0, 16);
 
     try {
       final keyBytes = Uint8List.fromList(utf8.encode(key));
