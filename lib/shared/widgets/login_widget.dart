@@ -113,10 +113,20 @@ class _LoginWidgetState extends State<LoginWidget> {
       }
     } on CaptchaException catch (e) {
       if (mounted) {
-        setState(() {
-          _captchaBytes = null;
-          _error = e.message;
-        });
+        // WebVPN 认证过期，清除一卡通认证状态，让用户重新认证
+        if (_mode == ZhengfangMode.webVpn &&
+            (e.message.contains('已过期') || e.message.contains('认证'))) {
+          setState(() {
+            _casAuthenticated = false;
+            _captchaBytes = null;
+            _error = '一卡通认证已过期，请重新认证';
+          });
+        } else {
+          setState(() {
+            _captchaBytes = null;
+            _error = e.message;
+          });
+        }
       }
     } catch (_) {
       if (mounted) {
