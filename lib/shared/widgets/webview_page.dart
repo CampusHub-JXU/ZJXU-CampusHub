@@ -1,3 +1,5 @@
+import 'dart:collection';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
@@ -37,16 +39,6 @@ class _WebViewPageState extends State<WebViewPage> {
   late String _currentUrl;
   InAppWebViewController? _controller;
 
-  bool get _isCampusCardDeepLink =>
-      widget.url.contains('/business/ydd/wfw/id=');
-
-  bool get _isCurrentCampusCardPage {
-    final uri = Uri.tryParse(_currentUrl);
-    if (uri == null) return false;
-    if (uri.host.toLowerCase() != _serviceHallHost) return false;
-    return _currentUrl.contains('/business/ydd/wfw');
-  }
-
   @override
   void initState() {
     super.initState();
@@ -58,26 +50,6 @@ class _WebViewPageState extends State<WebViewPage> {
     if (value == null || value.isEmpty) return;
 
     _currentUrl = value;
-  }
-
-  Future<void> _injectDingTalkBridge(InAppWebViewController controller) async {
-    await controller.evaluateJavascript(
-      source: '''
-      window.dd = window.dd || {};
-      window.dd.biz = window.dd.biz || {};
-      window.dd.ready = function(callback) {
-        if (callback) callback();
-      };
-      window.dd.error = function(callback) {};
-      window.dd.biz.navigation = window.dd.biz.navigation || {};
-      window.dd.biz.navigation.setTitle = function() {};
-      window.dd.biz.util = window.dd.biz.util || {};
-      window.dd.biz.util.openLink = function() {};
-      window.dd.device = window.dd.device || {};
-      window.dd.device.notification = window.dd.device.notification || {};
-      window.dd.device.notification.alert = function() {};
-    ''',
-    );
   }
 
   void _showHint(String message) {
@@ -153,22 +125,6 @@ class _WebViewPageState extends State<WebViewPage> {
       );
     }
 
-    if (_isCampusCardDeepLink &&
-        !_hasFallbackToHome &&
-        _isCurrentCampusCardPage &&
-        lowerMessage.contains('syntaxerror') &&
-        lowerMessage.contains("unexpected token ')")) {
-      _fallbackToServiceHallHome(controller, '校园卡页面脚本异常，已切换到服务大厅首页');
-      return;
-    }
-
-    if (_isCampusCardDeepLink &&
-        !_hasFallbackToHome &&
-        _isCurrentCampusCardPage &&
-        lowerMessage.contains('laytpl error') &&
-        lowerMessage.contains('no data')) {
-      _fallbackToServiceHallHome(controller, '校园卡入口返回空数据，已切换到服务大厅首页');
-    }
   }
 
   Future<void> _inspectLoadedPage(InAppWebViewController controller) async {
@@ -241,6 +197,46 @@ class _WebViewPageState extends State<WebViewPage> {
           else
             InAppWebView(
               initialUrlRequest: URLRequest(url: WebUri(widget.url)),
+              initialUserScripts: UnmodifiableListView([
+                UserScript(
+                  source: '''
+(function() {
+  var ddMock = {
+    ready: function(cb) { if (typeof cb === 'function') setTimeout(cb, 0); },
+    error: function(cb) {},
+    config: function() {},
+    biz: {
+      navigation: {
+        setTitle: function() {},
+        setRight: function() {},
+        close: function() {}
+      },
+      util: { openLink: function() {} }
+    },
+    device: {
+      notification: {
+        alert: function(opts) {
+          if (opts && typeof opts.onSuccess === 'function') opts.onSuccess();
+        }
+      }
+    },
+    env: { platform: 'notInDingTalk' },
+    version: '7.0.0'
+  };
+  try {
+    Object.defineProperty(window, 'dd', {
+      get: function() { return ddMock; },
+      set: function() {},
+      configurable: false
+    });
+  } catch(e) {
+    window.dd = ddMock;
+  }
+})();
+''',
+                  injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
+                ),
+              ]),
               initialSettings: InAppWebViewSettings(
                 javaScriptEnabled: true,
                 domStorageEnabled: true,
@@ -271,7 +267,18 @@ class _WebViewPageState extends State<WebViewPage> {
               },
               onLoadStop: (controller, url) async {
                 _trackCurrentUrl(url);
-                await _injectDingTalkBridge(controller);
+
+                // Service hall SSO strips the fragment id= param during redirect.
+                // Detect landing on /wfw without id and reload the original URL.
+                if (widget.url.contains('/business/ydd/wfw/id=') &&
+                    _currentUrl.contains('/business/ydd/wfw') &&
+                    !_currentUrl.contains('/id=')) {
+                  await controller.loadUrl(
+                    urlRequest: URLRequest(url: WebUri(widget.url)),
+                  );
+                  return;
+                }
+
                 await _inspectLoadedPage(controller);
 
                 final callback = widget.onLoadStop;

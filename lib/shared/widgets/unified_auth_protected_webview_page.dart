@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../../core/auth/unified_auth.dart';
+import '../../core/logging/app_logger.dart';
 import 'unified_auth_login_widget.dart';
 import 'webview_page.dart';
 
@@ -29,6 +30,7 @@ class UnifiedAuthProtectedWebViewPage extends StatefulWidget {
 class _UnifiedAuthProtectedWebViewPageState
     extends State<UnifiedAuthProtectedWebViewPage> {
   late bool _authenticated;
+  bool _resyncing = false;
 
   @override
   void initState() {
@@ -52,13 +54,27 @@ class _UnifiedAuthProtectedWebViewPageState
         uri.path.toLowerCase().contains('/cas/login');
 
     if (isUnifiedAuthLogin) {
-      UnifiedAuthService.instance.markLoggedOut();
-      if (mounted) {
-        setState(() => _authenticated = false);
+      AppLogger.instance.debug('WebView 跳转到 CAS 登录页，尝试重新同步 Cookie');
+
+      // 如果已在重试中，或 native 已登出，直接标记登出
+      if (_resyncing || !UnifiedAuthService.instance.isLoggedIn) {
+        AppLogger.instance.debug('Cookie 重同步失败，标记登出');
+        UnifiedAuthService.instance.markLoggedOut();
+        if (mounted) setState(() => _authenticated = false);
+        return;
       }
+
+      // 第一次：重新同步 cookie 后重新加载
+      _resyncing = true;
+      await UnifiedAuthService.instance.syncCookiesToWebView();
+      AppLogger.instance.debug('Cookie 重同步完成，重新加载 WebView');
+      await controller.loadUrl(
+        urlRequest: URLRequest(url: WebUri(widget.url)),
+      );
       return;
     }
 
+    _resyncing = false;
     final callback = widget.onLoadStop;
     if (callback != null) {
       await callback(controller, currentUrl);

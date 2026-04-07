@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../../app/theme.dart';
+import '../../core/logging/app_logger.dart';
 import '../../shared/widgets/ship_card.dart';
 import '../../shared/widgets/unified_auth_protected_webview_page.dart';
 import 'campus_card_service.dart';
@@ -168,6 +169,7 @@ class _CampusCardPageState extends State<CampusCardPage> {
         builder: (_) => UnifiedAuthProtectedWebViewPage(
           title: title,
           url: CampusCardService.statusPageUrl,
+          serviceUrl: CampusCardService.statusPageCasServiceUrl,
           loginDescription: '校园卡服务使用统一认证登录，账号为校园一卡通号',
           onLoadStop: _captureBalanceFromDetailPage,
         ),
@@ -186,14 +188,17 @@ class _CampusCardPageState extends State<CampusCardPage> {
 
     final uri = Uri.tryParse(currentUrl);
     final path = uri?.path.toLowerCase();
+    AppLogger.instance.debug('校园卡 onLoadStop: $currentUrl');
     if (uri == null ||
         uri.host.toLowerCase() != _serviceHallHost ||
         path == null ||
         !path.contains(_statusPathKeyword)) {
+      AppLogger.instance.debug('校园卡 跳过余额提取 (host=${uri?.host}, path=$path)');
       return;
     }
 
     final balance = await _extractBalanceWithRetry(controller);
+    AppLogger.instance.info('校园卡余额提取结果: $balance');
     if (balance == null) return;
 
     CampusCardService.instance.updateCachedBalance(balance);
@@ -233,11 +238,13 @@ class _CampusCardPageState extends State<CampusCardPage> {
         );
 
         final text = rawText is String ? rawText : '${rawText ?? ''}';
+        AppLogger.instance.debug('校园卡 retry[$delayInMs ms] 文本长度=${text.length}');
         final balance = CampusCardService.instance.parseBalanceFromPageText(
           text,
         );
         if (balance != null) return balance;
-      } catch (_) {
+      } catch (e) {
+        AppLogger.instance.debug('校园卡 JS 提取异常: $e');
         continue;
       }
     }
