@@ -129,8 +129,19 @@ class ZhengfangAuth {
       ));
       AppLogger.instance.debug('正在测试教务系统直连...');
       final resp = await dio.get<String>('$_directOrigin$_directLoginPath');
-      final reachable = resp.statusCode != null && resp.statusCode! < 400;
-      AppLogger.instance.info('教务系统直连: ${reachable ? "可达" : "不可达"} (${resp.statusCode})');
+      final statusCode = resp.statusCode ?? 0;
+
+      // 检查是否有重定向到 WebVPN
+      final location = resp.headers.value('location') ?? '';
+      final isRedirectedToWebVpn = location.contains('webvpn.zjxu.edu.cn');
+
+      if (isRedirectedToWebVpn) {
+        AppLogger.instance.info('教务系统直连: 被重定向到 WebVPN，需要 WebVPN 登录');
+        return false;
+      }
+
+      final reachable = statusCode < 400 && statusCode != 302 && statusCode != 303;
+      AppLogger.instance.info('教务系统直连: ${reachable ? "可达" : "不可达"} ($statusCode)');
       return reachable;
     } catch (e) {
       AppLogger.instance.info('教务系统直连不可达: $e');
