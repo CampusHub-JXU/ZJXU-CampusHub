@@ -165,7 +165,8 @@ class ZhengfangAuth {
   /// 获取 WebVPN CAS 验证码
   Future<Uint8List> fetchWebVpnCasCaptcha() async {
     AppLogger.instance.debug('正在获取 WebVPN CAS 登录页面...');
-    final loginUri = '$_webVpnBase/$_webVpnCasPath';
+    // 修正路径：_webVpnBase 末尾无斜杠，_webVpnCasPath 开头有斜杠
+    final loginUri = '$_webVpnBase$_webVpnCasPath';
     final pageResp = await _dio.get<String>(
       loginUri,
       options: Options(
@@ -179,9 +180,9 @@ class ZhengfangAuth {
     AppLogger.instance.debug('WebVPN CAS execution: ${_cachedCasExecution?.length ?? 0} 字符, lt: ${_cachedCasLt?.length ?? 0} 字符');
 
     final ts = DateTime.now().millisecondsSinceEpoch;
-    // 验证码URL应该是相对于CAS登录页面的
+    // 验证码URL：去掉双斜杠
     final captchaUri = '$loginUri/captcha.html';
-    AppLogger.instance.debug('正在获取 WebVPN CAS 验证码...');
+    AppLogger.instance.debug('正在获取 WebVPN CAS 验证码 from: $captchaUri');
     final resp = await _dio.get<List<int>>(
       captchaUri,
       queryParameters: {'t': ts, 'vpn-1': ''},
