@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/theme.dart';
 import '../campus_card/campus_card_service.dart';
@@ -613,11 +612,15 @@ class _HomePageState extends State<HomePage> {
             Row(
               children: [
                 GestureDetector(
-                  onTap: () async {
-                    final uri = Uri.parse('http://jdhq.wap.zjxu.edu.cn/Base/Center/center/account_id/6');
-                    if (await canLaunchUrl(uri)) {
-                      await launchUrl(uri, mode: LaunchMode.externalApplication);
-                    }
+                  onTap: () {
+                    // 使用内嵌 WebView 打开
+                    context.pushNamed(
+                      'external-webview',
+                      extra: {
+                        'title': '寝室服务',
+                        'url': 'http://jdhq.wap.zjxu.edu.cn/Base/Center/center/account_id/6',
+                      },
+                    );
                   },
                   child: Container(
                     padding: const EdgeInsets.symmetric(

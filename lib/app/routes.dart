@@ -75,5 +75,16 @@ final GoRouter appRouter = GoRouter(
       name: 'dorm-electricity-settings',
       builder: (context, state) => const DormElectricitySettingsPage(),
     ),
+    GoRoute(
+      path: '/external-webview',
+      name: 'external-webview',
+      builder: (context, state) {
+        final extra = state.extra as Map<String, String>;
+        return WebViewPage(
+          title: extra['title'] ?? '网页',
+          url: extra['url'] ?? '',
+        );
+      },
+    ),
   ],
 );
