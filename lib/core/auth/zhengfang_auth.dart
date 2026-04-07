@@ -200,10 +200,10 @@ class ZhengfangAuth {
     _cachedCasLt = _extractHiddenField(html, 'lt');
     _cachedCasLoginUrl = casLoginUrl;  // 保存 CAS 登录 URL
 
-    // 提取 AES 加密密钥
-    _cachedAesKey = _extractAesKey(html, 'aes1');
-    _cachedAesIv = _extractAesKey(html, 'akey');
-    AppLogger.instance.debug('WebVPN CAS AES key: ${_cachedAesKey?.substring(0, 10) ?? "null"}..., iv: ${_cachedAesIv?.substring(0, 10) ?? "null"}...');
+    // 提取 AES 加密密钥 (实际变量名是 __vpn_host_crypt_key 和 __vpn_host_crypt_iv)
+    _cachedAesKey = _extractAesKey(html, '__vpn_host_crypt_key');
+    _cachedAesIv = _extractAesKey(html, '__vpn_host_crypt_iv');
+    AppLogger.instance.debug('WebVPN CAS AES key: ${_cachedAesKey?.substring(0, _cachedAesKey!.length > 10 ? 10 : _cachedAesKey!.length) ?? "null"}..., iv: ${_cachedAesIv?.substring(0, _cachedAesIv!.length > 10 ? 10 : _cachedAesIv!.length) ?? "null"}...');
 
     AppLogger.instance.debug('WebVPN CAS execution: ${_cachedCasExecution?.length ?? 0} 字符, lt: ${_cachedCasLt?.length ?? 0} 字符');
 
@@ -265,7 +265,7 @@ class ZhengfangAuth {
       final loginUri = _cachedCasLoginUrl ?? '$_webVpnBase$_webVpnCasPath';
       // AES 加密密码
       final encryptedPassword = _encryptPasswordWithAes(password);
-      AppLogger.instance.debug('WebVPN CAS 登录参数: username=$username, veriyCode=$captcha, encryptedPassword=${encryptedPassword.substring(0, 20)}..., lt=${lt?.substring(0, 10)}..., execution=${execution.substring(0, 20)}...');
+      AppLogger.instance.debug('WebVPN CAS 登录参数: username=$username, veriyCode=$captcha, encryptedPassword=${encryptedPassword.length > 20 ? encryptedPassword.substring(0, 20) : encryptedPassword}..., lt=${lt != null && lt.length > 10 ? lt.substring(0, 10) : lt ?? ""}..., execution=${execution.length > 20 ? execution.substring(0, 20) : execution}...');
       final resp = await _dio.post<String>(
         loginUri,
         data: {
