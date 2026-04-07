@@ -1,7 +1,12 @@
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
 class CampusCardService {
   CampusCardService._();
 
   static final CampusCardService instance = CampusCardService._();
+
+  static const _storage = FlutterSecureStorage();
+  static const _keyBalance = 'zjxu_campus_card_balance';
 
   double? _cachedBalance;
   DateTime? _lastUpdated;
@@ -30,6 +35,14 @@ class CampusCardService {
     if (balance == null) return;
     _cachedBalance = balance;
     _lastUpdated = DateTime.now();
+    _storage.write(key: _keyBalance, value: balance.toString());
+  }
+
+  Future<void> restoreBalance() async {
+    final stored = await _storage.read(key: _keyBalance);
+    if (stored != null) {
+      _cachedBalance = double.tryParse(stored);
+    }
   }
 
   double? parseBalanceFromPageText(String rawText) {

@@ -19,7 +19,18 @@ class _CampusCardPageState extends State<CampusCardPage> {
   static const _statusPathKeyword = '/decision/view/form';
 
   bool _capturedInCurrentDetailPage = false;
+  bool _autoPopAfterCapture = false;
   bool _obscured = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (CampusCardService.instance.cachedBalance == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _openCampusCardWebView(title: '校园卡账单', autoPop: true);
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -87,6 +98,15 @@ class _CampusCardPageState extends State<CampusCardPage> {
                     ),
                   ),
                   const Spacer(),
+                  GestureDetector(
+                    onTap: () => _openCampusCardWebView(title: '刷新余额', autoPop: true),
+                    child: Icon(
+                      Icons.refresh,
+                      size: 20,
+                      color: Colors.white.withValues(alpha: 0.7),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
                   GestureDetector(
                     onTap: () => setState(() => _obscured = !_obscured),
                     child: Icon(
@@ -161,8 +181,9 @@ class _CampusCardPageState extends State<CampusCardPage> {
     );
   }
 
-  Future<void> _openCampusCardWebView({required String title}) async {
+  Future<void> _openCampusCardWebView({required String title, bool autoPop = false}) async {
     _capturedInCurrentDetailPage = false;
+    _autoPopAfterCapture = autoPop;
 
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -206,6 +227,9 @@ class _CampusCardPageState extends State<CampusCardPage> {
 
     if (!mounted) return;
     setState(() {});
+    if (_autoPopAfterCapture) {
+      Navigator.of(context).pop();
+    }
   }
 
   Future<double?> _extractBalanceWithRetry(

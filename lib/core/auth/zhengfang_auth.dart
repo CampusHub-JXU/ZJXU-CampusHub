@@ -7,6 +7,7 @@ import 'package:pointycastle/export.dart';
 
 import '../logging/app_logger.dart';
 import '../network/dio_client.dart';
+import 'credential_store.dart';
 
 /// 教务系统连接模式
 enum ZhengfangMode {
@@ -552,6 +553,7 @@ class ZhengfangAuth {
         currentStudentId = username;
         _sessionActive = true;
         _cachedCsrfToken = null;
+        await CredentialStore.instance.saveZhengfangSession(username);
         AppLogger.instance.info('教务系统登录成功 [${_mode == ZhengfangMode.direct ? "直连" : "WebVPN"}]');
         return LoginSuccess();
       }
@@ -571,10 +573,25 @@ class ZhengfangAuth {
 
   bool get isLoggedIn => _sessionActive;
 
-  void markLoggedIn() => _sessionActive = true;
+  void markLoggedIn() {
+    _sessionActive = true;
+    if (currentStudentId != null) {
+      CredentialStore.instance.saveZhengfangSession(currentStudentId!);
+    }
+  }
+
   void markLoggedOut() {
     _sessionActive = false;
     currentStudentId = null;
+    CredentialStore.instance.clearZhengfangSession();
+  }
+
+  Future<void> restoreSession() async {
+    final studentId = await CredentialStore.instance.loadZhengfangSession();
+    if (studentId != null) {
+      currentStudentId = studentId;
+      _sessionActive = true;
+    }
   }
 
   Future<void> logout() async {
@@ -585,6 +602,7 @@ class ZhengfangAuth {
     _sessionActive = false;
     currentStudentId = null;
     _cachedCsrfToken = null;
+    await CredentialStore.instance.clearZhengfangSession();
   }
 
   Future<void> _refreshLoginContext() async {

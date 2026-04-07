@@ -8,6 +8,7 @@ import 'package:pointycastle/export.dart';
 
 import '../logging/app_logger.dart';
 import '../network/dio_client.dart';
+import 'credential_store.dart';
 
 sealed class UnifiedAuthLoginResult {}
 
@@ -146,6 +147,7 @@ class UnifiedAuthService {
         _sessionActive = true;
         currentAccount = username;
         _cachedContext = null;
+        await CredentialStore.instance.saveUnifiedAuthSession(username);
         AppLogger.instance.info('统一认证登录成功，已同步 WebView Cookie');
         return UnifiedAuthLoginSuccess();
       }
@@ -185,6 +187,16 @@ class UnifiedAuthService {
     _sessionActive = false;
     currentAccount = null;
     _cachedContext = null;
+    CredentialStore.instance.clearUnifiedAuthSession();
+  }
+
+  Future<void> restoreSession() async {
+    final account = await CredentialStore.instance.loadUnifiedAuthSession();
+    if (account != null) {
+      currentAccount = account;
+      _sessionActive = true;
+      await syncCookiesToWebView();
+    }
   }
 
   Future<void> _setWebViewCookie(Uri uri, io.Cookie cookie) async {

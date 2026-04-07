@@ -10,6 +10,12 @@ class CredentialStore {
   static const _keyUnifiedUsername = 'zjxu_unified_username';
   static const _keyUnifiedPassword = 'zjxu_unified_password';
 
+  // Session metadata keys
+  static const _keyZfStudentId = 'zjxu_zf_student_id';
+  static const _keyZfSessionActive = 'zjxu_zf_session_active';
+  static const _keyUaAccount = 'zjxu_ua_account';
+  static const _keyUaSessionActive = 'zjxu_ua_session_active';
+
   Future<void> saveCredentials(String username, String password) async {
     await _writePair(_keyUsername, username, _keyPassword, password);
   }
@@ -40,6 +46,42 @@ class CredentialStore {
 
   Future<void> clearUnifiedAuthCredentials() async {
     await _clearPair(_keyUnifiedUsername, _keyUnifiedPassword);
+  }
+
+  // ── Zhengfang session persistence ──────────────────────────────────────────
+
+  Future<void> saveZhengfangSession(String studentId) async {
+    await _storage.write(key: _keyZfStudentId, value: studentId);
+    await _storage.write(key: _keyZfSessionActive, value: '1');
+  }
+
+  Future<String?> loadZhengfangSession() async {
+    final active = await _storage.read(key: _keyZfSessionActive);
+    if (active != '1') return null;
+    return _storage.read(key: _keyZfStudentId);
+  }
+
+  Future<void> clearZhengfangSession() async {
+    await _storage.delete(key: _keyZfStudentId);
+    await _storage.delete(key: _keyZfSessionActive);
+  }
+
+  // ── Unified Auth session persistence ───────────────────────────────────────
+
+  Future<void> saveUnifiedAuthSession(String account) async {
+    await _storage.write(key: _keyUaAccount, value: account);
+    await _storage.write(key: _keyUaSessionActive, value: '1');
+  }
+
+  Future<String?> loadUnifiedAuthSession() async {
+    final active = await _storage.read(key: _keyUaSessionActive);
+    if (active != '1') return null;
+    return _storage.read(key: _keyUaAccount);
+  }
+
+  Future<void> clearUnifiedAuthSession() async {
+    await _storage.delete(key: _keyUaAccount);
+    await _storage.delete(key: _keyUaSessionActive);
   }
 
   Future<void> _writePair(

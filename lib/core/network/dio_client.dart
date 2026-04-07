@@ -1,5 +1,6 @@
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../logging/app_logger.dart';
 import 'cookie_interceptor.dart';
@@ -9,8 +10,19 @@ import 'proxy_mode.dart';
 class DioClient {
   DioClient._();
   static final DioClient instance = DioClient._();
-  final CookieJar cookieJar = CookieJar();
-  late final Dio dio = _createDio();
+
+  late final PersistCookieJar cookieJar;
+  late final Dio dio;
+
+  Future<void> init() async {
+    final dir = await getApplicationDocumentsDirectory();
+    final cookieDir = '${dir.path}/.cookies/';
+    cookieJar = PersistCookieJar(
+      storage: FileStorage(cookieDir),
+      persistSession: true,
+    );
+    dio = _createDio();
+  }
 
   void applyProxyMode() {
     _applyProxyMode(dio);
