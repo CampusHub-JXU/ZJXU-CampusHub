@@ -159,6 +159,7 @@ class _DormElectricitySettingsPageState
                           labelText: '园区 / 楼幢',
                           border: OutlineInputBorder(),
                         ),
+                        isExpanded: true,
                         value: _selectedBuilding,
                         items: _buildings.map((b) {
                           return DropdownMenuItem(
@@ -180,11 +181,15 @@ class _DormElectricitySettingsPageState
                             labelText: '楼层 / 房间号',
                             border: OutlineInputBorder(),
                           ),
+                          isExpanded: true,
                           value: _selectedRoom,
                           items: _rooms.map((r) {
                             return DropdownMenuItem(
                               value: r,
-                              child: Text('${r.floorName}  ${r.roomName}号'),
+                              child: Text(
+                                '${r.floorName}  ${r.roomName}号',
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             );
                           }).toList(),
                           onChanged: _rooms.isEmpty
