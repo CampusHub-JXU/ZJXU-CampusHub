@@ -275,15 +275,19 @@ class ZhengfangAuth {
 
       AppLogger.instance.info('正在通过 WebVPN CAS 登录 (一卡通认证)...');
       final loginUri = _cachedCasLoginUrl ?? '$_webVpnBase$_webVpnCasPath';
-      // AES 加密密码
+
+      // 测试：同时发送加密密码和明文密码
       final encryptedPassword = _encryptPasswordWithAes(password);
-      AppLogger.instance.debug('WebVPN CAS 登录参数: username=$username, veriyCode=$captcha, encryptedPassword=${encryptedPassword.length > 20 ? encryptedPassword.substring(0, 20) : encryptedPassword}..., lt=${lt != null && lt.length > 10 ? lt.substring(0, 10) : lt ?? ""}..., execution=${execution.length > 20 ? execution.substring(0, 20) : execution}...');
+
+      AppLogger.instance.debug('WebVPN CAS 登录参数: username=$username, veriyCode=$captcha, encryptedPassword=$encryptedPassword, plaintextPassword=$password, lt=${lt != null && lt.length > 10 ? lt.substring(0, 10) : lt ?? ""}..., execution=${execution.length > 20 ? execution.substring(0, 20) : execution}...');
+
       final resp = await _dio.post<String>(
         loginUri,
         data: {
           'username': username,
-          'password': encryptedPassword,
-          'veriyCode': captcha,  // 注意：这里是 veriyCode 不是 captcha
+          'password': password,  // 尝试明文密码
+          // 'password_plaintext': password,  // 移除额外字段
+          'veriyCode': captcha,
           if (lt != null && lt.isNotEmpty) 'lt': lt,
           'execution': execution,
           '_eventId': 'submit',
