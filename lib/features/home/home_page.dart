@@ -3,7 +3,6 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/theme.dart';
-import '../../core/auth/unified_auth.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/semester/semester_calendar.dart';
 import '../campus_card/campus_card_service.dart';
@@ -24,8 +23,6 @@ class _HomePageState extends State<HomePage> {
   CourseEntry? _nextCourse;
   String _nextCourseLabel = '';
   bool _courseLoggedIn = false;
-  bool _campusCardLoggedIn = false;
-  bool _academicSystemLoggedIn = false;
   bool _hasScheduleCache = false;
   DateTime? _scheduleUpdatedAt;
 
@@ -36,20 +33,13 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    _campusCardLoggedIn = UnifiedAuthService.instance.isLoggedIn;
-    _academicSystemLoggedIn = ZhengfangAuth.instance.isLoggedIn;
     SemesterCalendar.instance.semesterStartDate.addListener(
       _onSemesterStartChanged,
     );
-    _refreshAll();
-  }
-
-  Future<void> _refreshAll() async {
-    await Future.wait([
-      _refreshCampusCardBalance(),
-      _refreshNextCourse(),
-      _refreshDormElectricity(),
-    ]);
+    ZhengfangAuth.instance.addListener(_onAcademicAuthChanged);
+    _refreshCampusCardBalance();
+    _refreshNextCourse();
+    _refreshDormElectricity();
   }
 
   @override
@@ -57,7 +47,13 @@ class _HomePageState extends State<HomePage> {
     SemesterCalendar.instance.semesterStartDate.removeListener(
       _onSemesterStartChanged,
     );
+    ZhengfangAuth.instance.removeListener(_onAcademicAuthChanged);
     super.dispose();
+  }
+
+  void _onAcademicAuthChanged() {
+    if (!mounted) return;
+    _refreshNextCourse();
   }
 
   void _onSemesterStartChanged() {
@@ -131,20 +127,17 @@ class _HomePageState extends State<HomePage> {
       }
 
       setState(() {
-        _campusCardLoggedIn = UnifiedAuthService.instance.isLoggedIn;
-        _academicSystemLoggedIn = ZhengfangAuth.instance.isLoggedIn;
         _hasScheduleCache = hasScheduleCache;
         _scheduleUpdatedAt = snapshot?.lastUpdatedAt;
-        _courseLoggedIn = _academicSystemLoggedIn || hasScheduleCache;
+        _courseLoggedIn = ZhengfangAuth.instance.isLoggedIn || hasScheduleCache;
         _nextCourse = nextCourse;
         _nextCourseLabel = nextCourseLabel;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _campusCardLoggedIn = UnifiedAuthService.instance.isLoggedIn;
-        _academicSystemLoggedIn = ZhengfangAuth.instance.isLoggedIn;
-        _courseLoggedIn = _academicSystemLoggedIn || _hasScheduleCache;
+        _courseLoggedIn =
+            ZhengfangAuth.instance.isLoggedIn || _hasScheduleCache;
         _nextCourse = null;
         _nextCourseLabel = '';
       });
@@ -155,7 +148,6 @@ class _HomePageState extends State<HomePage> {
     final cached = CampusCardService.instance.cachedBalance;
     if (cached != null && mounted) {
       setState(() {
-        _campusCardLoggedIn = UnifiedAuthService.instance.isLoggedIn;
         _campusCardBalance = CampusCardService.instance.formatBalance(cached);
       });
       return;
@@ -163,7 +155,6 @@ class _HomePageState extends State<HomePage> {
     final networkBalance = await CampusCardService.instance.fetchBalance();
     if (!mounted) return;
     setState(() {
-      _campusCardLoggedIn = UnifiedAuthService.instance.isLoggedIn;
       _campusCardBalance = CampusCardService.instance.formatBalance(
         networkBalance,
       );
@@ -183,7 +174,7 @@ class _HomePageState extends State<HomePage> {
   Future<void> _openSchedule(BuildContext context) async {
     await context.pushNamed('schedule');
     if (!mounted) return;
-    _refreshAll();
+    _refreshNextCourse();
   }
 
   String _formatScheduleUpdatedAt(DateTime? value) {
@@ -195,31 +186,37 @@ class _HomePageState extends State<HomePage> {
     return '$month-$day $hour:$minute';
   }
 
-  Widget _buildHeaderStatusRow() {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        _StatusChip(
-          label: '一卡通',
-          value: _campusCardLoggedIn ? '已登录' : '未登录',
-          active: _campusCardLoggedIn,
+  Widget _buildHeaderScheduleStatus() {
+    final loggedIn = ZhengfangAuth.instance.isLoggedIn;
+    final value = _hasScheduleCache
+        ? (loggedIn
+              ? _formatScheduleUpdatedAt(_scheduleUpdatedAt)
+              : '缓存 ${_formatScheduleUpdatedAt(_scheduleUpdatedAt)}')
+        : '未缓存';
+
+    final active = _hasScheduleCache;
+    final background = active
+        ? Colors.white.withValues(alpha: 0.16)
+        : Colors.white.withValues(alpha: 0.08);
+    final border = active
+        ? Colors.white.withValues(alpha: 0.22)
+        : Colors.white.withValues(alpha: 0.12);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: border),
+      ),
+      child: Text(
+        '课表 $value',
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: Colors.white.withValues(alpha: active ? 0.95 : 0.72),
         ),
-        _StatusChip(
-          label: '教务',
-          value: _academicSystemLoggedIn ? '已登录' : '未登录',
-          active: _academicSystemLoggedIn,
-        ),
-        _StatusChip(
-          label: '课表',
-          value: _hasScheduleCache
-              ? (_academicSystemLoggedIn
-                    ? _formatScheduleUpdatedAt(_scheduleUpdatedAt)
-                    : '缓存 ${_formatScheduleUpdatedAt(_scheduleUpdatedAt)}')
-              : '未缓存',
-          active: _hasScheduleCache,
-        ),
-      ],
+      ),
     );
   }
 
@@ -288,11 +285,31 @@ class _HomePageState extends State<HomePage> {
           borderRadius: BorderRadius.circular(12),
           child: Container(
             decoration: BoxDecoration(
-              color: AppColors.primary,
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFF7B1527),
+                  AppColors.primary,
+                  Color(0xFFB7485E),
+                ],
+              ),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Stack(
               children: [
+                Positioned(
+                  left: -40,
+                  bottom: -48,
+                  child: Container(
+                    width: 140,
+                    height: 140,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white.withValues(alpha: 0.08),
+                    ),
+                  ),
+                ),
                 Positioned(
                   right: -30,
                   top: -20,
@@ -346,21 +363,10 @@ class _HomePageState extends State<HomePage> {
                             padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(),
                           ),
-                          const SizedBox(width: 8),
-                          IconButton(
-                            icon: const Icon(
-                              Icons.settings_outlined,
-                              color: Colors.white,
-                              size: 22,
-                            ),
-                            onPressed: () => context.pushNamed('settings'),
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
-                          ),
                         ],
                       ),
                       const SizedBox(height: 10),
-                      _buildHeaderStatusRow(),
+                      _buildHeaderScheduleStatus(),
                       const SizedBox(height: 12),
                       // Course content + action on the same bottom line
                       Row(
@@ -509,7 +515,7 @@ class _HomePageState extends State<HomePage> {
       onTap: () async {
         await context.pushNamed('campus-card');
         if (!mounted) return;
-        _refreshAll();
+        _refreshCampusCardBalance();
       },
       child: Container(
         decoration: BoxDecoration(
@@ -540,7 +546,7 @@ class _HomePageState extends State<HomePage> {
                   onTap: () async {
                     await context.pushNamed('campus-card-payment');
                     if (!mounted) return;
-                    _refreshAll();
+                    _refreshCampusCardBalance();
                   },
                   child: Container(
                     padding: const EdgeInsets.symmetric(
@@ -818,8 +824,6 @@ class _HomePageState extends State<HomePage> {
     return InkWell(
       onTap: () async {
         await context.pushNamed('changxing-jiada');
-        if (!mounted) return;
-        _refreshAll();
       },
       borderRadius: BorderRadius.circular(12),
       child: Container(
@@ -988,8 +992,6 @@ class _HomePageState extends State<HomePage> {
     return GestureDetector(
       onTap: () async {
         await context.pushNamed('service-hall');
-        if (!mounted) return;
-        _refreshAll();
       },
       child: Container(
         width: double.infinity,
@@ -1022,45 +1024,6 @@ class _HomePageState extends State<HomePage> {
             ),
             Icon(Icons.arrow_forward_ios, size: 14, color: cs.onSurfaceVariant),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _StatusChip extends StatelessWidget {
-  const _StatusChip({
-    required this.label,
-    required this.value,
-    required this.active,
-  });
-
-  final String label;
-  final String value;
-  final bool active;
-
-  @override
-  Widget build(BuildContext context) {
-    final background = active
-        ? Colors.white.withValues(alpha: 0.16)
-        : Colors.white.withValues(alpha: 0.08);
-    final border = active
-        ? Colors.white.withValues(alpha: 0.22)
-        : Colors.white.withValues(alpha: 0.12);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: border),
-      ),
-      child: Text(
-        '$label $value',
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: Colors.white.withValues(alpha: active ? 0.95 : 0.72),
         ),
       ),
     );

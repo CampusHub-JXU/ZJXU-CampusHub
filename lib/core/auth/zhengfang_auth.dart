@@ -1,8 +1,8 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:pointycastle/export.dart';
 
@@ -47,7 +47,7 @@ class WebVpnCasFailure extends WebVpnCasResult {
   final String message;
 }
 
-class ZhengfangAuth {
+class ZhengfangAuth extends ChangeNotifier {
   ZhengfangAuth._();
   static final ZhengfangAuth instance = ZhengfangAuth._();
 
@@ -513,6 +513,7 @@ class ZhengfangAuth {
     AppLogger.instance.info(
       '教务系统连接模式切换为: ${mode == ZhengfangMode.direct ? "直连" : "WebVPN"}',
     );
+    notifyListeners();
   }
 
   Future<Uint8List> fetchCaptcha() async {
@@ -632,6 +633,7 @@ class ZhengfangAuth {
         AppLogger.instance.info(
           '教务系统登录成功 [${_mode == ZhengfangMode.direct ? "直连" : "WebVPN"}]',
         );
+        notifyListeners();
         return LoginSuccess();
       }
 
@@ -655,12 +657,14 @@ class ZhengfangAuth {
     if (currentStudentId != null) {
       CredentialStore.instance.saveZhengfangSession(currentStudentId!);
     }
+    notifyListeners();
   }
 
   void markLoggedOut() {
     _sessionActive = false;
     currentStudentId = null;
     CredentialStore.instance.clearZhengfangSession();
+    notifyListeners();
   }
 
   Future<void> restoreSession() async {
@@ -668,6 +672,7 @@ class ZhengfangAuth {
     if (studentId != null) {
       currentStudentId = studentId;
       _sessionActive = true;
+      notifyListeners();
     }
   }
 
@@ -680,6 +685,7 @@ class ZhengfangAuth {
     currentStudentId = null;
     _cachedCsrfToken = null;
     await CredentialStore.instance.clearZhengfangSession();
+    notifyListeners();
   }
 
   Future<void> _refreshLoginContext() async {

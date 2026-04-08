@@ -21,14 +21,16 @@ class _DormElectricityPageState extends State<DormElectricityPage> {
   @override
   void initState() {
     super.initState();
-    _load();
+    _load(forceRefresh: true);
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool forceRefresh = false}) async {
     setState(() => _loading = true);
     _hasConfig = await _service.hasRoomConfig();
     if (_hasConfig) {
-      _electricity = await _service.fetchElectricity();
+      _electricity = await _service.fetchElectricity(
+        forceRefresh: forceRefresh,
+      );
       _error = _service.lastError;
     }
     if (!mounted) return;
@@ -47,7 +49,7 @@ class _DormElectricityPageState extends State<DormElectricityPage> {
             tooltip: '选择寝室',
             onPressed: () async {
               await context.pushNamed('dorm-electricity-settings');
-              _load();
+              _load(forceRefresh: true);
             },
           ),
         ],
@@ -55,26 +57,26 @@ class _DormElectricityPageState extends State<DormElectricityPage> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : !_hasConfig
-              ? _buildNoConfig(context, cs)
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView(
-                    padding: const EdgeInsets.all(20),
-                    children: [
-                      if (_error != null) ...[
-                        _buildErrorBanner(cs),
-                        const SizedBox(height: 16),
-                      ],
-                      _buildMainCard(context, cs),
-                      const SizedBox(height: 16),
-                      OutlinedButton.icon(
-                        onPressed: _load,
-                        icon: const Icon(Icons.refresh, size: 18),
-                        label: const Text('刷新'),
-                      ),
-                    ],
+          ? _buildNoConfig(context, cs)
+          : RefreshIndicator(
+              onRefresh: () => _load(forceRefresh: true),
+              child: ListView(
+                padding: const EdgeInsets.all(20),
+                children: [
+                  if (_error != null) ...[
+                    _buildErrorBanner(cs),
+                    const SizedBox(height: 16),
+                  ],
+                  _buildMainCard(context, cs),
+                  const SizedBox(height: 16),
+                  OutlinedButton.icon(
+                    onPressed: () => _load(forceRefresh: true),
+                    icon: const Icon(Icons.refresh, size: 18),
+                    label: const Text('刷新'),
                   ),
-                ),
+                ],
+              ),
+            ),
     );
   }
 
@@ -92,12 +94,20 @@ class _DormElectricityPageState extends State<DormElectricityPage> {
                 color: AppColors.success.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: const Icon(Icons.home_outlined, size: 36, color: AppColors.success),
+              child: const Icon(
+                Icons.home_outlined,
+                size: 36,
+                color: AppColors.success,
+              ),
             ),
             const SizedBox(height: 20),
             Text(
               '尚未配置寝室',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: cs.onSurface),
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w600,
+                color: cs.onSurface,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
@@ -108,7 +118,7 @@ class _DormElectricityPageState extends State<DormElectricityPage> {
             FilledButton.icon(
               onPressed: () async {
                 await context.pushNamed('dorm-electricity-settings');
-                _load();
+                _load(forceRefresh: true);
               },
               icon: const Icon(Icons.add_home_outlined, size: 18),
               label: const Text('去选择寝室'),
@@ -144,6 +154,10 @@ class _DormElectricityPageState extends State<DormElectricityPage> {
   Widget _buildMainCard(BuildContext context, ColorScheme cs) {
     final value = _service.formatElectricity(_electricity);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final updatedAt = _service.lastUpdated;
+    final updatedAtText = updatedAt == null
+        ? '未刷新'
+        : '${updatedAt.hour.toString().padLeft(2, '0')}:${updatedAt.minute.toString().padLeft(2, '0')}';
 
     return Container(
       decoration: BoxDecoration(
@@ -163,7 +177,11 @@ class _DormElectricityPageState extends State<DormElectricityPage> {
                   color: AppColors.success.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: const Icon(Icons.bolt, color: AppColors.success, size: 24),
+                child: const Icon(
+                  Icons.bolt,
+                  color: AppColors.success,
+                  size: 24,
+                ),
               ),
               const SizedBox(width: 12),
               Column(
@@ -175,8 +193,11 @@ class _DormElectricityPageState extends State<DormElectricityPage> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '实时数据',
-                    style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant.withValues(alpha: 0.6)),
+                    '上次更新 $updatedAtText',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.6),
+                    ),
                   ),
                 ],
               ),
@@ -218,7 +239,11 @@ class _DormElectricityPageState extends State<DormElectricityPage> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.warning_amber_rounded, size: 14, color: cs.onErrorContainer),
+                  Icon(
+                    Icons.warning_amber_rounded,
+                    size: 14,
+                    color: cs.onErrorContainer,
+                  ),
                   const SizedBox(width: 6),
                   Text(
                     '电量不足，请及时充值',

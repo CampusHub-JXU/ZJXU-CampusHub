@@ -10,6 +10,7 @@ import 'core/network/network_settings.dart';
 import 'core/semester/semester_calendar.dart';
 import 'features/campus_card/campus_card_service.dart';
 import 'features/changxing_jiada/changxing_jiada_service.dart';
+import 'features/dorm_electricity/dorm_electricity_service.dart';
 import 'features/schedule/schedule_service.dart';
 
 Future<void> main() async {
@@ -24,6 +25,7 @@ Future<void> main() async {
     UnifiedAuthService.instance.restoreSession(),
     CampusCardService.instance.restoreBalance(),
     ChangxingJiadaService.instance.restoreSession(),
+    DormElectricityService.instance.restoreCache(),
     ScheduleService.instance.restoreCache(),
   ]);
   runApp(const JiaxingUniversityApp());

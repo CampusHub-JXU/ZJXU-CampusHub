@@ -8,6 +8,7 @@ import 'schedule_cache_snapshot.dart';
 import 'schedule_model.dart';
 import 'schedule_service.dart';
 import 'schedule_term_context.dart';
+import 'schedule_week_view_model.dart';
 
 class SchedulePage extends StatefulWidget {
   const SchedulePage({super.key});
@@ -28,6 +29,7 @@ class _SchedulePageState extends State<SchedulePage> {
   int _displayWeek = 1;
   DateTime? _scheduleUpdatedAt;
   late final PageController _weekPageController;
+  final Map<int, ScheduleWeekViewModel> _weekViewModels = {};
 
   int get _currentWeek => SemesterCalendar.instance.weekForDate(DateTime.now());
 
@@ -40,7 +42,12 @@ class _SchedulePageState extends State<SchedulePage> {
     _weekPageController = PageController(initialPage: _displayWeek - 1);
     _loggedIn = ZhengfangAuth.instance.isLoggedIn;
     _restoreCachedSnapshot();
-    if (_loggedIn || _courses.isNotEmpty) _fetchSchedule();
+    if (_loggedIn || _courses.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _fetchSchedule();
+      });
+    }
   }
 
   @override
@@ -53,6 +60,7 @@ class _SchedulePageState extends State<SchedulePage> {
     final nextWeek = index + 1;
     if (nextWeek == _displayWeek) return;
     setState(() => _displayWeek = nextWeek);
+    _primeWeekViewModel(nextWeek);
   }
 
   void _restoreCachedSnapshot() {
@@ -64,6 +72,7 @@ class _SchedulePageState extends State<SchedulePage> {
       _courseChangeRules = const [];
       _scheduleUpdatedAt = null;
       _infoMessage = null;
+      _weekViewModels.clear();
       return;
     }
 
@@ -80,6 +89,44 @@ class _SchedulePageState extends State<SchedulePage> {
     _courses = snapshot.courses;
     _courseChangeRules = snapshot.changeRules;
     _scheduleUpdatedAt = snapshot.lastUpdatedAt;
+    _weekViewModels.clear();
+    _primeWeekViewModel(_displayWeek);
+  }
+
+  void _primeWeekViewModel(int week) {
+    if (_courses.isEmpty) return;
+    _weekViewModels.putIfAbsent(week, () => _buildWeekViewModel(week));
+  }
+
+  ScheduleWeekViewModel _buildWeekViewModel(int week) {
+    final effectiveWeekCourses = ScheduleService.instance
+        .buildEffectiveWeekCourses(
+          courses: _courses,
+          week: week,
+          changeRules: _courseChangeRules,
+        );
+
+    final days = <int, ScheduleDayCourses>{};
+    for (int day = 1; day <= 7; day++) {
+      final dayCurrent = _ScheduleGrid.mergeAdjacentCourses(
+        effectiveWeekCourses.where((course) => course.weekday == day).toList(),
+      );
+      final dayOther = _ScheduleGrid.deduplicateBySlot(
+        _courses
+            .where((course) => course.weekday == day && !course.isInWeek(week))
+            .toList(),
+        dayCurrent,
+      );
+      days[day] = ScheduleDayCourses(
+        currentWeekCourses: dayCurrent,
+        otherWeekCourses: dayOther,
+      );
+    }
+    return ScheduleWeekViewModel(week: week, days: days);
+  }
+
+  ScheduleWeekViewModel _weekViewModelFor(int week) {
+    return _weekViewModels.putIfAbsent(week, () => _buildWeekViewModel(week));
   }
 
   Future<void> _fetchSchedule({bool forceRefresh = false}) async {
@@ -227,16 +274,15 @@ class _SchedulePageState extends State<SchedulePage> {
       controller: _weekPageController,
       itemCount: 20,
       onPageChanged: _onWeekPageChanged,
-      allowImplicitScrolling: true,
+      allowImplicitScrolling: false,
       physics: const BouncingScrollPhysics(),
       itemBuilder: (context, index) {
         final week = index + 1;
+        final weekViewModel = _weekViewModelFor(week);
         return RepaintBoundary(
           child: _ScheduleGrid(
             key: ValueKey('week-grid-$week'),
-            courses: _courses,
-            courseChangeRules: _courseChangeRules,
-            currentWeek: week,
+            weekViewModel: weekViewModel,
             actualCurrentWeek: _currentWeek,
           ),
         );
@@ -294,16 +340,13 @@ class _ScheduleInfoBanner extends StatelessWidget {
 class _ScheduleGrid extends StatelessWidget {
   const _ScheduleGrid({
     super.key,
-    required this.courses,
-    required this.courseChangeRules,
-    required this.currentWeek,
+    required this.weekViewModel,
     required this.actualCurrentWeek,
   });
 
-  final List<CourseEntry> courses;
-  final List<CourseChangeRule> courseChangeRules;
-  final int currentWeek;
+  final ScheduleWeekViewModel weekViewModel;
   final int actualCurrentWeek;
+  int get currentWeek => weekViewModel.week;
 
   static const _slotColumnWidth = 48.0;
   static const _slotHeight = 68.0;
@@ -332,7 +375,7 @@ class _ScheduleGrid extends StatelessWidget {
 
   /// Merge adjacent/overlapping same-name courses on the same day into one
   /// entry spanning the full range, then deduplicate.
-  static List<CourseEntry> _mergeAdjacentCourses(List<CourseEntry> courses) {
+  static List<CourseEntry> mergeAdjacentCourses(List<CourseEntry> courses) {
     if (courses.length <= 1) return courses;
 
     // Group by courseName (already filtered to same weekday by caller)
@@ -384,7 +427,7 @@ class _ScheduleGrid extends StatelessWidget {
 
   /// Deduplicate other-week courses, exclude those already in current week,
   /// and merge adjacent same-name entries.
-  static List<CourseEntry> _deduplicateBySlot(
+  static List<CourseEntry> deduplicateBySlot(
     List<CourseEntry> otherCourses,
     List<CourseEntry> currentWeekCourses,
   ) {
@@ -401,7 +444,7 @@ class _ScheduleGrid extends StatelessWidget {
       return seen.add(key);
     }).toList();
 
-    return _mergeAdjacentCourses(deduped);
+    return mergeAdjacentCourses(deduped);
   }
 
   Color _colorForCourse(String name, bool isCurrentWeek) {
@@ -411,13 +454,6 @@ class _ScheduleGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectiveWeekCourses = ScheduleService.instance
-        .buildEffectiveWeekCourses(
-          courses: courses,
-          week: currentWeek,
-          changeRules: courseChangeRules,
-        );
-
     return LayoutBuilder(
       builder: (context, constraints) {
         final dayColumnWidth = (constraints.maxWidth - _slotColumnWidth) / 7;
@@ -437,30 +473,16 @@ class _ScheduleGrid extends StatelessWidget {
                   children: [
                     _SlotColumn(slotColumnWidth: _slotColumnWidth),
                     for (int day = 1; day <= 7; day++)
-                      Builder(
-                        builder: (context) {
-                          final dayCurrent = _mergeAdjacentCourses(
-                            effectiveWeekCourses
-                                .where((c) => c.weekday == day)
-                                .toList(),
-                          );
-                          return _DayColumn(
-                            currentWeekCourses: dayCurrent,
-                            otherWeekCourses: _deduplicateBySlot(
-                              courses
-                                  .where(
-                                    (c) =>
-                                        c.weekday == day &&
-                                        !c.isInWeek(currentWeek),
-                                  )
-                                  .toList(),
-                              dayCurrent,
-                            ),
-                            colorFor: _colorForCourse,
-                            dayColumnWidth: dayColumnWidth,
-                            displayWeek: currentWeek,
-                          );
-                        },
+                      _DayColumn(
+                        currentWeekCourses: weekViewModel
+                            .coursesForDay(day)
+                            .currentWeekCourses,
+                        otherWeekCourses: weekViewModel
+                            .coursesForDay(day)
+                            .otherWeekCourses,
+                        colorFor: _colorForCourse,
+                        dayColumnWidth: dayColumnWidth,
+                        displayWeek: currentWeek,
                       ),
                   ],
                 ),

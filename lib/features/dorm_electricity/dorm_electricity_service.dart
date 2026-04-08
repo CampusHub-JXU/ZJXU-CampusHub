@@ -58,11 +58,23 @@ class DormElectricityService {
   static const _keyBuildingId = 'dorm_building_id';
   static const _keyFloorId = 'dorm_floor_id';
   static const _keyRoomId = 'dorm_room_id';
+  static const _keyElectricity = 'dorm_cached_electricity';
+  static const _keyElectricityUpdatedAt = 'dorm_cached_electricity_updated_at';
+  static const refreshWindow = Duration(minutes: 30);
 
   late final Dio _dio = _createDio();
+  SharedPreferences? _prefs;
+  bool _cacheRestored = false;
 
   double? _cachedElectricity;
+  DateTime? _lastUpdated;
   double? get cachedElectricity => _cachedElectricity;
+  DateTime? get lastUpdated => _lastUpdated;
+  bool get hasFreshCache {
+    final updatedAt = _lastUpdated;
+    if (_cachedElectricity == null || updatedAt == null) return false;
+    return DateTime.now().difference(updatedAt) <= refreshWindow;
+  }
 
   String? _lastError;
   String? get lastError => _lastError;
@@ -74,8 +86,22 @@ class DormElectricityService {
     );
   }
 
+  Future<void> restoreCache({bool force = false}) async {
+    if (_cacheRestored && !force) return;
+    if (force) {
+      _prefs = await SharedPreferences.getInstance();
+    }
+    final prefs = await _ensurePrefs();
+    _cachedElectricity = prefs.getDouble(_keyElectricity);
+    final updatedAtMillis = prefs.getInt(_keyElectricityUpdatedAt);
+    if (updatedAtMillis != null) {
+      _lastUpdated = DateTime.fromMillisecondsSinceEpoch(updatedAtMillis);
+    }
+    _cacheRestored = true;
+  }
+
   Future<bool> hasRoomConfig() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _ensurePrefs();
     return prefs.containsKey(_keyCommunityId) &&
         prefs.containsKey(_keyBuildingId) &&
         prefs.containsKey(_keyFloorId) &&
@@ -83,7 +109,7 @@ class DormElectricityService {
   }
 
   Future<DormRoomConfig?> loadRoomConfig() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _ensurePrefs();
     final communityId = prefs.getString(_keyCommunityId);
     final buildingId = prefs.getString(_keyBuildingId);
     final floorId = prefs.getString(_keyFloorId);
@@ -103,7 +129,7 @@ class DormElectricityService {
   }
 
   Future<void> saveRoomConfig(DormRoomConfig config) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _ensurePrefs();
     await prefs.setString(_keyCommunityId, config.communityId);
     await prefs.setString(_keyBuildingId, config.buildingId);
     await prefs.setString(_keyFloorId, config.floorId);
@@ -111,12 +137,15 @@ class DormElectricityService {
   }
 
   Future<void> clearRoomConfig() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _ensurePrefs();
     await prefs.remove(_keyCommunityId);
     await prefs.remove(_keyBuildingId);
     await prefs.remove(_keyFloorId);
     await prefs.remove(_keyRoomId);
+    await prefs.remove(_keyElectricity);
+    await prefs.remove(_keyElectricityUpdatedAt);
     _cachedElectricity = null;
+    _lastUpdated = null;
   }
 
   String _buildQueryUrl(DormRoomConfig config) {
@@ -128,21 +157,32 @@ class DormElectricityService {
         '/room_id/${config.roomId}';
   }
 
-  Future<double?> fetchElectricity() async {
+  Future<double?> fetchElectricity({bool forceRefresh = false}) async {
     try {
+      await restoreCache();
+
+      if (!forceRefresh && hasFreshCache) {
+        _lastError = null;
+        return _cachedElectricity;
+      }
+
       final config = await loadRoomConfig();
       if (config == null) return null;
 
       final url = _buildQueryUrl(config);
       AppLogger.instance.debug('电费查询 → $url');
       final resp = await _dio.get<List<int>>(url);
-      AppLogger.instance.debug('电费响应 status=${resp.statusCode} bytes=${resp.data?.length}');
+      AppLogger.instance.debug(
+        '电费响应 status=${resp.statusCode} bytes=${resp.data?.length}',
+      );
       if (resp.data == null) return _cachedElectricity;
 
       final html = utf8.decode(resp.data!, allowMalformed: true);
       final doc = html_parser.parse(html);
       final text = doc.body?.text ?? '';
-      AppLogger.instance.debug('电费页面文本(前200): ${text.length > 200 ? text.substring(0, 200) : text}');
+      AppLogger.instance.debug(
+        '电费页面文本(前200): ${text.length > 200 ? text.substring(0, 200) : text}',
+      );
 
       final match = RegExp(
         r'实际剩余电量\s*[（(]度[)）]\s*(?:[:：]\s*)?([0-9]+(?:\.[0-9]+)?)',
@@ -153,6 +193,8 @@ class DormElectricityService {
         final value = double.tryParse(match.group(1)!);
         if (value != null) {
           _cachedElectricity = value;
+          _lastUpdated = DateTime.now();
+          await _persistCache();
           _lastError = null;
           AppLogger.instance.info('电费解析成功: $value 度');
           return value;
@@ -170,7 +212,7 @@ class DormElectricityService {
       }
       if (e.type == DioExceptionType.connectionError) {
         _lastError = '网络不可达';
-        return null;
+        return _cachedElectricity;
       }
       _lastError = '未知错误';
       return _cachedElectricity;
@@ -264,5 +306,25 @@ class DormElectricityService {
       ignoreSystemProxy: NetworkSettings.instance.ignoreSystemProxy.value,
     );
     return client;
+  }
+
+  Future<SharedPreferences> _ensurePrefs() async {
+    final prefs = _prefs;
+    if (prefs != null) return prefs;
+    final created = await SharedPreferences.getInstance();
+    _prefs = created;
+    return created;
+  }
+
+  Future<void> _persistCache() async {
+    final prefs = await _ensurePrefs();
+    final value = _cachedElectricity;
+    final updatedAt = _lastUpdated;
+    if (value == null || updatedAt == null) return;
+    await prefs.setDouble(_keyElectricity, value);
+    await prefs.setInt(
+      _keyElectricityUpdatedAt,
+      updatedAt.millisecondsSinceEpoch,
+    );
   }
 }

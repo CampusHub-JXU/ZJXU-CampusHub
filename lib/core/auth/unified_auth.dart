@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:io' as io;
-import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:pointycastle/export.dart';
 
@@ -43,7 +43,7 @@ class _UnifiedAuthLoginContext {
   final Uri actionUri;
 }
 
-class UnifiedAuthService {
+class UnifiedAuthService extends ChangeNotifier {
   UnifiedAuthService._();
   static final UnifiedAuthService instance = UnifiedAuthService._();
 
@@ -117,6 +117,7 @@ class UnifiedAuthService {
           AppLogger.instance.info('统一认证已有有效 session，跳过登录');
           currentAccount = username;
           await CredentialStore.instance.saveUnifiedAuthSession(username);
+          notifyListeners();
           return UnifiedAuthLoginSuccess();
         }
         AppLogger.instance.info('统一认证初始化上下文缺失');
@@ -156,6 +157,7 @@ class UnifiedAuthService {
         _cachedContext = null;
         await CredentialStore.instance.saveUnifiedAuthSession(username);
         AppLogger.instance.info('统一认证登录成功，已同步 WebView Cookie');
+        notifyListeners();
         return UnifiedAuthLoginSuccess();
       }
 
@@ -183,7 +185,9 @@ class UnifiedAuthService {
 
     for (final uri in uris) {
       final cookies = await _cookieJar.loadForRequest(uri);
-      AppLogger.instance.debug('syncCookies ${uri.host}: ${cookies.map((c) => c.name).join(', ')}');
+      AppLogger.instance.debug(
+        'syncCookies ${uri.host}: ${cookies.map((c) => c.name).join(', ')}',
+      );
       for (final cookie in cookies) {
         await _setWebViewCookie(uri, cookie);
       }
@@ -195,6 +199,7 @@ class UnifiedAuthService {
     currentAccount = null;
     _cachedContext = null;
     CredentialStore.instance.clearUnifiedAuthSession();
+    notifyListeners();
   }
 
   Future<void> restoreSession() async {
@@ -203,6 +208,7 @@ class UnifiedAuthService {
       currentAccount = account;
       _sessionActive = true;
       await syncCookiesToWebView();
+      notifyListeners();
     }
   }
 
@@ -257,8 +263,11 @@ class UnifiedAuthService {
         await syncCookiesToWebView();
         _sessionActive = true;
         if (currentAccount != null) {
-          await CredentialStore.instance.saveUnifiedAuthSession(currentAccount!);
+          await CredentialStore.instance.saveUnifiedAuthSession(
+            currentAccount!,
+          );
         }
+        notifyListeners();
         // 返回空上下文，标记已认证
         final context = _UnifiedAuthLoginContext(
           serviceUrl: serviceUrl,
@@ -289,7 +298,9 @@ class UnifiedAuthService {
         actionUri: _resolveUri(loginUri, action),
       );
       _cachedContext = context;
-      AppLogger.instance.debug('统一认证上下文: lt=${lt.length}字符 execution=${execution.length}字符');
+      AppLogger.instance.debug(
+        '统一认证上下文: lt=${lt.length}字符 execution=${execution.length}字符',
+      );
       return context;
     }
 
@@ -304,7 +315,9 @@ class UnifiedAuthService {
       actionUri: _resolveUri(loginUri, action),
     );
     _cachedContext = context;
-    AppLogger.instance.debug('统一认证上下文: lt=${lt.length}字符 execution=${execution.length}字符');
+    AppLogger.instance.debug(
+      '统一认证上下文: lt=${lt.length}字符 execution=${execution.length}字符',
+    );
     return context;
   }
 
