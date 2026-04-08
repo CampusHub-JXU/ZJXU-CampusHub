@@ -678,7 +678,7 @@ class _HomePageState extends State<HomePage> {
                       color: cs.onSurface,
                     ),
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 6),
                   Text(
                     '剩余 $_dormElectricity 度',
                     style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
