@@ -697,6 +697,7 @@ class _HomePageState extends State<HomePage> {
                       },
                       child: Container(
                         height: 44,
+                        margin: const EdgeInsets.only(left: -4),
                         padding: const EdgeInsets.only(left: 12, right: 14),
                         decoration: BoxDecoration(
                           color: AppColors.primary.withValues(alpha: 0.08),
