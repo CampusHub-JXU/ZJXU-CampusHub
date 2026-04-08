@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/auth/unified_auth.dart';
 import '../../shared/widgets/unified_auth_login_widget.dart';
@@ -182,23 +183,22 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
           children: [
             Icon(Icons.north_rounded, size: 64, color: cs.primary),
             const SizedBox(height: 16),
-            Text(
-              '畅行嘉大',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
+            Text('畅行嘉大', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
             Text(
               '使用一卡通账号自动登录',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: cs.onSurfaceVariant,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
             ),
             if (_error != null) ...[
               const SizedBox(height: 16),
               Container(
                 width: double.infinity,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   color: cs.errorContainer,
                   borderRadius: BorderRadius.circular(10),
@@ -381,33 +381,42 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
   }
 
   Widget _buildQuickActions() {
-    final actions = <(String, IconData)>[
-      ('请假申请', Icons.event_note_outlined),
-      ('离校登记', Icons.directions_walk_outlined),
-      ('返校登记', Icons.how_to_reg_outlined),
-      ('超时登记', Icons.schedule_outlined),
-    ];
+    final actionIcons = <ChangxingFormType, IconData>{
+      ChangxingFormType.leaveRequest: Icons.event_note_outlined,
+      ChangxingFormType.leaveSchool: Icons.directions_walk_outlined,
+      ChangxingFormType.backSchool: Icons.how_to_reg_outlined,
+      ChangxingFormType.overtime: Icons.schedule_outlined,
+    };
 
     return Wrap(
       spacing: 8,
       runSpacing: 8,
-      children: actions
+      children: ChangxingFormType.values
           .map(
             (action) => OutlinedButton.icon(
-              onPressed: () => _showSnackBar('${action.$1}原生表单开发中'),
-              icon: Icon(action.$2, size: 16),
-              label: Text(action.$1),
+              onPressed: () => _openForm(action),
+              icon: Icon(actionIcons[action], size: 16),
+              label: Text(action.actionLabel),
             ),
           )
           .toList(),
     );
   }
 
-  void _showSnackBar(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+  Future<void> _openForm(
+    ChangxingFormType formType, {
+    int? applicationId,
+  }) async {
+    final Map<String, dynamic> query = applicationId == null
+        ? <String, dynamic>{}
+        : <String, dynamic>{'id': '$applicationId'};
+    final result = await context.pushNamed<bool>(
+      formType.routeName,
+      queryParameters: query,
+    );
+    if (result == true && mounted) {
+      await _loadDashboard(showGlobalLoading: false);
+    }
   }
 
   Widget _buildApplicationCard(ChangxingApplication item) {
@@ -451,6 +460,18 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
                   ),
                 ),
               ),
+              if (item.canEdit) ...[
+                const SizedBox(width: 8),
+                TextButton.icon(
+                  onPressed: () {
+                    final type = item.formType;
+                    if (type == null) return;
+                    _openForm(type, applicationId: item.id);
+                  },
+                  icon: const Icon(Icons.edit_outlined, size: 16),
+                  label: const Text('编辑'),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 8),

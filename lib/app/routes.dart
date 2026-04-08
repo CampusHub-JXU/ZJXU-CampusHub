@@ -13,8 +13,18 @@ import '../features/service_hall/service_hall_page.dart';
 import '../features/settings/settings_page.dart';
 import '../features/dorm_electricity/dorm_electricity_page.dart';
 import '../features/dorm_electricity/dorm_electricity_settings_page.dart';
+import '../features/changxing_jiada/changxing_back_school_form_page.dart';
 import '../features/changxing_jiada/changxing_jiada_page.dart';
+import '../features/changxing_jiada/changxing_leave_form_page.dart';
+import '../features/changxing_jiada/changxing_overtime_form_page.dart';
+import '../features/changxing_jiada/changxing_jiada_model.dart';
 import '../shared/widgets/webview_page.dart';
+
+int? _parseOptionalId(GoRouterState state) {
+  final text = state.uri.queryParameters['id']?.trim() ?? '';
+  if (text.isEmpty) return null;
+  return int.tryParse(text);
+}
 
 final GoRouter appRouter = GoRouter(
   initialLocation: '/',
@@ -125,6 +135,34 @@ final GoRouter appRouter = GoRouter(
       path: '/changxing-jiada',
       name: 'changxing-jiada',
       builder: (context, state) => const ChangxingJiadaPage(),
+    ),
+    GoRoute(
+      path: '/changxing-jiada/leave-request',
+      name: ChangxingFormType.leaveRequest.routeName,
+      builder: (context, state) => ChangxingLeaveFormPage(
+        formType: ChangxingFormType.leaveRequest,
+        applicationId: _parseOptionalId(state),
+      ),
+    ),
+    GoRoute(
+      path: '/changxing-jiada/leave-school',
+      name: ChangxingFormType.leaveSchool.routeName,
+      builder: (context, state) => ChangxingLeaveFormPage(
+        formType: ChangxingFormType.leaveSchool,
+        applicationId: _parseOptionalId(state),
+      ),
+    ),
+    GoRoute(
+      path: '/changxing-jiada/back-school',
+      name: ChangxingFormType.backSchool.routeName,
+      builder: (context, state) =>
+          ChangxingBackSchoolFormPage(applicationId: _parseOptionalId(state)),
+    ),
+    GoRoute(
+      path: '/changxing-jiada/overtime',
+      name: ChangxingFormType.overtime.routeName,
+      builder: (context, state) =>
+          ChangxingOvertimeFormPage(applicationId: _parseOptionalId(state)),
     ),
   ],
 );

@@ -139,3 +139,175 @@ class ChangxingApplication {
     );
   }
 }
+
+enum ChangxingFormType {
+  leaveRequest(
+    type: 1,
+    actionLabel: '请假申请',
+    routeName: 'changxing-leave-request-form',
+  ),
+  leaveSchool(
+    type: 2,
+    actionLabel: '离校登记',
+    routeName: 'changxing-leave-school-form',
+  ),
+  backSchool(
+    type: 3,
+    actionLabel: '返校登记',
+    routeName: 'changxing-back-school-form',
+  ),
+  overtime(type: 4, actionLabel: '超时登记', routeName: 'changxing-overtime-form');
+
+  const ChangxingFormType({
+    required this.type,
+    required this.actionLabel,
+    required this.routeName,
+  });
+
+  final int type;
+  final String actionLabel;
+  final String routeName;
+
+  static ChangxingFormType? fromType(int type) {
+    for (final value in ChangxingFormType.values) {
+      if (value.type == type) return value;
+    }
+    return null;
+  }
+}
+
+extension ChangxingApplicationX on ChangxingApplication {
+  ChangxingFormType? get formType => ChangxingFormType.fromType(type);
+
+  bool get canEdit => status == 0 && formType != null;
+}
+
+class ChangxingAreaNode {
+  const ChangxingAreaNode({required this.id, required this.areaName});
+
+  final int id;
+  final String areaName;
+
+  factory ChangxingAreaNode.fromJson(Map<String, dynamic> json) {
+    int parseInt(dynamic value) {
+      if (value is int) return value;
+      return int.tryParse(value?.toString() ?? '') ?? 0;
+    }
+
+    return ChangxingAreaNode(
+      id: parseInt(json['id']),
+      areaName: json['areaName']?.toString().trim() ?? '',
+    );
+  }
+}
+
+class ChangxingAreaSelection {
+  const ChangxingAreaSelection({
+    required this.id,
+    required this.province,
+    required this.city,
+    required this.district,
+  });
+
+  final int id;
+  final ChangxingAreaNode? province;
+  final ChangxingAreaNode? city;
+  final ChangxingAreaNode? district;
+
+  String get displayName {
+    final names = <String>[
+      province?.areaName ?? '',
+      city?.areaName ?? '',
+      district?.areaName ?? '',
+    ].where((name) => name.trim().isNotEmpty).toList();
+    if (names.isEmpty) return '请选择省份/市/区';
+    return names.join('/');
+  }
+}
+
+class ChangxingUploadResult {
+  const ChangxingUploadResult({required this.md5, required this.base64});
+
+  final String md5;
+  final String base64;
+
+  bool get hasPreview => base64.isNotEmpty;
+}
+
+class ChangxingApplicationDetail {
+  const ChangxingApplicationDetail({
+    required this.id,
+    required this.type,
+    required this.descr,
+    required this.startTime,
+    required this.endTime,
+    required this.userPhone,
+    required this.emergencyContact,
+    required this.emergencyPhone,
+    required this.trafficTool,
+    required this.trafficDetail,
+    required this.toAreaCode,
+    required this.toAddr,
+    required this.fromAreaCode,
+    required this.nativePlace,
+    required this.backStatus,
+    required this.notBackReason,
+    required this.img,
+    required this.annex,
+  });
+
+  final int id;
+  final int type;
+  final String descr;
+  final DateTime? startTime;
+  final DateTime? endTime;
+  final String userPhone;
+  final String emergencyContact;
+  final String emergencyPhone;
+  final String trafficTool;
+  final String trafficDetail;
+  final int toAreaCode;
+  final String toAddr;
+  final int fromAreaCode;
+  final String nativePlace;
+  final int backStatus;
+  final String notBackReason;
+  final String img;
+  final String annex;
+
+  factory ChangxingApplicationDetail.fromJson(Map<String, dynamic> json) {
+    int parseInt(dynamic value) {
+      if (value is int) return value;
+      return int.tryParse(value?.toString() ?? '') ?? 0;
+    }
+
+    DateTime? parseDate(dynamic value) {
+      final text = value?.toString().trim() ?? '';
+      if (text.isEmpty) return null;
+      return DateTime.tryParse(text);
+    }
+
+    String parseText(dynamic value) => value?.toString().trim() ?? '';
+
+    return ChangxingApplicationDetail(
+      id: parseInt(json['id']),
+      type: parseInt(json['type']),
+      descr: parseText(json['descr']),
+      startTime: parseDate(json['startTime']),
+      endTime: parseDate(json['endTime']),
+      userPhone: parseText(json['userPhone']),
+      emergencyContact: parseText(json['emergencyContact']),
+      emergencyPhone: parseText(json['emergencyPhone']),
+      trafficTool: parseText(json['trafficTool']),
+      trafficDetail: parseText(json['trafficDetail']),
+      toAreaCode: parseInt(json['toAreaCode']),
+      toAddr: parseText(json['toAddr']),
+      fromAreaCode: parseInt(json['fromAreaCode']),
+      nativePlace: parseText(json['nativePlace']),
+      backStatus: parseInt(json['backStatus']),
+      notBackReason: parseText(json['notBackReason']),
+      img: parseText(json['img']),
+      annex: parseText(json['annex']),
+    );
+  }
+}

@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../core/auth/unified_auth.dart';
@@ -28,6 +29,14 @@ class ChangxingCasLoginException implements Exception {
 class ChangxingNeedUnifiedAuthException implements Exception {
   @override
   String toString() => '一卡通登录已失效，请重新登录';
+}
+
+@immutable
+class ChangxingSubmitRequest {
+  const ChangxingSubmitRequest({required this.path, required this.payload});
+
+  final String path;
+  final Map<String, dynamic> payload;
 }
 
 class ChangxingJiadaService {
@@ -197,11 +206,7 @@ class ChangxingJiadaService {
   }) async {
     final json = await _get(
       '/approvalForm/listPage/bystudent',
-      query: {
-        'current': '$page',
-        'pageSize': '$pageSize',
-        'status': '$status',
-      },
+      query: {'current': '$page', 'pageSize': '$pageSize', 'status': '$status'},
     );
     final code = _extractCode(json);
     if (code != '20000') {
@@ -210,12 +215,336 @@ class ChangxingJiadaService {
       );
     }
     final body = _extractDataMap(json)['body'] as Map<String, dynamic>? ?? {};
-    final records =
-        (body['records'] as List<dynamic>? ?? [])
-            .whereType<Map<String, dynamic>>()
-            .map(ChangxingApplication.fromJson)
-            .toList();
+    final records = (body['records'] as List<dynamic>? ?? [])
+        .whereType<Map<String, dynamic>>()
+        .map(ChangxingApplication.fromJson)
+        .toList();
     return records;
+  }
+
+  Future<ChangxingApplicationDetail> fetchApplicationDetail(int id) async {
+    final json = await _postForm('/approvalForm/getOne', {'id': '$id'});
+    _ensureSuccess(json, fallback: '获取申请详情失败');
+    final data = _extractDataMap(json)['data'] as Map<String, dynamic>? ?? {};
+    return ChangxingApplicationDetail.fromJson(data);
+  }
+
+  Future<List<ChangxingAreaNode>> fetchAreaChildren(int parentId) async {
+    final json = await _get(
+      '/area/getChildArea',
+      query: {'parentId': '$parentId'},
+    );
+    _ensureSuccess(json, fallback: '获取地区信息失败');
+    final body =
+        _extractDataMap(json)['body'] as List<dynamic>? ?? const <dynamic>[];
+    return body
+        .whereType<Map<String, dynamic>>()
+        .map(ChangxingAreaNode.fromJson)
+        .toList();
+  }
+
+  Future<List<ChangxingAreaNode>> fetchAreaParents(int areaId) async {
+    final json = await _get(
+      '/area/getParentArea',
+      query: {'areaId': '$areaId'},
+    );
+    _ensureSuccess(json, fallback: '获取上级地区失败');
+    final body =
+        _extractDataMap(json)['body'] as List<dynamic>? ?? const <dynamic>[];
+    return body
+        .whereType<Map<String, dynamic>>()
+        .map(ChangxingAreaNode.fromJson)
+        .toList();
+  }
+
+  Future<bool> fetchFanxiaoEnableFlag() async {
+    try {
+      final json = await _get(
+        '/dict/getDictList',
+        query: {'labels': 'SYSTEM_LABEL_fanxiaoEnable', 'pageSize': '10000'},
+      );
+      final code = _extractCode(json);
+      if (code != '20000') return false;
+      final body = _extractDataMap(json)['body'] as Map<String, dynamic>? ?? {};
+      final records = body['records'] as List<dynamic>? ?? const <dynamic>[];
+      if (records.isEmpty) return false;
+      final first = records.first as Map<String, dynamic>? ?? {};
+      return first['ename']?.toString() == '1';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<String?> fetchImageByMd5(String md5) async {
+    if (md5.trim().isEmpty) return null;
+    final json = await _get('/image/getOne', query: {'md5': md5.trim()});
+    _ensureSuccess(json, fallback: '获取附件预览失败');
+    final data = _extractDataMap(json)['data'] as Map<String, dynamic>? ?? {};
+    final base64 = data['base64']?.toString().trim() ?? '';
+    if (base64.isEmpty) return null;
+    return 'data:image/png;base64,$base64';
+  }
+
+  Future<ChangxingUploadResult> uploadAttachment(
+    String filePath,
+    String fileName,
+  ) async {
+    await restoreSession();
+    final token = _token ?? '';
+    if (token.isEmpty) {
+      throw ChangxingAuthExpiredException();
+    }
+
+    final effectiveName = fileName.trim().isEmpty
+        ? filePath.split(RegExp(r'[\\/]')).last
+        : fileName.trim();
+    final formData = FormData.fromMap({
+      'valiFace': 'false',
+      'file': await MultipartFile.fromFile(filePath, filename: effectiveName),
+    });
+
+    final response = await _dio.postUri<Map<String, dynamic>>(
+      Uri.parse('https://zhx.zjxu.edu.cn/api/image/add/single'),
+      data: formData,
+      options: Options(
+        headers: {'token': token},
+        responseType: ResponseType.json,
+      ),
+    );
+
+    final json = response.data ?? <String, dynamic>{};
+    final code = _extractCode(json);
+    if (code == '500001') {
+      await _clearToken();
+      throw ChangxingAuthExpiredException(
+        _extractMessage(json, fallback: '令牌错误，请重新登录'),
+      );
+    }
+    _ensureSuccess(json, fallback: '上传附件失败');
+    final data = _extractDataMap(json)['data'] as Map<String, dynamic>? ?? {};
+    return ChangxingUploadResult(
+      md5: data['md5']?.toString().trim() ?? '',
+      base64: data['base64']?.toString().trim() ?? '',
+    );
+  }
+
+  Future<void> submitLeaveRequest({
+    int? id,
+    required DateTime startTime,
+    required DateTime endTime,
+    required String descr,
+    required int toAreaCode,
+    required String toAddr,
+    required String emergencyContact,
+    required String emergencyPhone,
+    required String userPhone,
+    required List<String> trafficTools,
+    String img = '',
+    String annex = '',
+  }) async {
+    final request = buildLeaveRequestSubmitRequest(
+      id: id,
+      startTime: startTime,
+      endTime: endTime,
+      descr: descr,
+      toAreaCode: toAreaCode,
+      toAddr: toAddr,
+      emergencyContact: emergencyContact,
+      emergencyPhone: emergencyPhone,
+      userPhone: userPhone,
+      trafficTools: trafficTools,
+      img: img,
+      annex: annex,
+    );
+    final json = await _postJson(request.path, request.payload);
+    _ensureSuccess(json, fallback: id == null ? '提交请假失败' : '修改请假失败');
+  }
+
+  Future<void> submitLeaveSchool({
+    int? id,
+    required DateTime startTime,
+    required DateTime endTime,
+    required String descr,
+    required int toAreaCode,
+    required String toAddr,
+    required String emergencyContact,
+    required String emergencyPhone,
+    required String userPhone,
+    required List<String> trafficTools,
+  }) async {
+    final request = buildLeaveSchoolSubmitRequest(
+      id: id,
+      startTime: startTime,
+      endTime: endTime,
+      descr: descr,
+      toAreaCode: toAreaCode,
+      toAddr: toAddr,
+      emergencyContact: emergencyContact,
+      emergencyPhone: emergencyPhone,
+      userPhone: userPhone,
+      trafficTools: trafficTools,
+    );
+    final json = await _postJson(request.path, request.payload);
+    _ensureSuccess(json, fallback: id == null ? '提交离校失败' : '修改离校失败');
+  }
+
+  Future<void> submitBackSchool({
+    int? id,
+    required String userPhone,
+    required DateTime startTime,
+    required String trafficTool,
+    required String trafficDetail,
+    required String nativePlace,
+    required int fromAreaCode,
+    required String emergencyContact,
+    required String emergencyPhone,
+    required int backStatus,
+    required String notBackReason,
+    String img = '',
+    String annex = '',
+  }) async {
+    final request = buildBackSchoolSubmitRequest(
+      id: id,
+      userPhone: userPhone,
+      startTime: startTime,
+      trafficTool: trafficTool,
+      trafficDetail: trafficDetail,
+      nativePlace: nativePlace,
+      fromAreaCode: fromAreaCode,
+      emergencyContact: emergencyContact,
+      emergencyPhone: emergencyPhone,
+      backStatus: backStatus,
+      notBackReason: notBackReason,
+      img: img,
+      annex: annex,
+    );
+    final json = await _postJson(request.path, request.payload);
+    _ensureSuccess(json, fallback: id == null ? '提交返校失败' : '修改返校失败');
+  }
+
+  Future<void> submitOvertime({int? id, required String descr}) async {
+    final request = buildOvertimeSubmitRequest(id: id, descr: descr);
+    final json = await _postJson(request.path, request.payload);
+    _ensureSuccess(json, fallback: id == null ? '提交超时失败' : '修改超时失败');
+  }
+
+  @visibleForTesting
+  static ChangxingSubmitRequest buildLeaveRequestSubmitRequest({
+    int? id,
+    required DateTime startTime,
+    required DateTime endTime,
+    required String descr,
+    required int toAreaCode,
+    required String toAddr,
+    required String emergencyContact,
+    required String emergencyPhone,
+    required String userPhone,
+    required List<String> trafficTools,
+    String img = '',
+    String annex = '',
+  }) {
+    final payload = <String, dynamic>{
+      'startTime': startTime,
+      'endTime': endTime,
+      'descr': descr,
+      'toAreaCode': toAreaCode,
+      'toAddr': toAddr,
+      'emergencyContact': emergencyContact,
+      'emergencyPhone': emergencyPhone,
+      'userPhone': userPhone,
+      'trafficTool': trafficTools.join(','),
+      'img': img,
+      'annex': annex,
+      'type': 1,
+    };
+    if (id != null) payload['id'] = id;
+    return ChangxingSubmitRequest(
+      path: id == null ? '/approvalForm/qingjia/add' : '/approvalForm/edit',
+      payload: payload,
+    );
+  }
+
+  @visibleForTesting
+  static ChangxingSubmitRequest buildLeaveSchoolSubmitRequest({
+    int? id,
+    required DateTime startTime,
+    required DateTime endTime,
+    required String descr,
+    required int toAreaCode,
+    required String toAddr,
+    required String emergencyContact,
+    required String emergencyPhone,
+    required String userPhone,
+    required List<String> trafficTools,
+  }) {
+    final payload = <String, dynamic>{
+      'startTime': startTime,
+      'endTime': endTime,
+      'descr': descr,
+      'toAreaCode': toAreaCode,
+      'toAddr': toAddr,
+      'emergencyContact': emergencyContact,
+      'emergencyPhone': emergencyPhone,
+      'userPhone': userPhone,
+      'trafficTool': trafficTools.join(','),
+      'type': 2,
+    };
+    if (id != null) payload['id'] = id;
+    return ChangxingSubmitRequest(
+      path: id == null ? '/approvalForm/lixiao/add' : '/approvalForm/edit',
+      payload: payload,
+    );
+  }
+
+  @visibleForTesting
+  static ChangxingSubmitRequest buildBackSchoolSubmitRequest({
+    int? id,
+    required String userPhone,
+    required DateTime startTime,
+    required String trafficTool,
+    required String trafficDetail,
+    required String nativePlace,
+    required int fromAreaCode,
+    required String emergencyContact,
+    required String emergencyPhone,
+    required int backStatus,
+    required String notBackReason,
+    String img = '',
+    String annex = '',
+  }) {
+    final payload = <String, dynamic>{
+      'userPhone': userPhone,
+      'startTime': startTime,
+      'trafficTool': trafficTool,
+      'trafficDetail': trafficDetail,
+      'nativePlace': nativePlace,
+      'fromAreaCode': fromAreaCode,
+      'emergencyContact': emergencyContact,
+      'emergencyPhone': emergencyPhone,
+      'backStatus': backStatus,
+      'notBackReason': notBackReason,
+      'img': img,
+      'annex': annex,
+      'type': 3,
+    };
+    if (id != null) payload['id'] = id;
+    return ChangxingSubmitRequest(
+      path: id == null ? '/approvalForm/fanxiao/add' : '/approvalForm/edit',
+      payload: payload,
+    );
+  }
+
+  @visibleForTesting
+  static ChangxingSubmitRequest buildOvertimeSubmitRequest({
+    int? id,
+    required String descr,
+  }) {
+    final payload = <String, dynamic>{'type': 4, 'descr': descr};
+    if (id != null) payload['id'] = id;
+    return ChangxingSubmitRequest(
+      path: '/approvalForm/overtime/add',
+      payload: payload,
+    );
   }
 
   Future<Map<String, dynamic>> _get(
@@ -242,6 +571,20 @@ class ChangxingJiadaService {
       requiresToken: requiresToken,
       data: body,
       contentType: Headers.jsonContentType,
+    );
+  }
+
+  Future<Map<String, dynamic>> _postForm(
+    String path,
+    Map<String, dynamic> body, {
+    bool requiresToken = true,
+  }) async {
+    return _request(
+      path: path,
+      method: 'POST',
+      requiresToken: requiresToken,
+      data: body,
+      contentType: Headers.formUrlEncodedContentType,
     );
   }
 
@@ -290,6 +633,15 @@ class ChangxingJiadaService {
   String _extractCode(Map<String, dynamic> json) {
     final data = _extractDataMap(json);
     return data['code']?.toString() ?? json['code']?.toString() ?? '';
+  }
+
+  void _ensureSuccess(Map<String, dynamic> json, {required String fallback}) {
+    final code = _extractCode(json);
+    if (code != '20000') {
+      throw ChangxingCasLoginException(
+        _extractMessage(json, fallback: fallback),
+      );
+    }
   }
 
   String _extractMessage(
