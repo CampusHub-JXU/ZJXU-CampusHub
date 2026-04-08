@@ -99,7 +99,8 @@ class _CampusCardPageState extends State<CampusCardPage> {
                   ),
                   const Spacer(),
                   GestureDetector(
-                    onTap: () => _openCampusCardWebView(title: '刷新余额', autoPop: true),
+                    onTap: () =>
+                        _openCampusCardWebView(title: '刷新余额', autoPop: true),
                     child: Icon(
                       Icons.refresh,
                       size: 20,
@@ -181,7 +182,10 @@ class _CampusCardPageState extends State<CampusCardPage> {
     );
   }
 
-  Future<void> _openCampusCardWebView({required String title, bool autoPop = false}) async {
+  Future<void> _openCampusCardWebView({
+    required String title,
+    bool autoPop = false,
+  }) async {
     _capturedInCurrentDetailPage = false;
     _autoPopAfterCapture = autoPop;
 
@@ -228,7 +232,10 @@ class _CampusCardPageState extends State<CampusCardPage> {
     if (!mounted) return;
     setState(() {});
     if (_autoPopAfterCapture) {
-      Navigator.of(context).pop();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        Navigator.maybeOf(context)?.maybePop();
+      });
     }
   }
 
@@ -262,7 +269,9 @@ class _CampusCardPageState extends State<CampusCardPage> {
         );
 
         final text = rawText is String ? rawText : '${rawText ?? ''}';
-        AppLogger.instance.debug('校园卡 retry[$delayInMs ms] 文本长度=${text.length}');
+        AppLogger.instance.debug(
+          '校园卡 retry[$delayInMs ms] 文本长度=${text.length}',
+        );
         final balance = CampusCardService.instance.parseBalanceFromPageText(
           text,
         );

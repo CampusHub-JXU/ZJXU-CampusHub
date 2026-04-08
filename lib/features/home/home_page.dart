@@ -23,7 +23,6 @@ class _HomePageState extends State<HomePage> {
   CourseEntry? _nextCourse;
   String _nextCourseLabel = '';
   bool _courseLoggedIn = false;
-  static const double _smallActionCardSize = 118;
 
   static const _weekdayLabels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
@@ -236,11 +235,6 @@ class _HomePageState extends State<HomePage> {
                           _buildGradesCard(context),
                           const SizedBox(height: 10),
                           _buildDormServicesCard(context),
-                          const SizedBox(height: 10),
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: _buildChangxingJiadaCard(context),
-                          ),
                           const SizedBox(height: 10),
                           _buildMoreServicesCard(context),
                         ],
@@ -708,23 +702,6 @@ class _HomePageState extends State<HomePage> {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bgColor = isDark ? cs.surfaceContainerLowest : Colors.white;
-    final services = [
-      const _ServiceItem(
-        icon: Icons.workspace_premium_outlined,
-        label: '第二课堂',
-        color: AppColors.gold,
-      ),
-      const _ServiceItem(
-        icon: Icons.local_library_outlined,
-        label: '图书馆',
-        color: AppColors.info,
-      ),
-      const _ServiceItem(
-        icon: Icons.meeting_room_outlined,
-        label: '空教室',
-        color: AppColors.success,
-      ),
-    ];
 
     return Container(
       width: double.infinity,
@@ -745,10 +722,25 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           const SizedBox(height: 14),
-          for (int i = 0; i < services.length; i++) ...[
-            _buildServiceListTile(context, services[i]),
-            if (i != services.length - 1) const SizedBox(height: 8),
-          ],
+          _buildServiceListTile(
+            context,
+            const _ServiceItem(
+              icon: Icons.workspace_premium_outlined,
+              label: '第二课堂',
+              color: AppColors.gold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          _buildServiceListTile(
+            context,
+            const _ServiceItem(
+              icon: Icons.local_library_outlined,
+              label: '图书馆',
+              color: AppColors.info,
+            ),
+          ),
+          const SizedBox(height: 8),
+          _buildChangxingJiadaLearningTile(context),
         ],
       ),
     );
@@ -780,6 +772,64 @@ class _HomePageState extends State<HomePage> {
             Expanded(
               child: Text(
                 item.label,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: cs.onSurface,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            Icon(Icons.arrow_forward_ios, size: 14, color: cs.onSurfaceVariant),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChangxingJiadaLearningTile(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: () => context.pushNamed('changxing-jiada'),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          color: AppColors.success.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: AppColors.success.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Center(
+                child: Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: const Color(0xFF2EA567),
+                      width: 2,
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.north_rounded,
+                    color: Color(0xFF2EA567),
+                    size: 16,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                '畅行嘉大',
                 style: TextStyle(
                   fontSize: 14,
                   color: cs.onSurface,
@@ -937,58 +987,6 @@ class _HomePageState extends State<HomePage> {
             ),
             Icon(Icons.arrow_forward_ios, size: 14, color: cs.onSurfaceVariant),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildChangxingJiadaCard(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? cs.surfaceContainerLowest : Colors.white;
-
-    return SizedBox(
-      width: _smallActionCardSize,
-      height: _smallActionCardSize,
-      child: GestureDetector(
-        onTap: () => context.pushNamed('changxing-jiada'),
-        child: Container(
-          decoration: BoxDecoration(
-            color: bgColor,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: const Color(0xFF2EA567),
-                    width: 2.4,
-                  ),
-                ),
-                child: const Icon(
-                  Icons.north_rounded,
-                  color: Color(0xFF2EA567),
-                  size: 26,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                '畅行嘉大',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: cs.onSurface,
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );
