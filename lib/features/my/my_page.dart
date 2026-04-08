@@ -120,40 +120,59 @@ class _MyPageState extends State<MyPage> {
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
         children: [
           Container(
+            padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: isDark
-                    ? [
-                        AppColors.primary.withValues(alpha: 0.45),
-                        cs.surfaceContainerHigh,
-                      ]
-                    : [AppColors.primary.withValues(alpha: 0.16), Colors.white],
-              ),
+              color: isDark ? cs.surfaceContainerLowest : Colors.white,
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
                 color: isDark
-                    ? Colors.white.withValues(alpha: 0.10)
-                    : Colors.white.withValues(alpha: 0.72),
+                    ? cs.outline.withValues(alpha: 0.3)
+                    : cs.outline.withValues(alpha: 0.2),
+                width: 1,
               ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
-                Text(
-                  '校园服务账户中心',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: cs.onSurface,
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    Icons.account_circle_outlined,
+                    color: AppColors.primary,
+                    size: 24,
                   ),
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  '统一管理一卡通、教务登录状态与应用设置',
-                  style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '账户中心',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: cs.onSurface,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '管理一卡通、教务登录状态',
+                        style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
