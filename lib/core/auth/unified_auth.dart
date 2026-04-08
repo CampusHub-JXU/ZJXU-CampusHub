@@ -112,6 +112,13 @@ class UnifiedAuthService {
     try {
       final context = await _ensureLoginContext(serviceUrl);
       if (context.lt.isEmpty || context.execution.isEmpty) {
+        // 如果 session 已经在 _refreshLoginContext 中建立，直接返回成功
+        if (_sessionActive) {
+          AppLogger.instance.info('统一认证已有有效 session，跳过登录');
+          currentAccount = username;
+          await CredentialStore.instance.saveUnifiedAuthSession(username);
+          return UnifiedAuthLoginSuccess();
+        }
         AppLogger.instance.info('统一认证初始化上下文缺失');
         return UnifiedAuthLoginFailure('统一认证初始化失败，请刷新验证码后重试');
       }
@@ -233,9 +240,58 @@ class UnifiedAuthService {
       loginUri,
       options: Options(
         responseType: ResponseType.plain,
+        followRedirects: false,
+        validateStatus: (s) => s != null && s < 1000,
         headers: {'Referer': loginUri.toString()},
       ),
     );
+
+    // CAS 返回 302 说明已有 session，直接跟随重定向完成认证
+    final statusCode = response.statusCode ?? 0;
+    final location = response.headers.value('location') ?? '';
+    if ((statusCode == 302 || statusCode == 303) && location.isNotEmpty) {
+      final lowerLocation = location.toLowerCase();
+      if (!lowerLocation.contains('/cas/login')) {
+        AppLogger.instance.info('统一认证已有 session，跟随重定向完成认证');
+        await _followRedirectChain(loginUri, location);
+        await syncCookiesToWebView();
+        _sessionActive = true;
+        if (currentAccount != null) {
+          await CredentialStore.instance.saveUnifiedAuthSession(currentAccount!);
+        }
+        // 返回空上下文，标记已认证
+        final context = _UnifiedAuthLoginContext(
+          serviceUrl: serviceUrl,
+          lt: '',
+          execution: '',
+          actionUri: loginUri,
+        );
+        _cachedContext = context;
+        return context;
+      }
+      // 302 回到 /cas/login，需要跟随获取登录页面
+      final redirectUrl = _resolveUri(loginUri, location).toString();
+      final casResp = await _dio.get<String>(
+        redirectUrl,
+        options: Options(
+          responseType: ResponseType.plain,
+          headers: {'Referer': loginUri.toString()},
+        ),
+      );
+      final html = casResp.data ?? '';
+      final lt = _extractHiddenField(html, 'lt');
+      final execution = _extractHiddenField(html, 'execution');
+      final action = _extractFormAction(html);
+      final context = _UnifiedAuthLoginContext(
+        serviceUrl: serviceUrl,
+        lt: lt,
+        execution: execution,
+        actionUri: _resolveUri(loginUri, action),
+      );
+      _cachedContext = context;
+      AppLogger.instance.debug('统一认证上下文: lt=${lt.length}字符 execution=${execution.length}字符');
+      return context;
+    }
 
     final html = response.data ?? '';
     final lt = _extractHiddenField(html, 'lt');
