@@ -80,6 +80,63 @@ class DormElectricityService {
   String? _lastError;
   String? get lastError => _lastError;
 
+  Dio _createProxyFallbackDio() {
+    final baseOptions = _dio?.options;
+    final client = Dio(
+      BaseOptions(
+        connectTimeout:
+            baseOptions?.connectTimeout ?? const Duration(seconds: 10),
+        receiveTimeout:
+            baseOptions?.receiveTimeout ?? const Duration(seconds: 10),
+        sendTimeout: baseOptions?.sendTimeout,
+        headers:
+            baseOptions?.headers != null
+                ? Map<String, dynamic>.from(baseOptions!.headers)
+                : {
+                  'User-Agent':
+                      'Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 '
+                          '(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+                  'X-Requested-With': 'XMLHttpRequest',
+                },
+        responseType: ResponseType.bytes,
+      ),
+    );
+    applyProxyModeToDio(client, ignoreSystemProxy: false);
+    return client;
+  }
+
+  bool _shouldRetryWithSystemProxy(DioException error) {
+    return NetworkSettings.instance.ignoreSystemProxy.value &&
+        (error.type == DioExceptionType.connectionTimeout ||
+            error.type == DioExceptionType.receiveTimeout ||
+            error.type == DioExceptionType.connectionError);
+  }
+
+  bool _isHostLookupFailure(DioException error) {
+    final message = (error.message ?? '').toLowerCase();
+    return message.contains('failed host lookup') ||
+        message.contains('no address associated with hostname');
+  }
+
+  Future<Response<T>> _sendWithProxyFallback<T>({
+    required String label,
+    required Future<Response<T>> Function(Dio dio) request,
+  }) async {
+    final dio = await _ensureDio();
+    try {
+      return await request(dio);
+    } on DioException catch (error) {
+      if (!_shouldRetryWithSystemProxy(error)) rethrow;
+      AppLogger.instance.info('$label 直连失败，尝试通过系统代理重试');
+      final fallbackDio = _createProxyFallbackDio();
+      try {
+        return await request(fallbackDio);
+      } finally {
+        fallbackDio.close(force: true);
+      }
+    }
+  }
+
   void applyProxyMode() {
     final client = _dio;
     if (client == null) return;
@@ -172,10 +229,12 @@ class DormElectricityService {
       final config = await loadRoomConfig();
       if (config == null) return null;
 
-      final dio = await _ensureDio();
       final url = _buildQueryUrl(config);
       AppLogger.instance.debug('电费查询 → $url');
-      final resp = await dio.get<List<int>>(url);
+      final resp = await _sendWithProxyFallback<List<int>>(
+        label: '宿舍电费查询',
+        request: (dio) => dio.get<List<int>>(url),
+      );
       AppLogger.instance.debug(
         '电费响应 status=${resp.statusCode} bytes=${resp.data?.length}',
       );
@@ -215,7 +274,8 @@ class DormElectricityService {
         return _cachedElectricity;
       }
       if (e.type == DioExceptionType.connectionError) {
-        _lastError = '网络不可达';
+        _lastError =
+            _isHostLookupFailure(e) ? '域名解析失败，请关闭“忽略系统代理”或连接校园网' : '网络不可达';
         return _cachedElectricity;
       }
       _lastError = '未知错误';
@@ -236,10 +296,13 @@ class DormElectricityService {
 
   /// 获取园区+楼幢列表（两级嵌套，无需认证）
   Future<List<DormBuilding>> fetchBuildings() async {
-    final dio = await _ensureDio();
-    final resp = await dio.post<List<int>>(
-      'http://jdhq.wap.zjxu.edu.cn/dormcharge/base_elect/getParkBuild/ele_id/1',
-      options: Options(contentType: 'application/x-www-form-urlencoded'),
+    final resp = await _sendWithProxyFallback<List<int>>(
+      label: '宿舍楼栋列表',
+      request:
+          (dio) => dio.post<List<int>>(
+            'http://jdhq.wap.zjxu.edu.cn/dormcharge/base_elect/getParkBuild/ele_id/1',
+            options: Options(contentType: 'application/x-www-form-urlencoded'),
+          ),
     );
     final json =
         jsonDecode(utf8.decode(resp.data!, allowMalformed: true))
@@ -265,11 +328,14 @@ class DormElectricityService {
 
   /// 获取楼层+房间列表（两级嵌套，无需认证）
   Future<List<DormRoom>> fetchRooms(String buildingId) async {
-    final dio = await _ensureDio();
-    final resp = await dio.post<List<int>>(
-      'http://jdhq.wap.zjxu.edu.cn/dormcharge/base_elect/getFloorRoom/ele_id/1',
-      data: 'building_id=$buildingId',
-      options: Options(contentType: 'application/x-www-form-urlencoded'),
+    final resp = await _sendWithProxyFallback<List<int>>(
+      label: '宿舍房间列表',
+      request:
+          (dio) => dio.post<List<int>>(
+            'http://jdhq.wap.zjxu.edu.cn/dormcharge/base_elect/getFloorRoom/ele_id/1',
+            data: 'building_id=$buildingId',
+            options: Options(contentType: 'application/x-www-form-urlencoded'),
+          ),
     );
     final json =
         jsonDecode(utf8.decode(resp.data!, allowMalformed: true))
