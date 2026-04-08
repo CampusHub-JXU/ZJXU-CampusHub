@@ -233,16 +233,13 @@ class _HomePageState extends State<HomePage> {
                           _buildGradesCard(context),
                           const SizedBox(height: 10),
                           _buildMoreServicesCard(context),
+                          const SizedBox(height: 10),
+                          _buildDormServicesCard(context),
                         ],
                       ),
                     ),
                   ],
                 ),
-              ),
-              // 独立宽幅的寝室服务卡片
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: _buildDormServicesCard(context),
               ),
               const SizedBox(height: 32),
             ],
@@ -638,7 +635,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// 寝室服务卡片（独立宽幅）
+  /// 寝室服务卡片
   Widget _buildDormServicesCard(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
