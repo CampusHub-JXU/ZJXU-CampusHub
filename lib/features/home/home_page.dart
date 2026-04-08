@@ -660,30 +660,31 @@ class _HomePageState extends State<HomePage> {
                             color: cs.onSurfaceVariant,
                           ),
                         )
-                      : RichText(
-                          text: TextSpan(
-                            style: TextStyle(
-                              color: cs.onSurface,
-                              fontWeight: FontWeight.w600,
+                      : Row(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.baseline,
+                          textBaseline: TextBaseline.alphabetic,
+                          children: [
+                            Text(
+                              _campusCardBalance,
+                              style: TextStyle(
+                                fontSize: 32,
+                                height: 1,
+                                fontWeight: FontWeight.w700,
+                                color: cs.onSurface,
+                              ),
                             ),
-                            children: [
-                              TextSpan(
-                                text: _campusCardBalance,
-                                style: const TextStyle(
-                                  fontSize: 32,
-                                  height: 1.2,
-                                ),
+                            const SizedBox(width: 6),
+                            Text(
+                              '元',
+                              style: TextStyle(
+                                fontSize: 16,
+                                height: 1,
+                                fontWeight: FontWeight.w600,
+                                color: cs.onSurface.withValues(alpha: 0.7),
                               ),
-                              TextSpan(
-                                text: '元',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  height: 1.3,
-                                  color: cs.onSurface.withValues(alpha: 0.7),
-                                ),
-                              ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
                   const Spacer(),
                   Align(
