@@ -559,11 +559,7 @@ class ZhengfangAuth extends ChangeNotifier {
           (statusCode == 302 || statusCode == 303) &&
           (location.contains('login_slogin') || location.contains('kaptcha'));
       final loginPageReturned =
-          statusCode == 200 &&
-          (html.contains('id="yhm"') ||
-              html.contains("id='yhm'") ||
-              html.contains('name="yhm"') ||
-              html.contains("name='yhm'"));
+          statusCode == 200 && _looksLikeJwLoginPage(html);
 
       if (redirectedToLogin || loginPageReturned) {
         AppLogger.instance.info('教务会话已失效，自动标记为未登录');
@@ -579,6 +575,28 @@ class ZhengfangAuth extends ChangeNotifier {
       AppLogger.instance.info('教务会话校验失败（未知异常）: $e');
       return null;
     }
+  }
+
+  bool _looksLikeJwLoginPage(String html) {
+    if (html.isEmpty) return false;
+
+    final hasCredentialField =
+        html.contains('id="yhm"') ||
+        html.contains("id='yhm'") ||
+        html.contains('name="yhm"') ||
+        html.contains("name='yhm'") ||
+        html.contains('id="yzm"') ||
+        html.contains("id='yzm'") ||
+        html.contains('name="yzm"') ||
+        html.contains("name='yzm'");
+    final hasLoginHint =
+        html.contains('login_slogin') ||
+        html.contains('教学管理信息服务平台') ||
+        html.contains('用户登录') ||
+        html.contains('忘记密码') ||
+        html.contains('验证码');
+
+    return hasCredentialField || hasLoginHint;
   }
 
   /// 跟随 WebVPN CAS 重定向链建立 session
