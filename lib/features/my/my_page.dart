@@ -66,6 +66,15 @@ class _MyPageState extends State<MyPage> {
 
   Future<void> _openAcademicAction() async {
     if (_academicLoggedIn) {
+      final sessionValid = await ZhengfangAuth.instance.validateSession();
+      if (!mounted) return;
+      if (sessionValid == false) {
+        await context.pushNamed('academic-system-login');
+        if (!mounted) return;
+        _refreshStatus();
+        return;
+      }
+
       // 同步教务系统 Cookie 到 WebView
       await ZhengfangAuth.instance.syncCookiesToWebView();
       if (!mounted) return;
@@ -74,7 +83,8 @@ class _MyPageState extends State<MyPage> {
         'news-detail',
         extra: {
           'title': '教务系统',
-          'url': 'https://jwzx.zjxu.edu.cn/jwglxt/xtgl/index_initMenu.html?jsdm=xs',
+          'url':
+              'https://jwzx.zjxu.edu.cn/jwglxt/xtgl/index_initMenu.html?jsdm=xs',
         },
       );
       if (!mounted) return;
@@ -162,7 +172,10 @@ class _MyPageState extends State<MyPage> {
                       const SizedBox(height: 2),
                       Text(
                         '管理一卡通、教务登录状态',
-                        style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: cs.onSurfaceVariant,
+                        ),
                       ),
                     ],
                   ),
@@ -177,7 +190,9 @@ class _MyPageState extends State<MyPage> {
             title: '一卡通',
             subtitle: _campusLoggedIn ? '已登录' : '未登录',
             primaryActionLabel: '登录',
-            onPrimaryAction: _campusLoggedIn ? _reloginCampus : _openCampusCardAction,
+            onPrimaryAction: _campusLoggedIn
+                ? _reloginCampus
+                : _openCampusCardAction,
             secondaryActionLabel: null,
             onSecondaryAction: null,
           ),
@@ -227,7 +242,11 @@ class _MyPageState extends State<MyPage> {
                       color: cs.primary.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Icon(Icons.settings_outlined, color: cs.primary, size: 22),
+                    child: Icon(
+                      Icons.settings_outlined,
+                      color: cs.primary,
+                      size: 22,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -245,12 +264,19 @@ class _MyPageState extends State<MyPage> {
                         const SizedBox(height: 2),
                         Text(
                           '主题、学期、网络与调试选项',
-                          style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: cs.onSurfaceVariant,
+                          ),
                         ),
                       ],
                     ),
                   ),
-                  Icon(Icons.chevron_right, size: 20, color: cs.onSurfaceVariant),
+                  Icon(
+                    Icons.chevron_right,
+                    size: 20,
+                    color: cs.onSurfaceVariant,
+                  ),
                 ],
               ),
             ),
@@ -335,7 +361,10 @@ class _AccountStatusCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       subtitle,
-                      style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: cs.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ),
@@ -350,7 +379,8 @@ class _AccountStatusCard extends StatelessWidget {
                 icon: const Icon(Icons.login_rounded, size: 18),
                 label: Text(primaryActionLabel),
               ),
-              if (secondaryActionLabel != null && onSecondaryAction != null) ...[
+              if (secondaryActionLabel != null &&
+                  onSecondaryAction != null) ...[
                 const SizedBox(width: 10),
                 OutlinedButton.icon(
                   onPressed: onSecondaryAction,

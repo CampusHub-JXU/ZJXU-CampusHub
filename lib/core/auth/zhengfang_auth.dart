@@ -61,6 +61,7 @@ class ZhengfangAuth extends ChangeNotifier {
   static const _webVpnJwglxtPrefix = '$_portalPrefix/jwglxt';
   static const _webVpnLoginPath =
       '$_portalPrefix/jwglxt/xtgl/login_slogin.html';
+  static const _directIndexPath = '/jwglxt/xtgl/index_initMenu.html';
 
   /// WebVPN CAS 登录路径
   static const _webVpnCasPath = '/login';
@@ -486,8 +487,9 @@ class ZhengfangAuth extends ChangeNotifier {
     final cookieManager = CookieManager.instance();
     final uris = [
       Uri.parse('$_directOrigin/'),
-      Uri.parse('$_directOrigin/$_directLoginPath'),
+      Uri.parse('$_directOrigin$_directLoginPath'),
       Uri.parse('$_directBase/'),
+      Uri.parse('$_directOrigin$_directIndexPath?jsdm=xs'),
     ];
 
     for (final uri in uris) {
@@ -523,6 +525,59 @@ class ZhengfangAuth extends ChangeNotifier {
       await syncWebVpnCookiesToWebView();
     } else {
       await syncDirectCookiesToWebView();
+    }
+  }
+
+  /// 校验教务会话是否仍然有效。
+  /// 返回:
+  /// - `true`: 会话有效
+  /// - `false`: 会话失效（会自动标记登出）
+  /// - `null`: 校验请求失败（网络异常），不变更当前登录态
+  Future<bool?> validateSession() async {
+    if (!_sessionActive) return false;
+
+    await DioClient.instance.ensureInitialized();
+    final indexUrl = '$_baseUrl/xtgl/index_initMenu.html';
+
+    try {
+      final response = await _dio.get<String>(
+        indexUrl,
+        queryParameters: {'jsdm': 'xs'},
+        options: Options(
+          responseType: ResponseType.plain,
+          followRedirects: false,
+          validateStatus: (status) => status != null && status < 1000,
+          headers: {'Referer': _loginPageUrl},
+        ),
+      );
+
+      final statusCode = response.statusCode ?? 0;
+      final location = (response.headers.value('location') ?? '').toLowerCase();
+      final html = (response.data ?? '').toLowerCase();
+
+      final redirectedToLogin =
+          (statusCode == 302 || statusCode == 303) &&
+          (location.contains('login_slogin') || location.contains('kaptcha'));
+      final loginPageReturned =
+          statusCode == 200 &&
+          (html.contains('id="yhm"') ||
+              html.contains("id='yhm'") ||
+              html.contains('name="yhm"') ||
+              html.contains("name='yhm'"));
+
+      if (redirectedToLogin || loginPageReturned) {
+        AppLogger.instance.info('教务会话已失效，自动标记为未登录');
+        markLoggedOut();
+        return false;
+      }
+
+      return true;
+    } on DioException catch (e) {
+      AppLogger.instance.info('教务会话校验失败（网络异常）: ${e.type} ${e.message}');
+      return null;
+    } catch (e) {
+      AppLogger.instance.info('教务会话校验失败（未知异常）: $e');
+      return null;
     }
   }
 
