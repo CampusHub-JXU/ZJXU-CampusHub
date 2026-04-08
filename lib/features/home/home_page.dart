@@ -789,7 +789,6 @@ class _HomePageState extends State<HomePage> {
   Widget _buildChangxingJiadaLearningTile(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     const tileBackground = Color(0xFFF3FAF5);
-    const iconBackground = Color(0xFFE8F5EC);
     return InkWell(
       onTap: () => context.pushNamed('changxing-jiada'),
       borderRadius: BorderRadius.circular(12),
@@ -805,7 +804,7 @@ class _HomePageState extends State<HomePage> {
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                color: iconBackground,
+                color: tileBackground,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Center(
