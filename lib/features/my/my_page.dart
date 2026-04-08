@@ -117,7 +117,7 @@ class _MyPageState extends State<MyPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('我的')),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
         children: [
           Container(
             decoration: BoxDecoration(
@@ -129,7 +129,7 @@ class _MyPageState extends State<MyPage> {
                         AppColors.primary.withValues(alpha: 0.45),
                         cs.surfaceContainerHigh,
                       ]
-                    : [AppColors.primary.withValues(alpha: 0.16), const Color.fromARGB(255, 147, 58, 58)],
+                    : [AppColors.primary.withValues(alpha: 0.16), Colors.white],
               ),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
@@ -138,7 +138,7 @@ class _MyPageState extends State<MyPage> {
                     : Colors.white.withValues(alpha: 0.72),
               ),
             ),
-            padding: const EdgeInsets.all(18),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -181,17 +181,66 @@ class _MyPageState extends State<MyPage> {
             onSecondaryAction: _academicLoggedIn ? _reloginAcademic : null,
           ),
           const SizedBox(height: 18),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.settings_outlined),
-              title: const Text('设置'),
-              subtitle: const Text('主题、学期、网络与调试选项'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () async {
-                await context.pushNamed('settings');
-                if (!mounted) return;
-                _refreshStatus();
-              },
+          GestureDetector(
+            onTap: () async {
+              await context.pushNamed('settings');
+              if (!mounted) return;
+              _refreshStatus();
+            },
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: isDark ? cs.surfaceContainerLowest : Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: isDark
+                      ? cs.outline.withValues(alpha: 0.3)
+                      : cs.outline.withValues(alpha: 0.2),
+                  width: 1,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: cs.primary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(Icons.settings_outlined, color: cs.primary, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '设置',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: cs.onSurface,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '主题、学期、网络与调试选项',
+                          style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(Icons.chevron_right, size: 20, color: cs.onSurfaceVariant),
+                ],
+              ),
             ),
           ),
         ],
@@ -224,68 +273,82 @@ class _AccountStatusCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: iconColor.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(icon, color: iconColor, size: 22),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: cs.onSurface,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: cs.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                FilledButton(
-                  onPressed: onPrimaryAction,
-                  child: Text(primaryActionLabel),
-                ),
-                if (secondaryActionLabel != null &&
-                    onSecondaryAction != null) ...[
-                  const SizedBox(width: 8),
-                  OutlinedButton(
-                    onPressed: onSecondaryAction,
-                    child: Text(secondaryActionLabel!),
-                  ),
-                ],
-              ],
-            ),
-          ],
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: isDark ? cs.surfaceContainerLowest : Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isDark
+              ? cs.outline.withValues(alpha: 0.3)
+              : cs.outline.withValues(alpha: 0.2),
+          width: 1,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: iconColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: iconColor, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: cs.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              FilledButton.icon(
+                onPressed: onPrimaryAction,
+                icon: const Icon(Icons.login_rounded, size: 18),
+                label: Text(primaryActionLabel),
+              ),
+              if (secondaryActionLabel != null && onSecondaryAction != null) ...[
+                const SizedBox(width: 10),
+                OutlinedButton.icon(
+                  onPressed: onSecondaryAction,
+                  icon: const Icon(Icons.refresh_rounded, size: 18),
+                  label: Text(secondaryActionLabel!),
+                ),
+              ],
+            ],
+          ),
+        ],
       ),
     );
   }
