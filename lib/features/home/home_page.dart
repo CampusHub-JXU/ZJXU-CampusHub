@@ -232,9 +232,11 @@ class _HomePageState extends State<HomePage> {
                           const SizedBox(height: 10),
                           _buildGradesCard(context),
                           const SizedBox(height: 10),
-                          _buildMoreServicesCard(context),
-                          const SizedBox(height: 10),
                           _buildDormServicesCard(context),
+                          const SizedBox(height: 10),
+                          _buildChangxingJiadaCard(context),
+                          const SizedBox(height: 10),
+                          _buildMoreServicesCard(context),
                         ],
                       ),
                     ),
@@ -686,7 +688,7 @@ class _HomePageState extends State<HomePage> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '电费查询、故障报修、离返校登记',
+                    '电费查询、故障报修',
                     style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
                   ),
                 ],
@@ -928,6 +930,71 @@ class _HomePageState extends State<HomePage> {
                   fontWeight: FontWeight.w600,
                   color: cs.onSurface,
                 ),
+              ),
+            ),
+            Icon(Icons.arrow_forward_ios, size: 14, color: cs.onSurfaceVariant),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChangxingJiadaCard(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = isDark ? cs.surfaceContainerLowest : Colors.white;
+
+    return GestureDetector(
+      onTap: () => context.pushNamed(
+        'news-detail',
+        extra: {
+          'title': '畅行嘉大',
+          'url':
+              'https://zhx.zjxu.edu.cn/wap/?type=jxxy_tysfrz&to_tysfrz=1&tokenId=1496450F07763AAEE96F47C8730FA075#/pages/students/navigation/index',
+        },
+      ),
+      child: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.success, width: 2),
+                color: AppColors.success.withValues(alpha: 0.06),
+              ),
+              child: const Icon(
+                Icons.north_rounded,
+                color: AppColors.success,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '畅行嘉大',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: cs.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    '离返校登记',
+                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                  ),
+                ],
               ),
             ),
             Icon(Icons.arrow_forward_ios, size: 14, color: cs.onSurfaceVariant),
