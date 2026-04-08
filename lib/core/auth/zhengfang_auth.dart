@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:pointycastle/export.dart';
@@ -58,12 +59,12 @@ class ZhengfangAuth {
   static const _portalPrefix =
       '/http/77726476706e69737468656265737421fae05b84692a62486b468ca88d1b203b';
   static const _webVpnJwglxtPrefix = '$_portalPrefix/jwglxt';
-  static const _webVpnLoginPath = '$_portalPrefix/jwglxt/xtgl/login_slogin.html';
+  static const _webVpnLoginPath =
+      '$_portalPrefix/jwglxt/xtgl/login_slogin.html';
 
   /// WebVPN CAS 登录路径
   static const _webVpnCasPath = '/login';
 
-  final _cookieJar = DioClient.instance.cookieJar;
   String? _cachedCsrfToken;
 
   ZhengfangMode _mode = ZhengfangMode.direct;
@@ -73,12 +74,15 @@ class ZhengfangAuth {
   String? currentStudentId;
 
   Dio get _dio => DioClient.instance.dio;
+  PersistCookieJar get _cookieJar => DioClient.instance.cookieJar;
 
-  String get _baseUrl =>
-      _mode == ZhengfangMode.direct ? _directBase : '$_webVpnBase$_webVpnJwglxtPrefix';
+  String get _baseUrl => _mode == ZhengfangMode.direct
+      ? _directBase
+      : '$_webVpnBase$_webVpnJwglxtPrefix';
 
-  String get _loginPageUrl =>
-      _mode == ZhengfangMode.direct ? '$_directOrigin$_directLoginPath' : _webVpnLoginPath;
+  String get _loginPageUrl => _mode == ZhengfangMode.direct
+      ? '$_directOrigin$_directLoginPath'
+      : _webVpnLoginPath;
 
   String get _origin =>
       _mode == ZhengfangMode.direct ? _directOrigin : _webVpnBase;
@@ -111,7 +115,12 @@ class ZhengfangAuth {
 
   static bool _isValidImage(Uint8List data) {
     if (data.length < 4) return false;
-    if (data[0] == 0x89 && data[1] == 0x50 && data[2] == 0x4E && data[3] == 0x47) return true;
+    if (data[0] == 0x89 &&
+        data[1] == 0x50 &&
+        data[2] == 0x4E &&
+        data[3] == 0x47) {
+      return true;
+    }
     if (data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF) return true;
     if (data[0] == 0x47 && data[1] == 0x49 && data[2] == 0x46) return true;
     return false;
@@ -122,12 +131,14 @@ class ZhengfangAuth {
   /// 测试直连教务系统是否可达
   static Future<bool> checkDirectReachable() async {
     try {
-      final dio = Dio(BaseOptions(
-        connectTimeout: const Duration(seconds: 8),
-        receiveTimeout: const Duration(seconds: 8),
-        followRedirects: false,
-        validateStatus: (s) => s != null && s < 500,
-      ));
+      final dio = Dio(
+        BaseOptions(
+          connectTimeout: const Duration(seconds: 8),
+          receiveTimeout: const Duration(seconds: 8),
+          followRedirects: false,
+          validateStatus: (s) => s != null && s < 500,
+        ),
+      );
       AppLogger.instance.debug('正在测试教务系统直连...');
       final resp = await dio.get<String>('$_directOrigin$_directLoginPath');
       final statusCode = resp.statusCode ?? 0;
@@ -141,8 +152,11 @@ class ZhengfangAuth {
         return false;
       }
 
-      final reachable = statusCode < 400 && statusCode != 302 && statusCode != 303;
-      AppLogger.instance.info('教务系统直连: ${reachable ? "可达" : "不可达"} ($statusCode)');
+      final reachable =
+          statusCode < 400 && statusCode != 302 && statusCode != 303;
+      AppLogger.instance.info(
+        '教务系统直连: ${reachable ? "可达" : "不可达"} ($statusCode)',
+      );
       return reachable;
     } catch (e) {
       AppLogger.instance.info('教务系统直连不可达: $e');
@@ -153,12 +167,14 @@ class ZhengfangAuth {
   /// 测试 WebVPN 是否可达
   static Future<bool> checkWebVpnReachable() async {
     try {
-      final dio = Dio(BaseOptions(
-        connectTimeout: const Duration(seconds: 8),
-        receiveTimeout: const Duration(seconds: 8),
-        followRedirects: true,
-        validateStatus: (s) => s != null && s < 500,
-      ));
+      final dio = Dio(
+        BaseOptions(
+          connectTimeout: const Duration(seconds: 8),
+          receiveTimeout: const Duration(seconds: 8),
+          followRedirects: true,
+          validateStatus: (s) => s != null && s < 500,
+        ),
+      );
       AppLogger.instance.debug('正在测试 WebVPN 连通性...');
       final resp = await dio.get<String>('$_webVpnBase$_webVpnCasPath');
       AppLogger.instance.info('WebVPN 连通性: ${resp.statusCode}');
@@ -173,9 +189,9 @@ class ZhengfangAuth {
 
   String? _cachedCasExecution;
   String? _cachedCasLt;
-  String? _cachedCasLoginUrl;  // 保存重定向后的 CAS 登录 URL
-  String? _cachedAesKey;  // AES 加密密钥 aes1
-  String? _cachedAesIv;   // AES 加密 IV akey
+  String? _cachedCasLoginUrl; // 保存重定向后的 CAS 登录 URL
+  String? _cachedAesKey; // AES 加密密钥 aes1
+  String? _cachedAesIv; // AES 加密 IV akey
 
   /// 获取 WebVPN CAS 验证码
   Future<Uint8List> fetchWebVpnCasCaptcha() async {
@@ -186,7 +202,7 @@ class ZhengfangAuth {
       loginUri,
       options: Options(
         responseType: ResponseType.plain,
-        followRedirects: false,  // 手动处理重定向
+        followRedirects: false, // 手动处理重定向
         validateStatus: (s) => s != null && s < 400,
         headers: {'Referer': loginUri},
       ),
@@ -210,15 +226,19 @@ class ZhengfangAuth {
     final html = casResp.data ?? '';
     _cachedCasExecution = _extractHiddenField(html, 'execution');
     _cachedCasLt = _extractHiddenField(html, 'lt');
-    _cachedCasLoginUrl = casLoginUrl;  // 保存 CAS 登录 URL
+    _cachedCasLoginUrl = casLoginUrl; // 保存 CAS 登录 URL
 
     // CAS 登录页面中的 __vpn_host_crypt_key 不是用于密码加密的
     // 实际加密密钥是 main.js 中的 aes1='key_value_123456'
     _cachedAesKey = 'key_value_123456';
     _cachedAesIv = '0987654321123456';
-    AppLogger.instance.debug('WebVPN CAS AES key: ${_cachedAesKey?.substring(0, _cachedAesKey!.length > 10 ? 10 : _cachedAesKey!.length) ?? "null"}..., iv: ${_cachedAesIv?.substring(0, _cachedAesIv!.length > 10 ? 10 : _cachedAesIv!.length) ?? "null"}...');
+    AppLogger.instance.debug(
+      'WebVPN CAS AES key: ${_cachedAesKey?.substring(0, _cachedAesKey!.length > 10 ? 10 : _cachedAesKey!.length) ?? "null"}..., iv: ${_cachedAesIv?.substring(0, _cachedAesIv!.length > 10 ? 10 : _cachedAesIv!.length) ?? "null"}...',
+    );
 
-    AppLogger.instance.debug('WebVPN CAS execution: ${_cachedCasExecution?.length ?? 0} 字符, lt: ${_cachedCasLt?.length ?? 0} 字符');
+    AppLogger.instance.debug(
+      'WebVPN CAS execution: ${_cachedCasExecution?.length ?? 0} 字符, lt: ${_cachedCasLt?.length ?? 0} 字符',
+    );
 
     final ts = DateTime.now().millisecondsSinceEpoch;
     // 验证码 URL：实际是 /cas/captcha.html，不是 /cas/login/captcha.html
@@ -279,7 +299,9 @@ class ZhengfangAuth {
 
       final encryptedPassword = _encryptPasswordWithAes(password);
 
-      AppLogger.instance.debug('WebVPN CAS 登录参数: username=$username, veriyCode=$captcha, lt=${lt != null && lt.length > 10 ? lt.substring(0, 10) : lt ?? ""}..., execution=${execution.length > 20 ? execution.substring(0, 20) : execution}...');
+      AppLogger.instance.debug(
+        'WebVPN CAS 登录参数: username=$username, veriyCode=$captcha, lt=${lt != null && lt.length > 10 ? lt.substring(0, 10) : lt ?? ""}..., execution=${execution.length > 20 ? execution.substring(0, 20) : execution}...',
+      );
 
       final resp = await _dio.post<String>(
         loginUri,
@@ -296,17 +318,16 @@ class ZhengfangAuth {
           responseType: ResponseType.plain,
           followRedirects: false,
           validateStatus: (s) => s != null && s < 1000,
-          headers: {
-            'Referer': loginUri,
-            'Origin': _webVpnBase,
-          },
+          headers: {'Referer': loginUri, 'Origin': _webVpnBase},
         ),
       );
 
       final statusCode = resp.statusCode;
       final location = resp.headers.value('location') ?? '';
       final html = resp.data ?? '';
-      AppLogger.instance.debug('WebVPN CAS 响应: $statusCode, location=$location');
+      AppLogger.instance.debug(
+        'WebVPN CAS 响应: $statusCode, location=$location',
+      );
 
       // 302/303 重定向且不是回到 login 页面 = 成功
       if ((statusCode == 302 || statusCode == 303) && location.isNotEmpty) {
@@ -377,10 +398,14 @@ class ZhengfangAuth {
       final ivBytes = Uint8List.fromList(utf8.encode(iv));
       final input = Uint8List.fromList(utf8.encode(password));
 
-      AppLogger.instance.debug('AES encrypt: key=${keyBytes.length}bytes, iv=${ivBytes.length}bytes, input=${input.length}bytes');
+      AppLogger.instance.debug(
+        'AES encrypt: key=${keyBytes.length}bytes, iv=${ivBytes.length}bytes, input=${input.length}bytes',
+      );
 
       final paddedInput = _pkcs7Pad(input, 16);
-      AppLogger.instance.debug('AES encrypt: paddedInput=${paddedInput.length}bytes');
+      AppLogger.instance.debug(
+        'AES encrypt: paddedInput=${paddedInput.length}bytes',
+      );
 
       final cipher = CBCBlockCipher(AESEngine())
         ..init(true, ParametersWithIV(KeyParameter(keyBytes), ivBytes));
@@ -426,7 +451,9 @@ class ZhengfangAuth {
     for (final uri in uris) {
       try {
         final cookies = await _cookieJar.loadForRequest(uri);
-        AppLogger.instance.debug('同步 WebVPN Cookie ${uri.host}: ${cookies.map((c) => c.name).join(', ')}');
+        AppLogger.instance.debug(
+          '同步 WebVPN Cookie ${uri.host}: ${cookies.map((c) => c.name).join(', ')}',
+        );
         for (final cookie in cookies) {
           final domain = (cookie.domain ?? '').trim();
           await cookieManager.setCookie(
@@ -434,7 +461,9 @@ class ZhengfangAuth {
             name: cookie.name,
             value: cookie.value,
             domain: domain.isNotEmpty ? domain : uri.host,
-            path: (cookie.path ?? '').trim().isNotEmpty ? cookie.path!.trim() : '/',
+            path: (cookie.path ?? '').trim().isNotEmpty
+                ? cookie.path!.trim()
+                : '/',
             isSecure: cookie.secure,
             isHttpOnly: cookie.httpOnly,
             expiresDate: cookie.expires?.millisecondsSinceEpoch,
@@ -447,7 +476,10 @@ class ZhengfangAuth {
   }
 
   /// 跟随 WebVPN CAS 重定向链建立 session
-  Future<void> _followWebVpnRedirectChain(String referer, String location) async {
+  Future<void> _followWebVpnRedirectChain(
+    String referer,
+    String location,
+  ) async {
     var nextUrl = location;
     if (nextUrl.startsWith('/')) {
       nextUrl = '$_webVpnBase$nextUrl';
@@ -478,13 +510,17 @@ class ZhengfangAuth {
   /// 设置连接模式
   void setMode(ZhengfangMode mode) {
     _mode = mode;
-    AppLogger.instance.info('教务系统连接模式切换为: ${mode == ZhengfangMode.direct ? "直连" : "WebVPN"}');
+    AppLogger.instance.info(
+      '教务系统连接模式切换为: ${mode == ZhengfangMode.direct ? "直连" : "WebVPN"}',
+    );
   }
 
   Future<Uint8List> fetchCaptcha() async {
     await _refreshLoginContext();
     final ts = DateTime.now().millisecondsSinceEpoch;
-    AppLogger.instance.debug('正在获取教务系统验证码 [${_mode == ZhengfangMode.direct ? "直连" : "WebVPN"}]...');
+    AppLogger.instance.debug(
+      '正在获取教务系统验证码 [${_mode == ZhengfangMode.direct ? "直连" : "WebVPN"}]...',
+    );
     final resp = await _dio.get<List<int>>(
       '$_baseUrl/kaptcha',
       queryParameters: {'time': ts},
@@ -593,7 +629,9 @@ class ZhengfangAuth {
         _sessionActive = true;
         _cachedCsrfToken = null;
         await CredentialStore.instance.saveZhengfangSession(username);
-        AppLogger.instance.info('教务系统登录成功 [${_mode == ZhengfangMode.direct ? "直连" : "WebVPN"}]');
+        AppLogger.instance.info(
+          '教务系统登录成功 [${_mode == ZhengfangMode.direct ? "直连" : "WebVPN"}]',
+        );
         return LoginSuccess();
       }
 

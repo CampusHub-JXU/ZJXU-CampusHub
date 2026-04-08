@@ -3,12 +3,13 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/theme.dart';
-import '../campus_card/campus_card_service.dart';
-import '../schedule/schedule_model.dart';
-import '../schedule/schedule_service.dart';
+import '../../core/auth/unified_auth.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/semester/semester_calendar.dart';
+import '../campus_card/campus_card_service.dart';
 import '../dorm_electricity/dorm_electricity_service.dart';
+import '../schedule/schedule_model.dart';
+import '../schedule/schedule_service.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -23,6 +24,10 @@ class _HomePageState extends State<HomePage> {
   CourseEntry? _nextCourse;
   String _nextCourseLabel = '';
   bool _courseLoggedIn = false;
+  bool _campusCardLoggedIn = false;
+  bool _academicSystemLoggedIn = false;
+  bool _hasScheduleCache = false;
+  DateTime? _scheduleUpdatedAt;
 
   static const _weekdayLabels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
@@ -31,6 +36,8 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    _campusCardLoggedIn = UnifiedAuthService.instance.isLoggedIn;
+    _academicSystemLoggedIn = ZhengfangAuth.instance.isLoggedIn;
     SemesterCalendar.instance.semesterStartDate.addListener(
       _onSemesterStartChanged,
     );
@@ -85,80 +92,62 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _refreshNextCourse() async {
-    final studentId = ZhengfangAuth.instance.currentStudentId ?? '';
-    if (studentId.isEmpty) {
-      if (mounted) {
-        setState(() {
-          _courseLoggedIn = false;
-          _nextCourse = null;
-          _nextCourseLabel = '';
-        });
-      }
-      return;
-    }
     try {
       final now = DateTime.now();
-      final academicYear = now.month < 8 ? now.year - 1 : now.year;
-      final term = now.month >= 2 && now.month < 8 ? 12 : 3;
-      final courses = await ScheduleService.instance.fetchSchedule(
-        studentId,
-        academicYear,
-        term,
+      final result = await ScheduleService.instance.loadScheduleSnapshot(
+        termContext: ScheduleService.instance.getCurrentTermContext(now),
       );
-      List<CourseChangeRule> courseChangeRules = const [];
-      try {
-        courseChangeRules = await ScheduleService.instance
-            .fetchCourseChangeRules(studentId);
-      } catch (_) {}
       if (!mounted) return;
+
+      final snapshot = result.snapshot;
+      final hasScheduleCache = snapshot?.hasData ?? false;
       final today = DateTime(now.year, now.month, now.day);
       final nextLessonToday = _nextStartLesson(now);
-      for (int offset = 0; offset < 14; offset++) {
-        final date = today.add(Duration(days: offset));
-        final week = _weekForDate(date);
-        final effectiveCourses = ScheduleService.instance
-            .buildEffectiveWeekCourses(
-              courses: courses,
-              week: week,
-              changeRules: courseChangeRules,
-            );
-        final dayCourses =
-            effectiveCourses
-                .where((c) => c.weekday == date.weekday)
-                .where((c) => offset > 0 || c.startLesson >= nextLessonToday)
-                .toList()
-              ..sort((a, b) => a.startLesson.compareTo(b.startLesson));
-        if (dayCourses.isNotEmpty) {
-          setState(() {
-            _courseLoggedIn = true;
-            _nextCourse = dayCourses.first;
-            _nextCourseLabel = _labelForDate(date, today);
-          });
-          return;
+      CourseEntry? nextCourse;
+      var nextCourseLabel = '';
+
+      if (snapshot != null && snapshot.hasData) {
+        for (int offset = 0; offset < 14; offset++) {
+          final date = today.add(Duration(days: offset));
+          final week = _weekForDate(date);
+          final effectiveCourses = ScheduleService.instance
+              .buildEffectiveWeekCourses(
+                courses: snapshot.courses,
+                week: week,
+                changeRules: snapshot.changeRules,
+              );
+          final dayCourses =
+              effectiveCourses
+                  .where((c) => c.weekday == date.weekday)
+                  .where((c) => offset > 0 || c.startLesson >= nextLessonToday)
+                  .toList()
+                ..sort((a, b) => a.startLesson.compareTo(b.startLesson));
+          if (dayCourses.isNotEmpty) {
+            nextCourse = dayCourses.first;
+            nextCourseLabel = _labelForDate(date, today);
+            break;
+          }
         }
       }
+
       setState(() {
-        _courseLoggedIn = true;
+        _campusCardLoggedIn = UnifiedAuthService.instance.isLoggedIn;
+        _academicSystemLoggedIn = ZhengfangAuth.instance.isLoggedIn;
+        _hasScheduleCache = hasScheduleCache;
+        _scheduleUpdatedAt = snapshot?.lastUpdatedAt;
+        _courseLoggedIn = _academicSystemLoggedIn || hasScheduleCache;
+        _nextCourse = nextCourse;
+        _nextCourseLabel = nextCourseLabel;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _campusCardLoggedIn = UnifiedAuthService.instance.isLoggedIn;
+        _academicSystemLoggedIn = ZhengfangAuth.instance.isLoggedIn;
+        _courseLoggedIn = _academicSystemLoggedIn || _hasScheduleCache;
         _nextCourse = null;
         _nextCourseLabel = '';
       });
-    } on ScheduleAuthExpiredException {
-      ZhengfangAuth.instance.markLoggedOut();
-      if (mounted) {
-        setState(() {
-          _courseLoggedIn = false;
-          _nextCourse = null;
-          _nextCourseLabel = '';
-        });
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _courseLoggedIn = true;
-          _nextCourse = null;
-          _nextCourseLabel = '';
-        });
-      }
     }
   }
 
@@ -166,6 +155,7 @@ class _HomePageState extends State<HomePage> {
     final cached = CampusCardService.instance.cachedBalance;
     if (cached != null && mounted) {
       setState(() {
+        _campusCardLoggedIn = UnifiedAuthService.instance.isLoggedIn;
         _campusCardBalance = CampusCardService.instance.formatBalance(cached);
       });
       return;
@@ -173,6 +163,7 @@ class _HomePageState extends State<HomePage> {
     final networkBalance = await CampusCardService.instance.fetchBalance();
     if (!mounted) return;
     setState(() {
+      _campusCardLoggedIn = UnifiedAuthService.instance.isLoggedIn;
       _campusCardBalance = CampusCardService.instance.formatBalance(
         networkBalance,
       );
@@ -192,7 +183,44 @@ class _HomePageState extends State<HomePage> {
   Future<void> _openSchedule(BuildContext context) async {
     await context.pushNamed('schedule');
     if (!mounted) return;
-    _refreshNextCourse();
+    _refreshAll();
+  }
+
+  String _formatScheduleUpdatedAt(DateTime? value) {
+    if (value == null) return '未缓存';
+    final month = value.month.toString().padLeft(2, '0');
+    final day = value.day.toString().padLeft(2, '0');
+    final hour = value.hour.toString().padLeft(2, '0');
+    final minute = value.minute.toString().padLeft(2, '0');
+    return '$month-$day $hour:$minute';
+  }
+
+  Widget _buildHeaderStatusRow() {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        _StatusChip(
+          label: '一卡通',
+          value: _campusCardLoggedIn ? '已登录' : '未登录',
+          active: _campusCardLoggedIn,
+        ),
+        _StatusChip(
+          label: '教务',
+          value: _academicSystemLoggedIn ? '已登录' : '未登录',
+          active: _academicSystemLoggedIn,
+        ),
+        _StatusChip(
+          label: '课表',
+          value: _hasScheduleCache
+              ? (_academicSystemLoggedIn
+                    ? _formatScheduleUpdatedAt(_scheduleUpdatedAt)
+                    : '缓存 ${_formatScheduleUpdatedAt(_scheduleUpdatedAt)}')
+              : '未缓存',
+          active: _hasScheduleCache,
+        ),
+      ],
+    );
   }
 
   @override
@@ -331,6 +359,8 @@ class _HomePageState extends State<HomePage> {
                           ),
                         ],
                       ),
+                      const SizedBox(height: 10),
+                      _buildHeaderStatusRow(),
                       const SizedBox(height: 12),
                       // Course content + action on the same bottom line
                       Row(
@@ -479,7 +509,7 @@ class _HomePageState extends State<HomePage> {
       onTap: () async {
         await context.pushNamed('campus-card');
         if (!mounted) return;
-        _refreshCampusCardBalance();
+        _refreshAll();
       },
       child: Container(
         decoration: BoxDecoration(
@@ -507,7 +537,11 @@ class _HomePageState extends State<HomePage> {
                 ),
                 const Spacer(),
                 GestureDetector(
-                  onTap: () => context.pushNamed('campus-card-payment'),
+                  onTap: () async {
+                    await context.pushNamed('campus-card-payment');
+                    if (!mounted) return;
+                    _refreshAll();
+                  },
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 10,
@@ -782,7 +816,11 @@ class _HomePageState extends State<HomePage> {
     final cs = Theme.of(context).colorScheme;
     const tileBackground = Color(0xFFF3FAF5);
     return InkWell(
-      onTap: () => context.pushNamed('changxing-jiada'),
+      onTap: () async {
+        await context.pushNamed('changxing-jiada');
+        if (!mounted) return;
+        _refreshAll();
+      },
       borderRadius: BorderRadius.circular(12),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
@@ -948,7 +986,11 @@ class _HomePageState extends State<HomePage> {
     final bgColor = isDark ? cs.surfaceContainerLowest : Colors.white;
 
     return GestureDetector(
-      onTap: () => context.pushNamed('service-hall'),
+      onTap: () async {
+        await context.pushNamed('service-hall');
+        if (!mounted) return;
+        _refreshAll();
+      },
       child: Container(
         width: double.infinity,
         decoration: BoxDecoration(
@@ -980,6 +1022,45 @@ class _HomePageState extends State<HomePage> {
             ),
             Icon(Icons.arrow_forward_ios, size: 14, color: cs.onSurfaceVariant),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({
+    required this.label,
+    required this.value,
+    required this.active,
+  });
+
+  final String label;
+  final String value;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    final background = active
+        ? Colors.white.withValues(alpha: 0.16)
+        : Colors.white.withValues(alpha: 0.08);
+    final border = active
+        ? Colors.white.withValues(alpha: 0.22)
+        : Colors.white.withValues(alpha: 0.12);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: border),
+      ),
+      child: Text(
+        '$label $value',
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: Colors.white.withValues(alpha: active ? 0.95 : 0.72),
         ),
       ),
     );

@@ -1,8 +1,18 @@
-import 'package:dio/dio.dart';
+import 'dart:convert';
 
+import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../core/auth/zhengfang_auth.dart';
 import '../../core/network/dio_client.dart';
 import '../../core/semester/semester_calendar.dart';
+import 'schedule_cache_snapshot.dart';
+import 'schedule_change_rule.dart';
 import 'schedule_model.dart';
+import 'schedule_term_context.dart';
+
+export 'schedule_change_rule.dart';
 
 class ScheduleRequestException implements Exception {
   const ScheduleRequestException(this.message);
@@ -17,92 +27,156 @@ class ScheduleAuthExpiredException extends ScheduleRequestException {
   const ScheduleAuthExpiredException() : super('登录状态已过期，请重新登录');
 }
 
-enum CourseChangeType { cancel, reschedule, makeup }
-
-class CourseLessonSlot {
-  const CourseLessonSlot({
-    required this.week,
-    required this.weekday,
-    required this.startLesson,
-    required this.endLesson,
+class ScheduleLoadResult {
+  const ScheduleLoadResult({
+    this.snapshot,
+    this.message,
+    this.requiresLogin = false,
+    this.usedCache = false,
+    this.didRefresh = false,
   });
 
-  final int week;
-  final int weekday;
-  final int startLesson;
-  final int endLesson;
+  final ScheduleCacheSnapshot? snapshot;
+  final String? message;
+  final bool requiresLogin;
+  final bool usedCache;
+  final bool didRefresh;
 
-  bool overlaps(CourseEntry course) {
-    if (weekday != course.weekday) return false;
-    return course.startLesson <= endLesson && course.endLesson >= startLesson;
-  }
-
-  String get signature => '$week-$weekday-$startLesson-$endLesson';
-}
-
-class CourseChangeRule {
-  const CourseChangeRule({
-    required this.type,
-    this.originalLesson,
-    this.targetLesson,
-    this.courseName,
-    this.teacherName,
-    this.classroom,
-  });
-
-  final CourseChangeType type;
-  final CourseLessonSlot? originalLesson;
-  final CourseLessonSlot? targetLesson;
-  final String? courseName;
-  final String? teacherName;
-  final String? classroom;
-
-  bool removesCourse(CourseEntry course, int week) {
-    final lesson = originalLesson;
-    if (lesson == null || lesson.week != week || !lesson.overlaps(course)) {
-      return false;
-    }
-
-    final ruleCourseName = courseName?.trim() ?? '';
-    if (ruleCourseName.isEmpty) return true;
-
-    return _matchesCourseName(course.courseName, ruleCourseName);
-  }
-
-  bool addsCourseToWeek(int week) => targetLesson?.week == week;
-
-  String get signature => [
-    type.name,
-    originalLesson?.signature ?? '',
-    targetLesson?.signature ?? '',
-    courseName ?? '',
-    teacherName ?? '',
-    classroom ?? '',
-  ].join('|');
-}
-
-String _normalizeCourseName(String value) {
-  return value.toLowerCase().replaceAll(
-    RegExp('[\\s\\-—_（）()【】\\[\\]<>《》,，.。:：;；"\\\'、/+]+'),
-    '',
-  );
-}
-
-bool _matchesCourseName(String left, String right) {
-  final a = _normalizeCourseName(left);
-  final b = _normalizeCourseName(right);
-  if (a.isEmpty || b.isEmpty) return false;
-  return a.contains(b) || b.contains(a);
+  bool get hasData => snapshot?.hasData ?? false;
 }
 
 class ScheduleService {
   ScheduleService._();
+
   static final ScheduleService instance = ScheduleService._();
 
-  final _dio = DioClient.instance.dio;
+  static const scheduleRefreshWindow = Duration(days: 7);
+  static const changeRuleRefreshWindow = Duration(days: 1);
+  static const _cacheStorageKey = 'zjxu_schedule_cache_snapshots_v1';
+  static const _lastStudentStorageKey = 'zjxu_schedule_last_student_id_v1';
+
+  final Map<String, ScheduleCacheSnapshot> _snapshots = {};
+  final Map<String, Future<ScheduleLoadResult>> _inflightLoads = {};
+
+  SharedPreferences? _prefs;
+  bool _restored = false;
+  String? _lastStudentId;
+
+  Dio get _dio => DioClient.instance.dio;
 
   int getCurrentWeek() {
     return SemesterCalendar.instance.weekForDate(DateTime.now());
+  }
+
+  ScheduleTermContext getCurrentTermContext([DateTime? now]) {
+    return ScheduleTermContext.current(now);
+  }
+
+  String? get preferredStudentId {
+    return _resolveStudentId();
+  }
+
+  Future<void> restoreCache() async {
+    _prefs = await SharedPreferences.getInstance();
+    _snapshots.clear();
+
+    final raw = _prefs!.getString(_cacheStorageKey);
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map<String, dynamic>) {
+          for (final entry in decoded.entries) {
+            final value = entry.value;
+            if (value is Map<String, dynamic>) {
+              _snapshots[entry.key] = ScheduleCacheSnapshot.fromJson(value);
+            }
+          }
+        }
+      } catch (_) {
+        _snapshots.clear();
+      }
+    }
+
+    _lastStudentId =
+        _prefs!.getString(_lastStudentStorageKey) ?? _deriveLastStudentId();
+    _restored = true;
+  }
+
+  ScheduleCacheSnapshot? preferredSnapshot({
+    ScheduleTermContext? termContext,
+    String? studentId,
+  }) {
+    final resolvedStudentId = _resolveStudentId(studentId);
+    if (resolvedStudentId == null || resolvedStudentId.isEmpty) return null;
+    final context = termContext ?? getCurrentTermContext();
+    return _snapshots[_cacheKeyFor(resolvedStudentId, context)];
+  }
+
+  Future<ScheduleLoadResult> loadScheduleSnapshot({
+    ScheduleTermContext? termContext,
+    String? studentId,
+    bool forceRefresh = false,
+  }) async {
+    await _ensureRestored();
+
+    final context = termContext ?? getCurrentTermContext();
+    final resolvedStudentId = _resolveStudentId(studentId);
+    if (resolvedStudentId == null || resolvedStudentId.isEmpty) {
+      return const ScheduleLoadResult(requiresLogin: true, message: '请先登录教务系统');
+    }
+
+    final cacheKey = _cacheKeyFor(resolvedStudentId, context);
+    final cachedSnapshot =
+        _snapshots[cacheKey] ??
+        ScheduleCacheSnapshot.empty(
+          studentId: resolvedStudentId,
+          termContext: context,
+        );
+
+    final now = DateTime.now();
+    final shouldRefreshSchedule =
+        forceRefresh ||
+        cachedSnapshot.needsScheduleRefresh(now, maxAge: scheduleRefreshWindow);
+    final shouldRefreshChangeRules =
+        forceRefresh ||
+        cachedSnapshot.needsChangeRulesRefresh(
+          now,
+          maxAge: changeRuleRefreshWindow,
+        );
+    final needsRefresh = shouldRefreshSchedule || shouldRefreshChangeRules;
+
+    if (!needsRefresh) {
+      return ScheduleLoadResult(
+        snapshot: cachedSnapshot.hasData ? cachedSnapshot : null,
+        usedCache: cachedSnapshot.hasData,
+      );
+    }
+
+    final canRefresh =
+        ZhengfangAuth.instance.isLoggedIn &&
+        ZhengfangAuth.instance.currentStudentId == resolvedStudentId;
+    if (!canRefresh) {
+      if (cachedSnapshot.hasData) {
+        return ScheduleLoadResult(
+          snapshot: cachedSnapshot,
+          requiresLogin: true,
+          usedCache: true,
+          message: '显示的是本地缓存课表，刷新需要重新登录教务',
+        );
+      }
+      return const ScheduleLoadResult(requiresLogin: true, message: '请先登录教务系统');
+    }
+
+    return _loadOrJoin(
+      cacheKey,
+      () => _refreshSnapshot(
+        existingSnapshot: cachedSnapshot,
+        studentId: resolvedStudentId,
+        termContext: context,
+        refreshSchedule: shouldRefreshSchedule,
+        refreshChangeRules: shouldRefreshChangeRules,
+      ),
+    );
   }
 
   Future<List<CourseEntry>> fetchSchedule(
@@ -149,7 +223,7 @@ class ScheduleService {
 
     final kbList = data['kbList'] as List<dynamic>? ?? [];
     return kbList
-        .cast<Map<String, dynamic>>()
+        .whereType<Map<String, dynamic>>()
         .map(CourseEntry.fromJson)
         .toList();
   }
@@ -222,7 +296,7 @@ class ScheduleService {
 
     final items = data['items'] as List<dynamic>? ?? const [];
     return items
-        .cast<Map<String, dynamic>>()
+        .whereType<Map<String, dynamic>>()
         .map(
           (item) =>
               item['TKXX']?.toString() ??
@@ -500,6 +574,196 @@ class ScheduleService {
     return null;
   }
 
+  @visibleForTesting
+  Future<void> debugClearCache() async {
+    await _ensureRestored();
+    _snapshots.clear();
+    _lastStudentId = null;
+    await _prefs?.remove(_cacheStorageKey);
+    await _prefs?.remove(_lastStudentStorageKey);
+  }
+
+  @visibleForTesting
+  void debugSetSnapshot(ScheduleCacheSnapshot snapshot) {
+    _snapshots[_cacheKeyFor(snapshot.studentId, snapshot.termContext)] =
+        snapshot;
+    _lastStudentId = snapshot.studentId;
+  }
+
+  Future<void> _ensureRestored() async {
+    if (_restored) return;
+    await restoreCache();
+  }
+
+  Future<ScheduleLoadResult> _loadOrJoin(
+    String key,
+    Future<ScheduleLoadResult> Function() loader,
+  ) {
+    final existing = _inflightLoads[key];
+    if (existing != null) return existing;
+
+    final future = loader();
+    _inflightLoads[key] = future;
+    future.whenComplete(() => _inflightLoads.remove(key));
+    return future;
+  }
+
+  Future<ScheduleLoadResult> _refreshSnapshot({
+    required ScheduleCacheSnapshot existingSnapshot,
+    required String studentId,
+    required ScheduleTermContext termContext,
+    required bool refreshSchedule,
+    required bool refreshChangeRules,
+  }) async {
+    var nextSnapshot = existingSnapshot;
+    var didRefresh = false;
+    final warnings = <String>[];
+
+    if (refreshSchedule) {
+      try {
+        final courses = await fetchSchedule(
+          studentId,
+          termContext.academicYear,
+          termContext.term,
+        );
+        nextSnapshot = nextSnapshot.copyWith(
+          courses: courses,
+          scheduleUpdatedAt: DateTime.now(),
+        );
+        didRefresh = true;
+      } on ScheduleAuthExpiredException {
+        ZhengfangAuth.instance.markLoggedOut();
+        return _buildAuthExpiredResult(existingSnapshot, nextSnapshot);
+      } on ScheduleRequestException catch (error) {
+        if (!existingSnapshot.hasData) {
+          return ScheduleLoadResult(message: error.message);
+        }
+        warnings.add('课表刷新失败，显示的是缓存数据');
+      } on DioException catch (error) {
+        if (!existingSnapshot.hasData) {
+          final code = error.response?.statusCode;
+          return ScheduleLoadResult(
+            message: code == null ? '网络请求失败，请稍后重试' : '网络请求失败（状态码：$code）',
+          );
+        }
+        warnings.add('课表刷新失败，显示的是缓存数据');
+      } catch (_) {
+        if (!existingSnapshot.hasData) {
+          return const ScheduleLoadResult(message: '获取课表失败，请稍后重试');
+        }
+        warnings.add('课表刷新失败，显示的是缓存数据');
+      }
+    }
+
+    final shouldLoadChangeRules =
+        refreshChangeRules && nextSnapshot.courses.isNotEmpty;
+    if (shouldLoadChangeRules) {
+      try {
+        final changeRules = await fetchCourseChangeRules(studentId);
+        nextSnapshot = nextSnapshot.copyWith(
+          changeRules: changeRules,
+          changeRulesUpdatedAt: DateTime.now(),
+        );
+        didRefresh = true;
+      } on ScheduleAuthExpiredException {
+        ZhengfangAuth.instance.markLoggedOut();
+        if (didRefresh) {
+          await _persistSnapshot(nextSnapshot);
+        }
+        return ScheduleLoadResult(
+          snapshot: nextSnapshot.hasData ? nextSnapshot : existingSnapshot,
+          requiresLogin: true,
+          usedCache: (nextSnapshot.hasData || existingSnapshot.hasData),
+          didRefresh: didRefresh,
+          message: '教务登录已过期，调课提醒继续使用缓存',
+        );
+      } on ScheduleRequestException {
+        warnings.add('调课提醒刷新失败，继续使用缓存');
+      } on DioException {
+        warnings.add('调课提醒刷新失败，继续使用缓存');
+      } catch (_) {
+        warnings.add('调课提醒刷新失败，继续使用缓存');
+      }
+    }
+
+    if (didRefresh) {
+      await _persistSnapshot(nextSnapshot);
+    }
+
+    final snapshot = nextSnapshot.hasData
+        ? nextSnapshot
+        : (existingSnapshot.hasData ? existingSnapshot : null);
+    return ScheduleLoadResult(
+      snapshot: snapshot,
+      message: warnings.isEmpty ? null : warnings.join('，'),
+      usedCache: existingSnapshot.hasData,
+      didRefresh: didRefresh,
+    );
+  }
+
+  ScheduleLoadResult _buildAuthExpiredResult(
+    ScheduleCacheSnapshot existingSnapshot,
+    ScheduleCacheSnapshot updatedSnapshot,
+  ) {
+    final snapshot = updatedSnapshot.hasData
+        ? updatedSnapshot
+        : (existingSnapshot.hasData ? existingSnapshot : null);
+
+    if (snapshot != null) {
+      return ScheduleLoadResult(
+        snapshot: snapshot,
+        requiresLogin: true,
+        usedCache: true,
+        message: '教务登录已过期，显示的是本地缓存课表',
+      );
+    }
+
+    return const ScheduleLoadResult(
+      requiresLogin: true,
+      message: '教务登录已过期，请重新登录',
+    );
+  }
+
+  Future<void> _persistSnapshot(ScheduleCacheSnapshot snapshot) async {
+    await _ensureRestored();
+    _snapshots[_cacheKeyFor(snapshot.studentId, snapshot.termContext)] =
+        snapshot;
+    _lastStudentId = snapshot.studentId;
+
+    final encoded = jsonEncode(
+      _snapshots.map((key, value) => MapEntry(key, value.toJson())),
+    );
+    await _prefs?.setString(_cacheStorageKey, encoded);
+    await _prefs?.setString(_lastStudentStorageKey, snapshot.studentId);
+  }
+
+  String? _resolveStudentId([String? studentId]) {
+    final explicit = studentId?.trim();
+    if (explicit != null && explicit.isNotEmpty) return explicit;
+
+    final current = ZhengfangAuth.instance.currentStudentId?.trim();
+    if (current != null && current.isNotEmpty) return current;
+
+    final cached = _lastStudentId?.trim();
+    if (cached != null && cached.isNotEmpty) return cached;
+
+    return null;
+  }
+
+  String _cacheKeyFor(String studentId, ScheduleTermContext termContext) {
+    return '$studentId|${termContext.academicYear}|${termContext.term}';
+  }
+
+  String? _deriveLastStudentId() {
+    final snapshots = _snapshots.values.toList()
+      ..sort((left, right) {
+        final leftAt = left.lastUpdatedAt?.millisecondsSinceEpoch ?? 0;
+        final rightAt = right.lastUpdatedAt?.millisecondsSinceEpoch ?? 0;
+        return rightAt.compareTo(leftAt);
+      });
+    return snapshots.isEmpty ? null : snapshots.first.studentId;
+  }
+
   int? _weekdayToInt(String text) {
     return switch (text) {
       '一' => 1,
@@ -531,5 +795,12 @@ class ScheduleService {
         value.contains('expired') ||
         value.contains('请先登录') ||
         value.contains('重新登录');
+  }
+
+  bool _matchesCourseName(String left, String right) {
+    final a = normalizeCourseName(left);
+    final b = normalizeCourseName(right);
+    if (a.isEmpty || b.isEmpty) return false;
+    return a.contains(b) || b.contains(a);
   }
 }

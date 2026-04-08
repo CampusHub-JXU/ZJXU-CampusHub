@@ -1,12 +1,13 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
 import '../../app/theme.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/semester/semester_calendar.dart';
 import '../../shared/widgets/login_widget.dart';
+import 'schedule_cache_snapshot.dart';
 import 'schedule_model.dart';
 import 'schedule_service.dart';
+import 'schedule_term_context.dart';
 
 class SchedulePage extends StatefulWidget {
   const SchedulePage({super.key});
@@ -19,26 +20,27 @@ class _SchedulePageState extends State<SchedulePage> {
   bool _loggedIn = false;
   bool _loading = false;
   String? _error;
+  String? _infoMessage;
   List<CourseEntry> _courses = [];
   List<CourseChangeRule> _courseChangeRules = const [];
-  int _term = 12;
+  late ScheduleTermContext _termContext;
+  late int _term;
   int _displayWeek = 1;
+  DateTime? _scheduleUpdatedAt;
   late final PageController _weekPageController;
 
   int get _currentWeek => SemesterCalendar.instance.weekForDate(DateTime.now());
 
-  int get _academicYear {
-    final now = DateTime.now();
-    return now.month < 8 ? now.year - 1 : now.year;
-  }
-
   @override
   void initState() {
     super.initState();
+    _termContext = ScheduleService.instance.getCurrentTermContext();
+    _term = _termContext.term;
     _displayWeek = _currentWeek;
     _weekPageController = PageController(initialPage: _displayWeek - 1);
     _loggedIn = ZhengfangAuth.instance.isLoggedIn;
-    if (_loggedIn) _fetchSchedule();
+    _restoreCachedSnapshot();
+    if (_loggedIn || _courses.isNotEmpty) _fetchSchedule();
   }
 
   @override
@@ -53,57 +55,80 @@ class _SchedulePageState extends State<SchedulePage> {
     setState(() => _displayWeek = nextWeek);
   }
 
-  Future<void> _fetchSchedule() async {
-    final studentId = ZhengfangAuth.instance.currentStudentId ?? '';
+  void _restoreCachedSnapshot() {
+    final snapshot = ScheduleService.instance.preferredSnapshot(
+      termContext: _activeTermContext,
+    );
+    if (snapshot == null || !snapshot.hasData) {
+      _courses = [];
+      _courseChangeRules = const [];
+      _scheduleUpdatedAt = null;
+      _infoMessage = null;
+      return;
+    }
+
+    _applySnapshot(snapshot);
+    if (!_loggedIn) {
+      _infoMessage = '显示的是本地缓存课表，刷新需要重新登录教务';
+    }
+  }
+
+  ScheduleTermContext get _activeTermContext =>
+      _termContext.copyWith(term: _term);
+
+  void _applySnapshot(ScheduleCacheSnapshot snapshot) {
+    _courses = snapshot.courses;
+    _courseChangeRules = snapshot.changeRules;
+    _scheduleUpdatedAt = snapshot.lastUpdatedAt;
+  }
+
+  Future<void> _fetchSchedule({bool forceRefresh = false}) async {
     setState(() {
       _loading = true;
-      _error = null;
+      if (_courses.isEmpty) {
+        _error = null;
+      }
     });
+
     try {
-      final courses = await ScheduleService.instance.fetchSchedule(
-        studentId,
-        _academicYear,
-        _term,
+      final result = await ScheduleService.instance.loadScheduleSnapshot(
+        termContext: _activeTermContext,
+        forceRefresh: forceRefresh,
       );
+      if (!mounted) return;
 
-      List<CourseChangeRule> courseChangeRules = const [];
-      try {
-        courseChangeRules = await ScheduleService.instance
-            .fetchCourseChangeRules(studentId);
-      } catch (_) {}
+      setState(() {
+        _loggedIn = ZhengfangAuth.instance.isLoggedIn;
+        _infoMessage = null;
 
-      if (mounted) {
-        setState(() {
-          _courses = courses;
-          _courseChangeRules = courseChangeRules;
-        });
-      }
-    } on ScheduleAuthExpiredException catch (_) {
-      ZhengfangAuth.instance.markLoggedOut();
-      if (mounted) {
-        setState(() {
-          _loggedIn = false;
-          _courses = [];
-          _courseChangeRules = const [];
+        final snapshot = result.snapshot;
+        if (snapshot != null && snapshot.hasData) {
+          _applySnapshot(snapshot);
           _error = null;
-        });
-      }
-    } on ScheduleRequestException catch (e) {
-      if (mounted) setState(() => _error = e.message);
-    } on DioException catch (e) {
-      final code = e.response?.statusCode;
-      final msg = code == null ? '网络请求失败，请稍后重试' : '网络请求失败（状态码：$code）';
-      if (mounted) setState(() => _error = msg);
-    } catch (_) {
-      if (mounted) setState(() => _error = '获取课表失败，请稍后重试');
+        }
+
+        if (result.message != null) {
+          if (_courses.isNotEmpty) {
+            _infoMessage = result.message;
+          } else {
+            _error = result.message;
+          }
+        } else if (!_loggedIn && _courses.isNotEmpty) {
+          _infoMessage = '显示的是本地缓存课表，刷新需要重新登录教务';
+        }
+      });
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
   void _onLoginSuccess() {
-    setState(() => _loggedIn = true);
-    _fetchSchedule();
+    setState(() {
+      _loggedIn = true;
+      _error = null;
+      _infoMessage = null;
+    });
+    _fetchSchedule(forceRefresh: true);
   }
 
   @override
@@ -111,7 +136,7 @@ class _SchedulePageState extends State<SchedulePage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('课表'),
-        actions: _loggedIn
+        actions: (_loggedIn || _courses.isNotEmpty)
             ? [
                 PopupMenuButton<int>(
                   icon: const Icon(Icons.calendar_today),
@@ -124,6 +149,7 @@ class _SchedulePageState extends State<SchedulePage> {
                     if (_weekPageController.hasClients) {
                       _weekPageController.jumpToPage(_displayWeek - 1);
                     }
+                    _restoreCachedSnapshot();
                     _fetchSchedule();
                   },
                   itemBuilder: (_) => const [
@@ -133,32 +159,67 @@ class _SchedulePageState extends State<SchedulePage> {
                 ),
                 IconButton(
                   icon: const Icon(Icons.refresh),
-                  onPressed: _fetchSchedule,
+                  onPressed: () => _fetchSchedule(forceRefresh: true),
                 ),
               ]
             : null,
       ),
-      body: _loggedIn ? _buildScheduleBody() : _buildLoginBody(),
+      body: (_loggedIn || _courses.isNotEmpty)
+          ? _buildScheduleBody()
+          : _buildLoginBody(),
     );
   }
 
   Widget _buildLoginBody() => LoginWidget(onLoginSuccess: _onLoginSuccess);
 
   Widget _buildScheduleBody() {
-    if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_error != null) {
+    if (_loading && _courses.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_error != null && _courses.isEmpty) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(_error!, style: const TextStyle(color: AppColors.error)),
             const SizedBox(height: 12),
-            FilledButton(onPressed: _fetchSchedule, child: const Text('重试')),
+            FilledButton(
+              onPressed: () => _fetchSchedule(forceRefresh: true),
+              child: const Text('重试'),
+            ),
           ],
         ),
       );
     }
-    return _buildWeekPager();
+    if (_courses.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('暂无课表数据'),
+            const SizedBox(height: 12),
+            if (_loggedIn)
+              FilledButton(
+                onPressed: () => _fetchSchedule(forceRefresh: true),
+                child: const Text('刷新课表'),
+              ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        if (_loading) const LinearProgressIndicator(minHeight: 2),
+        if (_infoMessage != null || _scheduleUpdatedAt != null)
+          _ScheduleInfoBanner(
+            message: _infoMessage,
+            updatedAt: _scheduleUpdatedAt,
+            loggedIn: _loggedIn,
+          ),
+        Expanded(child: _buildWeekPager()),
+      ],
+    );
   }
 
   Widget _buildWeekPager() {
@@ -181,6 +242,52 @@ class _SchedulePageState extends State<SchedulePage> {
         );
       },
     );
+  }
+}
+
+class _ScheduleInfoBanner extends StatelessWidget {
+  const _ScheduleInfoBanner({
+    required this.message,
+    required this.updatedAt,
+    required this.loggedIn,
+  });
+
+  final String? message;
+  final DateTime? updatedAt;
+  final bool loggedIn;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final parts = <String>[
+      if ((message ?? '').isNotEmpty) message!,
+      if (updatedAt != null) '最近更新 ${_formatDateTime(updatedAt!)}',
+      if (!loggedIn && updatedAt != null) '当前仅展示缓存',
+    ];
+
+    if (parts.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        parts.join(' · '),
+        style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+      ),
+    );
+  }
+
+  String _formatDateTime(DateTime value) {
+    final month = value.month.toString().padLeft(2, '0');
+    final day = value.day.toString().padLeft(2, '0');
+    final hour = value.hour.toString().padLeft(2, '0');
+    final minute = value.minute.toString().padLeft(2, '0');
+    return '$month-$day $hour:$minute';
   }
 }
 
@@ -642,8 +749,11 @@ class _DayColumn extends StatelessWidget {
     // Only if within 3 weeks of displayed week to avoid clutter
     if (otherEntries.isEmpty) return const [];
 
-    otherEntries.sort((a, b) => a.course.weekDistanceTo(displayWeek)
-        .compareTo(b.course.weekDistanceTo(displayWeek)));
+    otherEntries.sort(
+      (a, b) => a.course
+          .weekDistanceTo(displayWeek)
+          .compareTo(b.course.weekDistanceTo(displayWeek)),
+    );
 
     final closest = otherEntries.first;
     if (closest.course.weekDistanceTo(displayWeek) > 3) return const [];
@@ -708,7 +818,6 @@ class _DayColumn extends StatelessWidget {
 
     return assignments;
   }
-
 }
 
 class _DisplayCourseEntry {
@@ -862,8 +971,7 @@ class _CourseCell extends StatelessWidget {
                     : 2;
                 final classroomMaxLines = constraints.maxHeight >= 200 ? 4 : 2;
                 final teacherMaxLines = constraints.maxHeight >= 160 ? 2 : 1;
-                final showWeekTag =
-                    !isCurrentWeek && hasExtraRoom;
+                final showWeekTag = !isCurrentWeek && hasExtraRoom;
 
                 return Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -905,8 +1013,7 @@ class _CourseCell extends StatelessWidget {
                                 ),
                               ),
                             ),
-                            if (hasRoom &&
-                                course.classroom.isNotEmpty) ...[
+                            if (hasRoom && course.classroom.isNotEmpty) ...[
                               const SizedBox(height: 2),
                               Align(
                                 alignment: Alignment.bottomRight,
@@ -922,8 +1029,7 @@ class _CourseCell extends StatelessWidget {
                                 ),
                               ),
                             ],
-                            if (hasRoom &&
-                                course.teacherName.isNotEmpty) ...[
+                            if (hasRoom && course.teacherName.isNotEmpty) ...[
                               const SizedBox(height: 2),
                               Align(
                                 alignment: Alignment.bottomRight,

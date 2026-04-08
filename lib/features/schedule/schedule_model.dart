@@ -42,7 +42,7 @@ class CourseEntry {
 
   final String courseName;
   final String teacherName;
-  final int weekday;      // 1=Mon … 7=Sun
+  final int weekday; // 1=Mon … 7=Sun
   final int startLesson;
   final int endLesson;
   final String weekRange; // e.g. "1-9周,11-16周"
@@ -105,20 +105,46 @@ class CourseEntry {
   }
 
   factory CourseEntry.fromJson(Map<String, dynamic> json) {
-    final jcs = (json['jcs'] as String? ?? '1-1');
+    final storedStartLesson = json['startLesson'] is int
+        ? json['startLesson'] as int
+        : int.tryParse(json['startLesson']?.toString() ?? '');
+    final storedEndLesson = json['endLesson'] is int
+        ? json['endLesson'] as int
+        : int.tryParse(json['endLesson']?.toString() ?? '');
+    final jcs = storedStartLesson != null && storedEndLesson != null
+        ? '$storedStartLesson-$storedEndLesson'
+        : (json['jcs'] as String? ?? '1-1');
     final parts = jcs.split('-');
     final start = int.tryParse(parts.first.trim()) ?? 1;
     final end = int.tryParse(parts.last.trim()) ?? start;
     return CourseEntry(
-      courseName: json['kcmc'] as String? ?? '',
-      teacherName: json['xm'] as String? ?? '',
-      weekday: int.tryParse(json['xqj'] as String? ?? '1') ?? 1,
-      startLesson: start,
-      endLesson: end,
-      weekRange: json['zcd'] as String? ?? '',
-      classroom: json['cdmc'] as String? ?? '',
-      campus: json['xqmc'] as String? ?? '',
-      typeSymbol: json['xslxbj'] as String? ?? '',
+      courseName:
+          json['courseName'] as String? ?? json['kcmc'] as String? ?? '',
+      teacherName:
+          json['teacherName'] as String? ?? json['xm'] as String? ?? '',
+      weekday:
+          (json['weekday'] as int?) ??
+          int.tryParse(json['xqj'] as String? ?? '1') ??
+          1,
+      startLesson: storedStartLesson ?? start,
+      endLesson: storedEndLesson ?? end,
+      weekRange: json['weekRange'] as String? ?? json['zcd'] as String? ?? '',
+      classroom: json['classroom'] as String? ?? json['cdmc'] as String? ?? '',
+      campus: json['campus'] as String? ?? json['xqmc'] as String? ?? '',
+      typeSymbol:
+          json['typeSymbol'] as String? ?? json['xslxbj'] as String? ?? '',
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'courseName': courseName,
+    'teacherName': teacherName,
+    'weekday': weekday,
+    'startLesson': startLesson,
+    'endLesson': endLesson,
+    'weekRange': weekRange,
+    'classroom': classroom,
+    'campus': campus,
+    'typeSymbol': typeSymbol,
+  };
 }
