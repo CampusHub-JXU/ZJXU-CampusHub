@@ -23,6 +23,8 @@ class _HomePageState extends State<HomePage> {
   CourseEntry? _nextCourse;
   String _nextCourseLabel = '';
   bool _courseLoggedIn = false;
+  static const double _halfRectHeight = 108;
+  static const double _smallSquareSize = 126;
 
   static const _weekdayLabels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
@@ -216,9 +218,13 @@ class _HomePageState extends State<HomePage> {
                     Expanded(
                       child: Column(
                         children: [
-                          _buildCampusCardBalance(context),
+                          _buildLargeSquareWidget(
+                            child: _buildCampusCardBalance(context),
+                          ),
                           const SizedBox(height: 10),
-                          _buildDormElectricityCard(context),
+                          _buildLargeSquareWidget(
+                            child: _buildDormElectricityCard(context),
+                          ),
                           const SizedBox(height: 10),
                           _buildLearningServicesCard(context),
                         ],
@@ -228,15 +234,25 @@ class _HomePageState extends State<HomePage> {
                     Expanded(
                       child: Column(
                         children: [
-                          _buildNoticeCard(context),
+                          _buildHalfRectWidget(
+                            child: _buildNoticeCard(context),
+                          ),
                           const SizedBox(height: 10),
-                          _buildGradesCard(context),
+                          _buildLargeSquareWidget(
+                            child: _buildGradesCard(context),
+                          ),
                           const SizedBox(height: 10),
-                          _buildDormServicesCard(context),
+                          _buildHalfRectWidget(
+                            child: _buildDormServicesCard(context),
+                          ),
                           const SizedBox(height: 10),
-                          _buildChangxingJiadaCard(context),
+                          _buildSmallSquareWidget(
+                            child: _buildChangxingJiadaCard(context),
+                          ),
                           const SizedBox(height: 10),
-                          _buildMoreServicesCard(context),
+                          _buildHalfRectWidget(
+                            child: _buildMoreServicesCard(context),
+                          ),
                         ],
                       ),
                     ),
@@ -804,7 +820,6 @@ class _HomePageState extends State<HomePage> {
           borderRadius: BorderRadius.circular(16),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-        height: 80,
         child: Row(
           children: [
             Container(
@@ -947,7 +962,6 @@ class _HomePageState extends State<HomePage> {
     return GestureDetector(
       onTap: () => context.pushNamed('changxing-jiada'),
       child: Container(
-        width: double.infinity,
         decoration: BoxDecoration(
           color: bgColor,
           borderRadius: BorderRadius.circular(16),
@@ -981,6 +995,26 @@ class _HomePageState extends State<HomePage> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildLargeSquareWidget({required Widget child}) {
+    return AspectRatio(aspectRatio: 1, child: child);
+  }
+
+  Widget _buildHalfRectWidget({required Widget child}) {
+    return SizedBox(
+      height: _halfRectHeight,
+      width: double.infinity,
+      child: child,
+    );
+  }
+
+  Widget _buildSmallSquareWidget({required Widget child}) {
+    return SizedBox(
+      width: _smallSquareSize,
+      height: _smallSquareSize,
+      child: child,
     );
   }
 }
