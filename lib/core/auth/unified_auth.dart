@@ -9,7 +9,10 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:pointycastle/export.dart';
 
 import '../logging/app_logger.dart';
+import '../network/cookie_interceptor.dart';
 import '../network/dio_client.dart';
+import '../network/network_settings.dart';
+import '../network/proxy_mode.dart';
 import 'credential_store.dart';
 
 sealed class UnifiedAuthLoginResult {}
@@ -69,6 +72,49 @@ class UnifiedAuthService extends ChangeNotifier {
 
   bool get isLoggedIn => _sessionActive;
 
+  Dio _createProxyFallbackDio() {
+    final baseOptions = _dio.options;
+    final client = Dio(
+      BaseOptions(
+        baseUrl: baseOptions.baseUrl,
+        connectTimeout: baseOptions.connectTimeout,
+        receiveTimeout: baseOptions.receiveTimeout,
+        sendTimeout: baseOptions.sendTimeout,
+        headers: Map<String, dynamic>.from(baseOptions.headers),
+        followRedirects: baseOptions.followRedirects,
+        validateStatus: baseOptions.validateStatus,
+      ),
+    );
+    client.interceptors.add(buildCookieInterceptor(_cookieJar));
+    applyProxyModeToDio(client, ignoreSystemProxy: false);
+    return client;
+  }
+
+  bool _shouldRetryWithSystemProxy(DioException error) {
+    return NetworkSettings.instance.ignoreSystemProxy.value &&
+        (error.type == DioExceptionType.connectionTimeout ||
+            error.type == DioExceptionType.receiveTimeout ||
+            error.type == DioExceptionType.connectionError);
+  }
+
+  Future<Response<T>> _sendWithProxyFallback<T>({
+    required String label,
+    required Future<Response<T>> Function(Dio dio) request,
+  }) async {
+    try {
+      return await request(_dio);
+    } on DioException catch (error) {
+      if (!_shouldRetryWithSystemProxy(error)) rethrow;
+      AppLogger.instance.info('$label 直连失败，尝试通过系统代理重试');
+      final fallbackDio = _createProxyFallbackDio();
+      try {
+        return await request(fallbackDio);
+      } finally {
+        fallbackDio.close(force: true);
+      }
+    }
+  }
+
   Future<Uint8List> fetchCaptcha({
     String serviceUrl = defaultServiceUrl,
   }) async {
@@ -78,11 +124,14 @@ class UnifiedAuthService extends ChangeNotifier {
     final referer = _buildLoginUri(serviceUrl).toString();
     final captchaUri = Uri.parse('$_newcaOrigin/cas/captcha.html?t=$timestamp');
     AppLogger.instance.debug('正在获取统一认证验证码...');
-    final resp = await _dio.getUri<List<int>>(
-      captchaUri,
-      options: Options(
-        responseType: ResponseType.bytes,
-        headers: {'Referer': referer},
+    final resp = await _sendWithProxyFallback<List<int>>(
+      label: '统一认证验证码',
+      request: (dio) => dio.getUri<List<int>>(
+        captchaUri,
+        options: Options(
+          responseType: ResponseType.bytes,
+          headers: {'Referer': referer},
+        ),
       ),
     );
 
@@ -133,22 +182,25 @@ class UnifiedAuthService extends ChangeNotifier {
       final encryptedPassword = _encryptPassword(password);
       final referer = _buildLoginUri(serviceUrl).toString();
       AppLogger.instance.debug('正在发送统一认证登录请求...');
-      final response = await _dio.postUri<String>(
-        context.actionUri,
-        data: {
-          'username': username,
-          'password': encryptedPassword,
-          'veriyCode': captcha,
-          'lt': context.lt,
-          'execution': context.execution,
-          '_eventId': 'submit',
-        },
-        options: Options(
-          contentType: 'application/x-www-form-urlencoded',
-          responseType: ResponseType.plain,
-          followRedirects: false,
-          validateStatus: (status) => status != null && status < 1000,
-          headers: {'Referer': referer, 'Origin': _newcaOrigin},
+      final response = await _sendWithProxyFallback<String>(
+        label: '统一认证登录',
+        request: (dio) => dio.postUri<String>(
+          context.actionUri,
+          data: {
+            'username': username,
+            'password': encryptedPassword,
+            'veriyCode': captcha,
+            'lt': context.lt,
+            'execution': context.execution,
+            '_eventId': 'submit',
+          },
+          options: Options(
+            contentType: 'application/x-www-form-urlencoded',
+            responseType: ResponseType.plain,
+            followRedirects: false,
+            validateStatus: (status) => status != null && status < 1000,
+            headers: {'Referer': referer, 'Origin': _newcaOrigin},
+          ),
         ),
       );
 
@@ -261,13 +313,16 @@ class UnifiedAuthService extends ChangeNotifier {
     await DioClient.instance.ensureInitialized();
     AppLogger.instance.debug('正在刷新统一认证登录上下文...');
     final loginUri = _buildLoginUri(serviceUrl);
-    final response = await _dio.getUri<String>(
-      loginUri,
-      options: Options(
-        responseType: ResponseType.plain,
-        followRedirects: false,
-        validateStatus: (s) => s != null && s < 1000,
-        headers: {'Referer': loginUri.toString()},
+    final response = await _sendWithProxyFallback<String>(
+      label: '统一认证登录上下文',
+      request: (dio) => dio.getUri<String>(
+        loginUri,
+        options: Options(
+          responseType: ResponseType.plain,
+          followRedirects: false,
+          validateStatus: (s) => s != null && s < 1000,
+          headers: {'Referer': loginUri.toString()},
+        ),
       ),
     );
 
@@ -299,11 +354,14 @@ class UnifiedAuthService extends ChangeNotifier {
       }
       // 302 回到 /cas/login，需要跟随获取登录页面
       final redirectUrl = _resolveUri(loginUri, location).toString();
-      final casResp = await _dio.get<String>(
-        redirectUrl,
-        options: Options(
-          responseType: ResponseType.plain,
-          headers: {'Referer': loginUri.toString()},
+      final casResp = await _sendWithProxyFallback<String>(
+        label: '统一认证登录页重定向',
+        request: (dio) => dio.get<String>(
+          redirectUrl,
+          options: Options(
+            responseType: ResponseType.plain,
+            headers: {'Referer': loginUri.toString()},
+          ),
         ),
       );
       final html = casResp.data ?? '';
@@ -357,13 +415,16 @@ class UnifiedAuthService extends ChangeNotifier {
   Future<void> _followRedirectChain(Uri baseUri, String location) async {
     var nextUri = _resolveUri(baseUri, location);
     for (var i = 0; i < 8; i++) {
-      final response = await _dio.getUri<String>(
-        nextUri,
-        options: Options(
-          responseType: ResponseType.plain,
-          followRedirects: false,
-          validateStatus: (status) => status != null && status < 1000,
-          headers: {'Referer': baseUri.toString()},
+      final response = await _sendWithProxyFallback<String>(
+        label: '统一认证重定向链',
+        request: (dio) => dio.getUri<String>(
+          nextUri,
+          options: Options(
+            responseType: ResponseType.plain,
+            followRedirects: false,
+            validateStatus: (status) => status != null && status < 1000,
+            headers: {'Referer': baseUri.toString()},
+          ),
         ),
       );
 
