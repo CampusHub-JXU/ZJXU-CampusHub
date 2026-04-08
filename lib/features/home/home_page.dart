@@ -23,8 +23,7 @@ class _HomePageState extends State<HomePage> {
   CourseEntry? _nextCourse;
   String _nextCourseLabel = '';
   bool _courseLoggedIn = false;
-  static const double _halfRectHeight = 108;
-  static const double _smallSquareSize = 126;
+  static const double _smallActionCardSize = 118;
 
   static const _weekdayLabels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
@@ -215,44 +214,35 @@ class _HomePageState extends State<HomePage> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Left column
                     Expanded(
                       child: Column(
                         children: [
-                          _buildLargeSquareWidget(
-                            child: _buildCampusCardBalance(context),
-                          ),
+                          _buildCampusCardBalance(context),
                           const SizedBox(height: 10),
-                          _buildLargeSquareWidget(
-                            child: _buildDormElectricityCard(context),
-                          ),
+                          _buildDormElectricityCard(context),
                           const SizedBox(height: 10),
                           _buildLearningServicesCard(context),
                         ],
                       ),
                     ),
                     const SizedBox(width: 12),
+                    // Right column
                     Expanded(
                       child: Column(
                         children: [
-                          _buildHalfRectWidget(
-                            child: _buildNoticeCard(context),
-                          ),
+                          _buildNoticeCard(context),
                           const SizedBox(height: 10),
-                          _buildLargeSquareWidget(
-                            child: _buildGradesCard(context),
-                          ),
+                          _buildGradesCard(context),
                           const SizedBox(height: 10),
-                          _buildHalfRectWidget(
-                            child: _buildDormServicesCard(context),
-                          ),
+                          _buildDormServicesCard(context),
                           const SizedBox(height: 10),
-                          _buildSmallSquareWidget(
+                          Align(
+                            alignment: Alignment.centerLeft,
                             child: _buildChangxingJiadaCard(context),
                           ),
                           const SizedBox(height: 10),
-                          _buildHalfRectWidget(
-                            child: _buildMoreServicesCard(context),
-                          ),
+                          _buildMoreServicesCard(context),
                         ],
                       ),
                     ),
@@ -556,11 +546,11 @@ class _HomePageState extends State<HomePage> {
                 ),
               ],
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
             if (_campusCardBalance == '--') ...[
               Text(
                 '余额未刷新，请先登录一卡通',
-                style: TextStyle(fontSize: 14, color: cs.onSurfaceVariant),
+                style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
               ),
             ] else ...[
               Text(
@@ -571,12 +561,13 @@ class _HomePageState extends State<HomePage> {
                   color: cs.onSurface,
                 ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 2),
               Text(
                 '校园卡余额',
                 style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
               ),
             ],
+            const SizedBox(height: 12),
             Align(
               alignment: Alignment.bottomRight,
               child: Icon(
@@ -599,7 +590,6 @@ class _HomePageState extends State<HomePage> {
     return GestureDetector(
       onTap: () => context.pushNamed('dorm-electricity'),
       child: Container(
-        width: double.infinity,
         decoration: BoxDecoration(
           color: bgColor,
           borderRadius: BorderRadius.circular(16),
@@ -608,24 +598,20 @@ class _HomePageState extends State<HomePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: AppColors.success.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(
-                    Icons.bolt_outlined,
-                    color: AppColors.success,
-                    size: 20,
-                  ),
-                ),
-              ],
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: AppColors.success.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(
+                Icons.bolt_outlined,
+                color: AppColors.success,
+                size: 22,
+              ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 18),
             Text(
               '宿舍电费',
               style: TextStyle(
@@ -639,6 +625,7 @@ class _HomePageState extends State<HomePage> {
               '剩余 $_dormElectricity 度',
               style: TextStyle(fontSize: 14, color: cs.onSurfaceVariant),
             ),
+            const SizedBox(height: 12),
             Align(
               alignment: Alignment.bottomRight,
               child: Icon(
@@ -677,16 +664,16 @@ class _HomePageState extends State<HomePage> {
         child: Row(
           children: [
             Container(
-              width: 44,
-              height: 44,
+              width: 40,
+              height: 40,
               decoration: BoxDecoration(
                 color: AppColors.success.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(10),
               ),
               child: const Icon(
                 Icons.home_outlined,
                 color: AppColors.success,
-                size: 24,
+                size: 22,
               ),
             ),
             const SizedBox(width: 14),
@@ -697,7 +684,7 @@ class _HomePageState extends State<HomePage> {
                   Text(
                     '寝室服务',
                     style: TextStyle(
-                      fontSize: 17,
+                      fontSize: 16,
                       fontWeight: FontWeight.w600,
                       color: cs.onSurface,
                     ),
@@ -710,7 +697,7 @@ class _HomePageState extends State<HomePage> {
                 ],
               ),
             ),
-            Icon(Icons.arrow_forward_ios, size: 16, color: cs.onSurfaceVariant),
+            Icon(Icons.arrow_forward_ios, size: 14, color: cs.onSurfaceVariant),
           ],
         ),
       ),
@@ -819,7 +806,7 @@ class _HomePageState extends State<HomePage> {
           color: bgColor,
           borderRadius: BorderRadius.circular(16),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+        padding: const EdgeInsets.all(16),
         child: Row(
           children: [
             Container(
@@ -883,7 +870,7 @@ class _HomePageState extends State<HomePage> {
                 size: 22,
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 18),
             Text(
               '成绩查询',
               style: TextStyle(
@@ -897,6 +884,7 @@ class _HomePageState extends State<HomePage> {
               '查看各科成绩与绩点',
               style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
             ),
+            const SizedBox(height: 12),
             Align(
               alignment: Alignment.bottomRight,
               child: Icon(
@@ -959,62 +947,50 @@ class _HomePageState extends State<HomePage> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bgColor = isDark ? cs.surfaceContainerLowest : Colors.white;
 
-    return GestureDetector(
-      onTap: () => context.pushNamed('changxing-jiada'),
-      child: Container(
-        decoration: BoxDecoration(
-          color: bgColor,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Container(
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-                border: Border.all(color: const Color(0xFF2EA567), width: 2.4),
+    return SizedBox(
+      width: _smallActionCardSize,
+      height: _smallActionCardSize,
+      child: GestureDetector(
+        onTap: () => context.pushNamed('changxing-jiada'),
+        child: Container(
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: const Color(0xFF2EA567),
+                    width: 2.4,
+                  ),
+                ),
+                child: const Icon(
+                  Icons.north_rounded,
+                  color: Color(0xFF2EA567),
+                  size: 26,
+                ),
               ),
-              child: const Icon(
-                Icons.north_rounded,
-                color: Color(0xFF2EA567),
-                size: 22,
+              const SizedBox(height: 10),
+              Text(
+                '畅行嘉大',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: cs.onSurface,
+                ),
               ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              '畅行嘉大',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: cs.onSurface,
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
-    );
-  }
-
-  Widget _buildLargeSquareWidget({required Widget child}) {
-    return AspectRatio(aspectRatio: 1, child: child);
-  }
-
-  Widget _buildHalfRectWidget({required Widget child}) {
-    return SizedBox(
-      height: _halfRectHeight,
-      width: double.infinity,
-      child: child,
-    );
-  }
-
-  Widget _buildSmallSquareWidget({required Widget child}) {
-    return SizedBox(
-      width: _smallSquareSize,
-      height: _smallSquareSize,
-      child: child,
     );
   }
 }
