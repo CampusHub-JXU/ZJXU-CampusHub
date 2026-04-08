@@ -141,10 +141,11 @@ class _DormElectricityPageState extends State<DormElectricityPage> {
           Icon(Icons.wifi_off_outlined, size: 18, color: cs.onErrorContainer),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              _error == '数据解析失败' ? '数据解析失败，请刷新重试' : '请确认已连接校园网络',
-              style: TextStyle(fontSize: 13, color: cs.onErrorContainer),
-            ),
+            child: Text(switch (_error) {
+              '数据解析失败' => '数据解析失败，请刷新重试',
+              final message? => message,
+              _ => '请确认已连接校园网络',
+            }, style: TextStyle(fontSize: 13, color: cs.onErrorContainer)),
           ),
         ],
       ),
