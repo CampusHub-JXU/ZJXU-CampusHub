@@ -187,12 +187,9 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildHeaderScheduleStatus() {
-    final loggedIn = ZhengfangAuth.instance.isLoggedIn;
     final value = _hasScheduleCache
-        ? (loggedIn
-              ? _formatScheduleUpdatedAt(_scheduleUpdatedAt)
-              : '缓存 ${_formatScheduleUpdatedAt(_scheduleUpdatedAt)}')
-        : '未缓存';
+        ? '更新于${_formatScheduleUpdatedAt(_scheduleUpdatedAt)}'
+        : '未更新';
 
     final active = _hasScheduleCache;
     final background = active
@@ -203,7 +200,7 @@ class _HomePageState extends State<HomePage> {
         : Colors.white.withValues(alpha: 0.12);
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
         color: background,
         borderRadius: BorderRadius.circular(999),
@@ -342,7 +339,9 @@ class _HomePageState extends State<HomePage> {
                                     color: Colors.white,
                                   ),
                                 ),
-                                const SizedBox(height: 2),
+                                const SizedBox(height: 6),
+                                _buildHeaderScheduleStatus(),
+                                const SizedBox(height: 6),
                                 Text(
                                   '下节课',
                                   style: TextStyle(
@@ -366,8 +365,6 @@ class _HomePageState extends State<HomePage> {
                         ],
                       ),
                       const SizedBox(height: 10),
-                      _buildHeaderScheduleStatus(),
-                      const SizedBox(height: 12),
                       // Course content + action on the same bottom line
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.end,
