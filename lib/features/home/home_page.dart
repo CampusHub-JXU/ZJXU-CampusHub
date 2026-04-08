@@ -200,17 +200,17 @@ class _HomePageState extends State<HomePage> {
         : Colors.white.withValues(alpha: 0.12);
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
         color: background,
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: border),
       ),
       child: Text(
-        '课表 $value',
+        value,
         style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
+          fontSize: 10,
+          fontWeight: FontWeight.w500,
           color: Colors.white.withValues(alpha: active ? 0.95 : 0.72),
         ),
       ),
@@ -319,6 +319,11 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ),
                 ),
+                Positioned(
+                  top: 12,
+                  right: 56,
+                  child: _buildHeaderScheduleStatus(),
+                ),
                 Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
@@ -339,9 +344,7 @@ class _HomePageState extends State<HomePage> {
                                     color: Colors.white,
                                   ),
                                 ),
-                                const SizedBox(height: 6),
-                                _buildHeaderScheduleStatus(),
-                                const SizedBox(height: 6),
+                                const SizedBox(height: 2),
                                 Text(
                                   '下节课',
                                   style: TextStyle(
