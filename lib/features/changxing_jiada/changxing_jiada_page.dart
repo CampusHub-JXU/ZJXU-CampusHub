@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/auth/unified_auth.dart';
 import '../../shared/widgets/unified_auth_login_widget.dart';
 import 'changxing_jiada_model.dart';
 import 'changxing_jiada_service.dart';
@@ -14,6 +15,7 @@ class ChangxingJiadaPage extends StatefulWidget {
 class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
   bool _initializing = true;
   bool _loadingContent = false;
+  bool _loggingIn = false;
   String? _error;
 
   ChangxingUserProfile? _profile;
@@ -23,6 +25,9 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
   ChangxingJiadaService get _service => ChangxingJiadaService.instance;
 
   bool get _loggedIn => _service.hasToken && _profile != null;
+
+  /// 是否需要先登录一卡通（CAS 未登录时显示一卡通登录表单）
+  bool _needUnifiedAuth = false;
 
   @override
   void initState() {
@@ -86,36 +91,47 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
       _applications = [];
       _unreadCount = 0;
       _error = null;
+      _needUnifiedAuth = false;
     });
   }
 
-  Future<String?> _handleLoginSubmit(
-    String username,
-    String password,
-    String captcha,
-  ) async {
-    if (_error != null && mounted) {
-      setState(() => _error = null);
+  Future<void> _loginViaCas() async {
+    // 检查一卡通是否已登录
+    if (!UnifiedAuthService.instance.isLoggedIn) {
+      setState(() => _needUnifiedAuth = true);
+      return;
     }
+
+    setState(() {
+      _loggingIn = true;
+      _error = null;
+    });
+
     try {
-      await _service.login(username, password, captcha, rememberPassword: true);
-      return null;
-    } on ChangxingLoginFailure catch (e) {
-      return e.message;
+      await _service.loginViaCas();
+      if (!mounted) return;
+      await _loadDashboard(showGlobalLoading: false);
+    } on ChangxingNeedUnifiedAuthException {
+      // CAS session 失效，需要重新登录一卡通
+      if (!mounted) return;
+      setState(() => _needUnifiedAuth = true);
+    } on ChangxingCasLoginException catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.message);
     } catch (e) {
-      return '登录失败：$e';
+      if (!mounted) return;
+      setState(() => _error = '登录失败：$e');
+    } finally {
+      if (mounted) {
+        setState(() => _loggingIn = false);
+      }
     }
   }
 
-  void _handleLoginSuccess() {
-    _loadDashboard(showGlobalLoading: false);
-  }
-
-  void _showSnackBar(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+  void _onUnifiedAuthSuccess() {
+    setState(() => _needUnifiedAuth = false);
+    // 一卡通登录成功后，自动进行 CAS SSO
+    _loginViaCas();
   }
 
   @override
@@ -147,37 +163,68 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
   }
 
   Widget _buildLoginBody() {
-    final error = _error;
-    return Column(
-      children: [
-        if ((error ?? '').isNotEmpty)
-          Container(
-            width: double.infinity,
-            margin: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.errorContainer,
-              borderRadius: BorderRadius.circular(10),
+    // 如果需要先登录一卡通，显示一卡通登录表单
+    if (_needUnifiedAuth) {
+      return UnifiedAuthLoginWidget(
+        title: '登录一卡通',
+        description: '畅行嘉大需要先登录一卡通账号',
+        onLoginSuccess: _onUnifiedAuthSuccess,
+      );
+    }
+
+    // 否则显示一键登录按钮
+    final cs = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.north_rounded, size: 64, color: cs.primary),
+            const SizedBox(height: 16),
+            Text(
+              '畅行嘉大',
+              style: Theme.of(context).textTheme.titleLarge,
             ),
-            child: Text(
-              error!,
-              style: TextStyle(
-                fontSize: 13,
-                color: Theme.of(context).colorScheme.onErrorContainer,
+            const SizedBox(height: 8),
+            Text(
+              '使用一卡通账号自动登录',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: cs.onSurfaceVariant,
+                  ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: cs.errorContainer,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  _error!,
+                  style: TextStyle(fontSize: 13, color: cs.onErrorContainer),
+                  textAlign: TextAlign.center,
+                ),
               ),
+            ],
+            const SizedBox(height: 24),
+            FilledButton.icon(
+              onPressed: _loggingIn ? null : _loginViaCas,
+              icon: _loggingIn
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.login),
+              label: Text(_loggingIn ? '登录中...' : '一键登录'),
             ),
-          ),
-        Expanded(
-          child: UnifiedAuthLoginWidget(
-            title: '登录畅行嘉大',
-            description: '账号为校园一卡通号',
-            loadSavedCredentials: _service.loadRememberedCredentials,
-            captchaLoader: _service.fetchCaptcha,
-            loginHandler: _handleLoginSubmit,
-            onLoginSuccess: _handleLoginSuccess,
-          ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
@@ -354,6 +401,13 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
           )
           .toList(),
     );
+  }
+
+  void _showSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Widget _buildApplicationCard(ChangxingApplication item) {

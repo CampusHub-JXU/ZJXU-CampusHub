@@ -1,10 +1,7 @@
-import 'dart:convert';
-import 'dart:typed_data';
-
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:pointycastle/digests/md5.dart';
 
+import '../../core/auth/unified_auth.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/network/dio_client.dart';
 import 'changxing_jiada_model.dart';
@@ -18,8 +15,8 @@ class ChangxingAuthExpiredException implements Exception {
   String toString() => message;
 }
 
-class ChangxingLoginFailure implements Exception {
-  ChangxingLoginFailure(this.message);
+class ChangxingCasLoginException implements Exception {
+  ChangxingCasLoginException(this.message);
 
   final String message;
 
@@ -27,15 +24,20 @@ class ChangxingLoginFailure implements Exception {
   String toString() => message;
 }
 
+/// CAS session 无效，需要重新登录一卡通。
+class ChangxingNeedUnifiedAuthException implements Exception {
+  @override
+  String toString() => '一卡通登录已失效，请重新登录';
+}
+
 class ChangxingJiadaService {
   ChangxingJiadaService._();
   static final ChangxingJiadaService instance = ChangxingJiadaService._();
 
   static const _baseUrl = 'https://zhx.zjxu.edu.cn/api';
+  static const _casLoginUrl = 'https://zhx.zjxu.edu.cn/api/cas_wap_login';
   static const _storage = FlutterSecureStorage();
   static const _keyToken = 'zjxu_changxing_token';
-  static const _keyUsername = 'zjxu_changxing_username';
-  static const _keyPassword = 'zjxu_changxing_password';
 
   final Dio _dio = DioClient.instance.dio;
 
@@ -48,26 +50,6 @@ class ChangxingJiadaService {
     if (_restored) return;
     _token = await _storage.read(key: _keyToken);
     _restored = true;
-  }
-
-  Future<(String, String)?> loadRememberedCredentials() async {
-    final username = await _storage.read(key: _keyUsername);
-    final password = await _storage.read(key: _keyPassword);
-    if (username == null || password == null) return null;
-    return (username, password);
-  }
-
-  Future<void> _saveRememberedCredentials(
-    String username,
-    String password,
-  ) async {
-    await _storage.write(key: _keyUsername, value: username);
-    await _storage.write(key: _keyPassword, value: password);
-  }
-
-  Future<void> clearRememberedCredentials() async {
-    await _storage.delete(key: _keyUsername);
-    await _storage.delete(key: _keyPassword);
   }
 
   Future<void> _saveToken(String token) async {
@@ -84,60 +66,115 @@ class ChangxingJiadaService {
     await _clearToken();
   }
 
-  Future<Uint8List> fetchCaptcha() async {
-    final json = await _get('/valiCode', requiresToken: false);
-    final code = _extractCode(json);
-    if (code != '20000') {
-      throw ChangxingLoginFailure(_extractMessage(json, fallback: '验证码获取失败'));
+  /// 通过 CAS SSO 登录畅行嘉大。
+  /// 前提：用户已通过 UnifiedAuthService 完成一卡通登录。
+  Future<void> loginViaCas() async {
+    if (!UnifiedAuthService.instance.isLoggedIn) {
+      throw ChangxingCasLoginException('请先登录一卡通');
     }
-    final base64Text = _extractDataMap(json)['base64']?.toString() ?? '';
-    if (base64Text.isEmpty) {
-      throw ChangxingLoginFailure('验证码为空，请刷新后重试');
-    }
+
+    AppLogger.instance.debug('畅行嘉大：开始 CAS SSO 登录...');
+
     try {
-      return base64Decode(base64Text);
-    } catch (_) {
-      throw ChangxingLoginFailure('验证码解析失败，请刷新后重试');
-    }
-  }
+      // 1. 发起 CAS 登录，手动跟随重定向链以提取 tokenId
+      var nextUrl = _casLoginUrl;
+      String? tokenId;
 
-  Future<void> login(
-    String username,
-    String password,
-    String captcha, {
-    required bool rememberPassword,
-  }) async {
-    final json = await _postForm('/login', {
-      'userName': username,
-      'password': _md5Hex(password),
-      'code': captcha,
-    }, requiresToken: false);
+      for (var i = 0; i < 10; i++) {
+        final response = await _dio.get<String>(
+          nextUrl,
+          options: Options(
+            followRedirects: false,
+            validateStatus: (status) => status != null && status < 1000,
+            responseType: ResponseType.plain,
+          ),
+        );
 
-    final code = _extractCode(json);
-    if (code != '20000') {
-      final message = _extractMessage(json, fallback: '账号、密码或验证码错误');
-      throw ChangxingLoginFailure(message);
-    }
+        final statusCode = response.statusCode ?? 0;
+        final location = response.headers.value('location') ?? '';
 
-    final token = _extractDataMap(json)['body']?.toString().trim() ?? '';
-    if (token.isEmpty) {
-      throw ChangxingLoginFailure('登录成功但未获取到 token');
-    }
+        if (statusCode >= 300 && statusCode < 400 && location.isNotEmpty) {
+          // 如果被重定向到 CAS 登录页面，说明 session 已失效
+          if (location.contains('/cas/login') &&
+              !location.contains('ticket=')) {
+            AppLogger.instance.info('畅行嘉大：CAS session 已失效，需要重新登录一卡通');
+            UnifiedAuthService.instance.markLoggedOut();
+            throw ChangxingNeedUnifiedAuthException();
+          }
+          // 检查重定向 URL 中是否包含 tokenId
+          final uri = Uri.tryParse(location);
+          if (uri != null) {
+            final tid = uri.queryParameters['tokenId'];
+            if (tid != null && tid.isNotEmpty) {
+              tokenId = tid;
+              AppLogger.instance.debug('畅行嘉大：从重定向中提取到 tokenId');
+              break;
+            }
+          }
+          // 处理相对 URL
+          if (location.startsWith('/') || !location.contains('://')) {
+            final base = Uri.parse(nextUrl);
+            nextUrl = base.resolve(location).toString();
+          } else {
+            nextUrl = location;
+          }
+          continue;
+        }
 
-    await _saveToken(token);
-    if (rememberPassword) {
-      await _saveRememberedCredentials(username, password);
-    } else {
-      await clearRememberedCredentials();
+        // 非重定向响应，检查最终 URL 是否包含 tokenId
+        final finalUri = response.realUri;
+        final tid = finalUri.queryParameters['tokenId'];
+        if (tid != null && tid.isNotEmpty) {
+          tokenId = tid;
+          AppLogger.instance.debug('畅行嘉大：从最终 URL 中提取到 tokenId');
+        }
+        break;
+      }
+
+      if (tokenId == null || tokenId.isEmpty) {
+        AppLogger.instance.info('畅行嘉大：未获取到 tokenId，需要重新登录一卡通');
+        UnifiedAuthService.instance.markLoggedOut();
+        throw ChangxingNeedUnifiedAuthException();
+      }
+
+      // 2. 用 tokenId 换取 JWT token
+      final tokenResp = await _dio.get<Map<String, dynamic>>(
+        '$_baseUrl/getToken',
+        queryParameters: {'tokenId': tokenId},
+        options: Options(
+          responseType: ResponseType.json,
+          headers: {'token': '0'},
+        ),
+      );
+
+      final json = tokenResp.data ?? <String, dynamic>{};
+      final data = json['data'] as Map<String, dynamic>? ?? {};
+      final code = data['code']?.toString() ?? '';
+      if (code != '20000') {
+        final msg = data['msg']?.toString() ?? '获取 token 失败';
+        throw ChangxingCasLoginException(msg);
+      }
+
+      final jwtToken = data['token']?.toString().trim() ?? '';
+      if (jwtToken.isEmpty) {
+        throw ChangxingCasLoginException('CAS 认证成功但未获取到 token');
+      }
+
+      await _saveToken(jwtToken);
+      AppLogger.instance.info('畅行嘉大 CAS SSO 登录成功');
+    } on DioException catch (e) {
+      AppLogger.instance.error('畅行嘉大 CAS 登录网络异常: ${e.type} ${e.message}');
+      throw ChangxingCasLoginException('网络异常：${e.message}');
     }
-    AppLogger.instance.info('畅行嘉大登录成功');
   }
 
   Future<ChangxingUserProfile> fetchUserProfile() async {
     final json = await _postJson('/user/getUserDetail', {});
     final code = _extractCode(json);
     if (code != '20000') {
-      throw ChangxingLoginFailure(_extractMessage(json, fallback: '获取用户信息失败'));
+      throw ChangxingCasLoginException(
+        _extractMessage(json, fallback: '获取用户信息失败'),
+      );
     }
     final body = _extractDataMap(json)['body'] as Map<String, dynamic>? ?? {};
     return ChangxingUserProfile.fromJson(body);
@@ -160,17 +197,24 @@ class ChangxingJiadaService {
   }) async {
     final json = await _get(
       '/approvalForm/listPage/bystudent',
-      query: {'current': '$page', 'pageSize': '$pageSize', 'status': '$status'},
+      query: {
+        'current': '$page',
+        'pageSize': '$pageSize',
+        'status': '$status',
+      },
     );
     final code = _extractCode(json);
     if (code != '20000') {
-      throw ChangxingLoginFailure(_extractMessage(json, fallback: '获取申请列表失败'));
+      throw ChangxingCasLoginException(
+        _extractMessage(json, fallback: '获取申请列表失败'),
+      );
     }
     final body = _extractDataMap(json)['body'] as Map<String, dynamic>? ?? {};
-    final records = (body['records'] as List<dynamic>? ?? [])
-        .whereType<Map<String, dynamic>>()
-        .map(ChangxingApplication.fromJson)
-        .toList();
+    final records =
+        (body['records'] as List<dynamic>? ?? [])
+            .whereType<Map<String, dynamic>>()
+            .map(ChangxingApplication.fromJson)
+            .toList();
     return records;
   }
 
@@ -198,25 +242,6 @@ class ChangxingJiadaService {
       requiresToken: requiresToken,
       data: body,
       contentType: Headers.jsonContentType,
-    );
-  }
-
-  Future<Map<String, dynamic>> _postForm(
-    String path,
-    Map<String, String> form, {
-    bool requiresToken = true,
-  }) async {
-    return _request(
-      path: path,
-      method: 'POST',
-      requiresToken: requiresToken,
-      data: form.entries
-          .map(
-            (entry) =>
-                '${Uri.encodeQueryComponent(entry.key)}=${Uri.encodeQueryComponent(entry.value)}',
-          )
-          .join('&'),
-      contentType: Headers.formUrlEncodedContentType,
     );
   }
 
@@ -282,14 +307,5 @@ class ChangxingJiadaService {
     final data = json['data'];
     if (data is Map<String, dynamic>) return data;
     return <String, dynamic>{};
-  }
-
-  String _md5Hex(String input) {
-    final digest = MD5Digest().process(Uint8List.fromList(utf8.encode(input)));
-    final buffer = StringBuffer();
-    for (final byte in digest) {
-      buffer.write(byte.toRadixString(16).padLeft(2, '0'));
-    }
-    return buffer.toString();
   }
 }
