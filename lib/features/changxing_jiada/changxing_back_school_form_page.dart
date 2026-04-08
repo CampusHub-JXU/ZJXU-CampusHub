@@ -326,6 +326,7 @@ class _ChangxingBackSchoolFormPageState
                     ButtonSegment<int>(value: 1, label: Text('暂缓报到')),
                     ButtonSegment<int>(value: 2, label: Text('不报到')),
                   ],
+                  emptySelectionAllowed: true,
                   selected: _backStatus == null
                       ? const <int>{}
                       : <int>{_backStatus!},
