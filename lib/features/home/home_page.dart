@@ -542,87 +542,96 @@ class _HomePageState extends State<HomePage> {
           borderRadius: BorderRadius.circular(16),
         ),
         padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Stack(
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(
-                    Icons.account_balance_wallet_outlined,
-                    color: AppColors.primary,
-                    size: 20,
-                  ),
+            Align(
+              alignment: Alignment.topLeft,
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                const Spacer(),
-                GestureDetector(
-                  onTap: () async {
-                    await context.pushNamed('campus-card-payment');
-                    if (!mounted) return;
-                    _refreshCampusCardBalance();
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
+                child: const Icon(
+                  Icons.account_balance_wallet_outlined,
+                  color: AppColors.primary,
+                  size: 20,
+                ),
+              ),
+            ),
+            Align(
+              alignment: Alignment.topRight,
+              child: GestureDetector(
+                onTap: () async {
+                  await context.pushNamed('campus-card-payment');
+                  if (!mounted) return;
+                  _refreshCampusCardBalance();
+                },
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Center(
+                        child: Icon(
                           Icons.qr_code_2_rounded,
-                          size: 15,
+                          size: 30,
                           color: AppColors.primary,
                         ),
-                        const SizedBox(width: 4),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '付款码',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: cs.onSurface,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Align(
+              alignment: Alignment.bottomLeft,
+              child: _campusCardBalance == '--'
+                  ? Text(
+                      '余额未刷新，请先登录一卡通',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    )
+                  : Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                         Text(
-                          '付款码',
+                          '¥$_campusCardBalance',
                           style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
                             color: cs.onSurface,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '校园卡余额',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: cs.onSurfaceVariant,
                           ),
                         ),
                       ],
                     ),
-                  ),
-                ),
-              ],
             ),
-            const SizedBox(height: 16),
-            if (_campusCardBalance == '--') ...[
-              Text(
-                '余额未刷新，请先登录一卡通',
-                style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-              ),
-            ] else ...[
-              Text(
-                '¥$_campusCardBalance',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: cs.onSurface,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                '校园卡余额',
-                style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
-              ),
-            ],
-            const SizedBox(height: 12),
             Align(
               alignment: Alignment.bottomRight,
               child: Icon(
