@@ -39,50 +39,12 @@ class _DormElectricitySettingsPageState
         _buildings = buildings;
         _loadingBuildings = false;
       });
-      await _restoreSavedConfig();
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _error = '加载楼幢列表失败';
         _loadingBuildings = false;
       });
-    }
-  }
-
-  Future<void> _restoreSavedConfig() async {
-    final config = await _service.loadRoomConfig();
-    if (config == null || !mounted) return;
-
-    final building = _buildings
-        .where(
-          (b) =>
-              b.communityId == config.communityId &&
-              b.buildingId == config.buildingId,
-        )
-        .firstOrNull;
-    if (building == null) return;
-
-    setState(() {
-      _selectedBuilding = building;
-      _loadingRooms = true;
-    });
-
-    try {
-      final rooms = await _service.fetchRooms(building.buildingId);
-      if (!mounted) return;
-      final room = rooms
-          .where(
-            (r) => r.floorId == config.floorId && r.roomId == config.roomId,
-          )
-          .firstOrNull;
-      setState(() {
-        _rooms = rooms;
-        _selectedRoom = room;
-        _loadingRooms = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _loadingRooms = false);
     }
   }
 
@@ -116,18 +78,16 @@ class _DormElectricitySettingsPageState
     if (building == null || room == null) return;
 
     setState(() => _saving = true);
-    await _service.saveRoomConfig(
-      DormRoomConfig(
-        communityId: building.communityId,
-        buildingId: building.buildingId,
-        floorId: room.floorId,
-        roomId: room.roomId,
-      ),
-    );
+    await _service.saveRoomConfig(DormRoomConfig(
+      communityId: building.communityId,
+      buildingId: building.buildingId,
+      floorId: room.floorId,
+      roomId: room.roomId,
+    ));
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('寝室配置成功')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('寝室配置成功')),
+    );
     Navigator.of(context).pop();
   }
 
@@ -138,94 +98,88 @@ class _DormElectricitySettingsPageState
       body: _loadingBuildings
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-          ? Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(_error!, style: const TextStyle(color: Colors.red)),
-                  const SizedBox(height: 12),
-                  FilledButton(
-                    onPressed: () {
-                      setState(() {
-                        _error = null;
-                        _loadingBuildings = true;
-                      });
-                      _loadBuildings();
-                    },
-                    child: const Text('重试'),
-                  ),
-                ],
-              ),
-            )
-          : Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  DropdownButtonFormField<DormBuilding>(
-                    decoration: const InputDecoration(
-                      labelText: '园区 / 楼幢',
-                      border: OutlineInputBorder(),
-                    ),
-                    isExpanded: true,
-                    initialValue: _selectedBuilding,
-                    items: _buildings.map((b) {
-                      return DropdownMenuItem(
-                        value: b,
-                        child: Text(
-                          '${b.communityName}  ${b.buildingName}',
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      );
-                    }).toList(),
-                    onChanged: _onBuildingChanged,
-                  ),
-                  const SizedBox(height: 20),
-                  if (_loadingRooms)
-                    const Center(child: CircularProgressIndicator())
-                  else
-                    DropdownButtonFormField<DormRoom>(
-                      decoration: const InputDecoration(
-                        labelText: '楼层 / 房间号',
-                        border: OutlineInputBorder(),
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(_error!, style: const TextStyle(color: Colors.red)),
+                      const SizedBox(height: 12),
+                      FilledButton(
+                        onPressed: () {
+                          setState(() {
+                            _error = null;
+                            _loadingBuildings = true;
+                          });
+                          _loadBuildings();
+                        },
+                        child: const Text('重试'),
                       ),
-                      isExpanded: true,
-                      initialValue: _selectedRoom,
-                      items: _rooms.map((r) {
-                        return DropdownMenuItem(
-                          value: r,
-                          child: Text(
-                            '${r.floorName}  ${r.roomName}号',
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        );
-                      }).toList(),
-                      onChanged: _rooms.isEmpty
-                          ? null
-                          : (r) => setState(() => _selectedRoom = r),
-                    ),
-                  const SizedBox(height: 32),
-                  FilledButton(
-                    onPressed:
-                        (_selectedBuilding != null &&
-                            _selectedRoom != null &&
-                            !_saving)
-                        ? _save
-                        : null,
-                    child: _saving
-                        ? const SizedBox(
-                            height: 18,
-                            width: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Text('保存'),
+                    ],
                   ),
-                ],
-              ),
-            ),
+                )
+              : Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      DropdownButtonFormField<DormBuilding>(
+                        decoration: const InputDecoration(
+                          labelText: '园区 / 楼幢',
+                          border: OutlineInputBorder(),
+                        ),
+                        initialValue: _selectedBuilding,
+                        items: _buildings.map((b) {
+                          return DropdownMenuItem(
+                            value: b,
+                            child: Text(
+                              '${b.communityName}  ${b.buildingName}',
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: _onBuildingChanged,
+                      ),
+                      const SizedBox(height: 20),
+                      if (_loadingRooms)
+                        const Center(child: CircularProgressIndicator())
+                      else
+                        DropdownButtonFormField<DormRoom>(
+                          decoration: const InputDecoration(
+                            labelText: '楼层 / 房间号',
+                            border: OutlineInputBorder(),
+                          ),
+                          initialValue: _selectedRoom,
+                          items: _rooms.map((r) {
+                            return DropdownMenuItem(
+                              value: r,
+                              child: Text('${r.floorName}  ${r.roomName}号'),
+                            );
+                          }).toList(),
+                          onChanged: _rooms.isEmpty
+                              ? null
+                              : (r) => setState(() => _selectedRoom = r),
+                        ),
+                      const SizedBox(height: 32),
+                      FilledButton(
+                        onPressed: (_selectedBuilding != null &&
+                                _selectedRoom != null &&
+                                !_saving)
+                            ? _save
+                            : null,
+                        child: _saving
+                            ? const SizedBox(
+                                height: 18,
+                                width: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text('保存'),
+                      ),
+                    ],
+                  ),
+                ),
     );
   }
 }

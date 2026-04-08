@@ -129,7 +129,7 @@ class _MyPageState extends State<MyPage> {
                         AppColors.primary.withValues(alpha: 0.45),
                         cs.surfaceContainerHigh,
                       ]
-                    : [AppColors.primary.withValues(alpha: 0.16), Colors.white],
+                    : [AppColors.primary.withValues(alpha: 0.16), const Color.fromARGB(255, 147, 58, 58)],
               ),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
