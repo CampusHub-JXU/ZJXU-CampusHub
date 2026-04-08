@@ -447,11 +447,13 @@ class _HomePageState extends State<HomePage> {
             ),
             child: Text(
               course.courseName,
-              style: const TextStyle(
-                fontSize: 13,
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.white.withValues(alpha: 0.95),
+                fontWeight: FontWeight.w500,
               ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ),
