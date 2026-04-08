@@ -542,6 +542,7 @@ class _HomePageState extends State<HomePage> {
         ),
         padding: const EdgeInsets.all(16),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
@@ -559,7 +560,7 @@ class _HomePageState extends State<HomePage> {
                     size: 20,
                   ),
                 ),
-                const Spacer(),
+                const SizedBox(width: 12),
                 GestureDetector(
                   onTap: () async {
                     await context.pushNamed('campus-card-payment');
