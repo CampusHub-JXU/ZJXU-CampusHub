@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io' as io;
 
@@ -202,13 +203,25 @@ class UnifiedAuthService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> restoreSession() async {
+  Future<void> restoreSession({bool syncWebViewCookies = true}) async {
     final account = await CredentialStore.instance.loadUnifiedAuthSession();
     if (account != null) {
       currentAccount = account;
       _sessionActive = true;
-      await syncCookiesToWebView();
+      if (syncWebViewCookies) {
+        await syncCookiesToWebView();
+      } else {
+        unawaited(_syncCookiesToWebViewSafely());
+      }
       notifyListeners();
+    }
+  }
+
+  Future<void> _syncCookiesToWebViewSafely() async {
+    try {
+      await syncCookiesToWebView();
+    } catch (error) {
+      AppLogger.instance.error('统一认证 Cookie 延迟同步失败: $error');
     }
   }
 

@@ -22,7 +22,7 @@ Future<void> main() async {
     NetworkSettings.instance.init(),
     ThemeModeController.instance.init(),
     ZhengfangAuth.instance.restoreSession(),
-    UnifiedAuthService.instance.restoreSession(),
+    UnifiedAuthService.instance.restoreSession(syncWebViewCookies: false),
     CampusCardService.instance.restoreBalance(),
     ChangxingJiadaService.instance.restoreSession(),
     DormElectricityService.instance.restoreCache(),
