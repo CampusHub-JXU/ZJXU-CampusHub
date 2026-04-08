@@ -478,6 +478,54 @@ class ZhengfangAuth extends ChangeNotifier {
     }
   }
 
+  /// 同步直连教务系统 Cookie 到 WebView
+  Future<void> syncDirectCookiesToWebView() async {
+    if (_mode != ZhengfangMode.direct) return;
+    await DioClient.instance.ensureInitialized();
+
+    final cookieManager = CookieManager.instance();
+    final uris = [
+      Uri.parse('$_directOrigin/'),
+      Uri.parse('$_directOrigin/$_directLoginPath'),
+      Uri.parse('$_directBase/'),
+    ];
+
+    for (final uri in uris) {
+      try {
+        final cookies = await _cookieJar.loadForRequest(uri);
+        AppLogger.instance.debug(
+          '同步教务系统 Cookie ${uri.host}: ${cookies.map((c) => c.name).join(', ')}',
+        );
+        for (final cookie in cookies) {
+          final domain = (cookie.domain ?? '').trim();
+          await cookieManager.setCookie(
+            url: WebUri('${uri.scheme}://${uri.host}/'),
+            name: cookie.name,
+            value: cookie.value,
+            domain: domain.isNotEmpty ? domain : uri.host,
+            path: (cookie.path ?? '').trim().isNotEmpty
+                ? cookie.path!.trim()
+                : '/',
+            isSecure: cookie.secure,
+            isHttpOnly: cookie.httpOnly,
+            expiresDate: cookie.expires?.millisecondsSinceEpoch,
+          );
+        }
+      } catch (e) {
+        AppLogger.instance.error('同步教务系统 Cookie 失败: $e');
+      }
+    }
+  }
+
+  /// 同步 Cookie 到 WebView (根据当前模式)
+  Future<void> syncCookiesToWebView() async {
+    if (_mode == ZhengfangMode.webVpn) {
+      await syncWebVpnCookiesToWebView();
+    } else {
+      await syncDirectCookiesToWebView();
+    }
+  }
+
   /// 跟随 WebVPN CAS 重定向链建立 session
   Future<void> _followWebVpnRedirectChain(
     String referer,

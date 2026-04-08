@@ -66,6 +66,10 @@ class _MyPageState extends State<MyPage> {
 
   Future<void> _openAcademicAction() async {
     if (_academicLoggedIn) {
+      // 同步教务系统 Cookie 到 WebView
+      await ZhengfangAuth.instance.syncCookiesToWebView();
+      if (!mounted) return;
+
       await context.pushNamed(
         'news-detail',
         extra: {
