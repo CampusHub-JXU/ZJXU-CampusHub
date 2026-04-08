@@ -617,12 +617,25 @@ class _HomePageState extends State<HomePage> {
         _refreshCampusCardBalance();
       },
       child: Container(
-        height: 153,
+        height: 160,
         decoration: BoxDecoration(
           color: bgColor,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isDark
+                ? cs.outline.withValues(alpha: 0.3)
+                : cs.outline.withValues(alpha: 0.2),
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         child: Stack(
           children: [
             Padding(
@@ -638,7 +651,7 @@ class _HomePageState extends State<HomePage> {
                       color: AppColors.primary,
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 12),
                   _campusCardBalance == '--'
                       ? Text(
                           '余额未刷新，请先登录一卡通',
@@ -651,18 +664,21 @@ class _HomePageState extends State<HomePage> {
                           text: TextSpan(
                             style: TextStyle(
                               color: cs.onSurface,
-                              fontWeight: FontWeight.bold,
+                              fontWeight: FontWeight.w600,
                             ),
                             children: [
                               TextSpan(
                                 text: _campusCardBalance,
-                                style: const TextStyle(fontSize: 38, height: 1),
+                                style: const TextStyle(
+                                  fontSize: 32,
+                                  height: 1.2,
+                                ),
                               ),
                               TextSpan(
                                 text: '元',
                                 style: TextStyle(
-                                  fontSize: 18,
-                                  height: 1.2,
+                                  fontSize: 16,
+                                  height: 1.3,
                                   color: cs.onSurface.withValues(alpha: 0.7),
                                 ),
                               ),
@@ -670,38 +686,43 @@ class _HomePageState extends State<HomePage> {
                           ),
                         ),
                   const Spacer(),
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () async {
-                      await context.pushNamed('campus-card-payment');
-                      if (!mounted) return;
-                      _refreshCampusCardBalance();
-                    },
-                    child: Container(
-                      height: 44,
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            Icons.qr_code_2_rounded,
-                            size: 28,
-                            color: AppColors.primary,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            '付款码',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: cs.onSurface,
+                  Align(
+                    alignment: Alignment.bottomLeft,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () async {
+                        await context.pushNamed('campus-card-payment');
+                        if (!mounted) return;
+                        _refreshCampusCardBalance();
+                      },
+                      child: Container(
+                        height: 44,
+                        padding: const EdgeInsets.only(left: 12, right: 14),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            const Icon(
+                              Icons.qr_code_2_rounded,
+                              size: 28,
+                              color: AppColors.primary,
                             ),
-                          ),
-                        ],
+                            const SizedBox(width: 4),
+                            Text(
+                              '付款码',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: cs.onSurface,
+                                height: 1.0,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
