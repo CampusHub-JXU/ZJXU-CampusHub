@@ -38,7 +38,11 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _refreshAll() async {
-    await Future.wait([_refreshCampusCardBalance(), _refreshNextCourse(), _refreshDormElectricity()]);
+    await Future.wait([
+      _refreshCampusCardBalance(),
+      _refreshNextCourse(),
+      _refreshDormElectricity(),
+    ]);
   }
 
   @override
@@ -379,7 +383,10 @@ class _HomePageState extends State<HomePage> {
     }
 
     final course = _nextCourse!;
-    final time = ScheduleSlotTimes.timeRange(course.startLesson, course.endLesson);
+    final time = ScheduleSlotTimes.timeRange(
+      course.startLesson,
+      course.endLesson,
+    );
     final whenText = _nextCourseLabel.isEmpty
         ? time
         : '$_nextCourseLabel $time';
@@ -537,11 +544,8 @@ class _HomePageState extends State<HomePage> {
             const SizedBox(height: 14),
             if (_campusCardBalance == '--') ...[
               Text(
-                '请先登录一卡通',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: cs.onSurfaceVariant,
-                ),
+                '余额未刷新，请先登录一卡通',
+                style: TextStyle(fontSize: 14, color: cs.onSurfaceVariant),
               ),
             ] else ...[
               Text(
@@ -555,10 +559,7 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(height: 4),
               Text(
                 '校园卡余额',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: cs.onSurfaceVariant,
-                ),
+                style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
               ),
             ],
             Align(
@@ -689,19 +690,12 @@ class _HomePageState extends State<HomePage> {
                   const SizedBox(height: 2),
                   Text(
                     '电费查询、故障报修、离返校登记',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: cs.onSurfaceVariant,
-                    ),
+                    style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
                   ),
                 ],
               ),
             ),
-            Icon(
-              Icons.arrow_forward_ios,
-              size: 16,
-              color: cs.onSurfaceVariant,
-            ),
+            Icon(Icons.arrow_forward_ios, size: 16, color: cs.onSurfaceVariant),
           ],
         ),
       ),
@@ -939,11 +933,7 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
             ),
-            Icon(
-              Icons.arrow_forward_ios,
-              size: 14,
-              color: cs.onSurfaceVariant,
-            ),
+            Icon(Icons.arrow_forward_ios, size: 14, color: cs.onSurfaceVariant),
           ],
         ),
       ),
