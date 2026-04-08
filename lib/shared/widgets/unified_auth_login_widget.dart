@@ -6,6 +6,13 @@ import 'package:flutter/material.dart';
 import '../../core/auth/credential_store.dart';
 import '../../core/auth/unified_auth.dart';
 
+typedef LoginCredentialLoader = Future<(String, String)?> Function();
+typedef LoginCredentialSaver =
+    Future<void> Function(String username, String password);
+typedef LoginCaptchaLoader = Future<Uint8List> Function();
+typedef LoginSubmitHandler =
+    Future<String?> Function(String username, String password, String captcha);
+
 class UnifiedAuthLoginWidget extends StatefulWidget {
   const UnifiedAuthLoginWidget({
     super.key,
@@ -13,12 +20,20 @@ class UnifiedAuthLoginWidget extends StatefulWidget {
     this.serviceUrl = UnifiedAuthService.defaultServiceUrl,
     this.title = '登录统一认证',
     this.description = '账号为校园一卡通号',
+    this.loadSavedCredentials,
+    this.saveCredentials,
+    this.captchaLoader,
+    this.loginHandler,
   });
 
   final VoidCallback onLoginSuccess;
   final String serviceUrl;
   final String title;
   final String description;
+  final LoginCredentialLoader? loadSavedCredentials;
+  final LoginCredentialSaver? saveCredentials;
+  final LoginCaptchaLoader? captchaLoader;
+  final LoginSubmitHandler? loginHandler;
 
   @override
   State<UnifiedAuthLoginWidget> createState() => _UnifiedAuthLoginWidgetState();
@@ -41,8 +56,9 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
   }
 
   Future<void> _loadSaved() async {
-    final credentials = await CredentialStore.instance
-        .loadUnifiedAuthCredentials();
+    final credentials =
+        await widget.loadSavedCredentials?.call() ??
+        await CredentialStore.instance.loadUnifiedAuthCredentials();
     if (credentials != null) {
       _usernameCtrl.text = credentials.$1;
       _passwordCtrl.text = credentials.$2;
@@ -51,9 +67,11 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
 
   Future<void> _refreshCaptcha() async {
     try {
-      final bytes = await UnifiedAuthService.instance.fetchCaptcha(
-        serviceUrl: widget.serviceUrl,
-      );
+      final bytes =
+          await widget.captchaLoader?.call() ??
+          await UnifiedAuthService.instance.fetchCaptcha(
+            serviceUrl: widget.serviceUrl,
+          );
       final codec = await ui.instantiateImageCodec(bytes);
       codec.dispose();
       if (!mounted) return;
@@ -90,6 +108,24 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
       _error = null;
     });
 
+    if (widget.loginHandler != null) {
+      final message = await widget.loginHandler!(username, password, captcha);
+      if (!mounted) return;
+      if (message == null) {
+        await widget.saveCredentials?.call(username, password);
+        widget.onLoginSuccess();
+        return;
+      }
+
+      setState(() {
+        _loading = false;
+        _error = message;
+      });
+      _captchaCtrl.clear();
+      _refreshCaptcha();
+      return;
+    }
+
     final result = await UnifiedAuthService.instance.login(
       username,
       password,
@@ -100,10 +136,11 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
 
     switch (result) {
       case UnifiedAuthLoginSuccess():
-        await CredentialStore.instance.saveUnifiedAuthCredentials(
-          username,
-          password,
-        );
+        await (widget.saveCredentials?.call(username, password) ??
+            CredentialStore.instance.saveUnifiedAuthCredentials(
+              username,
+              password,
+            ));
         widget.onLoginSuccess();
       case UnifiedAuthLoginFailure(:final message):
         setState(() {

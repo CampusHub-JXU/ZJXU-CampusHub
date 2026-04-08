@@ -1,7 +1,6 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 
+import '../../shared/widgets/unified_auth_login_widget.dart';
 import 'changxing_jiada_model.dart';
 import 'changxing_jiada_service.dart';
 
@@ -13,16 +12,9 @@ class ChangxingJiadaPage extends StatefulWidget {
 }
 
 class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
-  final _accountCtrl = TextEditingController();
-  final _passwordCtrl = TextEditingController();
-  final _captchaCtrl = TextEditingController();
-
-  bool _rememberPassword = false;
   bool _initializing = true;
   bool _loadingContent = false;
-  bool _loggingIn = false;
   String? _error;
-  Uint8List? _captchaBytes;
 
   ChangxingUserProfile? _profile;
   int _unreadCount = 0;
@@ -38,25 +30,8 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
     _initialize();
   }
 
-  @override
-  void dispose() {
-    _accountCtrl.dispose();
-    _passwordCtrl.dispose();
-    _captchaCtrl.dispose();
-    super.dispose();
-  }
-
   Future<void> _initialize() async {
-    final remembered = await _service.loadRememberedCredentials();
-    if (remembered != null) {
-      _accountCtrl.text = remembered.$1;
-      _passwordCtrl.text = remembered.$2;
-      _rememberPassword = true;
-    }
-
     await _service.restoreSession();
-    await _refreshCaptcha(silent: true);
-
     if (_service.hasToken) {
       await _loadDashboard(showGlobalLoading: false);
     }
@@ -65,56 +40,6 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
     setState(() {
       _initializing = false;
     });
-  }
-
-  Future<void> _refreshCaptcha({bool silent = false}) async {
-    try {
-      final bytes = await _service.fetchCaptcha();
-      if (!mounted) return;
-      setState(() => _captchaBytes = bytes);
-    } catch (e) {
-      if (!silent && mounted) {
-        _showSnackBar('获取验证码失败：$e');
-      }
-    }
-  }
-
-  Future<void> _login() async {
-    final account = _accountCtrl.text.trim();
-    final password = _passwordCtrl.text;
-    final captcha = _captchaCtrl.text.trim();
-    if (account.isEmpty || password.isEmpty || captcha.isEmpty) {
-      _showSnackBar('请填写账号、密码和验证码');
-      return;
-    }
-
-    setState(() {
-      _loggingIn = true;
-      _error = null;
-    });
-
-    try {
-      await _service.login(
-        account,
-        password,
-        captcha,
-        rememberPassword: _rememberPassword,
-      );
-      _captchaCtrl.clear();
-      await _loadDashboard(showGlobalLoading: false);
-    } on ChangxingLoginFailure catch (e) {
-      if (!mounted) return;
-      setState(() => _error = e.message);
-      await _refreshCaptcha(silent: true);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _error = '登录失败：$e');
-      await _refreshCaptcha(silent: true);
-    } finally {
-      if (mounted) {
-        setState(() => _loggingIn = false);
-      }
-    }
   }
 
   Future<void> _loadDashboard({required bool showGlobalLoading}) async {
@@ -143,7 +68,6 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
         _unreadCount = 0;
         _error = e.message;
       });
-      await _refreshCaptcha(silent: true);
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = '加载数据失败：$e');
@@ -162,9 +86,29 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
       _applications = [];
       _unreadCount = 0;
       _error = null;
-      _captchaCtrl.clear();
     });
-    await _refreshCaptcha(silent: true);
+  }
+
+  Future<String?> _handleLoginSubmit(
+    String username,
+    String password,
+    String captcha,
+  ) async {
+    if (_error != null && mounted) {
+      setState(() => _error = null);
+    }
+    try {
+      await _service.login(username, password, captcha, rememberPassword: true);
+      return null;
+    } on ChangxingLoginFailure catch (e) {
+      return e.message;
+    } catch (e) {
+      return '登录失败：$e';
+    }
+  }
+
+  void _handleLoginSuccess() {
+    _loadDashboard(showGlobalLoading: false);
   }
 
   void _showSnackBar(String message) {
@@ -203,118 +147,35 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
   }
 
   Widget _buildLoginBody() {
-    final cs = Theme.of(context).colorScheme;
-    return ListView(
-      padding: const EdgeInsets.all(16),
+    final error = _error;
+    return Column(
       children: [
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: cs.primaryContainer,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Text(
-            '畅行嘉大原生版登录\n账号为校园一卡通号',
-            style: TextStyle(
-              fontSize: 14,
-              color: cs.onPrimaryContainer,
-              height: 1.5,
+        if ((error ?? '').isNotEmpty)
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.errorContainer,
+              borderRadius: BorderRadius.circular(10),
             ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        TextField(
-          controller: _accountCtrl,
-          decoration: const InputDecoration(
-            labelText: '账号',
-            hintText: '请输入一卡通账号',
-          ),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: _passwordCtrl,
-          obscureText: true,
-          decoration: const InputDecoration(labelText: '密码', hintText: '请输入密码'),
-        ),
-        const SizedBox(height: 12),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _captchaCtrl,
-                decoration: const InputDecoration(
-                  labelText: '验证码',
-                  hintText: '请输入验证码',
-                ),
+            child: Text(
+              error!,
+              style: TextStyle(
+                fontSize: 13,
+                color: Theme.of(context).colorScheme.onErrorContainer,
               ),
             ),
-            const SizedBox(width: 12),
-            GestureDetector(
-              onTap: () => _refreshCaptcha(),
-              child: Container(
-                width: 130,
-                height: 52,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: cs.outlineVariant),
-                  color: cs.surfaceContainerHighest,
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: _captchaBytes == null
-                    ? Center(
-                        child: Text(
-                          '点击刷新',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: cs.onSurfaceVariant,
-                          ),
-                        ),
-                      )
-                    : Image.memory(
-                        _captchaBytes!,
-                        fit: BoxFit.cover,
-                        gaplessPlayback: true,
-                      ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Checkbox(
-              value: _rememberPassword,
-              onChanged: (value) {
-                setState(() => _rememberPassword = value ?? false);
-              },
-            ),
-            const Text('记住密码'),
-            const Spacer(),
-            TextButton(
-              onPressed: () async {
-                await _service.clearRememberedCredentials();
-                if (!mounted) return;
-                setState(() => _rememberPassword = false);
-              },
-              child: const Text('清除已保存密码'),
-            ),
-          ],
-        ),
-        if ((_error ?? '').isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Text(_error!, style: TextStyle(color: cs.error, fontSize: 13)),
-        ],
-        const SizedBox(height: 16),
-        FilledButton(
-          onPressed: _loggingIn ? null : _login,
-          child: _loggingIn
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Text('登录畅行嘉大'),
+          ),
+        Expanded(
+          child: UnifiedAuthLoginWidget(
+            title: '登录畅行嘉大',
+            description: '账号为校园一卡通号',
+            loadSavedCredentials: _service.loadRememberedCredentials,
+            captchaLoader: _service.fetchCaptcha,
+            loginHandler: _handleLoginSubmit,
+            onLoginSuccess: _handleLoginSuccess,
+          ),
         ),
       ],
     );
