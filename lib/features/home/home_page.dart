@@ -536,6 +536,7 @@ class _HomePageState extends State<HomePage> {
         _refreshCampusCardBalance();
       },
       child: Container(
+        height: 153,
         decoration: BoxDecoration(
           color: bgColor,
           borderRadius: BorderRadius.circular(16),
@@ -546,6 +547,7 @@ class _HomePageState extends State<HomePage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
                   width: 36,
@@ -560,7 +562,7 @@ class _HomePageState extends State<HomePage> {
                     size: 20,
                   ),
                 ),
-                const SizedBox(width: 12),
+                const Spacer(),
                 GestureDetector(
                   onTap: () async {
                     await context.pushNamed('campus-card-payment');
