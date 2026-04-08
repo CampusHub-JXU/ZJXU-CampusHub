@@ -563,34 +563,25 @@ class _HomePageState extends State<HomePage> {
             Align(
               alignment: Alignment.topRight,
               child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
                 onTap: () async {
                   await context.pushNamed('campus-card-payment');
                   if (!mounted) return;
                   _refreshCampusCardBalance();
                 },
-                child: Column(
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: AppColors.primary.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: const Center(
-                        child: Icon(
-                          Icons.qr_code_2_rounded,
-                          size: 30,
-                          color: AppColors.primary,
-                        ),
-                      ),
+                    const Icon(
+                      Icons.qr_code_2_rounded,
+                      size: 28,
+                      color: AppColors.primary,
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(width: 6),
                     Text(
                       '付款码',
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 14,
                         fontWeight: FontWeight.w600,
                         color: cs.onSurface,
                       ),
