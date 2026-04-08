@@ -34,21 +34,22 @@ class ZhengfangProtectedWebViewPage extends StatefulWidget {
 class _ZhengfangProtectedWebViewPageState
     extends State<ZhengfangProtectedWebViewPage> {
   late bool _authenticated;
-  bool _resyncing = false;
+  bool _preparingSession = false;
+  bool _recoveryAttempted = false;
+  Key _webViewKey = UniqueKey();
+  Map<String, String> _initialHeaders = const {};
 
   @override
   void initState() {
     super.initState();
     _authenticated = ZhengfangAuth.instance.isLoggedIn;
+    if (_authenticated) {
+      _prepareWebViewSession();
+    }
   }
 
   Future<void> _onLoginSuccess() async {
-    await ZhengfangAuth.instance.syncCookiesToWebView();
-    if (!mounted) return;
-    setState(() {
-      _authenticated = true;
-      _resyncing = false;
-    });
+    await _prepareWebViewSession(recreateWebView: true);
   }
 
   Future<void> _showNativeLogin() async {
@@ -56,7 +57,8 @@ class _ZhengfangProtectedWebViewPageState
     if (!mounted) return;
     setState(() {
       _authenticated = false;
-      _resyncing = false;
+      _preparingSession = false;
+      _recoveryAttempted = false;
     });
   }
 
@@ -67,39 +69,74 @@ class _ZhengfangProtectedWebViewPageState
     if (isZhengfangLoginUrl(currentUrl)) {
       AppLogger.instance.debug('WebView 跳转到教务登录页，尝试恢复会话');
 
-      if (_resyncing || !ZhengfangAuth.instance.isLoggedIn) {
+      if (_preparingSession) {
+        AppLogger.instance.debug('教务会话恢复进行中，忽略重复登录页回调');
+        return;
+      }
+
+      if (_recoveryAttempted || !ZhengfangAuth.instance.isLoggedIn) {
         AppLogger.instance.info('教务 WebView 会话恢复失败，切换为应用内登录');
         await _showNativeLogin();
         return;
       }
 
-      _resyncing = true;
-      try {
-        await ZhengfangAuth.instance.syncCookiesToWebView();
-        AppLogger.instance.debug('教务 Cookie 重同步完成，重新加载 WebView');
-        await controller.loadUrl(
-          urlRequest: URLRequest(url: WebUri(widget.url)),
-        );
-      } catch (error) {
-        AppLogger.instance.error('教务 Cookie 重同步失败: $error');
-        await _showNativeLogin();
-      }
+      _recoveryAttempted = true;
+      await _prepareWebViewSession(recreateWebView: true);
       return;
     }
 
-    _resyncing = false;
+    _recoveryAttempted = false;
     final callback = widget.onLoadStop;
     if (callback != null) {
       await callback(controller, currentUrl);
     }
   }
 
+  Future<void> _prepareWebViewSession({bool recreateWebView = false}) async {
+    if (_preparingSession) return;
+
+    if (mounted) {
+      setState(() => _preparingSession = true);
+    } else {
+      _preparingSession = true;
+    }
+
+    try {
+      await ZhengfangAuth.instance.syncCookiesToWebView();
+      final headers = await ZhengfangAuth.instance.buildWebViewHeaders(
+        widget.url,
+      );
+      if (!mounted) return;
+      setState(() {
+        _authenticated = true;
+        _initialHeaders = headers;
+        _preparingSession = false;
+        if (recreateWebView) {
+          _webViewKey = UniqueKey();
+        }
+      });
+    } catch (error) {
+      AppLogger.instance.error('准备教务 WebView 会话失败: $error');
+      if (!mounted) return;
+      setState(() => _preparingSession = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_authenticated) {
+      if (_preparingSession && _initialHeaders.isEmpty) {
+        return Scaffold(
+          appBar: AppBar(title: Text(widget.title)),
+          body: const Center(child: CircularProgressIndicator()),
+        );
+      }
+
       return WebViewPage(
+        key: _webViewKey,
         title: widget.title,
         url: widget.url,
+        initialHeaders: _initialHeaders,
         onLoadStop: _handleLoadStop,
       );
     }

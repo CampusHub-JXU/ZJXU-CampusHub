@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io' as io;
 
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
@@ -496,6 +497,7 @@ class ZhengfangAuth extends ChangeNotifier {
     for (final uri in uris) {
       try {
         final cookies = await _cookieJar.loadForRequest(uri);
+        await _clearWebViewCookiesForUri(cookieManager, uri, cookies);
         AppLogger.instance.debug(
           '同步教务系统 Cookie ${uri.host}: ${cookies.map((c) => c.name).join(', ')}',
         );
@@ -514,10 +516,34 @@ class ZhengfangAuth extends ChangeNotifier {
             expiresDate: cookie.expires?.millisecondsSinceEpoch,
           );
         }
+        final syncedCookies = await cookieManager.getCookies(
+          url: WebUri('${uri.scheme}://${uri.host}${uri.path}'),
+        );
+        AppLogger.instance.debug(
+          'WebView 教务 Cookie ${uri.host}: ${syncedCookies.map((c) => c.name).join(', ')}',
+        );
       } catch (e) {
         AppLogger.instance.error('同步教务系统 Cookie 失败: $e');
       }
     }
+  }
+
+  Future<Map<String, String>> buildWebViewHeaders(String targetUrl) async {
+    await DioClient.instance.ensureInitialized();
+
+    final uri = Uri.parse(targetUrl);
+    final cookies = await _cookieJar.loadForRequest(uri);
+    final cookieHeader = cookies
+        .map((cookie) => '${cookie.name}=${cookie.value}')
+        .join('; ');
+    AppLogger.instance.debug(
+      '构建教务 WebView 请求头: ${cookies.map((c) => c.name).join(', ')}',
+    );
+
+    return {
+      if (cookieHeader.isNotEmpty) 'Cookie': cookieHeader,
+      'Referer': _loginPageUrl,
+    };
   }
 
   /// 同步 Cookie 到 WebView (根据当前模式)
@@ -829,6 +855,47 @@ class ZhengfangAuth extends ChangeNotifier {
   Future<void> _refreshLoginContext() async {
     AppLogger.instance.debug('正在刷新教务系统登录上下文...');
     await _refreshCsrfToken();
+  }
+
+  Future<void> _clearWebViewCookiesForUri(
+    CookieManager cookieManager,
+    Uri uri,
+    List<io.Cookie> cookies,
+  ) async {
+    if (cookies.isEmpty) return;
+
+    final rootUrls = <String>{
+      '${uri.scheme}://${uri.host}/',
+      if (uri.scheme == 'https') 'http://${uri.host}/',
+    };
+    final normalizedPath = (uri.path.isEmpty ? '/' : uri.path).trim();
+
+    for (final cookie in cookies) {
+      final domain = (cookie.domain ?? '').trim();
+      final targetDomain = domain.isNotEmpty ? domain : uri.host;
+      final targetPath = (cookie.path ?? '').trim().isNotEmpty
+          ? cookie.path!.trim()
+          : normalizedPath;
+
+      for (final rootUrl in rootUrls) {
+        try {
+          await cookieManager.deleteCookie(
+            url: WebUri(rootUrl),
+            name: cookie.name,
+            domain: targetDomain,
+            path: '/',
+          );
+        } catch (_) {}
+        try {
+          await cookieManager.deleteCookie(
+            url: WebUri(rootUrl),
+            name: cookie.name,
+            domain: targetDomain,
+            path: targetPath,
+          );
+        } catch (_) {}
+      }
+    }
   }
 
   Future<String> _ensureCsrfToken() async {

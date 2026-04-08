@@ -16,11 +16,13 @@ class WebViewPage extends StatefulWidget {
     super.key,
     required this.title,
     required this.url,
+    this.initialHeaders = const {},
     this.onLoadStop,
   });
 
   final String title;
   final String url;
+  final Map<String, String> initialHeaders;
   final WebViewLoadStopCallback? onLoadStop;
 
   @override
@@ -124,7 +126,6 @@ class _WebViewPageState extends State<WebViewPage> {
         'WebView console [${consoleMessage.messageLevel}] $_currentUrl :: $message',
       );
     }
-
   }
 
   Future<void> _inspectLoadedPage(InAppWebViewController controller) async {
@@ -158,7 +159,8 @@ class _WebViewPageState extends State<WebViewPage> {
         'WebView load stop: url=$_currentUrl readyState=$readyState title=${title.isEmpty ? '[empty]' : title} textLength=$textLength childCount=$childCount',
       );
 
-      final isBlankLike = textLength == 0 && childCount == 0 && readyState == 'complete';
+      final isBlankLike =
+          textLength == 0 && childCount == 0 && readyState == 'complete';
       if (!isBlankLike) return;
 
       AppLogger.instance.error('WebView 疑似白屏：url=$_currentUrl');
@@ -196,7 +198,12 @@ class _WebViewPageState extends State<WebViewPage> {
             _buildError()
           else
             InAppWebView(
-              initialUrlRequest: URLRequest(url: WebUri(widget.url)),
+              initialUrlRequest: URLRequest(
+                url: WebUri(widget.url),
+                headers: widget.initialHeaders.isEmpty
+                    ? null
+                    : Map<String, String>.from(widget.initialHeaders),
+              ),
               initialUserScripts: UnmodifiableListView([
                 UserScript(
                   source: '''
