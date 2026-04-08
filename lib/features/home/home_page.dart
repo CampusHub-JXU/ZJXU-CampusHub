@@ -952,45 +952,32 @@ class _HomePageState extends State<HomePage> {
           color: bgColor,
           borderRadius: BorderRadius.circular(16),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        child: Row(
+        padding: const EdgeInsets.all(16),
+        child: Column(
           children: [
             Container(
-              width: 36,
-              height: 36,
+              width: 34,
+              height: 34,
               decoration: BoxDecoration(
+                color: Colors.white,
                 shape: BoxShape.circle,
-                border: Border.all(color: AppColors.success, width: 2),
-                color: AppColors.success.withValues(alpha: 0.06),
+                border: Border.all(color: const Color(0xFF2EA567), width: 2.4),
               ),
               child: const Icon(
                 Icons.north_rounded,
-                color: AppColors.success,
-                size: 20,
+                color: Color(0xFF2EA567),
+                size: 22,
               ),
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '畅行嘉大',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: cs.onSurface,
-                    ),
-                  ),
-                  const SizedBox(height: 1),
-                  Text(
-                    '离返校登记',
-                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-                  ),
-                ],
+            const SizedBox(height: 10),
+            Text(
+              '畅行嘉大',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: cs.onSurface,
               ),
             ),
-            Icon(Icons.arrow_forward_ios, size: 14, color: cs.onSurfaceVariant),
           ],
         ),
       ),
