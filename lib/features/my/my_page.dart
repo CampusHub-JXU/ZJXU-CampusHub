@@ -66,7 +66,13 @@ class _MyPageState extends State<MyPage> {
 
   Future<void> _openAcademicAction() async {
     if (_academicLoggedIn) {
-      await context.pushNamed('schedule');
+      await context.pushNamed(
+        'news-detail',
+        extra: {
+          'title': '教务系统',
+          'url': 'https://jwzx.zjxu.edu.cn/jwglxt/xtgl/index_initMenu.html?jsdm=xs',
+        },
+      );
       if (!mounted) return;
       _refreshStatus();
       return;
