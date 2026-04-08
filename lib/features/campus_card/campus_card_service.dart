@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class CampusCardService {
@@ -126,5 +127,11 @@ class CampusCardService {
         .toStringAsFixed(2)
         .replaceFirst(RegExp(r'0+$'), '')
         .replaceFirst(RegExp(r'\.$'), '');
+  }
+
+  @visibleForTesting
+  void debugSetCachedBalance(double? balance, {DateTime? updatedAt}) {
+    _cachedBalance = balance;
+    _lastUpdated = updatedAt;
   }
 }

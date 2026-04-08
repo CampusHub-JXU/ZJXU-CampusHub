@@ -12,14 +12,13 @@ class NoticeService {
   NoticeService._();
   static final NoticeService instance = NoticeService._();
 
-  final _dio = DioClient.instance.dio;
   List<Notice>? _cachedNotices;
 
   /// Total pages on the news site (descending numbering).
   static const _totalPages = 233;
 
   /// 缓存的新闻 Dio 实例（避免每次创建新实例）
-  late final Dio _newsDio = _createNewsDio();
+  Dio? _newsDio;
 
   List<Notice>? get cachedNotices => _cachedNotices;
 
@@ -53,7 +52,8 @@ class NoticeService {
 
   Future<List<Notice>> _fetchClassAdjustments() async {
     try {
-      final resp = await _dio.post<Map<String, dynamic>>(
+      await DioClient.instance.ensureInitialized();
+      final resp = await DioClient.instance.dio.post<Map<String, dynamic>>(
         '/xtgl/index_cxDbsy.html',
         queryParameters: {'flag': '1'},
       );
@@ -73,7 +73,7 @@ class NoticeService {
         ? 'https://news.zjxu.edu.cn/zhxw.htm'
         : 'https://news.zjxu.edu.cn/zhxw/${_totalPages - page + 1}.htm';
 
-    final resp = await _newsDio.get<List<int>>(url);
+    final resp = await (await _ensureNewsDio()).get<List<int>>(url);
     if (resp.data == null) return [];
 
     final html = utf8.decode(resp.data!, allowMalformed: true);
@@ -147,5 +147,15 @@ class NoticeService {
       ignoreSystemProxy: NetworkSettings.instance.ignoreSystemProxy.value,
     );
     return client;
+  }
+
+  Future<Dio> _ensureNewsDio() async {
+    await NetworkSettings.instance.ensureInitialized();
+    final existing = _newsDio;
+    if (existing != null) return existing;
+
+    final created = _createNewsDio();
+    _newsDio = created;
+    return created;
   }
 }

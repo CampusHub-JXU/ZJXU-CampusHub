@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
@@ -11,21 +12,52 @@ class DioClient {
   DioClient._();
   static final DioClient instance = DioClient._();
 
-  late final PersistCookieJar cookieJar;
-  late final Dio dio;
+  PersistCookieJar? _cookieJar;
+  Dio? _dio;
+  Future<void>? _initFuture;
+
+  PersistCookieJar get cookieJar =>
+      _cookieJar ?? (throw StateError('DioClient has not been initialized.'));
+
+  Dio get dio =>
+      _dio ?? (throw StateError('DioClient has not been initialized.'));
 
   Future<void> init() async {
-    final dir = await getApplicationDocumentsDirectory();
-    final cookieDir = '${dir.path}/.cookies/';
-    cookieJar = PersistCookieJar(
+    await ensureInitialized();
+  }
+
+  Future<void> ensureInitialized() async {
+    final existing = _initFuture;
+    if (existing != null) return existing;
+
+    final future = _initialize();
+    _initFuture = future;
+    try {
+      await future;
+    } catch (_) {
+      if (identical(_initFuture, future)) {
+        _initFuture = null;
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> _initialize() async {
+    if (_dio != null && _cookieJar != null) return;
+
+    await NetworkSettings.instance.ensureInitialized();
+    final cookieDir = await _resolveCookieDirectoryPath();
+    _cookieJar = PersistCookieJar(
       storage: FileStorage(cookieDir),
       persistSession: true,
     );
-    dio = _createDio();
+    _dio = _createDio();
   }
 
   void applyProxyMode() {
-    _applyProxyMode(dio);
+    final client = _dio;
+    if (client == null) return;
+    _applyProxyMode(client);
   }
 
   void _applyProxyMode(Dio client) {
@@ -36,6 +68,7 @@ class DioClient {
   }
 
   Dio _createDio() {
+    final jar = _cookieJar!;
     final client = Dio(
       BaseOptions(
         baseUrl: 'https://jwzx.zjxu.edu.cn/jwglxt',
@@ -51,7 +84,7 @@ class DioClient {
         validateStatus: (status) => status != null && status < 400,
       ),
     );
-    client.interceptors.add(buildCookieInterceptor(cookieJar));
+    client.interceptors.add(buildCookieInterceptor(jar));
     client.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) {
@@ -83,5 +116,26 @@ class DioClient {
     );
     _applyProxyMode(client);
     return client;
+  }
+
+  Future<String> _resolveCookieDirectoryPath() async {
+    final override = debugCookieDirectoryPathProvider;
+    if (override != null) {
+      return override();
+    }
+
+    final dir = await getApplicationDocumentsDirectory();
+    return '${dir.path}/.cookies/';
+  }
+
+  @visibleForTesting
+  Future<String> Function()? debugCookieDirectoryPathProvider;
+
+  @visibleForTesting
+  void debugReset() {
+    _cookieJar = null;
+    _dio = null;
+    _initFuture = null;
+    debugCookieDirectoryPathProvider = null;
   }
 }

@@ -1,12 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../app/app_bootstrap_controller.dart';
 import '../../app/theme.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/semester/semester_calendar.dart';
 import '../campus_card/campus_card_service.dart';
 import '../dorm_electricity/dorm_electricity_service.dart';
+import '../schedule/schedule_cache_snapshot.dart';
 import '../schedule/schedule_model.dart';
 import '../schedule/schedule_service.dart';
 
@@ -18,6 +22,8 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  final _bootstrapController = AppBootstrapController.instance;
+
   String _campusCardBalance = '--';
   String _dormElectricity = '--';
   CourseEntry? _nextCourse;
@@ -25,10 +31,14 @@ class _HomePageState extends State<HomePage> {
   bool _courseLoggedIn = false;
   bool _hasScheduleCache = false;
   DateTime? _scheduleUpdatedAt;
+  bool _hasHydratedBootstrapState = false;
 
   static const _weekdayLabels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
   int get _currentWeek => SemesterCalendar.instance.weekForDate(DateTime.now());
+  bool get _isBootstrapReady =>
+      _bootstrapController.phase.value.index >=
+      AppBootstrapPhase.localStateReady.index;
 
   @override
   void initState() {
@@ -37,9 +47,8 @@ class _HomePageState extends State<HomePage> {
       _onSemesterStartChanged,
     );
     ZhengfangAuth.instance.addListener(_onAcademicAuthChanged);
-    _refreshCampusCardBalance();
-    _refreshNextCourse();
-    _refreshDormElectricity();
+    _bootstrapController.phase.addListener(_onBootstrapPhaseChanged);
+    _onBootstrapPhaseChanged();
   }
 
   @override
@@ -48,18 +57,34 @@ class _HomePageState extends State<HomePage> {
       _onSemesterStartChanged,
     );
     ZhengfangAuth.instance.removeListener(_onAcademicAuthChanged);
+    _bootstrapController.phase.removeListener(_onBootstrapPhaseChanged);
     super.dispose();
   }
 
   void _onAcademicAuthChanged() {
-    if (!mounted) return;
+    if (!mounted || !_isBootstrapReady) return;
     _refreshNextCourse();
   }
 
   void _onSemesterStartChanged() {
     if (!mounted) return;
     setState(() {});
-    _refreshNextCourse();
+    if (_isBootstrapReady) {
+      _refreshNextCourse();
+    }
+  }
+
+  void _onBootstrapPhaseChanged() {
+    if (!_isBootstrapReady || _hasHydratedBootstrapState) return;
+    _hasHydratedBootstrapState = true;
+    _applyRestoredState();
+    if (mounted) {
+      setState(() {});
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(_refreshDeferredContent());
+    });
   }
 
   int _nextStartLesson(DateTime now) {
@@ -87,7 +112,88 @@ class _HomePageState extends State<HomePage> {
     return '${date.month}/${date.day} ${_weekdayLabels[date.weekday - 1]}';
   }
 
+  ({
+    bool hasScheduleCache,
+    DateTime? scheduleUpdatedAt,
+    bool courseLoggedIn,
+    CourseEntry? nextCourse,
+    String nextCourseLabel,
+  })
+  _buildNextCourseState({
+    required ScheduleCacheSnapshot? snapshot,
+    required DateTime now,
+  }) {
+    final hasScheduleCache = snapshot?.hasData ?? false;
+    final today = DateTime(now.year, now.month, now.day);
+    final nextLessonToday = _nextStartLesson(now);
+    CourseEntry? nextCourse;
+    var nextCourseLabel = '';
+
+    if (snapshot != null && snapshot.hasData) {
+      for (int offset = 0; offset < 14; offset++) {
+        final date = today.add(Duration(days: offset));
+        final week = _weekForDate(date);
+        final effectiveCourses = ScheduleService.instance
+            .buildEffectiveWeekCourses(
+              courses: snapshot.courses,
+              week: week,
+              changeRules: snapshot.changeRules,
+            );
+        final dayCourses =
+            effectiveCourses
+                .where((c) => c.weekday == date.weekday)
+                .where((c) => offset > 0 || c.startLesson >= nextLessonToday)
+                .toList()
+              ..sort((a, b) => a.startLesson.compareTo(b.startLesson));
+        if (dayCourses.isNotEmpty) {
+          nextCourse = dayCourses.first;
+          nextCourseLabel = _labelForDate(date, today);
+          break;
+        }
+      }
+    }
+
+    return (
+      hasScheduleCache: hasScheduleCache,
+      scheduleUpdatedAt: snapshot?.lastUpdatedAt,
+      courseLoggedIn: ZhengfangAuth.instance.isLoggedIn || hasScheduleCache,
+      nextCourse: nextCourse,
+      nextCourseLabel: nextCourseLabel,
+    );
+  }
+
+  void _applyRestoredState() {
+    final now = DateTime.now();
+    final cachedBalance = CampusCardService.instance.cachedBalance;
+    final dormService = DormElectricityService.instance;
+    final scheduleSnapshot = ScheduleService.instance.preferredSnapshot(
+      termContext: ScheduleService.instance.getCurrentTermContext(now),
+    );
+    final scheduleState = _buildNextCourseState(
+      snapshot: scheduleSnapshot,
+      now: now,
+    );
+
+    _campusCardBalance = CampusCardService.instance.formatBalance(
+      cachedBalance,
+    );
+    _dormElectricity = dormService.formatElectricity(
+      dormService.cachedElectricity,
+    );
+    _hasScheduleCache = scheduleState.hasScheduleCache;
+    _scheduleUpdatedAt = scheduleState.scheduleUpdatedAt;
+    _courseLoggedIn = scheduleState.courseLoggedIn;
+    _nextCourse = scheduleState.nextCourse;
+    _nextCourseLabel = scheduleState.nextCourseLabel;
+  }
+
+  Future<void> _refreshDeferredContent() async {
+    await _refreshCampusCardBalance();
+    await Future.wait<void>([_refreshNextCourse(), _refreshDormElectricity()]);
+  }
+
   Future<void> _refreshNextCourse() async {
+    if (!_isBootstrapReady) return;
     try {
       final now = DateTime.now();
       final result = await ScheduleService.instance.loadScheduleSnapshot(
@@ -95,43 +201,17 @@ class _HomePageState extends State<HomePage> {
       );
       if (!mounted) return;
 
-      final snapshot = result.snapshot;
-      final hasScheduleCache = snapshot?.hasData ?? false;
-      final today = DateTime(now.year, now.month, now.day);
-      final nextLessonToday = _nextStartLesson(now);
-      CourseEntry? nextCourse;
-      var nextCourseLabel = '';
-
-      if (snapshot != null && snapshot.hasData) {
-        for (int offset = 0; offset < 14; offset++) {
-          final date = today.add(Duration(days: offset));
-          final week = _weekForDate(date);
-          final effectiveCourses = ScheduleService.instance
-              .buildEffectiveWeekCourses(
-                courses: snapshot.courses,
-                week: week,
-                changeRules: snapshot.changeRules,
-              );
-          final dayCourses =
-              effectiveCourses
-                  .where((c) => c.weekday == date.weekday)
-                  .where((c) => offset > 0 || c.startLesson >= nextLessonToday)
-                  .toList()
-                ..sort((a, b) => a.startLesson.compareTo(b.startLesson));
-          if (dayCourses.isNotEmpty) {
-            nextCourse = dayCourses.first;
-            nextCourseLabel = _labelForDate(date, today);
-            break;
-          }
-        }
-      }
+      final scheduleState = _buildNextCourseState(
+        snapshot: result.snapshot,
+        now: now,
+      );
 
       setState(() {
-        _hasScheduleCache = hasScheduleCache;
-        _scheduleUpdatedAt = snapshot?.lastUpdatedAt;
-        _courseLoggedIn = ZhengfangAuth.instance.isLoggedIn || hasScheduleCache;
-        _nextCourse = nextCourse;
-        _nextCourseLabel = nextCourseLabel;
+        _hasScheduleCache = scheduleState.hasScheduleCache;
+        _scheduleUpdatedAt = scheduleState.scheduleUpdatedAt;
+        _courseLoggedIn = scheduleState.courseLoggedIn;
+        _nextCourse = scheduleState.nextCourse;
+        _nextCourseLabel = scheduleState.nextCourseLabel;
       });
     } catch (_) {
       if (!mounted) return;
@@ -162,6 +242,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _refreshDormElectricity() async {
+    if (!_isBootstrapReady) return;
     final service = DormElectricityService.instance;
     if (!await service.hasRoomConfig()) return;
     final value = await service.fetchElectricity();
@@ -645,32 +726,34 @@ class _HomePageState extends State<HomePage> {
     return GestureDetector(
       onTap: () => context.pushNamed('dorm-electricity'),
       child: Container(
-        height: 72,
+        height: 136,
         decoration: BoxDecoration(
           color: bgColor,
           borderRadius: BorderRadius.circular(16),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
+        padding: const EdgeInsets.all(16),
+        child: Stack(
           children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: AppColors.success.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(9),
-              ),
-              child: const Icon(
-                Icons.bolt_outlined,
-                color: AppColors.success,
-                size: 20,
+            Align(
+              alignment: Alignment.topLeft,
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: AppColors.success.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: const Icon(
+                  Icons.bolt_outlined,
+                  color: AppColors.success,
+                  size: 20,
+                ),
               ),
             ),
-            const SizedBox(width: 12),
-            Expanded(
+            Align(
+              alignment: Alignment.bottomLeft,
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
@@ -681,7 +764,7 @@ class _HomePageState extends State<HomePage> {
                       color: cs.onSurface,
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 2),
                   Text(
                     '剩余 $_dormElectricity 度',
                     style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
@@ -689,7 +772,14 @@ class _HomePageState extends State<HomePage> {
                 ],
               ),
             ),
-            Icon(Icons.arrow_forward_ios, size: 14, color: cs.onSurfaceVariant),
+            Align(
+              alignment: Alignment.bottomRight,
+              child: Icon(
+                Icons.arrow_forward_ios,
+                size: 14,
+                color: cs.onSurfaceVariant,
+              ),
+            ),
           ],
         ),
       ),

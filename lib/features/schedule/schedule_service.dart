@@ -184,6 +184,7 @@ class ScheduleService {
     int year,
     int term,
   ) async {
+    await DioClient.instance.ensureInitialized();
     final referer =
         'https://jwzx.zjxu.edu.cn/jwglxt/kbcx/xskbcx_cxXskbcxIndex.html'
         '?gnmkdm=N2151&layout=default&su=$studentId';
@@ -231,6 +232,7 @@ class ScheduleService {
   Future<List<CourseChangeRule>> fetchCourseChangeRules(
     String studentId,
   ) async {
+    await DioClient.instance.ensureInitialized();
     final messages = <String>{};
     messages.addAll(await _fetchInboxChangeMessages());
 
@@ -268,6 +270,7 @@ class ScheduleService {
   }
 
   Future<List<String>> _fetchInboxChangeMessages() async {
+    await DioClient.instance.ensureInitialized();
     final resp = await _dio.post<dynamic>(
       '/xtgl/index_cxDbsy.html',
       queryParameters: {'flag': '1'},
@@ -579,6 +582,7 @@ class ScheduleService {
     await _ensureRestored();
     _snapshots.clear();
     _lastStudentId = null;
+    _restored = true;
     await _prefs?.remove(_cacheStorageKey);
     await _prefs?.remove(_lastStudentStorageKey);
   }
@@ -588,6 +592,7 @@ class ScheduleService {
     _snapshots[_cacheKeyFor(snapshot.studentId, snapshot.termContext)] =
         snapshot;
     _lastStudentId = snapshot.studentId;
+    _restored = true;
   }
 
   Future<void> _ensureRestored() async {

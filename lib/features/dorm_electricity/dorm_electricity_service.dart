@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -62,7 +63,7 @@ class DormElectricityService {
   static const _keyElectricityUpdatedAt = 'dorm_cached_electricity_updated_at';
   static const refreshWindow = Duration(minutes: 30);
 
-  late final Dio _dio = _createDio();
+  Dio? _dio;
   SharedPreferences? _prefs;
   bool _cacheRestored = false;
 
@@ -80,8 +81,10 @@ class DormElectricityService {
   String? get lastError => _lastError;
 
   void applyProxyMode() {
+    final client = _dio;
+    if (client == null) return;
     applyProxyModeToDio(
-      _dio,
+      client,
       ignoreSystemProxy: NetworkSettings.instance.ignoreSystemProxy.value,
     );
   }
@@ -169,9 +172,10 @@ class DormElectricityService {
       final config = await loadRoomConfig();
       if (config == null) return null;
 
+      final dio = await _ensureDio();
       final url = _buildQueryUrl(config);
       AppLogger.instance.debug('电费查询 → $url');
-      final resp = await _dio.get<List<int>>(url);
+      final resp = await dio.get<List<int>>(url);
       AppLogger.instance.debug(
         '电费响应 status=${resp.statusCode} bytes=${resp.data?.length}',
       );
@@ -232,7 +236,8 @@ class DormElectricityService {
 
   /// 获取园区+楼幢列表（两级嵌套，无需认证）
   Future<List<DormBuilding>> fetchBuildings() async {
-    final resp = await _dio.post<List<int>>(
+    final dio = await _ensureDio();
+    final resp = await dio.post<List<int>>(
       'http://jdhq.wap.zjxu.edu.cn/dormcharge/base_elect/getParkBuild/ele_id/1',
       options: Options(contentType: 'application/x-www-form-urlencoded'),
     );
@@ -260,7 +265,8 @@ class DormElectricityService {
 
   /// 获取楼层+房间列表（两级嵌套，无需认证）
   Future<List<DormRoom>> fetchRooms(String buildingId) async {
-    final resp = await _dio.post<List<int>>(
+    final dio = await _ensureDio();
+    final resp = await dio.post<List<int>>(
       'http://jdhq.wap.zjxu.edu.cn/dormcharge/base_elect/getFloorRoom/ele_id/1',
       data: 'building_id=$buildingId',
       options: Options(contentType: 'application/x-www-form-urlencoded'),
@@ -308,6 +314,16 @@ class DormElectricityService {
     return client;
   }
 
+  Future<Dio> _ensureDio() async {
+    final existing = _dio;
+    if (existing != null) return existing;
+
+    await NetworkSettings.instance.ensureInitialized();
+    final created = _createDio();
+    _dio = created;
+    return created;
+  }
+
   Future<SharedPreferences> _ensurePrefs() async {
     final prefs = _prefs;
     if (prefs != null) return prefs;
@@ -326,5 +342,12 @@ class DormElectricityService {
       _keyElectricityUpdatedAt,
       updatedAt.millisecondsSinceEpoch,
     );
+  }
+
+  @visibleForTesting
+  void debugSetCachedElectricity(double? value, {DateTime? updatedAt}) {
+    _cachedElectricity = value;
+    _lastUpdated = updatedAt;
+    _cacheRestored = true;
   }
 }

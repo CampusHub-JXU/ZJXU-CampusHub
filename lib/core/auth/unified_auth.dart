@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io' as io;
 
+import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
@@ -57,9 +58,10 @@ class UnifiedAuthService extends ChangeNotifier {
   static const _aesKey = 'key_value_123456';
   static const _aesIv = '0987654321123456';
 
-  final _dio = DioClient.instance.dio;
-  final _cookieJar = DioClient.instance.cookieJar;
   final _cookieManager = CookieManager.instance();
+
+  Dio get _dio => DioClient.instance.dio;
+  PersistCookieJar get _cookieJar => DioClient.instance.cookieJar;
 
   _UnifiedAuthLoginContext? _cachedContext;
   bool _sessionActive = false;
@@ -70,6 +72,7 @@ class UnifiedAuthService extends ChangeNotifier {
   Future<Uint8List> fetchCaptcha({
     String serviceUrl = defaultServiceUrl,
   }) async {
+    await DioClient.instance.ensureInitialized();
     await _refreshLoginContext(serviceUrl);
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final referer = _buildLoginUri(serviceUrl).toString();
@@ -111,6 +114,7 @@ class UnifiedAuthService extends ChangeNotifier {
     String serviceUrl = defaultServiceUrl,
   }) async {
     try {
+      await DioClient.instance.ensureInitialized();
       final context = await _ensureLoginContext(serviceUrl);
       if (context.lt.isEmpty || context.execution.isEmpty) {
         // 如果 session 已经在 _refreshLoginContext 中建立，直接返回成功
@@ -177,6 +181,7 @@ class UnifiedAuthService extends ChangeNotifier {
   }
 
   Future<void> syncCookiesToWebView() async {
+    await DioClient.instance.ensureInitialized();
     // loadForRequest 需要带 path 的完整 URI 才能匹配到子路径 cookie
     final uris = [
       Uri.parse('$_newcaOrigin/cas/login'),
@@ -253,6 +258,7 @@ class UnifiedAuthService extends ChangeNotifier {
   Future<_UnifiedAuthLoginContext> _refreshLoginContext(
     String serviceUrl,
   ) async {
+    await DioClient.instance.ensureInitialized();
     AppLogger.instance.debug('正在刷新统一认证登录上下文...');
     final loginUri = _buildLoginUri(serviceUrl);
     final response = await _dio.getUri<String>(

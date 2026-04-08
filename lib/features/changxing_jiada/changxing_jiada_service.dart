@@ -48,8 +48,6 @@ class ChangxingJiadaService {
   static const _storage = FlutterSecureStorage();
   static const _keyToken = 'zjxu_changxing_token';
 
-  final Dio _dio = DioClient.instance.dio;
-
   String? _token;
   bool _restored = false;
 
@@ -82,6 +80,8 @@ class ChangxingJiadaService {
       throw ChangxingCasLoginException('请先登录一卡通');
     }
 
+    await DioClient.instance.ensureInitialized();
+    final dio = DioClient.instance.dio;
     AppLogger.instance.debug('畅行嘉大：开始 CAS SSO 登录...');
 
     try {
@@ -90,7 +90,7 @@ class ChangxingJiadaService {
       String? tokenId;
 
       for (var i = 0; i < 10; i++) {
-        final response = await _dio.get<String>(
+        final response = await dio.get<String>(
           nextUrl,
           options: Options(
             followRedirects: false,
@@ -147,7 +147,7 @@ class ChangxingJiadaService {
       }
 
       // 2. 用 tokenId 换取 JWT token
-      final tokenResp = await _dio.get<Map<String, dynamic>>(
+      final tokenResp = await dio.get<Map<String, dynamic>>(
         '$_baseUrl/getToken',
         queryParameters: {'tokenId': tokenId},
         options: Options(
@@ -289,6 +289,7 @@ class ChangxingJiadaService {
     String filePath,
     String fileName,
   ) async {
+    await DioClient.instance.ensureInitialized();
     await restoreSession();
     final token = _token ?? '';
     if (token.isEmpty) {
@@ -303,7 +304,7 @@ class ChangxingJiadaService {
       'file': await MultipartFile.fromFile(filePath, filename: effectiveName),
     });
 
-    final response = await _dio.postUri<Map<String, dynamic>>(
+    final response = await DioClient.instance.dio.postUri<Map<String, dynamic>>(
       Uri.parse('https://zhx.zjxu.edu.cn/api/image/add/single'),
       data: formData,
       options: Options(
@@ -596,6 +597,7 @@ class ChangxingJiadaService {
     String? contentType,
     Map<String, String>? query,
   }) async {
+    await DioClient.instance.ensureInitialized();
     await restoreSession();
     final token = _token ?? '';
     if (requiresToken && token.isEmpty) {
@@ -608,16 +610,17 @@ class ChangxingJiadaService {
       headers['token'] = token;
     }
 
-    final response = await _dio.requestUri<Map<String, dynamic>>(
-      uri,
-      data: data,
-      options: Options(
-        method: method,
-        contentType: contentType,
-        headers: headers,
-        responseType: ResponseType.json,
-      ),
-    );
+    final response = await DioClient.instance.dio
+        .requestUri<Map<String, dynamic>>(
+          uri,
+          data: data,
+          options: Options(
+            method: method,
+            contentType: contentType,
+            headers: headers,
+            responseType: ResponseType.json,
+          ),
+        );
 
     final json = response.data ?? <String, dynamic>{};
     final code = _extractCode(json);

@@ -195,6 +195,7 @@ class ZhengfangAuth extends ChangeNotifier {
 
   /// 获取 WebVPN CAS 验证码
   Future<Uint8List> fetchWebVpnCasCaptcha() async {
+    await DioClient.instance.ensureInitialized();
     AppLogger.instance.debug('正在获取 WebVPN CAS 登录页面...');
     // WebVPN /login 会 302 重定向到 CAS 登录页面，需要跟随重定向
     final loginUri = '$_webVpnBase$_webVpnCasPath';
@@ -288,6 +289,7 @@ class ZhengfangAuth extends ChangeNotifier {
     String captcha,
   ) async {
     try {
+      await DioClient.instance.ensureInitialized();
       final execution = _cachedCasExecution;
       final lt = _cachedCasLt;
       if (execution == null || execution.isEmpty) {
@@ -440,6 +442,7 @@ class ZhengfangAuth extends ChangeNotifier {
   /// 同步 WebVPN Cookie 到 WebView
   Future<void> syncWebVpnCookiesToWebView() async {
     if (_mode != ZhengfangMode.webVpn) return;
+    await DioClient.instance.ensureInitialized();
 
     final cookieManager = CookieManager.instance();
     final uris = [
@@ -517,6 +520,7 @@ class ZhengfangAuth extends ChangeNotifier {
   }
 
   Future<Uint8List> fetchCaptcha() async {
+    await DioClient.instance.ensureInitialized();
     await _refreshLoginContext();
     final ts = DateTime.now().millisecondsSinceEpoch;
     AppLogger.instance.debug(
@@ -567,6 +571,7 @@ class ZhengfangAuth extends ChangeNotifier {
     String captcha,
   ) async {
     try {
+      await DioClient.instance.ensureInitialized();
       final ts = DateTime.now().millisecondsSinceEpoch;
       final csrftoken = await _ensureCsrfToken();
       if (csrftoken.isEmpty) {
@@ -677,6 +682,7 @@ class ZhengfangAuth extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    await DioClient.instance.ensureInitialized();
     try {
       await _dio.post<void>('$_baseUrl/xtgl/login_logoutAccount.html');
     } catch (_) {}
