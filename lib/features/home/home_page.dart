@@ -321,7 +321,7 @@ class _HomePageState extends State<HomePage> {
                 ),
                 Positioned(
                   top: 12,
-                  right: 56,
+                  left: 154,
                   child: _buildHeaderScheduleStatus(),
                 ),
                 Padding(
