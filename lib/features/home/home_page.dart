@@ -642,50 +642,51 @@ class _HomePageState extends State<HomePage> {
     return GestureDetector(
       onTap: () => context.pushNamed('dorm-electricity'),
       child: Container(
+        height: 72,
         decoration: BoxDecoration(
           color: bgColor,
           borderRadius: BorderRadius.circular(16),
         ),
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Container(
-              width: 40,
-              height: 40,
+              width: 36,
+              height: 36,
               decoration: BoxDecoration(
                 color: AppColors.success.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(9),
               ),
               child: const Icon(
                 Icons.bolt_outlined,
                 color: AppColors.success,
-                size: 22,
+                size: 20,
               ),
             ),
-            const SizedBox(height: 18),
-            Text(
-              '宿舍电费',
-              style: TextStyle(
-                fontSize: 19,
-                fontWeight: FontWeight.w700,
-                color: cs.onSurface,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '宿舍电费',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: cs.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '剩余 $_dormElectricity 度',
+                    style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              '剩余 $_dormElectricity 度',
-              style: TextStyle(fontSize: 14, color: cs.onSurfaceVariant),
-            ),
-            const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.bottomRight,
-              child: Icon(
-                Icons.arrow_forward_ios,
-                size: 14,
-                color: cs.onSurfaceVariant,
-              ),
-            ),
+            Icon(Icons.arrow_forward_ios, size: 14, color: cs.onSurfaceVariant),
           ],
         ),
       ),
