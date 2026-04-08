@@ -186,18 +186,30 @@ class _HomePageState extends State<HomePage> {
     return '$month-$day $hour:$minute';
   }
 
-  Widget _buildHeaderScheduleStatus() {
+  Widget _buildHeaderScheduleStatus(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final value = _hasScheduleCache
         ? '更新于${_formatScheduleUpdatedAt(_scheduleUpdatedAt)}'
         : '未更新';
 
     final active = _hasScheduleCache;
-    final background = active
-        ? Colors.white.withValues(alpha: 0.16)
-        : Colors.white.withValues(alpha: 0.08);
-    final border = active
-        ? Colors.white.withValues(alpha: 0.22)
-        : Colors.white.withValues(alpha: 0.12);
+    final background = isDark
+        ? (active
+              ? Colors.white.withValues(alpha: 0.12)
+              : Colors.white.withValues(alpha: 0.06))
+        : (active
+              ? AppColors.primary.withValues(alpha: 0.1)
+              : AppColors.primary.withValues(alpha: 0.05));
+    final border = isDark
+        ? (active
+              ? Colors.white.withValues(alpha: 0.18)
+              : Colors.white.withValues(alpha: 0.1))
+        : (active
+              ? AppColors.primary.withValues(alpha: 0.16)
+              : AppColors.primary.withValues(alpha: 0.08));
+    final textColor = isDark
+        ? Colors.white.withValues(alpha: active ? 0.92 : 0.72)
+        : AppColors.primary.withValues(alpha: active ? 0.9 : 0.62);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
@@ -211,7 +223,7 @@ class _HomePageState extends State<HomePage> {
         style: TextStyle(
           fontSize: 10,
           fontWeight: FontWeight.w500,
-          color: Colors.white.withValues(alpha: active ? 0.95 : 0.72),
+          color: textColor,
         ),
       ),
     );
@@ -227,6 +239,14 @@ class _HomePageState extends State<HomePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: _buildHeaderScheduleStatus(context),
+                ),
+              ),
+              const SizedBox(height: 8),
               _buildHeader(context),
               const SizedBox(height: 16),
               // Two-column staggered waterfall layout
@@ -275,7 +295,7 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildHeader(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
       child: GestureDetector(
         onTap: () => _openSchedule(context),
         child: ClipRRect(
@@ -318,11 +338,6 @@ class _HomePageState extends State<HomePage> {
                       height: 200,
                     ),
                   ),
-                ),
-                Positioned(
-                  top: 12,
-                  left: 146,
-                  child: _buildHeaderScheduleStatus(),
                 ),
                 Padding(
                   padding: const EdgeInsets.all(16),
