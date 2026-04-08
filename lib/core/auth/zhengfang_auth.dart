@@ -67,6 +67,7 @@ class ZhengfangAuth extends ChangeNotifier {
   static const _webVpnCasPath = '/login';
 
   String? _cachedCsrfToken;
+  bool _contextIndicatesLoggedIn = false;
 
   ZhengfangMode _mode = ZhengfangMode.direct;
   ZhengfangMode get mode => _mode;
@@ -696,6 +697,16 @@ class ZhengfangAuth extends ChangeNotifier {
       final ts = DateTime.now().millisecondsSinceEpoch;
       final csrftoken = await _ensureCsrfToken();
       if (csrftoken.isEmpty) {
+        if (_contextIndicatesLoggedIn) {
+          if (username.isNotEmpty) {
+            currentStudentId = username;
+            await CredentialStore.instance.saveZhengfangSession(username);
+          }
+          _sessionActive = true;
+          AppLogger.instance.info('检测到教务已有有效会话，跳过登录请求');
+          notifyListeners();
+          return LoginSuccess();
+        }
         return LoginFailure('初始化登录参数失败，请刷新验证码后重试');
       }
 
@@ -828,6 +839,7 @@ class ZhengfangAuth extends ChangeNotifier {
 
   Future<String> _refreshCsrfToken() async {
     AppLogger.instance.debug('正在获取 CSRF Token...');
+    _contextIndicatesLoggedIn = false;
     final pageResp = await _dio.get<String>(
       '$_baseUrl/xtgl/login_slogin.html',
       options: Options(
@@ -835,6 +847,18 @@ class ZhengfangAuth extends ChangeNotifier {
         headers: {'Referer': _loginPageUrl},
       ),
     );
+
+    final statusCode = pageResp.statusCode ?? 0;
+    final location = pageResp.headers.value('location') ?? '';
+    if (_isLoginSuccess(statusCode, location, '')) {
+      _sessionActive = true;
+      _cachedCsrfToken = null;
+      _contextIndicatesLoggedIn = true;
+      AppLogger.instance.info('检测到教务已有有效会话，跳过 CSRF 获取');
+      notifyListeners();
+      return '';
+    }
+
     final pageHtml = pageResp.data ?? '';
     final matchById = RegExp(
       r'''id=["']csrftoken["'][^>]*value=["']([^"']+)["']''',
@@ -846,8 +870,10 @@ class ZhengfangAuth extends ChangeNotifier {
     _cachedCsrfToken = token;
     if (token.isEmpty) {
       AppLogger.instance.info('CSRF Token 为空，可能连接异常');
+      _contextIndicatesLoggedIn = false;
     } else {
       AppLogger.instance.debug('CSRF Token 获取成功: ${token.length} 字符');
+      _contextIndicatesLoggedIn = false;
     }
     return token;
   }
