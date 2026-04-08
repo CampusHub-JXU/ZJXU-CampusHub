@@ -277,18 +277,15 @@ class ZhengfangAuth {
       AppLogger.instance.info('正在通过 WebVPN CAS 登录 (一卡通认证)...');
       final loginUri = _cachedCasLoginUrl ?? '$_webVpnBase$_webVpnCasPath';
 
-      // 测试：同时发送加密密码和明文密码
-      // 测试：使用硬编码的正确密码哈希验证
       final encryptedPassword = _encryptPasswordWithAes(password);
 
-      AppLogger.instance.debug('WebVPN CAS 登录参数: username=$username, veriyCode=$captcha, encryptedPassword=$encryptedPassword, plaintextPassword=$password, lt=${lt != null && lt.length > 10 ? lt.substring(0, 10) : lt ?? ""}..., execution=${execution.length > 20 ? execution.substring(0, 20) : execution}...');
+      AppLogger.instance.debug('WebVPN CAS 登录参数: username=$username, veriyCode=$captcha, lt=${lt != null && lt.length > 10 ? lt.substring(0, 10) : lt ?? ""}..., execution=${execution.length > 20 ? execution.substring(0, 20) : execution}...');
 
       final resp = await _dio.post<String>(
         loginUri,
         data: {
           'username': username,
-          'password': password,  // 尝试明文密码
-          // 'password_plaintext': password,  // 移除额外字段
+          'password': encryptedPassword,
           'veriyCode': captcha,
           if (lt != null && lt.isNotEmpty) 'lt': lt,
           'execution': execution,
@@ -297,8 +294,8 @@ class ZhengfangAuth {
         options: Options(
           contentType: 'application/x-www-form-urlencoded',
           responseType: ResponseType.plain,
-          followRedirects: true,
-          validateStatus: (s) => s != null && s < 500,
+          followRedirects: false,
+          validateStatus: (s) => s != null && s < 1000,
           headers: {
             'Referer': loginUri,
             'Origin': _webVpnBase,
@@ -307,24 +304,28 @@ class ZhengfangAuth {
       );
 
       final statusCode = resp.statusCode;
-      final uri = resp.realUri.toString();
-      AppLogger.instance.debug('WebVPN CAS 响应: $statusCode $uri');
-      AppLogger.instance.debug('WebVPN CAS 响应 Body 前200字符: ${(resp.data ?? '').substring(0, resp.data!.length > 200 ? 200 : resp.data!.length)}');
-
-      // 检查是否成功（不包含 login 或包含特定成功标识）
+      final location = resp.headers.value('location') ?? '';
       final html = resp.data ?? '';
-      if (statusCode == 200 && !uri.contains('login')) {
-        _cachedCasExecution = null;
-        _cachedCasLt = null;
-        _cachedCasLoginUrl = null;
-        AppLogger.instance.info('WebVPN CAS 认证成功，正在同步 Cookie...');
-        await syncWebVpnCookiesToWebView();
-        AppLogger.instance.info('WebVPN CAS 认证成功，Cookie 同步完成');
-        return WebVpnCasSuccess();
+      AppLogger.instance.debug('WebVPN CAS 响应: $statusCode, location=$location');
+
+      // 302/303 重定向且不是回到 login 页面 = 成功
+      if ((statusCode == 302 || statusCode == 303) && location.isNotEmpty) {
+        final lowerLocation = location.toLowerCase();
+        if (!lowerLocation.contains('/cas/login')) {
+          // 成功，跟随重定向链建立 session
+          await _followWebVpnRedirectChain(loginUri, location);
+          _cachedCasExecution = null;
+          _cachedCasLt = null;
+          _cachedCasLoginUrl = null;
+          AppLogger.instance.info('WebVPN CAS 认证成功，正在同步 Cookie...');
+          await syncWebVpnCookiesToWebView();
+          AppLogger.instance.info('WebVPN CAS 认证成功，Cookie 同步完成');
+          return WebVpnCasSuccess();
+        }
       }
 
       // 登录失败，检查错误信息
-      AppLogger.instance.debug('WebVPN CAS 登录失败，检查错误...');
+      AppLogger.instance.debug('WebVPN CAS 登录失败 ($statusCode)，检查错误...');
       // 重新提取 execution 以备重试
       final newExec = _extractHiddenField(html, 'execution');
       if (newExec.isNotEmpty) _cachedCasExecution = newExec;
@@ -441,6 +442,33 @@ class ZhengfangAuth {
         }
       } catch (e) {
         AppLogger.instance.error('同步 WebVPN Cookie 失败: $e');
+      }
+    }
+  }
+
+  /// 跟随 WebVPN CAS 重定向链建立 session
+  Future<void> _followWebVpnRedirectChain(String referer, String location) async {
+    var nextUrl = location;
+    if (nextUrl.startsWith('/')) {
+      nextUrl = '$_webVpnBase$nextUrl';
+    }
+    for (var i = 0; i < 8; i++) {
+      AppLogger.instance.debug('WebVPN CAS 重定向 [$i]: $nextUrl');
+      final resp = await _dio.get<String>(
+        nextUrl,
+        options: Options(
+          responseType: ResponseType.plain,
+          followRedirects: false,
+          validateStatus: (s) => s != null && s < 1000,
+          headers: {'Referer': referer},
+        ),
+      );
+      final redirect = resp.headers.value('location') ?? '';
+      if (redirect.isEmpty) return;
+      nextUrl = redirect;
+      if (nextUrl.startsWith('/')) {
+        final uri = Uri.parse(referer);
+        nextUrl = '${uri.scheme}://${uri.host}$nextUrl';
       }
     }
   }
