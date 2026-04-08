@@ -189,7 +189,7 @@ class _HomePageState extends State<HomePage> {
   Widget _buildHeaderScheduleStatus(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final value = _hasScheduleCache
-        ? '更新于${_formatScheduleUpdatedAt(_scheduleUpdatedAt)}'
+        ? '课表更新于${_formatScheduleUpdatedAt(_scheduleUpdatedAt)}'
         : '未更新';
 
     final active = _hasScheduleCache;
