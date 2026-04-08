@@ -60,6 +60,7 @@ class UnifiedAuthService extends ChangeNotifier {
   static const _paymentOrigin = 'https://app.xiaoyuan.ccb.com';
   static const _aesKey = 'key_value_123456';
   static const _aesIv = '0987654321123456';
+  static const _requestTimeout = Duration(seconds: 12);
 
   final _cookieManager = CookieManager.instance();
 
@@ -69,6 +70,7 @@ class UnifiedAuthService extends ChangeNotifier {
   _UnifiedAuthLoginContext? _cachedContext;
   bool _sessionActive = false;
   String? currentAccount;
+  Future<void>? _cookieSyncFuture;
 
   bool get isLoggedIn => _sessionActive;
 
@@ -97,18 +99,25 @@ class UnifiedAuthService extends ChangeNotifier {
             error.type == DioExceptionType.connectionError);
   }
 
+  bool _shouldRetryWithSystemProxyForAny(Object error) {
+    if (!NetworkSettings.instance.ignoreSystemProxy.value) return false;
+    if (error is TimeoutException) return true;
+    if (error is DioException) return _shouldRetryWithSystemProxy(error);
+    return false;
+  }
+
   Future<Response<T>> _sendWithProxyFallback<T>({
     required String label,
     required Future<Response<T>> Function(Dio dio) request,
   }) async {
     try {
-      return await request(_dio);
-    } on DioException catch (error) {
-      if (!_shouldRetryWithSystemProxy(error)) rethrow;
+      return await request(_dio).timeout(_requestTimeout);
+    } catch (error) {
+      if (!_shouldRetryWithSystemProxyForAny(error)) rethrow;
       AppLogger.instance.info('$label 直连失败，尝试通过系统代理重试');
       final fallbackDio = _createProxyFallbackDio();
       try {
-        return await request(fallbackDio);
+        return await request(fallbackDio).timeout(_requestTimeout);
       } finally {
         fallbackDio.close(force: true);
       }
@@ -208,7 +217,7 @@ class UnifiedAuthService extends ChangeNotifier {
       final html = response.data ?? '';
       if (_isLoginSuccess(response.statusCode, location, html)) {
         await _followRedirectChain(context.actionUri, location);
-        await syncCookiesToWebView();
+        unawaited(_syncCookiesToWebViewSafely());
         _sessionActive = true;
         currentAccount = username;
         _cachedContext = null;
@@ -233,6 +242,24 @@ class UnifiedAuthService extends ChangeNotifier {
   }
 
   Future<void> syncCookiesToWebView() async {
+    final existing = _cookieSyncFuture;
+    if (existing != null) {
+      await existing;
+      return;
+    }
+
+    final future = _syncCookiesToWebViewInternal();
+    _cookieSyncFuture = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_cookieSyncFuture, future)) {
+        _cookieSyncFuture = null;
+      }
+    }
+  }
+
+  Future<void> _syncCookiesToWebViewInternal() async {
     await DioClient.instance.ensureInitialized();
     // loadForRequest 需要带 path 的完整 URI 才能匹配到子路径 cookie
     final uris = [
@@ -247,7 +274,13 @@ class UnifiedAuthService extends ChangeNotifier {
         'syncCookies ${uri.host}: ${cookies.map((c) => c.name).join(', ')}',
       );
       for (final cookie in cookies) {
-        await _setWebViewCookie(uri, cookie);
+        try {
+          await _setWebViewCookie(uri, cookie);
+        } catch (error) {
+          AppLogger.instance.error(
+            '同步 Cookie 失败 ${uri.host}/${cookie.name}: $error',
+          );
+        }
       }
     }
   }
@@ -266,8 +299,6 @@ class UnifiedAuthService extends ChangeNotifier {
       currentAccount = account;
       _sessionActive = true;
       if (syncWebViewCookies) {
-        await syncCookiesToWebView();
-      } else {
         unawaited(_syncCookiesToWebViewSafely());
       }
       notifyListeners();
@@ -334,7 +365,7 @@ class UnifiedAuthService extends ChangeNotifier {
       if (!lowerLocation.contains('/cas/login')) {
         AppLogger.instance.info('统一认证已有 session，跟随重定向完成认证');
         await _followRedirectChain(loginUri, location);
-        await syncCookiesToWebView();
+        unawaited(_syncCookiesToWebViewSafely());
         _sessionActive = true;
         if (currentAccount != null) {
           await CredentialStore.instance.saveUnifiedAuthSession(
