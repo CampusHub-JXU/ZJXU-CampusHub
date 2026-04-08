@@ -9,6 +9,7 @@ import '../features/service_hall/service_hall_page.dart';
 import '../features/settings/settings_page.dart';
 import '../features/dorm_electricity/dorm_electricity_page.dart';
 import '../features/dorm_electricity/dorm_electricity_settings_page.dart';
+import '../features/changxing_jiada/changxing_jiada_page.dart';
 import '../shared/widgets/webview_page.dart';
 
 final GoRouter appRouter = GoRouter(
@@ -85,6 +86,11 @@ final GoRouter appRouter = GoRouter(
           url: extra['url'] ?? '',
         );
       },
+    ),
+    GoRoute(
+      path: '/changxing-jiada',
+      name: 'changxing-jiada',
+      builder: (context, state) => const ChangxingJiadaPage(),
     ),
   ],
 );

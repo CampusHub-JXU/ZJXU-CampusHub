@@ -9,6 +9,7 @@ import 'core/network/dio_client.dart';
 import 'core/network/network_settings.dart';
 import 'core/semester/semester_calendar.dart';
 import 'features/campus_card/campus_card_service.dart';
+import 'features/changxing_jiada/changxing_jiada_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,6 +22,7 @@ Future<void> main() async {
     ZhengfangAuth.instance.restoreSession(),
     UnifiedAuthService.instance.restoreSession(),
     CampusCardService.instance.restoreBalance(),
+    ChangxingJiadaService.instance.restoreSession(),
   ]);
   runApp(const JiaxingUniversityApp());
 }

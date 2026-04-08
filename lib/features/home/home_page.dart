@@ -945,14 +945,7 @@ class _HomePageState extends State<HomePage> {
     final bgColor = isDark ? cs.surfaceContainerLowest : Colors.white;
 
     return GestureDetector(
-      onTap: () => context.pushNamed(
-        'news-detail',
-        extra: {
-          'title': '畅行嘉大',
-          'url':
-              'https://zhx.zjxu.edu.cn/wap/?type=jxxy_tysfrz&to_tysfrz=1&tokenId=1496450F07763AAEE96F47C8730FA075#/pages/students/navigation/index',
-        },
-      ),
+      onTap: () => context.pushNamed('changxing-jiada'),
       child: Container(
         width: double.infinity,
         decoration: BoxDecoration(
