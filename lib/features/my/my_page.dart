@@ -14,9 +14,6 @@ class MyPage extends StatefulWidget {
 }
 
 class _MyPageState extends State<MyPage> {
-  static const _academicServiceUrl =
-      'https://jwzx.zjxu.edu.cn/jwglxt/xtgl/index_initMenu.html?jsdm=xs';
-
   bool _campusLoggedIn = false;
   bool _academicLoggedIn = false;
   bool _hasScheduleCache = false;
@@ -69,20 +66,6 @@ class _MyPageState extends State<MyPage> {
 
   Future<void> _openAcademicAction() async {
     if (_academicLoggedIn) {
-      final sessionValid = await ZhengfangAuth.instance.validateSession();
-      if (!mounted) return;
-      if (sessionValid == false) {
-        final loginResult = await context.pushNamed<bool>(
-          'academic-system-login',
-        );
-        if (!mounted) return;
-        _refreshStatus();
-        if (loginResult == true && ZhengfangAuth.instance.isLoggedIn) {
-          await _openAcademicServicePage();
-        }
-        return;
-      }
-
       await _openAcademicServicePage();
       return;
     }
@@ -99,10 +82,7 @@ class _MyPageState extends State<MyPage> {
     await ZhengfangAuth.instance.syncCookiesToWebView();
     if (!mounted) return;
 
-    await context.pushNamed(
-      'news-detail',
-      extra: {'title': '教务系统', 'url': _academicServiceUrl},
-    );
+    await context.pushNamed('academic-service');
     if (!mounted) return;
     _refreshStatus();
   }

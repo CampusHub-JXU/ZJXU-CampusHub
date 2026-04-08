@@ -2,6 +2,7 @@ import 'package:go_router/go_router.dart';
 import 'app_shell_page.dart';
 import '../features/home/home_page.dart';
 import '../features/my/my_page.dart';
+import '../features/my/academic_service_page.dart';
 import '../features/my/unified_auth_login_page.dart';
 import '../features/my/academic_system_login_page.dart';
 import '../features/schedule/schedule_page.dart';
@@ -93,6 +94,11 @@ final GoRouter appRouter = GoRouter(
       path: '/academic-system-login',
       name: 'academic-system-login',
       builder: (context, state) => const AcademicSystemLoginPage(),
+    ),
+    GoRoute(
+      path: '/academic-service',
+      name: 'academic-service',
+      builder: (context, state) => const AcademicServicePage(),
     ),
     GoRoute(
       path: '/notice-list',
