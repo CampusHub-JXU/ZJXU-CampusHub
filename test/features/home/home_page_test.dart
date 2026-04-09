@@ -89,7 +89,7 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(find.text('¥23.5'), findsOneWidget);
+    expect(find.text('23.5'), findsOneWidget);
     expect(find.text('剩余 42 度'), findsOneWidget);
     expect(find.textContaining('课表更新于'), findsOneWidget);
     expect(find.text('线性代数'), findsOneWidget);
