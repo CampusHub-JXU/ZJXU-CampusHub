@@ -693,73 +693,65 @@ class _HomePageState extends State<HomePage> {
                           ],
                         ),
                   const Spacer(),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () async {
-                          await context.pushNamed('campus-card-payment');
-                          if (!mounted) return;
-                          _refreshCampusCardBalance();
-                        },
-                        child: Transform.translate(
-                          offset: const Offset(-4, 0),
-                          child: IntrinsicWidth(
-                            child: Container(
-                              height: 44,
-                              constraints: const BoxConstraints(minWidth: 80),
-                              padding: const EdgeInsets.only(
-                                left: 12,
-                                right: 14,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppColors.primary.withValues(
-                                  alpha: 0.08,
-                                ),
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: Align(
+                  Align(
+                    alignment: Alignment.bottomLeft,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () async {
+                        await context.pushNamed('campus-card-payment');
+                        if (!mounted) return;
+                        _refreshCampusCardBalance();
+                      },
+                      child: Transform.translate(
+                        offset: const Offset(-4, 0),
+                        child: IntrinsicWidth(
+                          child: Container(
+                            height: 44,
+                            constraints: const BoxConstraints(minWidth: 80),
+                            padding: const EdgeInsets.only(left: 12, right: 14),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
                                 alignment: Alignment.centerLeft,
-                                child: FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  alignment: Alignment.centerLeft,
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.center,
-                                    children: [
-                                      const Icon(
-                                        Icons.qr_code_2_rounded,
-                                        size: 28,
-                                        color: AppColors.primary,
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: [
+                                    const Icon(
+                                      Icons.qr_code_2_rounded,
+                                      size: 28,
+                                      color: AppColors.primary,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      '付款码',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: cs.onSurface,
+                                        height: 1.0,
                                       ),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        '付款码',
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w600,
-                                          color: cs.onSurface,
-                                          height: 1.0,
-                                        ),
-                                        maxLines: 1,
-                                      ),
-                                    ],
-                                  ),
+                                      maxLines: 1,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Icon(
+                                      Icons.arrow_forward_ios,
+                                      size: 14,
+                                      color: cs.onSurfaceVariant,
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
                           ),
                         ),
                       ),
-                      Icon(
-                        Icons.arrow_forward_ios,
-                        size: 14,
-                        color: cs.onSurfaceVariant,
-                      ),
-                    ],
+                    ),
                   ),
                 ],
               ),

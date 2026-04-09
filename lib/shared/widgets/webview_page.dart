@@ -866,7 +866,6 @@ class _WebViewPageState extends State<WebViewPage> {
                       },
                       shouldInterceptRequest: (controller, request) async {
                         final uri = request.url.uriValue;
-                        if (uri == null) return null;
 
                         if (_isDeniedWeChatSdkRequest(uri)) {
                           AppLogger.instance.info(
