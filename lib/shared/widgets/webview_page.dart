@@ -1,5 +1,6 @@
 import 'dart:collection';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -66,6 +67,46 @@ bool isServiceHallHomeUrl(String currentUrl) {
   final fragmentPath =
       '/${fragment.split('?').first.replaceFirst(RegExp(r'^/+'), '')}';
   return fragmentPath == _serviceHallHomeFragment;
+}
+
+bool _isDeniedWeChatSdkRequest(Uri uri) {
+  if (uri.host.toLowerCase() != 'webvpn.zjxu.edu.cn') return false;
+
+  final path = uri.path.toLowerCase();
+  return path.contains('/open/js/jweixin-1.6.0.js');
+}
+
+WebResourceResponse _buildWeChatSdkStubResponse() {
+  const script = '''
+(function () {
+  if (window.wx) return;
+  var noop = function () {};
+  var wx = {
+    config: noop,
+    ready: function (cb) { if (typeof cb === 'function') setTimeout(cb, 0); },
+    error: noop,
+    checkJsApi: noop,
+    updateAppMessageShareData: noop,
+    updateTimelineShareData: noop,
+    onMenuShareTimeline: noop,
+    onMenuShareAppMessage: noop,
+    hideOptionMenu: noop,
+    showOptionMenu: noop,
+    closeWindow: noop,
+    miniProgram: { getEnv: noop, navigateTo: noop }
+  };
+  window.wx = wx;
+})();
+''';
+
+  return WebResourceResponse(
+    contentType: 'application/javascript',
+    contentEncoding: 'utf-8',
+    data: Uint8List.fromList(utf8.encode(script)),
+    headers: const {'cache-control': 'no-store'},
+    statusCode: 200,
+    reasonPhrase: 'OK',
+  );
 }
 
 /// Reusable full-screen WebView page with progress bar and error handling.
@@ -703,6 +744,7 @@ class _WebViewPageState extends State<WebViewPage> {
                         javaScriptEnabled: true,
                         domStorageEnabled: true,
                         useShouldOverrideUrlLoading: true,
+                        useShouldInterceptRequest: true,
                         useHybridComposition: true,
                         allowsInlineMediaPlayback: true,
                         mixedContentMode:
@@ -793,6 +835,19 @@ class _WebViewPageState extends State<WebViewPage> {
                           },
                       onConsoleMessage: (controller, consoleMessage) {
                         _handleConsoleMessage(controller, consoleMessage);
+                      },
+                      shouldInterceptRequest: (controller, request) async {
+                        final uri = request.url?.uriValue;
+                        if (uri == null) return null;
+
+                        if (_isDeniedWeChatSdkRequest(uri)) {
+                          AppLogger.instance.info(
+                            'WebView 拦截被 WebVPN 拒绝的微信 SDK，返回兼容 stub: $uri',
+                          );
+                          return _buildWeChatSdkStubResponse();
+                        }
+
+                        return null;
                       },
                       onProgressChanged: (_, p) {
                         if (!mounted) return;
