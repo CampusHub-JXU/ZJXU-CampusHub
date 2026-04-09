@@ -151,10 +151,17 @@ class EcardService {
       final body = await _post('/GetQRCodeInfo.aspx', params);
       final json = _tryParseJson(body);
       if (json != null) {
+        AppLogger.instance.debug('ecard QR状态响应: $json');
         final code = json['Code'] as String? ?? '';
         final msg = json['Msg'] as String? ?? '';
         final tradeAmt = json['TradeAmt'] as String? ?? '';
-        return QRCodeInfoResult(code: code, msg: msg, tradeAmt: tradeAmt);
+        final tradeState = json['TradeState'] as String? ?? '';
+        return QRCodeInfoResult(
+          code: code,
+          msg: msg,
+          tradeAmt: tradeAmt,
+          tradeState: tradeState,
+        );
       }
       return const QRCodeInfoResult(code: '', msg: '解析失败');
     } catch (e) {
@@ -216,12 +223,14 @@ class QRCodeInfoResult {
     required this.code,
     this.msg = '',
     this.tradeAmt = '',
+    this.tradeState = '',
   });
 
   final String code;
   final String msg;
   final String tradeAmt;
+  final String tradeState;
 
-  bool get isUsed => code == '1';
-  bool get isPending => code == '0' || code.isEmpty;
+  bool get isUsed => code == '1' && tradeAmt.isNotEmpty;
+  bool get isPending => !isUsed;
 }

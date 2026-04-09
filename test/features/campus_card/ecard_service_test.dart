@@ -119,10 +119,16 @@ void main() {
   });
 
   group('QRCodeInfoResult', () {
-    test('isUsed when code is 1', () {
-      const result = QRCodeInfoResult(code: '1');
+    test('isUsed when code is 1 and tradeAmt is non-empty', () {
+      const result = QRCodeInfoResult(code: '1', tradeAmt: '5.00');
       expect(result.isUsed, true);
       expect(result.isPending, false);
+    });
+
+    test('isPending when code is 1 but tradeAmt is empty', () {
+      const result = QRCodeInfoResult(code: '1');
+      expect(result.isUsed, false);
+      expect(result.isPending, true);
     });
 
     test('isPending when code is 0', () {
