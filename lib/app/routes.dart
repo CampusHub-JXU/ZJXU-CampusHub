@@ -130,10 +130,13 @@ final GoRouter appRouter = GoRouter(
       path: '/external-webview',
       name: 'external-webview',
       builder: (context, state) {
-        final extra = state.extra as Map<String, String>;
+        final extra = Map<String, dynamic>.from(
+          (state.extra as Map?) ?? const <String, dynamic>{},
+        );
         return WebViewPage(
           title: extra['title'] ?? '网页',
           url: extra['url'] ?? '',
+          enableLoginQuickFill: extra['enableLoginQuickFill'] == true,
         );
       },
     ),

@@ -86,7 +86,7 @@ class _MyPageState extends State<MyPage> {
 
     await context.pushNamed(
       'external-webview',
-      extra: {'title': '教务系统', 'url': h5Url},
+      extra: {'title': '教务系统', 'url': h5Url, 'enableLoginQuickFill': true},
     );
     if (!mounted) return;
     _refreshStatus();
