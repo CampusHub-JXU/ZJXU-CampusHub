@@ -9,6 +9,7 @@ import '../../core/auth/unified_auth.dart';
 typedef LoginCredentialLoader = Future<(String, String)?> Function();
 typedef LoginCredentialSaver =
     Future<void> Function(String username, String password);
+typedef LoginSessionPreflight = Future<bool> Function();
 typedef LoginCaptchaLoader = Future<Uint8List> Function();
 typedef LoginSubmitHandler =
     Future<String?> Function(String username, String password, String captcha);
@@ -22,6 +23,7 @@ class UnifiedAuthLoginWidget extends StatefulWidget {
     this.description = '账号为校园一卡通号',
     this.loadSavedCredentials,
     this.saveCredentials,
+    this.sessionPreflight,
     this.captchaLoader,
     this.loginHandler,
   });
@@ -32,6 +34,7 @@ class UnifiedAuthLoginWidget extends StatefulWidget {
   final String description;
   final LoginCredentialLoader? loadSavedCredentials;
   final LoginCredentialSaver? saveCredentials;
+  final LoginSessionPreflight? sessionPreflight;
   final LoginCaptchaLoader? captchaLoader;
   final LoginSubmitHandler? loginHandler;
 
@@ -51,8 +54,32 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
   @override
   void initState() {
     super.initState();
-    _loadSaved();
-    _refreshCaptcha();
+    _bootstrapLoginState();
+  }
+
+  Future<void> _bootstrapLoginState() async {
+    await _loadSaved();
+    await Future<void>.delayed(Duration.zero);
+
+    if (UnifiedAuthService.instance.isLoggedIn) {
+      if (mounted) widget.onLoginSuccess();
+      return;
+    }
+
+    final hasActiveSession =
+        await widget.sessionPreflight?.call() ??
+        await UnifiedAuthService.instance.prepareLogin(
+          serviceUrl: widget.serviceUrl,
+        );
+    if (!mounted) return;
+
+    if (hasActiveSession) {
+      widget.onLoginSuccess();
+      return;
+    }
+
+    await Future<void>.delayed(Duration.zero);
+    await _refreshCaptcha();
   }
 
   Future<void> _loadSaved() async {

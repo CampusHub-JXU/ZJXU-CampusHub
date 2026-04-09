@@ -66,4 +66,28 @@ void main() {
       );
     });
   });
+
+  group('UnifiedAuthService session short-circuit', () {
+    setUp(() {
+      UnifiedAuthService.instance.debugReset();
+    });
+
+    test(
+      'prepareLogin returns true immediately when session is active',
+      () async {
+        UnifiedAuthService.instance.debugSetSession(
+          active: true,
+          account: '1234567890',
+        );
+        expect(UnifiedAuthService.instance.isLoggedIn, isTrue);
+
+        final result = await UnifiedAuthService.instance.prepareLogin();
+        expect(result, isTrue);
+      },
+    );
+
+    test('isLoggedIn is false after debugReset', () {
+      expect(UnifiedAuthService.instance.isLoggedIn, isFalse);
+    });
+  });
 }

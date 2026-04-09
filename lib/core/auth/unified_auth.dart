@@ -119,6 +119,12 @@ class UnifiedAuthService extends ChangeNotifier {
 
   bool get isLoggedIn => _sessionActive;
 
+  Future<bool> prepareLogin({String serviceUrl = defaultServiceUrl}) async {
+    if (_sessionActive) return true;
+    final context = await _refreshLoginContext(serviceUrl);
+    return _sessionActive && context.lt.isEmpty && context.execution.isEmpty;
+  }
+
   Future<bool?> validateSession({
     String serviceUrl = defaultServiceUrl,
     bool syncWebViewCookies = true,
@@ -241,7 +247,7 @@ class UnifiedAuthService extends ChangeNotifier {
     String serviceUrl = defaultServiceUrl,
   }) async {
     await DioClient.instance.ensureInitialized();
-    await _refreshLoginContext(serviceUrl);
+    await _ensureLoginContext(serviceUrl);
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final referer = _buildLoginUri(serviceUrl).toString();
     final captchaUri = Uri.parse('$_newcaOrigin/cas/captcha.html?t=$timestamp');
@@ -454,6 +460,16 @@ class UnifiedAuthService extends ChangeNotifier {
   Future<_UnifiedAuthLoginContext> _refreshLoginContext(
     String serviceUrl,
   ) async {
+    if (_sessionActive) {
+      AppLogger.instance.debug('统一认证已有活跃会话，跳过网络请求');
+      return _UnifiedAuthLoginContext(
+        serviceUrl: serviceUrl,
+        lt: '',
+        execution: '',
+        actionUri: _buildLoginUri(serviceUrl),
+      );
+    }
+
     await DioClient.instance.ensureInitialized();
     AppLogger.instance.debug('正在刷新统一认证登录上下文...');
     final loginUri = _buildLoginUri(serviceUrl);
