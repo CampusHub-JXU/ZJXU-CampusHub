@@ -74,7 +74,7 @@ class _CampusCardPaymentPageState extends State<CampusCardPaymentPage> {
 
   void _startPolling(String qrCode) {
     _pollTimer?.cancel();
-    _pollTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+    _pollTimer = Timer.periodic(const Duration(seconds: 30), (timer) async {
       final info = await _ecard.getQRCodeInfo(qrCode);
       if (!mounted) {
         timer.cancel();
