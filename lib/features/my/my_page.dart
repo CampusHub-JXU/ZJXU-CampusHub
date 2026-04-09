@@ -64,37 +64,36 @@ class _MyPageState extends State<MyPage> {
     _refreshStatus();
   }
 
-  Future<void> _openAcademicAction() async {
-    if (_academicLoggedIn) {
-      await _openAcademicServicePage();
-      return;
-    }
-    final loginResult = await context.pushNamed<bool>('academic-system-login');
+  Future<void> _loginAcademic() async {
+    await context.pushNamed('academic-system-login');
     if (!mounted) return;
     _refreshStatus();
-    if (loginResult == true && ZhengfangAuth.instance.isLoggedIn) {
-      await _openAcademicServicePage();
-    }
   }
 
-  Future<void> _openAcademicServicePage() async {
-    // 同步教务系统 Cookie 到 WebView
-    await ZhengfangAuth.instance.syncCookiesToWebView();
+  Future<void> _openAcademicH5() async {
+    final h5Url = ZhengfangAuth.instance.buildPortalUrl(
+      '/xtgl/index_initMenu.html',
+      queryParameters: {
+        'jsdm': 'xs',
+        '_t': DateTime.now().millisecondsSinceEpoch,
+      },
+    );
+
+    if (_academicLoggedIn) {
+      await ZhengfangAuth.instance.syncCookiesToWebView();
+    }
     if (!mounted) return;
 
-    await context.pushNamed('academic-service');
+    await context.pushNamed(
+      'external-webview',
+      extra: {'title': '教务系统', 'url': h5Url},
+    );
     if (!mounted) return;
     _refreshStatus();
   }
 
   Future<void> _reloginCampus() async {
     await context.pushNamed('unified-auth-login');
-    if (!mounted) return;
-    _refreshStatus();
-  }
-
-  Future<void> _reloginAcademic() async {
-    await context.pushNamed('academic-system-login');
     if (!mounted) return;
     _refreshStatus();
   }
@@ -193,10 +192,10 @@ class _MyPageState extends State<MyPage> {
             iconColor: AppColors.info,
             title: '教务系统',
             subtitle: _academicSubtitle(),
-            primaryActionLabel: _academicLoggedIn ? '进入服务' : '登录',
-            onPrimaryAction: _openAcademicAction,
-            secondaryActionLabel: _academicLoggedIn ? '重新登录' : null,
-            onSecondaryAction: _academicLoggedIn ? _reloginAcademic : null,
+            primaryActionLabel: '登录',
+            onPrimaryAction: _loginAcademic,
+            secondaryActionLabel: '进入教务系统',
+            onSecondaryAction: _openAcademicH5,
           ),
           const SizedBox(height: 18),
           GestureDetector(
