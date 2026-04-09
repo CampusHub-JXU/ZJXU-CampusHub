@@ -75,7 +75,11 @@ class SettingsPage extends StatelessWidget {
                           ButtonSegment<ThemeMode>(
                             value: ThemeMode.system,
                             icon: Icon(Icons.brightness_auto),
-                            label: Text('跟随系统'),
+                            label: Text(
+                              '跟随系统',
+                              overflow: TextOverflow.ellipsis,
+                              softWrap: false,
+                            ),
                           ),
                           ButtonSegment<ThemeMode>(
                             value: ThemeMode.light,
@@ -95,11 +99,6 @@ class SettingsPage extends StatelessWidget {
                           );
                         },
                       ),
-                    ),
-                    const Divider(height: 1),
-                    const ListTile(
-                      title: Text('跟随系统（自适应）'),
-                      subtitle: Text('会根据系统深色/浅色设置自动切换'),
                     ),
                   ],
                 ),
