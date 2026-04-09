@@ -44,5 +44,8 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Logcat dumps (may contain App IDs and other secrets)
+logcat_dump.txt
+
 # Local mirrored public repo
 /JXU-Portal-public/
