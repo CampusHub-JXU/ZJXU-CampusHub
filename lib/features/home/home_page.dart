@@ -987,33 +987,31 @@ class _HomePageState extends State<HomePage> {
       onTap: null,
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: Column(
+        child: Row(
           children: [
             Container(
-              width: 32,
-              height: 32,
+              width: 36,
+              height: 36,
               decoration: BoxDecoration(
                 color: color.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(icon, color: color, size: 18),
+              child: Icon(icon, color: color, size: 20),
             ),
-            const SizedBox(height: 8),
-            FittedBox(
-              fit: BoxFit.scaleDown,
+            const SizedBox(width: 12),
+            Expanded(
               child: Text(
                 label,
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: 14,
                   color: cs.onSurface,
                   fontWeight: FontWeight.w600,
                 ),
-                textAlign: TextAlign.center,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
