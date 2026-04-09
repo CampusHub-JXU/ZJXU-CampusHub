@@ -957,12 +957,7 @@ class _HomePageState extends State<HomePage> {
                 AppColors.info,
               ),
               const SizedBox(height: 8),
-              _buildLearningServiceItem(
-                context,
-                Icons.north_rounded,
-                '畅行嘉大',
-                const Color(0xFF2EA567),
-              ),
+              _buildChangxingJiadaTile(context),
             ],
           ),
         ],
@@ -1010,6 +1005,55 @@ class _HomePageState extends State<HomePage> {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChangxingJiadaTile(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final tileColor = const Color(0xFF2EA567);
+    final tileBgColor = isDark
+        ? tileColor.withValues(alpha: 0.08)
+        : const Color(0xFFF3FAF5);
+    return InkWell(
+      onTap: () async {
+        await context.pushNamed('changxing-jiada');
+      },
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          color: tileBgColor,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: tileColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(Icons.north_rounded, color: tileColor, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                '畅行嘉大',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: cs.onSurface,
+                  fontWeight: FontWeight.w600,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            Icon(Icons.arrow_forward_ios, size: 14, color: cs.onSurfaceVariant),
           ],
         ),
       ),
@@ -1175,7 +1219,7 @@ class _HomePageState extends State<HomePage> {
             ),
           ],
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
         child: Row(
           children: [
             Container(
