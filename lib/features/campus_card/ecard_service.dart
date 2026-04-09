@@ -86,26 +86,8 @@ class EcardService {
     return response.data ?? '';
   }
 
-  Future<String?> queryAccNumByIdNo(String idNo, {String idType = '1'}) async {
-    try {
-      final params = _buildParams({'IDNo': idNo, 'IDType': idType});
-      final body = await _post('/QueryAccInfo.aspx', params);
-      final json = _tryParseJson(body);
-      if (json != null && json['Code'] == '1') {
-        final accNum = json['AccNum'] as String? ?? '';
-        if (accNum.isNotEmpty) {
-          _cachedAccNum = accNum;
-          AppLogger.instance.info('ecard 账号查询成功: AccNum=$accNum');
-          return accNum;
-        }
-      }
-      final msg = json?['Msg'] as String? ?? body;
-      AppLogger.instance.info('ecard 账号查询失败: $msg');
-      return null;
-    } catch (e) {
-      AppLogger.instance.error('ecard 账号查询异常: $e');
-      return null;
-    }
+  static String studentIdToAccNum(String studentId) {
+    return studentId.replaceFirst(RegExp(r'^0+'), '');
   }
 
   Future<bool> queryAccAuth(String accNum) async {
@@ -182,14 +164,8 @@ class EcardService {
   }
 
   Future<QRCodeInitResult> initializeAndCreateQRCode(String studentId) async {
-    if (_cachedAccNum == null || _cachedAccNum != studentId) {
-      final accNum = await queryAccNumByIdNo(studentId);
-      if (accNum == null) {
-        return QRCodeInitResult(error: '查询校园卡账号失败');
-      }
-    }
-
-    final accNum = _cachedAccNum!;
+    final accNum = studentIdToAccNum(studentId);
+    _cachedAccNum = accNum;
 
     final authOk = await queryAccAuth(accNum);
     if (!authOk) {

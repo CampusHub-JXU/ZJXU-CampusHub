@@ -47,6 +47,20 @@ void main() {
     });
   });
 
+  group('EcardService.studentIdToAccNum', () {
+    test('strips leading zeros', () {
+      expect(EcardService.studentIdToAccNum('00213544'), '213544');
+    });
+
+    test('returns same value when no leading zeros', () {
+      expect(EcardService.studentIdToAccNum('213544'), '213544');
+    });
+
+    test('handles single digit', () {
+      expect(EcardService.studentIdToAccNum('0001'), '1');
+    });
+  });
+
   group('EcardService.tripleBase64Encode/Decode', () {
     test('encodes 213544 to expected triple Base64', () {
       expect(EcardService.tripleBase64Encode('213544'), 'VFdwRmVrNVVVVEE9');
