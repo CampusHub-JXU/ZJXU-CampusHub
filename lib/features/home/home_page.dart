@@ -941,33 +941,27 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           const SizedBox(height: 14),
-          Row(
+          Column(
             children: [
-              Expanded(
-                child: _buildLearningServiceItem(
-                  context,
-                  Icons.workspace_premium_outlined,
-                  '第二课堂',
-                  AppColors.gold,
-                ),
+              _buildLearningServiceItem(
+                context,
+                Icons.workspace_premium_outlined,
+                '第二课堂',
+                AppColors.gold,
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildLearningServiceItem(
-                  context,
-                  Icons.local_library_outlined,
-                  '图书馆',
-                  AppColors.info,
-                ),
+              const SizedBox(height: 8),
+              _buildLearningServiceItem(
+                context,
+                Icons.local_library_outlined,
+                '图书馆',
+                AppColors.info,
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildLearningServiceItem(
-                  context,
-                  Icons.north_rounded,
-                  '畅行嘉大',
-                  const Color(0xFF2EA567),
-                ),
+              const SizedBox(height: 8),
+              _buildLearningServiceItem(
+                context,
+                Icons.north_rounded,
+                '畅行嘉大',
+                const Color(0xFF2EA567),
               ),
             ],
           ),
