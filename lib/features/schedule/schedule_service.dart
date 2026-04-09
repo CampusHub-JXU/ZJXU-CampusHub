@@ -185,9 +185,14 @@ class ScheduleService {
     int term,
   ) async {
     await DioClient.instance.ensureInitialized();
-    final referer =
-        'https://jwzx.zjxu.edu.cn/jwglxt/kbcx/xskbcx_cxXskbcxIndex.html'
-        '?gnmkdm=N2151&layout=default&su=$studentId';
+    final referer = ZhengfangAuth.instance.buildPortalUrl(
+      '/kbcx/xskbcx_cxXskbcxIndex.html',
+      queryParameters: {
+        'gnmkdm': 'N2151',
+        'layout': 'default',
+        'su': studentId,
+      },
+    );
 
     final resp = await _dio.post<dynamic>(
       '/kbcx/xskbcx_cxXsKb.html',
@@ -236,7 +241,7 @@ class ScheduleService {
     final messages = <String>{};
     messages.addAll(await _fetchInboxChangeMessages());
 
-    final referer = 'https://jwzx.zjxu.edu.cn/jwglxt/xtgl/index_initMenu.html';
+    final referer = ZhengfangAuth.instance.academicServiceUrl;
     final resp = await _dio.post<String>(
       '/xtgl/index_cxAreaThree.html',
       queryParameters: {
@@ -276,7 +281,10 @@ class ScheduleService {
       queryParameters: {'flag': '1'},
       options: Options(
         validateStatus: (status) => status != null && status < 1000,
-        headers: {'X-Requested-With': 'XMLHttpRequest'},
+        headers: {
+          'Referer': ZhengfangAuth.instance.academicServiceUrl,
+          'X-Requested-With': 'XMLHttpRequest',
+        },
       ),
     );
 

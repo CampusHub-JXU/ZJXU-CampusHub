@@ -7,9 +7,7 @@ import 'login_widget.dart';
 import 'webview_page.dart';
 
 bool isZhengfangLoginUrl(String currentUrl) {
-  final normalizedUrl = currentUrl.trim().toLowerCase();
-  if (normalizedUrl.isEmpty) return false;
-  return normalizedUrl.contains('/xtgl/login_slogin.html');
+  return isZhengfangLoginEntryUrl(currentUrl);
 }
 
 class ZhengfangProtectedWebViewPage extends StatefulWidget {
@@ -102,9 +100,10 @@ class _ZhengfangProtectedWebViewPageState
     }
 
     try {
+      final resolvedUrl = ZhengfangAuth.instance.resolvePortalUrl(widget.url);
       await ZhengfangAuth.instance.syncCookiesToWebView();
       final headers = await ZhengfangAuth.instance.buildWebViewHeaders(
-        widget.url,
+        resolvedUrl,
       );
       if (!mounted) return;
       setState(() {
@@ -135,7 +134,7 @@ class _ZhengfangProtectedWebViewPageState
       return WebViewPage(
         key: _webViewKey,
         title: widget.title,
-        url: widget.url,
+        url: ZhengfangAuth.instance.resolvePortalUrl(widget.url),
         initialHeaders: _initialHeaders,
         onLoadStop: _handleLoadStop,
       );

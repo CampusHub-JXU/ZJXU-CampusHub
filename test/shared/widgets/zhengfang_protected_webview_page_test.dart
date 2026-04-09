@@ -16,6 +16,7 @@ void main() {
         ),
         isTrue,
       );
+      expect(isZhengfangLoginUrl('https://webvpn.zjxu.edu.cn/login'), isTrue);
     });
 
     test('ignores non-login pages', () {

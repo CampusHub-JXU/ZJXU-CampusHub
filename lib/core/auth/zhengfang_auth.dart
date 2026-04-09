@@ -11,6 +11,33 @@ import '../logging/app_logger.dart';
 import '../network/dio_client.dart';
 import 'credential_store.dart';
 
+bool isZhengfangGatewayLoginUrl(String currentUrl) {
+  final raw = currentUrl.trim();
+  if (raw.isEmpty) return false;
+
+  final uri = Uri.tryParse(raw);
+  if (uri == null) return false;
+
+  return uri.host.toLowerCase() == 'webvpn.zjxu.edu.cn' &&
+      uri.path.toLowerCase() == '/login';
+}
+
+bool isZhengfangLoginEntryUrl(String currentUrl) {
+  final normalizedUrl = currentUrl.trim().toLowerCase();
+  if (normalizedUrl.isEmpty) return false;
+  return normalizedUrl.contains('/xtgl/login_slogin.html') ||
+      normalizedUrl.contains('/cas/login') ||
+      isZhengfangGatewayLoginUrl(currentUrl);
+}
+
+bool isZhengfangAuthenticatedUrl(String currentUrl) {
+  final normalizedUrl = currentUrl.trim().toLowerCase();
+  if (normalizedUrl.isEmpty) return false;
+  return normalizedUrl.contains('index_initmenu') ||
+      normalizedUrl.contains('index_cxyhxxindex') ||
+      normalizedUrl.contains('/xtgl/index');
+}
+
 /// 教务系统连接模式
 enum ZhengfangMode {
   /// 直连教务系统 (校园网)
@@ -85,10 +112,53 @@ class ZhengfangAuth extends ChangeNotifier {
 
   String get _loginPageUrl => _mode == ZhengfangMode.direct
       ? '$_directOrigin$_directLoginPath'
-      : _webVpnLoginPath;
+      : '$_webVpnBase$_webVpnLoginPath';
 
   String get _origin =>
       _mode == ZhengfangMode.direct ? _directOrigin : _webVpnBase;
+
+  String get academicServiceUrl => buildPortalUrl(
+    '/xtgl/index_initMenu.html',
+    queryParameters: {'jsdm': 'xs'},
+  );
+
+  String buildPortalUrl(String path, {Map<String, dynamic>? queryParameters}) {
+    final normalizedPath = path.startsWith('/') ? path : '/$path';
+    final uri = Uri.parse('$_baseUrl$normalizedPath');
+    if (queryParameters == null || queryParameters.isEmpty) {
+      return uri.toString();
+    }
+    return uri
+        .replace(
+          queryParameters: queryParameters.map(
+            (key, value) => MapEntry(key, value.toString()),
+          ),
+        )
+        .toString();
+  }
+
+  String resolvePortalUrl(String urlOrPath) {
+    final raw = urlOrPath.trim();
+    if (raw.isEmpty) return raw;
+
+    final uri = Uri.tryParse(raw);
+    if (uri == null) return buildPortalUrl(raw);
+    if (!uri.hasScheme) {
+      return buildPortalUrl(uri.path, queryParameters: uri.queryParameters);
+    }
+    if (_mode != ZhengfangMode.webVpn ||
+        uri.host.toLowerCase() != 'jwzx.zjxu.edu.cn') {
+      return raw;
+    }
+
+    return Uri.parse('$_webVpnBase$_portalPrefix${uri.path}')
+        .replace(
+          queryParameters: uri.queryParameters.isEmpty
+              ? null
+              : uri.queryParameters,
+        )
+        .toString();
+  }
 
   // ── RSA encryption ──────────────────────────────────────────────────────────
 
@@ -450,7 +520,7 @@ class ZhengfangAuth extends ChangeNotifier {
     final cookieManager = CookieManager.instance();
     final uris = [
       Uri.parse('$_webVpnBase/'),
-      Uri.parse(_webVpnLoginPath),
+      Uri.parse(_loginPageUrl),
       Uri.parse('$_webVpnBase$_webVpnJwglxtPrefix/'),
     ];
 
@@ -531,7 +601,8 @@ class ZhengfangAuth extends ChangeNotifier {
   Future<Map<String, String>> buildWebViewHeaders(String targetUrl) async {
     await DioClient.instance.ensureInitialized();
 
-    final uri = Uri.parse(targetUrl);
+    final resolvedUrl = resolvePortalUrl(targetUrl);
+    final uri = Uri.parse(resolvedUrl);
     final cookies = await _cookieJar.loadForRequest(uri);
     final cookieHeader = cookies
         .map((cookie) => '${cookie.name}=${cookie.value}')
@@ -579,12 +650,14 @@ class ZhengfangAuth extends ChangeNotifier {
       );
 
       final statusCode = response.statusCode ?? 0;
-      final location = (response.headers.value('location') ?? '').toLowerCase();
+      final location = response.headers.value('location') ?? '';
       final html = (response.data ?? '').toLowerCase();
 
       final redirectedToLogin =
           (statusCode == 302 || statusCode == 303) &&
-          (location.contains('login_slogin') || location.contains('kaptcha'));
+          (location.toLowerCase().contains('login_slogin') ||
+              location.toLowerCase().contains('kaptcha') ||
+              isZhengfangGatewayLoginUrl(location));
       final loginPageReturned =
           statusCode == 200 && _looksLikeJwLoginPage(html);
 
@@ -661,6 +734,13 @@ class ZhengfangAuth extends ChangeNotifier {
   /// 设置连接模式
   void setMode(ZhengfangMode mode) {
     _mode = mode;
+    _cachedCsrfToken = null;
+    _contextIndicatesLoggedIn = false;
+    DioClient.instance.updateBaseUrl(_baseUrl);
+    DioClient.instance
+        .ensureInitialized()
+        .then((_) => DioClient.instance.updateBaseUrl(_baseUrl))
+        .catchError((_) {});
     AppLogger.instance.info(
       '教务系统连接模式切换为: ${mode == ZhengfangMode.direct ? "直连" : "WebVPN"}',
     );
@@ -682,6 +762,12 @@ class ZhengfangAuth extends ChangeNotifier {
         headers: {'Referer': _loginPageUrl},
       ),
     );
+
+    final location = resp.headers.value('location') ?? '';
+    if (isZhengfangGatewayLoginUrl(location)) {
+      AppLogger.instance.info('教务验证码请求被重定向到 WebVPN 登录页');
+      throw CaptchaException('WebVPN 认证已过期，请重新登录');
+    }
 
     final contentType = resp.headers.value('content-type') ?? '';
     if (contentType.contains('text/html')) {
@@ -747,6 +833,10 @@ class ZhengfangAuth extends ChangeNotifier {
           },
         ),
       );
+      final publicKeyRedirect = keyResp.headers.value('location') ?? '';
+      if (isZhengfangGatewayLoginUrl(publicKeyRedirect)) {
+        return LoginFailure('WebVPN 认证已过期，请重新登录');
+      }
       final modulus = keyResp.data?['modulus'] as String?;
       final exponent = keyResp.data?['exponent'] as String?;
       if (modulus == null ||
@@ -788,6 +878,10 @@ class ZhengfangAuth extends ChangeNotifier {
 
       final location = loginResp.headers.value('location') ?? '';
       final html = loginResp.data ?? '';
+      if (isZhengfangGatewayLoginUrl(location)) {
+        AppLogger.instance.info('教务系统登录被重定向到 WebVPN 登录页');
+        return LoginFailure('WebVPN 认证已过期，请重新登录');
+      }
       if (_isLoginSuccess(loginResp.statusCode, location, html)) {
         currentStudentId = username;
         _sessionActive = true;
@@ -826,6 +920,8 @@ class ZhengfangAuth extends ChangeNotifier {
   void markLoggedOut() {
     _sessionActive = false;
     currentStudentId = null;
+    _cachedCsrfToken = null;
+    _contextIndicatesLoggedIn = false;
     CredentialStore.instance.clearZhengfangSession();
     notifyListeners();
   }
@@ -848,6 +944,7 @@ class ZhengfangAuth extends ChangeNotifier {
     _sessionActive = false;
     currentStudentId = null;
     _cachedCsrfToken = null;
+    _contextIndicatesLoggedIn = false;
     await CredentialStore.instance.clearZhengfangSession();
     notifyListeners();
   }
@@ -917,6 +1014,11 @@ class ZhengfangAuth extends ChangeNotifier {
 
     final statusCode = pageResp.statusCode ?? 0;
     final location = pageResp.headers.value('location') ?? '';
+    if (isZhengfangGatewayLoginUrl(location)) {
+      AppLogger.instance.info('检测到 WebVPN 登录页重定向，当前认证已过期');
+      markLoggedOut();
+      throw CaptchaException('WebVPN 认证已过期，请重新登录');
+    }
     if (_isLoginSuccess(statusCode, location, '')) {
       AppLogger.instance.info('检测到 302 重定向到首页，旧会话可能已过期，清除 Cookie 后重新获取登录页');
       await _cookieJar.deleteAll();
@@ -933,6 +1035,11 @@ class ZhengfangAuth extends ChangeNotifier {
       );
 
       final retryLocation = retryResp.headers.value('location') ?? '';
+      if (isZhengfangGatewayLoginUrl(retryLocation)) {
+        AppLogger.instance.info('清除 Cookie 后跳转到 WebVPN 登录页，需要重新认证');
+        markLoggedOut();
+        throw CaptchaException('WebVPN 认证已过期，请重新登录');
+      }
       if (_isLoginSuccess(retryResp.statusCode, retryLocation, '')) {
         _sessionActive = true;
         _cachedCsrfToken = null;
@@ -980,13 +1087,9 @@ class ZhengfangAuth extends ChangeNotifier {
   }
 
   bool _isLoginSuccess(int? statusCode, String location, String html) {
-    final normalizedLocation = location.toLowerCase();
     if (statusCode == 302 || statusCode == 303) {
-      if (normalizedLocation.contains('login_slogin')) return false;
-      if (normalizedLocation.contains('index_initmenu')) return true;
-      if (normalizedLocation.contains('index_cxyhxxindex')) return true;
-      if (normalizedLocation.contains('/xtgl/index')) return true;
-      return normalizedLocation.isNotEmpty;
+      if (isZhengfangLoginEntryUrl(location)) return false;
+      return isZhengfangAuthenticatedUrl(location);
     }
     return html.contains('/xtgl/index_initMenu.html') ||
         html.contains('/xtgl/index_cxYhxxIndex.html');

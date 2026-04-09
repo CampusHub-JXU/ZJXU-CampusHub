@@ -11,6 +11,7 @@ import 'proxy_mode.dart';
 class DioClient {
   DioClient._();
   static final DioClient instance = DioClient._();
+  static const defaultZhengfangBaseUrl = 'https://jwzx.zjxu.edu.cn/jwglxt';
 
   PersistCookieJar? _cookieJar;
   Dio? _dio;
@@ -60,6 +61,13 @@ class DioClient {
     _applyProxyMode(client);
   }
 
+  void updateBaseUrl(String baseUrl) {
+    final client = _dio;
+    if (client == null || client.options.baseUrl == baseUrl) return;
+    client.options.baseUrl = baseUrl;
+    AppLogger.instance.debug('教务请求基础地址已更新为: $baseUrl');
+  }
+
   void _applyProxyMode(Dio client) {
     applyProxyModeToDio(
       client,
@@ -71,7 +79,7 @@ class DioClient {
     final jar = _cookieJar!;
     final client = Dio(
       BaseOptions(
-        baseUrl: 'https://jwzx.zjxu.edu.cn/jwglxt',
+        baseUrl: defaultZhengfangBaseUrl,
         connectTimeout: const Duration(seconds: 15),
         receiveTimeout: const Duration(seconds: 15),
         headers: {
@@ -98,7 +106,8 @@ class DioClient {
             final location = response.headers.value('location') ?? '';
             AppLogger.instance.info('← $code $uri → $location');
             if (location.contains('login_slogin') ||
-                location.contains('kaptcha')) {
+                location.contains('kaptcha') ||
+                location.contains('webvpn.zjxu.edu.cn/login')) {
               AppLogger.instance.info('检测到重定向到登录/验证码页面，可能未在校园网环境');
             }
           } else {
