@@ -12,7 +12,8 @@ class CampusCardPaymentPage extends StatelessWidget {
     String currentUrl,
   ) async {
     if (!currentUrl.contains('/business/ydd/wfw')) return;
-    await controller.evaluateJavascript(source: '''
+    await controller.evaluateJavascript(
+      source: '''
       (function() {
         var attempts = 0;
         var interval = setInterval(function() {
@@ -29,7 +30,8 @@ class CampusCardPaymentPage extends StatelessWidget {
           }
         }, 300);
       })();
-    ''');
+    ''',
+    );
   }
 
   @override
@@ -38,7 +40,7 @@ class CampusCardPaymentPage extends StatelessWidget {
       title: '消费码',
       url: CampusCardService.paymentCodeServiceHallUrl,
       serviceUrl: CampusCardService.serviceHallCasServiceUrl,
-      loginDescription: '消费码服务使用统一认证登录，账号为校园一卡通号',
+      loginDescription: '统一认证登录后可直接进入消费码服务',
       onLoadStop: _autoClick,
     );
   }

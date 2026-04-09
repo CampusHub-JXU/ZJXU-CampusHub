@@ -11,7 +11,7 @@ class ServiceHallPage extends StatelessWidget {
       title: '服务大厅',
       url:
           'https://mobilehall.zjxu.edu.cn/mportal/start/index.html#/business/ydd/portal/home',
-      loginDescription: '服务大厅使用统一认证登录，账号为校园一卡通号',
+      loginDescription: '统一认证登录后可直接进入服务大厅',
     );
   }
 }

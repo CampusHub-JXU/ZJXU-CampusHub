@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -16,8 +18,11 @@ class MyPage extends StatefulWidget {
 class _MyPageState extends State<MyPage> {
   bool _campusLoggedIn = false;
   bool _academicLoggedIn = false;
+  bool _campusStatusChecking = false;
+  bool _academicStatusChecking = false;
   bool _hasScheduleCache = false;
   DateTime? _scheduleUpdatedAt;
+  int _statusRefreshVersion = 0;
 
   @override
   void initState() {
@@ -36,17 +41,46 @@ class _MyPageState extends State<MyPage> {
 
   void _onAuthChanged() {
     if (!mounted) return;
-    _refreshStatus();
+    unawaited(_refreshStatus());
   }
 
-  void _refreshStatus() {
+  Future<void> _refreshStatus() async {
     final term = ScheduleService.instance.getCurrentTermContext();
     final snapshot = ScheduleService.instance.preferredSnapshot(
       termContext: term,
     );
+    final refreshVersion = ++_statusRefreshVersion;
+    final campusLoggedIn = UnifiedAuthService.instance.isLoggedIn;
+    final academicLoggedIn = ZhengfangAuth.instance.isLoggedIn;
+
     setState(() {
-      _campusLoggedIn = UnifiedAuthService.instance.isLoggedIn;
-      _academicLoggedIn = ZhengfangAuth.instance.isLoggedIn;
+      _campusLoggedIn = campusLoggedIn;
+      _academicLoggedIn = academicLoggedIn;
+      _campusStatusChecking = campusLoggedIn;
+      _academicStatusChecking = academicLoggedIn;
+      _hasScheduleCache = snapshot?.hasData ?? false;
+      _scheduleUpdatedAt = snapshot?.lastUpdatedAt;
+    });
+
+    final campusValidationFuture = campusLoggedIn
+        ? UnifiedAuthService.instance.validateSession()
+        : Future<bool?>.value(false);
+    final academicValidationFuture = academicLoggedIn
+        ? ZhengfangAuth.instance.validateSession()
+        : Future<bool?>.value(false);
+
+    final campusValidation = await campusValidationFuture;
+    final academicValidation = await academicValidationFuture;
+
+    if (!mounted || refreshVersion != _statusRefreshVersion) return;
+
+    setState(() {
+      _campusLoggedIn =
+          campusValidation ?? UnifiedAuthService.instance.isLoggedIn;
+      _academicLoggedIn =
+          academicValidation ?? ZhengfangAuth.instance.isLoggedIn;
+      _campusStatusChecking = false;
+      _academicStatusChecking = false;
       _hasScheduleCache = snapshot?.hasData ?? false;
       _scheduleUpdatedAt = snapshot?.lastUpdatedAt;
     });
@@ -56,18 +90,18 @@ class _MyPageState extends State<MyPage> {
     if (_campusLoggedIn) {
       await context.pushNamed('campus-card');
       if (!mounted) return;
-      _refreshStatus();
+      await _refreshStatus();
       return;
     }
     await context.pushNamed('unified-auth-login');
     if (!mounted) return;
-    _refreshStatus();
+    await _refreshStatus();
   }
 
   Future<void> _loginAcademic() async {
     await context.pushNamed('academic-system-login');
     if (!mounted) return;
-    _refreshStatus();
+    await _refreshStatus();
   }
 
   Future<void> _openAcademicH5() async {
@@ -89,13 +123,13 @@ class _MyPageState extends State<MyPage> {
       extra: {'title': '教务系统', 'url': h5Url, 'enableLoginQuickFill': true},
     );
     if (!mounted) return;
-    _refreshStatus();
+    await _refreshStatus();
   }
 
   Future<void> _reloginCampus() async {
     await context.pushNamed('unified-auth-login');
     if (!mounted) return;
-    _refreshStatus();
+    await _refreshStatus();
   }
 
   String _formatTime(DateTime? value) {
@@ -108,6 +142,12 @@ class _MyPageState extends State<MyPage> {
   }
 
   String _academicSubtitle() {
+    if (_academicStatusChecking) {
+      if (_hasScheduleCache) {
+        return '正在校验教务状态 · 课表缓存 ${_formatTime(_scheduleUpdatedAt)}';
+      }
+      return '正在校验教务状态 · 课表未缓存';
+    }
     if (_academicLoggedIn) {
       if (_hasScheduleCache) {
         return '已登录 · 课表更新 ${_formatTime(_scheduleUpdatedAt)}';
@@ -118,6 +158,13 @@ class _MyPageState extends State<MyPage> {
       return '未登录 · 课表缓存 ${_formatTime(_scheduleUpdatedAt)}';
     }
     return '未登录 · 课表未缓存';
+  }
+
+  String _campusSubtitle() {
+    if (_campusStatusChecking) {
+      return '正在校验统一认证状态';
+    }
+    return _campusLoggedIn ? '已登录' : '未登录';
   }
 
   @override
@@ -161,7 +208,7 @@ class _MyPageState extends State<MyPage> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        '管理一卡通、教务登录状态',
+                        '管理统一认证（含一卡通）、教务登录状态',
                         style: TextStyle(
                           fontSize: 12,
                           color: cs.onSurfaceVariant,
@@ -177,8 +224,8 @@ class _MyPageState extends State<MyPage> {
           _AccountStatusCard(
             icon: Icons.account_balance_wallet_outlined,
             iconColor: AppColors.primary,
-            title: '一卡通',
-            subtitle: _campusLoggedIn ? '已登录' : '未登录',
+            title: '统一认证（含一卡通）',
+            subtitle: _campusSubtitle(),
             primaryActionLabel: '登录',
             onPrimaryAction: _campusLoggedIn
                 ? _reloginCampus
@@ -202,7 +249,7 @@ class _MyPageState extends State<MyPage> {
             onTap: () async {
               await context.pushNamed('settings');
               if (!mounted) return;
-              _refreshStatus();
+              await _refreshStatus();
             },
             child: Container(
               padding: const EdgeInsets.all(20),

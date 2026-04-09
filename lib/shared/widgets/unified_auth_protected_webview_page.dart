@@ -30,28 +30,43 @@ class UnifiedAuthProtectedWebViewPage extends StatefulWidget {
 class _UnifiedAuthProtectedWebViewPageState
     extends State<UnifiedAuthProtectedWebViewPage> {
   late bool _authenticated;
+  late bool _authResolved;
   bool _resyncing = false;
 
   @override
   void initState() {
     super.initState();
     _authenticated = UnifiedAuthService.instance.isLoggedIn;
+    _authResolved = !_authenticated;
+    if (!_authResolved) {
+      _resolveInitialAuthentication();
+    }
   }
 
   void _onLoginSuccess() {
     if (!mounted) return;
-    setState(() => _authenticated = true);
+    setState(() {
+      _authenticated = true;
+      _authResolved = true;
+    });
+  }
+
+  Future<void> _resolveInitialAuthentication() async {
+    final validated = await UnifiedAuthService.instance.validateSession(
+      serviceUrl: widget.serviceUrl,
+    );
+    if (!mounted) return;
+    setState(() {
+      _authenticated = validated ?? UnifiedAuthService.instance.isLoggedIn;
+      _authResolved = true;
+    });
   }
 
   Future<void> _handleLoadStop(
     InAppWebViewController controller,
     String currentUrl,
   ) async {
-    final uri = Uri.tryParse(currentUrl);
-    final isUnifiedAuthLogin =
-        uri != null &&
-        uri.host.toLowerCase() == 'newca.zjxu.edu.cn' &&
-        uri.path.toLowerCase().contains('/cas/login');
+    final isUnifiedAuthLogin = isUnifiedAuthLoginEntryUrl(currentUrl);
 
     if (isUnifiedAuthLogin) {
       AppLogger.instance.debug('WebView 跳转到 CAS 登录页，尝试重新同步 Cookie');
@@ -68,9 +83,7 @@ class _UnifiedAuthProtectedWebViewPageState
       _resyncing = true;
       await UnifiedAuthService.instance.syncCookiesToWebView();
       AppLogger.instance.debug('Cookie 重同步完成，重新加载 WebView');
-      await controller.loadUrl(
-        urlRequest: URLRequest(url: WebUri(widget.url)),
-      );
+      await controller.loadUrl(urlRequest: URLRequest(url: WebUri(widget.url)));
       return;
     }
 
@@ -83,6 +96,13 @@ class _UnifiedAuthProtectedWebViewPageState
 
   @override
   Widget build(BuildContext context) {
+    if (!_authResolved) {
+      return Scaffold(
+        appBar: AppBar(title: Text(widget.title)),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
     if (_authenticated) {
       return WebViewPage(
         title: widget.title,

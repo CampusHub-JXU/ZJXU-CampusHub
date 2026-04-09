@@ -195,7 +195,7 @@ class _CampusCardPageState extends State<CampusCardPage> {
           title: title,
           url: CampusCardService.statusPageUrl,
           serviceUrl: CampusCardService.statusPageCasServiceUrl,
-          loginDescription: '校园卡服务使用统一认证登录，账号为校园一卡通号',
+          loginDescription: '统一认证登录后可直接进入校园卡服务',
           onLoadStop: _captureBalanceFromDetailPage,
         ),
       ),

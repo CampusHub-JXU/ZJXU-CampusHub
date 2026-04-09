@@ -15,6 +15,44 @@ import '../network/network_settings.dart';
 import '../network/proxy_mode.dart';
 import 'credential_store.dart';
 
+bool isUnifiedAuthLoginEntryUrl(String currentUrl) {
+  final raw = currentUrl.trim();
+  if (raw.isEmpty) return false;
+
+  final uri = Uri.tryParse(raw);
+  if (uri == null) return false;
+  if (uri.host.toLowerCase() != 'newca.zjxu.edu.cn') return false;
+  return uri.path.toLowerCase().contains('/cas/login');
+}
+
+bool isUnifiedAuthAuthenticatedUrl(String currentUrl) {
+  final raw = currentUrl.trim();
+  if (raw.isEmpty) return false;
+
+  final uri = Uri.tryParse(raw);
+  if (uri == null) return false;
+  if (isUnifiedAuthLoginEntryUrl(currentUrl)) return false;
+
+  final host = uri.host.toLowerCase();
+  if (host == 'newca.zjxu.edu.cn') {
+    return uri.path.toLowerCase().contains('/casclient/login');
+  }
+  return host == 'mobilehall.zjxu.edu.cn' || host == 'app.xiaoyuan.ccb.com';
+}
+
+bool looksLikeUnifiedAuthLoginHtml(String html) {
+  final normalizedHtml = html.toLowerCase();
+  if (normalizedHtml.isEmpty) return false;
+  return normalizedHtml.contains('id="fm1"') ||
+      normalizedHtml.contains("id='fm1'") ||
+      normalizedHtml.contains('name="execution"') ||
+      normalizedHtml.contains("name='execution'") ||
+      normalizedHtml.contains('name="lt"') ||
+      normalizedHtml.contains("name='lt'") ||
+      normalizedHtml.contains('/cas/captcha.html') ||
+      normalizedHtml.contains('统一身份认证');
+}
+
 sealed class UnifiedAuthLoginResult {}
 
 class UnifiedAuthLoginSuccess extends UnifiedAuthLoginResult {}
@@ -62,7 +100,7 @@ class UnifiedAuthService extends ChangeNotifier {
   static const _aesIv = '0987654321123456';
   static const _requestTimeout = Duration(seconds: 12);
 
-  final _cookieManager = CookieManager.instance();
+  CookieManager? _cookieManager;
 
   Dio get _dio => DioClient.instance.dio;
   PersistCookieJar get _cookieJar => DioClient.instance.cookieJar;
@@ -73,6 +111,74 @@ class UnifiedAuthService extends ChangeNotifier {
   Future<void>? _cookieSyncFuture;
 
   bool get isLoggedIn => _sessionActive;
+
+  Future<bool?> validateSession({
+    String serviceUrl = defaultServiceUrl,
+    bool syncWebViewCookies = true,
+  }) async {
+    if (!_sessionActive) return false;
+
+    final validator = debugSessionValidator;
+    if (validator != null) {
+      final result = await validator(serviceUrl);
+      if (result == false) {
+        markLoggedOut();
+      }
+      return result;
+    }
+
+    await DioClient.instance.ensureInitialized();
+    final loginUri = _buildLoginUri(serviceUrl);
+
+    try {
+      final response = await _sendWithProxyFallback<String>(
+        label: '统一认证会话校验',
+        request: (dio) => dio.getUri<String>(
+          loginUri,
+          options: Options(
+            responseType: ResponseType.plain,
+            followRedirects: false,
+            validateStatus: (status) => status != null && status < 1000,
+            headers: {'Referer': loginUri.toString()},
+          ),
+        ),
+      );
+
+      final statusCode = response.statusCode ?? 0;
+      final location = response.headers.value('location') ?? '';
+      final html = response.data ?? '';
+      final hasActiveSession = (statusCode == 302 || statusCode == 303)
+          ? isUnifiedAuthAuthenticatedUrl(
+              _resolveUri(loginUri, location).toString(),
+            )
+          : !looksLikeUnifiedAuthLoginHtml(html);
+
+      if (!hasActiveSession) {
+        AppLogger.instance.info('统一认证会话已失效，标记登出');
+        markLoggedOut();
+        return false;
+      }
+
+      final wasSessionActive = _sessionActive;
+      _sessionActive = true;
+      if (currentAccount != null) {
+        await CredentialStore.instance.saveUnifiedAuthSession(currentAccount!);
+      }
+      if (syncWebViewCookies) {
+        unawaited(_syncCookiesToWebViewSafely());
+      }
+      if (!wasSessionActive) {
+        notifyListeners();
+      }
+      return true;
+    } on DioException catch (error) {
+      AppLogger.instance.error('统一认证会话校验失败: ${error.type} ${error.message}');
+      return null;
+    } catch (error) {
+      AppLogger.instance.error('统一认证会话校验异常: $error');
+      return null;
+    }
+  }
 
   Dio _createProxyFallbackDio() {
     final baseOptions = _dio.options;
@@ -316,7 +422,7 @@ class UnifiedAuthService extends ChangeNotifier {
   Future<void> _setWebViewCookie(Uri uri, io.Cookie cookie) async {
     final domain = (cookie.domain ?? '').trim();
     final path = (cookie.path ?? '').trim();
-    await _cookieManager.setCookie(
+    await (_cookieManager ??= CookieManager.instance()).setCookie(
       url: WebUri('${uri.scheme}://${uri.host}/'),
       name: cookie.name,
       value: cookie.value,
@@ -494,13 +600,12 @@ class UnifiedAuthService extends ChangeNotifier {
   }
 
   bool _isLoginSuccess(int? statusCode, String location, String html) {
-    final normalizedLocation = location.toLowerCase();
     if (statusCode == 302 || statusCode == 303) {
-      if (normalizedLocation.contains('/cas/login')) return false;
-      return normalizedLocation.isNotEmpty;
+      return isUnifiedAuthAuthenticatedUrl(location);
     }
 
     final lowerHtml = html.toLowerCase();
+    if (looksLikeUnifiedAuthLoginHtml(lowerHtml)) return false;
     return lowerHtml.contains('登录中') ||
         lowerHtml.contains('/oauth/forward/') ||
         lowerHtml.contains('casclient/login');
@@ -562,5 +667,27 @@ class UnifiedAuthService extends ChangeNotifier {
     if (data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF) return true;
     if (data[0] == 0x47 && data[1] == 0x49 && data[2] == 0x46) return true;
     return false;
+  }
+
+  @visibleForTesting
+  Future<bool?> Function(String serviceUrl)? debugSessionValidator;
+
+  @visibleForTesting
+  void debugSetSession({required bool active, String? account}) {
+    _sessionActive = active;
+    currentAccount = active ? account : null;
+    if (!active) {
+      _cachedContext = null;
+    }
+  }
+
+  @visibleForTesting
+  void debugReset() {
+    _cachedContext = null;
+    _sessionActive = false;
+    currentAccount = null;
+    _cookieManager = null;
+    _cookieSyncFuture = null;
+    debugSessionValidator = null;
   }
 }

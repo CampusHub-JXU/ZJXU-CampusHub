@@ -1122,4 +1122,28 @@ class ZhengfangAuth extends ChangeNotifier {
         .replaceAll('&amp;', '&')
         .trim();
   }
+
+  @visibleForTesting
+  void debugSetSession({required bool active, String? studentId}) {
+    _sessionActive = active;
+    currentStudentId = active ? studentId : null;
+    if (!active) {
+      _cachedCsrfToken = null;
+      _contextIndicatesLoggedIn = false;
+    }
+  }
+
+  @visibleForTesting
+  void debugReset() {
+    _cachedCsrfToken = null;
+    _contextIndicatesLoggedIn = false;
+    _sessionActive = false;
+    currentStudentId = null;
+    _cachedCasExecution = null;
+    _cachedCasLt = null;
+    _cachedCasLoginUrl = null;
+    _cachedAesKey = null;
+    _cachedAesIv = null;
+    _mode = ZhengfangMode.direct;
+  }
 }

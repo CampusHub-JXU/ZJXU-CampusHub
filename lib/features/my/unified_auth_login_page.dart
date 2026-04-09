@@ -8,10 +8,10 @@ class UnifiedAuthLoginPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('一卡通登录')),
+      appBar: AppBar(title: const Text('统一认证登录')),
       body: UnifiedAuthLoginWidget(
-        title: '登录一卡通',
-        description: '账号为校园一卡通号',
+        title: '登录统一认证',
+        description: '登录后可进入一卡通、服务大厅等服务',
         onLoginSuccess: () => Navigator.of(context).pop(true),
       ),
     );
