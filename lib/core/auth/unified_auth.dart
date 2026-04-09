@@ -21,8 +21,11 @@ bool isUnifiedAuthLoginEntryUrl(String currentUrl) {
 
   final uri = Uri.tryParse(raw);
   if (uri == null) return false;
-  if (uri.host.toLowerCase() != 'newca.zjxu.edu.cn') return false;
-  return uri.path.toLowerCase().contains('/cas/login');
+  final host = uri.host.toLowerCase();
+  final path = uri.path.toLowerCase();
+  if (host.isEmpty) return path.contains('/cas/login');
+  if (host != 'newca.zjxu.edu.cn') return false;
+  return path.contains('/cas/login');
 }
 
 bool isUnifiedAuthAuthenticatedUrl(String currentUrl) {
@@ -34,8 +37,12 @@ bool isUnifiedAuthAuthenticatedUrl(String currentUrl) {
   if (isUnifiedAuthLoginEntryUrl(currentUrl)) return false;
 
   final host = uri.host.toLowerCase();
+  final path = uri.path.toLowerCase();
+  if (host.isEmpty) {
+    return path.contains('/casclient/login');
+  }
   if (host == 'newca.zjxu.edu.cn') {
-    return uri.path.toLowerCase().contains('/casclient/login');
+    return path.contains('/casclient/login');
   }
   return host == 'mobilehall.zjxu.edu.cn' || host == 'app.xiaoyuan.ccb.com';
 }

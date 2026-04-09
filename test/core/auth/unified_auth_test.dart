@@ -11,6 +11,12 @@ void main() {
         isTrue,
       );
       expect(
+        isUnifiedAuthLoginEntryUrl(
+          '/cas/login?service=https://mobilehall.zjxu.edu.cn',
+        ),
+        isTrue,
+      );
+      expect(
         isUnifiedAuthAuthenticatedUrl(
           'https://newca.zjxu.edu.cn/cas/login?service=https://mobilehall.zjxu.edu.cn',
         ),
@@ -29,6 +35,10 @@ void main() {
         isUnifiedAuthAuthenticatedUrl(
           'https://newca.zjxu.edu.cn/casClient/login/ydd?ticket=abc',
         ),
+        isTrue,
+      );
+      expect(
+        isUnifiedAuthAuthenticatedUrl('/casClient/login/ydd?ticket=abc'),
         isTrue,
       );
     });
