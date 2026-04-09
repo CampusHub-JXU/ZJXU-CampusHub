@@ -864,12 +864,12 @@ class _HomePageState extends State<HomePage> {
             ),
           ],
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Row(
           children: [
             Container(
-              width: 40,
-              height: 40,
+              width: 36,
+              height: 36,
               decoration: BoxDecoration(
                 color: AppColors.success.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(10),
@@ -877,10 +877,10 @@ class _HomePageState extends State<HomePage> {
               child: const Icon(
                 Icons.home_outlined,
                 color: AppColors.success,
-                size: 22,
+                size: 20,
               ),
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: 12),
             Expanded(
               child: Text(
                 '寝室服务',
@@ -1237,6 +1237,8 @@ class _HomePageState extends State<HomePage> {
             Expanded(
               child: Text(
                 '更多服务',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
