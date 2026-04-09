@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/auth/credential_store.dart';
@@ -54,12 +55,10 @@ class _LoginWidgetState extends State<LoginWidget> {
     _autoDetecting = true;
 
     try {
-      // 先尝试直连
       AppLogger.instance.debug('正在自动检测网络环境...');
       final directReachable = await ZhengfangAuth.checkDirectReachable();
 
       if (!directReachable) {
-        // 直连不可用，尝试 WebVPN
         final webVpnReachable = await ZhengfangAuth.checkWebVpnReachable();
         if (webVpnReachable) {
           if (mounted) {
@@ -74,9 +73,17 @@ class _LoginWidgetState extends State<LoginWidget> {
           _autoDetecting = false;
           return;
         }
+
+        if (mounted) {
+          setState(() {
+            _captchaBytes = null;
+            _error = '无法连接教务系统，请检查网络或在校园网环境下使用';
+          });
+        }
+        _autoDetecting = false;
+        return;
       }
 
-      // 直连可用，获取验证码
       if (mounted) {
         await _refreshCaptcha();
       }
@@ -93,7 +100,8 @@ class _LoginWidgetState extends State<LoginWidget> {
       _usernameCtrl.text = creds.$1;
       _passwordCtrl.text = creds.$2;
     }
-    final unifiedCreds = await CredentialStore.instance.loadUnifiedAuthCredentials();
+    final unifiedCreds = await CredentialStore.instance
+        .loadUnifiedAuthCredentials();
     if (unifiedCreds != null) {
       _accountCtrl.text = unifiedCreds.$1;
       _accountPasswordCtrl.text = unifiedCreds.$2;
@@ -113,7 +121,6 @@ class _LoginWidgetState extends State<LoginWidget> {
       }
     } on CaptchaException catch (e) {
       if (mounted) {
-        // WebVPN 认证过期，清除一卡通认证状态，让用户重新认证
         if (_mode == ZhengfangMode.webVpn &&
             (e.message.contains('已过期') || e.message.contains('认证'))) {
           setState(() {
@@ -127,6 +134,20 @@ class _LoginWidgetState extends State<LoginWidget> {
             _error = e.message;
           });
         }
+      }
+    } on DioException catch (e) {
+      if (mounted) {
+        setState(() {
+          _captchaBytes = null;
+          if (e.type == DioExceptionType.connectionError ||
+              e.type == DioExceptionType.connectionTimeout) {
+            _error = _mode == ZhengfangMode.direct
+                ? '无法连接教务系统，请确保在校园网环境或已连接VPN'
+                : '无法连接 WebVPN，请检查网络';
+          } else {
+            _error = '网络错误：${e.message ?? "请稍后重试"}';
+          }
+        });
       }
     } catch (_) {
       if (mounted) {
@@ -219,7 +240,10 @@ class _LoginWidgetState extends State<LoginWidget> {
 
     switch (result) {
       case WebVpnCasSuccess():
-        await CredentialStore.instance.saveUnifiedAuthCredentials(account, password);
+        await CredentialStore.instance.saveUnifiedAuthCredentials(
+          account,
+          password,
+        );
         setState(() {
           _casAuthenticated = true;
           _loading = false;
@@ -307,20 +331,43 @@ class _LoginWidgetState extends State<LoginWidget> {
               'WebVPN 模式',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: colorScheme.primary,
-                    fontWeight: FontWeight.w600,
-                  ),
+                color: colorScheme.primary,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ],
           const SizedBox(height: 32),
 
+          // ── 网络检测中 ──
+          if (_autoDetecting)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 32),
+              child: Column(
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 16),
+                  Text(
+                    '正在检测网络环境...',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
           // ── 直连模式：标准登录表单 ──
-          if (_mode == ZhengfangMode.direct) ..._buildDirectLoginForm(colorScheme),
+          if (!_autoDetecting && _mode == ZhengfangMode.direct)
+            ..._buildDirectLoginForm(colorScheme),
 
           // ── WebVPN 模式：两步登录 ──
-          if (_mode == ZhengfangMode.webVpn && !_casAuthenticated)
+          if (!_autoDetecting &&
+              _mode == ZhengfangMode.webVpn &&
+              !_casAuthenticated)
             ..._buildWebVpnCasForm(colorScheme),
-          if (_mode == ZhengfangMode.webVpn && _casAuthenticated)
+          if (!_autoDetecting &&
+              _mode == ZhengfangMode.webVpn &&
+              _casAuthenticated)
             ..._buildWebVpnJwzxForm(colorScheme),
 
           // ── 错误信息 ──
@@ -334,7 +381,9 @@ class _LoginWidgetState extends State<LoginWidget> {
           ],
 
           // ── 非校园网提示 ──
-          if (_mode == ZhengfangMode.direct && _captchaBytes == null && _error != null &&
+          if (_mode == ZhengfangMode.direct &&
+              _captchaBytes == null &&
+              _error != null &&
               _error!.contains('校园网')) ...[
             const SizedBox(height: 12),
             OutlinedButton.icon(
@@ -347,8 +396,8 @@ class _LoginWidgetState extends State<LoginWidget> {
               '非校园网环境请使用 WebVPN',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
+                color: colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ],
@@ -414,14 +463,14 @@ class _LoginWidgetState extends State<LoginWidget> {
                       child: Image.memory(_captchaBytes!, fit: BoxFit.fill),
                     )
                   : _error != null
-                      ? Center(
-                          child: Icon(
-                            Icons.refresh,
-                            color: colorScheme.error,
-                            size: 28,
-                          ),
-                        )
-                      : const Center(child: CircularProgressIndicator()),
+                  ? Center(
+                      child: Icon(
+                        Icons.refresh,
+                        color: colorScheme.error,
+                        size: 28,
+                      ),
+                    )
+                  : const Center(child: CircularProgressIndicator()),
             ),
           ),
         ],
@@ -441,9 +490,9 @@ class _LoginWidgetState extends State<LoginWidget> {
       Text(
         '点击验证码图片可刷新',
         textAlign: TextAlign.center,
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
+        style: Theme.of(
+          context,
+        ).textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
       ),
     ];
   }
@@ -508,14 +557,14 @@ class _LoginWidgetState extends State<LoginWidget> {
                       child: Image.memory(_casCaptchaBytes!, fit: BoxFit.fill),
                     )
                   : _error != null
-                      ? Center(
-                          child: Icon(
-                            Icons.refresh,
-                            color: colorScheme.error,
-                            size: 28,
-                          ),
-                        )
-                      : const Center(child: CircularProgressIndicator()),
+                  ? Center(
+                      child: Icon(
+                        Icons.refresh,
+                        color: colorScheme.error,
+                        size: 28,
+                      ),
+                    )
+                  : const Center(child: CircularProgressIndicator()),
             ),
           ),
         ],
@@ -535,9 +584,9 @@ class _LoginWidgetState extends State<LoginWidget> {
       Text(
         '点击验证码图片可刷新',
         textAlign: TextAlign.center,
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
+        style: Theme.of(
+          context,
+        ).textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
       ),
       const SizedBox(height: 12),
       TextButton.icon(
@@ -610,14 +659,14 @@ class _LoginWidgetState extends State<LoginWidget> {
                       child: Image.memory(_captchaBytes!, fit: BoxFit.fill),
                     )
                   : _error != null
-                      ? Center(
-                          child: Icon(
-                            Icons.refresh,
-                            color: colorScheme.error,
-                            size: 28,
-                          ),
-                        )
-                      : const Center(child: CircularProgressIndicator()),
+                  ? Center(
+                      child: Icon(
+                        Icons.refresh,
+                        color: colorScheme.error,
+                        size: 28,
+                      ),
+                    )
+                  : const Center(child: CircularProgressIndicator()),
             ),
           ),
         ],
@@ -637,9 +686,9 @@ class _LoginWidgetState extends State<LoginWidget> {
       Text(
         '点击验证码图片可刷新',
         textAlign: TextAlign.center,
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
+        style: Theme.of(
+          context,
+        ).textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
       ),
     ];
   }
@@ -671,9 +720,9 @@ class _LoginWidgetState extends State<LoginWidget> {
         const SizedBox(width: 10),
         Text(
           label,
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
         ),
       ],
     );

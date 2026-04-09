@@ -116,9 +116,15 @@ class DioClient {
           handler.next(response);
         },
         onError: (error, handler) {
-          AppLogger.instance.error(
-            '请求失败: ${error.type} - ${error.requestOptions.uri} - ${error.message}',
-          );
+          final msg =
+              '请求失败: ${error.type} - ${error.requestOptions.uri} - ${error.message}';
+          if (error.type == DioExceptionType.connectionError ||
+              error.type == DioExceptionType.connectionTimeout ||
+              error.type == DioExceptionType.receiveTimeout) {
+            AppLogger.instance.debug(msg);
+          } else {
+            AppLogger.instance.error(msg);
+          }
           handler.next(error);
         },
       ),
