@@ -17,7 +17,9 @@ class CampusCardPage extends StatefulWidget {
 
 class _CampusCardPageState extends State<CampusCardPage> {
   static const _serviceHallHost = 'mobilehall.zjxu.edu.cn';
+  static const _webVpnHost = 'webvpn.zjxu.edu.cn';
   static const _statusPathKeyword = '/decision/view/form';
+  static const _statusViewletKeyword = 'ykt.frm';
 
   bool _capturedInCurrentDetailPage = false;
   bool _autoPopAfterCapture = false;
@@ -221,10 +223,7 @@ class _CampusCardPageState extends State<CampusCardPage> {
     final uri = Uri.tryParse(currentUrl);
     final path = uri?.path.toLowerCase();
     AppLogger.instance.debug('校园卡 onLoadStop: $currentUrl');
-    if (uri == null ||
-        uri.host.toLowerCase() != _serviceHallHost ||
-        path == null ||
-        !path.contains(_statusPathKeyword)) {
+    if (uri == null || !_isCampusCardStatusPage(uri)) {
       AppLogger.instance.debug('校园卡 跳过余额提取 (host=${uri?.host}, path=$path)');
       return;
     }
@@ -290,6 +289,18 @@ class _CampusCardPageState extends State<CampusCardPage> {
     }
 
     return null;
+  }
+
+  bool _isCampusCardStatusPage(Uri uri) {
+    final host = uri.host.toLowerCase();
+    final path = uri.path.toLowerCase();
+    final viewlet = uri.queryParameters['viewlet']?.toLowerCase() ?? '';
+
+    final isExpectedHost = host == _serviceHallHost || host == _webVpnHost;
+    if (!isExpectedHost) return false;
+
+    return path.contains(_statusPathKeyword) &&
+        viewlet.contains(_statusViewletKeyword);
   }
 }
 

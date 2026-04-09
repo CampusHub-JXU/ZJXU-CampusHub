@@ -1,6 +1,5 @@
 import 'dart:collection';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -17,6 +16,12 @@ typedef WebViewNavigationRequestCallback =
       InAppWebViewController controller,
       Uri uri,
     );
+typedef _WebViewPageSnapshot = ({
+  String title,
+  String readyState,
+  int textLength,
+  int childCount,
+});
 
 const _serviceHallHomeUrl =
     'https://mobilehall.zjxu.edu.cn/mportal/start/index.html#/business/ydd/portal/home';
@@ -343,38 +348,24 @@ class _WebViewPageState extends State<WebViewPage> {
 
   Future<void> _inspectLoadedPage(InAppWebViewController controller) async {
     try {
-      final snapshot = await controller.evaluateJavascript(
-        source: '''
-        (() => {
-          const title = document.title || '';
-          const readyState = document.readyState || '';
-          const bodyText = document.body?.innerText?.trim() || '';
-          const childCount = document.body?.children?.length || 0;
-          return {
-            title,
-            readyState,
-            textLength: bodyText.length,
-            childCount,
-          };
-        })();
-      ''',
-      );
-
-      final map = snapshot is Map
-          ? Map<Object?, Object?>.from(snapshot)
-          : const {};
-      final title = '${map['title'] ?? ''}'.trim();
-      final readyState = '${map['readyState'] ?? ''}'.trim();
-      final textLength = int.tryParse('${map['textLength'] ?? 0}') ?? 0;
-      final childCount = int.tryParse('${map['childCount'] ?? 0}') ?? 0;
+      final snapshot = await _capturePageSnapshot(controller);
+      if (snapshot == null) return;
 
       AppLogger.instance.info(
-        'WebView load stop: url=$_currentUrl readyState=$readyState title=${title.isEmpty ? '[empty]' : title} textLength=$textLength childCount=$childCount',
+        'WebView load stop: url=$_currentUrl readyState=${snapshot.readyState} title=${snapshot.title.isEmpty ? '[empty]' : snapshot.title} textLength=${snapshot.textLength} childCount=${snapshot.childCount}',
       );
 
-      final isBlankLike =
-          textLength == 0 && childCount == 0 && readyState == 'complete';
+      final isBlankLike = _isBlankLikeSnapshot(snapshot);
       if (!isBlankLike) return;
+
+      final inspectedUrl = _currentUrl;
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
+      if (!mounted || _currentUrl != inspectedUrl) return;
+
+      final retrySnapshot = await _capturePageSnapshot(controller);
+      if (retrySnapshot == null || !_isBlankLikeSnapshot(retrySnapshot)) {
+        return;
+      }
 
       AppLogger.instance.error('WebView 疑似白屏：url=$_currentUrl');
 
@@ -391,6 +382,43 @@ class _WebViewPageState extends State<WebViewPage> {
     } catch (error) {
       AppLogger.instance.debug('WebView 页面快照失败：$_currentUrl :: $error');
     }
+  }
+
+  Future<_WebViewPageSnapshot?> _capturePageSnapshot(
+    InAppWebViewController controller,
+  ) async {
+    final snapshot = await controller.evaluateJavascript(
+      source: '''
+        (() => {
+          const title = document.title || '';
+          const readyState = document.readyState || '';
+          const bodyText = document.body?.innerText?.trim() || '';
+          const childCount = document.body?.children?.length || 0;
+          return {
+            title,
+            readyState,
+            textLength: bodyText.length,
+            childCount,
+          };
+        })();
+      ''',
+    );
+
+    final map = snapshot is Map
+        ? Map<Object?, Object?>.from(snapshot)
+        : const {};
+    return (
+      title: '${map['title'] ?? ''}'.trim(),
+      readyState: '${map['readyState'] ?? ''}'.trim(),
+      textLength: int.tryParse('${map['textLength'] ?? 0}') ?? 0,
+      childCount: int.tryParse('${map['childCount'] ?? 0}') ?? 0,
+    );
+  }
+
+  bool _isBlankLikeSnapshot(_WebViewPageSnapshot snapshot) {
+    return snapshot.textLength == 0 &&
+        snapshot.childCount == 0 &&
+        snapshot.readyState == 'complete';
   }
 
   Future<void> _fillSavedCredentials({
@@ -837,7 +865,7 @@ class _WebViewPageState extends State<WebViewPage> {
                         _handleConsoleMessage(controller, consoleMessage);
                       },
                       shouldInterceptRequest: (controller, request) async {
-                        final uri = request.url?.uriValue;
+                        final uri = request.url.uriValue;
                         if (uri == null) return null;
 
                         if (_isDeniedWeChatSdkRequest(uri)) {

@@ -244,7 +244,13 @@ class _HomePageState extends State<HomePage> {
   Future<void> _refreshDormElectricity() async {
     if (!_isBootstrapReady) return;
     final service = DormElectricityService.instance;
-    if (!await service.hasRoomConfig()) return;
+    if (!await service.hasRoomConfig()) {
+      if (!mounted) return;
+      setState(() {
+        _dormElectricity = '--';
+      });
+      return;
+    }
     final value = await service.fetchElectricity();
     if (!mounted) return;
     setState(() {
@@ -687,69 +693,75 @@ class _HomePageState extends State<HomePage> {
                           ],
                         ),
                   const Spacer(),
-                  Align(
-                    alignment: Alignment.bottomLeft,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () async {
-                        await context.pushNamed('campus-card-payment');
-                        if (!mounted) return;
-                        _refreshCampusCardBalance();
-                      },
-                      child: Transform.translate(
-                        offset: const Offset(-4, 0),
-                        child: IntrinsicWidth(
-                          child: Container(
-                            height: 44,
-                            constraints: const BoxConstraints(minWidth: 80),
-                            padding: const EdgeInsets.only(left: 12, right: 14),
-                            decoration: BoxDecoration(
-                              color: AppColors.primary.withValues(alpha: 0.08),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () async {
+                          await context.pushNamed('campus-card-payment');
+                          if (!mounted) return;
+                          _refreshCampusCardBalance();
+                        },
+                        child: Transform.translate(
+                          offset: const Offset(-4, 0),
+                          child: IntrinsicWidth(
+                            child: Container(
+                              height: 44,
+                              constraints: const BoxConstraints(minWidth: 80),
+                              padding: const EdgeInsets.only(
+                                left: 12,
+                                right: 14,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary.withValues(
+                                  alpha: 0.08,
+                                ),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Align(
                                 alignment: Alignment.centerLeft,
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  crossAxisAlignment: CrossAxisAlignment.center,
-                                  children: [
-                                    const Icon(
-                                      Icons.qr_code_2_rounded,
-                                      size: 28,
-                                      color: AppColors.primary,
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      '付款码',
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                        color: cs.onSurface,
-                                        height: 1.0,
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: Alignment.centerLeft,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.center,
+                                    children: [
+                                      const Icon(
+                                        Icons.qr_code_2_rounded,
+                                        size: 28,
+                                        color: AppColors.primary,
                                       ),
-                                      maxLines: 1,
-                                    ),
-                                  ],
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        '付款码',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          color: cs.onSurface,
+                                          height: 1.0,
+                                        ),
+                                        maxLines: 1,
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
                           ),
                         ),
                       ),
-                    ),
+                      Icon(
+                        Icons.arrow_forward_ios,
+                        size: 14,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ],
                   ),
                 ],
-              ),
-            ),
-            Align(
-              alignment: Alignment.bottomRight,
-              child: Icon(
-                Icons.arrow_forward_ios,
-                size: 14,
-                color: cs.onSurfaceVariant,
               ),
             ),
           ],
@@ -764,7 +776,11 @@ class _HomePageState extends State<HomePage> {
     final bgColor = isDark ? cs.surfaceContainerLowest : Colors.white;
 
     return GestureDetector(
-      onTap: () => context.pushNamed('dorm-electricity'),
+      onTap: () async {
+        await context.pushNamed('dorm-electricity');
+        if (!mounted) return;
+        await _refreshDormElectricity();
+      },
       child: Container(
         height: 136,
         decoration: BoxDecoration(
@@ -1189,18 +1205,22 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
             const SizedBox(height: 4),
-            Text(
-              '查看各科成绩与绩点',
-              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-            ),
-            const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.bottomRight,
-              child: Icon(
-                Icons.arrow_forward_ios,
-                size: 14,
-                color: cs.onSurfaceVariant,
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: Text(
+                    '查看各科成绩与绩点',
+                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                  ),
+                ),
+                Icon(
+                  Icons.arrow_forward_ios,
+                  size: 14,
+                  color: cs.onSurfaceVariant,
+                ),
+              ],
             ),
           ],
         ),
