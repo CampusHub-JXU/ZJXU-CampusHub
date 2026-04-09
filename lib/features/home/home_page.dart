@@ -826,19 +826,27 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ),
                   const SizedBox(height: 2),
-                  Text(
-                    '剩余 $_dormElectricity 度',
-                    style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '剩余 $_dormElectricity 度',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                      Icon(
+                        Icons.arrow_forward_ios,
+                        size: 14,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ],
                   ),
                 ],
-              ),
-            ),
-            Align(
-              alignment: Alignment.bottomRight,
-              child: Icon(
-                Icons.arrow_forward_ios,
-                size: 14,
-                color: cs.onSurfaceVariant,
               ),
             ),
           ],
