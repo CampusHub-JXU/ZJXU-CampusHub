@@ -27,10 +27,7 @@ class CampusCardService {
       'https://app.xiaoyuan.ccb.com/EMTSTATIC/DZK2026032101/index2026032101.html#/cardmentkey';
 
   static const paymentCodeServiceHallUrl =
-      'https://mobilehall.zjxu.edu.cn/mportal/start/index.html#/business/ydd/wfw/id=ED8D7B51A2422411E0532602010A9D8D';
-
-  static const serviceHallCasServiceUrl =
-      'https://newca.zjxu.edu.cn/casClient/login/ydd?services=business%2Fydd%2Fwfw';
+      'https://app.xiaoyuan.ccb.com/EMTSTATIC/DZK2026032101/index2026032101.html#/cardmentkey';
 
   void updateCachedBalance(double? balance) {
     if (balance == null) return;
