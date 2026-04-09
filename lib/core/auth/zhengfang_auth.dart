@@ -206,8 +206,8 @@ class ZhengfangAuth extends ChangeNotifier {
     try {
       final dio = Dio(
         BaseOptions(
-          connectTimeout: const Duration(seconds: 8),
-          receiveTimeout: const Duration(seconds: 8),
+          connectTimeout: const Duration(seconds: 3),
+          receiveTimeout: const Duration(seconds: 3),
           followRedirects: false,
           validateStatus: (s) => s != null && s < 500,
         ),
@@ -242,8 +242,8 @@ class ZhengfangAuth extends ChangeNotifier {
     try {
       final dio = Dio(
         BaseOptions(
-          connectTimeout: const Duration(seconds: 8),
-          receiveTimeout: const Duration(seconds: 8),
+          connectTimeout: const Duration(seconds: 3),
+          receiveTimeout: const Duration(seconds: 3),
           followRedirects: true,
           validateStatus: (s) => s != null && s < 500,
         ),
