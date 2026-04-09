@@ -715,13 +715,16 @@ class _HomePageState extends State<HomePage> {
                                 color: AppColors.primary,
                               ),
                               const SizedBox(width: 4),
-                              Text(
-                                '付款码',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: cs.onSurface,
-                                  height: 1.0,
+                              Flexible(
+                                child: Text(
+                                  '付款码',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: cs.onSurface,
+                                    height: 1.0,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                             ],

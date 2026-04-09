@@ -271,12 +271,14 @@ class _WebViewPageState extends State<WebViewPage> {
               onLoadStart: (_, url) {
                 _trackCurrentUrl(url);
                 AppLogger.instance.info('WebView load start: $_currentUrl');
+                if (!mounted) return;
                 setState(() {
                   _hasError = false;
                   _progress = 0;
                 });
               },
               onLoadStop: (controller, url) async {
+                if (!mounted) return;
                 _trackCurrentUrl(url);
 
                 // Service hall SSO strips the fragment id= param during redirect.
@@ -316,6 +318,7 @@ class _WebViewPageState extends State<WebViewPage> {
                 _handleConsoleMessage(controller, consoleMessage);
               },
               onProgressChanged: (_, p) {
+                if (!mounted) return;
                 setState(() => _progress = p / 100);
               },
               onReceivedHttpError: (_, request, response) {
@@ -325,6 +328,7 @@ class _WebViewPageState extends State<WebViewPage> {
                   'WebView HTTP 错误: ${response.statusCode} ${response.reasonPhrase ?? ''} url=${request.url}',
                 );
 
+                if (!mounted) return;
                 setState(() {
                   _hasError = true;
                   _controller = null;
@@ -338,6 +342,7 @@ class _WebViewPageState extends State<WebViewPage> {
                   'WebView 加载失败: code=${error.type} desc=${error.description} url=${request.url}',
                 );
 
+                if (!mounted) return;
                 setState(() {
                   _hasError = true;
                   _controller = null;

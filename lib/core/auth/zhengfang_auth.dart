@@ -918,22 +918,46 @@ class ZhengfangAuth extends ChangeNotifier {
     final statusCode = pageResp.statusCode ?? 0;
     final location = pageResp.headers.value('location') ?? '';
     if (_isLoginSuccess(statusCode, location, '')) {
-      _sessionActive = true;
+      AppLogger.instance.info('检测到 302 重定向到首页，旧会话可能已过期，清除 Cookie 后重新获取登录页');
+      await _cookieJar.deleteAll();
+      _sessionActive = false;
       _cachedCsrfToken = null;
-      _contextIndicatesLoggedIn = true;
-      AppLogger.instance.info('检测到教务已有有效会话，跳过 CSRF 获取');
       notifyListeners();
+
+      final retryResp = await _dio.get<String>(
+        '$_baseUrl/xtgl/login_slogin.html',
+        options: Options(
+          responseType: ResponseType.plain,
+          headers: {'Referer': _loginPageUrl},
+        ),
+      );
+
+      final retryLocation = retryResp.headers.value('location') ?? '';
+      if (_isLoginSuccess(retryResp.statusCode, retryLocation, '')) {
+        _sessionActive = true;
+        _cachedCsrfToken = null;
+        _contextIndicatesLoggedIn = true;
+        AppLogger.instance.info('清除 Cookie 后仍检测到有效会话');
+        notifyListeners();
+        return '';
+      }
+
+      final retryHtml = retryResp.data ?? '';
+      final retryToken = _extractCsrfFromHtml(retryHtml);
+      if (retryToken.isNotEmpty) {
+        _cachedCsrfToken = retryToken;
+        AppLogger.instance.debug('CSRF Token 重新获取成功: ${retryToken.length} 字符');
+        _contextIndicatesLoggedIn = false;
+        return retryToken;
+      }
+
+      AppLogger.instance.info('清除 Cookie 后仍无法获取 CSRF Token');
+      _contextIndicatesLoggedIn = false;
       return '';
     }
 
     final pageHtml = pageResp.data ?? '';
-    final matchById = RegExp(
-      r'''id=["']csrftoken["'][^>]*value=["']([^"']+)["']''',
-    ).firstMatch(pageHtml);
-    final matchByName = RegExp(
-      r'''name=["']csrftoken["'][^>]*value=["']([^"']+)["']''',
-    ).firstMatch(pageHtml);
-    final token = (matchById?.group(1) ?? matchByName?.group(1) ?? '').trim();
+    final token = _extractCsrfFromHtml(pageHtml);
     _cachedCsrfToken = token;
     if (token.isEmpty) {
       AppLogger.instance.info('CSRF Token 为空，可能连接异常');
@@ -943,6 +967,16 @@ class ZhengfangAuth extends ChangeNotifier {
       _contextIndicatesLoggedIn = false;
     }
     return token;
+  }
+
+  String _extractCsrfFromHtml(String html) {
+    final matchById = RegExp(
+      r'''id=["']csrftoken["'][^>]*value=["']([^"']+)["']''',
+    ).firstMatch(html);
+    final matchByName = RegExp(
+      r'''name=["']csrftoken["'][^>]*value=["']([^"']+)["']''',
+    ).firstMatch(html);
+    return (matchById?.group(1) ?? matchByName?.group(1) ?? '').trim();
   }
 
   bool _isLoginSuccess(int? statusCode, String location, String html) {
