@@ -8,6 +8,9 @@ import 'unified_auth_login_widget.dart';
 
 const _kInputRadius = BorderRadius.all(Radius.circular(12));
 
+/// Unified horizontal margin for both banner card and form area.
+const double _kHorizontalMargin = 16;
+
 class LoginShell extends StatelessWidget {
   const LoginShell({
     super.key,
@@ -29,12 +32,14 @@ class LoginShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cs = Theme.of(context).colorScheme;
 
     final formBackground = isDark
         ? const Color(0xFF1A1214)
         : const Color(0xFFFAFAFA);
     final inputFill = isDark ? const Color(0xFF2D1F23) : Colors.white;
+    final inputBorder = isDark
+        ? BorderSide.none
+        : BorderSide(color: Colors.grey.shade200, width: 0.8);
     final focusBorder = isDark ? AppColors.primaryLight : AppColors.primary;
 
     return Material(
@@ -44,8 +49,14 @@ class LoginShell extends StatelessWidget {
         bottom: false,
         child: Column(
           children: [
+            // Banner card
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              padding: const EdgeInsets.fromLTRB(
+                _kHorizontalMargin,
+                12,
+                _kHorizontalMargin,
+                0,
+              ),
               child: Container(
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
@@ -86,74 +97,65 @@ class LoginShell extends StatelessWidget {
                       ),
                     ),
                     Padding(
-                      padding: const EdgeInsets.all(20),
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 22),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                            crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
                               Container(
-                                width: 52,
-                                height: 52,
+                                width: 44,
+                                height: 44,
                                 padding: const EdgeInsets.all(6),
                                 decoration: BoxDecoration(
                                   color: Colors.white,
-                                  borderRadius: BorderRadius.circular(16),
+                                  borderRadius: BorderRadius.circular(14),
                                 ),
                                 child: SvgPicture.asset(
                                   'assets/header_texture.svg',
                                 ),
                               ),
-                              const SizedBox(width: 12),
+                              const SizedBox(width: 10),
                               if (badgeText != null)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 6),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 6,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.16,
-                                      ),
-                                      borderRadius: BorderRadius.circular(999),
-                                      border: Border.all(
-                                        color: Colors.white.withValues(
-                                          alpha: 0.14,
-                                        ),
-                                      ),
-                                    ),
-                                    child: Text(
-                                      badgeText!,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 12,
-                                      ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 5,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: Text(
+                                    badgeText!,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12,
                                     ),
                                   ),
                                 ),
                               const Spacer(),
                               if (onClose != null)
                                 SizedBox(
-                                  width: 48,
-                                  height: 48,
+                                  width: 36,
+                                  height: 36,
                                   child: IconButton(
                                     onPressed: onClose,
                                     icon: const Icon(
                                       Icons.close,
                                       color: Colors.white,
-                                      size: 22,
+                                      size: 20,
                                     ),
                                     tooltip: '关闭',
                                     padding: EdgeInsets.zero,
+                                    visualDensity: VisualDensity.compact,
                                   ),
                                 ),
                             ],
                           ),
-                          const SizedBox(height: 14),
+                          const SizedBox(height: 18),
                           Text(
                             title,
                             style: Theme.of(context).textTheme.headlineSmall
@@ -162,12 +164,13 @@ class LoginShell extends StatelessWidget {
                                   fontWeight: FontWeight.w700,
                                 ),
                           ),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 10),
                           Text(
                             description,
                             style: Theme.of(context).textTheme.bodyMedium
                                 ?.copyWith(
-                                  color: Colors.white.withValues(alpha: 0.78),
+                                  color: Colors.white.withValues(alpha: 0.75),
+                                  height: 1.4,
                                 ),
                           ),
                         ],
@@ -177,6 +180,8 @@ class LoginShell extends StatelessWidget {
                 ),
               ),
             ),
+
+            // Form area - vertically centered
             Expanded(
               child: Container(
                 color: formBackground,
@@ -187,11 +192,11 @@ class LoginShell extends StatelessWidget {
                       fillColor: inputFill,
                       border: OutlineInputBorder(
                         borderRadius: _kInputRadius,
-                        borderSide: BorderSide.none,
+                        borderSide: inputBorder,
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: _kInputRadius,
-                        borderSide: BorderSide.none,
+                        borderSide: inputBorder,
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: _kInputRadius,
@@ -226,15 +231,25 @@ class LoginShell extends StatelessWidget {
                         ),
                         textStyle: const TextStyle(
                           fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 2,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.3,
                         ),
                       ),
                     ),
                   ),
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
-                    child: child,
+                  child: Center(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(
+                        _kHorizontalMargin,
+                        20,
+                        _kHorizontalMargin,
+                        32,
+                      ),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 400),
+                        child: child,
+                      ),
+                    ),
                   ),
                 ),
               ),

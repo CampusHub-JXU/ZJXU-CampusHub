@@ -251,7 +251,7 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
                       color: Colors.white,
                     ),
                   )
-                : const Text('登 录'),
+                : const Text('登录'),
           ),
         ],
       ),
@@ -260,35 +260,39 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
 
   Widget _buildCaptchaRow(ColorScheme cs) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Expanded(
-          child: SizedBox(
-            height: 56,
-            child: TextField(
-              controller: _captchaCtrl,
-              decoration: const InputDecoration(
-                hintText: '验证码',
-                prefixIcon: Icon(Icons.shield_outlined),
-              ),
-              textInputAction: TextInputAction.done,
-              onSubmitted: (_) => _login(),
+          child: TextField(
+            controller: _captchaCtrl,
+            decoration: const InputDecoration(
+              hintText: '验证码',
+              prefixIcon: Icon(Icons.shield_outlined),
             ),
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => _login(),
           ),
         ),
         const SizedBox(width: 12),
         GestureDetector(
           onTap: _refreshCaptcha,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Container(
-              width: 120,
-              height: 56,
+          child: Container(
+            width: 112,
+            height: 52,
+            decoration: BoxDecoration(
               color: cs.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: cs.outlineVariant.withValues(alpha: 0.5),
+                width: 0.8,
+              ),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(11),
               child: _captchaBytes != null
                   ? Image.memory(_captchaBytes!, fit: BoxFit.cover)
                   : _error != null
-                  ? Icon(Icons.refresh, color: cs.error, size: 28)
+                  ? Icon(Icons.refresh, color: cs.error, size: 24)
                   : const Center(
                       child: CircularProgressIndicator(strokeWidth: 2),
                     ),
