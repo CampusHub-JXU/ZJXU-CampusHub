@@ -41,7 +41,25 @@ class _WebVpnProtectedWebViewPageState
   @override
   void initState() {
     super.initState();
-    _prepareWebViewSession();
+    _resolveInitialSession();
+  }
+
+  Future<void> _resolveInitialSession() async {
+    ZhengfangAuth.instance.setMode(ZhengfangMode.webVpn);
+    final valid = await ZhengfangAuth.instance.validateWebVpnProxySession(
+      widget.url,
+    );
+    if (!mounted) return;
+
+    if (valid == false) {
+      setState(() {
+        _preparingSession = false;
+        _requiresLogin = true;
+      });
+      return;
+    }
+
+    await _prepareWebViewSession();
   }
 
   Future<void> _prepareWebViewSession({bool recreateWebView = false}) async {
