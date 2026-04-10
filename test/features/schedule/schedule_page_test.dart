@@ -76,6 +76,12 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
 
+    expect(find.byTooltip('调课提醒'), findsOneWidget);
+    expect(find.text('已根据这些提醒自动修正课表显示'), findsNothing);
+
+    await tester.tap(find.byTooltip('调课提醒'));
+    await tester.pumpAndSettle();
+
     expect(find.text('调课提醒'), findsOneWidget);
     expect(find.text('AI+创新创业基础'), findsWidgets);
     expect(find.textContaining('第5周 周四 第8-9节 -> 第5周 周五 第8-9节'), findsOneWidget);

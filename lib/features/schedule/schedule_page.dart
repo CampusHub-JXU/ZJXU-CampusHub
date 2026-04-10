@@ -244,6 +244,32 @@ class _SchedulePageState extends State<SchedulePage> {
     _onLoginSuccess();
   }
 
+  Future<void> _showCourseChangeSheet() async {
+    if (_courseChangeRules.isEmpty) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.62,
+          minChildSize: 0.38,
+          maxChildSize: 0.92,
+          builder: (context, scrollController) {
+            return _ScheduleChangeSheet(
+              changeRules: _courseChangeRules,
+              displayWeek: _displayWeek,
+              scrollController: scrollController,
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -251,6 +277,19 @@ class _SchedulePageState extends State<SchedulePage> {
         title: const Text('课表'),
         actions: (_loggedIn || _courses.isNotEmpty)
             ? [
+                if (_courseChangeRules.isNotEmpty)
+                  IconButton(
+                    tooltip: '调课提醒',
+                    onPressed: _showCourseChangeSheet,
+                    icon: Badge(
+                      label: Text(
+                        _courseChangeRules.length > 99
+                            ? '99+'
+                            : '${_courseChangeRules.length}',
+                      ),
+                      child: const Icon(Icons.swap_horiz_rounded),
+                    ),
+                  ),
                 PopupMenuButton<int>(
                   icon: const Icon(Icons.calendar_today),
                   tooltip: '切换学期',
@@ -336,11 +375,6 @@ class _SchedulePageState extends State<SchedulePage> {
             updatedAt: _scheduleUpdatedAt,
             loggedIn: _loggedIn,
           ),
-        if (_courseChangeRules.isNotEmpty)
-          _ScheduleChangePanel(
-            changeRules: _courseChangeRules,
-            displayWeek: _displayWeek,
-          ),
         Expanded(child: _buildWeekPager()),
       ],
     );
@@ -413,14 +447,16 @@ class _ScheduleInfoBanner extends StatelessWidget {
   }
 }
 
-class _ScheduleChangePanel extends StatelessWidget {
-  const _ScheduleChangePanel({
+class _ScheduleChangeSheet extends StatelessWidget {
+  const _ScheduleChangeSheet({
     required this.changeRules,
     required this.displayWeek,
+    required this.scrollController,
   });
 
   final List<CourseChangeRule> changeRules;
   final int displayWeek;
+  final ScrollController scrollController;
 
   static const _weekdayLabels = ['一', '二', '三', '四', '五', '六', '日'];
 
@@ -428,61 +464,64 @@ class _ScheduleChangePanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final sortedRules = [...changeRules]..sort(_compareRuleOrder);
-    final visibleRules = sortedRules.take(3).toList(growable: false);
 
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+    return DecoratedBox(
       decoration: BoxDecoration(
         color: cs.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(
-                Icons.swap_horiz_rounded,
-                size: 18,
-                color: AppColors.primary,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  '调课提醒',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: cs.onSurface,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.swap_horiz_rounded,
+                  size: 20,
+                  color: AppColors.primary,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '调课提醒',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: cs.onSurface,
+                    ),
                   ),
                 ),
-              ),
-              Text(
-                '共 ${changeRules.length} 条',
+                Text(
+                  '共 ${changeRules.length} 条',
+                  style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                '已根据这些提醒自动修正课表显示',
                 style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
               ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '已根据这些提醒自动修正课表显示',
-            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-          ),
-          const SizedBox(height: 12),
-          for (int i = 0; i < visibleRules.length; i++) ...[
-            _buildRuleCard(context, visibleRules[i]),
-            if (i < visibleRules.length - 1) const SizedBox(height: 8),
-          ],
-          if (changeRules.length > visibleRules.length) ...[
-            const SizedBox(height: 10),
-            Text(
-              '还有 ${changeRules.length - visibleRules.length} 条提醒未展开',
-              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
             ),
-          ],
+          ),
+          Divider(height: 1, color: cs.outlineVariant.withValues(alpha: 0.45)),
+          Expanded(
+            child: ListView.separated(
+              controller: scrollController,
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+              physics: const ClampingScrollPhysics(),
+              itemCount: sortedRules.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 10),
+              itemBuilder: (context, index) {
+                return _buildRuleCard(context, sortedRules[index]);
+              },
+            ),
+          ),
         ],
       ),
     );
