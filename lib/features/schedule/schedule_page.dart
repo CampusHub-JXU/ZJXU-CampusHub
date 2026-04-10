@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../app/theme.dart';
@@ -345,10 +344,9 @@ class _SchedulePageState extends State<SchedulePage> {
   Widget _buildWeekPager() {
     return PageView.builder(
       controller: _weekPageController,
+      physics: const ClampingScrollPhysics(),
       itemCount: _weekCount,
       onPageChanged: _onWeekPageChanged,
-      allowImplicitScrolling: true,
-      dragStartBehavior: DragStartBehavior.down,
       itemBuilder: (context, index) {
         final week = index + 1;
         final weekViewModel = _weekViewModelFor(week);
@@ -541,21 +539,24 @@ class _ScheduleGrid extends StatelessWidget {
             ),
             Expanded(
               child: SingleChildScrollView(
+                physics: const ClampingScrollPhysics(),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _SlotColumn(slotColumnWidth: _slotColumnWidth),
                     for (int day = 1; day <= 7; day++)
-                      _DayColumn(
-                        currentWeekCourses: weekViewModel
-                            .coursesForDay(day)
-                            .currentWeekCourses,
-                        otherWeekCourses: weekViewModel
-                            .coursesForDay(day)
-                            .otherWeekCourses,
-                        colorFor: _colorForCourse,
-                        dayColumnWidth: dayColumnWidth,
-                        displayWeek: currentWeek,
+                      RepaintBoundary(
+                        child: _DayColumn(
+                          currentWeekCourses: weekViewModel
+                              .coursesForDay(day)
+                              .currentWeekCourses,
+                          otherWeekCourses: weekViewModel
+                              .coursesForDay(day)
+                              .otherWeekCourses,
+                          colorFor: _colorForCourse,
+                          dayColumnWidth: dayColumnWidth,
+                          displayWeek: currentWeek,
+                        ),
                       ),
                   ],
                 ),
@@ -761,15 +762,17 @@ class _DayColumn extends StatelessWidget {
                   _ScheduleGrid._slotHeight,
               width: placement.width,
               height: _ScheduleGrid._slotHeight * placement.span,
-              child: _CourseCell(
-                course: placement.entry.course,
-                span: placement.span,
-                color: colorFor(
-                  placement.entry.course.courseName,
-                  placement.entry.isCurrentWeek,
+              child: RepaintBoundary(
+                child: _CourseCell(
+                  course: placement.entry.course,
+                  span: placement.span,
+                  color: colorFor(
+                    placement.entry.course.courseName,
+                    placement.entry.isCurrentWeek,
+                  ),
+                  dayColumnWidth: placement.width,
+                  isCurrentWeek: placement.entry.isCurrentWeek,
                 ),
-                dayColumnWidth: placement.width,
-                isCurrentWeek: placement.entry.isCurrentWeek,
               ),
             ),
         ],
@@ -963,6 +966,12 @@ class _CourseCell extends StatelessWidget {
   final double dayColumnWidth;
   final bool isCurrentWeek;
 
+  static const _cellBorderRadius = BorderRadius.all(Radius.circular(8));
+
+  static Color _blendColor(Color background, Color foreground, double amount) {
+    return Color.lerp(background, foreground, amount)!;
+  }
+
   void _showCourseDetail(BuildContext context) {
     showModalBottomSheet<void>(
       context: context,
@@ -1033,150 +1042,141 @@ class _CourseCell extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final overlayColor = isCurrentWeek
-        ? color.withValues(alpha: isDark ? 0.18 : 0.1)
-        : (isDark
-              ? Colors.white.withValues(alpha: 0.04)
-              : Colors.grey.withValues(alpha: 0.06));
     final cellBackgroundColor = isDark
         ? cs.surfaceContainerHigh
         : cs.surfaceContainerLowest;
+    final cellFillColor = isCurrentWeek
+        ? _blendColor(cellBackgroundColor, color, isDark ? 0.18 : 0.1)
+        : _blendColor(
+            cellBackgroundColor,
+            isDark ? Colors.white : Colors.grey.shade400,
+            isDark ? 0.04 : 0.06,
+          );
     final titleColor = isCurrentWeek
-        ? (isDark ? Color.lerp(color, Colors.white, 0.24)! : color)
+        ? (isDark ? _blendColor(color, Colors.white, 0.24) : color)
         : (isDark ? Colors.grey.shade300 : Colors.grey.shade500);
     final metaColor = isCurrentWeek
         ? (isDark
-              ? Color.lerp(color, Colors.white, 0.14)!
-              : titleColor.withValues(alpha: 0.75))
-        : (isDark ? Colors.grey.shade400 : titleColor.withValues(alpha: 0.75));
+              ? _blendColor(color, Colors.white, 0.14)
+              : _blendColor(cellFillColor, titleColor, 0.75))
+        : (isDark
+              ? Colors.grey.shade400
+              : _blendColor(cellFillColor, titleColor, 0.75));
+    final accentColor = isCurrentWeek
+        ? color
+        : (isDark ? Colors.grey.shade500 : Colors.grey.shade300);
+    final cellHeight = _ScheduleGrid._slotHeight * span;
+    final narrow = dayColumnWidth < 24;
+    final dense = cellHeight < 92;
+    final titleFontSize = narrow ? 10.5 : 12.0;
+    final metaFontSize = narrow ? 9.0 : 10.0;
+    final hasRoom = !narrow && cellHeight >= 88;
+    final hasExtraRoom = hasRoom && cellHeight >= 120;
+    final titleLines = cellHeight >= 180
+        ? (narrow ? 5 : 4)
+        : cellHeight >= 120
+        ? 3
+        : 2;
+    final classroomMaxLines = cellHeight >= 200 ? 4 : 2;
+    final teacherMaxLines = cellHeight >= 160 ? 2 : 1;
+    final showWeekTag = !isCurrentWeek && hasExtraRoom;
 
-    return Container(
+    return SizedBox(
       width: dayColumnWidth,
-      height: _ScheduleGrid._slotHeight * span,
-      padding: const EdgeInsets.all(2),
-      child: Material(
-        color: cellBackgroundColor,
-        borderRadius: BorderRadius.circular(8),
-        child: InkWell(
-          onTap: () => _showCourseDetail(context),
-          borderRadius: BorderRadius.circular(8),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              color: overlayColor,
-            ),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final narrow = constraints.maxWidth < 24;
-                final dense = constraints.maxHeight < 92;
-                final titleFontSize = narrow ? 10.5 : 12.0;
-                final metaFontSize = narrow ? 9.0 : 10.0;
-                final hasRoom = !narrow && constraints.maxHeight >= 88;
-                final hasExtraRoom = hasRoom && constraints.maxHeight >= 120;
-                // Reserve lines for metadata; give remaining to title
-                final titleLines = constraints.maxHeight >= 180
-                    ? (narrow ? 5 : 4)
-                    : constraints.maxHeight >= 120
-                    ? (narrow ? 3 : 3)
-                    : 2;
-                final classroomMaxLines = constraints.maxHeight >= 200 ? 4 : 2;
-                final teacherMaxLines = constraints.maxHeight >= 160 ? 2 : 1;
-                final showWeekTag = !isCurrentWeek && hasExtraRoom;
-
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Container(
-                      width: 4,
-                      decoration: BoxDecoration(
-                        color: isCurrentWeek ? color : Colors.grey.shade300,
-                        borderRadius: const BorderRadius.only(
-                          topLeft: Radius.circular(8),
-                          bottomLeft: Radius.circular(8),
-                        ),
-                      ),
+      height: cellHeight,
+      child: Padding(
+        padding: const EdgeInsets.all(2),
+        child: Material(
+          color: cellFillColor,
+          borderRadius: _cellBorderRadius,
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () => _showCourseDetail(context),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ColoredBox(color: accentColor, child: const SizedBox(width: 4)),
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      narrow ? 2 : 4,
+                      6,
+                      narrow ? 2 : 4,
+                      6,
                     ),
-                    Expanded(
-                      child: Padding(
-                        padding: EdgeInsets.fromLTRB(
-                          narrow ? 2 : 4,
-                          6,
-                          narrow ? 2 : 4,
-                          6,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Align(
-                                alignment: Alignment.topLeft,
-                                child: Text(
-                                  course.courseName,
-                                  style: TextStyle(
-                                    fontSize: titleFontSize,
-                                    fontWeight: FontWeight.w600,
-                                    color: titleColor,
-                                    height: dense ? 1.1 : 1.18,
-                                  ),
-                                  maxLines: titleLines,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.topLeft,
+                            child: Text(
+                              course.courseName,
+                              style: TextStyle(
+                                fontSize: titleFontSize,
+                                fontWeight: FontWeight.w600,
+                                color: titleColor,
+                                height: dense ? 1.1 : 1.18,
                               ),
+                              maxLines: titleLines,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            if (hasRoom && course.classroom.isNotEmpty) ...[
-                              const SizedBox(height: 2),
-                              Align(
-                                alignment: Alignment.bottomRight,
-                                child: Text(
-                                  course.classroom,
-                                  style: TextStyle(
-                                    fontSize: metaFontSize,
-                                    color: metaColor,
-                                  ),
-                                  maxLines: classroomMaxLines,
-                                  overflow: TextOverflow.ellipsis,
-                                  textAlign: TextAlign.right,
-                                ),
-                              ),
-                            ],
-                            if (hasRoom && course.teacherName.isNotEmpty) ...[
-                              const SizedBox(height: 2),
-                              Align(
-                                alignment: Alignment.bottomRight,
-                                child: Text(
-                                  course.teacherName,
-                                  style: TextStyle(
-                                    fontSize: metaFontSize,
-                                    color: metaColor,
-                                  ),
-                                  maxLines: teacherMaxLines,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                            if (showWeekTag) ...[
-                              const SizedBox(height: 2),
-                              Align(
-                                alignment: Alignment.bottomRight,
-                                child: Text(
-                                  '非本周',
-                                  style: TextStyle(
-                                    fontSize: 9,
-                                    color: Colors.grey.shade400,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  softWrap: false,
-                                ),
-                              ),
-                            ],
-                          ],
+                          ),
                         ),
-                      ),
+                        if (hasRoom && course.classroom.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Align(
+                            alignment: Alignment.bottomRight,
+                            child: Text(
+                              course.classroom,
+                              style: TextStyle(
+                                fontSize: metaFontSize,
+                                color: metaColor,
+                              ),
+                              maxLines: classroomMaxLines,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.right,
+                            ),
+                          ),
+                        ],
+                        if (hasRoom && course.teacherName.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Align(
+                            alignment: Alignment.bottomRight,
+                            child: Text(
+                              course.teacherName,
+                              style: TextStyle(
+                                fontSize: metaFontSize,
+                                color: metaColor,
+                              ),
+                              maxLines: teacherMaxLines,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                        if (showWeekTag) ...[
+                          const SizedBox(height: 2),
+                          Align(
+                            alignment: Alignment.bottomRight,
+                            child: Text(
+                              '非本周',
+                              style: TextStyle(
+                                fontSize: 9,
+                                color: isDark
+                                    ? Colors.grey.shade400
+                                    : Colors.grey.shade500,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              softWrap: false,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
-                  ],
-                );
-              },
+                  ),
+                ),
+              ],
             ),
           ),
         ),
