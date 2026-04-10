@@ -6,6 +6,8 @@ import '../../core/auth/unified_auth.dart';
 import 'login_widget.dart';
 import 'unified_auth_login_widget.dart';
 
+const _kInputRadius = BorderRadius.all(Radius.circular(12));
+
 class LoginShell extends StatelessWidget {
   const LoginShell({
     super.key,
@@ -29,154 +31,215 @@ class LoginShell extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cs = Theme.of(context).colorScheme;
 
-    return ColoredBox(
+    final formBackground = isDark
+        ? const Color(0xFF1A1214)
+        : const Color(0xFFFAFAFA);
+    final inputFill = isDark ? const Color(0xFF2D1F23) : Colors.white;
+    final focusBorder = isDark ? AppColors.primaryLight : AppColors.primary;
+
+    return Material(
       color: Theme.of(context).scaffoldBackgroundColor,
       child: SafeArea(
         top: topSafeArea,
         bottom: false,
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 560),
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          AppColors.primaryDark,
-                          AppColors.primary,
-                          AppColors.primaryLight,
-                        ],
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      AppColors.primaryDark,
+                      AppColors.primary,
+                      AppColors.primaryLight,
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Stack(
+                  children: [
+                    Positioned(
+                      left: -32,
+                      bottom: -44,
+                      child: Container(
+                        width: 128,
+                        height: 128,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.white.withValues(alpha: 0.08),
+                        ),
                       ),
-                      borderRadius: BorderRadius.circular(20),
                     ),
-                    child: Stack(
-                      children: [
-                        Positioned(
-                          left: -32,
-                          bottom: -44,
-                          child: Container(
-                            width: 128,
-                            height: 128,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.white.withValues(alpha: 0.08),
-                            ),
-                          ),
+                    Positioned(
+                      right: -28,
+                      top: -24,
+                      child: Opacity(
+                        opacity: 0.08,
+                        child: SvgPicture.asset(
+                          'assets/header_texture.svg',
+                          width: 150,
+                          height: 150,
                         ),
-                        Positioned(
-                          right: -28,
-                          top: -24,
-                          child: Opacity(
-                            opacity: isDark ? 0.12 : 0.16,
-                            child: SvgPicture.asset(
-                              'assets/header_texture.svg',
-                              width: 150,
-                              height: 150,
-                            ),
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.all(20),
-                          child: Column(
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Container(
-                                    width: 52,
-                                    height: 52,
-                                    padding: const EdgeInsets.all(6),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(16),
-                                    ),
-                                    child: SvgPicture.asset(
-                                      'assets/header_texture.svg',
-                                    ),
-                                  ),
-                                  const Spacer(),
-                                  if (onClose != null)
-                                    IconButton(
-                                      onPressed: onClose,
-                                      icon: const Icon(
-                                        Icons.close,
-                                        color: Colors.white,
-                                      ),
-                                      tooltip: '关闭',
-                                    ),
-                                ],
+                              Container(
+                                width: 52,
+                                height: 52,
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: SvgPicture.asset(
+                                  'assets/header_texture.svg',
+                                ),
                               ),
-                              const SizedBox(height: 14),
-                              if (badgeText != null) ...[
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.16),
-                                    borderRadius: BorderRadius.circular(999),
-                                    border: Border.all(
+                              const SizedBox(width: 12),
+                              if (badgeText != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 6),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 6,
+                                    ),
+                                    decoration: BoxDecoration(
                                       color: Colors.white.withValues(
-                                        alpha: 0.14,
+                                        alpha: 0.16,
+                                      ),
+                                      borderRadius: BorderRadius.circular(999),
+                                      border: Border.all(
+                                        color: Colors.white.withValues(
+                                          alpha: 0.14,
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                  child: Text(
-                                    badgeText!,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 12,
+                                    child: Text(
+                                      badgeText!,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 12,
+                                      ),
                                     ),
                                   ),
                                 ),
-                                const SizedBox(height: 12),
-                              ],
-                              Text(
-                                title,
-                                style: Theme.of(context).textTheme.headlineSmall
-                                    ?.copyWith(
+                              const Spacer(),
+                              if (onClose != null)
+                                SizedBox(
+                                  width: 48,
+                                  height: 48,
+                                  child: IconButton(
+                                    onPressed: onClose,
+                                    icon: const Icon(
+                                      Icons.close,
                                       color: Colors.white,
-                                      fontWeight: FontWeight.w700,
+                                      size: 22,
                                     ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                description,
-                                style: Theme.of(context).textTheme.bodyMedium
-                                    ?.copyWith(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.78,
-                                      ),
-                                    ),
-                              ),
+                                    tooltip: '关闭',
+                                    padding: EdgeInsets.zero,
+                                  ),
+                                ),
                             ],
                           ),
+                          const SizedBox(height: 14),
+                          Text(
+                            title,
+                            style: Theme.of(context).textTheme.headlineSmall
+                                ?.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            description,
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(
+                                  color: Colors.white.withValues(alpha: 0.78),
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Expanded(
+              child: Container(
+                color: formBackground,
+                child: Theme(
+                  data: Theme.of(context).copyWith(
+                    inputDecorationTheme: InputDecorationTheme(
+                      filled: true,
+                      fillColor: inputFill,
+                      border: OutlineInputBorder(
+                        borderRadius: _kInputRadius,
+                        borderSide: BorderSide.none,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: _kInputRadius,
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: _kInputRadius,
+                        borderSide: BorderSide(color: focusBorder, width: 1.5),
+                      ),
+                      errorBorder: OutlineInputBorder(
+                        borderRadius: _kInputRadius,
+                        borderSide: BorderSide(color: Colors.red.shade300),
+                      ),
+                      focusedErrorBorder: OutlineInputBorder(
+                        borderRadius: _kInputRadius,
+                        borderSide: BorderSide(
+                          color: Colors.red.shade300,
+                          width: 1.5,
                         ),
-                      ],
+                      ),
+                      prefixIconColor: Colors.grey[600],
+                      hintStyle: TextStyle(color: Colors.grey[500]),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
+                    ),
+                    filledButtonTheme: FilledButtonThemeData(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size(double.infinity, 50),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        textStyle: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 2,
+                        ),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Expanded(
-                  child: Theme(
-                    data: Theme.of(context).copyWith(
-                      scaffoldBackgroundColor: Colors.transparent,
-                      cardColor: cs.surfaceContainerLowest,
-                    ),
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
                     child: child,
                   ),
                 ),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -210,7 +273,7 @@ Future<bool> showUnifiedAuthLoginModal(
           title: title,
           description: description,
           showHeader: false,
-          padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+          padding: EdgeInsets.zero,
           onLoginSuccess: () =>
               Navigator.of(dialogContext, rootNavigator: true).pop(true),
         ),
@@ -257,7 +320,7 @@ Future<bool> showAcademicSystemLoginModal(
             : null,
         child: LoginWidget(
           showHeader: false,
-          padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+          padding: EdgeInsets.zero,
           onLoginSuccess: () =>
               Navigator.of(dialogContext, rootNavigator: true).pop(true),
         ),
