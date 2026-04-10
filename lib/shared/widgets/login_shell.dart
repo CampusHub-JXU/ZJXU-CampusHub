@@ -234,6 +234,7 @@ Future<bool> showUnifiedAuthLoginModal(
   String title = '登录统一认证',
   String description = '登录后可进入一卡通、服务大厅等服务',
   String serviceUrl = UnifiedAuthService.defaultServiceUrl,
+  bool forceWebVpn = false,
   bool barrierDismissible = true,
 }) async {
   final result = await showGeneralDialog<bool>(
@@ -255,6 +256,7 @@ Future<bool> showUnifiedAuthLoginModal(
           serviceUrl: serviceUrl,
           title: title,
           description: description,
+          forceWebVpn: forceWebVpn,
           showHeader: false,
           padding: EdgeInsets.zero,
           onLoginSuccess: () =>

@@ -30,6 +30,7 @@ class UnifiedAuthLoginWidget extends StatefulWidget {
     this.sessionPreflight,
     this.captchaLoader,
     this.loginHandler,
+    this.forceWebVpn = false,
     this.showHeader = true,
     this.padding = const EdgeInsets.all(24),
   });
@@ -43,6 +44,7 @@ class UnifiedAuthLoginWidget extends StatefulWidget {
   final LoginSessionPreflight? sessionPreflight;
   final LoginCaptchaLoader? captchaLoader;
   final LoginSubmitHandler? loginHandler;
+  final bool forceWebVpn;
   final bool showHeader;
   final EdgeInsetsGeometry padding;
 
@@ -71,6 +73,11 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
   Future<void> _bootstrapLoginState() async {
     await _loadSaved();
 
+    if (widget.forceWebVpn) {
+      await _prepareForcedWebVpnLogin();
+      return;
+    }
+
     if (UnifiedAuthService.instance.isLoggedIn) {
       if (mounted) widget.onLoginSuccess();
       return;
@@ -89,6 +96,34 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
     }
 
     await _autoDetectNetwork();
+  }
+
+  Future<void> _prepareForcedWebVpnLogin() async {
+    final webVpnReachable = await UnifiedAuthService.checkWebVpnReachable();
+    if (!mounted) return;
+
+    if (!webVpnReachable) {
+      setState(() {
+        _autoDetecting = false;
+        _captchaBytes = null;
+        _error = '无法连接 WebVPN，请检查网络连接';
+      });
+      return;
+    }
+
+    await _activateWebVpnMode();
+  }
+
+  Future<void> _activateWebVpnMode() async {
+    if (!mounted) return;
+    setState(() {
+      _mode = UnifiedAuthMode.webVpn;
+      _autoDetecting = false;
+      _error = null;
+      _captchaBytes = null;
+    });
+    ZhengfangAuth.instance.setMode(ZhengfangMode.webVpn);
+    await _refreshCaptcha();
   }
 
   Future<void> _autoDetectNetwork() async {
@@ -110,14 +145,7 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
     if (!mounted) return;
 
     if (webVpnReachable) {
-      setState(() {
-        _mode = UnifiedAuthMode.webVpn;
-        _autoDetecting = false;
-        _error = null;
-        _captchaBytes = null;
-      });
-      ZhengfangAuth.instance.setMode(ZhengfangMode.webVpn);
-      await _refreshCaptcha();
+      await _activateWebVpnMode();
       return;
     }
 

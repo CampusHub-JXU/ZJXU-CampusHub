@@ -102,6 +102,7 @@ class _LoginWidgetState extends State<LoginWidget> {
       context,
       title: '登录一卡通',
       description: '非校园网环境下需先完成一卡通认证',
+      forceWebVpn: true,
       barrierDismissible: false,
     );
 

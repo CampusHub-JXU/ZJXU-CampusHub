@@ -127,6 +127,7 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
       context,
       title: '登录一卡通',
       description: '畅行嘉大需要先完成一卡通认证',
+      forceWebVpn: true,
       barrierDismissible: false,
     );
     if (!mounted || !loggedIn) return;
