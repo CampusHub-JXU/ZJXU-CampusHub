@@ -41,9 +41,35 @@ class _CampusCardPageState extends State<CampusCardPage> {
     final service = CampusCardService.instance;
     final balance = service.cachedBalance;
     final lastUpdated = service.lastUpdated;
+    final isAndroid = Theme.of(context).platform == TargetPlatform.android;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('校园卡')),
+      appBar: AppBar(
+        title: const Text('校园卡'),
+        actions: [
+          if (isAndroid)
+            PopupMenuButton<_CampusCardMenuAction>(
+              tooltip: '更多操作',
+              onSelected: (action) {
+                switch (action) {
+                  case _CampusCardMenuAction.addShortcut:
+                    _requestPaymentShortcut();
+                }
+              },
+              itemBuilder: (context) => const [
+                PopupMenuItem<_CampusCardMenuAction>(
+                  value: _CampusCardMenuAction.addShortcut,
+                  child: ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.add_to_home_screen_outlined),
+                    title: Text('添加至桌面'),
+                  ),
+                ),
+              ],
+            ),
+        ],
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -102,19 +128,31 @@ class _CampusCardPageState extends State<CampusCardPage> {
                     ),
                   ),
                   const Spacer(),
-                  GestureDetector(
-                    onTap: () =>
+                  IconButton(
+                    onPressed: () =>
                         _openCampusCardWebView(title: '刷新余额', autoPop: true),
-                    child: Icon(
+                    tooltip: '刷新余额',
+                    constraints: const BoxConstraints.tightFor(
+                      width: 32,
+                      height: 32,
+                    ),
+                    padding: EdgeInsets.zero,
+                    icon: Icon(
                       Icons.refresh,
                       size: 20,
                       color: Colors.white.withValues(alpha: 0.7),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  GestureDetector(
-                    onTap: () => setState(() => _obscured = !_obscured),
-                    child: Icon(
+                  const SizedBox(width: 4),
+                  IconButton(
+                    onPressed: () => setState(() => _obscured = !_obscured),
+                    tooltip: _obscured ? '显示余额' : '隐藏余额',
+                    constraints: const BoxConstraints.tightFor(
+                      width: 32,
+                      height: 32,
+                    ),
+                    padding: EdgeInsets.zero,
+                    icon: Icon(
                       _obscured ? Icons.visibility_off : Icons.visibility,
                       size: 20,
                       color: Colors.white.withValues(alpha: 0.7),
@@ -161,8 +199,7 @@ class _CampusCardPageState extends State<CampusCardPage> {
   }
 
   Widget _buildActionCards(BuildContext context) {
-    final isAndroid = Theme.of(context).platform == TargetPlatform.android;
-    final actionsRow = Row(
+    return Row(
       children: [
         Expanded(
           child: _CampusCardActionCard(
@@ -182,22 +219,6 @@ class _CampusCardPageState extends State<CampusCardPage> {
             color: AppColors.info,
             onTap: () => _openCampusCardWebView(title: '校园卡账单'),
           ),
-        ),
-      ],
-    );
-
-    if (!isAndroid) return actionsRow;
-
-    return Column(
-      children: [
-        actionsRow,
-        const SizedBox(height: 12),
-        _CampusCardActionCard(
-          icon: Icons.add_to_home_screen_outlined,
-          title: '添加至桌面',
-          subtitle: '创建付款码快捷方式，一点即达',
-          color: AppColors.warning,
-          onTap: _requestPaymentShortcut,
         ),
       ],
     );
@@ -338,6 +359,8 @@ class _CampusCardPageState extends State<CampusCardPage> {
 
 // ── Campus Card Action ──────────────────────────────────────────────────────
 
+enum _CampusCardMenuAction { addShortcut }
+
 class _CampusCardActionCard extends StatelessWidget {
   const _CampusCardActionCard({
     required this.icon,
@@ -362,49 +385,54 @@ class _CampusCardActionCard extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
-        child: Stack(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 46,
-                    height: 46,
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Icon(icon, color: color, size: 24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 172),
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(14),
                   ),
-                  const SizedBox(height: 18),
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: cs.onSurface,
-                    ),
+                  child: Icon(icon, color: color, size: 24),
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: cs.onSurface,
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  subtitle,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    height: 1.35,
+                    color: cs.onSurfaceVariant,
                   ),
-                ],
-              ),
+                ),
+                const Spacer(),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Icon(
+                    Icons.arrow_forward_ios,
+                    size: 14,
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+              ],
             ),
-            Positioned(
-              right: 12,
-              bottom: 12,
-              child: Icon(
-                Icons.arrow_forward_ios,
-                size: 14,
-                color: cs.onSurfaceVariant,
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
