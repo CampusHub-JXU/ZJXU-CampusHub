@@ -815,6 +815,11 @@ class ZhengfangAuth extends ChangeNotifier {
     }
   }
 
+  Future<bool?> validateWebVpnTargetSession(String targetUrl) async {
+    setMode(ZhengfangMode.webVpn);
+    return validateWebVpnProxySession(targetUrl);
+  }
+
   /// 跟随 WebVPN CAS 重定向链建立 session
   Future<void> _followWebVpnRedirectChain(
     String referer,

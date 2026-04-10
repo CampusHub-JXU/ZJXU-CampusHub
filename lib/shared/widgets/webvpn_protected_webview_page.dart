@@ -45,8 +45,7 @@ class _WebVpnProtectedWebViewPageState
   }
 
   Future<void> _resolveInitialSession() async {
-    ZhengfangAuth.instance.setMode(ZhengfangMode.webVpn);
-    final valid = await ZhengfangAuth.instance.validateWebVpnProxySession(
+    final valid = await ZhengfangAuth.instance.validateWebVpnTargetSession(
       widget.url,
     );
     if (!mounted) return;
@@ -86,11 +85,10 @@ class _WebVpnProtectedWebViewPageState
 
     _loginPromptShown = true;
     _loginPromptInFlight = true;
-    final loggedIn = await showUnifiedAuthLoginModal(
+    final loggedIn = await showWebVpnUnifiedAuthModal(
       context,
       title: '登录一卡通',
       description: '${widget.title} 通过 WebVPN 提供，需先完成一卡通认证',
-      forceWebVpn: true,
     );
     _loginPromptInFlight = false;
     if (!mounted || !loggedIn) return;
@@ -134,7 +132,7 @@ class _WebVpnProtectedWebViewPageState
           title: Text(widget.title),
           actions: widget.appBarActions,
         ),
-        body: const Center(child: CircularProgressIndicator()),
+        body: _buildCheckingBody(context),
       );
     }
 
@@ -165,6 +163,38 @@ class _WebVpnProtectedWebViewPageState
       preferWebViewBackNavigation: widget.preferWebViewBackNavigation,
       onHomePressed: widget.onHomePressed,
       appBarActions: widget.appBarActions,
+    );
+  }
+
+  Widget _buildCheckingBody(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 20),
+            Text(
+              '正在校验 WebVPN 登录态',
+              textAlign: TextAlign.center,
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '若登录已失效，将自动拉起一卡通认证',
+              textAlign: TextAlign.center,
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
