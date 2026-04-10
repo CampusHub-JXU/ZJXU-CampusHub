@@ -1,7 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/logging/app_logger.dart';
+import 'auth_required_view.dart';
+import 'login_shell.dart';
 import 'webview_page.dart';
 
 class WebVpnProtectedWebViewPage extends StatefulWidget {
@@ -28,6 +33,10 @@ class WebVpnProtectedWebViewPage extends StatefulWidget {
 class _WebVpnProtectedWebViewPageState
     extends State<WebVpnProtectedWebViewPage> {
   bool _preparingSession = true;
+  bool _requiresLogin = false;
+  bool _loginPromptShown = false;
+  bool _loginPromptInFlight = false;
+  Key _webViewKey = UniqueKey();
 
   @override
   void initState() {
@@ -35,15 +44,68 @@ class _WebVpnProtectedWebViewPageState
     _prepareWebViewSession();
   }
 
-  Future<void> _prepareWebViewSession() async {
+  Future<void> _prepareWebViewSession({bool recreateWebView = false}) async {
     try {
+      ZhengfangAuth.instance.setMode(ZhengfangMode.webVpn);
       await ZhengfangAuth.instance.syncWebVpnCookiesToWebView();
     } catch (error) {
       AppLogger.instance.error('准备 WebVPN WebView 会话失败: $error');
     }
 
     if (!mounted) return;
-    setState(() => _preparingSession = false);
+    setState(() {
+      _preparingSession = false;
+      _requiresLogin = false;
+      if (recreateWebView) {
+        _webViewKey = UniqueKey();
+      }
+    });
+  }
+
+  Future<void> _presentLoginPrompt({bool force = false}) async {
+    if (!mounted || _loginPromptInFlight) return;
+    if (!force && _loginPromptShown) return;
+
+    _loginPromptShown = true;
+    _loginPromptInFlight = true;
+    final loggedIn = await showUnifiedAuthLoginModal(
+      context,
+      title: '登录一卡通',
+      description: '${widget.title} 通过 WebVPN 提供，需先完成一卡通认证',
+      forceWebVpn: true,
+    );
+    _loginPromptInFlight = false;
+    if (!mounted || !loggedIn) return;
+    await _prepareWebViewSession(recreateWebView: true);
+  }
+
+  void _scheduleLoginPrompt({bool force = false}) {
+    if (!force && (_loginPromptShown || _loginPromptInFlight)) {
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(_presentLoginPrompt(force: force));
+    });
+  }
+
+  Future<void> _handleLoadStop(
+    InAppWebViewController controller,
+    String currentUrl,
+  ) async {
+    if (isZhengfangLoginEntryUrl(currentUrl)) {
+      AppLogger.instance.debug('WebVPN WebView 命中登录页，切换为应用内登录');
+      if (mounted) {
+        setState(() => _requiresLogin = true);
+      }
+      await _presentLoginPrompt(force: true);
+      return;
+    }
+
+    if (mounted && _requiresLogin) {
+      setState(() => _requiresLogin = false);
+    }
   }
 
   @override
@@ -58,10 +120,30 @@ class _WebVpnProtectedWebViewPageState
       );
     }
 
+    if (_requiresLogin) {
+      _scheduleLoginPrompt();
+
+      return Scaffold(
+        appBar: AppBar(
+          title: Text(widget.title),
+          actions: widget.appBarActions,
+        ),
+        body: AuthRequiredView(
+          title: '需要 WebVPN 认证后继续',
+          message: '${widget.title} 通过 WebVPN 提供，需先完成一卡通认证',
+          buttonLabel: '登录一卡通',
+          onAction: () => _presentLoginPrompt(force: true),
+          icon: Icons.vpn_lock_outlined,
+        ),
+      );
+    }
+
     return WebViewPage(
+      key: _webViewKey,
       title: widget.title,
       url: ZhengfangAuth.instance.buildWebVpnProxyUrl(widget.url),
       enableLoginQuickFill: true,
+      onLoadStop: _handleLoadStop,
       preferWebViewBackNavigation: widget.preferWebViewBackNavigation,
       onHomePressed: widget.onHomePressed,
       appBarActions: widget.appBarActions,
