@@ -3,6 +3,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../../app/theme.dart';
 import '../../core/logging/app_logger.dart';
+import '../../core/shortcut/app_shortcut_service.dart';
 import '../../shared/widgets/ship_card.dart';
 import '../../shared/widgets/unified_auth_protected_webview_page.dart';
 import 'campus_card_recharge_page.dart';
@@ -160,7 +161,8 @@ class _CampusCardPageState extends State<CampusCardPage> {
   }
 
   Widget _buildActionCards(BuildContext context) {
-    return Row(
+    final isAndroid = Theme.of(context).platform == TargetPlatform.android;
+    final actionsRow = Row(
       children: [
         Expanded(
           child: _CampusCardActionCard(
@@ -180,6 +182,22 @@ class _CampusCardPageState extends State<CampusCardPage> {
             color: AppColors.info,
             onTap: () => _openCampusCardWebView(title: '校园卡账单'),
           ),
+        ),
+      ],
+    );
+
+    if (!isAndroid) return actionsRow;
+
+    return Column(
+      children: [
+        actionsRow,
+        const SizedBox(height: 12),
+        _CampusCardActionCard(
+          icon: Icons.add_to_home_screen_outlined,
+          title: '添加至桌面',
+          subtitle: '创建付款码快捷方式，一点即达',
+          color: AppColors.warning,
+          onTap: _requestPaymentShortcut,
         ),
       ],
     );
@@ -211,6 +229,20 @@ class _CampusCardPageState extends State<CampusCardPage> {
   Future<void> _openRechargePage() async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => const CampusCardRechargePage()),
+    );
+  }
+
+  Future<void> _requestPaymentShortcut() async {
+    final created = await AppShortcutService.instance
+        .requestCampusCardPaymentShortcut();
+    if (!mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(created ? '已发起添加请求，请在系统提示中确认' : '当前设备暂不支持添加桌面快捷方式'),
+      ),
     );
   }
 

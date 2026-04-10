@@ -336,6 +336,11 @@ class _SchedulePageState extends State<SchedulePage> {
             updatedAt: _scheduleUpdatedAt,
             loggedIn: _loggedIn,
           ),
+        if (_courseChangeRules.isNotEmpty)
+          _ScheduleChangePanel(
+            changeRules: _courseChangeRules,
+            displayWeek: _displayWeek,
+          ),
         Expanded(child: _buildWeekPager()),
       ],
     );
@@ -405,6 +410,212 @@ class _ScheduleInfoBanner extends StatelessWidget {
     final hour = value.hour.toString().padLeft(2, '0');
     final minute = value.minute.toString().padLeft(2, '0');
     return '$month-$day $hour:$minute';
+  }
+}
+
+class _ScheduleChangePanel extends StatelessWidget {
+  const _ScheduleChangePanel({
+    required this.changeRules,
+    required this.displayWeek,
+  });
+
+  final List<CourseChangeRule> changeRules;
+  final int displayWeek;
+
+  static const _weekdayLabels = ['一', '二', '三', '四', '五', '六', '日'];
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final sortedRules = [...changeRules]..sort(_compareRuleOrder);
+    final visibleRules = sortedRules.take(3).toList(growable: false);
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.swap_horiz_rounded,
+                size: 18,
+                color: AppColors.primary,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '调课提醒',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: cs.onSurface,
+                  ),
+                ),
+              ),
+              Text(
+                '共 ${changeRules.length} 条',
+                style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '已根据这些提醒自动修正课表显示',
+            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+          ),
+          const SizedBox(height: 12),
+          for (int i = 0; i < visibleRules.length; i++) ...[
+            _buildRuleCard(context, visibleRules[i]),
+            if (i < visibleRules.length - 1) const SizedBox(height: 8),
+          ],
+          if (changeRules.length > visibleRules.length) ...[
+            const SizedBox(height: 10),
+            Text(
+              '还有 ${changeRules.length - visibleRules.length} 条提醒未展开',
+              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  int _compareRuleOrder(CourseChangeRule left, CourseChangeRule right) {
+    final leftWeek = _ruleWeek(left);
+    final rightWeek = _ruleWeek(right);
+    final leftDistance = (leftWeek - displayWeek).abs();
+    final rightDistance = (rightWeek - displayWeek).abs();
+    if (leftDistance != rightDistance) {
+      return leftDistance.compareTo(rightDistance);
+    }
+    if (leftWeek != rightWeek) {
+      return leftWeek.compareTo(rightWeek);
+    }
+
+    final leftDay = _ruleWeekday(left);
+    final rightDay = _ruleWeekday(right);
+    if (leftDay != rightDay) {
+      return leftDay.compareTo(rightDay);
+    }
+
+    return _ruleStartLesson(left).compareTo(_ruleStartLesson(right));
+  }
+
+  int _ruleWeek(CourseChangeRule rule) {
+    return rule.targetLesson?.week ?? rule.originalLesson?.week ?? 99;
+  }
+
+  int _ruleWeekday(CourseChangeRule rule) {
+    return rule.targetLesson?.weekday ?? rule.originalLesson?.weekday ?? 99;
+  }
+
+  int _ruleStartLesson(CourseChangeRule rule) {
+    return rule.targetLesson?.startLesson ??
+        rule.originalLesson?.startLesson ??
+        99;
+  }
+
+  Widget _buildRuleCard(BuildContext context, CourseChangeRule rule) {
+    final cs = Theme.of(context).colorScheme;
+    final tag = switch (rule.type) {
+      CourseChangeType.reschedule => '调课',
+      CourseChangeType.cancel => '停课',
+      CourseChangeType.makeup => '补课',
+    };
+    final tagColor = switch (rule.type) {
+      CourseChangeType.reschedule => const Color(0xFF1565C0),
+      CourseChangeType.cancel => AppColors.error,
+      CourseChangeType.makeup => const Color(0xFF2E7D32),
+    };
+    final courseName = (rule.courseName ?? '').trim();
+    final meta = [
+      if ((rule.teacherName ?? '').trim().isNotEmpty) rule.teacherName!.trim(),
+      if ((rule.classroom ?? '').trim().isNotEmpty) rule.classroom!.trim(),
+    ].join(' · ');
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: tagColor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              tag,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: tagColor,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  courseName.isEmpty ? '课程调整' : courseName,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: cs.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _formatRuleSummary(rule),
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                ),
+                if (meta.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    meta,
+                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatRuleSummary(CourseChangeRule rule) {
+    return switch (rule.type) {
+      CourseChangeType.reschedule =>
+        '${_formatSlot(rule.originalLesson)} -> ${_formatSlot(rule.targetLesson)}',
+      CourseChangeType.cancel => '${_formatSlot(rule.originalLesson)} 停课',
+      CourseChangeType.makeup => '${_formatSlot(rule.targetLesson)} 补课',
+    };
+  }
+
+  String _formatSlot(CourseLessonSlot? slot) {
+    if (slot == null) return '时间待确认';
+    final lessonRange = slot.startLesson == slot.endLesson
+        ? '${slot.startLesson}'
+        : '${slot.startLesson}-${slot.endLesson}';
+    final weekday = slot.weekday >= 1 && slot.weekday <= 7
+        ? _weekdayLabels[slot.weekday - 1]
+        : '?';
+    return '第${slot.week}周 周$weekday 第$lessonRange节';
   }
 }
 
