@@ -191,14 +191,8 @@ class SjjxNoticeService {
   }
 
   Future<Response<List<int>>> _getWithWebVpnFallback(String url) async {
-    final webVpnReady = await ZhengfangAuth.instance
-        .validateWebVpnTargetSession(url);
-    if (webVpnReady != true) {
-      AppLogger.instance.network(LogLevel.warn, '实践通知 WebVPN 会话不可用: $url');
-      throw StateError('实践通知 WebVPN 会话不可用');
-    }
-
-    return _fetchViaWebVpn(url, allowRecovery: false);
+    ZhengfangAuth.instance.setMode(ZhengfangMode.webVpn);
+    return _fetchViaWebVpn(url, allowRecovery: true);
   }
 
   Future<Response<List<int>>> _fetchViaWebVpn(
@@ -222,15 +216,16 @@ class SjjxNoticeService {
       if (allowRecovery) {
         AppLogger.instance.network(
           LogLevel.warn,
-          '实践通知 WebVPN 目标页仍要求认证，尝试恢复会话: $url',
+          '实践通知 WebVPN 目标页仍要求认证，尝试恢复 WebVPN 网关会话: $url',
         );
         final recovered = await ZhengfangAuth.instance
-            .validateWebVpnTargetSession(url);
+            .ensureWebVpnGatewaySession(syncWebViewCookies: false);
         if (recovered == true) {
           return _fetchViaWebVpn(url, allowRecovery: false);
         }
       }
-      throw StateError('实践通知 WebVPN 回退后仍返回登录页');
+      AppLogger.instance.network(LogLevel.warn, '实践通知 WebVPN 会话不可用: $url');
+      throw StateError('实践通知 WebVPN 会话不可用');
     }
     AppLogger.instance.network(LogLevel.info, '实践通知已通过 WebVPN 回退加载');
     return response;
