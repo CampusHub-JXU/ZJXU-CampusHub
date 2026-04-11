@@ -106,7 +106,6 @@ jobs:
             echo "## 中文更新日志"
             echo
             echo "- 版本：\`${release_tag}\`"
-            echo "- 构建来源：dev 私有仓 GitHub Actions"
             if [ -n "${previous_tag}" ]; then
               echo "- 对比版本：\`${previous_tag} -> ${release_tag}\`"
               echo "- 变更对比：${compare_url}"
