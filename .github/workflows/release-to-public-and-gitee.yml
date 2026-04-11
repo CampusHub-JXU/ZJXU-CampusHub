@@ -26,7 +26,6 @@ jobs:
       DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
       PUBLIC_GH_OWNER: FHfanshu
       PUBLIC_GH_REPO: JXU-Portal
-      PUBLIC_TARGET_COMMITISH: master
       GITEE_OWNER: fhfanshu
       GITEE_REPO: JXU-Portal
       PUBLIC_REPO_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
@@ -130,6 +129,50 @@ jobs:
             echo "APK_PATH=${apk_path}"
           } >> "${GITHUB_ENV}"
 
+      - name: Resolve public release target branch
+        if: env.DRY_RUN != 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          public_repo="${PUBLIC_GH_OWNER}/${PUBLIC_GH_REPO}"
+          public_target_commitish="$(gh repo view "${public_repo}" --json defaultBranchRef -q '.defaultBranchRef.name')"
+
+          if [ -z "${public_target_commitish}" ]; then
+            echo "Failed to resolve default branch for ${public_repo}" >&2
+            exit 1
+          fi
+
+          echo "PUBLIC_TARGET_COMMITISH=${public_target_commitish}" >> "${GITHUB_ENV}"
+
+      - name: Ensure tag exists in public repository
+        if: env.DRY_RUN != 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          public_repo="${PUBLIC_GH_OWNER}/${PUBLIC_GH_REPO}"
+          target_ref="heads/${PUBLIC_TARGET_COMMITISH}"
+          target_sha="$(gh api "repos/${public_repo}/git/ref/${target_ref}" -q '.object.sha')"
+
+          if [ -z "${target_sha}" ]; then
+            echo "Failed to resolve ${target_ref} in ${public_repo}" >&2
+            exit 1
+          fi
+
+          if gh api "repos/${public_repo}/git/ref/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
+            echo "Tag ${RELEASE_TAG} already exists in ${public_repo}"
+          else
+            gh api -X POST "repos/${public_repo}/git/refs" \
+              -f "ref=refs/tags/${RELEASE_TAG}" \
+              -f "sha=${target_sha}" >/dev/null
+            echo "Created tag ${RELEASE_TAG} at ${target_sha} in ${public_repo}"
+          fi
+
       - name: Publish GitHub release to public repository
         if: env.DRY_RUN != 'true'
         shell: bash
@@ -148,8 +191,7 @@ jobs:
             gh release create "${RELEASE_TAG}" \
               --repo "${public_repo}" \
               --title "${RELEASE_NAME}" \
-              --notes-file RELEASE_BODY.md \
-              --target "${PUBLIC_TARGET_COMMITISH}"
+              --notes-file RELEASE_BODY.md
           fi
 
           gh release upload "${RELEASE_TAG}" \
