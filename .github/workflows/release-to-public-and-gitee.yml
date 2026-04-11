@@ -97,7 +97,7 @@ jobs:
             compare_url=""
           fi
 
-          changelog="$(git log --no-merges --pretty='- %s (`%h`)' "${range}" || true)"
+          changelog="$(git log --no-merges --pretty='- %s (`%h`)' "${range}" -- . ':(exclude)docs/audit-log.md' ':(exclude)AGENTS.md' || true)"
           if [ -z "${changelog}" ]; then
             changelog='- 本版本暂无可归档的提交记录'
           fi
