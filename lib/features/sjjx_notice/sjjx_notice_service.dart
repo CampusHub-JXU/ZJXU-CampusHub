@@ -24,12 +24,19 @@ bool looksLikeSjjxResponseNeedsUnifiedAuth(Response<List<int>> response) {
     return true;
   }
 
+  if (isZhengfangGatewayLoginUrl(realUrl)) {
+    return true;
+  }
+
   final statusCode = response.statusCode ?? 0;
   if (statusCode == 302 || statusCode == 303) {
     final location = response.headers.value('location') ?? '';
     if (location.isNotEmpty) {
       final resolved = response.requestOptions.uri.resolve(location).toString();
       if (isUnifiedAuthLoginEntryUrl(resolved)) {
+        return true;
+      }
+      if (isZhengfangGatewayLoginUrl(resolved)) {
         return true;
       }
     }
@@ -210,25 +217,11 @@ class SjjxNoticeService {
     } on DioException catch (error, stackTrace) {
       AppLogger.instance.network(
         LogLevel.warn,
-        '实践通知直连失败，尝试通过 WebVPN 访问: $url',
+        '实践通知直连失败，尝试统一认证或 WebVPN 访问: $url',
         error: error,
         stackTrace: stackTrace,
       );
-      try {
-        return await _getThroughWebVpn(url);
-      } catch (webVpnError, webVpnStackTrace) {
-        AppLogger.instance.network(
-          LogLevel.warn,
-          '实践通知 WebVPN 回退失败，尝试统一认证直连恢复: $url',
-          error: webVpnError,
-          stackTrace: webVpnStackTrace,
-        );
-        return _getThroughUnifiedAuth(
-          url,
-          error: error,
-          stackTrace: stackTrace,
-        );
-      }
+      return _getThroughUnifiedAuth(url, error: error, stackTrace: stackTrace);
     } catch (error, stackTrace) {
       AppLogger.instance.network(
         LogLevel.error,
@@ -279,10 +272,13 @@ class SjjxNoticeService {
     if (unifiedAuthReady != true) {
       AppLogger.instance.network(
         LogLevel.warn,
-        '实践通知统一认证会话不可用，无法继续访问: $url',
+        '实践通知统一认证会话不可用，尝试 WebVPN 回退: $url',
         error: error,
         stackTrace: stackTrace,
       );
+      try {
+        return await _getThroughWebVpn(url);
+      } catch (_) {}
       if (error is DioException) {
         throw error;
       }
@@ -299,18 +295,27 @@ class SjjxNoticeService {
         ),
       );
       if (looksLikeSjjxResponseNeedsUnifiedAuth(response)) {
-        AppLogger.instance.network(LogLevel.warn, '实践通知统一认证回退后仍返回登录页: $url');
+        AppLogger.instance.network(
+          LogLevel.warn,
+          '实践通知统一认证回退后仍返回登录页，尝试 WebVPN: $url',
+        );
+        try {
+          return await _getThroughWebVpn(url);
+        } catch (_) {}
         throw StateError('实践通知统一认证会话已失效');
       }
       AppLogger.instance.network(LogLevel.info, '实践通知已通过统一认证直连加载');
       return response;
     } on DioException catch (fallbackError, fallbackStackTrace) {
       AppLogger.instance.network(
-        LogLevel.error,
-        '实践通知统一认证直连回退失败',
+        LogLevel.warn,
+        '实践通知统一认证直连回退失败，尝试 WebVPN: $url',
         error: fallbackError,
         stackTrace: fallbackStackTrace,
       );
+      try {
+        return await _getThroughWebVpn(url);
+      } catch (_) {}
       rethrow;
     }
   }
