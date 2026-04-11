@@ -1129,16 +1129,9 @@ class ZhengfangAuth extends ChangeNotifier {
 
       final encryptedPwd = _encryptPassword(password, modulus, exponent);
 
-      await _sendWithProxyFallback<void>(
-        label: '教务登出旧会话',
-        request: (dio) => dio.post<void>(
-          '$_baseUrl/xtgl/login_logoutAccount.html',
-          options: Options(
-            headers: {'Referer': _loginPageUrl, 'Origin': _origin},
-          ),
-        ),
+      AppLogger.instance.debug(
+        '教务登录: csrf=${csrftoken.length}字符, mode=${_mode == ZhengfangMode.direct ? "直连" : "WebVPN"}',
       );
-
       AppLogger.instance.debug('正在发送教务系统登录请求...');
       final loginResp = await _sendWithProxyFallback<String>(
         label: '教务登录',
