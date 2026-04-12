@@ -1,8 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../features/home/home_page.dart';
-import '../features/service_hub/service_hub_page.dart';
-import '../features/my/my_page.dart';
 
 class AppShellPage extends StatefulWidget {
   const AppShellPage({super.key, required this.navigationShell});
@@ -14,35 +11,6 @@ class AppShellPage extends StatefulWidget {
 }
 
 class _AppShellPageState extends State<AppShellPage> {
-  late final PageController _pageController;
-
-  @override
-  void initState() {
-    super.initState();
-    _pageController = PageController(
-      initialPage: widget.navigationShell.currentIndex,
-    );
-  }
-
-  @override
-  void didUpdateWidget(AppShellPage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.navigationShell.currentIndex !=
-        oldWidget.navigationShell.currentIndex) {
-      _pageController.animateToPage(
-        widget.navigationShell.currentIndex,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOutCubic,
-      );
-    }
-  }
-
-  @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
-  }
-
   void _onDestinationSelected(int index) {
     widget.navigationShell.goBranch(
       index,
@@ -53,14 +21,7 @@ class _AppShellPageState extends State<AppShellPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: PageView(
-        controller: _pageController,
-        physics: const ClampingScrollPhysics(),
-        onPageChanged: (index) {
-          _onDestinationSelected(index);
-        },
-        children: const [HomePage(), ServiceHubPage(), MyPage()],
-      ),
+      body: widget.navigationShell,
       bottomNavigationBar: NavigationBar(
         selectedIndex: widget.navigationShell.currentIndex,
         onDestinationSelected: _onDestinationSelected,
