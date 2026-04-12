@@ -19,13 +19,12 @@ class SecondClassroomPage extends StatefulWidget {
 
 class _SecondClassroomPageState extends State<SecondClassroomPage> {
   static const _wechatLoginHosts = {'open.weixin.qq.com', 'wx.tenpay.com'};
+  static const _gatewayDeniedPath = '/wengine-vpn/denied';
 
   bool _redirectingToWechatPage = false;
   int _anonymousRecoveryAttempts = 0;
 
-  String get _wechatPageUrl => ZhengfangAuth.instance.buildWebVpnProxyUrl(
-    SecondClassroomPage.initialUrl,
-  );
+  String get _wechatPageUrl => SecondClassroomPage.initialUrl;
 
   bool _isProviderEntryUrl(String currentUrl) {
     final uri = Uri.tryParse(currentUrl);
@@ -46,6 +45,13 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
     final normalizedPath = uri.path.toLowerCase();
     return host == 'twdekt.zjxu.edu.cn' &&
         (normalizedPath == '/dekt/' || normalizedPath == '/dekt');
+  }
+
+  bool _isGatewayDeniedUrl(String currentUrl) {
+    final uri = Uri.tryParse(currentUrl);
+    if (uri == null) return false;
+    return uri.host.toLowerCase() == 'webvpn.zjxu.edu.cn' &&
+        uri.path.toLowerCase().contains(_gatewayDeniedPath);
   }
 
   Future<void> _redirectToWechatPage(
@@ -87,6 +93,15 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
     String currentUrl,
   ) async {
     final lowerUrl = currentUrl.toLowerCase();
+
+    if (_isGatewayDeniedUrl(currentUrl)) {
+      AppLogger.instance.webview(
+        LogLevel.warn,
+        '第二课堂微信页被 WebVPN 网关拒绝，改为直连访问: $currentUrl',
+      );
+      await _redirectToWechatPage(controller, reason: 'gateway-denied');
+      return;
+    }
 
     if (_isProviderEntryUrl(currentUrl) || _isLandingRootUrl(currentUrl)) {
       await _redirectToWechatPage(controller, reason: currentUrl);
@@ -154,6 +169,7 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
     return WebVpnProtectedWebViewPage(
       title: '第二课堂',
       url: SecondClassroomPage.authEntryUrl,
+      webViewUrl: SecondClassroomPage.initialUrl,
       emulateWeChatEnvironment: true,
       showWebViewBottomBackButton: true,
       onHomePressed: () => context.goNamed('home'),

@@ -17,6 +17,7 @@ class WebVpnProtectedWebViewPage extends StatefulWidget {
     required this.url,
     this.onLoadStop,
     this.onNavigationRequest,
+    this.webViewUrl,
     this.emulateWeChatEnvironment = false,
     this.showWebViewBottomBackButton = false,
     this.onHomePressed,
@@ -25,6 +26,7 @@ class WebVpnProtectedWebViewPage extends StatefulWidget {
 
   final String title;
   final String url;
+  final String? webViewUrl;
   final WebViewLoadStopCallback? onLoadStop;
   final WebViewNavigationRequestCallback? onNavigationRequest;
   final bool emulateWeChatEnvironment;
@@ -45,6 +47,7 @@ class _WebVpnProtectedWebViewPageState
   bool _loginPromptInFlight = false;
   Key _webViewKey = UniqueKey();
   DateTime? _casLoginPageSeenAt;
+  bool _gatewayDeniedHandled = false;
 
   @override
   void initState() {
@@ -121,6 +124,18 @@ class _WebVpnProtectedWebViewPageState
     InAppWebViewController controller,
     String currentUrl,
   ) async {
+    if (currentUrl.contains('/wengine-vpn/denied')) {
+      AppLogger.instance.webview(
+        LogLevel.warn,
+        'WebVPN WebView 命中访问拒绝页: $currentUrl',
+      );
+      if (!_gatewayDeniedHandled && mounted) {
+        _gatewayDeniedHandled = true;
+        setState(() => _requiresLogin = true);
+      }
+      return;
+    }
+
     if (isZhengfangGatewayLoginUrl(currentUrl)) {
       AppLogger.instance.webview(
         LogLevel.warn,
@@ -218,7 +233,9 @@ class _WebVpnProtectedWebViewPageState
     return WebViewPage(
       key: _webViewKey,
       title: widget.title,
-      url: ZhengfangAuth.instance.buildWebVpnProxyUrl(widget.url),
+      url:
+          widget.webViewUrl ??
+          ZhengfangAuth.instance.buildWebVpnProxyUrl(widget.url),
       enableLoginQuickFill: true,
       emulateWeChatEnvironment: widget.emulateWeChatEnvironment,
       onNavigationRequest: widget.onNavigationRequest,

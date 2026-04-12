@@ -14,7 +14,6 @@ class ServiceHubPage extends StatelessWidget {
         subtitle: '统一入口，继续保留主页快捷访问',
         icon: Icons.dashboard_customize_outlined,
         accentColor: AppColors.primary,
-        height: 196,
         onTap: () => context.pushNamed('service-hall'),
       ),
       _ServiceHubCardData(
@@ -22,7 +21,6 @@ class ServiceHubPage extends StatelessWidget {
         subtitle: '学分活动、个人中心与微信版页面',
         icon: Icons.workspace_premium_outlined,
         accentColor: AppColors.gold,
-        height: 228,
         onTap: () => context.pushNamed('second-classroom'),
       ),
       _ServiceHubCardData(
@@ -30,7 +28,6 @@ class ServiceHubPage extends StatelessWidget {
         subtitle: '馆藏检索、借阅与电子资源入口',
         icon: Icons.local_library_outlined,
         accentColor: AppColors.info,
-        height: 188,
         onTap: () => context.pushNamed('library'),
       ),
       _ServiceHubCardData(
@@ -38,7 +35,6 @@ class ServiceHubPage extends StatelessWidget {
         subtitle: '请假、返校、离校与加班申请',
         icon: Icons.north_rounded,
         accentColor: const Color(0xFF2EA567),
-        height: 212,
         onTap: () => context.pushNamed('changxing-jiada'),
       ),
       _ServiceHubCardData(
@@ -46,7 +42,6 @@ class ServiceHubPage extends StatelessWidget {
         subtitle: '实践教学通知与公告聚合',
         icon: Icons.science_outlined,
         accentColor: const Color(0xFF1976D2),
-        height: 180,
         onTap: () => context.pushNamed('sjjx-notice-list'),
       ),
       _ServiceHubCardData(
@@ -54,7 +49,6 @@ class ServiceHubPage extends StatelessWidget {
         subtitle: '校级通知与重要公告快速查看',
         icon: Icons.campaign_outlined,
         accentColor: const Color(0xFFE7A400),
-        height: 168,
         onTap: () => context.pushNamed('notice-list'),
       ),
       _ServiceHubCardData(
@@ -62,7 +56,6 @@ class ServiceHubPage extends StatelessWidget {
         subtitle: '查看成绩、绩点和学业进展',
         icon: Icons.school_outlined,
         accentColor: AppColors.warning,
-        height: 196,
         onTap: () => context.pushNamed('grades'),
       ),
       _ServiceHubCardData(
@@ -70,7 +63,6 @@ class ServiceHubPage extends StatelessWidget {
         subtitle: '查询剩余电量并管理宿舍配置',
         icon: Icons.bolt_outlined,
         accentColor: const Color(0xFF7B61FF),
-        height: 184,
         onTap: () => context.pushNamed('dorm-electricity'),
       ),
     ];
@@ -153,12 +145,13 @@ class ServiceHubPage extends StatelessWidget {
     var rightHeight = 0.0;
 
     for (final card in cards) {
+      final estimatedHeight = 132.0 + card.subtitle.length * 1.4;
       if (leftHeight <= rightHeight) {
         left.add(card);
-        leftHeight += card.height;
+        leftHeight += estimatedHeight;
       } else {
         right.add(card);
-        rightHeight += card.height;
+        rightHeight += estimatedHeight;
       }
     }
 
@@ -172,7 +165,6 @@ class _ServiceHubCardData {
     required this.subtitle,
     required this.icon,
     required this.accentColor,
-    required this.height,
     required this.onTap,
   });
 
@@ -180,7 +172,6 @@ class _ServiceHubCardData {
   final String subtitle;
   final IconData icon;
   final Color accentColor;
-  final double height;
   final VoidCallback onTap;
 }
 
@@ -198,7 +189,6 @@ class _ServiceHubCard extends StatelessWidget {
       onTap: card.onTap,
       borderRadius: BorderRadius.circular(24),
       child: Ink(
-        height: card.height,
         decoration: BoxDecoration(
           color: isDark ? cs.surfaceContainerLowest : Colors.white,
           borderRadius: BorderRadius.circular(24),
@@ -217,6 +207,7 @@ class _ServiceHubCard extends StatelessWidget {
           padding: const EdgeInsets.all(18),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Container(
                 width: 44,
@@ -227,7 +218,7 @@ class _ServiceHubCard extends StatelessWidget {
                 ),
                 child: Icon(card.icon, color: card.accentColor, size: 22),
               ),
-              const Spacer(),
+              const SizedBox(height: 24),
               Text(
                 card.title,
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -244,7 +235,9 @@ class _ServiceHubCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              Row(
+              Wrap(
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 6,
                 children: [
                   Text(
                     '进入服务',
@@ -253,7 +246,6 @@ class _ServiceHubCard extends StatelessWidget {
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-                  const SizedBox(width: 6),
                   Icon(
                     Icons.arrow_forward_rounded,
                     size: 18,
