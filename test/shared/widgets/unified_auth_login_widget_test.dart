@@ -24,6 +24,7 @@ void main() {
           body: UnifiedAuthLoginWidget(
             onLoginSuccess: () => loginSucceeded = true,
             loadSavedCredentials: () async => ('', ''),
+            forceWebVpn: false,
             sessionPreflight: () async => true,
             captchaLoader: () async {
               captchaRequested = true;
@@ -41,6 +42,28 @@ void main() {
 
     expect(loginSucceeded, isTrue);
     expect(captchaRequested, isFalse);
+  });
+
+  testWidgets('defaults to webvpn login form for user-facing login', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UnifiedAuthLoginWidget(
+            onLoginSuccess: () {},
+            loadSavedCredentials: () async => ('', ''),
+            sessionPreflight: () async => false,
+          ),
+        ),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.text('正在检测网络环境...'), findsNothing);
+    expect(find.text('登录'), findsOneWidget);
   });
 
   testWidgets(

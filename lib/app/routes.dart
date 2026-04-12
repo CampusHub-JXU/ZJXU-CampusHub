@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'app_route_observer.dart';
 import 'app_shell_page.dart';
 import '../features/home/home_page.dart';
+import '../features/service_hub/service_hub_page.dart';
 import '../features/my/my_page.dart';
 import '../features/my/academic_service_page.dart';
 import '../features/my/unified_auth_login_page.dart';
@@ -18,6 +19,7 @@ import '../features/service_hall/service_hall_page.dart';
 import '../features/settings/settings_page.dart';
 import '../features/dorm_electricity/dorm_electricity_page.dart';
 import '../features/dorm_electricity/dorm_electricity_settings_page.dart';
+import '../features/second_classroom/second_classroom_page.dart';
 import '../features/changxing_jiada/changxing_back_school_form_page.dart';
 import '../features/changxing_jiada/changxing_jiada_page.dart';
 import '../features/changxing_jiada/changxing_leave_form_page.dart';
@@ -48,6 +50,15 @@ final GoRouter appRouter = GoRouter(
               path: '/',
               name: 'home',
               builder: (context, state) => const HomePage(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/services',
+              name: 'service-hub',
+              builder: (context, state) => const ServiceHubPage(),
             ),
           ],
         ),
@@ -95,12 +106,7 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/second-classroom',
       name: 'second-classroom',
-      builder: (context, state) => WebVpnProtectedWebViewPage(
-        title: '第二课堂',
-        url: 'https://twdekt.zjxu.edu.cn/dekt/wx/index?_WXFTL=0',
-        showWebViewBottomBackButton: true,
-        onHomePressed: () => context.goNamed('home'),
-      ),
+      builder: (context, state) => const SecondClassroomPage(),
     ),
     GoRoute(
       path: '/settings',

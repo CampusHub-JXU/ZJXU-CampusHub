@@ -57,14 +57,15 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
   final _usernameCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   final _captchaCtrl = TextEditingController();
+  final _usernameFocusNode = FocusNode();
+  final _passwordFocusNode = FocusNode();
+  final _captchaFocusNode = FocusNode();
 
   Uint8List? _captchaBytes;
   bool _loading = false;
   String? _error;
 
-  UnifiedAuthMode _mode = UnifiedAuthMode.direct;
-  bool _autoDetecting = true;
-
+  UnifiedAuthMode _mode = UnifiedAuthMode.webVpn;
   static const _proxyHint = '请求超时，请检查手机系统代理或 VPN 软件';
 
   @override
@@ -76,87 +77,86 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
   Future<void> _bootstrapLoginState() async {
     await _loadSaved();
 
-    if (widget.forceWebVpn) {
-      await _prepareForcedWebVpnLogin();
-      return;
-    }
-
     if (UnifiedAuthService.instance.isLoggedIn) {
       if (mounted) widget.onLoginSuccess();
       return;
     }
 
-    final hasActiveSession =
-        await widget.sessionPreflight?.call() ??
-        await UnifiedAuthService.instance.prepareLogin(
-          serviceUrl: widget.serviceUrl,
-        );
+    final hasActiveSession = await _preparePrimaryLoginMode();
     if (!mounted) return;
 
     if (hasActiveSession) {
       widget.onLoginSuccess();
       return;
     }
-
-    await _autoDetectNetwork();
   }
 
-  Future<void> _prepareForcedWebVpnLogin() async {
+  Future<bool> _preparePrimaryLoginMode() async {
+    if (widget.forceWebVpn) {
+      return _prepareForcedWebVpnLogin();
+    }
+
+    if (widget.sessionPreflight != null) {
+      final hasActiveSession = await widget.sessionPreflight!.call();
+      if (!mounted || hasActiveSession) {
+        return hasActiveSession;
+      }
+    }
+
+    // WebVPN is the only user-facing login path. We still keep a direct-mode
+    // preflight fallback internal so existing authenticated sessions continue
+    // to be reused without bouncing users through another login.
+    final webVpnReady = await _prepareForcedWebVpnLogin();
+    if (!mounted || webVpnReady) {
+      return webVpnReady;
+    }
+
+    final hasActiveSession = await UnifiedAuthService.instance.prepareLogin(
+      serviceUrl: widget.serviceUrl,
+    );
+    if (!mounted || hasActiveSession) {
+      return hasActiveSession;
+    }
+
+    final directReachable = await UnifiedAuthService.checkDirectReachable();
+    if (!mounted || !directReachable) {
+      return false;
+    }
+
+    setState(() {
+      _mode = UnifiedAuthMode.direct;
+      _error = null;
+      _captchaBytes = null;
+    });
+    await _refreshCaptcha();
+    return false;
+  }
+
+  Future<bool> _prepareForcedWebVpnLogin() async {
     final webVpnReachable = await UnifiedAuthService.checkWebVpnReachable();
-    if (!mounted) return;
+    if (!mounted) return false;
 
     if (!webVpnReachable) {
       setState(() {
-        _autoDetecting = false;
         _captchaBytes = null;
         _error = '无法连接 WebVPN，请检查网络连接';
       });
-      return;
+      return false;
     }
 
     await _activateWebVpnMode();
+    return false;
   }
 
   Future<void> _activateWebVpnMode() async {
     if (!mounted) return;
     setState(() {
       _mode = UnifiedAuthMode.webVpn;
-      _autoDetecting = false;
       _error = null;
       _captchaBytes = null;
     });
     ZhengfangAuth.instance.setMode(ZhengfangMode.webVpn);
     await _refreshCaptcha();
-  }
-
-  Future<void> _autoDetectNetwork() async {
-    if (!_autoDetecting) return;
-
-    final directReachable = await UnifiedAuthService.checkDirectReachable();
-    if (!mounted) return;
-
-    if (directReachable) {
-      setState(() {
-        _mode = UnifiedAuthMode.direct;
-        _autoDetecting = false;
-      });
-      await _refreshCaptcha();
-      return;
-    }
-
-    final webVpnReachable = await UnifiedAuthService.checkWebVpnReachable();
-    if (!mounted) return;
-
-    if (webVpnReachable) {
-      await _activateWebVpnMode();
-      return;
-    }
-
-    setState(() {
-      _autoDetecting = false;
-      _captchaBytes = null;
-      _error = '无法连接统一认证，请检查网络连接';
-    });
   }
 
   Future<void> _loadSaved() async {
@@ -318,6 +318,9 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
     _usernameCtrl.dispose();
     _passwordCtrl.dispose();
     _captchaCtrl.dispose();
+    _usernameFocusNode.dispose();
+    _passwordFocusNode.dispose();
+    _captchaFocusNode.dispose();
     super.dispose();
   }
 
@@ -385,67 +388,52 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
             ),
           ],
 
-          if (_autoDetecting)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 32),
-              child: Column(
-                children: [
-                  const CircularProgressIndicator(),
-                  const SizedBox(height: 16),
-                  Text(
-                    '正在检测网络环境...',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: cs.onSurfaceVariant,
+          TextField(
+            controller: _usernameCtrl,
+            focusNode: _usernameFocusNode,
+            decoration: const InputDecoration(
+              hintText: '一卡通账号',
+              prefixIcon: Icon(Icons.person_outline),
+            ),
+            textInputAction: TextInputAction.next,
+            onSubmitted: (_) => _passwordFocusNode.requestFocus(),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _passwordCtrl,
+            focusNode: _passwordFocusNode,
+            decoration: const InputDecoration(
+              hintText: '密码',
+              prefixIcon: Icon(Icons.lock_outline),
+            ),
+            obscureText: true,
+            textInputAction: TextInputAction.next,
+            onSubmitted: (_) => _captchaFocusNode.requestFocus(),
+          ),
+          const SizedBox(height: 12),
+          _buildCaptchaRow(cs),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.only(left: 4),
+            child: Text(
+              _captchaBytes == null ? '正在准备验证码...' : '点击右侧验证码刷新',
+              style: TextStyle(color: Colors.grey[500], fontSize: 12),
+            ),
+          ),
+          const SizedBox(height: 18),
+          FilledButton(
+            onPressed: (_loading || _captchaBytes == null) ? null : _login,
+            child: _loading
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
                     ),
-                  ),
-                ],
-              ),
-            ),
-
-          if (!_autoDetecting) ...[
-            TextField(
-              controller: _usernameCtrl,
-              decoration: InputDecoration(
-                hintText: _mode == UnifiedAuthMode.webVpn ? '一卡通账号' : '一卡通账号',
-                prefixIcon: const Icon(Icons.person_outline),
-              ),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _passwordCtrl,
-              decoration: const InputDecoration(
-                hintText: '密码',
-                prefixIcon: Icon(Icons.lock_outline),
-              ),
-              obscureText: true,
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            _buildCaptchaRow(cs),
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.only(left: 4),
-              child: Text(
-                '点击右侧验证码刷新',
-                style: TextStyle(color: Colors.grey[500], fontSize: 12),
-              ),
-            ),
-            const SizedBox(height: 18),
-            FilledButton(
-              onPressed: _loading ? null : _login,
-              child: _loading
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Text('登录'),
-            ),
-          ],
+                  )
+                : const Text('登录'),
+          ),
 
           if (_error != null) ...[
             const SizedBox(height: 12),
@@ -467,6 +455,7 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
         Expanded(
           child: TextField(
             controller: _captchaCtrl,
+            focusNode: _captchaFocusNode,
             decoration: const InputDecoration(
               hintText: '验证码',
               prefixIcon: Icon(Icons.shield_outlined),

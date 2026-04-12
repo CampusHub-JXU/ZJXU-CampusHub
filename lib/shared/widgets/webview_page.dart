@@ -149,6 +149,17 @@ WebResourceResponse _buildWeChatSdkStubResponse() {
   );
 }
 
+String? buildEmbeddedWeChatUserAgent(TargetPlatform platform) {
+  switch (platform) {
+    case TargetPlatform.iOS:
+      return 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.40(0x18002829) NetType/WIFI Language/zh_CN';
+    case TargetPlatform.android:
+      return 'Mozilla/5.0 (Linux; Android 13; Pixel 7 Build/TP1A.220624.014) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36 MicroMessenger/8.0.40.2420';
+    default:
+      return null;
+  }
+}
+
 /// Reusable full-screen WebView page with progress bar and error handling.
 class WebViewPage extends StatefulWidget {
   const WebViewPage({
@@ -160,6 +171,7 @@ class WebViewPage extends StatefulWidget {
     this.onNavigationRequest,
     this.enableLoginQuickFill = false,
     this.emulateDingTalkEnvironment = true,
+    this.emulateWeChatEnvironment = false,
     this.showWebViewBottomBackButton = false,
     this.onHomePressed,
     this.appBarActions = const [],
@@ -172,6 +184,7 @@ class WebViewPage extends StatefulWidget {
   final WebViewNavigationRequestCallback? onNavigationRequest;
   final bool enableLoginQuickFill;
   final bool emulateDingTalkEnvironment;
+  final bool emulateWeChatEnvironment;
   final bool showWebViewBottomBackButton;
   final VoidCallback? onHomePressed;
   final List<Widget> appBarActions;
@@ -891,8 +904,15 @@ class _WebViewPageState extends State<WebViewPage> {
                         supportMultipleWindows: false,
                         useWideViewPort: true,
                         loadWithOverviewMode: true,
+                        userAgent: widget.emulateWeChatEnvironment
+                            ? buildEmbeddedWeChatUserAgent(
+                                Theme.of(context).platform,
+                              )
+                            : null,
                         applicationNameForUserAgent:
-                            widget.emulateDingTalkEnvironment
+                            widget.emulateWeChatEnvironment
+                            ? null
+                            : widget.emulateDingTalkEnvironment
                             ? ' DingTalk/7.0.0'
                             : null,
                       ),
@@ -1005,6 +1025,16 @@ class _WebViewPageState extends State<WebViewPage> {
                             final scheme = uri.scheme.toLowerCase();
                             if (scheme == 'http' || scheme == 'https') {
                               return NavigationActionPolicy.ALLOW;
+                            }
+
+                            if (scheme == 'weixin') {
+                              if (await canLaunchUrl(uri)) {
+                                await launchUrl(
+                                  uri,
+                                  mode: LaunchMode.externalApplication,
+                                );
+                              }
+                              return NavigationActionPolicy.CANCEL;
                             }
 
                             if (await canLaunchUrl(uri)) {

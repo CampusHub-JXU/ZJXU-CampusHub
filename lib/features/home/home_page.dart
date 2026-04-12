@@ -121,7 +121,7 @@ class _HomePageState extends State<HomePage> {
     await showUnifiedAuthLoginModal(
       context,
       title: '登录一卡通',
-      description: '首次使用先完成统一认证，后续可直接进入一卡通与服务大厅',
+      description: '首次使用先完成 WebVPN 登录，后续可直接进入一卡通与服务大厅',
     );
   }
 

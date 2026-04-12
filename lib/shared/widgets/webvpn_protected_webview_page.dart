@@ -15,6 +15,9 @@ class WebVpnProtectedWebViewPage extends StatefulWidget {
     super.key,
     required this.title,
     required this.url,
+    this.onLoadStop,
+    this.onNavigationRequest,
+    this.emulateWeChatEnvironment = false,
     this.showWebViewBottomBackButton = false,
     this.onHomePressed,
     this.appBarActions = const [],
@@ -22,6 +25,9 @@ class WebVpnProtectedWebViewPage extends StatefulWidget {
 
   final String title;
   final String url;
+  final WebViewLoadStopCallback? onLoadStop;
+  final WebViewNavigationRequestCallback? onNavigationRequest;
+  final bool emulateWeChatEnvironment;
   final bool showWebViewBottomBackButton;
   final VoidCallback? onHomePressed;
   final List<Widget> appBarActions;
@@ -214,7 +220,15 @@ class _WebVpnProtectedWebViewPageState
       title: widget.title,
       url: ZhengfangAuth.instance.buildWebVpnProxyUrl(widget.url),
       enableLoginQuickFill: true,
-      onLoadStop: _handleLoadStop,
+      emulateWeChatEnvironment: widget.emulateWeChatEnvironment,
+      onNavigationRequest: widget.onNavigationRequest,
+      onLoadStop: (controller, currentUrl) async {
+        await _handleLoadStop(controller, currentUrl);
+        final callback = widget.onLoadStop;
+        if (callback != null) {
+          await callback(controller, currentUrl);
+        }
+      },
       showWebViewBottomBackButton: widget.showWebViewBottomBackButton,
       onHomePressed: widget.onHomePressed,
       appBarActions: widget.appBarActions,

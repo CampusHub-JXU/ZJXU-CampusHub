@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../features/home/home_page.dart';
+import '../features/service_hub/service_hub_page.dart';
 import '../features/my/my_page.dart';
 
 class AppShellPage extends StatefulWidget {
@@ -58,7 +59,7 @@ class _AppShellPageState extends State<AppShellPage> {
         onPageChanged: (index) {
           _onDestinationSelected(index);
         },
-        children: const [HomePage(), MyPage()],
+        children: const [HomePage(), ServiceHubPage(), MyPage()],
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: widget.navigationShell.currentIndex,
@@ -68,6 +69,11 @@ class _AppShellPageState extends State<AppShellPage> {
             icon: Icon(Icons.home_outlined),
             selectedIcon: Icon(Icons.home),
             label: '主页',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.widgets_outlined),
+            selectedIcon: Icon(Icons.widgets),
+            label: '功能',
           ),
           NavigationDestination(
             icon: Icon(Icons.person_outline),

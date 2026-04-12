@@ -240,10 +240,10 @@ class LoginShell extends StatelessWidget {
 
 Future<bool> showUnifiedAuthLoginModal(
   BuildContext context, {
-  String title = '登录统一认证',
-  String description = '登录后可进入一卡通、服务大厅等服务',
+  String title = '登录一卡通',
+  String description = '通过 WebVPN 登录后可进入一卡通、服务大厅等服务',
   String serviceUrl = UnifiedAuthService.defaultServiceUrl,
-  bool forceWebVpn = false,
+  bool forceWebVpn = true,
   bool barrierDismissible = true,
 }) async {
   final result = await showGeneralDialog<bool>(
@@ -257,7 +257,7 @@ Future<bool> showUnifiedAuthLoginModal(
       return LoginShell(
         title: title,
         description: description,
-        badgeText: '统一认证',
+        badgeText: forceWebVpn ? 'WebVPN' : '统一认证',
         onClose: barrierDismissible
             ? () => Navigator.of(dialogContext, rootNavigator: true).pop(false)
             : null,
