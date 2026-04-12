@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/app_bootstrap_controller.dart';
 import '../../app/theme.dart';
 import '../../core/auth/unified_auth.dart';
+import '../../core/config/feature_entry_catalog.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/semester/semester_calendar.dart';
 import '../../core/update/update_checker.dart';
@@ -38,6 +39,8 @@ class _HomePageState extends State<HomePage> {
   bool _hasAvailableUpdate = false;
   bool _hasHydratedBootstrapState = false;
   bool _initialLoginPromptChecked = false;
+  List<FeatureEntryDefinition> _learningServiceEntries = const [];
+  bool _learningServiceEntriesLoaded = false;
 
   static const _weekdayLabels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
@@ -50,6 +53,7 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _hasAvailableUpdate = UpdateChecker.instance.availableRelease.value != null;
+    unawaited(_loadLearningServiceEntries());
     SemesterCalendar.instance.semesterStartDate.addListener(
       _onSemesterStartChanged,
     );
@@ -59,6 +63,25 @@ class _HomePageState extends State<HomePage> {
       _onAvailableReleaseChanged,
     );
     _onBootstrapPhaseChanged();
+  }
+
+  Future<void> _loadLearningServiceEntries() async {
+    try {
+      final entries = await FeatureEntryCatalog.instance.loadByPlacement(
+        FeatureEntryPlacement.homeLearning,
+      );
+      if (!mounted) return;
+      setState(() {
+        _learningServiceEntries = entries;
+        _learningServiceEntriesLoaded = true;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _learningServiceEntries = const [];
+        _learningServiceEntriesLoaded = true;
+      });
+    }
   }
 
   @override
@@ -1050,61 +1073,60 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           const SizedBox(height: 14),
-          Column(
-            children: [
-              _buildLearningServiceItem(
-                context,
-                Icons.workspace_premium_outlined,
-                '第二课堂',
-                AppColors.gold,
-                onTap: () {
-                  context.pushNamed('second-classroom');
-                },
-              ),
-              const SizedBox(height: 8),
-              _buildLearningServiceItem(
-                context,
-                Icons.local_library_outlined,
-                '图书馆',
-                AppColors.info,
-                onTap: () {
-                  context.pushNamed('library');
-                },
-              ),
-              const SizedBox(height: 8),
-              _buildChangxingJiadaTile(context),
-              const SizedBox(height: 8),
-              _buildLearningServiceItem(
-                context,
-                Icons.science_outlined,
-                '实践通知',
-                const Color(0xFF1976D2),
-                onTap: () {
-                  context.pushNamed('sjjx-notice-list');
-                },
-              ),
-            ],
-          ),
+          if (!_learningServiceEntriesLoaded)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_learningServiceEntries.isEmpty)
+            Text(
+              '学习服务加载失败',
+              style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+            )
+          else
+            Column(
+              children: [
+                for (
+                  var index = 0;
+                  index < _learningServiceEntries.length;
+                  index++
+                ) ...[
+                  _buildLearningServiceTile(
+                    context,
+                    _learningServiceEntries[index],
+                  ),
+                  if (index != _learningServiceEntries.length - 1)
+                    const SizedBox(height: 8),
+                ],
+              ],
+            ),
         ],
       ),
     );
   }
 
+  Widget _buildLearningServiceTile(
+    BuildContext context,
+    FeatureEntryDefinition entry,
+  ) {
+    if (entry.id == 'changxing-jiada') {
+      return _buildChangxingJiadaTile(context, entry);
+    }
+    return _buildLearningServiceItem(context, entry);
+  }
+
   Widget _buildLearningServiceItem(
     BuildContext context,
-    IconData icon,
-    String label,
-    Color color, {
-    VoidCallback? onTap,
-  }) {
+    FeatureEntryDefinition entry,
+  ) {
     final cs = Theme.of(context).colorScheme;
     return InkWell(
-      onTap: onTap,
+      onTap: () => context.pushNamed(entry.routeName),
       borderRadius: BorderRadius.circular(12),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.08),
+          color: entry.accentColor.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
@@ -1113,15 +1135,15 @@ class _HomePageState extends State<HomePage> {
               width: 32,
               height: 32,
               decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.12),
+                color: entry.accentColor.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(icon, color: color, size: 18),
+              child: Icon(entry.icon, color: entry.accentColor, size: 18),
             ),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                label,
+                entry.title,
                 style: TextStyle(
                   fontSize: 14,
                   color: cs.onSurface,
@@ -1131,28 +1153,26 @@ class _HomePageState extends State<HomePage> {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            if (onTap != null)
-              Icon(
-                Icons.arrow_forward_ios,
-                size: 12,
-                color: cs.onSurfaceVariant,
-              ),
+            Icon(Icons.arrow_forward_ios, size: 12, color: cs.onSurfaceVariant),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildChangxingJiadaTile(BuildContext context) {
+  Widget _buildChangxingJiadaTile(
+    BuildContext context,
+    FeatureEntryDefinition entry,
+  ) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final tileColor = const Color(0xFF2EA567);
+    final tileColor = entry.accentColor;
     final tileBgColor = isDark
         ? tileColor.withValues(alpha: 0.08)
         : const Color(0xFFF3FAF5);
     return InkWell(
       onTap: () async {
-        await context.pushNamed('changxing-jiada');
+        await context.pushNamed(entry.routeName);
       },
       borderRadius: BorderRadius.circular(12),
       child: Container(
@@ -1170,12 +1190,12 @@ class _HomePageState extends State<HomePage> {
                 color: tileColor.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(Icons.north_rounded, color: tileColor, size: 18),
+              child: Icon(entry.icon, color: tileColor, size: 18),
             ),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                '畅行嘉大',
+                entry.title,
                 style: TextStyle(
                   fontSize: 14,
                   color: cs.onSurface,

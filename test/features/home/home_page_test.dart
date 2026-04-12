@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:jiaxing_university_portal/app/app_bootstrap_controller.dart';
+import 'package:jiaxing_university_portal/core/config/feature_entry_catalog.dart';
 import 'package:jiaxing_university_portal/core/semester/semester_calendar.dart';
 import 'package:jiaxing_university_portal/features/campus_card/campus_card_service.dart';
 import 'package:jiaxing_university_portal/features/dorm_electricity/dorm_electricity_service.dart';
@@ -20,6 +21,63 @@ void main() {
     final now = DateTime.now();
     SharedPreferences.setMockInitialValues({});
     AppBootstrapController.instance.debugReset();
+    FeatureEntryCatalog.instance.debugSetEntries(
+      FeatureEntryCatalog.instance.parse('''
+entries:
+  - id: second-classroom
+    title: 第二课堂
+    subtitle: 学分活动
+    icon: workspace_premium_outlined
+    color: gold
+    route: second-classroom
+    cardType: wide_rect
+    span:
+      columns: 2
+      rows: 1
+    placements:
+      - home_learning
+    sort: 20
+  - id: library
+    title: 图书馆
+    subtitle: 馆藏检索
+    icon: local_library_outlined
+    color: info
+    route: library
+    cardType: wide_rect
+    span:
+      columns: 2
+      rows: 1
+    placements:
+      - home_learning
+    sort: 30
+  - id: changxing-jiada
+    title: 畅行嘉大
+    subtitle: 请假与返校
+    icon: north_rounded
+    color: "#2EA567"
+    route: changxing-jiada
+    cardType: tall_rect
+    span:
+      columns: 1
+      rows: 2
+    placements:
+      - home_learning
+    sort: 40
+  - id: sjjx-notice-list
+    title: 实践通知
+    subtitle: 实践教学通知
+    icon: science_outlined
+    color: "#1976D2"
+    route: sjjx-notice-list
+    cardType: small_square
+    span:
+      columns: 1
+      rows: 1
+    placements:
+      - home_learning
+    sort: 50
+'''),
+    );
     CampusCardService.instance.debugSetCachedBalance(null);
     DormElectricityService.instance.debugSetCachedElectricity(null);
     SemesterCalendar.instance.semesterStartDate.value = DateTime(
@@ -129,7 +187,7 @@ void main() {
     );
 
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
 
     await tester.ensureVisible(find.text('图书馆'));
     await tester.pumpAndSettle();
@@ -158,7 +216,7 @@ void main() {
     );
 
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
 
     await tester.ensureVisible(find.text('第二课堂'));
     await tester.pumpAndSettle();
