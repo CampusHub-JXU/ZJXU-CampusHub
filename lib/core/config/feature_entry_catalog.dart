@@ -66,6 +66,124 @@ class FeatureEntryCatalog {
   FeatureEntryCatalog._();
 
   static const String _assetPath = 'assets/config/feature_entries.yaml';
+  static const String _fallbackSource = '''
+entries:
+  - id: service-hall
+    title: 服务大厅
+    subtitle: 统一入口，继续保留主页快捷访问
+    icon: dashboard_customize_outlined
+    color: primary
+    route: service-hall
+    cardType: large_square
+    span:
+      columns: 2
+      rows: 2
+    placements:
+      - service_hub
+    sort: 10
+
+  - id: second-classroom
+    title: 第二课堂
+    subtitle: 学分活动、个人中心与微信版页面
+    icon: workspace_premium_outlined
+    color: gold
+    route: second-classroom
+    cardType: wide_rect
+    span:
+      columns: 2
+      rows: 1
+    placements:
+      - service_hub
+      - home_learning
+    sort: 20
+
+  - id: library
+    title: 图书馆
+    subtitle: 馆藏检索、借阅与电子资源入口
+    icon: local_library_outlined
+    color: info
+    route: library
+    cardType: wide_rect
+    span:
+      columns: 2
+      rows: 1
+    placements:
+      - service_hub
+      - home_learning
+    sort: 30
+
+  - id: changxing-jiada
+    title: 畅行嘉大
+    subtitle: 请假、返校、离校与加班申请
+    icon: north_rounded
+    color: "#2EA567"
+    route: changxing-jiada
+    cardType: tall_rect
+    span:
+      columns: 1
+      rows: 2
+    placements:
+      - service_hub
+      - home_learning
+    sort: 40
+
+  - id: sjjx-notice-list
+    title: 实践通知
+    subtitle: 实践教学通知与公告聚合
+    icon: science_outlined
+    color: "#1976D2"
+    route: sjjx-notice-list
+    cardType: small_square
+    span:
+      columns: 1
+      rows: 1
+    placements:
+      - service_hub
+      - home_learning
+    sort: 50
+
+  - id: notice-list
+    title: 校园公告
+    subtitle: 校级通知与重要公告快速查看
+    icon: campaign_outlined
+    color: "#E7A400"
+    route: notice-list
+    cardType: small_square
+    span:
+      columns: 1
+      rows: 1
+    placements:
+      - service_hub
+    sort: 60
+
+  - id: grades
+    title: 成绩查询
+    subtitle: 查看成绩、绩点和学业进展
+    icon: school_outlined
+    color: warning
+    route: grades
+    cardType: small_square
+    span:
+      columns: 1
+      rows: 1
+    placements:
+      - service_hub
+    sort: 70
+
+  - id: dorm-electricity
+    title: 宿舍电费
+    subtitle: 查询剩余电量并管理宿舍配置
+    icon: bolt_outlined
+    color: "#7B61FF"
+    route: dorm-electricity
+    cardType: small_square
+    span:
+      columns: 1
+      rows: 1
+    placements:
+      - service_hub
+    sort: 80
+''';
 
   static final FeatureEntryCatalog instance = FeatureEntryCatalog._();
 
@@ -145,8 +263,12 @@ class FeatureEntryCatalog {
   }
 
   Future<List<FeatureEntryDefinition>> _loadEntries() async {
-    final source = await rootBundle.loadString(_assetPath);
-    return parse(source);
+    try {
+      final source = await rootBundle.loadString(_assetPath);
+      return parse(source);
+    } catch (_) {
+      return parse(_fallbackSource);
+    }
   }
 
   static String _requireString(YamlMap node, String key) {
