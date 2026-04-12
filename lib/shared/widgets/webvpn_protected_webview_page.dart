@@ -97,6 +97,17 @@ class _WebVpnProtectedWebViewPageState
     if (!mounted || _loginPromptInFlight) return;
     if (!force && _loginPromptShown) return;
 
+    if (ZhengfangAuth.instance.isWebVpnLoggedIn ||
+        UnifiedAuthService.instance.isLoggedIn) {
+      AppLogger.instance.webview(
+        LogLevel.info,
+        'WebVPN WebView 命中登录页但认证已有效，直接同步会话并重建',
+      );
+      _loginPromptShown = true;
+      await _prepareWebViewSession(recreateWebView: true);
+      return;
+    }
+
     _loginPromptShown = true;
     _loginPromptInFlight = true;
     final loggedIn = await showWebVpnUnifiedAuthModal(
