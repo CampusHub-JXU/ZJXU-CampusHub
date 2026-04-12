@@ -416,8 +416,8 @@ class ZhengfangAuth extends ChangeNotifier {
     try {
       final dio = Dio(
         BaseOptions(
-          connectTimeout: const Duration(seconds: 3),
-          receiveTimeout: const Duration(seconds: 3),
+          connectTimeout: const Duration(seconds: 6),
+          receiveTimeout: const Duration(seconds: 6),
           followRedirects: true,
           validateStatus: (s) => s != null && s < 500,
         ),
@@ -426,7 +426,9 @@ class ZhengfangAuth extends ChangeNotifier {
         dio,
         ignoreSystemProxy: NetworkSettings.instance.ignoreSystemProxy.value,
       );
-      final resp = await dio.get<String>('$_webVpnBase$_webVpnCasPath');
+      final resp = await dio
+          .get<String>('$_webVpnBase$_webVpnCasPath')
+          .timeout(const Duration(seconds: 8));
       AppLogger.instance.auth(LogLevel.info, 'WebVPN 连通性: ${resp.statusCode}');
       return resp.statusCode != null && resp.statusCode! < 400;
     } catch (e) {

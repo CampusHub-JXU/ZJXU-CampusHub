@@ -157,8 +157,8 @@ class UnifiedAuthService extends ChangeNotifier {
       await NetworkSettings.instance.ensureInitialized();
       final dio = Dio(
         BaseOptions(
-          connectTimeout: const Duration(seconds: 3),
-          receiveTimeout: const Duration(seconds: 3),
+          connectTimeout: const Duration(seconds: 6),
+          receiveTimeout: const Duration(seconds: 6),
           followRedirects: true,
           validateStatus: (s) => s != null && s < 500,
         ),
@@ -167,15 +167,52 @@ class UnifiedAuthService extends ChangeNotifier {
         dio,
         ignoreSystemProxy: NetworkSettings.instance.ignoreSystemProxy.value,
       );
-      final resp = await dio.get<String>('$_webVpnOrigin/login');
+      final resp = await dio
+          .get<String>('$_webVpnOrigin/login')
+          .timeout(const Duration(seconds: 8));
       final reachable = resp.statusCode != null && resp.statusCode! < 400;
       AppLogger.instance.auth(
         LogLevel.info,
         '统一认证 WebVPN: ${reachable ? "可达" : "不可达"}',
       );
       return reachable;
-    } catch (e) {
-      AppLogger.instance.auth(LogLevel.warn, '统一认证 WebVPN 不可达: $e');
+    } catch (error) {
+      if (NetworkSettings.instance.ignoreSystemProxy.value) {
+        AppLogger.instance.auth(
+          LogLevel.warn,
+          '统一认证 WebVPN 直连探测失败，尝试系统代理重试: $error',
+        );
+        final fallbackDio = Dio(
+          BaseOptions(
+            connectTimeout: const Duration(seconds: 6),
+            receiveTimeout: const Duration(seconds: 6),
+            followRedirects: true,
+            validateStatus: (s) => s != null && s < 500,
+          ),
+        );
+        applyProxyModeToDio(fallbackDio, ignoreSystemProxy: false);
+        try {
+          final resp = await fallbackDio
+              .get<String>('$_webVpnOrigin/login')
+              .timeout(const Duration(seconds: 8));
+          final reachable = resp.statusCode != null && resp.statusCode! < 400;
+          AppLogger.instance.auth(
+            LogLevel.info,
+            '统一认证 WebVPN 代理重试: ${reachable ? "可达" : "不可达"}',
+          );
+          return reachable;
+        } catch (retryError) {
+          AppLogger.instance.auth(
+            LogLevel.warn,
+            '统一认证 WebVPN 不可达: $retryError',
+          );
+          return false;
+        } finally {
+          fallbackDio.close(force: true);
+        }
+      }
+
+      AppLogger.instance.auth(LogLevel.warn, '统一认证 WebVPN 不可达: $error');
       return false;
     }
   }
