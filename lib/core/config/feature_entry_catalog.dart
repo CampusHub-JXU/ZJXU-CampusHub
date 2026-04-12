@@ -231,7 +231,14 @@ entries:
   Future<List<FeatureEntryDefinition>>? _cachedEntries;
 
   Future<List<FeatureEntryDefinition>> loadEntries() {
-    return _cachedEntries ??= _loadEntries();
+    final cachedEntries = _cachedEntries;
+    if (cachedEntries != null) {
+      return cachedEntries;
+    }
+    if (kDebugMode) {
+      return _loadEntries();
+    }
+    return _cachedEntries = _loadEntries();
   }
 
   Future<List<FeatureEntryDefinition>> loadByPlacement(

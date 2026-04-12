@@ -1,3 +1,22 @@
+# 功能入口配置说明：
+# - id: 唯一标识，尽量保持稳定
+# - route: 对应 lib/app/routes.dart 中已注册的 route name
+# - placements: 控制入口出现在哪些区域
+#   - service_hub: 功能页交错网格
+#   - home_learning: 首页「学习服务」轻量列表
+# - span.compact: 手机 2 列布局下的尺寸
+# - span.expanded: 宽屏 4 列布局下的尺寸
+#
+# 支持的尺寸组合：
+# - 1x1: small_square
+# - 1x2: tall_rect
+# - 2x1: wide_rect
+# - 2x2: large_square
+#
+# 调整建议：
+# - 想让手机端更紧凑，优先改 span.compact
+# - 想让平板/横屏更有层次，优先改 span.expanded
+# - 如果某张卡在首页也会显示，通常只需要保证标题和副标题足够短
 entries:
   - id: service-hall
     title: 服务大厅
@@ -6,11 +25,13 @@ entries:
     color: primary
     route: service-hall
     span:
+      # compact: 手机 2 列布局，当前配置为整行横向卡片
       compact:
-        columns: 2
-        rows: 1
+        columns: 1
+        rows: 2
+      # expanded: 宽屏 4 列布局，当前配置为 2x2 主视觉卡片
       expanded:
-        columns: 2
+        columns: 1
         rows: 2
     placements:
       - service_hub
@@ -24,10 +45,10 @@ entries:
     route: second-classroom
     span:
       compact:
-        columns: 2
+        columns: 1
         rows: 1
       expanded:
-        columns: 2
+        columns: 1
         rows: 1
     placements:
       - service_hub
@@ -42,10 +63,10 @@ entries:
     route: library
     span:
       compact:
-        columns: 2
+        columns: 1
         rows: 1
       expanded:
-        columns: 2
+        columns: 1
         rows: 1
     placements:
       - service_hub
@@ -60,11 +81,11 @@ entries:
     route: changxing-jiada
     span:
       compact:
-        columns: 2
+        columns: 1
         rows: 1
       expanded:
         columns: 1
-        rows: 2
+        rows: 1
     placements:
       - service_hub
       - home_learning
