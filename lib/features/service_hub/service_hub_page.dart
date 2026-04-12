@@ -13,6 +13,22 @@ Alignment serviceHubChevronAlignment(int rowSpan) {
   return rowSpan <= 1 ? Alignment.centerRight : Alignment.bottomRight;
 }
 
+@visibleForTesting
+FeatureEntrySpan serviceHubActiveSpan(
+  FeatureEntryDefinition entry,
+  int gridColumns,
+) {
+  return entry.spanForGridColumns(gridColumns);
+}
+
+@visibleForTesting
+FeatureEntryCardType serviceHubActiveCardType(
+  FeatureEntryDefinition entry,
+  int gridColumns,
+) {
+  return entry.cardTypeForGridColumns(gridColumns);
+}
+
 class ServiceHubPage extends StatelessWidget {
   const ServiceHubPage({super.key});
 
@@ -91,11 +107,24 @@ class ServiceHubPage extends StatelessWidget {
                         crossAxisSpacing: 12,
                         children: [
                           for (final card in cards)
-                            StaggeredGridTile.count(
-                              crossAxisCellCount: card.span.columns,
-                              mainAxisCellCount: card.span.rows.toDouble(),
-                              child: _ServiceHubCard(card: card),
-                            ),
+                            () {
+                              final activeSpan = serviceHubActiveSpan(
+                                card,
+                                crossAxisCount,
+                              );
+                              return StaggeredGridTile.count(
+                                crossAxisCellCount: activeSpan.columns,
+                                mainAxisCellCount: activeSpan.rows.toDouble(),
+                                child: _ServiceHubCard(
+                                  card: card,
+                                  activeSpan: activeSpan,
+                                  activeCardType: serviceHubActiveCardType(
+                                    card,
+                                    crossAxisCount,
+                                  ),
+                                ),
+                              );
+                            }(),
                         ],
                       ),
                     ],
@@ -111,9 +140,15 @@ class ServiceHubPage extends StatelessWidget {
 }
 
 class _ServiceHubCard extends StatelessWidget {
-  const _ServiceHubCard({required this.card});
+  const _ServiceHubCard({
+    required this.card,
+    required this.activeSpan,
+    required this.activeCardType,
+  });
 
   final FeatureEntryDefinition card;
+  final FeatureEntrySpan activeSpan;
+  final FeatureEntryCardType activeCardType;
 
   @override
   Widget build(BuildContext context) {
@@ -142,14 +177,14 @@ class _ServiceHubCard extends StatelessWidget {
           children: [
             Padding(
               padding: _paddingForCard(card),
-              child: switch (card.cardType) {
+              child: switch (activeCardType) {
                 FeatureEntryCardType.smallSquare => _SquareCardBody(card: card),
                 FeatureEntryCardType.tallRect => _TallCardBody(card: card),
                 FeatureEntryCardType.wideRect => _WideCardBody(card: card),
                 FeatureEntryCardType.largeSquare => _LargeCardBody(card: card),
               },
             ),
-            _CardChevron(card: card),
+            _CardChevron(card: card, rowSpan: activeSpan.rows),
           ],
         ),
       ),
@@ -157,14 +192,14 @@ class _ServiceHubCard extends StatelessWidget {
   }
 
   EdgeInsets _paddingForCard(FeatureEntryDefinition card) {
-    final base = switch (card.cardType) {
+    final base = switch (activeCardType) {
       FeatureEntryCardType.smallSquare => 16.0,
       FeatureEntryCardType.tallRect => 18.0,
       FeatureEntryCardType.wideRect => 18.0,
       FeatureEntryCardType.largeSquare => 20.0,
     };
-    final trailingInset = card.span.rows == 1 ? 42.0 : 18.0;
-    final bottomInset = card.span.rows == 1 ? base : base + 34.0;
+    final trailingInset = activeSpan.rows == 1 ? 42.0 : 18.0;
+    final bottomInset = activeSpan.rows == 1 ? base : base + 34.0;
     return EdgeInsets.fromLTRB(base, base, trailingInset, bottomInset);
   }
 }
@@ -323,14 +358,15 @@ class _CardIconBadge extends StatelessWidget {
 }
 
 class _CardChevron extends StatelessWidget {
-  const _CardChevron({required this.card});
+  const _CardChevron({required this.card, required this.rowSpan});
 
   final FeatureEntryDefinition card;
+  final int rowSpan;
 
   @override
   Widget build(BuildContext context) {
-    final alignment = serviceHubChevronAlignment(card.span.rows);
-    final margin = card.span.rows == 1
+    final alignment = serviceHubChevronAlignment(rowSpan);
+    final margin = rowSpan == 1
         ? const EdgeInsets.only(right: 14)
         : const EdgeInsets.only(right: 14, bottom: 14);
 

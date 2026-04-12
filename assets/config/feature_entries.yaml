@@ -5,10 +5,13 @@ entries:
     icon: dashboard_customize_outlined
     color: primary
     route: service-hall
-    cardType: large_square
     span:
-      columns: 2
-      rows: 2
+      compact:
+        columns: 2
+        rows: 1
+      expanded:
+        columns: 2
+        rows: 2
     placements:
       - service_hub
     sort: 10
@@ -19,10 +22,13 @@ entries:
     icon: workspace_premium_outlined
     color: gold
     route: second-classroom
-    cardType: wide_rect
     span:
-      columns: 2
-      rows: 1
+      compact:
+        columns: 2
+        rows: 1
+      expanded:
+        columns: 2
+        rows: 1
     placements:
       - service_hub
       - home_learning
@@ -34,10 +40,13 @@ entries:
     icon: local_library_outlined
     color: info
     route: library
-    cardType: wide_rect
     span:
-      columns: 2
-      rows: 1
+      compact:
+        columns: 2
+        rows: 1
+      expanded:
+        columns: 2
+        rows: 1
     placements:
       - service_hub
       - home_learning
@@ -49,10 +58,13 @@ entries:
     icon: north_rounded
     color: "#2EA567"
     route: changxing-jiada
-    cardType: tall_rect
     span:
-      columns: 1
-      rows: 2
+      compact:
+        columns: 2
+        rows: 1
+      expanded:
+        columns: 1
+        rows: 2
     placements:
       - service_hub
       - home_learning
@@ -64,10 +76,13 @@ entries:
     icon: science_outlined
     color: "#1976D2"
     route: sjjx-notice-list
-    cardType: small_square
     span:
-      columns: 1
-      rows: 1
+      compact:
+        columns: 1
+        rows: 1
+      expanded:
+        columns: 1
+        rows: 1
     placements:
       - service_hub
       - home_learning
@@ -79,10 +94,13 @@ entries:
     icon: campaign_outlined
     color: "#E7A400"
     route: notice-list
-    cardType: small_square
     span:
-      columns: 1
-      rows: 1
+      compact:
+        columns: 1
+        rows: 1
+      expanded:
+        columns: 1
+        rows: 1
     placements:
       - service_hub
     sort: 60
@@ -93,10 +111,13 @@ entries:
     icon: school_outlined
     color: warning
     route: grades
-    cardType: small_square
     span:
-      columns: 1
-      rows: 1
+      compact:
+        columns: 1
+        rows: 1
+      expanded:
+        columns: 1
+        rows: 1
     placements:
       - service_hub
     sort: 70
@@ -107,10 +128,13 @@ entries:
     icon: bolt_outlined
     color: "#7B61FF"
     route: dorm-electricity
-    cardType: small_square
     span:
-      columns: 1
-      rows: 1
+      compact:
+        columns: 1
+        rows: 1
+      expanded:
+        columns: 1
+        rows: 1
     placements:
       - service_hub
     sort: 80

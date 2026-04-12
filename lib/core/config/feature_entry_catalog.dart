@@ -16,6 +16,16 @@ class FeatureEntrySpan {
   final int rows;
 }
 
+class FeatureEntryResponsiveSpan {
+  const FeatureEntryResponsiveSpan({
+    required this.compact,
+    required this.expanded,
+  });
+
+  final FeatureEntrySpan compact;
+  final FeatureEntrySpan expanded;
+}
+
 class FeatureEntryConfig {
   const FeatureEntryConfig({
     required this.id,
@@ -24,8 +34,7 @@ class FeatureEntryConfig {
     required this.iconKey,
     required this.colorKey,
     required this.routeName,
-    required this.cardType,
-    required this.span,
+    required this.spans,
     required this.placements,
     required this.sortOrder,
   });
@@ -36,8 +45,7 @@ class FeatureEntryConfig {
   final String iconKey;
   final String colorKey;
   final String routeName;
-  final FeatureEntryCardType cardType;
-  final FeatureEntrySpan span;
+  final FeatureEntryResponsiveSpan spans;
   final Set<FeatureEntryPlacement> placements;
   final int sortOrder;
 }
@@ -57,9 +65,18 @@ class FeatureEntryDefinition {
   String get title => config.title;
   String get subtitle => config.subtitle;
   String get routeName => config.routeName;
-  FeatureEntryCardType get cardType => config.cardType;
-  FeatureEntrySpan get span => config.span;
+  FeatureEntryCardType get cardType =>
+      FeatureEntryCatalog.cardTypeForSpan(config.spans.expanded);
+  FeatureEntrySpan get span => config.spans.expanded;
   Set<FeatureEntryPlacement> get placements => config.placements;
+
+  FeatureEntrySpan spanForGridColumns(int gridColumns) {
+    return gridColumns <= 2 ? config.spans.compact : config.spans.expanded;
+  }
+
+  FeatureEntryCardType cardTypeForGridColumns(int gridColumns) {
+    return FeatureEntryCatalog.cardTypeForSpan(spanForGridColumns(gridColumns));
+  }
 }
 
 class FeatureEntryCatalog {
@@ -74,10 +91,13 @@ entries:
     icon: dashboard_customize_outlined
     color: primary
     route: service-hall
-    cardType: large_square
     span:
-      columns: 2
-      rows: 2
+      compact:
+        columns: 2
+        rows: 1
+      expanded:
+        columns: 2
+        rows: 2
     placements:
       - service_hub
     sort: 10
@@ -88,10 +108,13 @@ entries:
     icon: workspace_premium_outlined
     color: gold
     route: second-classroom
-    cardType: wide_rect
     span:
-      columns: 2
-      rows: 1
+      compact:
+        columns: 2
+        rows: 1
+      expanded:
+        columns: 2
+        rows: 1
     placements:
       - service_hub
       - home_learning
@@ -103,10 +126,13 @@ entries:
     icon: local_library_outlined
     color: info
     route: library
-    cardType: wide_rect
     span:
-      columns: 2
-      rows: 1
+      compact:
+        columns: 2
+        rows: 1
+      expanded:
+        columns: 2
+        rows: 1
     placements:
       - service_hub
       - home_learning
@@ -118,10 +144,13 @@ entries:
     icon: north_rounded
     color: "#2EA567"
     route: changxing-jiada
-    cardType: tall_rect
     span:
-      columns: 1
-      rows: 2
+      compact:
+        columns: 2
+        rows: 1
+      expanded:
+        columns: 1
+        rows: 2
     placements:
       - service_hub
       - home_learning
@@ -133,10 +162,13 @@ entries:
     icon: science_outlined
     color: "#1976D2"
     route: sjjx-notice-list
-    cardType: small_square
     span:
-      columns: 1
-      rows: 1
+      compact:
+        columns: 1
+        rows: 1
+      expanded:
+        columns: 1
+        rows: 1
     placements:
       - service_hub
       - home_learning
@@ -148,10 +180,13 @@ entries:
     icon: campaign_outlined
     color: "#E7A400"
     route: notice-list
-    cardType: small_square
     span:
-      columns: 1
-      rows: 1
+      compact:
+        columns: 1
+        rows: 1
+      expanded:
+        columns: 1
+        rows: 1
     placements:
       - service_hub
     sort: 60
@@ -162,10 +197,13 @@ entries:
     icon: school_outlined
     color: warning
     route: grades
-    cardType: small_square
     span:
-      columns: 1
-      rows: 1
+      compact:
+        columns: 1
+        rows: 1
+      expanded:
+        columns: 1
+        rows: 1
     placements:
       - service_hub
     sort: 70
@@ -176,10 +214,13 @@ entries:
     icon: bolt_outlined
     color: "#7B61FF"
     route: dorm-electricity
-    cardType: small_square
     span:
-      columns: 1
-      rows: 1
+      compact:
+        columns: 1
+        rows: 1
+      expanded:
+        columns: 1
+        rows: 1
     placements:
       - service_hub
     sort: 80
@@ -238,8 +279,7 @@ entries:
         iconKey: _requireString(node, 'icon'),
         colorKey: _requireString(node, 'color'),
         routeName: _requireString(node, 'route'),
-        cardType: _parseCardType(node['cardType']),
-        span: _parseSpan(node['span']),
+        spans: _parseResponsiveSpan(node['span']),
         placements: _parsePlacements(node['placements']),
         sortOrder: _parseSortOrder(node['sort'], index),
       );
@@ -304,28 +344,30 @@ entries:
     throw FormatException('未知功能入口 placement: $value');
   }
 
-  static FeatureEntryCardType _parseCardType(Object? value) {
-    final text = value?.toString().trim() ?? '';
-    switch (text) {
-      case 'small_square':
-        return FeatureEntryCardType.smallSquare;
-      case 'tall_rect':
-        return FeatureEntryCardType.tallRect;
-      case 'wide_rect':
-        return FeatureEntryCardType.wideRect;
-      case 'large_square':
-        return FeatureEntryCardType.largeSquare;
-    }
-    throw FormatException('未知功能入口 cardType: $text');
-  }
-
-  static FeatureEntrySpan _parseSpan(Object? value) {
+  static FeatureEntryResponsiveSpan _parseResponsiveSpan(Object? value) {
     if (value is! YamlMap) {
       throw const FormatException('功能入口 span 缺失');
     }
 
-    final columns = _parsePositiveInt(value['columns'], 'span.columns');
-    final rows = _parsePositiveInt(value['rows'], 'span.rows');
+    final hasResponsiveKeys =
+        value['compact'] != null || value['expanded'] != null;
+    if (!hasResponsiveKeys) {
+      final legacy = _parseSpan(value);
+      return FeatureEntryResponsiveSpan(compact: legacy, expanded: legacy);
+    }
+
+    final compact = _parseSpan(value['compact'], field: 'span.compact');
+    final expanded = _parseSpan(value['expanded'], field: 'span.expanded');
+    return FeatureEntryResponsiveSpan(compact: compact, expanded: expanded);
+  }
+
+  static FeatureEntrySpan _parseSpan(Object? value, {String field = 'span'}) {
+    if (value is! YamlMap) {
+      throw FormatException('功能入口字段 $field 缺失');
+    }
+
+    final columns = _parsePositiveInt(value['columns'], '$field.columns');
+    final rows = _parsePositiveInt(value['rows'], '$field.rows');
     return FeatureEntrySpan(columns: columns, rows: rows);
   }
 
@@ -342,25 +384,35 @@ entries:
   }
 
   static void _validateCardLayout(FeatureEntryConfig config) {
-    final span = config.span;
+    _validateSpan(config.id, 'compact', config.spans.compact);
+    _validateSpan(config.id, 'expanded', config.spans.expanded);
+  }
+
+  static void _validateSpan(String id, String scope, FeatureEntrySpan span) {
     final validSpan =
         (span.columns == 1 && span.rows == 1) ||
         (span.columns == 1 && span.rows == 2) ||
         (span.columns == 2 && span.rows == 1) ||
         (span.columns == 2 && span.rows == 2);
     if (!validSpan) {
-      throw FormatException('功能入口 ${config.id} 的 span 仅支持 1x1、1x2、2x1、2x2');
+      throw FormatException('功能入口 $id 的 $scope span 仅支持 1x1、1x2、2x1、2x2');
     }
+  }
 
-    final matchesType = switch (config.cardType) {
-      FeatureEntryCardType.smallSquare => span.columns == 1 && span.rows == 1,
-      FeatureEntryCardType.tallRect => span.columns == 1 && span.rows == 2,
-      FeatureEntryCardType.wideRect => span.columns == 2 && span.rows == 1,
-      FeatureEntryCardType.largeSquare => span.columns == 2 && span.rows == 2,
-    };
-    if (!matchesType) {
-      throw FormatException('功能入口 ${config.id} 的 cardType 与 span 不匹配');
+  static FeatureEntryCardType cardTypeForSpan(FeatureEntrySpan span) {
+    if (span.columns == 1 && span.rows == 1) {
+      return FeatureEntryCardType.smallSquare;
     }
+    if (span.columns == 1 && span.rows == 2) {
+      return FeatureEntryCardType.tallRect;
+    }
+    if (span.columns == 2 && span.rows == 1) {
+      return FeatureEntryCardType.wideRect;
+    }
+    if (span.columns == 2 && span.rows == 2) {
+      return FeatureEntryCardType.largeSquare;
+    }
+    throw FormatException('未知功能入口 span: ${span.columns}x${span.rows}');
   }
 
   static IconData _resolveIcon(String key) {

@@ -18,10 +18,13 @@ entries:
     icon: dashboard_customize_outlined
     color: primary
     route: service-hall
-    cardType: large_square
     span:
-      columns: 2
-      rows: 2
+      compact:
+        columns: 2
+        rows: 1
+      expanded:
+        columns: 2
+        rows: 2
     placements:
       - service_hub
     sort: 10
@@ -31,10 +34,13 @@ entries:
     icon: workspace_premium_outlined
     color: gold
     route: second-classroom
-    cardType: wide_rect
     span:
-      columns: 2
-      rows: 1
+      compact:
+        columns: 2
+        rows: 1
+      expanded:
+        columns: 2
+        rows: 1
     placements:
       - service_hub
     sort: 20
@@ -44,10 +50,13 @@ entries:
     icon: north_rounded
     color: "#2EA567"
     route: changxing-jiada
-    cardType: tall_rect
     span:
-      columns: 1
-      rows: 2
+      compact:
+        columns: 2
+        rows: 1
+      expanded:
+        columns: 1
+        rows: 2
     placements:
       - service_hub
     sort: 30
@@ -57,10 +66,13 @@ entries:
     icon: school_outlined
     color: warning
     route: grades
-    cardType: small_square
     span:
-      columns: 1
-      rows: 1
+      compact:
+        columns: 1
+        rows: 1
+      expanded:
+        columns: 1
+        rows: 1
     placements:
       - service_hub
     sort: 40
@@ -80,6 +92,33 @@ entries:
     await tester.pumpAndSettle();
 
     expect(serviceHubGridColumnCount(390), 2);
+    final serviceHall = FeatureEntryCatalog.instance.parse('''
+entries:
+  - id: service-hall
+    title: 服务大厅
+    subtitle: 统一入口
+    icon: dashboard_customize_outlined
+    color: primary
+    route: service-hall
+    span:
+      compact:
+        columns: 2
+        rows: 1
+      expanded:
+        columns: 2
+        rows: 2
+    placements:
+      - service_hub
+''').single;
+    expect(serviceHubActiveSpan(serviceHall, 2).rows, 1);
+    expect(
+      serviceHubActiveCardType(serviceHall, 2),
+      FeatureEntryCardType.wideRect,
+    );
+    expect(
+      serviceHubActiveCardType(serviceHall, 4),
+      FeatureEntryCardType.largeSquare,
+    );
     expect(serviceHubChevronAlignment(1), Alignment.centerRight);
     expect(serviceHubChevronAlignment(2), Alignment.bottomRight);
     expect(find.text('服务大厅'), findsOneWidget);

@@ -15,10 +15,13 @@ entries:
     icon: local_library_outlined
     color: info
     route: library
-    cardType: wide_rect
     span:
-      columns: 2
-      rows: 1
+      compact:
+        columns: 2
+        rows: 1
+      expanded:
+        columns: 2
+        rows: 1
     placements:
       - service_hub
       - home_learning
@@ -29,10 +32,13 @@ entries:
     icon: school_outlined
     color: warning
     route: grades
-    cardType: small_square
     span:
-      columns: 1
-      rows: 1
+      compact:
+        columns: 1
+        rows: 1
+      expanded:
+        columns: 1
+        rows: 1
     placements:
       - service_hub
     sort: 30
@@ -49,6 +55,8 @@ entries:
       expect(library.cardType, FeatureEntryCardType.wideRect);
       expect(library.span.columns, 2);
       expect(library.span.rows, 1);
+      expect(library.spanForGridColumns(2).columns, 2);
+      expect(library.spanForGridColumns(2).rows, 1);
       expect(
         library.placements,
         containsAll(<FeatureEntryPlacement>[
@@ -67,10 +75,13 @@ entries:
     icon: north_rounded
     color: "#2EA567"
     route: changxing-jiada
-    cardType: tall_rect
     span:
-      columns: 1
-      rows: 2
+      compact:
+        columns: 2
+        rows: 1
+      expanded:
+        columns: 1
+        rows: 2
     placements:
       - home_learning
 ''');
@@ -88,10 +99,13 @@ entries:
     icon: dashboard_customize_outlined
     color: primary
     route: service-hall
-    cardType: large_square
     span:
-      columns: 3
-      rows: 1
+      compact:
+        columns: 3
+        rows: 1
+      expanded:
+        columns: 2
+        rows: 2
     placements:
       - service_hub
 '''),
@@ -99,9 +113,8 @@ entries:
       );
     });
 
-    test('rejects cardType and span mismatches', () {
-      expect(
-        () => FeatureEntryCatalog.instance.parse('''
+    test('supports legacy single span config', () {
+      final entries = FeatureEntryCatalog.instance.parse('''
 entries:
   - id: grades
     title: 成绩查询
@@ -109,15 +122,16 @@ entries:
     icon: school_outlined
     color: warning
     route: grades
-    cardType: small_square
     span:
       columns: 2
       rows: 1
     placements:
       - service_hub
-'''),
-        throwsFormatException,
-      );
+''');
+
+      expect(entries.single.cardType, FeatureEntryCardType.wideRect);
+      expect(entries.single.spanForGridColumns(2).columns, 2);
+      expect(entries.single.spanForGridColumns(4).columns, 2);
     });
   });
 }
