@@ -44,7 +44,7 @@ void main() {
     expect(captchaRequested, isFalse);
   });
 
-  testWidgets('defaults to webvpn login form for user-facing login', (
+  testWidgets('defaults to direct-first login form for user-facing login', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -63,6 +63,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.text('正在检测网络环境...'), findsNothing);
+    expect(find.text('一卡通账号'), findsOneWidget);
     expect(find.text('登录'), findsOneWidget);
   });
 

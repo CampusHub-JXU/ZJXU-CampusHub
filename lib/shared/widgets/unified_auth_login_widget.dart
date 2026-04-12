@@ -65,7 +65,7 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
   bool _loading = false;
   String? _error;
 
-  UnifiedAuthMode _mode = UnifiedAuthMode.webVpn;
+  UnifiedAuthMode _mode = UnifiedAuthMode.direct;
   static const _proxyHint = '请求超时，请检查手机系统代理或 VPN 软件';
 
   @override
@@ -103,14 +103,6 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
       }
     }
 
-    // WebVPN is the only user-facing login path. We still keep a direct-mode
-    // preflight fallback internal so existing authenticated sessions continue
-    // to be reused without bouncing users through another login.
-    final webVpnReady = await _prepareForcedWebVpnLogin();
-    if (!mounted || webVpnReady) {
-      return webVpnReady;
-    }
-
     final hasActiveSession = await UnifiedAuthService.instance.prepareLogin(
       serviceUrl: widget.serviceUrl,
     );
@@ -119,16 +111,27 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
     }
 
     final directReachable = await UnifiedAuthService.checkDirectReachable();
-    if (!mounted || !directReachable) {
+    if (!mounted) return false;
+    if (directReachable) {
+      setState(() {
+        _mode = UnifiedAuthMode.direct;
+        _error = null;
+        _captchaBytes = null;
+      });
+      await _refreshCaptcha();
       return false;
     }
 
-    setState(() {
-      _mode = UnifiedAuthMode.direct;
-      _error = null;
-      _captchaBytes = null;
-    });
-    await _refreshCaptcha();
+    final webVpnReady = await _prepareForcedWebVpnLogin();
+    if (!mounted || webVpnReady) {
+      return webVpnReady;
+    }
+
+    if (mounted && _captchaBytes == null && _error == null) {
+      setState(() {
+        _error = '无法连接统一认证，请检查网络连接';
+      });
+    }
     return false;
   }
 
