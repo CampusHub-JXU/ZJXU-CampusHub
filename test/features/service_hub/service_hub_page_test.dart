@@ -80,8 +80,12 @@ entries:
     await tester.pumpAndSettle();
 
     expect(serviceHubGridColumnCount(390), 2);
+    expect(serviceHubChevronAlignment(1), Alignment.centerRight);
+    expect(serviceHubChevronAlignment(2), Alignment.bottomRight);
     expect(find.text('服务大厅'), findsOneWidget);
     expect(find.text('成绩查询'), findsOneWidget);
+    expect(find.byIcon(Icons.chevron_right_rounded), findsNWidgets(4));
+    expect(find.text('进入服务'), findsNothing);
   });
 
   testWidgets('uses four columns on wide screens and navigates on tap', (

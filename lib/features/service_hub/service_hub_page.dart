@@ -8,6 +8,11 @@ import '../../core/config/feature_entry_catalog.dart';
 @visibleForTesting
 int serviceHubGridColumnCount(double maxWidth) => maxWidth >= 600 ? 4 : 2;
 
+@visibleForTesting
+Alignment serviceHubChevronAlignment(int rowSpan) {
+  return rowSpan <= 1 ? Alignment.centerRight : Alignment.bottomRight;
+}
+
 class ServiceHubPage extends StatelessWidget {
   const ServiceHubPage({super.key});
 
@@ -133,26 +138,34 @@ class _ServiceHubCard extends StatelessWidget {
             ),
           ],
         ),
-        child: Padding(
-          padding: EdgeInsets.all(_paddingForType(card.cardType)),
-          child: switch (card.cardType) {
-            FeatureEntryCardType.smallSquare => _SquareCardBody(card: card),
-            FeatureEntryCardType.tallRect => _TallCardBody(card: card),
-            FeatureEntryCardType.wideRect => _WideCardBody(card: card),
-            FeatureEntryCardType.largeSquare => _LargeCardBody(card: card),
-          },
+        child: Stack(
+          children: [
+            Padding(
+              padding: _paddingForCard(card),
+              child: switch (card.cardType) {
+                FeatureEntryCardType.smallSquare => _SquareCardBody(card: card),
+                FeatureEntryCardType.tallRect => _TallCardBody(card: card),
+                FeatureEntryCardType.wideRect => _WideCardBody(card: card),
+                FeatureEntryCardType.largeSquare => _LargeCardBody(card: card),
+              },
+            ),
+            _CardChevron(card: card),
+          ],
         ),
       ),
     );
   }
 
-  double _paddingForType(FeatureEntryCardType cardType) {
-    return switch (cardType) {
-      FeatureEntryCardType.smallSquare => 16,
-      FeatureEntryCardType.tallRect => 18,
-      FeatureEntryCardType.wideRect => 18,
-      FeatureEntryCardType.largeSquare => 20,
+  EdgeInsets _paddingForCard(FeatureEntryDefinition card) {
+    final base = switch (card.cardType) {
+      FeatureEntryCardType.smallSquare => 16.0,
+      FeatureEntryCardType.tallRect => 18.0,
+      FeatureEntryCardType.wideRect => 18.0,
+      FeatureEntryCardType.largeSquare => 20.0,
     };
+    final trailingInset = card.span.rows == 1 ? 42.0 : 18.0;
+    final bottomInset = card.span.rows == 1 ? base : base + 34.0;
+    return EdgeInsets.fromLTRB(base, base, trailingInset, bottomInset);
   }
 }
 
@@ -182,8 +195,6 @@ class _LargeCardBody extends StatelessWidget {
           maxLines: 4,
           overflow: TextOverflow.ellipsis,
         ),
-        const SizedBox(height: 18),
-        _CardAction(card: card),
       ],
     );
   }
@@ -221,8 +232,6 @@ class _WideCardBody extends StatelessWidget {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
-              const SizedBox(height: 12),
-              _CardAction(card: card),
             ],
           ),
         ),
@@ -257,8 +266,6 @@ class _TallCardBody extends StatelessWidget {
           maxLines: 5,
           overflow: TextOverflow.ellipsis,
         ),
-        const Spacer(),
-        _CardAction(card: card),
       ],
     );
   }
@@ -283,8 +290,6 @@ class _SquareCardBody extends StatelessWidget {
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
         ),
-        const SizedBox(height: 10),
-        Icon(Icons.arrow_forward_rounded, size: 18, color: card.accentColor),
       ],
     );
   }
@@ -317,26 +322,34 @@ class _CardIconBadge extends StatelessWidget {
   }
 }
 
-class _CardAction extends StatelessWidget {
-  const _CardAction({required this.card});
+class _CardChevron extends StatelessWidget {
+  const _CardChevron({required this.card});
 
   final FeatureEntryDefinition card;
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      crossAxisAlignment: WrapCrossAlignment.center,
-      spacing: 6,
-      children: [
-        Text(
-          '进入服务',
-          style: Theme.of(context).textTheme.labelLarge?.copyWith(
-            color: card.accentColor,
-            fontWeight: FontWeight.w700,
-          ),
+    final alignment = serviceHubChevronAlignment(card.span.rows);
+    final margin = card.span.rows == 1
+        ? const EdgeInsets.only(right: 14)
+        : const EdgeInsets.only(right: 14, bottom: 14);
+
+    return Align(
+      alignment: alignment,
+      child: Container(
+        margin: margin,
+        width: 28,
+        height: 28,
+        decoration: BoxDecoration(
+          color: card.accentColor.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(999),
         ),
-        Icon(Icons.arrow_forward_rounded, size: 18, color: card.accentColor),
-      ],
+        child: Icon(
+          Icons.chevron_right_rounded,
+          size: 18,
+          color: card.accentColor,
+        ),
+      ),
     );
   }
 }
