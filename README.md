@@ -1,4 +1,4 @@
-# ZJXU-CampusHub
+# JXU-CampusHub
 
 嘉兴大学智能中台，由 GPT-5.4 | Claude Opus 4.6 辅助开发。
 
