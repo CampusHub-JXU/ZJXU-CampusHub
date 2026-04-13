@@ -1,7 +1,7 @@
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+﻿import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:jiaxing_university_portal/core/auth/credential_store.dart';
+import 'package:jxu_campus_hub/core/auth/credential_store.dart';
 
 void main() {
   setUp(() {

@@ -1,6 +1,6 @@
-import 'package:flutter_test/flutter_test.dart';
+﻿import 'package:flutter_test/flutter_test.dart';
 
-import 'package:jiaxing_university_portal/features/sjjx_notice/sjjx_notice_list_page.dart';
+import 'package:jxu_campus_hub/features/sjjx_notice/sjjx_notice_list_page.dart';
 
 void main() {
   test('sjjx detail should use webvpn protection', () {

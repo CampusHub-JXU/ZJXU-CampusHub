@@ -1,9 +1,9 @@
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+﻿import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:jiaxing_university_portal/core/auth/zhengfang_auth.dart';
-import 'package:jiaxing_university_portal/core/network/dio_client.dart';
-import 'package:jiaxing_university_portal/features/changxing_jiada/changxing_jiada_service.dart';
+import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
+import 'package:jxu_campus_hub/core/network/dio_client.dart';
+import 'package:jxu_campus_hub/features/changxing_jiada/changxing_jiada_service.dart';
 
 import '../../helpers/mock_http_client_adapter.dart';
 import '../../helpers/test_setup.dart';

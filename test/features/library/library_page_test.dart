@@ -1,8 +1,8 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:jiaxing_university_portal/features/library/library_page.dart';
-import 'package:jiaxing_university_portal/shared/widgets/unified_auth_protected_webview_page.dart';
+import 'package:jxu_campus_hub/features/library/library_page.dart';
+import 'package:jxu_campus_hub/shared/widgets/unified_auth_protected_webview_page.dart';
 
 void main() {
   testWidgets('library page uses dedicated unified auth entry', (tester) async {

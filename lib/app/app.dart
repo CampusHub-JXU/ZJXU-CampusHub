@@ -5,14 +5,14 @@ import 'text_scale_controller.dart';
 import 'theme.dart';
 import 'theme_mode_controller.dart';
 
-class JiaxingUniversityApp extends StatefulWidget {
-  const JiaxingUniversityApp({super.key});
+class JXUCampusHubApp extends StatefulWidget {
+  const JXUCampusHubApp({super.key});
 
   @override
-  State<JiaxingUniversityApp> createState() => _JiaxingUniversityAppState();
+  State<JXUCampusHubApp> createState() => _JXUCampusHubAppState();
 }
 
-class _JiaxingUniversityAppState extends State<JiaxingUniversityApp> {
+class _JXUCampusHubAppState extends State<JXUCampusHubApp> {
   final _themeModeController = ThemeModeController.instance;
   final _textScaleController = TextScaleController.instance;
 
@@ -37,7 +37,7 @@ class _JiaxingUniversityAppState extends State<JiaxingUniversityApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp.router(
-      title: '嘉兴大学-校园门户',
+      title: '嘉兴大学-智能中台',
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: _themeModeController.themeMode.value,

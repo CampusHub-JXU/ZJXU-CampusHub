@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -7,9 +7,9 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:jiaxing_university_portal/core/auth/zhengfang_auth.dart';
-import 'package:jiaxing_university_portal/core/network/dio_client.dart';
-import 'package:jiaxing_university_portal/core/network/network_settings.dart';
+import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
+import 'package:jxu_campus_hub/core/network/dio_client.dart';
+import 'package:jxu_campus_hub/core/network/network_settings.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

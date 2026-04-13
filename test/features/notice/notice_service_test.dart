@@ -1,9 +1,9 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:jiaxing_university_portal/features/notice/notice_service.dart';
+import 'package:jxu_campus_hub/features/notice/notice_service.dart';
 
 void main() {
   test('parses jwc notice list html into notice items', () {

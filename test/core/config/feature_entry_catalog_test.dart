@@ -1,61 +1,31 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:jiaxing_university_portal/app/theme.dart';
-import 'package:jiaxing_university_portal/core/config/feature_entry_catalog.dart';
+import 'package:jxu_campus_hub/app/theme.dart';
+import 'package:jxu_campus_hub/core/config/feature_entry_catalog.dart';
 
 void main() {
+  tearDown(() {
+    FeatureEntryCatalog.instance.debugReset();
+  });
+
   group('FeatureEntryCatalog', () {
-    test('parses yaml entries into resolved feature definitions', () {
-      final entries = FeatureEntryCatalog.instance.parse('''
-entries:
-  - id: library
-    title: 图书馆
-    subtitle: 馆藏检索
-    icon: local_library_outlined
-    color: info
-    route: library
-    span:
-      compact:
-        columns: 2
-        rows: 1
-      expanded:
-        columns: 2
-        rows: 1
-    placements:
-      - service_hub
-      - home_learning
-    sort: 20
-  - id: grades
-    title: 成绩查询
-    subtitle: 查看成绩
-    icon: school_outlined
-    color: warning
-    route: grades
-    span:
-      compact:
-        columns: 1
-        rows: 1
-      expanded:
-        columns: 1
-        rows: 1
-    placements:
-      - service_hub
-    sort: 30
-''');
+    test('exposes resolved feature definitions from pure dart config', () {
+      final entries = AppFeaturesConfig.activeEntries;
+      final library = entries.firstWhere((entry) => entry.id == 'library');
+      final changxing = entries.firstWhere(
+        (entry) => entry.id == 'changxing-jiada',
+      );
 
-      expect(entries, hasLength(2));
-
-      final library = entries.first;
-      expect(library.id, 'library');
+      expect(entries, isNotEmpty);
       expect(library.title, '图书馆');
       expect(library.routeName, 'library');
       expect(library.icon, Icons.local_library_outlined);
       expect(library.accentColor, AppColors.info);
-      expect(library.cardType, FeatureEntryCardType.wideRect);
-      expect(library.span.columns, 2);
+      expect(library.cardType, FeatureEntryCardType.smallSquare);
+      expect(library.span.columns, 1);
       expect(library.span.rows, 1);
-      expect(library.spanForGridColumns(2).columns, 2);
+      expect(library.spanForGridColumns(2).columns, 1);
       expect(library.spanForGridColumns(2).rows, 1);
       expect(
         library.placements,
@@ -64,74 +34,100 @@ entries:
           FeatureEntryPlacement.homeLearning,
         ]),
       );
+      expect(changxing.accentColor, const Color(0xFF2EA567));
     });
 
-    test('supports hex colors in yaml config', () {
-      final entries = FeatureEntryCatalog.instance.parse('''
-entries:
-  - id: changxing-jiada
-    title: 畅行嘉大
-    subtitle: 请假与返校
-    icon: north_rounded
-    color: "#2EA567"
-    route: changxing-jiada
-    span:
-      compact:
-        columns: 2
-        rows: 1
-      expanded:
-        columns: 1
-        rows: 2
-    placements:
-      - home_learning
-''');
+    test('filters hidden entries and placement specific entries', () {
+      FeatureEntryCatalog.instance.debugSetEntries([
+        _entry(
+          id: 'visible',
+          title: '可见功能',
+          placements: const {FeatureEntryPlacement.serviceHub},
+          sortOrder: 20,
+        ),
+        _entry(
+          id: 'hidden',
+          title: '隐藏功能',
+          placements: const {FeatureEntryPlacement.serviceHub},
+          sortOrder: 10,
+          isVisible: false,
+        ),
+        _entry(
+          id: 'home-only',
+          title: '首页功能',
+          placements: const {FeatureEntryPlacement.homeLearning},
+          sortOrder: 30,
+        ),
+      ]);
 
-      expect(entries.single.accentColor, const Color(0xFF2EA567));
+      final serviceHubEntries = FeatureEntryCatalog.instance.entriesByPlacement(
+        FeatureEntryPlacement.serviceHub,
+      );
+      final homeEntries = FeatureEntryCatalog.instance.entriesByPlacement(
+        FeatureEntryPlacement.homeLearning,
+      );
+
+      expect(serviceHubEntries.map((entry) => entry.id), ['visible']);
+      expect(homeEntries.map((entry) => entry.id), ['home-only']);
     });
 
     test('rejects unsupported span sizes', () {
       expect(
-        () => FeatureEntryCatalog.instance.parse('''
-entries:
-  - id: service-hall
-    title: 服务大厅
-    subtitle: 统一入口
-    icon: dashboard_customize_outlined
-    color: primary
-    route: service-hall
-    span:
-      compact:
-        columns: 3
-        rows: 1
-      expanded:
-        columns: 2
-        rows: 2
-    placements:
-      - service_hub
-'''),
+        () => FeatureEntryCatalog.instance.debugSetEntries([
+          _entry(
+            id: 'invalid-span',
+            spans: const FeatureEntryResponsiveSpan(
+              compact: FeatureEntrySpan(columns: 3, rows: 1),
+              expanded: FeatureEntrySpan(columns: 1, rows: 1),
+            ),
+          ),
+        ]),
         throwsFormatException,
       );
     });
 
-    test('supports legacy single span config', () {
-      final entries = FeatureEntryCatalog.instance.parse('''
-entries:
-  - id: grades
-    title: 成绩查询
-    subtitle: 查看成绩
-    icon: school_outlined
-    color: warning
-    route: grades
-    span:
-      columns: 2
-      rows: 1
-    placements:
-      - service_hub
-''');
+    test('uses compact and expanded spans for different grid widths', () {
+      final entry = _entry(
+        id: 'responsive',
+        spans: const FeatureEntryResponsiveSpan(
+          compact: FeatureEntrySpan(columns: 2, rows: 1),
+          expanded: FeatureEntrySpan(columns: 2, rows: 2),
+        ),
+      );
 
-      expect(entries.single.cardType, FeatureEntryCardType.wideRect);
-      expect(entries.single.spanForGridColumns(2).columns, 2);
-      expect(entries.single.spanForGridColumns(4).columns, 2);
+      expect(entry.cardTypeForGridColumns(2), FeatureEntryCardType.wideRect);
+      expect(entry.cardTypeForGridColumns(4), FeatureEntryCardType.largeSquare);
     });
   });
+}
+
+FeatureEntryDefinition _entry({
+  required String id,
+  String? title,
+  String subtitle = '测试副标题',
+  IconData icon = Icons.extension_outlined,
+  Color accentColor = AppColors.primary,
+  String? routeName,
+  FeatureEntryResponsiveSpan spans = const FeatureEntryResponsiveSpan(
+    compact: FeatureEntrySpan(columns: 1, rows: 1),
+    expanded: FeatureEntrySpan(columns: 1, rows: 1),
+  ),
+  Set<FeatureEntryPlacement> placements = const {
+    FeatureEntryPlacement.serviceHub,
+  },
+  int sortOrder = 10,
+  bool isVisible = true,
+}) {
+  return FeatureEntryDefinition(
+    id: id,
+    title: title ?? id,
+    subtitle: subtitle,
+    icon: icon,
+    accentColor: accentColor,
+    routeName: routeName ?? id,
+    spans: spans,
+    placements: placements,
+    sortOrder: sortOrder,
+    isVisible: isVisible,
+  );
 }

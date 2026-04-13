@@ -1,5 +1,5 @@
-import 'package:flutter_test/flutter_test.dart';
-import 'package:jiaxing_university_portal/shared/widgets/webview_page.dart';
+﻿import 'package:flutter_test/flutter_test.dart';
+import 'package:jxu_campus_hub/shared/widgets/webview_page.dart';
 
 void main() {
   group('detectWebViewQuickFillKind', () {

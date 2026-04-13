@@ -2,15 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:jiaxing_university_portal/features/campus_card/campus_card_page.dart';
-import 'package:jiaxing_university_portal/features/campus_card/campus_card_service.dart';
+import 'package:jxu_campus_hub/features/campus_card/campus_card_page.dart';
+import 'package:jxu_campus_hub/features/campus_card/campus_card_service.dart';
+import 'package:jxu_campus_hub/shared/widgets/webvpn_protected_webview_page.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  const shortcutChannel = MethodChannel(
-    'edu.zjxu.jiaxinguniversityportal/shortcut',
-  );
+  const shortcutChannel = MethodChannel('edu.zjxu.jxucampushub/shortcut');
 
   setUp(() {
     CampusCardService.instance.debugSetCachedBalance(
@@ -73,5 +72,18 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('添加至桌面'), findsNothing);
+  });
+
+  testWidgets('opens campus card inside webvpn protected webview', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('账单'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.byType(WebVpnProtectedWebViewPage), findsOneWidget);
   });
 }

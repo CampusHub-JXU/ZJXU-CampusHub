@@ -1,5 +1,5 @@
-import 'package:flutter_test/flutter_test.dart';
-import 'package:jiaxing_university_portal/core/auth/zhengfang_auth.dart';
+﻿import 'package:flutter_test/flutter_test.dart';
+import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 
 void main() {
   tearDown(() {

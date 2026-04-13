@@ -1,7 +1,7 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:jiaxing_university_portal/shared/widgets/login_shell.dart';
+import 'package:jxu_campus_hub/shared/widgets/login_shell.dart';
 
 import '../../helpers/pump_app.dart';
 

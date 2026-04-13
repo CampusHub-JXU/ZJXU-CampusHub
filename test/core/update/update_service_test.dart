@@ -1,7 +1,7 @@
-import 'package:flutter_test/flutter_test.dart';
+﻿import 'package:flutter_test/flutter_test.dart';
 
-import 'package:jiaxing_university_portal/core/update/update_model.dart';
-import 'package:jiaxing_university_portal/core/update/update_service.dart';
+import 'package:jxu_campus_hub/core/update/update_model.dart';
+import 'package:jxu_campus_hub/core/update/update_service.dart';
 
 void main() {
   setUp(() {

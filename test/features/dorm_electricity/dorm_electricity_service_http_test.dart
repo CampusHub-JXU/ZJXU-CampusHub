@@ -1,9 +1,9 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:jiaxing_university_portal/features/dorm_electricity/dorm_electricity_service.dart';
+import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_service.dart';
 
 import '../../helpers/mock_http_client_adapter.dart';
 import '../../helpers/test_setup.dart';

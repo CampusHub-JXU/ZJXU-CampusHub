@@ -1,5 +1,5 @@
-import 'package:flutter_test/flutter_test.dart';
-import 'package:jiaxing_university_portal/features/dorm_electricity/dorm_electricity_service.dart';
+﻿import 'package:flutter_test/flutter_test.dart';
+import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {

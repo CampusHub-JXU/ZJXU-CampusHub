@@ -14,9 +14,7 @@ class AppShortcutService {
 
   static const campusCardPaymentAction = 'campus-card-payment';
 
-  static const _channel = MethodChannel(
-    'edu.zjxu.jiaxinguniversityportal/shortcut',
-  );
+  static const _channel = MethodChannel('edu.zjxu.jxucampushub/shortcut');
 
   bool _initialized = false;
   bool _phaseListenerRegistered = false;

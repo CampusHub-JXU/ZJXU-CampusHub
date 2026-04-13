@@ -39,7 +39,7 @@ Future<void> main() async {
 
       await AppBootstrapController.instance.prepareForFirstFrame();
       await AppShortcutService.instance.initialize();
-      runApp(const JiaxingUniversityApp());
+      runApp(const JXUCampusHubApp());
       AppBootstrapController.instance.scheduleWarmUpAfterFirstFrame();
     },
     (error, stackTrace) {

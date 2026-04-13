@@ -5,7 +5,7 @@ import '../../app/theme.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/shortcut/app_shortcut_service.dart';
 import '../../shared/widgets/ship_card.dart';
-import '../../shared/widgets/unified_auth_protected_webview_page.dart';
+import '../../shared/widgets/webvpn_protected_webview_page.dart';
 import 'campus_card_recharge_page.dart';
 import 'campus_card_service.dart';
 
@@ -249,11 +249,9 @@ class _CampusCardPageState extends State<CampusCardPage> {
 
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => UnifiedAuthProtectedWebViewPage(
+        builder: (_) => WebVpnProtectedWebViewPage(
           title: title,
           url: CampusCardService.statusPageUrl,
-          serviceUrl: CampusCardService.statusPageCasServiceUrl,
-          loginDescription: '统一认证登录后可直接进入校园卡服务',
           onLoadStop: _captureBalanceFromDetailPage,
         ),
       ),

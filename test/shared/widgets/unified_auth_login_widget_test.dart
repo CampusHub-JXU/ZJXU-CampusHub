@@ -1,9 +1,9 @@
-import 'dart:typed_data';
+﻿import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:jiaxing_university_portal/core/auth/unified_auth.dart';
-import 'package:jiaxing_university_portal/shared/widgets/unified_auth_login_widget.dart';
+import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
+import 'package:jxu_campus_hub/shared/widgets/unified_auth_login_widget.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

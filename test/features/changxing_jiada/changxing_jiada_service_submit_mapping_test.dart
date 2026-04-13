@@ -1,5 +1,5 @@
-import 'package:flutter_test/flutter_test.dart';
-import 'package:jiaxing_university_portal/features/changxing_jiada/changxing_jiada_service.dart';
+﻿import 'package:flutter_test/flutter_test.dart';
+import 'package:jxu_campus_hub/features/changxing_jiada/changxing_jiada_service.dart';
 
 void main() {
   group('ChangxingJiadaService submit mapping', () {

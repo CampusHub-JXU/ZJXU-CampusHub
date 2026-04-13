@@ -1,24 +1,24 @@
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+﻿import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:jiaxing_university_portal/app/text_scale_controller.dart';
-import 'package:jiaxing_university_portal/core/auth/unified_auth.dart';
-import 'package:jiaxing_university_portal/core/auth/zhengfang_auth.dart';
-import 'package:jiaxing_university_portal/core/network/dio_client.dart';
-import 'package:jiaxing_university_portal/core/logging/app_logger.dart';
-import 'package:jiaxing_university_portal/core/network/network_settings.dart';
-import 'package:jiaxing_university_portal/core/update/update_checker.dart';
-import 'package:jiaxing_university_portal/core/update/update_service.dart';
-import 'package:jiaxing_university_portal/features/campus_card/campus_card_service.dart';
-import 'package:jiaxing_university_portal/features/dorm_electricity/dorm_electricity_service.dart';
-import 'package:jiaxing_university_portal/features/schedule/schedule_service.dart';
+import 'package:jxu_campus_hub/app/text_scale_controller.dart';
+import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
+import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
+import 'package:jxu_campus_hub/core/network/dio_client.dart';
+import 'package:jxu_campus_hub/core/logging/app_logger.dart';
+import 'package:jxu_campus_hub/core/network/network_settings.dart';
+import 'package:jxu_campus_hub/core/update/update_checker.dart';
+import 'package:jxu_campus_hub/core/update/update_service.dart';
+import 'package:jxu_campus_hub/features/campus_card/campus_card_service.dart';
+import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_service.dart';
+import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';
 
 Future<void> resetTestEnvironment() async {
   SharedPreferences.setMockInitialValues({});
   FlutterSecureStorage.setMockInitialValues({});
   PackageInfo.setMockInitialValues(
-    appName: '嘉兴大学-校园门户',
+    appName: '嘉兴大学-智能中台',
     packageName: 'test.package',
     version: '1.0.0',
     buildNumber: '1',

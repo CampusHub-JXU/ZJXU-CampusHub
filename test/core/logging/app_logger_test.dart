@@ -1,6 +1,6 @@
-import 'package:flutter_test/flutter_test.dart';
+﻿import 'package:flutter_test/flutter_test.dart';
 
-import 'package:jiaxing_university_portal/core/logging/app_logger.dart';
+import 'package:jxu_campus_hub/core/logging/app_logger.dart';
 
 void main() {
   setUp(() {

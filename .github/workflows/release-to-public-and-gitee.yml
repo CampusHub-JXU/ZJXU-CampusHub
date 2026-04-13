@@ -25,9 +25,9 @@ jobs:
       INPUT_TAG: ${{ github.event.inputs.tag || '' }}
       DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
       PUBLIC_GH_OWNER: FHfanshu
-      PUBLIC_GH_REPO: JXU-Portal
+      PUBLIC_GH_REPO: JXU-CampusHub
       GITEE_OWNER: fhfanshu
-      GITEE_REPO: JXU-Portal
+      GITEE_REPO: JXU-CampusHub
       PUBLIC_REPO_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
       GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
     steps:
@@ -83,8 +83,8 @@ jobs:
             exit 1
           fi
 
-          release_name="嘉兴大学-校园门户 ${release_tag}"
-          apk_name="JXU-Portal-${release_tag}.apk"
+          release_name="嘉兴大学-智能中台 ${release_tag}"
+          apk_name="JXU-CampusHub-${release_tag}.apk"
           apk_path="build/app/outputs/flutter-apk/${apk_name}"
           cp build/app/outputs/flutter-apk/app-release.apk "${apk_path}"
 

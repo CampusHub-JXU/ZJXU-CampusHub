@@ -1,83 +1,56 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
-import 'package:jiaxing_university_portal/core/config/feature_entry_catalog.dart';
-import 'package:jiaxing_university_portal/features/service_hub/service_hub_page.dart';
+import 'package:jxu_campus_hub/core/config/feature_entry_catalog.dart';
+import 'package:jxu_campus_hub/features/service_hub/service_hub_page.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() {
-    FeatureEntryCatalog.instance.debugSetEntries(
-      FeatureEntryCatalog.instance.parse('''
-entries:
-  - id: service-hall
-    title: 服务大厅
-    subtitle: 统一入口，继续保留主页快捷访问
-    icon: dashboard_customize_outlined
-    color: primary
-    route: service-hall
-    span:
-      compact:
-        columns: 2
-        rows: 1
-      expanded:
-        columns: 2
-        rows: 2
-    placements:
-      - service_hub
-    sort: 10
-  - id: second-classroom
-    title: 第二课堂
-    subtitle: 学分活动、个人中心与微信版页面
-    icon: workspace_premium_outlined
-    color: gold
-    route: second-classroom
-    span:
-      compact:
-        columns: 2
-        rows: 1
-      expanded:
-        columns: 2
-        rows: 1
-    placements:
-      - service_hub
-    sort: 20
-  - id: changxing-jiada
-    title: 畅行嘉大
-    subtitle: 请假、返校、离校与加班申请
-    icon: north_rounded
-    color: "#2EA567"
-    route: changxing-jiada
-    span:
-      compact:
-        columns: 2
-        rows: 1
-      expanded:
-        columns: 1
-        rows: 2
-    placements:
-      - service_hub
-    sort: 30
-  - id: grades
-    title: 成绩查询
-    subtitle: 查看成绩、绩点和学业进展
-    icon: school_outlined
-    color: warning
-    route: grades
-    span:
-      compact:
-        columns: 1
-        rows: 1
-      expanded:
-        columns: 1
-        rows: 1
-    placements:
-      - service_hub
-    sort: 40
-'''),
-    );
+    FeatureEntryCatalog.instance.debugSetEntries([
+      _serviceHallEntry(),
+      _entry(
+        id: 'second-classroom',
+        title: '第二课堂',
+        subtitle: '学分活动、个人中心与微信版页面',
+        icon: Icons.workspace_premium_outlined,
+        accentColor: const Color(0xFFD4AF37),
+        placements: const {FeatureEntryPlacement.serviceHub},
+        sortOrder: 20,
+        spans: const FeatureEntryResponsiveSpan(
+          compact: FeatureEntrySpan(columns: 2, rows: 1),
+          expanded: FeatureEntrySpan(columns: 2, rows: 1),
+        ),
+      ),
+      _entry(
+        id: 'changxing-jiada',
+        title: '畅行嘉大',
+        subtitle: '请假、返校、离校与加班申请',
+        icon: Icons.north_rounded,
+        accentColor: const Color(0xFF2EA567),
+        placements: const {FeatureEntryPlacement.serviceHub},
+        sortOrder: 30,
+        spans: const FeatureEntryResponsiveSpan(
+          compact: FeatureEntrySpan(columns: 2, rows: 1),
+          expanded: FeatureEntrySpan(columns: 1, rows: 2),
+        ),
+      ),
+      _entry(
+        id: 'grades',
+        title: '成绩查询',
+        subtitle: '查看成绩、绩点和学业进展',
+        icon: Icons.school_outlined,
+        accentColor: const Color(0xFFF57C00),
+        placements: const {FeatureEntryPlacement.serviceHub},
+        sortOrder: 40,
+      ),
+    ]);
+  });
+
+  tearDown(() {
+    FeatureEntryCatalog.instance.debugReset();
   });
 
   testWidgets('uses two columns on narrow screens', (tester) async {
@@ -91,25 +64,9 @@ entries:
     await tester.pumpWidget(const MaterialApp(home: ServiceHubPage()));
     await tester.pumpAndSettle();
 
+    final serviceHall = _serviceHallEntry();
+
     expect(serviceHubGridColumnCount(390), 2);
-    final serviceHall = FeatureEntryCatalog.instance.parse('''
-entries:
-  - id: service-hall
-    title: 服务大厅
-    subtitle: 统一入口
-    icon: dashboard_customize_outlined
-    color: primary
-    route: service-hall
-    span:
-      compact:
-        columns: 2
-        rows: 1
-      expanded:
-        columns: 2
-        rows: 2
-    placements:
-      - service_hub
-''').single;
     expect(serviceHubActiveSpan(serviceHall, 2).rows, 1);
     expect(
       serviceHubActiveCardType(serviceHall, 2),
@@ -119,7 +76,7 @@ entries:
       serviceHubActiveCardType(serviceHall, 4),
       FeatureEntryCardType.largeSquare,
     );
-    expect(serviceHubChevronAlignment(1), Alignment.centerRight);
+    expect(serviceHubChevronAlignment(1), Alignment.bottomRight);
     expect(serviceHubChevronAlignment(2), Alignment.bottomRight);
     expect(find.text('服务大厅'), findsOneWidget);
     expect(find.text('成绩查询'), findsOneWidget);
@@ -177,4 +134,46 @@ entries:
 
     expect(find.text('服务大厅页面'), findsOneWidget);
   });
+}
+
+FeatureEntryDefinition _serviceHallEntry() {
+  return _entry(
+    id: 'service-hall',
+    title: '服务大厅',
+    subtitle: '统一入口，继续保留主页快捷访问',
+    icon: Icons.dashboard_customize_outlined,
+    accentColor: const Color(0xFF8B1A2D),
+    placements: const {FeatureEntryPlacement.serviceHub},
+    sortOrder: 10,
+    spans: const FeatureEntryResponsiveSpan(
+      compact: FeatureEntrySpan(columns: 2, rows: 1),
+      expanded: FeatureEntrySpan(columns: 2, rows: 2),
+    ),
+  );
+}
+
+FeatureEntryDefinition _entry({
+  required String id,
+  required String title,
+  required String subtitle,
+  required IconData icon,
+  required Color accentColor,
+  required Set<FeatureEntryPlacement> placements,
+  required int sortOrder,
+  FeatureEntryResponsiveSpan spans = const FeatureEntryResponsiveSpan(
+    compact: FeatureEntrySpan(columns: 1, rows: 1),
+    expanded: FeatureEntrySpan(columns: 1, rows: 1),
+  ),
+}) {
+  return FeatureEntryDefinition(
+    id: id,
+    title: title,
+    subtitle: subtitle,
+    icon: icon,
+    accentColor: accentColor,
+    routeName: id,
+    spans: spans,
+    placements: placements,
+    sortOrder: sortOrder,
+  );
 }

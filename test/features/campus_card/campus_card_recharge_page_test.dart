@@ -1,15 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:jiaxing_university_portal/core/config/app_config.dart';
-import 'package:jiaxing_university_portal/features/campus_card/campus_card_recharge_page.dart';
+import 'package:jxu_campus_hub/core/config/app_config.dart';
+import 'package:jxu_campus_hub/features/campus_card/campus_card_recharge_page.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  const wechatChannel = MethodChannel(
-    'edu.zjxu.jiaxinguniversityportal/wechat',
-  );
+  const wechatChannel = MethodChannel('edu.zjxu.jxucampushub/wechat');
   final clipboardCalls = <MethodCall>[];
 
   tearDown(() async {

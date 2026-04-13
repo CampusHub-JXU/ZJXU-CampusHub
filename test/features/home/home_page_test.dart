@@ -1,18 +1,18 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:jiaxing_university_portal/app/app_bootstrap_controller.dart';
-import 'package:jiaxing_university_portal/core/config/feature_entry_catalog.dart';
-import 'package:jiaxing_university_portal/core/semester/semester_calendar.dart';
-import 'package:jiaxing_university_portal/features/campus_card/campus_card_service.dart';
-import 'package:jiaxing_university_portal/features/dorm_electricity/dorm_electricity_service.dart';
-import 'package:jiaxing_university_portal/features/home/home_page.dart';
-import 'package:jiaxing_university_portal/features/schedule/schedule_cache_snapshot.dart';
-import 'package:jiaxing_university_portal/features/schedule/schedule_model.dart';
-import 'package:jiaxing_university_portal/features/schedule/schedule_service.dart';
-import 'package:jiaxing_university_portal/features/schedule/schedule_term_context.dart';
+import 'package:jxu_campus_hub/app/app_bootstrap_controller.dart';
+import 'package:jxu_campus_hub/core/config/feature_entry_catalog.dart';
+import 'package:jxu_campus_hub/core/semester/semester_calendar.dart';
+import 'package:jxu_campus_hub/features/campus_card/campus_card_service.dart';
+import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_service.dart';
+import 'package:jxu_campus_hub/features/home/home_page.dart';
+import 'package:jxu_campus_hub/features/schedule/schedule_cache_snapshot.dart';
+import 'package:jxu_campus_hub/features/schedule/schedule_model.dart';
+import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';
+import 'package:jxu_campus_hub/features/schedule/schedule_term_context.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -21,63 +21,52 @@ void main() {
     final now = DateTime.now();
     SharedPreferences.setMockInitialValues({});
     AppBootstrapController.instance.debugReset();
-    FeatureEntryCatalog.instance.debugSetEntries(
-      FeatureEntryCatalog.instance.parse('''
-entries:
-  - id: second-classroom
-    title: 第二课堂
-    subtitle: 学分活动
-    icon: workspace_premium_outlined
-    color: gold
-    route: second-classroom
-    cardType: wide_rect
-    span:
-      columns: 2
-      rows: 1
-    placements:
-      - home_learning
-    sort: 20
-  - id: library
-    title: 图书馆
-    subtitle: 馆藏检索
-    icon: local_library_outlined
-    color: info
-    route: library
-    cardType: wide_rect
-    span:
-      columns: 2
-      rows: 1
-    placements:
-      - home_learning
-    sort: 30
-  - id: changxing-jiada
-    title: 畅行嘉大
-    subtitle: 请假与返校
-    icon: north_rounded
-    color: "#2EA567"
-    route: changxing-jiada
-    cardType: tall_rect
-    span:
-      columns: 1
-      rows: 2
-    placements:
-      - home_learning
-    sort: 40
-  - id: sjjx-notice-list
-    title: 实践通知
-    subtitle: 实践教学通知
-    icon: science_outlined
-    color: "#1976D2"
-    route: sjjx-notice-list
-    cardType: small_square
-    span:
-      columns: 1
-      rows: 1
-    placements:
-      - home_learning
-    sort: 50
-'''),
-    );
+    FeatureEntryCatalog.instance.debugSetEntries([
+      _entry(
+        id: 'second-classroom',
+        title: '第二课堂',
+        subtitle: '学分活动',
+        icon: Icons.workspace_premium_outlined,
+        accentColor: const Color(0xFFD4AF37),
+        sortOrder: 20,
+        spans: const FeatureEntryResponsiveSpan(
+          compact: FeatureEntrySpan(columns: 2, rows: 1),
+          expanded: FeatureEntrySpan(columns: 2, rows: 1),
+        ),
+      ),
+      _entry(
+        id: 'library',
+        title: '图书馆',
+        subtitle: '馆藏检索',
+        icon: Icons.local_library_outlined,
+        accentColor: const Color(0xFF1565C0),
+        sortOrder: 30,
+        spans: const FeatureEntryResponsiveSpan(
+          compact: FeatureEntrySpan(columns: 2, rows: 1),
+          expanded: FeatureEntrySpan(columns: 2, rows: 1),
+        ),
+      ),
+      _entry(
+        id: 'changxing-jiada',
+        title: '畅行嘉大',
+        subtitle: '请假与返校',
+        icon: Icons.north_rounded,
+        accentColor: const Color(0xFF2EA567),
+        sortOrder: 40,
+        spans: const FeatureEntryResponsiveSpan(
+          compact: FeatureEntrySpan(columns: 1, rows: 2),
+          expanded: FeatureEntrySpan(columns: 1, rows: 2),
+        ),
+      ),
+      _entry(
+        id: 'sjjx-notice-list',
+        title: '实践通知',
+        subtitle: '实践教学通知',
+        icon: Icons.science_outlined,
+        accentColor: const Color(0xFF1976D2),
+        sortOrder: 50,
+      ),
+    ]);
     CampusCardService.instance.debugSetCachedBalance(null);
     DormElectricityService.instance.debugSetCachedElectricity(null);
     SemesterCalendar.instance.semesterStartDate.value = DateTime(
@@ -86,6 +75,10 @@ entries:
       now.day,
     );
     await ScheduleService.instance.debugClearCache();
+  });
+
+  tearDown(() {
+    FeatureEntryCatalog.instance.debugReset();
   });
 
   testWidgets('renders startup placeholders before bootstrap completes', (
@@ -225,4 +218,29 @@ entries:
 
     expect(find.text('第二课堂页面'), findsOneWidget);
   });
+}
+
+FeatureEntryDefinition _entry({
+  required String id,
+  required String title,
+  required String subtitle,
+  required IconData icon,
+  required Color accentColor,
+  required int sortOrder,
+  FeatureEntryResponsiveSpan spans = const FeatureEntryResponsiveSpan(
+    compact: FeatureEntrySpan(columns: 1, rows: 1),
+    expanded: FeatureEntrySpan(columns: 1, rows: 1),
+  ),
+}) {
+  return FeatureEntryDefinition(
+    id: id,
+    title: title,
+    subtitle: subtitle,
+    icon: icon,
+    accentColor: accentColor,
+    routeName: id,
+    spans: spans,
+    placements: const {FeatureEntryPlacement.homeLearning},
+    sortOrder: sortOrder,
+  );
 }

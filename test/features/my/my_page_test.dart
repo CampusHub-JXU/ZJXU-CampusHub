@@ -1,11 +1,11 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:jiaxing_university_portal/core/auth/unified_auth.dart';
-import 'package:jiaxing_university_portal/core/auth/zhengfang_auth.dart';
-import 'package:jiaxing_university_portal/features/my/my_page.dart';
-import 'package:jiaxing_university_portal/features/schedule/schedule_service.dart';
+import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
+import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
+import 'package:jxu_campus_hub/features/my/my_page.dart';
+import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

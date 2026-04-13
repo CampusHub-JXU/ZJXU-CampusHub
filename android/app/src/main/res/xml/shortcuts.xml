@@ -8,8 +8,8 @@
         android:shortcutShortLabel="@string/shortcut_campus_card_payment_short_label">
         <intent
             android:action="android.intent.action.VIEW"
-            android:data="jiaxinguniversityportal://shortcut/campus-card-payment"
-            android:targetClass="edu.zjxu.jiaxinguniversityportal.MainActivity"
-            android:targetPackage="edu.zjxu.jiaxinguniversityportal" />
+            android:data="jxucampushub://shortcut/campus-card-payment"
+            android:targetClass="edu.zjxu.jxucampushub.MainActivity"
+            android:targetPackage="edu.zjxu.jxucampushub" />
     </shortcut>
 </shortcuts>

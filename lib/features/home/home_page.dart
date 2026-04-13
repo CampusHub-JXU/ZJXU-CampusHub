@@ -39,8 +39,10 @@ class _HomePageState extends State<HomePage> {
   bool _hasAvailableUpdate = false;
   bool _hasHydratedBootstrapState = false;
   bool _initialLoginPromptChecked = false;
-  List<FeatureEntryDefinition> _learningServiceEntries = const [];
-  bool _learningServiceEntriesLoaded = false;
+  final List<FeatureEntryDefinition> _learningServiceEntries =
+      FeatureEntryCatalog.instance.entriesByPlacement(
+        FeatureEntryPlacement.homeLearning,
+      );
 
   static const _weekdayLabels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
@@ -53,7 +55,6 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _hasAvailableUpdate = UpdateChecker.instance.availableRelease.value != null;
-    unawaited(_loadLearningServiceEntries());
     SemesterCalendar.instance.semesterStartDate.addListener(
       _onSemesterStartChanged,
     );
@@ -63,25 +64,6 @@ class _HomePageState extends State<HomePage> {
       _onAvailableReleaseChanged,
     );
     _onBootstrapPhaseChanged();
-  }
-
-  Future<void> _loadLearningServiceEntries() async {
-    try {
-      final entries = await FeatureEntryCatalog.instance.loadByPlacement(
-        FeatureEntryPlacement.homeLearning,
-      );
-      if (!mounted) return;
-      setState(() {
-        _learningServiceEntries = entries;
-        _learningServiceEntriesLoaded = true;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _learningServiceEntries = const [];
-        _learningServiceEntriesLoaded = true;
-      });
-    }
   }
 
   @override
@@ -1073,14 +1055,9 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           const SizedBox(height: 14),
-          if (!_learningServiceEntriesLoaded)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 12),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          else if (_learningServiceEntries.isEmpty)
+          if (_learningServiceEntries.isEmpty)
             Text(
-              '学习服务加载失败',
+              '暂无学习服务',
               style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
             )
           else

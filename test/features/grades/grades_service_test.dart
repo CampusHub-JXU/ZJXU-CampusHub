@@ -1,10 +1,10 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:jiaxing_university_portal/core/network/dio_client.dart';
-import 'package:jiaxing_university_portal/features/grades/grades_service.dart';
+import 'package:jxu_campus_hub/core/network/dio_client.dart';
+import 'package:jxu_campus_hub/features/grades/grades_service.dart';
 
 import '../../helpers/mock_http_client_adapter.dart';
 import '../../helpers/test_setup.dart';

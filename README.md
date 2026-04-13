@@ -1,6 +1,6 @@
-# JXU-Portal
+# JXU-CampusHub
 
-嘉兴大学校园门户，由 GPT-5.4 | Claude Opus 4.6 辅助开发。
+嘉兴大学智能中台，由 GPT-5.4 | Claude Opus 4.6 辅助开发。
 
 一个把课表、成绩、校园卡、服务大厅什么的一堆东西放到同一个 App 里的 Flutter 项目。
 
@@ -16,8 +16,8 @@
 ### 2. 获取代码
 
 ```bash
-git clone https://github.com/FHfanshu/JXU-Portal.git
-cd JXU-Portal
+git clone https://github.com/FHfanshu/JXU-CampusHub.git
+cd JXU-CampusHub
 ```
 
 ### 3. 安装依赖

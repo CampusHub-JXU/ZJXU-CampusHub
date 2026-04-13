@@ -1,6 +1,6 @@
-import 'package:flutter_test/flutter_test.dart';
-import 'package:jiaxing_university_portal/features/changxing_jiada/changxing_jiada_form_validator.dart';
-import 'package:jiaxing_university_portal/features/changxing_jiada/changxing_jiada_model.dart';
+﻿import 'package:flutter_test/flutter_test.dart';
+import 'package:jxu_campus_hub/features/changxing_jiada/changxing_jiada_form_validator.dart';
+import 'package:jxu_campus_hub/features/changxing_jiada/changxing_jiada_model.dart';
 
 ChangxingApplication _application({required int type, required int status}) {
   return ChangxingApplication(

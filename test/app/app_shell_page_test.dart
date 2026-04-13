@@ -1,10 +1,10 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
-import 'package:jiaxing_university_portal/app/app_shell_page.dart';
-import 'package:jiaxing_university_portal/features/home/home_page.dart';
-import 'package:jiaxing_university_portal/features/my/my_page.dart';
-import 'package:jiaxing_university_portal/features/service_hub/service_hub_page.dart';
+import 'package:jxu_campus_hub/app/app_shell_page.dart';
+import 'package:jxu_campus_hub/features/home/home_page.dart';
+import 'package:jxu_campus_hub/features/my/my_page.dart';
+import 'package:jxu_campus_hub/features/service_hub/service_hub_page.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

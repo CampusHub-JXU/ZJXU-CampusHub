@@ -1,8 +1,8 @@
-import 'package:dio/dio.dart';
+﻿import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:jiaxing_university_portal/core/logging/app_logger.dart';
-import 'package:jiaxing_university_portal/features/notice/notice_service.dart';
+import 'package:jxu_campus_hub/core/logging/app_logger.dart';
+import 'package:jxu_campus_hub/features/notice/notice_service.dart';
 
 import '../../helpers/mock_http_client_adapter.dart';
 import '../../helpers/test_setup.dart';

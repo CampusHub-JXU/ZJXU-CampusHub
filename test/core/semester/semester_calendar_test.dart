@@ -1,7 +1,7 @@
-import 'package:flutter_test/flutter_test.dart';
+﻿import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:jiaxing_university_portal/core/semester/semester_calendar.dart';
+import 'package:jxu_campus_hub/core/semester/semester_calendar.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

@@ -333,7 +333,7 @@ class SettingsPage extends StatelessWidget {
                   : '';
               return Center(
                 child: Text(
-                  '嘉兴大学-校园门户 $version',
+                  '嘉兴大学-智能中台 $version',
                   style: textTheme.bodySmall?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),

@@ -1,6 +1,6 @@
-import 'package:flutter_test/flutter_test.dart';
+﻿import 'package:flutter_test/flutter_test.dart';
 
-import 'package:jiaxing_university_portal/features/grades/grades_model.dart';
+import 'package:jxu_campus_hub/features/grades/grades_model.dart';
 
 void main() {
   group('GradeEntry.fromJson', () {

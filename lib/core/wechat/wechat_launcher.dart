@@ -5,9 +5,7 @@ import '../logging/app_logger.dart';
 class WeChatLauncher {
   WeChatLauncher._();
 
-  static const _channel = MethodChannel(
-    'edu.zjxu.jiaxinguniversityportal/wechat',
-  );
+  static const _channel = MethodChannel('edu.zjxu.jxucampushub/wechat');
 
   static Future<bool> openUrlInWeChat(String url) async {
     try {

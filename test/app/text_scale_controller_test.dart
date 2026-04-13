@@ -1,8 +1,8 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:jiaxing_university_portal/app/text_scale_controller.dart';
+import 'package:jxu_campus_hub/app/text_scale_controller.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

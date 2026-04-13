@@ -1,4 +1,4 @@
-package edu.zjxu.jiaxinguniversityportal
+package edu.zjxu.jxucampushub
 
 import android.content.ActivityNotFoundException
 import android.content.Intent
@@ -14,10 +14,10 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     companion object {
-        private const val WECHAT_CHANNEL = "edu.zjxu.jiaxinguniversityportal/wechat"
-        private const val SHORTCUT_CHANNEL = "edu.zjxu.jiaxinguniversityportal/shortcut"
+        private const val WECHAT_CHANNEL = "edu.zjxu.jxucampushub/wechat"
+        private const val SHORTCUT_CHANNEL = "edu.zjxu.jxucampushub/shortcut"
         private const val EXTRA_SHORTCUT_ACTION = "shortcut_action"
-        private const val SHORTCUT_SCHEME = "jiaxinguniversityportal"
+        private const val SHORTCUT_SCHEME = "jxucampushub"
         private const val SHORTCUT_HOST = "shortcut"
         private const val CAMPUS_CARD_PAYMENT_ACTION = "campus-card-payment"
         private const val CAMPUS_CARD_PAYMENT_SHORTCUT_ID = "campus_card_payment"
@@ -115,8 +115,6 @@ class MainActivity : FlutterActivity() {
             val shortcutManager = getSystemService(ShortcutManager::class.java) ?: return false
             val shortcut = buildCampusCardPaymentShortcutInfo(shortcutIntent)
 
-            // Some launchers only fully recognize pinned shortcuts after the same
-            // shortcutId has been published as a dynamic shortcut first.
             shortcutManager.removeDynamicShortcuts(
                 listOf(
                     CAMPUS_CARD_PAYMENT_SHORTCUT_ID,
