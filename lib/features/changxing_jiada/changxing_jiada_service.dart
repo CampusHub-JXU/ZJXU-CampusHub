@@ -76,12 +76,18 @@ class ChangxingJiadaService {
 
   /// 通过 CAS SSO 登录畅行嘉大。
   /// 前提：用户已通过 UnifiedAuthService 完成一卡通登录。
+  ///
+  /// 不使用 validateWebVpnTargetSession 校验 cas_wap_login，
+  /// 因为 cas_wap_login 本身就会 302 到 CAS 登录页（正常 SSO 行为），
+  /// validateWebVpnTargetSession 会误判为会话失效。
+  /// 改用 ensureWebVpnGatewaySession 仅校验 WebVPN 网关即可，
+  /// CAS SSO 链路的状态由下方手动跟随重定向链自行检测。
   Future<void> loginViaCas() async {
     await DioClient.instance.ensureInitialized();
-    final sessionReady = await ZhengfangAuth.instance
-        .validateWebVpnTargetSession(_casLoginUrl);
-    if (sessionReady == false) {
-      AppLogger.instance.auth(LogLevel.warn, '畅行嘉大：静默复用统一认证失败，需要重新登录一卡通');
+    final gatewayReady = await ZhengfangAuth.instance
+        .ensureWebVpnGatewaySession(syncWebViewCookies: false);
+    if (gatewayReady != true) {
+      AppLogger.instance.auth(LogLevel.warn, '畅行嘉大：WebVPN 网关会话不可用，需要重新登录一卡通');
       throw ChangxingNeedUnifiedAuthException();
     }
 
