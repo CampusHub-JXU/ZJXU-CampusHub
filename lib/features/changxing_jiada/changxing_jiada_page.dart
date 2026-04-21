@@ -26,8 +26,8 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
 
   bool get _loggedIn => _service.hasToken && _profile != null;
 
-  /// 是否需要先登录一卡通（CAS 未登录时显示一卡通认证提示）
-  bool _needWebVpnAuth = false;
+  /// 是否需要先登录一卡通（CAS 未登录时显示统一认证提示）
+  bool _needUnifiedAuth = false;
 
   @override
   void initState() {
@@ -91,7 +91,7 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
       _applications = [];
       _unreadCount = 0;
       _error = null;
-      _needWebVpnAuth = false;
+      _needUnifiedAuth = false;
     });
   }
 
@@ -104,11 +104,11 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
     try {
       await _service.loginViaCas();
       if (!mounted) return;
-      setState(() => _needWebVpnAuth = false);
+      setState(() => _needUnifiedAuth = false);
       await _loadDashboard(showGlobalLoading: false);
     } on ChangxingNeedUnifiedAuthException {
       if (!mounted) return;
-      setState(() => _needWebVpnAuth = true);
+      setState(() => _needUnifiedAuth = true);
     } on ChangxingCasLoginException catch (e) {
       if (!mounted) return;
       setState(() => _error = e.message);
@@ -123,15 +123,15 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
   }
 
   Future<void> _promptCasLogin() async {
-    final loggedIn = await showWebVpnUnifiedAuthModal(
+    final loggedIn = await showUnifiedAuthLoginModal(
       context,
       title: '登录一卡通',
-      description: '畅行嘉大需要先完成一卡通认证',
+      description: '畅行嘉大仅支持校园网内直连访问，请连接校园网后完成统一认证',
       barrierDismissible: false,
     );
     if (!mounted || !loggedIn) return;
-    setState(() => _needWebVpnAuth = false);
-    _loginViaCas();
+    setState(() => _needUnifiedAuth = false);
+    await _loginViaCas();
   }
 
   @override
@@ -163,7 +163,7 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
   }
 
   Widget _buildLoginBody() {
-    if (_needWebVpnAuth) {
+    if (_needUnifiedAuth) {
       final cs = Theme.of(context).colorScheme;
       return Center(
         child: Padding(
@@ -172,20 +172,20 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
-                Icons.vpn_lock_outlined,
+                Icons.account_balance_outlined,
                 size: 48,
                 color: cs.primary.withValues(alpha: 0.6),
               ),
               const SizedBox(height: 16),
               Text(
-                '需要一卡通认证',
+                '需要统一认证',
                 style: Theme.of(
                   context,
                 ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
               Text(
-                '畅行嘉大需要先完成一卡通认证',
+                '畅行嘉大仅支持校园网内直连访问，请连接校园网后完成统一认证',
                 style: Theme.of(
                   context,
                 ).textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
@@ -193,9 +193,9 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
               ),
               const SizedBox(height: 24),
               FilledButton.icon(
-                onPressed: _promptCasLogin,
+                onPressed: _loggingIn ? null : _promptCasLogin,
                 icon: const Icon(Icons.login),
-                label: const Text('一卡通认证'),
+                label: const Text('登录统一认证'),
               ),
             ],
           ),
