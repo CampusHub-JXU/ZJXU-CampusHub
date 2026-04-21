@@ -5,7 +5,7 @@ import '../../app/theme.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/shortcut/app_shortcut_service.dart';
 import '../../shared/widgets/ship_card.dart';
-import '../../shared/widgets/webvpn_protected_webview_page.dart';
+import '../../shared/widgets/unified_auth_protected_webview_page.dart';
 import 'campus_card_recharge_page.dart';
 import 'campus_card_service.dart';
 
@@ -18,7 +18,6 @@ class CampusCardPage extends StatefulWidget {
 
 class _CampusCardPageState extends State<CampusCardPage> {
   static const _serviceHallHost = 'mobilehall.zjxu.edu.cn';
-  static const _webVpnHost = 'webvpn.zjxu.edu.cn';
   static const _statusPathKeyword = '/decision/view/form';
   static const _statusViewletKeyword = 'ykt.frm';
 
@@ -249,9 +248,11 @@ class _CampusCardPageState extends State<CampusCardPage> {
 
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => WebVpnProtectedWebViewPage(
+        builder: (_) => UnifiedAuthProtectedWebViewPage(
           title: title,
           url: CampusCardService.statusPageUrl,
+          serviceUrl: CampusCardService.statusPageCasServiceUrl,
+          loginDescription: '校园卡仅支持校园网内直连访问，请连接校园网后登录统一认证',
           onLoadStop: _captureBalanceFromDetailPage,
         ),
       ),
@@ -375,7 +376,7 @@ class _CampusCardPageState extends State<CampusCardPage> {
     final path = uri.path.toLowerCase();
     final viewlet = uri.queryParameters['viewlet']?.toLowerCase() ?? '';
 
-    final isExpectedHost = host == _serviceHallHost || host == _webVpnHost;
+    final isExpectedHost = host == _serviceHallHost;
     if (!isExpectedHost) return false;
 
     return path.contains(_statusPathKeyword) &&

@@ -645,7 +645,7 @@ class ScheduleService {
         );
         didRefresh = true;
       } on ScheduleAuthExpiredException {
-        ZhengfangAuth.instance.markLoggedOut();
+        await ZhengfangAuth.instance.markLoggedOut();
         return _buildAuthExpiredResult(existingSnapshot, nextSnapshot);
       } on ScheduleRequestException catch (error) {
         if (!existingSnapshot.hasData) {
@@ -679,7 +679,7 @@ class ScheduleService {
         );
         didRefresh = true;
       } on ScheduleAuthExpiredException {
-        ZhengfangAuth.instance.markLoggedOut();
+        await ZhengfangAuth.instance.markLoggedOut();
         if (didRefresh) {
           await _persistSnapshot(nextSnapshot);
         }

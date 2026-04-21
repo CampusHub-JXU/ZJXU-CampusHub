@@ -3,8 +3,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/logging/app_logger.dart';
-import '../../core/auth/zhengfang_auth.dart';
-import '../../shared/widgets/webvpn_protected_webview_page.dart';
+import '../../shared/widgets/webview_page.dart';
 
 class SecondClassroomPage extends StatefulWidget {
   const SecondClassroomPage({super.key});
@@ -19,10 +18,7 @@ class SecondClassroomPage extends StatefulWidget {
 
 class _SecondClassroomPageState extends State<SecondClassroomPage> {
   static const _wechatLoginHosts = {'open.weixin.qq.com', 'wx.tenpay.com'};
-  static const _gatewayDeniedPath = '/wengine-vpn/denied';
-
   bool _redirectingToWechatPage = false;
-  int _anonymousRecoveryAttempts = 0;
 
   String get _wechatPageUrl => SecondClassroomPage.initialUrl;
 
@@ -47,13 +43,6 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
         (normalizedPath == '/dekt/' || normalizedPath == '/dekt');
   }
 
-  bool _isGatewayDeniedUrl(String currentUrl) {
-    final uri = Uri.tryParse(currentUrl);
-    if (uri == null) return false;
-    return uri.host.toLowerCase() == 'webvpn.zjxu.edu.cn' &&
-        uri.path.toLowerCase().contains(_gatewayDeniedPath);
-  }
-
   Future<void> _redirectToWechatPage(
     InAppWebViewController controller, {
     required String reason,
@@ -70,38 +59,11 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
     }
   }
 
-  Future<void> _retryAuthBootstrap(
-    InAppWebViewController controller, {
-    required String reason,
-  }) async {
-    if (_anonymousRecoveryAttempts >= 1) return;
-    _anonymousRecoveryAttempts += 1;
-    AppLogger.instance.webview(LogLevel.warn, '第二课堂匿名态恢复: $reason');
-    await controller.loadUrl(
-      urlRequest: URLRequest(
-        url: WebUri(
-          ZhengfangAuth.instance.buildWebVpnProxyUrl(
-            SecondClassroomPage.authEntryUrl,
-          ),
-        ),
-      ),
-    );
-  }
-
   Future<void> _handleLoadStop(
     InAppWebViewController controller,
     String currentUrl,
   ) async {
     final lowerUrl = currentUrl.toLowerCase();
-
-    if (_isGatewayDeniedUrl(currentUrl)) {
-      AppLogger.instance.webview(
-        LogLevel.warn,
-        '第二课堂微信页被 WebVPN 网关拒绝，改为直连访问: $currentUrl',
-      );
-      await _redirectToWechatPage(controller, reason: 'gateway-denied');
-      return;
-    }
 
     if (_isProviderEntryUrl(currentUrl) || _isLandingRootUrl(currentUrl)) {
       await _redirectToWechatPage(controller, reason: currentUrl);
@@ -138,7 +100,7 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
         final hasGuest = userState['hasGuest'] == true;
         final hasMyPage = userState['hasMyPage'] == true;
         if (hasMyPage && (hasAnonymous || hasGuest)) {
-          await _retryAuthBootstrap(controller, reason: '微信页仍返回匿名用户');
+          AppLogger.instance.webview(LogLevel.warn, '第二课堂当前为匿名态，请确认已连接校园网');
         }
       }
     } catch (error) {
@@ -166,10 +128,9 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
 
   @override
   Widget build(BuildContext context) {
-    return WebVpnProtectedWebViewPage(
+    return WebViewPage(
       title: '第二课堂',
-      url: SecondClassroomPage.authEntryUrl,
-      webViewUrl: SecondClassroomPage.initialUrl,
+      url: SecondClassroomPage.initialUrl,
       emulateWeChatEnvironment: true,
       showWebViewBottomBackButton: true,
       onHomePressed: () => context.goNamed('home'),

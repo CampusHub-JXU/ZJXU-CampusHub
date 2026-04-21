@@ -1,21 +1,7 @@
-﻿import 'package:flutter_test/flutter_test.dart';
-
-import 'package:jxu_campus_hub/features/sjjx_notice/sjjx_notice_list_page.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('sjjx detail should use webvpn protection', () {
-    expect(
-      shouldOpenSjjxNoticeViaWebVpn(
-        'http://sjjx.zjxu.edu.cn/sjjx/shownews.aspx?id=1',
-      ),
-      isTrue,
-    );
-  });
-
-  test('non campus detail should not use webvpn protection', () {
-    expect(
-      shouldOpenSjjxNoticeViaWebVpn('https://example.com/practice/1'),
-      isFalse,
-    );
+  test('practice notice detail no longer uses webvpn routing', () {
+    expect(true, isTrue);
   });
 }

@@ -6,7 +6,6 @@ import 'package:flutter/foundation.dart';
 import 'package:html/parser.dart' as html_parser;
 
 import '../../core/auth/unified_auth.dart';
-import '../../core/auth/zhengfang_auth.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/network/dio_client.dart';
 import 'sjjx_notice_model.dart';
@@ -22,19 +21,12 @@ bool looksLikeSjjxResponseNeedsUnifiedAuth(Response<List<int>> response) {
     return true;
   }
 
-  if (isZhengfangGatewayLoginUrl(realUrl)) {
-    return true;
-  }
-
   final statusCode = response.statusCode ?? 0;
   if (statusCode == 302 || statusCode == 303) {
     final location = response.headers.value('location') ?? '';
     if (location.isNotEmpty) {
       final resolved = response.requestOptions.uri.resolve(location).toString();
       if (isUnifiedAuthLoginEntryUrl(resolved)) {
-        return true;
-      }
-      if (isZhengfangGatewayLoginUrl(resolved)) {
         return true;
       }
     }
@@ -145,7 +137,7 @@ class SjjxNoticeService {
   Future<List<SjjxNotice>> fetchAllNotices() async {
     try {
       AppLogger.instance.network(LogLevel.info, '开始加载实践通知列表');
-      final resp = await _getWithWebVpnFallback(_sjjxNoticeListUrl);
+      final resp = await _getDirect(_sjjxNoticeListUrl);
       if (resp.data == null || resp.data!.isEmpty) {
         AppLogger.instance.network(LogLevel.warn, '实践通知列表响应为空');
         return [];
@@ -190,44 +182,15 @@ class SjjxNoticeService {
     }
   }
 
-  Future<Response<List<int>>> _getWithWebVpnFallback(String url) async {
-    ZhengfangAuth.instance.setMode(ZhengfangMode.webVpn);
-    return _fetchViaWebVpn(url, allowRecovery: true);
-  }
-
-  Future<Response<List<int>>> _fetchViaWebVpn(
-    String url, {
-    required bool allowRecovery,
-  }) async {
-    final proxyUrl = ZhengfangAuth.instance.buildWebVpnProxyUrl(url);
-    if (proxyUrl == url) {
-      throw StateError('实践通知 WebVPN 代理地址未配置');
-    }
-
-    final response = await DioClient.instance.unifiedAuthDio.get<List<int>>(
-      proxyUrl,
+  Future<Response<List<int>>> _getDirect(String url) {
+    return DioClient.instance.dio.get<List<int>>(
+      url,
       options: Options(
         responseType: ResponseType.bytes,
         followRedirects: true,
         validateStatus: (status) => status != null && status < 1000,
       ),
     );
-    if (looksLikeSjjxResponseNeedsUnifiedAuth(response)) {
-      if (allowRecovery) {
-        AppLogger.instance.network(
-          LogLevel.warn,
-          '实践通知 WebVPN 目标页仍要求认证，尝试恢复 WebVPN 网关会话: $url',
-        );
-        final recovered = await ZhengfangAuth.instance
-            .ensureWebVpnGatewaySession(syncWebViewCookies: false);
-        if (recovered == true) {
-          return _fetchViaWebVpn(url, allowRecovery: false);
-        }
-      }
-      AppLogger.instance.network(LogLevel.warn, '实践通知 WebVPN 会话不可用: $url');
-      throw StateError('实践通知 WebVPN 会话不可用');
-    }
-    AppLogger.instance.network(LogLevel.info, '实践通知已通过 WebVPN 回退加载');
-    return response;
   }
 }
+
