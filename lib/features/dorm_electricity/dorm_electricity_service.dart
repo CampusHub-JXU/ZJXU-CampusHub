@@ -106,18 +106,11 @@ class DormElectricityService {
     return client;
   }
 
-  bool _shouldRetryWithSystemProxy(DioException error) {
-    return NetworkSettings.instance.ignoreSystemProxy.value &&
-        (error.type == DioExceptionType.connectionTimeout ||
-            error.type == DioExceptionType.receiveTimeout ||
-            error.type == DioExceptionType.connectionError);
-  }
-
   bool _shouldRetryWithSystemProxyForAny(Object error) {
-    if (!NetworkSettings.instance.ignoreSystemProxy.value) return false;
-    if (error is TimeoutException) return true;
-    if (error is DioException) return _shouldRetryWithSystemProxy(error);
-    return false;
+    return shouldRetryWithSystemProxyForError(
+      error,
+      ignoreSystemProxy: NetworkSettings.instance.ignoreSystemProxy.value,
+    );
   }
 
   bool _isHostLookupFailure(DioException error) {
@@ -135,7 +128,11 @@ class DormElectricityService {
       return await request(dio).timeout(_requestTimeout);
     } catch (error) {
       if (!_shouldRetryWithSystemProxyForAny(error)) rethrow;
-      AppLogger.instance.network(LogLevel.warn, '$label 直连失败，尝试通过系统代理重试');
+      final reason = describeSystemProxyRetryReason(error);
+      AppLogger.instance.network(
+        LogLevel.warn,
+        '$label 直连失败（$reason），尝试通过系统代理重试',
+      );
       final fallbackDio = _createProxyFallbackDio();
       try {
         return await request(fallbackDio).timeout(_requestTimeout);

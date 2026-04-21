@@ -7,7 +7,7 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets('app boots to shell and shows bottom tabs', (tester) async {
-    await tester.pumpWidget(const JXUCampusHubApp());
+    await tester.pumpWidget(JXUCampusHubApp());
     await tester.pumpAndSettle();
 
     expect(find.text('首页'), findsWidgets);
