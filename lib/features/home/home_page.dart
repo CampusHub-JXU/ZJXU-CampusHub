@@ -406,7 +406,7 @@ class _HomePageState extends State<HomePage> {
                           const SizedBox(height: 10),
                           HomeMoreServicesCard(
                             onTap: () async {
-                              await context.pushNamed('service-hall');
+                              context.goNamed('service-hub');
                             },
                           ),
                         ],
