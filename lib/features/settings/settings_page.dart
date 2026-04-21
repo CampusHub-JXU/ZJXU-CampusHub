@@ -5,13 +5,10 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../app/text_scale_controller.dart';
 import '../../app/theme_mode_controller.dart';
 import '../../core/logging/app_logger.dart';
-import '../../core/network/dio_client.dart';
-import '../../core/network/network_settings.dart';
 import '../../core/semester/semester_calendar.dart';
 import '../../core/update/update_checker.dart';
 import '../../core/update/update_model.dart';
 import '../../shared/widgets/update_dialog.dart';
-import '../dorm_electricity/dorm_electricity_service.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -51,20 +48,16 @@ class SettingsPage extends StatelessWidget {
     await SemesterCalendar.instance.setSemesterStartDate(picked);
   }
 
-  Future<void> _setIgnoreSystemProxy(bool value) async {
-    await NetworkSettings.instance.setIgnoreSystemProxy(value);
-    // 延迟到下一微任务，避免阻塞切换动画
-    Future.microtask(() {
-      DioClient.instance.applyProxyMode();
-      DormElectricityService.instance.applyProxyMode();
-    });
-  }
-
   Future<void> _checkForUpdate(BuildContext context) async {
     final result = await UpdateChecker.instance.check();
     if (!context.mounted) return;
 
     switch (result.status) {
+      case UpdateCheckStatus.disabled:
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          const SnackBar(content: Text('当前为内部开发版本，请通过统一发布渠道获取新版本')),
+        );
+        break;
       case UpdateCheckStatus.updateAvailable:
         final release = result.release;
         if (release != null) {
@@ -77,9 +70,9 @@ class SettingsPage extends StatelessWidget {
         )?.showSnackBar(const SnackBar(content: Text('当前已是最新版本')));
         break;
       case UpdateCheckStatus.error:
-        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-          const SnackBar(content: Text('检查更新失败，请检查 GitHub 访问或系统代理')),
-        );
+        ScaffoldMessenger.maybeOf(
+          context,
+        )?.showSnackBar(const SnackBar(content: Text('检查更新失败，请稍后重试')));
         break;
       case UpdateCheckStatus.checking:
         break;
@@ -256,23 +249,6 @@ class SettingsPage extends StatelessWidget {
             },
           ),
           const SizedBox(height: 16),
-          Text('网络', style: textTheme.titleMedium),
-          const SizedBox(height: 12),
-          ValueListenableBuilder<bool>(
-            valueListenable: NetworkSettings.instance.ignoreSystemProxy,
-            builder: (context, ignoreSystemProxy, child) {
-              return Card(
-                clipBehavior: Clip.antiAlias,
-                child: SwitchListTile.adaptive(
-                  title: const Text('忽略系统 HTTP 代理'),
-                  subtitle: const Text('仅对系统 HTTP 代理生效，不影响 VPN/TUN 代理类应用'),
-                  value: ignoreSystemProxy,
-                  onChanged: _setIgnoreSystemProxy,
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 16),
           Text('设置会立即生效。', style: textTheme.bodySmall),
           const SizedBox(height: 24),
           Text('版本', style: textTheme.titleMedium),
@@ -282,7 +258,7 @@ class SettingsPage extends StatelessWidget {
             builder: (context, snapshot) {
               final version = snapshot.hasData
                   ? '当前版本 v${snapshot.data!.version}+${snapshot.data!.buildNumber}'
-                  : '手动检测 GitHub Release 新版本';
+                  : '查看当前版本信息';
               return ValueListenableBuilder<AppRelease?>(
                 valueListenable: UpdateChecker.instance.availableRelease,
                 builder: (context, release, child) {
@@ -291,7 +267,9 @@ class SettingsPage extends StatelessWidget {
                     builder: (context, isChecking, child) {
                       final subtitle = release != null
                           ? '发现新版本 v${release.version}'
-                          : version;
+                          : UpdateChecker.instance.isUpdateEnabled
+                          ? version
+                          : '当前版本暂未开放在线更新';
                       return Card(
                         clipBehavior: Clip.antiAlias,
                         child: ListTile(

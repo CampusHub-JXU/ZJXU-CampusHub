@@ -4,7 +4,7 @@ import '../logging/app_logger.dart';
 import 'update_model.dart';
 import 'update_service.dart';
 
-enum UpdateCheckStatus { updateAvailable, upToDate, error, checking }
+enum UpdateCheckStatus { disabled, updateAvailable, upToDate, error, checking }
 
 class UpdateCheckResult {
   const UpdateCheckResult(this.status, {this.release});
@@ -22,7 +22,14 @@ class UpdateChecker {
       ValueNotifier<AppRelease?>(null);
   final ValueNotifier<bool> isChecking = ValueNotifier<bool>(false);
 
+  bool get isUpdateEnabled => UpdateService.instance.isRemoteUpdateEnabled;
+
   Future<UpdateCheckResult> check({bool silent = false}) async {
+    if (!isUpdateEnabled) {
+      availableRelease.value = null;
+      return const UpdateCheckResult(UpdateCheckStatus.disabled);
+    }
+
     if (isChecking.value) {
       return const UpdateCheckResult(UpdateCheckStatus.checking);
     }

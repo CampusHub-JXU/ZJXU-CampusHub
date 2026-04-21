@@ -22,6 +22,7 @@ void main() {
 
     await tester.scrollUntilVisible(find.text('检查更新'), 300);
     expect(find.text('检查更新'), findsOneWidget);
+    expect(find.text('当前版本暂未开放在线更新'), findsOneWidget);
 
     final slider = tester.widget<Slider>(find.byType(Slider));
     slider.onChanged?.call(1.15);

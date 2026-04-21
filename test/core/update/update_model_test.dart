@@ -3,20 +3,13 @@
 import 'package:jxu_campus_hub/core/update/update_model.dart';
 
 void main() {
-  test('parses github release payload and picks apk asset', () {
-    final release = AppRelease.fromGitHubJson({
-      'tag_name': 'v0.1.3',
-      'html_url': 'https://github.com/FHfanshu/JXU-Portal/releases/tag/v0.1.3',
-      'body': '更新内容',
-      'published_at': '2026-04-09T17:05:48Z',
-      'assets': [
-        {
-          'name': 'JXU-Portal-v0.1.3.apk',
-          'content_type': 'application/vnd.android.package-archive',
-          'browser_download_url':
-              'https://github.com/FHfanshu/JXU-Portal/releases/download/v0.1.3/JXU-Portal-v0.1.3.apk',
-        },
-      ],
+  test('parses manifest payload and picks download url', () {
+    final release = AppRelease.fromJson({
+      'version': 'v0.1.3',
+      'releaseUrl': 'https://example.com/releases/v0.1.3',
+      'downloadUrl': 'https://example.com/downloads/app-v0.1.3.apk',
+      'changelog': '更新内容',
+      'publishedAt': '2026-04-09T17:05:48Z',
     });
 
     expect(release.version, '0.1.3');
@@ -25,33 +18,24 @@ void main() {
     expect(release.launchUrl, endsWith('.apk'));
   });
 
-  test('parses gitee release payload and falls back to tag page', () {
-    final release = AppRelease.fromGiteeJson(
-      {
-        'tag_name': 'v0.2.0',
-        'body': '镜像更新内容',
-        'created_at': '2026-04-10T23:30:00+08:00',
-        'assets': [
-          {
-            'name': 'JXU-Portal-v0.2.0.apk',
-            'browser_download_url':
-                'https://gitee.com/fhfanshu/JXU-Portal/releases/download/v0.2.0/JXU-Portal-v0.2.0.apk',
-          },
-        ],
-      },
-      owner: 'fhfanshu',
-      repo: 'JXU-Portal',
-    );
+  test('allows release page without download url', () {
+    final release = AppRelease.fromJson({
+      'version': 'v0.2.0',
+      'releaseUrl': 'https://example.com/releases/v0.2.0',
+      'changelog': '内部版本更新',
+      'publishedAt': '2026-04-10T23:30:00+08:00',
+    });
 
     expect(release.version, '0.2.0');
-    expect(release.changelog, '镜像更新内容');
+    expect(release.changelog, '内部版本更新');
+    expect(release.releaseUrl, 'https://example.com/releases/v0.2.0');
+    expect(release.downloadUrl, isEmpty);
+  });
+
+  test('throws when manifest omits both download and release urls', () {
     expect(
-      release.releaseUrl,
-      'https://gitee.com/fhfanshu/JXU-Portal/releases/tag/v0.2.0',
-    );
-    expect(
-      release.downloadUrl,
-      'https://gitee.com/fhfanshu/JXU-Portal/releases/download/v0.2.0/JXU-Portal-v0.2.0.apk',
+      () => AppRelease.fromJson({'version': '0.2.0'}),
+      throwsFormatException,
     );
   });
 

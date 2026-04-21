@@ -17,85 +17,29 @@ class AppRelease {
 
   String get launchUrl => hasDownloadUrl ? downloadUrl : releaseUrl;
 
-  factory AppRelease.fromGitHubJson(Map<String, dynamic> json) {
-    return _fromReleaseJson(
-      json,
-      sourceName: 'GitHub',
-      publishedAtText: (json['published_at'] as String? ?? '').trim(),
+  factory AppRelease.fromJson(Map<String, dynamic> json) {
+    final version = normalizeVersion((json['version'] as String? ?? '').trim());
+    final changelog = (json['changelog'] as String? ?? '').trim();
+    final downloadUrl = (json['downloadUrl'] as String? ?? '').trim();
+    final releaseUrl = (json['releaseUrl'] as String? ?? '').trim();
+    final publishedAt = DateTime.tryParse(
+      (json['publishedAt'] as String? ?? '').trim(),
     );
-  }
-
-  factory AppRelease.fromGiteeJson(
-    Map<String, dynamic> json, {
-    required String owner,
-    required String repo,
-  }) {
-    final rawTag = (json['tag_name'] as String? ?? '').trim();
-    final fallbackReleaseUrl = rawTag.isEmpty
-        ? ''
-        : 'https://gitee.com/$owner/$repo/releases/tag/$rawTag';
-    final publishedAtText =
-        (json['published_at'] as String? ?? json['created_at'] as String? ?? '')
-            .trim();
-    return _fromReleaseJson(
-      json,
-      sourceName: 'Gitee',
-      fallbackReleaseUrl: fallbackReleaseUrl,
-      publishedAtText: publishedAtText,
-    );
-  }
-
-  static AppRelease _fromReleaseJson(
-    Map<String, dynamic> json, {
-    required String sourceName,
-    required String publishedAtText,
-    String fallbackReleaseUrl = '',
-  }) {
-    final version = normalizeVersion(
-      (json['tag_name'] as String? ?? '').trim(),
-    );
-    final releaseUrl = (json['html_url'] as String? ?? fallbackReleaseUrl)
-        .trim();
-    final changelog = (json['body'] as String? ?? '').trim();
-    final publishedAt = DateTime.tryParse(publishedAtText);
 
     if (version.isEmpty) {
-      throw FormatException('$sourceName release 缺少 tag_name。');
+      throw const FormatException('更新清单缺少 version。');
     }
-    if (releaseUrl.isEmpty) {
-      throw FormatException('$sourceName release 缺少 html_url。');
+    if (downloadUrl.isEmpty && releaseUrl.isEmpty) {
+      throw const FormatException('更新清单缺少 downloadUrl/releaseUrl。');
     }
 
     return AppRelease(
       version: version,
       changelog: changelog,
-      downloadUrl: _pickApkDownloadUrl(json['assets']),
+      downloadUrl: downloadUrl,
       releaseUrl: releaseUrl,
       publishedAt: publishedAt ?? DateTime.fromMillisecondsSinceEpoch(0),
     );
-  }
-
-  static String _pickApkDownloadUrl(dynamic assets) {
-    if (assets is! List) return '';
-    for (final asset in assets) {
-      if (asset is! Map) continue;
-      final item = Map<String, dynamic>.from(asset);
-      final name = (item['name'] as String? ?? '').trim().toLowerCase();
-      final contentType = (item['content_type'] as String? ?? '')
-          .trim()
-          .toLowerCase();
-      final assetUrl =
-          (item['browser_download_url'] as String? ??
-                  item['url'] as String? ??
-                  '')
-              .trim();
-      if (assetUrl.isEmpty) continue;
-      if (name.endsWith('.apk') ||
-          contentType == 'application/vnd.android.package-archive') {
-        return assetUrl;
-      }
-    }
-    return '';
   }
 
   bool isNewerThan(String currentVersion) {

@@ -25,12 +25,31 @@ void main() {
     );
     UpdateService.instance.debugReleaseProvider = () async => release;
     UpdateService.instance.debugCurrentVersionProvider = () async => '0.1.0';
+    UpdateService.instance.debugIsRemoteUpdateEnabled = true;
 
     final result = await UpdateChecker.instance.check();
 
     expect(result.status, UpdateCheckStatus.updateAvailable);
     expect(result.release, same(release));
     expect(UpdateChecker.instance.availableRelease.value, same(release));
+    expect(UpdateChecker.instance.isChecking.value, isFalse);
+  });
+
+  test('returns disabled when remote update is turned off', () async {
+    final staleRelease = AppRelease(
+      version: '0.1.3',
+      changelog: '',
+      downloadUrl: '',
+      releaseUrl: 'https://example.com',
+      publishedAt: DateTime(2026),
+    );
+    UpdateService.instance.debugIsRemoteUpdateEnabled = false;
+    UpdateChecker.instance.availableRelease.value = staleRelease;
+
+    final result = await UpdateChecker.instance.check();
+
+    expect(result.status, UpdateCheckStatus.disabled);
+    expect(UpdateChecker.instance.availableRelease.value, isNull);
     expect(UpdateChecker.instance.isChecking.value, isFalse);
   });
 
@@ -45,6 +64,7 @@ void main() {
     UpdateChecker.instance.availableRelease.value = staleRelease;
     UpdateService.instance.debugReleaseProvider = () async => staleRelease;
     UpdateService.instance.debugCurrentVersionProvider = () async => '0.1.2';
+    UpdateService.instance.debugIsRemoteUpdateEnabled = true;
 
     final result = await UpdateChecker.instance.check();
 
@@ -65,6 +85,7 @@ void main() {
       throw StateError('failed');
     };
     UpdateService.instance.debugCurrentVersionProvider = () async => '0.1.0';
+    UpdateService.instance.debugIsRemoteUpdateEnabled = true;
 
     final result = await UpdateChecker.instance.check();
 

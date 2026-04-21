@@ -87,7 +87,9 @@ class AppBootstrapController {
     phase.value = AppBootstrapPhase.localStateReady;
     await Future<void>.delayed(Duration.zero);
     phase.value = AppBootstrapPhase.completed;
-    unawaited(UpdateChecker.instance.check(silent: true));
+    if (UpdateChecker.instance.isUpdateEnabled) {
+      unawaited(UpdateChecker.instance.check(silent: true));
+    }
   }
 
   @visibleForTesting

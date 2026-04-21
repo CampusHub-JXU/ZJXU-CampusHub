@@ -1,7 +1,17 @@
-﻿import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/core/update/update_model.dart';
+import 'package:jxu_campus_hub/core/update/update_source.dart';
 import 'package:jxu_campus_hub/core/update/update_service.dart';
+
+class _FakeUpdateSource implements UpdateSource {
+  const _FakeUpdateSource(this.loader);
+
+  final Future<AppRelease> Function() loader;
+
+  @override
+  Future<AppRelease> fetchLatestRelease() => loader();
+}
 
 void main() {
   setUp(() {
@@ -53,43 +63,23 @@ void main() {
     expect(UpdateService.instance.checkForUpdate(), throwsStateError);
   });
 
-  test('prefers gitee release when mirror is available', () async {
-    final giteeRelease = AppRelease(
+  test('fetches latest release through configured source', () async {
+    final release = AppRelease(
       version: '0.1.4',
       changelog: '',
-      downloadUrl: 'https://gitee.com/example.apk',
-      releaseUrl: 'https://gitee.com/example',
+      downloadUrl: 'https://example.com/app.apk',
+      releaseUrl: 'https://example.com/release',
       publishedAt: DateTime(2026),
     );
-    var githubRequested = false;
-    UpdateService.instance.debugGiteeReleaseProvider = () async => giteeRelease;
-    UpdateService.instance.debugGitHubReleaseProvider = () async {
-      githubRequested = true;
-      return giteeRelease;
-    };
+    UpdateService.instance.debugSource = _FakeUpdateSource(() async => release);
+    UpdateService.instance.debugIsRemoteUpdateEnabled = true;
 
     final result = await UpdateService.instance.fetchLatestRelease();
 
-    expect(result, same(giteeRelease));
-    expect(githubRequested, isFalse);
+    expect(result, same(release));
   });
 
-  test('falls back to github when gitee mirror fails', () async {
-    final githubRelease = AppRelease(
-      version: '0.2.0',
-      changelog: '',
-      downloadUrl: 'https://github.com/example.apk',
-      releaseUrl: 'https://github.com/example',
-      publishedAt: DateTime(2026),
-    );
-    UpdateService.instance.debugGiteeReleaseProvider = () async {
-      throw StateError('gitee failed');
-    };
-    UpdateService.instance.debugGitHubReleaseProvider = () async =>
-        githubRelease;
-
-    final result = await UpdateService.instance.fetchLatestRelease();
-
-    expect(result, same(githubRelease));
+  test('reports remote update disabled by default', () {
+    expect(UpdateService.instance.isRemoteUpdateEnabled, isFalse);
   });
 }
