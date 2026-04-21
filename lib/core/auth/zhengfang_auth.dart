@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:pointycastle/export.dart';
 
+import '../crypto/auth_crypto.dart';
 import '../logging/app_logger.dart';
 import '../network/cookie_interceptor.dart';
 import '../network/dio_client.dart';
@@ -217,18 +218,11 @@ class ZhengfangAuth extends ChangeNotifier {
     return client;
   }
 
-  bool _shouldRetryWithSystemProxy(DioException error) {
-    return NetworkSettings.instance.ignoreSystemProxy.value &&
-        (error.type == DioExceptionType.connectionTimeout ||
-            error.type == DioExceptionType.receiveTimeout ||
-            error.type == DioExceptionType.connectionError);
-  }
-
   bool _shouldRetryWithSystemProxyForAny(Object error) {
-    if (!NetworkSettings.instance.ignoreSystemProxy.value) return false;
-    if (error is TimeoutException) return true;
-    if (error is DioException) return _shouldRetryWithSystemProxy(error);
-    return false;
+    return shouldRetryWithSystemProxyForError(
+      error,
+      ignoreSystemProxy: NetworkSettings.instance.ignoreSystemProxy.value,
+    );
   }
 
   Future<Response<T>> _sendWithProxyFallback<T>({
@@ -239,7 +233,8 @@ class ZhengfangAuth extends ChangeNotifier {
       return await request(_dio);
     } catch (error) {
       if (!_shouldRetryWithSystemProxyForAny(error)) rethrow;
-      AppLogger.instance.auth(LogLevel.warn, '$label 直连失败，尝试通过系统代理重试');
+      final reason = describeSystemProxyRetryReason(error);
+      AppLogger.instance.auth(LogLevel.warn, '$label 直连失败（$reason），尝试通过系统代理重试');
       final fallbackDio = _createProxyFallbackDio();
       try {
         return await request(fallbackDio);
@@ -442,8 +437,6 @@ class ZhengfangAuth extends ChangeNotifier {
   String? _cachedCasExecution;
   String? _cachedCasLt;
   String? _cachedCasLoginUrl; // 保存重定向后的 CAS 登录 URL
-  String? _cachedAesKey; // AES 加密密钥 aes1
-  String? _cachedAesIv; // AES 加密 IV akey
 
   /// 获取 WebVPN CAS 验证码
   ///
@@ -502,9 +495,7 @@ class ZhengfangAuth extends ChangeNotifier {
     _cachedCasLoginUrl = casLoginUrl; // 保存 CAS 登录 URL
 
     // CAS 登录页面中的 __vpn_host_crypt_key 不是用于密码加密的
-    // 实际加密密钥是 main.js 中的 aes1='key_value_123456'
-    _cachedAesKey = 'key_value_123456';
-    _cachedAesIv = '0987654321123456';
+    // 实际加密密钥由 AuthCryptoConfig 管理
     final ts = DateTime.now().millisecondsSinceEpoch;
     // 验证码 URL：实际是 /cas/captcha.html，不是 /cas/login/captcha.html
     // 从 CAS 登录页面 path 提取 base 路径
@@ -567,7 +558,7 @@ class ZhengfangAuth extends ChangeNotifier {
 
       final loginUri = _cachedCasLoginUrl ?? '$_webVpnBase$_webVpnCasPath';
 
-      final encryptedPassword = _encryptPasswordWithAes(password);
+      final encryptedPassword = AuthCrypto.instance.encryptPassword(password);
 
       final resp = await _sendWithProxyFallback<String>(
         label: 'WebVPN CAS 登录',
@@ -646,54 +637,6 @@ class ZhengfangAuth extends ChangeNotifier {
       caseSensitive: false,
     );
     return pattern.firstMatch(html)?.group(1)?.trim() ?? '';
-  }
-
-  /// AES 加密密码
-  String _encryptPasswordWithAes(String password) {
-    var key = _cachedAesKey;
-    var iv = _cachedAesIv;
-    if (key == null || iv == null || key.isEmpty || iv.isEmpty) {
-      AppLogger.instance.auth(LogLevel.warn, 'AES 密钥为空，使用原始密码');
-      return password;
-    }
-
-    // 截断到 16 字符 (AES-128 需要)
-    if (key.length > 16) key = key.substring(0, 16);
-    if (iv.length > 16) iv = iv.substring(0, 16);
-
-    try {
-      final keyBytes = Uint8List.fromList(utf8.encode(key));
-      final ivBytes = Uint8List.fromList(utf8.encode(iv));
-      final input = Uint8List.fromList(utf8.encode(password));
-
-      final paddedInput = _pkcs7Pad(input, 16);
-
-      final cipher = CBCBlockCipher(AESEngine())
-        ..init(true, ParametersWithIV(KeyParameter(keyBytes), ivBytes));
-
-      final output = Uint8List(paddedInput.length);
-      for (var offset = 0; offset < paddedInput.length; offset += 16) {
-        cipher.processBlock(paddedInput, offset, output, offset);
-      }
-
-      final buffer = StringBuffer();
-      for (final byte in output) {
-        buffer.write(byte.toRadixString(16).padLeft(2, '0').toUpperCase());
-      }
-      return buffer.toString();
-    } catch (e) {
-      AppLogger.instance.auth(LogLevel.error, 'AES 加密失败: $e');
-      return password;
-    }
-  }
-
-  /// PKCS7 填充
-  Uint8List _pkcs7Pad(Uint8List input, int blockSize) {
-    final padding = blockSize - (input.length % blockSize);
-    return Uint8List.fromList([
-      ...input,
-      ...List<int>.filled(padding, padding),
-    ]);
   }
 
   /// 同步 WebVPN Cookie 到 WebView
@@ -1267,12 +1210,12 @@ class ZhengfangAuth extends ChangeNotifier {
     notifyListeners();
   }
 
-  void markLoggedOut() {
+  Future<void> markLoggedOut() async {
     _sessionActive = false;
     currentStudentId = null;
     _cachedCsrfToken = null;
     _contextIndicatesLoggedIn = false;
-    CredentialStore.instance.clearZhengfangSession();
+    await CredentialStore.instance.clearZhengfangSession();
     notifyListeners();
   }
 
@@ -1421,7 +1364,7 @@ class ZhengfangAuth extends ChangeNotifier {
           LogLevel.warn,
           '清除 Cookie 后跳转到 WebVPN 登录页，需要重新认证',
         );
-        markLoggedOut();
+        await markLoggedOut();
         throw CaptchaException('WebVPN 认证已过期，请重新登录');
       }
       if (isLoginSuccess(retryResp.statusCode, retryLocation, '')) {
@@ -1533,8 +1476,6 @@ class ZhengfangAuth extends ChangeNotifier {
     _cachedCasExecution = null;
     _cachedCasLt = null;
     _cachedCasLoginUrl = null;
-    _cachedAesKey = null;
-    _cachedAesIv = null;
     _mode = ZhengfangMode.direct;
   }
 }

@@ -1,13 +1,12 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io' as io;
 
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
-import 'package:pointycastle/export.dart';
 
+import '../crypto/auth_crypto.dart';
 import '../logging/app_logger.dart';
 import '../network/cookie_interceptor.dart';
 import '../network/dio_client.dart';
@@ -152,71 +151,6 @@ class UnifiedAuthService extends ChangeNotifier {
     }
   }
 
-  static Future<bool> checkWebVpnReachable() async {
-    try {
-      await NetworkSettings.instance.ensureInitialized();
-      final dio = Dio(
-        BaseOptions(
-          connectTimeout: const Duration(seconds: 6),
-          receiveTimeout: const Duration(seconds: 6),
-          followRedirects: true,
-          validateStatus: (s) => s != null && s < 500,
-        ),
-      );
-      applyProxyModeToDio(
-        dio,
-        ignoreSystemProxy: NetworkSettings.instance.ignoreSystemProxy.value,
-      );
-      final resp = await dio
-          .get<String>('$_webVpnOrigin/login')
-          .timeout(const Duration(seconds: 8));
-      final reachable = resp.statusCode != null && resp.statusCode! < 400;
-      AppLogger.instance.auth(
-        LogLevel.info,
-        '统一认证 WebVPN: ${reachable ? "可达" : "不可达"}',
-      );
-      return reachable;
-    } catch (error) {
-      if (NetworkSettings.instance.ignoreSystemProxy.value) {
-        AppLogger.instance.auth(
-          LogLevel.warn,
-          '统一认证 WebVPN 直连探测失败，尝试系统代理重试: $error',
-        );
-        final fallbackDio = Dio(
-          BaseOptions(
-            connectTimeout: const Duration(seconds: 6),
-            receiveTimeout: const Duration(seconds: 6),
-            followRedirects: true,
-            validateStatus: (s) => s != null && s < 500,
-          ),
-        );
-        applyProxyModeToDio(fallbackDio, ignoreSystemProxy: false);
-        try {
-          final resp = await fallbackDio
-              .get<String>('$_webVpnOrigin/login')
-              .timeout(const Duration(seconds: 8));
-          final reachable = resp.statusCode != null && resp.statusCode! < 400;
-          AppLogger.instance.auth(
-            LogLevel.info,
-            '统一认证 WebVPN 代理重试: ${reachable ? "可达" : "不可达"}',
-          );
-          return reachable;
-        } catch (retryError) {
-          AppLogger.instance.auth(
-            LogLevel.warn,
-            '统一认证 WebVPN 不可达: $retryError',
-          );
-          return false;
-        } finally {
-          fallbackDio.close(force: true);
-        }
-      }
-
-      AppLogger.instance.auth(LogLevel.warn, '统一认证 WebVPN 不可达: $error');
-      return false;
-    }
-  }
-
   static const defaultServiceUrl =
       'https://newca.zjxu.edu.cn/casClient/login/ydd';
 
@@ -224,9 +158,6 @@ class UnifiedAuthService extends ChangeNotifier {
   static const _serviceHallOrigin = 'https://mobilehall.zjxu.edu.cn';
   static const _paymentOrigin = 'https://app.xiaoyuan.ccb.com';
   static const _libraryOrigin = 'https://libapp.zjxu.edu.cn';
-  static const _webVpnOrigin = 'https://webvpn.zjxu.edu.cn';
-  static const _aesKey = 'key_value_123456';
-  static const _aesIv = '0987654321123456';
   static const _requestTimeout = Duration(seconds: 12);
 
   CookieManager? _cookieManager;
@@ -343,18 +274,11 @@ class UnifiedAuthService extends ChangeNotifier {
     return client;
   }
 
-  bool _shouldRetryWithSystemProxy(DioException error) {
-    return NetworkSettings.instance.ignoreSystemProxy.value &&
-        (error.type == DioExceptionType.connectionTimeout ||
-            error.type == DioExceptionType.receiveTimeout ||
-            error.type == DioExceptionType.connectionError);
-  }
-
   bool _shouldRetryWithSystemProxyForAny(Object error) {
-    if (!NetworkSettings.instance.ignoreSystemProxy.value) return false;
-    if (error is TimeoutException) return true;
-    if (error is DioException) return _shouldRetryWithSystemProxy(error);
-    return false;
+    return shouldRetryWithSystemProxyForError(
+      error,
+      ignoreSystemProxy: NetworkSettings.instance.ignoreSystemProxy.value,
+    );
   }
 
   Future<Response<T>> _sendWithProxyFallback<T>({
@@ -365,7 +289,8 @@ class UnifiedAuthService extends ChangeNotifier {
       return await request(_dio).timeout(_requestTimeout);
     } catch (error) {
       if (!_shouldRetryWithSystemProxyForAny(error)) rethrow;
-      AppLogger.instance.auth(LogLevel.warn, '$label 直连失败，尝试通过系统代理重试');
+      final reason = describeSystemProxyRetryReason(error);
+      AppLogger.instance.auth(LogLevel.warn, '$label 直连失败（$reason），尝试通过系统代理重试');
       final fallbackDio = _createProxyFallbackDio();
       try {
         return await request(fallbackDio).timeout(_requestTimeout);
@@ -437,7 +362,7 @@ class UnifiedAuthService extends ChangeNotifier {
         return UnifiedAuthLoginFailure('统一认证初始化失败，请刷新验证码后重试');
       }
 
-      final encryptedPassword = _encryptPassword(password);
+      final encryptedPassword = AuthCrypto.instance.encryptPassword(password);
       final referer = _buildLoginUri(serviceUrl).toString();
       final response = await _sendWithProxyFallback<String>(
         label: '统一认证登录',
@@ -518,7 +443,6 @@ class UnifiedAuthService extends ChangeNotifier {
       Uri.parse('$_serviceHallOrigin/webroot/decision/view/form'),
       Uri.parse(_paymentOrigin),
       Uri.parse('$_libraryOrigin/Info/Thirdparty/ssoFromDingDing'),
-      Uri.parse(_webVpnOrigin),
     ];
 
     for (final uri in uris) {
@@ -536,11 +460,11 @@ class UnifiedAuthService extends ChangeNotifier {
     }
   }
 
-  void markLoggedOut() {
+  Future<void> markLoggedOut() async {
     _sessionActive = false;
     currentAccount = null;
     _cachedContext = null;
-    CredentialStore.instance.clearUnifiedAuthSession();
+    await CredentialStore.instance.clearUnifiedAuthSession();
     notifyListeners();
   }
 
@@ -716,34 +640,6 @@ class UnifiedAuthService extends ChangeNotifier {
       if (redirect.isEmpty) return;
       nextUri = _resolveUri(nextUri, redirect);
     }
-  }
-
-  String _encryptPassword(String password) {
-    final keyBytes = Uint8List.fromList(utf8.encode(_aesKey));
-    final ivBytes = Uint8List.fromList(utf8.encode(_aesIv));
-    final input = Uint8List.fromList(utf8.encode(password));
-    final paddedInput = _pkcs7Pad(input, 16);
-    final cipher = CBCBlockCipher(AESEngine())
-      ..init(true, ParametersWithIV(KeyParameter(keyBytes), ivBytes));
-
-    final output = Uint8List(paddedInput.length);
-    for (var offset = 0; offset < paddedInput.length; offset += 16) {
-      cipher.processBlock(paddedInput, offset, output, offset);
-    }
-
-    final buffer = StringBuffer();
-    for (final byte in output) {
-      buffer.write(byte.toRadixString(16).padLeft(2, '0').toUpperCase());
-    }
-    return buffer.toString();
-  }
-
-  Uint8List _pkcs7Pad(Uint8List input, int blockSize) {
-    final padding = blockSize - (input.length % blockSize);
-    return Uint8List.fromList([
-      ...input,
-      ...List<int>.filled(padding, padding),
-    ]);
   }
 
   bool _isLoginSuccess(int? statusCode, String location, String html) {

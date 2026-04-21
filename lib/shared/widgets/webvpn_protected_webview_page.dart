@@ -110,10 +110,10 @@ class _WebVpnProtectedWebViewPageState
 
     _loginPromptShown = true;
     _loginPromptInFlight = true;
-    final loggedIn = await showWebVpnUnifiedAuthModal(
+    final loggedIn = await showUnifiedAuthLoginModal(
       context,
       title: '登录一卡通',
-      description: '${widget.title} 通过 WebVPN 提供，需先完成一卡通认证',
+      description: '${widget.title} 仅支持校园网内直连访问，请连接校园网后完成统一认证',
     );
     _loginPromptInFlight = false;
     if (!mounted || !loggedIn) return;

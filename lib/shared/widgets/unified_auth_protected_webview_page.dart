@@ -132,7 +132,7 @@ class _UnifiedAuthProtectedWebViewPageState
       // 如果已在重试中，或 native 已登出，直接标记登出
       if (_resyncing || !UnifiedAuthService.instance.isLoggedIn) {
         AppLogger.instance.webview(LogLevel.warn, 'Cookie 重同步失败，标记登出');
-        UnifiedAuthService.instance.markLoggedOut();
+        await UnifiedAuthService.instance.markLoggedOut();
         if (mounted) {
           setState(() {
             _authenticated = false;

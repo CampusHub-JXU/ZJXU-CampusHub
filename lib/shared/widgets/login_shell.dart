@@ -243,7 +243,7 @@ Future<bool> showUnifiedAuthLoginModal(
   String title = '登录一卡通',
   String description = '登录后可进入一卡通、服务大厅等服务',
   String serviceUrl = UnifiedAuthService.defaultServiceUrl,
-  bool forceWebVpn = false,
+  LoginSessionPreflight? sessionPreflight,
   bool barrierDismissible = true,
 }) async {
   final result = await showGeneralDialog<bool>(
@@ -257,7 +257,7 @@ Future<bool> showUnifiedAuthLoginModal(
       return LoginShell(
         title: title,
         description: description,
-        badgeText: forceWebVpn ? 'WebVPN' : '统一认证',
+        badgeText: '统一认证',
         onClose: barrierDismissible
             ? () => Navigator.of(dialogContext, rootNavigator: true).pop(false)
             : null,
@@ -265,7 +265,7 @@ Future<bool> showUnifiedAuthLoginModal(
           serviceUrl: serviceUrl,
           title: title,
           description: description,
-          forceWebVpn: forceWebVpn,
+          sessionPreflight: sessionPreflight,
           showHeader: false,
           padding: EdgeInsets.zero,
           onLoginSuccess: () =>
@@ -291,21 +291,6 @@ Future<bool> showUnifiedAuthLoginModal(
     },
   );
   return result == true;
-}
-
-Future<bool> showWebVpnUnifiedAuthModal(
-  BuildContext context, {
-  String title = '登录一卡通',
-  required String description,
-  bool barrierDismissible = true,
-}) {
-  return showUnifiedAuthLoginModal(
-    context,
-    title: title,
-    description: description,
-    forceWebVpn: true,
-    barrierDismissible: barrierDismissible,
-  );
 }
 
 Future<bool> showAcademicSystemLoginModal(

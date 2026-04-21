@@ -57,7 +57,7 @@ class _ZhengfangProtectedWebViewPageState
   }
 
   Future<void> _showNativeLogin() async {
-    ZhengfangAuth.instance.markLoggedOut();
+    await ZhengfangAuth.instance.markLoggedOut();
     if (mounted) {
       setState(() {
         _authenticated = false;

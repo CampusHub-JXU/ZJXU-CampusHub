@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 
 import '../../core/auth/credential_store.dart';
 import '../../core/auth/zhengfang_auth.dart';
-import 'login_shell.dart';
 
 class LoginWidget extends StatefulWidget {
   const LoginWidget({
@@ -31,12 +30,10 @@ class _LoginWidgetState extends State<LoginWidget> {
 
   Uint8List? _captchaBytes;
   bool _loading = false;
+  bool _obscurePassword = true;
   String? _error;
 
-  ZhengfangMode _mode = ZhengfangMode.direct;
   bool _autoDetecting = true;
-  bool _needCasAuth = false;
-  bool _casAuthenticating = false;
 
   static const _proxyHint = '请求超时，请检查手机系统代理或 VPN 软件';
 
@@ -50,74 +47,30 @@ class _LoginWidgetState extends State<LoginWidget> {
   Future<void> _autoDetectNetwork() async {
     if (!_autoDetecting) return;
 
-    final directReachable = await ZhengfangAuth.checkDirectReachable();
-    if (!mounted) return;
+    try {
+      final directReachable = await ZhengfangAuth.checkDirectReachable();
+      if (!mounted) return;
 
-    if (directReachable) {
-      setState(() {
-        _mode = ZhengfangMode.direct;
-        _autoDetecting = false;
-      });
-      ZhengfangAuth.instance.setMode(ZhengfangMode.direct);
-      await _refreshCaptcha();
-      return;
-    }
-
-    final webVpnReachable = await ZhengfangAuth.checkWebVpnReachable();
-    if (!mounted) return;
-
-    if (webVpnReachable) {
-      if (ZhengfangAuth.instance.isLoggedIn &&
-          ZhengfangAuth.instance.mode == ZhengfangMode.webVpn) {
+      if (directReachable) {
         setState(() {
-          _mode = ZhengfangMode.webVpn;
           _autoDetecting = false;
         });
+        ZhengfangAuth.instance.setMode(ZhengfangMode.direct);
         await _refreshCaptcha();
         return;
       }
 
       setState(() {
-        _mode = ZhengfangMode.webVpn;
         _autoDetecting = false;
-        _needCasAuth = true;
-        _error = null;
         _captchaBytes = null;
+        _error = '无法连接教务系统，请检查网络或在校园网环境下使用';
       });
-      ZhengfangAuth.instance.setMode(ZhengfangMode.webVpn);
-      _promptUnifiedAuth();
-      return;
-    }
-
-    setState(() {
-      _autoDetecting = false;
-      _captchaBytes = null;
-      _error = '无法连接教务系统，请检查网络或在校园网环境下使用';
-    });
-  }
-
-  Future<void> _promptUnifiedAuth() async {
-    if (_casAuthenticating) return;
-    _casAuthenticating = true;
-
-    final loggedIn = await showWebVpnUnifiedAuthModal(
-      context,
-      title: '登录一卡通',
-      description: '非校园网环境下需先完成一卡通认证',
-      barrierDismissible: false,
-    );
-
-    _casAuthenticating = false;
-    if (!mounted) return;
-
-    if (loggedIn) {
+    } catch (error) {
+      if (!mounted) return;
       setState(() {
-        _needCasAuth = false;
-      });
-      await _refreshCaptcha();
-    } else {
-      setState(() {
-        _error = '需要完成一卡通认证才能继续';
+        _autoDetecting = false;
+        _captchaBytes = null;
+        _error = _friendlyNetworkMessage(error, fallback: '教务系统初始化失败，请稍后重试');
       });
     }
   }
@@ -143,34 +96,16 @@ class _LoginWidgetState extends State<LoginWidget> {
       }
     } on CaptchaException catch (e) {
       if (mounted) {
-        final msg = e.message;
-        if (_mode == ZhengfangMode.webVpn &&
-            (msg.contains('已过期') || msg.contains('认证'))) {
-          setState(() {
-            _needCasAuth = true;
-            _captchaBytes = null;
-            _error = '一卡通认证已过期，请重新认证';
-          });
-          _promptUnifiedAuth();
-        } else {
-          setState(() {
-            _captchaBytes = null;
-            _error = msg;
-          });
-        }
+        setState(() {
+          _captchaBytes = null;
+          _error = e.message;
+        });
       }
     } on DioException catch (e) {
       if (mounted) {
         setState(() {
           _captchaBytes = null;
-          if (e.type == DioExceptionType.connectionTimeout ||
-              e.type == DioExceptionType.receiveTimeout) {
-            _error = '$_proxyHint，然后重试登录';
-          } else if (e.type == DioExceptionType.connectionError) {
-            _error = '无法连接教务系统，请检查网络或系统代理设置';
-          } else {
-            _error = '网络错误：${e.message ?? "请稍后重试"}';
-          }
+          _error = _friendlyNetworkMessage(e, fallback: '无法加载验证码，请重试');
         });
       }
     } catch (_) {
@@ -181,6 +116,25 @@ class _LoginWidgetState extends State<LoginWidget> {
         });
       }
     }
+  }
+
+  String _friendlyNetworkMessage(Object error, {required String fallback}) {
+    final text = error.toString().toLowerCase();
+    if (text.contains('handshakeexception') ||
+        text.contains('connection terminated during handshake')) {
+      return '无法连接教务系统，请检查系统代理、VPN 或网络证书环境后重试';
+    }
+    if (error is DioException) {
+      if (error.type == DioExceptionType.connectionTimeout ||
+          error.type == DioExceptionType.receiveTimeout) {
+        return '$_proxyHint，然后重试登录';
+      }
+      if (error.type == DioExceptionType.connectionError) {
+        return '无法连接教务系统，请检查网络或系统代理设置';
+      }
+      return '网络错误：${error.message ?? "请稍后重试"}';
+    }
+    return fallback;
   }
 
   Future<void> _login() async {
@@ -233,13 +187,7 @@ class _LoginWidgetState extends State<LoginWidget> {
         children: [
           if (widget.showHeader) ...[
             const SizedBox(height: 24),
-            Icon(
-              _mode == ZhengfangMode.direct
-                  ? Icons.school_outlined
-                  : Icons.vpn_lock_outlined,
-              size: 64,
-              color: colorScheme.primary,
-            ),
+            Icon(Icons.school_outlined, size: 64, color: colorScheme.primary),
             const SizedBox(height: 16),
             Text(
               '登录教务系统',
@@ -247,39 +195,6 @@ class _LoginWidgetState extends State<LoginWidget> {
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 32),
-          ] else if (_mode == ZhengfangMode.webVpn && !_needCasAuth) ...[
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Container(
-                margin: const EdgeInsets.only(bottom: 16),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: colorScheme.primary.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.vpn_lock_outlined,
-                      size: 16,
-                      color: colorScheme.primary,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      '当前为 WebVPN 模式',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: colorScheme.primary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
           ],
 
           if (_autoDetecting)
@@ -299,42 +214,7 @@ class _LoginWidgetState extends State<LoginWidget> {
               ),
             ),
 
-          if (!_autoDetecting && _needCasAuth)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 24),
-              child: Column(
-                children: [
-                  Icon(
-                    Icons.vpn_lock_outlined,
-                    size: 48,
-                    color: colorScheme.primary.withValues(alpha: 0.6),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    '非校园网环境',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '需先完成一卡通认证后再登录教务系统',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 24),
-                  FilledButton.icon(
-                    onPressed: _promptUnifiedAuth,
-                    icon: const Icon(Icons.login),
-                    label: const Text('一卡通认证'),
-                  ),
-                ],
-              ),
-            ),
-
-          if (!_autoDetecting && !_needCasAuth) ...[
+          if (!_autoDetecting) ...[
             TextField(
               controller: _usernameCtrl,
               decoration: const InputDecoration(
@@ -347,11 +227,24 @@ class _LoginWidgetState extends State<LoginWidget> {
             const SizedBox(height: 12),
             TextField(
               controller: _passwordCtrl,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 hintText: '密码',
-                prefixIcon: Icon(Icons.lock_outline),
+                prefixIcon: const Icon(Icons.lock_outline),
+                suffixIcon: IconButton(
+                  tooltip: _obscurePassword ? '显示密码' : '隐藏密码',
+                  onPressed: () {
+                    setState(() {
+                      _obscurePassword = !_obscurePassword;
+                    });
+                  },
+                  icon: Icon(
+                    _obscurePassword
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
+                  ),
+                ),
               ),
-              obscureText: true,
+              obscureText: _obscurePassword,
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),

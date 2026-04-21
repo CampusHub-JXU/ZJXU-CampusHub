@@ -6,10 +6,8 @@ import 'package:flutter/material.dart';
 
 import '../../core/auth/credential_store.dart';
 import '../../core/auth/unified_auth.dart';
-import '../../core/auth/zhengfang_auth.dart';
-import '../../core/logging/app_logger.dart';
 
-enum UnifiedAuthMode { direct, webVpn }
+enum UnifiedAuthMode { direct }
 
 typedef LoginCredentialLoader = Future<(String, String)?> Function();
 typedef LoginCredentialSaver =
@@ -31,7 +29,6 @@ class UnifiedAuthLoginWidget extends StatefulWidget {
     this.sessionPreflight,
     this.captchaLoader,
     this.loginHandler,
-    this.forceWebVpn = false,
     this.showHeader = true,
     this.padding = const EdgeInsets.all(24),
   });
@@ -45,7 +42,6 @@ class UnifiedAuthLoginWidget extends StatefulWidget {
   final LoginSessionPreflight? sessionPreflight;
   final LoginCaptchaLoader? captchaLoader;
   final LoginSubmitHandler? loginHandler;
-  final bool forceWebVpn;
   final bool showHeader;
   final EdgeInsetsGeometry padding;
 
@@ -63,9 +59,9 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
 
   Uint8List? _captchaBytes;
   bool _loading = false;
+  bool _obscurePassword = true;
   String? _error;
 
-  UnifiedAuthMode _mode = UnifiedAuthMode.direct;
   static const _proxyHint = '请求超时，请检查手机系统代理或 VPN 软件';
 
   @override
@@ -75,27 +71,31 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
   }
 
   Future<void> _bootstrapLoginState() async {
-    await _loadSaved();
+    try {
+      await _loadSaved();
 
-    if (UnifiedAuthService.instance.isLoggedIn) {
-      if (mounted) widget.onLoginSuccess();
-      return;
-    }
+      if (UnifiedAuthService.instance.isLoggedIn) {
+        if (mounted) widget.onLoginSuccess();
+        return;
+      }
 
-    final hasActiveSession = await _preparePrimaryLoginMode();
-    if (!mounted) return;
+      final hasActiveSession = await _preparePrimaryLoginMode();
+      if (!mounted) return;
 
-    if (hasActiveSession) {
-      widget.onLoginSuccess();
-      return;
+      if (hasActiveSession) {
+        widget.onLoginSuccess();
+        return;
+      }
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _captchaBytes = null;
+        _error = _friendlyNetworkMessage(error, fallback: '统一认证初始化失败，请稍后重试');
+      });
     }
   }
 
   Future<bool> _preparePrimaryLoginMode() async {
-    if (widget.forceWebVpn) {
-      return _prepareForcedWebVpnLogin();
-    }
-
     if (widget.sessionPreflight != null) {
       final hasActiveSession = await widget.sessionPreflight!.call();
       if (!mounted || hasActiveSession) {
@@ -114,17 +114,11 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
     if (!mounted) return false;
     if (directReachable) {
       setState(() {
-        _mode = UnifiedAuthMode.direct;
         _error = null;
         _captchaBytes = null;
       });
       await _refreshCaptcha();
       return false;
-    }
-
-    final webVpnReady = await _prepareForcedWebVpnLogin();
-    if (!mounted || webVpnReady) {
-      return webVpnReady;
     }
 
     if (mounted && _captchaBytes == null && _error == null) {
@@ -133,33 +127,6 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
       });
     }
     return false;
-  }
-
-  Future<bool> _prepareForcedWebVpnLogin() async {
-    final webVpnReachable = await UnifiedAuthService.checkWebVpnReachable();
-    if (!mounted) return false;
-
-    if (!webVpnReachable) {
-      setState(() {
-        _captchaBytes = null;
-        _error = '无法连接 WebVPN，请检查网络连接';
-      });
-      return false;
-    }
-
-    await _activateWebVpnMode();
-    return false;
-  }
-
-  Future<void> _activateWebVpnMode() async {
-    if (!mounted) return;
-    setState(() {
-      _mode = UnifiedAuthMode.webVpn;
-      _error = null;
-      _captchaBytes = null;
-    });
-    ZhengfangAuth.instance.setMode(ZhengfangMode.webVpn);
-    await _refreshCaptcha();
   }
 
   Future<void> _loadSaved() async {
@@ -176,11 +143,9 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
     try {
       final bytes =
           await widget.captchaLoader?.call() ??
-          (_mode == UnifiedAuthMode.webVpn
-              ? await ZhengfangAuth.instance.fetchWebVpnCasCaptcha()
-              : await UnifiedAuthService.instance.fetchCaptcha(
-                  serviceUrl: widget.serviceUrl,
-                ));
+          await UnifiedAuthService.instance.fetchCaptcha(
+            serviceUrl: widget.serviceUrl,
+          );
       final codec = await ui.instantiateImageCodec(bytes);
       codec.dispose();
       if (!mounted) return;
@@ -188,18 +153,7 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
         _captchaBytes = bytes;
         _error = null;
       });
-    } on WebVpnAlreadyAuthenticatedException {
-      if (!mounted) return;
-      AppLogger.instance.auth(LogLevel.info, 'WebVPN 已认证，跳过登录');
-      widget.onLoginSuccess();
-      return;
     } on UnifiedAuthCaptchaException catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _captchaBytes = null;
-        _error = error.message;
-      });
-    } on CaptchaException catch (error) {
       if (!mounted) return;
       setState(() {
         _captchaBytes = null;
@@ -209,18 +163,7 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
       if (!mounted) return;
       setState(() {
         _captchaBytes = null;
-        if (e.type == DioExceptionType.connectionTimeout ||
-            e.type == DioExceptionType.receiveTimeout) {
-          _error = _mode == UnifiedAuthMode.direct
-              ? '$_proxyHint，然后重试统一认证'
-              : '$_proxyHint，然后重试 WebVPN 登录';
-        } else if (e.type == DioExceptionType.connectionError) {
-          _error = _mode == UnifiedAuthMode.direct
-              ? '无法连接统一认证，请检查网络或系统代理设置'
-              : '无法连接 WebVPN，请检查网络或系统代理设置';
-        } else {
-          _error = '网络错误：${e.message ?? "请稍后重试"}';
-        }
+        _error = _friendlyNetworkMessage(e, fallback: '验证码加载失败，请点击重试');
       });
     } catch (_) {
       if (!mounted) return;
@@ -229,6 +172,25 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
         _error = '验证码加载失败，请点击重试';
       });
     }
+  }
+
+  String _friendlyNetworkMessage(Object error, {required String fallback}) {
+    final text = error.toString().toLowerCase();
+    if (text.contains('handshakeexception') ||
+        text.contains('connection terminated during handshake')) {
+      return '无法连接统一认证，请检查系统代理、VPN 或网络证书环境后重试';
+    }
+    if (error is DioException) {
+      if (error.type == DioExceptionType.connectionTimeout ||
+          error.type == DioExceptionType.receiveTimeout) {
+        return '$_proxyHint，然后重试统一认证';
+      }
+      if (error.type == DioExceptionType.connectionError) {
+        return '无法连接统一认证，请检查网络或系统代理设置';
+      }
+      return '网络错误：${error.message ?? "请稍后重试"}';
+    }
+    return fallback;
   }
 
   Future<void> _login() async {
@@ -260,33 +222,6 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
       });
       _captchaCtrl.clear();
       _refreshCaptcha();
-      return;
-    }
-
-    if (_mode == UnifiedAuthMode.webVpn) {
-      final result = await ZhengfangAuth.instance.loginWebVpnCas(
-        username,
-        password,
-        captcha,
-      );
-      if (!mounted) return;
-
-      switch (result) {
-        case WebVpnCasSuccess():
-          await CredentialStore.instance.saveUnifiedAuthCredentials(
-            username,
-            password,
-          );
-          await ZhengfangAuth.instance.syncWebVpnCookiesToWebView();
-          widget.onLoginSuccess();
-        case WebVpnCasFailure(:final message):
-          setState(() {
-            _loading = false;
-            _error = message;
-          });
-          _captchaCtrl.clear();
-          _refreshCaptcha();
-      }
       return;
     }
 
@@ -338,13 +273,7 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
         children: [
           if (widget.showHeader) ...[
             const SizedBox(height: 24),
-            Icon(
-              _mode == UnifiedAuthMode.direct
-                  ? Icons.account_balance_outlined
-                  : Icons.vpn_lock_outlined,
-              size: 64,
-              color: cs.primary,
-            ),
+            Icon(Icons.account_balance_outlined, size: 64, color: cs.primary),
             const SizedBox(height: 16),
             Text(
               widget.title,
@@ -360,35 +289,6 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
               ).textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
             ),
             const SizedBox(height: 32),
-          ] else if (_mode == UnifiedAuthMode.webVpn) ...[
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Container(
-                margin: const EdgeInsets.only(bottom: 16),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: cs.primary.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.vpn_lock_outlined, size: 16, color: cs.primary),
-                    const SizedBox(width: 6),
-                    Text(
-                      '通过 WebVPN 连接',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: cs.primary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
           ],
 
           TextField(
@@ -405,11 +305,24 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
           TextField(
             controller: _passwordCtrl,
             focusNode: _passwordFocusNode,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               hintText: '密码',
-              prefixIcon: Icon(Icons.lock_outline),
+              prefixIcon: const Icon(Icons.lock_outline),
+              suffixIcon: IconButton(
+                tooltip: _obscurePassword ? '显示密码' : '隐藏密码',
+                onPressed: () {
+                  setState(() {
+                    _obscurePassword = !_obscurePassword;
+                  });
+                },
+                icon: Icon(
+                  _obscurePassword
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined,
+                ),
+              ),
             ),
-            obscureText: true,
+            obscureText: _obscurePassword,
             textInputAction: TextInputAction.next,
             onSubmitted: (_) => _captchaFocusNode.requestFocus(),
           ),
