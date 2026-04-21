@@ -1,31 +1,4 @@
-class ScheduleSlotTimes {
-  ScheduleSlotTimes._();
-
-  static const slotTimes = [
-    ['08:00', '08:40'],
-    ['08:45', '09:25'],
-    ['09:45', '10:25'],
-    ['10:30', '11:10'],
-    ['11:15', '11:55'],
-    ['13:30', '14:10'],
-    ['14:15', '14:55'],
-    ['15:15', '15:55'],
-    ['16:00', '16:40'],
-    ['16:45', '17:25'],
-    ['18:30', '19:10'],
-    ['19:15', '19:55'],
-    ['20:00', '20:40'],
-  ];
-
-  static String startTime(int lesson) =>
-      (lesson >= 1 && lesson <= 13) ? slotTimes[lesson - 1][0] : '??';
-
-  static String endTime(int lesson) =>
-      (lesson >= 1 && lesson <= 13) ? slotTimes[lesson - 1][1] : '??';
-
-  static String timeRange(int start, int end) =>
-      '${startTime(start)}-${endTime(end)}';
-}
+export 'schedule_slot_times.dart';
 
 class CourseEntry {
   const CourseEntry({

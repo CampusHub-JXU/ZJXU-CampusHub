@@ -49,3 +49,14 @@ logcat_dump.txt
 
 # Local mirrored public repo
 /JXU-Portal-public/
+
+# Local agent/tooling state
+/.agents/
+/.claude/
+/skills-lock.json
+
+# Local runtime logs and crash dumps
+flutter_*.log
+hs_err_pid*.log
+android/hs_err_pid*.log
+android/replay_pid*.log

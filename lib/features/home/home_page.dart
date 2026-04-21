@@ -1,14 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/app_bootstrap_controller.dart';
-import '../../app/theme.dart';
 import '../../core/auth/unified_auth.dart';
-import '../../core/config/feature_entry_catalog.dart';
 import '../../core/auth/zhengfang_auth.dart';
+import '../../core/config/feature_entry_catalog.dart';
 import '../../core/semester/semester_calendar.dart';
 import '../../core/update/update_checker.dart';
 import '../../shared/widgets/login_shell.dart';
@@ -18,6 +16,15 @@ import '../dorm_electricity/dorm_electricity_service.dart';
 import '../schedule/schedule_cache_snapshot.dart';
 import '../schedule/schedule_model.dart';
 import '../schedule/schedule_service.dart';
+import 'widgets/home_campus_card_balance_card.dart';
+import 'widgets/home_dorm_electricity_card.dart';
+import 'widgets/home_dorm_services_card.dart';
+import 'widgets/home_grades_card.dart';
+import 'widgets/home_header_card.dart';
+import 'widgets/home_header_schedule_status.dart';
+import 'widgets/home_more_services_card.dart';
+import 'widgets/home_next_course_content.dart';
+import 'widgets/home_notice_card.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -50,6 +57,8 @@ class _HomePageState extends State<HomePage> {
   bool get _isBootstrapReady =>
       _bootstrapController.phase.value.index >=
       AppBootstrapPhase.localStateReady.index;
+  bool get _canShowUpdateAction =>
+      UpdateChecker.instance.isUpdateEnabled && _hasAvailableUpdate;
 
   @override
   void initState() {
@@ -126,7 +135,7 @@ class _HomePageState extends State<HomePage> {
     await showUnifiedAuthLoginModal(
       context,
       title: '登录一卡通',
-      description: '首次使用先完成 WebVPN 登录，后续可直接进入一卡通与服务大厅',
+      description: '首次使用请在校园网环境下登录统一认证，后续可直接进入一卡通与服务大厅',
     );
   }
 
@@ -176,18 +185,16 @@ class _HomePageState extends State<HomePage> {
       for (int offset = 0; offset < 14; offset++) {
         final date = today.add(Duration(days: offset));
         final week = _weekForDate(date);
-        final effectiveCourses = ScheduleService.instance
-            .buildEffectiveWeekCourses(
-              courses: snapshot.courses,
-              week: week,
-              changeRules: snapshot.changeRules,
-            );
-        final dayCourses =
-            effectiveCourses
-                .where((c) => c.weekday == date.weekday)
-                .where((c) => offset > 0 || c.startLesson >= nextLessonToday)
-                .toList()
-              ..sort((a, b) => a.startLesson.compareTo(b.startLesson));
+        final effectiveCourses = ScheduleService.instance.buildEffectiveWeekCourses(
+          courses: snapshot.courses,
+          week: week,
+          changeRules: snapshot.changeRules,
+        );
+        final dayCourses = effectiveCourses
+            .where((c) => c.weekday == date.weekday)
+            .where((c) => offset > 0 || c.startLesson >= nextLessonToday)
+            .toList()
+          ..sort((a, b) => a.startLesson.compareTo(b.startLesson));
         if (dayCourses.isNotEmpty) {
           nextCourse = dayCourses.first;
           nextCourseLabel = _labelForDate(date, today);
@@ -316,49 +323,6 @@ class _HomePageState extends State<HomePage> {
     return '$month-$day $hour:$minute';
   }
 
-  Widget _buildHeaderScheduleStatus(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final value = _hasScheduleCache
-        ? '课表更新于${_formatScheduleUpdatedAt(_scheduleUpdatedAt)}'
-        : '未更新';
-
-    final active = _hasScheduleCache;
-    final background = isDark
-        ? (active
-              ? Colors.white.withValues(alpha: 0.12)
-              : Colors.white.withValues(alpha: 0.06))
-        : (active
-              ? AppColors.primary.withValues(alpha: 0.1)
-              : AppColors.primary.withValues(alpha: 0.05));
-    final border = isDark
-        ? (active
-              ? Colors.white.withValues(alpha: 0.18)
-              : Colors.white.withValues(alpha: 0.1))
-        : (active
-              ? AppColors.primary.withValues(alpha: 0.16)
-              : AppColors.primary.withValues(alpha: 0.08));
-    final textColor = isDark
-        ? Colors.white.withValues(alpha: active ? 0.92 : 0.72)
-        : AppColors.primary.withValues(alpha: active ? 0.9 : 0.62);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: border),
-      ),
-      child: Text(
-        value,
-        style: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w500,
-          color: textColor,
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -373,42 +337,78 @@ class _HomePageState extends State<HomePage> {
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
                 child: Align(
                   alignment: Alignment.centerLeft,
-                  child: _buildHeaderScheduleStatus(context),
+                  child: HomeHeaderScheduleStatus(
+                    hasScheduleCache: _hasScheduleCache,
+                    updatedAtText: _formatScheduleUpdatedAt(_scheduleUpdatedAt),
+                  ),
                 ),
               ),
               const SizedBox(height: 8),
               _buildHeader(context),
               const SizedBox(height: 16),
-              // Two-column staggered waterfall layout
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Left column
                     Expanded(
                       child: Column(
                         children: [
-                          _buildCampusCardBalance(context),
+                          HomeCampusCardBalanceCard(
+                            balanceText: _campusCardBalance,
+                            onTap: () async {
+                              await context.pushNamed('campus-card');
+                              if (!mounted) return;
+                              _refreshCampusCardBalance();
+                            },
+                            onPaymentTap: () async {
+                              await context.pushNamed('campus-card-payment');
+                              if (!mounted) return;
+                              _refreshCampusCardBalance();
+                            },
+                          ),
                           const SizedBox(height: 10),
-                          _buildDormElectricityCard(context),
+                          HomeDormElectricityCard(
+                            dormElectricity: _dormElectricity,
+                            onTap: () async {
+                              await context.pushNamed('dorm-electricity');
+                              if (!mounted) return;
+                              await _refreshDormElectricity();
+                            },
+                          ),
                           const SizedBox(height: 10),
                           _buildLearningServicesCard(context),
                         ],
                       ),
                     ),
                     const SizedBox(width: 12),
-                    // Right column
                     Expanded(
                       child: Column(
                         children: [
-                          _buildNoticeCard(context),
+                          HomeNoticeCard(
+                            onTap: () => context.pushNamed('notice-list'),
+                          ),
                           const SizedBox(height: 10),
-                          _buildGradesCard(context),
+                          HomeGradesCard(
+                            onTap: () => context.pushNamed('grades'),
+                          ),
                           const SizedBox(height: 10),
-                          _buildDormServicesCard(context),
+                          HomeDormServicesCard(
+                            onTap: () => context.pushNamed(
+                              'news-detail',
+                              extra: {
+                                'title': '寝室服务',
+                                'url':
+                                    'http://jdhq.wap.zjxu.edu.cn/Base/Center/center/account_id/6',
+                              },
+                            ),
+                          ),
                           const SizedBox(height: 10),
-                          _buildMoreServicesCard(context),
+                          HomeMoreServicesCard(
+                            onTap: () async {
+                              await context.pushNamed('service-hall');
+                            },
+                          ),
                         ],
                       ),
                     ),
@@ -424,121 +424,30 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildHeader(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-      child: GestureDetector(
-        onTap: () => _openSchedule(context),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFF7B1527),
-                  AppColors.primary,
-                  Color(0xFFB7485E),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Stack(
-              children: [
-                Positioned(
-                  left: -40,
-                  bottom: -48,
-                  child: Container(
-                    width: 140,
-                    height: 140,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white.withValues(alpha: 0.08),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  right: -30,
-                  top: -20,
-                  child: Opacity(
-                    opacity: 0.12,
-                    child: SvgPicture.asset(
-                      'assets/header_texture.svg',
-                      width: 200,
-                      height: 200,
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Top row: label + week + action icons
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '第 $_currentWeek 周',
-                                  style: const TextStyle(
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.w700,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  '下节课',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.white.withValues(alpha: 0.7),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          if (_hasAvailableUpdate) ...[
-                            _buildUpdateAction(context),
-                            const SizedBox(width: 12),
-                          ],
-                          IconButton(
-                            icon: const Icon(
-                              Icons.notifications_outlined,
-                              color: Colors.white,
-                              size: 22,
-                            ),
-                            onPressed: () => context.pushNamed('notice-list'),
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      // Course content + action on the same bottom line
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Expanded(child: _buildCourseContent(context)),
-                          const SizedBox(width: 8),
-                          Text(
-                            '查看课表 →',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.white.withValues(alpha: 0.5),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+    final course = _nextCourse;
+    final timeRangeText = course == null
+        ? ''
+        : ScheduleSlotTimes.timeRange(course.startLesson, course.endLesson);
+    final campus = course?.campus.trim() ?? '';
+    final classroom = course?.classroom.trim() ?? '';
+    final locationText = (campus.isEmpty && classroom.isEmpty)
+        ? '地点待定'
+        : (campus.isEmpty
+              ? classroom
+              : (classroom.isEmpty ? campus : '$campus $classroom'));
+
+    return HomeHeaderCard(
+      currentWeek: _currentWeek,
+      canShowUpdateAction: _canShowUpdateAction,
+      onTap: () => _openSchedule(context),
+      onNoticeTap: () => context.pushNamed('notice-list'),
+      updateAction: _canShowUpdateAction ? _buildUpdateAction(context) : null,
+      courseContent: HomeNextCourseContent(
+        courseLoggedIn: _courseLoggedIn,
+        nextCourse: _nextCourse,
+        nextCourseLabel: _nextCourseLabel,
+        timeRangeText: timeRangeText,
+        locationText: locationText,
       ),
     );
   }
@@ -576,445 +485,6 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildCourseContent(BuildContext context) {
-    if (!_courseLoggedIn) {
-      return Text(
-        '登录后查看课程',
-        style: const TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.bold,
-          color: Colors.white,
-        ),
-      );
-    }
-
-    if (_nextCourse == null) {
-      return Text(
-        '近期无课',
-        style: const TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.bold,
-          color: Colors.white,
-        ),
-      );
-    }
-
-    final course = _nextCourse!;
-    final time = ScheduleSlotTimes.timeRange(
-      course.startLesson,
-      course.endLesson,
-    );
-    final whenText = _nextCourseLabel.isEmpty
-        ? time
-        : '$_nextCourseLabel $time';
-    final campus = course.campus.trim();
-    final classroom = course.classroom.trim();
-    final location = (campus.isEmpty && classroom.isEmpty)
-        ? '地点待定'
-        : (campus.isEmpty
-              ? classroom
-              : (classroom.isEmpty ? campus : '$campus $classroom'));
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Transform.translate(
-          offset: const Offset(-2, -4),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
-            ),
-            child: Text(
-              course.courseName,
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.white.withValues(alpha: 0.95),
-                fontWeight: FontWeight.w500,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ),
-        const SizedBox(height: 3),
-        Row(
-          children: [
-            Icon(
-              Icons.schedule,
-              size: 14,
-              color: Colors.white.withValues(alpha: 0.8),
-            ),
-            const SizedBox(width: 4),
-            Text(
-              whenText,
-              style: TextStyle(
-                fontSize: 13,
-                color: Colors.white.withValues(alpha: 0.9),
-              ),
-            ),
-            const SizedBox(width: 4),
-            Text(
-              '第 ${course.startLesson}-${course.endLesson} 节',
-              style: TextStyle(
-                fontSize: 11,
-                color: Colors.white.withValues(alpha: 0.6),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Row(
-          children: [
-            Icon(
-              Icons.location_on_outlined,
-              size: 14,
-              color: Colors.white.withValues(alpha: 0.8),
-            ),
-            const SizedBox(width: 4),
-            Expanded(
-              child: Text(
-                location,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.white.withValues(alpha: 0.9),
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCampusCardBalance(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? cs.surfaceContainerLowest : Colors.white;
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(20),
-        onTap: () async {
-          await context.pushNamed('campus-card');
-          if (!mounted) return;
-          _refreshCampusCardBalance();
-        },
-        child: Container(
-          height: 160,
-          decoration: BoxDecoration(
-            color: bgColor,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: isDark
-                  ? cs.outline.withValues(alpha: 0.3)
-                  : cs.outline.withValues(alpha: 0.2),
-              width: 1,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          child: Stack(
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(right: 28),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '校园卡',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.primary,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    _campusCardBalance == '--'
-                        ? Text(
-                            '余额未刷新，请先登录一卡通',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: cs.onSurfaceVariant,
-                            ),
-                          )
-                        : Row(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.baseline,
-                            textBaseline: TextBaseline.alphabetic,
-                            children: [
-                              Text(
-                                _campusCardBalance,
-                                style: TextStyle(
-                                  fontSize: 32,
-                                  height: 1,
-                                  fontWeight: FontWeight.w700,
-                                  color: cs.onSurface,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                '元',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  height: 1,
-                                  fontWeight: FontWeight.w600,
-                                  color: cs.onSurface.withValues(alpha: 0.7),
-                                ),
-                              ),
-                            ],
-                          ),
-                  ],
-                ),
-              ),
-              Align(
-                alignment: Alignment.bottomLeft,
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(16),
-                    onTap: () async {
-                      await context.pushNamed('campus-card-payment');
-                      if (!mounted) return;
-                      _refreshCampusCardBalance();
-                    },
-                    child: Transform.translate(
-                      offset: const Offset(-4, 0),
-                      child: IntrinsicWidth(
-                        child: Container(
-                          height: 44,
-                          constraints: const BoxConstraints(minWidth: 80),
-                          padding: const EdgeInsets.only(left: 12, right: 14),
-                          decoration: BoxDecoration(
-                            color: AppColors.primary.withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              alignment: Alignment.centerLeft,
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                children: [
-                                  const Icon(
-                                    Icons.qr_code_2_rounded,
-                                    size: 28,
-                                    color: AppColors.primary,
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    '付款码',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      color: cs.onSurface,
-                                      height: 1.0,
-                                    ),
-                                    maxLines: 1,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              Align(
-                alignment: Alignment.bottomRight,
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 2, bottom: 4),
-                  child: Icon(
-                    Icons.arrow_forward_ios,
-                    size: 14,
-                    color: cs.onSurfaceVariant,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDormElectricityCard(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? cs.surfaceContainerLowest : Colors.white;
-
-    return GestureDetector(
-      onTap: () async {
-        await context.pushNamed('dorm-electricity');
-        if (!mounted) return;
-        await _refreshDormElectricity();
-      },
-      child: Container(
-        height: 136,
-        decoration: BoxDecoration(
-          color: bgColor,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isDark
-                ? cs.outline.withValues(alpha: 0.3)
-                : cs.outline.withValues(alpha: 0.2),
-            width: 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        child: Stack(
-          children: [
-            Align(
-              alignment: Alignment.topLeft,
-              child: Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: AppColors.success.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                child: const Icon(
-                  Icons.bolt_outlined,
-                  color: AppColors.success,
-                  size: 20,
-                ),
-              ),
-            ),
-            Align(
-              alignment: Alignment.bottomLeft,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '宿舍电费',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: cs.onSurface,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          '剩余 $_dormElectricity 度',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: cs.onSurfaceVariant,
-                          ),
-                        ),
-                      ),
-                      Icon(
-                        Icons.arrow_forward_ios,
-                        size: 14,
-                        color: cs.onSurfaceVariant,
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// 寝室服务卡片
-  Widget _buildDormServicesCard(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? cs.surfaceContainerLowest : Colors.white;
-
-    return GestureDetector(
-      onTap: () => context.pushNamed(
-        'news-detail',
-        extra: {
-          'title': '寝室服务',
-          'url': 'http://jdhq.wap.zjxu.edu.cn/Base/Center/center/account_id/6',
-        },
-      ),
-      child: Container(
-        width: double.infinity,
-        decoration: BoxDecoration(
-          color: bgColor,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isDark
-                ? cs.outline.withValues(alpha: 0.3)
-                : cs.outline.withValues(alpha: 0.2),
-            width: 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-        child: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: AppColors.success.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(
-                Icons.home_outlined,
-                color: AppColors.success,
-                size: 20,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                '寝室服务',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: cs.onSurface,
-                ),
-              ),
-            ),
-            Icon(Icons.arrow_forward_ios, size: 14, color: cs.onSurfaceVariant),
-          ],
-        ),
-      ),
     );
   }
 
@@ -1183,201 +653,6 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
             Icon(Icons.arrow_forward_ios, size: 12, color: cs.onSurfaceVariant),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNoticeCard(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? cs.surfaceContainerLowest : Colors.white;
-
-    return GestureDetector(
-      onTap: () => context.pushNamed('notice-list'),
-      child: Container(
-        decoration: BoxDecoration(
-          color: bgColor,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isDark
-                ? cs.outline.withValues(alpha: 0.3)
-                : cs.outline.withValues(alpha: 0.2),
-            width: 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        child: Row(
-          children: [
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: AppColors.gold.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(
-                Icons.campaign_outlined,
-                color: AppColors.gold,
-                size: 18,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                '校园公告',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: cs.onSurface,
-                ),
-              ),
-            ),
-            Icon(Icons.arrow_forward_ios, size: 14, color: cs.onSurfaceVariant),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildGradesCard(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? cs.surfaceContainerLowest : Colors.white;
-
-    return GestureDetector(
-      onTap: () => context.pushNamed('grades'),
-      child: Container(
-        width: double.infinity,
-        decoration: BoxDecoration(
-          color: bgColor,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isDark
-                ? cs.outline.withValues(alpha: 0.3)
-                : cs.outline.withValues(alpha: 0.2),
-            width: 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: AppColors.warning.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(
-                Icons.school_outlined,
-                color: AppColors.warning,
-                size: 22,
-              ),
-            ),
-            const SizedBox(height: 18),
-            Text(
-              '成绩查询',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: cs.onSurface,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  child: Text(
-                    '查看各科成绩与绩点',
-                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-                  ),
-                ),
-                Icon(
-                  Icons.arrow_forward_ios,
-                  size: 14,
-                  color: cs.onSurfaceVariant,
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMoreServicesCard(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? cs.surfaceContainerLowest : Colors.white;
-
-    return GestureDetector(
-      onTap: () async {
-        await context.pushNamed('service-hall');
-      },
-      child: Container(
-        width: double.infinity,
-        decoration: BoxDecoration(
-          color: bgColor,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isDark
-                ? cs.outline.withValues(alpha: 0.3)
-                : cs.outline.withValues(alpha: 0.2),
-            width: 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-        child: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: cs.primary.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(Icons.apps_rounded, color: cs.primary, size: 22),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                '更多服务',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: cs.onSurface,
-                ),
-              ),
-            ),
-            Icon(Icons.arrow_forward_ios, size: 14, color: cs.onSurfaceVariant),
           ],
         ),
       ),
