@@ -145,7 +145,6 @@ class AppFeaturesConfig {
       ),
       placements: {
         FeatureEntryPlacement.serviceHub,
-        FeatureEntryPlacement.homeLearning,
       },
       sortOrder: 50,
     ),

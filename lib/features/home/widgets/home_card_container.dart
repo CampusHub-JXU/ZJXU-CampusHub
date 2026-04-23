@@ -1,4 +1,8 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
+
+import '../home_controller.dart';
 
 class HomeCardContainer extends StatelessWidget {
   const HomeCardContainer({
@@ -20,24 +24,33 @@ class HomeCardContainer extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? cs.surfaceContainerLowest : Colors.white;
+    final glassEnabled = HomeController.instance.frostedGlassEnabled.value;
+    final radius = BorderRadius.circular(20);
+    final bgColor = glassEnabled
+        ? (isDark
+              ? cs.surfaceContainerLowest.withValues(alpha: 0.72)
+              : Colors.white.withValues(alpha: 0.58))
+        : (isDark ? cs.surfaceContainerLowest : Colors.white);
+    final borderColor = glassEnabled
+        ? (isDark
+              ? Colors.white.withValues(alpha: 0.12)
+              : Colors.white.withValues(alpha: 0.38))
+        : (isDark
+              ? cs.outline.withValues(alpha: 0.3)
+              : cs.outline.withValues(alpha: 0.2));
+
     final content = Container(
       width: width,
       height: height,
       decoration: BoxDecoration(
         color: bgColor,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isDark
-              ? cs.outline.withValues(alpha: 0.3)
-              : cs.outline.withValues(alpha: 0.2),
-          width: 1,
-        ),
+        borderRadius: radius,
+        border: Border.all(color: borderColor, width: 1),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
+            color: Colors.black.withValues(alpha: glassEnabled ? 0.08 : 0.05),
+            blurRadius: glassEnabled ? 18 : 10,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -45,16 +58,26 @@ class HomeCardContainer extends StatelessWidget {
       child: child,
     );
 
+    final decorated = glassEnabled
+        ? ClipRRect(
+            borderRadius: radius,
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+              child: content,
+            ),
+          )
+        : content;
+
     if (onTap == null) {
-      return content;
+      return decorated;
     }
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: radius,
         onTap: onTap,
-        child: content,
+        child: decorated,
       ),
     );
   }

@@ -14,12 +14,12 @@ class HomeGradesCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: HomeCardContainer(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+        child: Row(
           children: [
             Container(
-              width: 40,
-              height: 40,
+              width: 36,
+              height: 36,
               decoration: BoxDecoration(
                 color: AppColors.warning.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(10),
@@ -27,36 +27,21 @@ class HomeGradesCard extends StatelessWidget {
               child: const Icon(
                 Icons.school_outlined,
                 color: AppColors.warning,
-                size: 22,
+                size: 20,
               ),
             ),
-            const SizedBox(height: 18),
-            Text(
-              '成绩查询',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: cs.onSurface,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                '成绩查询',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: cs.onSurface,
+                ),
               ),
             ),
-            const SizedBox(height: 4),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  child: Text(
-                    '查看各科成绩与绩点',
-                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-                  ),
-                ),
-                Icon(
-                  Icons.arrow_forward_ios,
-                  size: 14,
-                  color: cs.onSurfaceVariant,
-                ),
-              ],
-            ),
+            Icon(Icons.arrow_forward_ios, size: 12, color: cs.onSurfaceVariant),
           ],
         ),
       ),
