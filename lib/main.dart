@@ -6,7 +6,10 @@ import 'package:flutter/material.dart';
 import 'app/app.dart';
 import 'app/app_bootstrap_controller.dart';
 import 'core/logging/app_logger.dart';
+import 'core/notification/app_notification_service.dart';
+import 'core/notification/background_task_service.dart';
 import 'core/shortcut/app_shortcut_service.dart';
+import 'app/routes.dart';
 
 Future<void> main() async {
   runZonedGuarded(
@@ -39,8 +42,23 @@ Future<void> main() async {
 
       await AppBootstrapController.instance.prepareForFirstFrame();
       await AppShortcutService.instance.initialize();
+      await AppNotificationService.instance.initialize();
       runApp(JXUCampusHubApp());
+      AppNotificationService.instance.onTap = (payload) {
+        if (payload == 'dorm-electricity') {
+          appRouter.goNamed('dorm-electricity');
+        }
+      };
+      // Handle cold-start from notification tap.
+      final pending = AppNotificationService.instance.pendingPayload;
+      if (pending != null) {
+        AppNotificationService.instance.clearPendingPayload();
+        if (pending == 'dorm-electricity') {
+          appRouter.goNamed('dorm-electricity');
+        }
+      }
       AppBootstrapController.instance.scheduleWarmUpAfterFirstFrame();
+      await BackgroundTaskService.instance.initialize();
     },
     (error, stackTrace) {
       AppLogger.instance.log(
