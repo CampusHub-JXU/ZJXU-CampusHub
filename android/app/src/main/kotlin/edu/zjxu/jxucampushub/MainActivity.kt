@@ -47,10 +47,8 @@ class MainActivity : FlutterActivity() {
                         result.error("invalid_args", "url is required", null)
                         return@setMethodCallHandler
                     }
-
                     result.success(openUrlInWeChat(url))
                 }
-
                 else -> result.notImplemented()
             }
         }
@@ -92,18 +90,30 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun openUrlInWeChat(url: String): Boolean {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
-            addCategory(Intent.CATEGORY_BROWSABLE)
-            setPackage("com.tencent.mm")
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        // 直接指定微信内置浏览器 Activity，绕过 intent-filter 解析问题
+        val intent = Intent().apply {
+            action = Intent.ACTION_VIEW
+            data = Uri.parse(url)
+            setClassName(
+                "com.tencent.mm",
+                "com.tencent.mm.plugin.webview.ui.tools.SDKWebViewUI",
+            )
         }
-
         return try {
             startActivity(intent)
             true
-        } catch (_: ActivityNotFoundException) {
-            false
-        } catch (_: SecurityException) {
+        } catch (e: ActivityNotFoundException) {
+            // 微信未安装或版本不兼容，回退到系统浏览器
+            android.util.Log.w("WeChat", "SDKWebViewUI not found, falling back")
+            val fallback = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+            try {
+                startActivity(fallback)
+                true
+            } catch (_: Exception) {
+                false
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("WeChat", "Failed: ${e.javaClass.simpleName}: ${e.message}")
             false
         }
     }
