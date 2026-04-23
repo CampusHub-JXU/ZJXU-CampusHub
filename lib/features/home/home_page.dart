@@ -1,9 +1,12 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/app_bootstrap_controller.dart';
+import '../../app/theme.dart';
 import '../../core/auth/unified_auth.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/config/feature_entry_catalog.dart';
@@ -16,6 +19,7 @@ import '../dorm_electricity/dorm_electricity_service.dart';
 import '../schedule/schedule_cache_snapshot.dart';
 import '../schedule/schedule_model.dart';
 import '../schedule/schedule_service.dart';
+import 'home_controller.dart';
 import 'widgets/home_campus_card_balance_card.dart';
 import 'widgets/home_dorm_electricity_card.dart';
 import 'widgets/home_dorm_services_card.dart';
@@ -326,100 +330,196 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgImagePath = HomeController.instance.backgroundImagePath.value;
     return Scaffold(
       backgroundColor: isDark ? null : const Color(0xFFF5F5F5),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: HomeHeaderScheduleStatus(
-                    hasScheduleCache: _hasScheduleCache,
-                    updatedAtText: _formatScheduleUpdatedAt(_scheduleUpdatedAt),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          _buildBackgroundLayer(context, isDark, bgImagePath),
+          SafeArea(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: HomeHeaderScheduleStatus(
+                        hasScheduleCache: _hasScheduleCache,
+                        updatedAtText: _formatScheduleUpdatedAt(_scheduleUpdatedAt),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildHeader(context),
+                  const SizedBox(height: 16),
+                  _buildDashboardSection(context, isDark),
+                  const SizedBox(height: 32),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBackgroundLayer(
+    BuildContext context,
+    bool isDark,
+    String? bgImagePath,
+  ) {
+    if (bgImagePath == null) return const SizedBox.expand();
+    return ValueListenableBuilder<bool>(
+      valueListenable: HomeController.instance.colorFilterEnabled,
+      builder: (context, filterEnabled, _) {
+        if (!filterEnabled) {
+          return Image.file(
+            File(bgImagePath),
+            fit: BoxFit.cover,
+            errorBuilder: (_, _, _) => const SizedBox.expand(),
+          );
+        }
+        return FutureBuilder<List<Color>>(
+          future: HomeController.instance.getActiveFilterColors(),
+          builder: (context, snapshot) {
+            final colors = snapshot.data ??
+                const [AppColors.primary, Colors.black, Colors.white];
+            return Stack(
+              fit: StackFit.expand,
+              children: [
+                Image.file(
+                  File(bgImagePath),
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => const SizedBox.expand(),
+                ),
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        colors[0].withValues(alpha: isDark ? 0.35 : 0.25),
+                        colors[1].withValues(alpha: isDark ? 0.30 : 0.15),
+                        colors[2].withValues(alpha: isDark ? 0.02 : 0.06),
+                      ],
+                    ),
                   ),
                 ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildDashboardSection(BuildContext context, bool isDark) {
+    final dashboard = Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            children: [
+              HomeCampusCardBalanceCard(
+                balanceText: _campusCardBalance,
+                onTap: () async {
+                  await context.pushNamed('campus-card');
+                  if (!mounted) return;
+                  _refreshCampusCardBalance();
+                },
+                onPaymentTap: () async {
+                  await context.pushNamed('campus-card-payment');
+                  if (!mounted) return;
+                  _refreshCampusCardBalance();
+                },
               ),
-              const SizedBox(height: 8),
-              _buildHeader(context),
-              const SizedBox(height: 16),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        children: [
-                          HomeCampusCardBalanceCard(
-                            balanceText: _campusCardBalance,
-                            onTap: () async {
-                              await context.pushNamed('campus-card');
-                              if (!mounted) return;
-                              _refreshCampusCardBalance();
-                            },
-                            onPaymentTap: () async {
-                              await context.pushNamed('campus-card-payment');
-                              if (!mounted) return;
-                              _refreshCampusCardBalance();
-                            },
-                          ),
-                          const SizedBox(height: 10),
-                          HomeDormElectricityCard(
-                            dormElectricity: _dormElectricity,
-                            onTap: () async {
-                              await context.pushNamed('dorm-electricity');
-                              if (!mounted) return;
-                              await _refreshDormElectricity();
-                            },
-                          ),
-                          const SizedBox(height: 10),
-                          _buildLearningServicesCard(context),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        children: [
-                          HomeNoticeCard(
-                            onTap: () => context.pushNamed('notice-list'),
-                          ),
-                          const SizedBox(height: 10),
-                          HomeGradesCard(
-                            onTap: () => context.pushNamed('grades'),
-                          ),
-                          const SizedBox(height: 10),
-                          HomeDormServicesCard(
-                            onTap: () => context.pushNamed(
-                              'news-detail',
-                              extra: {
-                                'title': '寝室服务',
-                                'url':
-                                    'http://jdhq.wap.zjxu.edu.cn/Base/Center/center/account_id/6',
-                              },
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          HomeMoreServicesCard(
-                            onTap: () async {
-                              context.goNamed('service-hub');
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+              const SizedBox(height: 10),
+              HomeDormElectricityCard(
+                dormElectricity: _dormElectricity,
+                onTap: () async {
+                  await context.pushNamed('dorm-electricity');
+                  if (!mounted) return;
+                  await _refreshDormElectricity();
+                },
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 10),
+              _buildLearningServicesCard(context),
             ],
           ),
         ),
-      ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            children: [
+              HomeNoticeCard(
+                onTap: () => context.pushNamed('notice-list'),
+              ),
+              const SizedBox(height: 10),
+              HomeGradesCard(
+                onTap: () => context.pushNamed('grades'),
+              ),
+              const SizedBox(height: 10),
+              HomeDormServicesCard(
+                onTap: () => context.pushNamed(
+                  'news-detail',
+                  extra: {
+                    'title': '寝室服务',
+                    'url':
+                        'http://jdhq.wap.zjxu.edu.cn/Base/Center/center/account_id/6',
+                  },
+                ),
+              ),
+              const SizedBox(height: 10),
+              HomeMoreServicesCard(
+                onTap: () async {
+                  context.goNamed('service-hub');
+                },
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+
+    return ValueListenableBuilder<bool>(
+      valueListenable: HomeController.instance.frostedGlassEnabled,
+      builder: (context, glassEnabled, child) {
+        if (glassEnabled) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? Colors.black.withValues(alpha: 0.20)
+                        : Colors.white.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.18),
+                      width: 1,
+                    ),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: child,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: child,
+        );
+      },
+      child: dashboard,
     );
   }
 

@@ -13,6 +13,7 @@ import '../features/campus_card/campus_card_service.dart';
 import '../features/changxing_jiada/changxing_jiada_service.dart';
 import '../features/dorm_electricity/dorm_electricity_service.dart';
 import '../features/schedule/schedule_service.dart';
+import '../features/home/home_controller.dart';
 import 'text_scale_controller.dart';
 import 'theme_mode_controller.dart';
 
@@ -39,6 +40,7 @@ class AppBootstrapController {
       TextScaleController.instance.init(),
       ThemeModeController.instance.init(),
       SemesterCalendar.instance.init(),
+      HomeController.instance.init(),
     ]);
     _prepareFuture = future;
     await future;
