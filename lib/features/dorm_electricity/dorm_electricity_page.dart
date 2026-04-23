@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/theme.dart';
+import '../../core/notification/app_notification_service.dart';
 import 'dorm_electricity_service.dart';
 
 class DormElectricityPage extends StatefulWidget {
@@ -32,6 +33,21 @@ class _DormElectricityPageState extends State<DormElectricityPage> {
         forceRefresh: forceRefresh,
       );
       _error = _service.lastError;
+
+      if (forceRefresh) {
+        await _service.checkAndAlert(
+          onAlert: ({required value, required threshold}) {
+            AppNotificationService.instance.showNotification(
+              id: 100,
+              title: '寝室电费不足',
+              body:
+                  '剩余电量 ${_service.formatElectricity(value)} 度，'
+                  '低于 ${threshold.toInt()} 度阈值，请及时充值',
+              payload: 'dorm-electricity',
+            );
+          },
+        );
+      }
     }
     if (!mounted) return;
     setState(() => _loading = false);

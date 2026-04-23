@@ -62,6 +62,9 @@ class DormElectricityService {
   static const _keyRoomId = 'dorm_room_id';
   static const _keyElectricity = 'dorm_cached_electricity';
   static const _keyElectricityUpdatedAt = 'dorm_cached_electricity_updated_at';
+  static const _keyAlertEnabled = 'dorm_alert_enabled';
+  static const _keyAlertThreshold = 'dorm_alert_threshold';
+  static const _keyAlertLastNotifiedDate = 'dorm_alert_last_notified_date';
   static const refreshWindow = Duration(minutes: 30);
   static const _requestTimeout = Duration(seconds: 12);
 
@@ -211,6 +214,67 @@ class DormElectricityService {
     await prefs.remove(_keyElectricityUpdatedAt);
     _cachedElectricity = null;
     _lastUpdated = null;
+  }
+
+  // ── 低电量预警 ──
+
+  Future<bool> getAlertEnabled() async {
+    final prefs = await _ensurePrefs();
+    return prefs.getBool(_keyAlertEnabled) ?? false;
+  }
+
+  Future<void> setAlertEnabled(bool value) async {
+    final prefs = await _ensurePrefs();
+    await prefs.setBool(_keyAlertEnabled, value);
+  }
+
+  static const double defaultAlertThreshold = 20;
+
+  Future<double> getAlertThreshold() async {
+    final prefs = await _ensurePrefs();
+    return prefs.getDouble(_keyAlertThreshold) ?? defaultAlertThreshold;
+  }
+
+  Future<void> setAlertThreshold(double value) async {
+    final prefs = await _ensurePrefs();
+    await prefs.setDouble(_keyAlertThreshold, value);
+  }
+
+  String _todayString() {
+    final now = DateTime.now();
+    return '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> checkAndAlert({
+    required void Function({
+      required double value,
+      required double threshold,
+    })
+    onAlert,
+  }) async {
+    final enabled = await getAlertEnabled();
+    if (!enabled) return;
+
+    final hasConfig = await hasRoomConfig();
+    if (!hasConfig) return;
+
+    final electricity = await fetchElectricity();
+    if (electricity == null) return;
+
+    final threshold = await getAlertThreshold();
+    if (electricity >= threshold) {
+      final prefs = await _ensurePrefs();
+      await prefs.remove(_keyAlertLastNotifiedDate);
+      return;
+    }
+
+    final prefs = await _ensurePrefs();
+    final lastNotified = prefs.getString(_keyAlertLastNotifiedDate);
+    final today = _todayString();
+    if (lastNotified == today) return;
+
+    onAlert(value: electricity, threshold: threshold);
+    await prefs.setString(_keyAlertLastNotifiedDate, today);
   }
 
   String _buildQueryUrl(DormRoomConfig config) {
