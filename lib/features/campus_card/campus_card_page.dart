@@ -6,7 +6,6 @@ import '../../core/logging/app_logger.dart';
 import '../../core/shortcut/app_shortcut_service.dart';
 import '../../shared/widgets/ship_card.dart';
 import '../../shared/widgets/unified_auth_protected_webview_page.dart';
-import 'campus_card_recharge_page.dart';
 import 'campus_card_service.dart';
 
 class CampusCardPage extends StatefulWidget {
@@ -394,8 +393,9 @@ class _CampusCardPageState extends State<CampusCardPage> {
   }
 
   Future<void> _openRechargePage() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const CampusCardRechargePage()),
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('请到微信「嘉兴大学校园卡」服务号完成充值')),
     );
   }
 
