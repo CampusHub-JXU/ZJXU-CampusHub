@@ -5,6 +5,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../app/text_scale_controller.dart';
 import '../../app/theme_mode_controller.dart';
 import '../../core/logging/app_logger.dart';
+import '../../core/notification/app_notification_service.dart';
 import '../../core/semester/semester_calendar.dart';
 import '../../core/update/update_checker.dart';
 import '../../core/update/update_model.dart';
@@ -398,6 +399,20 @@ class SettingsPage extends StatelessWidget {
                                 logConfig.copyWith(
                                   networkVerboseEnabled: value,
                                 ),
+                              );
+                            },
+                          ),
+                          const Divider(height: 1),
+                          ListTile(
+                            title: const Text('通知测试'),
+                            subtitle: const Text('发送一条本地测试通知'),
+                            trailing: const Icon(Icons.send_outlined),
+                            onTap: () {
+                              AppNotificationService.instance.showNotification(
+                                id: 999,
+                                title: '测试通知',
+                                body: '这是一条来自开发模式的测试通知，${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}',
+                                payload: 'test',
                               );
                             },
                           ),
