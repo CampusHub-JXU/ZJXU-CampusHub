@@ -3,7 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/config/feature_entry_catalog.dart';
 import '../../home/widgets/home_card_container.dart';
-import '../service_hub_page.dart';
+import '../service_hub_layout.dart';
 
 class ServiceHubCard extends StatelessWidget {
   const ServiceHubCard({

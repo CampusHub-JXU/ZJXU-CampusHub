@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../app/app_bootstrap_controller.dart';
-import '../../app/routes.dart';
 import '../logging/app_logger.dart';
 
 class AppShortcutService {
@@ -19,8 +18,12 @@ class AppShortcutService {
   bool _initialized = false;
   bool _phaseListenerRegistered = false;
   String? _pendingAction;
+  Future<void> Function(String routeName)? _navigateToNamedRoute;
 
-  Future<void> initialize() async {
+  Future<void> initialize({
+    Future<void> Function(String routeName)? navigateToNamedRoute,
+  }) async {
+    _navigateToNamedRoute = navigateToNamedRoute ?? _navigateToNamedRoute;
     if (_initialized) return;
     _initialized = true;
 
@@ -90,7 +93,10 @@ class AppShortcutService {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       switch (action) {
         case campusCardPaymentAction:
-          unawaited(appRouter.pushNamed('campus-card-payment'));
+          final navigateToNamedRoute = _navigateToNamedRoute;
+          if (navigateToNamedRoute != null) {
+            unawaited(navigateToNamedRoute('campus-card-payment'));
+          }
           break;
       }
     });

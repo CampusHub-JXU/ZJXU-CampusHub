@@ -41,7 +41,9 @@ Future<void> main() async {
       };
 
       await AppBootstrapController.instance.prepareForFirstFrame();
-      await AppShortcutService.instance.initialize();
+      await AppShortcutService.instance.initialize(
+        navigateToNamedRoute: appRouter.pushNamed,
+      );
       await AppNotificationService.instance.initialize();
       runApp(JXUCampusHubApp());
       AppNotificationService.instance.onTap = (payload) {
