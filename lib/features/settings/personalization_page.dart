@@ -203,7 +203,6 @@ class _PersonalizationPageState extends State<PersonalizationPage> {
                                 children: [
                                   HomeBackgroundLayer(
                                     path: bgPath,
-                                    useAsyncFilter: false,
                                     errorBuilder: (context) {
                                       return Container(
                                         color: Theme.of(
@@ -457,9 +456,7 @@ class _PersonalizationPageState extends State<PersonalizationPage> {
                       title: const Text('移除背景图片'),
                       onTap: () async {
                         await HomeController.instance.clearBackgroundImage();
-                        await HomeController.instance.setColorFilterEnabled(
-                          false,
-                        );
+                        await HomeController.instance.setShaderEnabled(false);
                         await AppThemeController.instance.refreshMonetSeed();
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -759,7 +756,7 @@ class _PersonalizationPageState extends State<PersonalizationPage> {
     );
   }
 
-  // --- Filter ---
+  // --- Shader ---
 
   Widget _buildFilterSection(BuildContext context, TextTheme textTheme) {
     return Card(
@@ -769,23 +766,41 @@ class _PersonalizationPageState extends State<PersonalizationPage> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 14, 12, 8),
-            child: Text('色彩滤镜', style: textTheme.titleSmall),
+            child: Row(
+              children: [
+                Text('Shader', style: textTheme.titleSmall),
+                const SizedBox(width: 8),
+                Chip(
+                  label: const Text('性能开销大'),
+                  visualDensity: VisualDensity.compact,
+                  side: BorderSide.none,
+                  backgroundColor: Theme.of(
+                    context,
+                  ).colorScheme.errorContainer.withValues(alpha: 0.72),
+                  labelStyle: TextStyle(
+                    color: Theme.of(context).colorScheme.onErrorContainer,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
           ),
           ValueListenableBuilder<bool>(
-            valueListenable: HomeController.instance.colorFilterEnabled,
-            builder: (context, filterEnabled, _) {
+            valueListenable: HomeController.instance.shaderEnabled,
+            builder: (context, shaderEnabled, _) {
               return Column(
                 children: [
                   SwitchListTile.adaptive(
-                    secondary: const Icon(Icons.color_lens_outlined),
-                    title: const Text('启用色彩滤镜'),
-                    subtitle: const Text('对背景图进行 RGB 色彩变换'),
-                    value: filterEnabled,
-                    onChanged: HomeController.instance.setColorFilterEnabled,
+                    secondary: const Icon(Icons.auto_awesome_outlined),
+                    title: const Text('启用背景 Shader'),
+                    subtitle: const Text('对背景图进行 GPU 纹理重采样与风格化渲染'),
+                    value: shaderEnabled,
+                    onChanged: HomeController.instance.setShaderEnabled,
                   ),
-                  if (filterEnabled) ...[
-                    _buildFilterModePicker(context, textTheme),
-                    _buildFilterStrengthSlider(context),
+                  if (shaderEnabled) ...[
+                    _buildShaderModePicker(context, textTheme),
+                    _buildShaderStrengthSlider(context),
+                    _buildShaderOpacitySlider(context),
                   ],
                 ],
               );
@@ -796,56 +811,68 @@ class _PersonalizationPageState extends State<PersonalizationPage> {
     );
   }
 
-  Widget _buildFilterModePicker(BuildContext context, TextTheme textTheme) {
-    return ValueListenableBuilder<HomeFilterMode>(
-      valueListenable: HomeController.instance.filterMode,
-      builder: (context, filterMode, _) {
+  Widget _buildShaderModePicker(BuildContext context, TextTheme textTheme) {
+    return ValueListenableBuilder<HomeShaderMode>(
+      valueListenable: HomeController.instance.shaderMode,
+      builder: (context, shaderMode, _) {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-              child: Text('滤镜模式', style: textTheme.bodySmall),
+              child: Text('Shader 模式', style: textTheme.bodySmall),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-              child: SegmentedButton<HomeFilterMode>(
+              child: SegmentedButton<HomeShaderMode>(
                 segments: const [
                   ButtonSegment(
-                    value: HomeFilterMode.brand,
-                    icon: Icon(Icons.palette_outlined, size: 18),
-                    label: Text('红黑白'),
+                    value: HomeShaderMode.glass,
+                    icon: Icon(Icons.blur_on_outlined, size: 18),
+                    label: Text('玻璃背景'),
                   ),
                   ButtonSegment(
-                    value: HomeFilterMode.monet,
-                    icon: Icon(Icons.auto_awesome_outlined, size: 18),
-                    label: Text('莫奈取色'),
+                    value: HomeShaderMode.ribbon,
+                    icon: Icon(Icons.waves_outlined, size: 18),
+                    label: Text('流光丝带'),
                   ),
                   ButtonSegment(
-                    value: HomeFilterMode.custom,
-                    icon: Icon(Icons.tune_outlined, size: 18),
-                    label: Text('自定义'),
+                    value: HomeShaderMode.collage,
+                    icon: Icon(Icons.auto_awesome_mosaic_outlined, size: 18),
+                    label: Text('流体纹理'),
                   ),
                 ],
-                selected: {filterMode},
+                selected: {shaderMode},
                 onSelectionChanged: (selection) {
-                  HomeController.instance.setFilterMode(selection.first);
+                  HomeController.instance.setShaderMode(selection.first);
                 },
               ),
             ),
-            if (filterMode == HomeFilterMode.monet)
-              _buildMonetColorRow(context),
-            if (filterMode == HomeFilterMode.custom)
-              _buildCustomColorRow(context),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text(
+                switch (shaderMode) {
+                  HomeShaderMode.ribbon =>
+                    '保留原始流动丝带场，用背景图纹理为丝带着色并轻微混合主题色；动画会持续占用 GPU。',
+                  HomeShaderMode.collage =>
+                    '先将背景图切成细块取样，再用流体扰动场推移块状纹理，保留原图配色并产生液态形变；动画会持续占用 GPU。',
+                  HomeShaderMode.glass =>
+                    '将背景图作为纹理输入，柔焦雾化、轻微折射并混合当前主题色，适合搭配毛玻璃卡片。',
+                },
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
           ],
         );
       },
     );
   }
 
-  Widget _buildFilterStrengthSlider(BuildContext context) {
+  Widget _buildShaderStrengthSlider(BuildContext context) {
     return ValueListenableBuilder<double>(
-      valueListenable: HomeController.instance.filterStrength,
+      valueListenable: HomeController.instance.shaderStrength,
       builder: (context, strength, _) {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -853,16 +880,16 @@ class _PersonalizationPageState extends State<PersonalizationPage> {
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
               child: Text(
-                '滤镜强度  ${(strength * 100).round()}%',
+                'Shader 强度  ${(strength * 100).round()}%',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
             Slider.adaptive(
               value: strength,
               min: 0.0,
-              max: 0.6,
-              divisions: 12,
-              onChanged: HomeController.instance.setFilterStrength,
+              max: 1.0,
+              divisions: 10,
+              onChanged: HomeController.instance.setShaderStrength,
             ),
           ],
         );
@@ -870,134 +897,31 @@ class _PersonalizationPageState extends State<PersonalizationPage> {
     );
   }
 
-  Widget _buildMonetColorRow(BuildContext context) {
-    return ValueListenableBuilder<List<Color>?>(
-      valueListenable: HomeController.instance.monetColors,
-      builder: (context, colors, _) {
-        if (colors == null) {
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  '正在从背景图提取颜色…',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          );
-        }
-
-        final extractedColors = colors.take(5).toList();
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('已提取颜色', style: Theme.of(context).textTheme.bodySmall),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  for (var i = 0; i < extractedColors.length; i++) ...[
-                    Expanded(
-                      child: Container(
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: extractedColors[i],
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.outline.withValues(alpha: 0.25),
-                          ),
-                        ),
-                      ),
-                    ),
-                    if (i < extractedColors.length - 1)
-                      const SizedBox(width: 8),
-                  ],
-                ],
+  Widget _buildShaderOpacitySlider(BuildContext context) {
+    return ValueListenableBuilder<double>(
+      valueListenable: HomeController.instance.shaderOpacity,
+      builder: (context, opacity, _) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+              child: Text(
+                'Shader 透明度  ${(opacity * 100).round()}%',
+                style: Theme.of(context).textTheme.bodySmall,
               ),
-            ],
-          ),
+            ),
+            Slider.adaptive(
+              value: opacity,
+              min: 0.0,
+              max: 1.0,
+              divisions: 20,
+              onChanged: HomeController.instance.setShaderOpacity,
+            ),
+          ],
         );
       },
     );
-  }
-
-  Widget _buildCustomColorRow(BuildContext context) {
-    return ValueListenableBuilder<List<Color>>(
-      valueListenable: HomeController.instance.customFilterColors,
-      builder: (context, colors, _) {
-        final labels = ['主色', '副色', '底色'];
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-          child: Row(
-            children: [
-              for (var i = 0; i < 3; i++) ...[
-                Expanded(
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: () => _pickCustomColor(context, i, colors),
-                    child: Container(
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: colors[i],
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.outline.withValues(alpha: 0.3),
-                        ),
-                      ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        labels[i],
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: colors[i].computeLuminance() > 0.5
-                              ? Colors.black87
-                              : Colors.white70,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                if (i < 2) const SizedBox(width: 8),
-              ],
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Future<void> _pickCustomColor(
-    BuildContext context,
-    int index,
-    List<Color> currentColors,
-  ) async {
-    final colors = List<Color>.from(currentColors);
-    final label = ['主色', '副色', '底色'][index];
-    final result = await showDialog<Color>(
-      context: context,
-      builder: (ctx) =>
-          _ColorPickerDialog(initialColor: colors[index], label: label),
-    );
-    if (result == null) return;
-    colors[index] = result;
-    await HomeController.instance.setCustomFilterColors(colors);
   }
 
   // --- Glass ---

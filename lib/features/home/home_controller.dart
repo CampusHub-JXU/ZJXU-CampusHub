@@ -5,12 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-enum HomeFilterMode {
-  brand('红黑白'),
-  monet('莫奈取色'),
-  custom('自定义');
+enum HomeShaderMode {
+  glass('玻璃背景'),
+  ribbon('流光丝带'),
+  collage('流体纹理');
 
-  const HomeFilterMode(this.label);
+  const HomeShaderMode(this.label);
   final String label;
 }
 
@@ -31,13 +31,13 @@ class HomeController {
   static final HomeController instance = HomeController._();
 
   static const _keyBackgroundPath = 'home_background_image_path';
-  static const _keyColorFilterEnabled = 'home_color_filter_enabled';
-  static const _keyFilterMode = 'home_filter_mode';
-  static const _keyCustomColor0 = 'home_custom_color_0';
-  static const _keyCustomColor1 = 'home_custom_color_1';
-  static const _keyCustomColor2 = 'home_custom_color_2';
+  static const _keyShaderEnabled = 'home_shader_enabled';
+  static const _keyLegacyColorFilterEnabled = 'home_color_filter_enabled';
+  static const _keyShaderMode = 'home_shader_mode';
   static const _keyFrostedGlass = 'home_frosted_glass_enabled';
-  static const _keyFilterStrength = 'home_filter_strength';
+  static const _keyShaderStrength = 'home_shader_strength';
+  static const _keyShaderOpacity = 'home_shader_opacity';
+  static const _keyLegacyFilterStrength = 'home_filter_strength';
   static const _keyBackgroundOpacity = 'home_background_opacity';
   static const _keyHeaderGlass = 'home_header_glass_enabled';
   static const _keyBgAlignX = 'home_background_align_x';
@@ -48,18 +48,14 @@ class HomeController {
   static const _keyGlassOpacity = 'home_glass_opacity';
 
   final ValueNotifier<String?> backgroundImagePath = ValueNotifier(null);
-  final ValueNotifier<bool> colorFilterEnabled = ValueNotifier(false);
-  final ValueNotifier<HomeFilterMode> filterMode = ValueNotifier(
-    HomeFilterMode.brand,
+  final ValueNotifier<bool> shaderEnabled = ValueNotifier(false);
+  final ValueNotifier<HomeShaderMode> shaderMode = ValueNotifier(
+    HomeShaderMode.glass,
   );
-  final ValueNotifier<List<Color>> customFilterColors = ValueNotifier([
-    const Color(0xFF8B1A2D),
-    Colors.black,
-    Colors.white,
-  ]);
   final ValueNotifier<bool> frostedGlassEnabled = ValueNotifier(false);
   final ValueNotifier<bool> headerGlassEnabled = ValueNotifier(false);
-  final ValueNotifier<double> filterStrength = ValueNotifier(0.25);
+  final ValueNotifier<double> shaderStrength = ValueNotifier(0.45);
+  final ValueNotifier<double> shaderOpacity = ValueNotifier(1.0);
   final ValueNotifier<double> backgroundOpacity = ValueNotifier(1.0);
   final ValueNotifier<Alignment> backgroundAlignment = ValueNotifier(
     Alignment.center,
@@ -80,123 +76,6 @@ class HomeController {
   /// Synchronous access to cached monet colors (null if not yet extracted).
   List<Color>? get cachedMonetColors => _monetColors;
 
-  // --- Color matrix constants ---
-
-  static const _identityMatrix = <double>[
-    1,
-    0,
-    0,
-    0,
-    0,
-    0,
-    1,
-    0,
-    0,
-    0,
-    0,
-    0,
-    1,
-    0,
-    0,
-    0,
-    0,
-    0,
-    1,
-    0,
-  ];
-
-  /// Sepia-like warm tint matrix (brand mode: 红黑白).
-  static const _brandTargetMatrix = <double>[
-    0.393,
-    0.769,
-    0.189,
-    0,
-    0,
-    0.349,
-    0.686,
-    0.168,
-    0,
-    0,
-    0.272,
-    0.534,
-    0.131,
-    0,
-    0,
-    0,
-    0,
-    0,
-    1,
-    0,
-  ];
-
-  /// Builds a monochrome tint matrix for a given color.
-  static List<double> _tintTargetMatrix(Color color) {
-    final r = color.r;
-    final g = color.g;
-    final b = color.b;
-    return [
-      0.2126 * r,
-      0.7152 * r,
-      0.0722 * r,
-      0,
-      0,
-      0.2126 * g,
-      0.7152 * g,
-      0.0722 * g,
-      0,
-      0,
-      0.2126 * b,
-      0.7152 * b,
-      0.0722 * b,
-      0,
-      0,
-      0,
-      0,
-      0,
-      1,
-      0,
-    ];
-  }
-
-  /// Lerps between identity and [target] by factor [t].
-  static List<double> _lerpMatrix(List<double> target, double t) {
-    return List<double>.generate(
-      20,
-      (i) => _identityMatrix[i] + (target[i] - _identityMatrix[i]) * t,
-    );
-  }
-
-  /// Synchronous version for UI preview — uses cached monet colors.
-  List<double> buildFilterMatrixSync(double strength) {
-    if (strength <= 0) return _identityMatrix;
-    final target = switch (filterMode.value) {
-      HomeFilterMode.brand => _brandTargetMatrix,
-      HomeFilterMode.monet => _tintTargetMatrix(
-        _monetTargetColor(cachedMonetColors ?? _defaultBrandColors()),
-      ),
-      HomeFilterMode.custom => _tintTargetMatrix(
-        customFilterColors.value.first,
-      ),
-    };
-    return _lerpMatrix(target, strength.clamp(0.0, 1.0));
-  }
-
-  /// Builds the 5×4 color matrix for the current filter settings.
-  /// [strength] controls the blend amount (0 = identity, 1 = full effect).
-  Future<List<double>> buildFilterMatrix(double strength) async {
-    if (strength <= 0) return _identityMatrix;
-    final target = switch (filterMode.value) {
-      HomeFilterMode.brand => _brandTargetMatrix,
-      HomeFilterMode.monet => _tintTargetMatrix(
-        _monetTargetColor(await getMonetColors()),
-      ),
-      HomeFilterMode.custom => _tintTargetMatrix(
-        customFilterColors.value.first,
-      ),
-    };
-    return _lerpMatrix(target, strength.clamp(0.0, 1.0));
-  }
-
   /// Returns monet-extracted colors, computing them if needed.
   Future<List<Color>> getMonetColors() async {
     final path = backgroundImagePath.value;
@@ -216,18 +95,20 @@ class HomeController {
         size: const Size(200, 200),
         maximumColorCount: 8,
       );
+      final paletteColors = palette.paletteColors.map((e) => e.color).toList();
       final dominant = palette.dominantColor?.color;
       final vibrant = palette.vibrantColor?.color;
-      final muted = palette.mutedColor?.color;
       final lightVibrant = palette.lightVibrantColor?.color;
+      final darkVibrant = palette.darkVibrantColor?.color;
       final darkMuted = palette.darkMutedColor?.color;
-      _monetColors = [
-        dominant ?? const Color(0xFF8B1A2D),
-        vibrant ?? dominant ?? const Color(0xFF8B1A2D),
-        muted ?? dominant ?? const Color(0xFF666666),
-        lightVibrant ?? muted ?? Colors.white,
-        darkMuted ?? vibrant ?? Colors.black,
-      ];
+      _monetColors = _buildExpressivePalette(
+        paletteColors: paletteColors,
+        dominant: dominant,
+        vibrant: vibrant,
+        lightVibrant: lightVibrant,
+        darkVibrant: darkVibrant,
+        darkMuted: darkMuted,
+      );
       _monetSourcePath = path;
     } catch (_) {
       _monetColors = _defaultBrandColors();
@@ -237,9 +118,120 @@ class HomeController {
     return _monetColors!;
   }
 
-  static Color _monetTargetColor(List<Color> colors) {
-    if (colors.length > 1) return colors[1];
-    return colors.first;
+  static List<Color> _buildExpressivePalette({
+    required List<Color> paletteColors,
+    required Color? dominant,
+    required Color? vibrant,
+    required Color? lightVibrant,
+    required Color? darkVibrant,
+    required Color? darkMuted,
+  }) {
+    final candidates = <Color>[
+      ...paletteColors,
+      ?dominant,
+      ?vibrant,
+      ?lightVibrant,
+      ?darkVibrant,
+      ?darkMuted,
+    ];
+    if (candidates.isEmpty) return _defaultBrandColors();
+
+    final pink = _bestColor(
+      candidates,
+      targetHue: 326,
+      fallback: vibrant ?? const Color(0xFFE94B9B),
+      preferBright: true,
+    );
+    final cyan = _bestColor(
+      candidates,
+      targetHue: 197,
+      fallback: const Color(0xFF38C7F4),
+      preferBright: true,
+    );
+    final violet = _bestColor(
+      candidates,
+      targetHue: 252,
+      fallback: dominant ?? const Color(0xFF4A3B8F),
+      preferBright: false,
+    );
+    final deep =
+        _darkestSaturated(candidates) ?? darkMuted ?? const Color(0xFF151D4F);
+    final light =
+        _lightestSaturated(candidates) ??
+        lightVibrant ??
+        const Color(0xFFF4C7E7);
+
+    return [
+      _boostColor(pink, saturationBoost: 1.18, lightnessShift: 0.03),
+      _boostColor(cyan, saturationBoost: 1.15, lightnessShift: 0.04),
+      _boostColor(violet, saturationBoost: 1.12, lightnessShift: -0.02),
+      _boostColor(light, saturationBoost: 1.08, lightnessShift: 0.02),
+      _boostColor(deep, saturationBoost: 1.12, lightnessShift: -0.04),
+    ];
+  }
+
+  static Color _bestColor(
+    List<Color> colors, {
+    required double targetHue,
+    required Color fallback,
+    required bool preferBright,
+  }) {
+    Color? best;
+    var bestScore = double.negativeInfinity;
+    for (final color in colors) {
+      final hsl = HSLColor.fromColor(color);
+      final hueDistance = ((hsl.hue - targetHue + 540.0) % 360.0 - 180.0).abs();
+      final brightnessScore = preferBright
+          ? hsl.lightness
+          : 1.0 - hsl.lightness;
+      final score =
+          hsl.saturation * 2.4 + brightnessScore * 0.7 - hueDistance / 90.0;
+      if (score > bestScore) {
+        bestScore = score;
+        best = color;
+      }
+    }
+    return best ?? fallback;
+  }
+
+  static Color? _darkestSaturated(List<Color> colors) {
+    return _rankedColor(
+      colors,
+      (hsl) => hsl.saturation * 1.4 + (1.0 - hsl.lightness),
+    );
+  }
+
+  static Color? _lightestSaturated(List<Color> colors) {
+    return _rankedColor(colors, (hsl) => hsl.saturation * 1.2 + hsl.lightness);
+  }
+
+  static Color? _rankedColor(
+    List<Color> colors,
+    double Function(HSLColor) score,
+  ) {
+    Color? best;
+    var bestScore = double.negativeInfinity;
+    for (final color in colors) {
+      final hsl = HSLColor.fromColor(color);
+      final value = score(hsl);
+      if (value > bestScore) {
+        bestScore = value;
+        best = color;
+      }
+    }
+    return best;
+  }
+
+  static Color _boostColor(
+    Color color, {
+    required double saturationBoost,
+    required double lightnessShift,
+  }) {
+    final hsl = HSLColor.fromColor(color);
+    return hsl
+        .withSaturation((hsl.saturation * saturationBoost).clamp(0.0, 1.0))
+        .withLightness((hsl.lightness + lightnessShift).clamp(0.12, 0.88))
+        .toColor();
   }
 
   static List<Color> _defaultBrandColors() => const [
@@ -247,15 +239,6 @@ class HomeController {
     Colors.black,
     Colors.white,
   ];
-
-  /// Returns the active filter gradient colors for the current mode.
-  Future<List<Color>> getActiveFilterColors() async {
-    return switch (filterMode.value) {
-      HomeFilterMode.brand => _defaultBrandColors(),
-      HomeFilterMode.monet => await getMonetColors(),
-      HomeFilterMode.custom => customFilterColors.value,
-    };
-  }
 
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
@@ -268,26 +251,30 @@ class HomeController {
       backgroundImagePath.value = null;
     }
 
-    colorFilterEnabled.value = prefs.getBool(_keyColorFilterEnabled) ?? false;
+    shaderEnabled.value =
+        prefs.getBool(_keyShaderEnabled) ??
+        prefs.getBool(_keyLegacyColorFilterEnabled) ??
+        false;
 
-    final modeIdx = prefs.getInt(_keyFilterMode);
+    final modeIdx = prefs.getInt(_keyShaderMode);
     if (modeIdx != null &&
         modeIdx >= 0 &&
-        modeIdx < HomeFilterMode.values.length) {
-      filterMode.value = HomeFilterMode.values[modeIdx];
-    }
-
-    final c0 = prefs.getInt(_keyCustomColor0);
-    final c1 = prefs.getInt(_keyCustomColor1);
-    final c2 = prefs.getInt(_keyCustomColor2);
-    if (c0 != null && c1 != null && c2 != null) {
-      customFilterColors.value = [Color(c0), Color(c1), Color(c2)];
+        modeIdx < HomeShaderMode.values.length) {
+      shaderMode.value = HomeShaderMode.values[modeIdx];
     }
 
     frostedGlassEnabled.value = prefs.getBool(_keyFrostedGlass) ?? false;
     headerGlassEnabled.value = prefs.getBool(_keyHeaderGlass) ?? false;
 
-    filterStrength.value = prefs.getDouble(_keyFilterStrength) ?? 0.25;
+    shaderStrength.value =
+        (prefs.getDouble(_keyShaderStrength) ??
+                prefs.getDouble(_keyLegacyFilterStrength) ??
+                0.45)
+            .clamp(0.0, 1.0);
+    shaderOpacity.value = (prefs.getDouble(_keyShaderOpacity) ?? 1.0).clamp(
+      0.0,
+      1.0,
+    );
     backgroundOpacity.value = prefs.getDouble(_keyBackgroundOpacity) ?? 1.0;
 
     final bgX = prefs.getDouble(_keyBgAlignX);
@@ -324,32 +311,24 @@ class HomeController {
     _monetSourcePath = null;
     monetColors.value = null;
     backgroundImagePath.value = path;
-    if (filterMode.value == HomeFilterMode.monet) {
+    if (shaderEnabled.value) {
       unawaited(getMonetColors());
     }
   }
 
-  Future<void> setColorFilterEnabled(bool enabled) async {
+  Future<void> setShaderEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_keyColorFilterEnabled, enabled);
-    colorFilterEnabled.value = enabled;
-  }
-
-  Future<void> setFilterMode(HomeFilterMode mode) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_keyFilterMode, mode.index);
-    filterMode.value = mode;
-    if (mode == HomeFilterMode.monet) {
+    await prefs.setBool(_keyShaderEnabled, enabled);
+    shaderEnabled.value = enabled;
+    if (enabled) {
       unawaited(getMonetColors());
     }
   }
 
-  Future<void> setCustomFilterColors(List<Color> colors) async {
+  Future<void> setShaderMode(HomeShaderMode mode) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_keyCustomColor0, colors[0].toARGB32());
-    await prefs.setInt(_keyCustomColor1, colors[1].toARGB32());
-    await prefs.setInt(_keyCustomColor2, colors[2].toARGB32());
-    customFilterColors.value = colors;
+    await prefs.setInt(_keyShaderMode, mode.index);
+    shaderMode.value = mode;
   }
 
   Future<void> setFrostedGlassEnabled(bool enabled) async {
@@ -364,16 +343,25 @@ class HomeController {
     headerGlassEnabled.value = enabled;
   }
 
-  Future<void> setFilterStrength(double value) async {
+  Future<void> setShaderStrength(double value) async {
+    final strength = value.clamp(0.0, 1.0);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(_keyFilterStrength, value);
-    filterStrength.value = value;
+    await prefs.setDouble(_keyShaderStrength, strength);
+    shaderStrength.value = strength;
+  }
+
+  Future<void> setShaderOpacity(double value) async {
+    final opacity = value.clamp(0.0, 1.0);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_keyShaderOpacity, opacity);
+    shaderOpacity.value = opacity;
   }
 
   Future<void> setBackgroundOpacity(double value) async {
+    final opacity = value.clamp(0.0, 1.0);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(_keyBackgroundOpacity, value);
-    backgroundOpacity.value = value;
+    await prefs.setDouble(_keyBackgroundOpacity, opacity);
+    backgroundOpacity.value = opacity;
   }
 
   Future<void> setBackgroundAlignment(Alignment alignment) async {

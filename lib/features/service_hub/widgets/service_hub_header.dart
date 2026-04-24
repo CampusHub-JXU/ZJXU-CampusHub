@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../home/widgets/home_header_schedule_status.dart';
-
 class ServiceHubHeader extends StatelessWidget {
   const ServiceHubHeader({super.key});
 
@@ -12,11 +10,6 @@ class ServiceHubHeader extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const HomeHeaderScheduleStatus(
-          hasScheduleCache: true,
-          updatedAtText: '功能页',
-        ),
-        const SizedBox(height: 10),
         Text(
           '更多服务',
           style: textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),

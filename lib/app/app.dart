@@ -41,7 +41,8 @@ class JXUCampusHubApp extends StatefulWidget {
 }
 
 class _JXUCampusHubAppState extends State<JXUCampusHubApp> {
-  static const _startupProxyWarningMessage = '检测到系统代理或 VPN，部分校务功能可能异常';
+  static const _startupProxyWarningMessage =
+      '检测到系统代理或 VPN/TUN；若校务功能异常，请排除本 App 或将 *.zjxu.edu.cn 设为 DIRECT';
 
   final _themeModeController = ThemeModeController.instance;
   final _appThemeController = AppThemeController.instance;

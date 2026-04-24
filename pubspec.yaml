@@ -46,3 +46,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/
+  shaders:
+    - shaders/home_glass_background.frag
+    - shaders/home_ribbon_background.frag
+    - shaders/home_collage_background.frag

@@ -216,7 +216,7 @@ class SettingsPage extends StatelessWidget {
             child: ListTile(
               leading: const Icon(Icons.palette_outlined),
               title: const Text('首页个性化'),
-              subtitle: const Text('背景图片、色彩滤镜、毛玻璃效果'),
+              subtitle: const Text('背景图片、Shader、毛玻璃效果'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => context.pushNamed('personalization'),
             ),

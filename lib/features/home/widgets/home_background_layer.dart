@@ -2,7 +2,9 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../../../app/app_theme_controller.dart';
 import '../home_controller.dart';
+import 'home_glass_background_filter.dart';
 
 class HomeBackgroundLayer extends StatelessWidget {
   const HomeBackgroundLayer({
@@ -19,8 +21,8 @@ class HomeBackgroundLayer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<bool>(
-      valueListenable: HomeController.instance.colorFilterEnabled,
-      builder: (context, filterEnabled, _) {
+      valueListenable: HomeController.instance.shaderEnabled,
+      builder: (context, shaderEnabled, _) {
         return ValueListenableBuilder<double>(
           valueListenable: HomeController.instance.backgroundOpacity,
           builder: (context, opacity, _) {
@@ -39,47 +41,44 @@ class HomeBackgroundLayer extends StatelessWidget {
                           fit,
                           scale,
                         );
-                        if (!filterEnabled) {
+                        if (!shaderEnabled || !useAsyncFilter) {
                           return Opacity(opacity: opacity, child: image);
-                        }
-                        if (!useAsyncFilter) {
-                          final matrix = HomeController.instance
-                              .buildFilterMatrixSync(
-                                HomeController.instance.filterStrength.value,
-                              );
-                          return Opacity(
-                            opacity: opacity,
-                            child: ColorFiltered(
-                              colorFilter: ColorFilter.matrix(matrix),
-                              child: image,
-                            ),
-                          );
                         }
                         return ValueListenableBuilder<double>(
                           valueListenable:
-                              HomeController.instance.filterStrength,
+                              HomeController.instance.shaderStrength,
                           builder: (context, strength, _) {
-                            return ValueListenableBuilder<HomeFilterMode>(
+                            return ValueListenableBuilder<List<Color>?>(
                               valueListenable:
-                                  HomeController.instance.filterMode,
-                              builder: (context, mode, _) {
-                                return FutureBuilder<List<double>>(
-                                  future: HomeController.instance
-                                      .buildFilterMatrix(strength),
-                                  builder: (context, snapshot) {
-                                    final matrix = snapshot.data;
-                                    if (matrix == null) {
-                                      return Opacity(
-                                        opacity: opacity,
-                                        child: image,
-                                      );
-                                    }
-                                    return Opacity(
-                                      opacity: opacity,
-                                      child: ColorFiltered(
-                                        colorFilter: ColorFilter.matrix(matrix),
-                                        child: image,
-                                      ),
+                                  HomeController.instance.monetColors,
+                              builder: (context, monetColors, _) {
+                                return ValueListenableBuilder<double>(
+                                  valueListenable:
+                                      HomeController.instance.shaderOpacity,
+                                  builder: (context, shaderOpacity, _) {
+                                    return ValueListenableBuilder<
+                                      HomeShaderMode
+                                    >(
+                                      valueListenable:
+                                          HomeController.instance.shaderMode,
+                                      builder: (context, mode, _) {
+                                        final themeColor = AppThemeController
+                                            .instance
+                                            .seedColor
+                                            .value;
+                                        return HomeGlassBackgroundFilter(
+                                          mode: mode,
+                                          intensity: strength.clamp(0.0, 1.0),
+                                          levels: 14.0 - strength * 4.0,
+                                          themeColor: themeColor,
+                                          monetColors: monetColors,
+                                          isDarkMode:
+                                              Theme.of(context).brightness ==
+                                              Brightness.dark,
+                                          opacity: shaderOpacity,
+                                          child: image,
+                                        );
+                                      },
                                     );
                                   },
                                 );

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io' as io;
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -169,6 +170,9 @@ class UnifiedAuthService extends ChangeNotifier {
   bool _sessionActive = false;
   String? currentAccount;
   Future<void>? _cookieSyncFuture;
+  Future<bool?>? _sessionValidationFuture;
+  String? _sessionValidationServiceUrl;
+  bool _sessionValidationSyncWebViewCookies = false;
 
   bool get isLoggedIn => _sessionActive;
 
@@ -181,9 +185,29 @@ class UnifiedAuthService extends ChangeNotifier {
   Future<bool?> validateSession({
     String serviceUrl = defaultServiceUrl,
     bool syncWebViewCookies = true,
-  }) async {
-    if (!_sessionActive) return false;
+  }) {
+    if (!_sessionActive) return Future.value(false);
 
+    final existing = _sessionValidationFuture;
+    if (existing != null && _sessionValidationServiceUrl == serviceUrl) {
+      _sessionValidationSyncWebViewCookies |= syncWebViewCookies;
+      return existing;
+    }
+
+    _sessionValidationServiceUrl = serviceUrl;
+    _sessionValidationSyncWebViewCookies = syncWebViewCookies;
+    final future = _validateSessionInner(serviceUrl: serviceUrl);
+    _sessionValidationFuture = future;
+    return future.whenComplete(() {
+      if (identical(_sessionValidationFuture, future)) {
+        _sessionValidationFuture = null;
+        _sessionValidationServiceUrl = null;
+        _sessionValidationSyncWebViewCookies = false;
+      }
+    });
+  }
+
+  Future<bool?> _validateSessionInner({required String serviceUrl}) async {
     final validator = debugSessionValidator;
     if (validator != null) {
       final result = await validator(serviceUrl);
@@ -237,7 +261,7 @@ class UnifiedAuthService extends ChangeNotifier {
       if (currentAccount != null) {
         await CredentialStore.instance.saveUnifiedAuthSession(currentAccount!);
       }
-      if (syncWebViewCookies) {
+      if (_sessionValidationSyncWebViewCookies) {
         unawaited(_syncCookiesToWebViewSafely());
       }
       if (!wasSessionActive) {
@@ -245,14 +269,26 @@ class UnifiedAuthService extends ChangeNotifier {
       }
       return true;
     } on DioException catch (error) {
+      final vpnHint = await _buildVpnTroubleshootingHint();
       AppLogger.instance.auth(
         LogLevel.error,
-        '统一认证会话校验失败: ${error.type} ${error.message}',
+        '统一认证会话校验失败: ${error.type} ${error.message}$vpnHint',
       );
       return null;
     } catch (error) {
-      AppLogger.instance.auth(LogLevel.error, '统一认证会话校验异常: $error');
+      final vpnHint = await _buildVpnTroubleshootingHint();
+      AppLogger.instance.auth(LogLevel.error, '统一认证会话校验异常: $error$vpnHint');
       return null;
+    }
+  }
+
+  Future<String> _buildVpnTroubleshootingHint() async {
+    try {
+      final results = await Connectivity().checkConnectivity();
+      if (!results.contains(ConnectivityResult.vpn)) return '';
+      return '。检测到 VPN/TUN，请在 Mihomo 中排除 edu.zjxu.jxucampushub，或将 *.zjxu.edu.cn 设为 DIRECT';
+    } catch (_) {
+      return '';
     }
   }
 
