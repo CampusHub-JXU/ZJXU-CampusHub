@@ -30,21 +30,28 @@ class HomeHeaderCard extends StatelessWidget {
     return ValueListenableBuilder<bool>(
       valueListenable: HomeController.instance.headerGlassEnabled,
       builder: (context, glassEnabled, _) {
-        return ValueListenableBuilder<double>(
-          valueListenable: HomeController.instance.glassBlur,
-          builder: (context, glassBlur, _) {
+        return ValueListenableBuilder<String?>(
+          valueListenable: HomeController.instance.backgroundImagePath,
+          builder: (context, backgroundPath, _) {
+            final effectiveGlassEnabled =
+                glassEnabled && backgroundPath != null;
             return ValueListenableBuilder<double>(
-              valueListenable: HomeController.instance.glassOpacity,
-              builder: (context, glassOpacity, _) {
-                return ValueListenableBuilder<HomeTextColorMode>(
-                  valueListenable:
-                      AppThemeController.instance.homeTextColorMode,
-                  builder: (context, _, _) {
-                    return _buildWrapper(
-                      context,
-                      glassEnabled,
-                      glassBlur,
-                      glassOpacity,
+              valueListenable: HomeController.instance.glassBlur,
+              builder: (context, glassBlur, _) {
+                return ValueListenableBuilder<double>(
+                  valueListenable: HomeController.instance.glassOpacity,
+                  builder: (context, glassOpacity, _) {
+                    return ValueListenableBuilder<HomeTextColorMode>(
+                      valueListenable:
+                          AppThemeController.instance.homeTextColorMode,
+                      builder: (context, _, _) {
+                        return _buildWrapper(
+                          context,
+                          effectiveGlassEnabled,
+                          glassBlur,
+                          glassOpacity,
+                        );
+                      },
                     );
                   },
                 );
@@ -99,7 +106,7 @@ class HomeHeaderCard extends StatelessWidget {
     required double glassOpacity,
     required BorderRadius radius,
   }) {
-    final headerAlpha = (glassOpacity * 0.88).clamp(0.58, 0.88);
+    final headerAlpha = (glassOpacity * 0.68).clamp(0.42, 0.66);
     final themeController = AppThemeController.instance;
     final headerBaseColor =
         themeController.seedMode.value == AppThemeSeedMode.monet
@@ -107,8 +114,8 @@ class HomeHeaderCard extends StatelessWidget {
         : AppColors.primary;
     final headerDarkColor = _shiftHeaderColor(
       headerBaseColor,
-      saturationBoost: 1.12,
-      lightnessShift: -0.18,
+      saturationBoost: 1.08,
+      lightnessShift: -0.10,
     );
     final headerLightColor = _shiftHeaderColor(
       headerBaseColor,
@@ -142,10 +149,10 @@ class HomeHeaderCard extends StatelessWidget {
                 headerDarkColor.withValues(alpha: headerAlpha),
                 _shiftHeaderColor(
                   headerBaseColor,
-                  saturationBoost: 1.10,
-                  lightnessShift: -0.08,
-                ).withValues(alpha: headerAlpha * 0.96),
-                headerBaseColor.withValues(alpha: headerAlpha * 0.90),
+                  saturationBoost: 1.00,
+                  lightnessShift: -0.03,
+                ).withValues(alpha: headerAlpha * 0.88),
+                headerLightColor.withValues(alpha: headerAlpha * 0.78),
               ],
             ),
             borderRadius: radius,
@@ -202,9 +209,9 @@ class HomeHeaderCard extends StatelessWidget {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      Colors.white.withValues(alpha: 0.055),
-                      headerBaseColor.withValues(alpha: 0.08),
-                      headerDarkColor.withValues(alpha: 0.04),
+                      Colors.white.withValues(alpha: 0.13),
+                      headerLightColor.withValues(alpha: 0.06),
+                      Colors.transparent,
                     ],
                   ),
                 ),
