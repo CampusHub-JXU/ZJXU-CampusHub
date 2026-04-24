@@ -18,7 +18,6 @@ class ScheduleGrid extends StatelessWidget {
   final int actualCurrentWeek;
   int get currentWeek => weekViewModel.week;
 
-
   static const _courseColors = [
     Color(0xFF8B1A2D),
     Color(0xFF1565C0),
@@ -124,7 +123,8 @@ class ScheduleGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final dayColumnWidth = (constraints.maxWidth - scheduleGridSlotColumnWidth) / 7;
+        final dayColumnWidth =
+            (constraints.maxWidth - scheduleGridSlotColumnWidth) / 7;
 
         return Column(
           children: [
@@ -140,7 +140,9 @@ class ScheduleGrid extends StatelessWidget {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    ScheduleSlotColumn(slotColumnWidth: scheduleGridSlotColumnWidth),
+                    ScheduleSlotColumn(
+                      slotColumnWidth: scheduleGridSlotColumnWidth,
+                    ),
                     for (int day = 1; day <= 7; day++)
                       RepaintBoundary(
                         child: _DayColumn(
@@ -326,7 +328,10 @@ class _DayColumn extends StatelessWidget {
           (assignment.entry.course.endLesson -
                   assignment.entry.course.startLesson +
                   1)
-              .clamp(1, scheduleSlotCount - assignment.entry.course.startLesson + 1);
+              .clamp(
+                1,
+                scheduleSlotCount - assignment.entry.course.startLesson + 1,
+              );
 
       return _PlacedCourse(
         entry: assignment.entry,

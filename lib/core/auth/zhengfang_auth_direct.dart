@@ -245,8 +245,12 @@ extension ZhengfangAuthDirectExtension on ZhengfangAuth {
       Uri.parse('$ZhengfangAuth._directOrigin/'),
       Uri.parse('$ZhengfangAuth._directOrigin$ZhengfangAuth._directLoginPath'),
       Uri.parse('$ZhengfangAuth._directBase/'),
-      Uri.parse('${ZhengfangAuth._directOrigin}/jwglxt/xtgl/index_initMenu.html?jsdm=xs'),
-      Uri.parse('$ZhengfangAuth._webVpnBase$ZhengfangAuth._webVpnJwglxtPrefix/'),
+      Uri.parse(
+        '${ZhengfangAuth._directOrigin}/jwglxt/xtgl/index_initMenu.html?jsdm=xs',
+      ),
+      Uri.parse(
+        '$ZhengfangAuth._webVpnBase$ZhengfangAuth._webVpnJwglxtPrefix/',
+      ),
       Uri.parse(_loginPageUrl),
     ];
 

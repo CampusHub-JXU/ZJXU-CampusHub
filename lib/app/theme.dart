@@ -33,44 +33,28 @@ class AppTheme {
   // ── Cached Themes ────────────────────────────────────────────────────────
   // Pre-computed once; avoids rebuilding ThemeData + ColorScheme on every toggle.
 
-  static final ThemeData lightTheme = _buildLightTheme();
-  static final ThemeData darkTheme = _buildDarkTheme();
+  static final ThemeData lightTheme = lightThemeFor(AppColors.primary);
+  static final ThemeData darkTheme = darkThemeFor(AppColors.primary);
 
-  static ThemeData _buildLightTheme() {
-    final colorScheme = ColorScheme(
-      brightness: Brightness.light,
-      primary: AppColors.primary,
-      onPrimary: Colors.white,
-      primaryContainer: AppColors.primaryLight,
-      onPrimaryContainer: Colors.white,
-      secondary: AppColors.gold,
-      onSecondary: Colors.white,
-      secondaryContainer: const Color(0xFFF5E6B8),
-      onSecondaryContainer: const Color(0xFF5C4A00),
-      tertiary: AppColors.info,
-      onTertiary: Colors.white,
-      tertiaryContainer: const Color(0xFFD1E4FF),
-      onTertiaryContainer: const Color(0xFF001D36),
-      error: AppColors.error,
-      onError: Colors.white,
-      errorContainer: const Color(0xFFFFDAD6),
-      onErrorContainer: const Color(0xFF410002),
-      surface: AppColors.surfaceL1,
-      onSurface: const Color(0xFF1C1B1F),
-      onSurfaceVariant: const Color(0xFF49454F),
-      outline: const Color(0xFF79747E),
-      outlineVariant: const Color(0xFFCAC4D0),
-      inverseSurface: const Color(0xFF313033),
-      onInverseSurface: const Color(0xFFF4EFF4),
-      inversePrimary: AppColors.primaryLight,
-      shadow: Colors.black,
-      scrim: Colors.black,
-      surfaceContainerHighest: AppColors.surfaceL3,
-      surfaceContainerHigh: AppColors.surfaceL2,
-      surfaceContainer: AppColors.surfaceL2,
-      surfaceContainerLow: AppColors.surfaceL2,
-      surfaceContainerLowest: AppColors.surfaceL3,
-    );
+  static ThemeData lightThemeFor(Color seedColor) =>
+      _buildLightTheme(seedColor);
+
+  static ThemeData darkThemeFor(Color seedColor) => _buildDarkTheme(seedColor);
+
+  static ThemeData _buildLightTheme(Color seedColor) {
+    final colorScheme =
+        ColorScheme.fromSeed(
+          seedColor: seedColor,
+          brightness: Brightness.light,
+        ).copyWith(
+          primary: seedColor,
+          surface: AppColors.surfaceL1,
+          surfaceContainerHighest: AppColors.surfaceL3,
+          surfaceContainerHigh: AppColors.surfaceL2,
+          surfaceContainer: AppColors.surfaceL2,
+          surfaceContainerLow: AppColors.surfaceL2,
+          surfaceContainerLowest: AppColors.surfaceL3,
+        );
 
     return ThemeData(
       useMaterial3: true,
@@ -85,11 +69,11 @@ class AppTheme {
         scrolledUnderElevation: 2,
         backgroundColor: AppColors.surfaceL1,
         foregroundColor: colorScheme.onSurface,
-        surfaceTintColor: AppColors.primary,
-        titleTextStyle: const TextStyle(
+        surfaceTintColor: colorScheme.primary,
+        titleTextStyle: TextStyle(
           fontSize: 20,
           fontWeight: FontWeight.w600,
-          color: Color(0xFF1C1B1F),
+          color: colorScheme.onSurface,
         ),
       ),
 
@@ -104,8 +88,8 @@ class AppTheme {
       // FilledButton
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: AppColors.primary,
-          foregroundColor: Colors.white,
+          backgroundColor: colorScheme.primary,
+          foregroundColor: colorScheme.onPrimary,
           shape: const StadiumBorder(),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
           textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
@@ -115,8 +99,8 @@ class AppTheme {
       // OutlinedButton
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.primary,
-          side: const BorderSide(color: AppColors.primary),
+          foregroundColor: colorScheme.primary,
+          side: BorderSide(color: colorScheme.primary),
           shape: const StadiumBorder(),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
         ),
@@ -125,7 +109,7 @@ class AppTheme {
       // TextButton
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: AppColors.primary,
+          foregroundColor: colorScheme.primary,
           textStyle: const TextStyle(fontWeight: FontWeight.w600),
         ),
       ),
@@ -144,7 +128,7 @@ class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.gold, width: 2),
+          borderSide: BorderSide(color: colorScheme.primary, width: 2),
         ),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
@@ -163,20 +147,20 @@ class AppTheme {
       // NavigationBar
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: AppColors.surfaceL3,
-        indicatorColor: AppColors.primary.withValues(alpha: 0.12),
+        indicatorColor: colorScheme.primary.withValues(alpha: 0.12),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return const TextStyle(
+            return TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: AppColors.primary,
+              color: colorScheme.primary,
             );
           }
           return const TextStyle(fontSize: 12);
         }),
         iconTheme: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return const IconThemeData(color: AppColors.primary);
+            return IconThemeData(color: colorScheme.primary);
           }
           return IconThemeData(color: colorScheme.onSurfaceVariant);
         }),
@@ -192,15 +176,15 @@ class AppTheme {
       // Chip
       chipTheme: ChipThemeData(
         backgroundColor: AppColors.surfaceL2,
-        selectedColor: AppColors.primary.withValues(alpha: 0.12),
+        selectedColor: colorScheme.primary.withValues(alpha: 0.12),
         labelStyle: const TextStyle(fontSize: 13),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         side: BorderSide.none,
       ),
 
       // ProgressIndicator
-      progressIndicatorTheme: const ProgressIndicatorThemeData(
-        color: AppColors.primary,
+      progressIndicatorTheme: ProgressIndicatorThemeData(
+        color: colorScheme.primary,
       ),
 
       // SnackBar
@@ -216,49 +200,24 @@ class AppTheme {
   // ── Dark Theme ───────────────────────────────────────────────────────────
 
   // Pre-computed colors to avoid repeated withValues() allocations.
-  static const Color _darkPrimary = Color(0xFFB85C6E);
   static final _darkAppBarBg = AppColors.darkSurface.withValues(alpha: 0.8);
   static final _darkNavBg = AppColors.darkSurface.withValues(alpha: 0.8);
-  static final _darkNavIndicator = _darkPrimary.withValues(alpha: 0.2);
   static final _darkDivider = Colors.white.withValues(alpha: 0.08);
-  static final _darkChipSelected = _darkPrimary.withValues(alpha: 0.2);
   static final _darkCardBorder = Colors.white.withValues(alpha: 0.08);
 
-  static ThemeData _buildDarkTheme() {
-    final colorScheme = ColorScheme(
-      brightness: Brightness.dark,
-      primary: _darkPrimary,
-      onPrimary: Colors.white,
-      primaryContainer: AppColors.primaryLight,
-      onPrimaryContainer: const Color(0xFFFFDAD9),
-      secondary: AppColors.gold,
-      onSecondary: Colors.white,
-      secondaryContainer: const Color(0xFF5C4A00),
-      onSecondaryContainer: const Color(0xFFF5E6B8),
-      tertiary: const Color(0xFF9ECAFF),
-      onTertiary: const Color(0xFF003258),
-      tertiaryContainer: const Color(0xFF00497D),
-      onTertiaryContainer: const Color(0xFFD1E4FF),
-      error: const Color(0xFFFFB4AB),
-      onError: const Color(0xFF690005),
-      errorContainer: const Color(0xFF93000A),
-      onErrorContainer: const Color(0xFFFFDAD6),
-      surface: AppColors.darkSurface,
-      onSurface: const Color(0xFFE6E1E5),
-      onSurfaceVariant: const Color(0xFFCAC4D0),
-      outline: const Color(0xFF938F99),
-      outlineVariant: const Color(0xFF49454F),
-      inverseSurface: const Color(0xFFE6E1E5),
-      onInverseSurface: const Color(0xFF313033),
-      inversePrimary: AppColors.primary,
-      shadow: Colors.black,
-      scrim: Colors.black,
-      surfaceContainerHighest: const Color(0xFF3D2E33),
-      surfaceContainerHigh: const Color(0xFF35272C),
-      surfaceContainer: const Color(0xFF2D1F23),
-      surfaceContainerLow: const Color(0xFF251A1E),
-      surfaceContainerLowest: const Color(0xFF1A1214),
-    );
+  static ThemeData _buildDarkTheme(Color seedColor) {
+    final colorScheme =
+        ColorScheme.fromSeed(
+          seedColor: seedColor,
+          brightness: Brightness.dark,
+        ).copyWith(
+          surface: AppColors.darkSurface,
+          surfaceContainerHighest: const Color(0xFF3D2E33),
+          surfaceContainerHigh: const Color(0xFF35272C),
+          surfaceContainer: const Color(0xFF2D1F23),
+          surfaceContainerLow: const Color(0xFF251A1E),
+          surfaceContainerLowest: const Color(0xFF1A1214),
+        );
 
     return ThemeData(
       useMaterial3: true,
@@ -292,8 +251,8 @@ class AppTheme {
 
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: _darkPrimary,
-          foregroundColor: Colors.white,
+          backgroundColor: colorScheme.primary,
+          foregroundColor: colorScheme.onPrimary,
           shape: const StadiumBorder(),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
           textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
@@ -302,8 +261,8 @@ class AppTheme {
 
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: _darkPrimary,
-          side: const BorderSide(color: _darkPrimary),
+          foregroundColor: colorScheme.primary,
+          side: BorderSide(color: colorScheme.primary),
           shape: const StadiumBorder(),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
         ),
@@ -311,7 +270,7 @@ class AppTheme {
 
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: _darkPrimary,
+          foregroundColor: colorScheme.primary,
           textStyle: const TextStyle(fontWeight: FontWeight.w600),
         ),
       ),
@@ -329,7 +288,7 @@ class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.gold, width: 2),
+          borderSide: BorderSide(color: colorScheme.primary, width: 2),
         ),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
@@ -346,20 +305,20 @@ class AppTheme {
 
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: _darkNavBg,
-        indicatorColor: _darkNavIndicator,
+        indicatorColor: colorScheme.primary.withValues(alpha: 0.2),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return const TextStyle(
+            return TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: _darkPrimary,
+              color: colorScheme.primary,
             );
           }
           return const TextStyle(fontSize: 12, color: Color(0xFFCAC4D0));
         }),
         iconTheme: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return const IconThemeData(color: _darkPrimary);
+            return IconThemeData(color: colorScheme.primary);
           }
           return const IconThemeData(color: Color(0xFF938F99));
         }),
@@ -373,14 +332,14 @@ class AppTheme {
 
       chipTheme: ChipThemeData(
         backgroundColor: const Color(0xFF35272C),
-        selectedColor: _darkChipSelected,
+        selectedColor: colorScheme.primary.withValues(alpha: 0.2),
         labelStyle: const TextStyle(fontSize: 13, color: Color(0xFFE6E1E5)),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         side: BorderSide.none,
       ),
 
-      progressIndicatorTheme: const ProgressIndicatorThemeData(
-        color: _darkPrimary,
+      progressIndicatorTheme: ProgressIndicatorThemeData(
+        color: colorScheme.primary,
       ),
 
       snackBarTheme: SnackBarThemeData(

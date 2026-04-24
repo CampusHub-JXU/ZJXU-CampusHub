@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../app/app_theme_controller.dart';
 import '../../app/theme.dart';
 import '../../core/auth/unified_auth.dart';
 import '../../core/auth/zhengfang_auth.dart';
@@ -172,6 +173,14 @@ class _MyPageState extends State<MyPage> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final accountIconColor = AppThemeController.instance.resolveIconColor(
+      context,
+      AppColors.primary,
+    );
+    final academicIconColor = AppThemeController.instance.resolveIconColor(
+      context,
+      AppColors.info,
+    );
     return Scaffold(
       appBar: AppBar(title: const Text('我的')),
       body: ListView(
@@ -185,12 +194,12 @@ class _MyPageState extends State<MyPage> {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.12),
+                    color: accountIconColor.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.account_circle_outlined,
-                    color: AppColors.primary,
+                    color: accountIconColor,
                     size: 22,
                   ),
                 ),
@@ -224,7 +233,7 @@ class _MyPageState extends State<MyPage> {
           const SizedBox(height: 14),
           _AccountStatusCard(
             icon: Icons.account_balance_wallet_outlined,
-            iconColor: AppColors.primary,
+            iconColor: accountIconColor,
             title: '统一认证（含一卡通）',
             subtitle: _campusSubtitle(),
             primaryActionLabel: '登录',
@@ -237,7 +246,7 @@ class _MyPageState extends State<MyPage> {
           const SizedBox(height: 12),
           _AccountStatusCard(
             icon: Icons.school_outlined,
-            iconColor: AppColors.info,
+            iconColor: academicIconColor,
             title: '教务系统',
             subtitle: _academicSubtitle(),
             primaryActionLabel: '登录',

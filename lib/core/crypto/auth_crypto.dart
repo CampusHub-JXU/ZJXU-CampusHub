@@ -35,7 +35,11 @@ class AuthCrypto {
       ..init(true, ParametersWithIV(KeyParameter(keyBytes), ivBytes));
 
     final output = Uint8List(paddedInput.length);
-    for (var offset = 0; offset < paddedInput.length; offset += AuthCryptoConfig.aesBlockSize) {
+    for (
+      var offset = 0;
+      offset < paddedInput.length;
+      offset += AuthCryptoConfig.aesBlockSize
+    ) {
       cipher.processBlock(paddedInput, offset, output, offset);
     }
 

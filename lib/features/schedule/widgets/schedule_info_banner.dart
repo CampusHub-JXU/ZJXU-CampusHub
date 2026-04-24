@@ -46,4 +46,3 @@ class ScheduleInfoBanner extends StatelessWidget {
     return '$month-$day $hour:$minute';
   }
 }
-

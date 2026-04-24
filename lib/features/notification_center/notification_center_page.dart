@@ -45,10 +45,7 @@ class _NotificationCenterPageState extends State<NotificationCenterPage>
       ),
       body: TabBarView(
         controller: _tabController,
-        children: const [
-          _CampusNoticeTab(),
-          _PracticeNoticeTab(),
-        ],
+        children: const [_CampusNoticeTab(), _PracticeNoticeTab()],
       ),
     );
   }
@@ -137,8 +134,9 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
           return _buildNoticeTile(
             context,
             tag: notice.category,
-            tagColor:
-                notice.category == '通知公告' ? const Color(0xFF1565C0) : Colors.red,
+            tagColor: notice.category == '通知公告'
+                ? const Color(0xFF1565C0)
+                : Colors.red,
             title: notice.title,
             date: notice.date,
             onTap: () => context.pushNamed(
@@ -147,8 +145,9 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
                 'title': notice.title,
                 'url': notice.url,
                 'emulateDingTalkEnvironment': false,
-                'requireUnifiedAuthProtection':
-                    _shouldOpenViaUnifiedAuth(notice.url),
+                'requireUnifiedAuthProtection': _shouldOpenViaUnifiedAuth(
+                  notice.url,
+                ),
                 'serviceUrl': notice.url,
                 'loginDescription': '通知公告可直连访问，但需先完成统一认证',
                 'showWebViewBottomBackButton': true,
@@ -239,7 +238,9 @@ class _PracticeNoticeTabState extends State<_PracticeNoticeTab>
           return _buildNoticeTile(
             context,
             tag: notice.category,
-            tagColor: colorValue != null ? Color(colorValue) : const Color(0xFF757575),
+            tagColor: colorValue != null
+                ? Color(colorValue)
+                : const Color(0xFF757575),
             title: notice.title,
             date: notice.date,
             onTap: () => context.pushNamed(

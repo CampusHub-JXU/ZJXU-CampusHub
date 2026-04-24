@@ -39,7 +39,8 @@ class SchedulePageController extends ChangeNotifier {
   int get displayWeek => _displayWeek;
   DateTime? get scheduleUpdatedAt => _scheduleUpdatedAt;
   int get currentWeek => SemesterCalendar.instance.weekForDate(DateTime.now());
-  ScheduleTermContext get activeTermContext => _termContext.copyWith(term: _term);
+  ScheduleTermContext get activeTermContext =>
+      _termContext.copyWith(term: _term);
 
   void updateLoggedIn(bool loggedIn) {
     if (_loggedIn == loggedIn) return;
@@ -153,11 +154,12 @@ class SchedulePageController extends ChangeNotifier {
   }
 
   ScheduleWeekViewModel _buildWeekViewModel(int week) {
-    final effectiveWeekCourses = ScheduleService.instance.buildEffectiveWeekCourses(
-      courses: _courses,
-      week: week,
-      changeRules: _courseChangeRules,
-    );
+    final effectiveWeekCourses = ScheduleService.instance
+        .buildEffectiveWeekCourses(
+          courses: _courses,
+          week: week,
+          changeRules: _courseChangeRules,
+        );
 
     final currentWeekCoursesByDay = <int, List<CourseEntry>>{
       for (int day = 1; day <= 7; day++) day: <CourseEntry>[],

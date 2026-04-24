@@ -87,13 +87,13 @@ void main() {
     expect(looksLikeSjjxResponseNeedsUnifiedAuth(response), isFalse);
   });
 
-  test('treats webvpn login response as auth required', () {
+  test('does not treat generic webvpn login text as unified auth response', () {
     final response = Response<List<int>>(
       data: utf8.encode('<html><body>webvpn login</body></html>'),
       requestOptions: RequestOptions(path: 'https://webvpn.zjxu.edu.cn/login'),
     );
 
-    expect(looksLikeSjjxResponseNeedsUnifiedAuth(response), isTrue);
+    expect(looksLikeSjjxResponseNeedsUnifiedAuth(response), isFalse);
   });
 
   test('prefers sjjx list markers over generic unified auth markers', () {

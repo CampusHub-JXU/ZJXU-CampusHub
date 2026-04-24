@@ -19,7 +19,9 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
     final uris = [
       Uri.parse('$ZhengfangAuth._webVpnBase/'),
       Uri.parse(_loginPageUrl),
-      Uri.parse('$ZhengfangAuth._webVpnBase$ZhengfangAuth._webVpnJwglxtPrefix/'),
+      Uri.parse(
+        '$ZhengfangAuth._webVpnBase$ZhengfangAuth._webVpnJwglxtPrefix/',
+      ),
     ];
 
     for (final uri in uris) {
@@ -56,7 +58,9 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
       Uri.parse('$ZhengfangAuth._directOrigin/'),
       Uri.parse('$ZhengfangAuth._directOrigin$ZhengfangAuth._directLoginPath'),
       Uri.parse('$ZhengfangAuth._directBase/'),
-      Uri.parse('${ZhengfangAuth._directOrigin}/jwglxt/xtgl/index_initMenu.html?jsdm=xs'),
+      Uri.parse(
+        '${ZhengfangAuth._directOrigin}/jwglxt/xtgl/index_initMenu.html?jsdm=xs',
+      ),
     ];
 
     for (final uri in uris) {

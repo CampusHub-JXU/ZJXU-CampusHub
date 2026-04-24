@@ -114,7 +114,8 @@ class CredentialStore {
     final username = await _decryptValue(storedUsername);
     final password = await _decryptValue(storedPassword);
 
-    if (!_isEncryptedValue(storedUsername) || !_isEncryptedValue(storedPassword)) {
+    if (!_isEncryptedValue(storedUsername) ||
+        !_isEncryptedValue(storedPassword)) {
       await _writePair(usernameKey, username, passwordKey, password);
     }
 
@@ -151,7 +152,9 @@ class CredentialStore {
       throw const FormatException('凭证密文格式无效');
     }
 
-    final iv = Uint8List.fromList(base64.decode(payload.substring(0, separator)));
+    final iv = Uint8List.fromList(
+      base64.decode(payload.substring(0, separator)),
+    );
     final ciphertext = Uint8List.fromList(
       base64.decode(payload.substring(separator + 1)),
     );

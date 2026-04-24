@@ -129,12 +129,8 @@ class ChangxingJiadaService {
         if (tid != null) {
           tokenId = tid;
         }
-        if (tokenId == null &&
-            isUnifiedAuthLoginFormResponse(finalUrl, body)) {
-          AppLogger.instance.auth(
-            LogLevel.warn,
-            '畅行嘉大：统一认证会话已失效，需要重新登录一卡通',
-          );
+        if (tokenId == null && isUnifiedAuthLoginFormResponse(finalUrl, body)) {
+          AppLogger.instance.auth(LogLevel.warn, '畅行嘉大：统一认证会话已失效，需要重新登录一卡通');
           throw ChangxingNeedUnifiedAuthException();
         }
         break;

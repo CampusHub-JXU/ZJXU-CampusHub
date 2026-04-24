@@ -98,10 +98,7 @@ Future<bool> _executeDormElectricityCheck() async {
       if (value == null) return true;
 
       if (value < threshold) {
-        await _showBackgroundNotification(
-          value: value,
-          threshold: threshold,
-        );
+        await _showBackgroundNotification(value: value, threshold: threshold);
         await prefs.setString('dorm_alert_last_notified_date', today);
       } else {
         // Above threshold — reset so we can alert again when it drops.
@@ -156,9 +153,7 @@ class BackgroundTaskService {
   Future<void> initialize() async {
     if (_initialized) return;
 
-    await Workmanager().initialize(
-      callbackDispatcher,
-    );
+    await Workmanager().initialize(callbackDispatcher);
     await _registerTask();
 
     _initialized = true;

@@ -147,7 +147,10 @@ class _SchedulePageState extends State<SchedulePage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(_controller.error!, style: const TextStyle(color: AppColors.error)),
+            Text(
+              _controller.error!,
+              style: const TextStyle(color: AppColors.error),
+            ),
             const SizedBox(height: 12),
             FilledButton(
               onPressed: _refreshScheduleOrLogin,
@@ -177,7 +180,8 @@ class _SchedulePageState extends State<SchedulePage> {
     return Column(
       children: [
         if (_controller.loading) const LinearProgressIndicator(minHeight: 2),
-        if (_controller.infoMessage != null || _controller.scheduleUpdatedAt != null)
+        if (_controller.infoMessage != null ||
+            _controller.scheduleUpdatedAt != null)
           ScheduleInfoBanner(
             message: _controller.infoMessage,
             updatedAt: _controller.scheduleUpdatedAt,

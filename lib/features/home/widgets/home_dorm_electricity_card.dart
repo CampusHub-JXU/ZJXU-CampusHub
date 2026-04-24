@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/app_theme_controller.dart';
 import '../../../app/theme.dart';
 import 'home_card_container.dart';
 
@@ -15,69 +16,80 @@ class HomeDormElectricityCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<HomeTextColorMode>(
+      valueListenable: AppThemeController.instance.homeTextColorMode,
+      builder: (context, _, _) => _buildContent(context),
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return GestureDetector(
+    final iconColor = AppThemeController.instance.resolveIconColor(
+      context,
+      AppColors.success,
+    );
+    final primaryTextColor = AppThemeController.instance.resolveHomeTextColor(
+      context,
+      cs.onSurface,
+    );
+    final secondaryTextColor = AppThemeController.instance
+        .resolveHomeSecondaryTextColor(context, cs.onSurfaceVariant);
+    return HomeCardContainer(
+      height: 136,
       onTap: () => onTap(),
-      child: HomeCardContainer(
-        height: 136,
-        child: Stack(
-          children: [
-            Align(
-              alignment: Alignment.topLeft,
-              child: Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: AppColors.success.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                child: const Icon(
-                  Icons.bolt_outlined,
-                  color: AppColors.success,
-                  size: 20,
-                ),
+      child: Stack(
+        children: [
+          Align(
+            alignment: Alignment.topLeft,
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(9),
               ),
+              child: Icon(Icons.bolt_outlined, color: iconColor, size: 20),
             ),
-            Align(
-              alignment: Alignment.bottomLeft,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '宿舍电费',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: cs.onSurface,
-                    ),
+          ),
+          Align(
+            alignment: Alignment.bottomLeft,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '宿舍电费',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: primaryTextColor,
                   ),
-                  const SizedBox(height: 2),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          '剩余 $dormElectricity 度',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: cs.onSurfaceVariant,
-                          ),
+                ),
+                const SizedBox(height: 2),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '剩余 $dormElectricity 度',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: secondaryTextColor,
                         ),
                       ),
-                      Icon(
-                        Icons.arrow_forward_ios,
-                        size: 14,
-                        color: cs.onSurfaceVariant,
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+                    ),
+                    Icon(
+                      Icons.arrow_forward_ios,
+                      size: 14,
+                      color: secondaryTextColor,
+                    ),
+                  ],
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

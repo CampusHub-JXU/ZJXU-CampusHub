@@ -60,17 +60,20 @@ class ScheduleCourseCell extends StatelessWidget {
               const SizedBox(height: 16),
               _DetailRow(
                 icon: Icons.person_outline,
-                text: '教师：${course.teacherName.isEmpty ? scheduleUnknownText : course.teacherName}',
+                text:
+                    '教师：${course.teacherName.isEmpty ? scheduleUnknownText : course.teacherName}',
               ),
               const SizedBox(height: 10),
               _DetailRow(
                 icon: Icons.meeting_room_outlined,
-                text: '教室：${course.classroom.isEmpty ? scheduleUnknownText : course.classroom}',
+                text:
+                    '教室：${course.classroom.isEmpty ? scheduleUnknownText : course.classroom}',
               ),
               const SizedBox(height: 10),
               _DetailRow(
                 icon: Icons.place_outlined,
-                text: '校区：${course.campus.isEmpty ? scheduleUnknownText : course.campus}',
+                text:
+                    '校区：${course.campus.isEmpty ? scheduleUnknownText : course.campus}',
               ),
               const SizedBox(height: 10),
               _DetailRow(
@@ -80,7 +83,8 @@ class ScheduleCourseCell extends StatelessWidget {
               const SizedBox(height: 10),
               _DetailRow(
                 icon: Icons.access_time_outlined,
-                text: '时间：${ScheduleSlotTimes.timeRange(course.startLesson, course.endLesson)}',
+                text:
+                    '时间：${ScheduleSlotTimes.timeRange(course.startLesson, course.endLesson)}',
               ),
               const SizedBox(height: 10),
               _DetailRow(

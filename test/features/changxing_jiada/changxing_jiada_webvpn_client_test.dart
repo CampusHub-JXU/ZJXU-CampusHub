@@ -1,7 +1,6 @@
 ﻿import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/core/network/dio_client.dart';
 import 'package:jxu_campus_hub/features/changxing_jiada/changxing_jiada_service.dart';
 
@@ -25,9 +24,7 @@ void main() {
     );
 
     final requestPath = Uri.parse(
-      ZhengfangAuth.instance.buildWebVpnProxyUrl(
-        'https://zhx.zjxu.edu.cn/api/msg/getNoReadCount',
-      ),
+      'https://zhx.zjxu.edu.cn/api/msg/getNoReadCount',
     ).path;
 
     final unifiedAdapter = MockHttpClientAdapter()

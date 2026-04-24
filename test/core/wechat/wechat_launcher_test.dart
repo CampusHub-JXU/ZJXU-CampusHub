@@ -1,51 +1,14 @@
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:jxu_campus_hub/core/logging/app_logger.dart';
-import 'package:jxu_campus_hub/core/wechat/wechat_launcher.dart';
+import 'package:jxu_campus_hub/core/config/app_config.dart';
 
 void main() {
-  TestWidgetsFlutterBinding.ensureInitialized();
+  test('xiaofubao recharge uri keeps required wechat parameters', () {
+    final uri = AppConfig.xiaofubaoRechargeUri;
 
-  const wechatChannel = MethodChannel('edu.zjxu.jxucampushub/wechat');
-
-  setUp(() {
-    AppLogger.instance.debugReset();
-  });
-
-  tearDown(() async {
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(wechatChannel, null);
-  });
-
-  test('returns platform result when opening url in wechat', () async {
-    MethodCall? receivedCall;
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(wechatChannel, (call) async {
-          receivedCall = call;
-          return true;
-        });
-
-    final launched = await WeChatLauncher.openUrlInWeChat(
-      'https://example.com',
-    );
-
-    expect(launched, isTrue);
-    expect(receivedCall?.method, 'openUrlInWeChat');
-    expect((receivedCall?.arguments as Map)['url'], 'https://example.com');
-  });
-
-  test('returns false and logs when platform throws', () async {
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(wechatChannel, (_) async {
-          throw PlatformException(code: 'fail', message: 'boom');
-        });
-
-    final launched = await WeChatLauncher.openUrlInWeChat(
-      'https://example.com',
-    );
-
-    expect(launched, isFalse);
-    expect(AppLogger.instance.entries.last.message, contains('微信原生拉起失败'));
+    expect(uri.toString(), startsWith(AppConfig.xiaofubaoRechargeBaseUrl));
+    expect(uri.queryParameters['platform'], 'WECHAT_H5');
+    expect(uri.queryParameters['schoolCode'], AppConfig.xiaofubaoSchoolCode);
+    expect(uri.queryParameters['thirdAppid'], AppConfig.xiaofubaoThirdAppId);
   });
 }

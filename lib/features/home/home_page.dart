@@ -1,10 +1,10 @@
 import 'dart:async';
-import 'dart:io';
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/app_bootstrap_controller.dart';
+import '../../app/app_theme_controller.dart';
 import '../../core/auth/unified_auth.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/config/feature_entry_catalog.dart';
@@ -18,12 +18,12 @@ import '../schedule/schedule_cache_snapshot.dart';
 import '../schedule/schedule_model.dart';
 import '../schedule/schedule_service.dart';
 import 'home_controller.dart';
+import 'widgets/home_background_layer.dart';
 import 'widgets/home_card_container.dart';
 import 'widgets/home_campus_card_balance_card.dart';
 import 'widgets/home_dorm_electricity_card.dart';
 import 'widgets/home_dorm_services_card.dart';
 import 'widgets/home_header_card.dart';
-import 'widgets/home_header_schedule_status.dart';
 import 'widgets/home_more_services_card.dart';
 import 'widgets/home_next_course_content.dart';
 
@@ -43,7 +43,6 @@ class _HomePageState extends State<HomePage> {
   String _nextCourseLabel = '';
   bool _courseLoggedIn = false;
   bool _hasScheduleCache = false;
-  DateTime? _scheduleUpdatedAt;
   bool _hasAvailableUpdate = false;
   bool _hasHydratedBootstrapState = false;
   bool _initialLoginPromptChecked = false;
@@ -162,7 +161,6 @@ class _HomePageState extends State<HomePage> {
 
   ({
     bool hasScheduleCache,
-    DateTime? scheduleUpdatedAt,
     bool courseLoggedIn,
     CourseEntry? nextCourse,
     String nextCourseLabel,
@@ -181,16 +179,18 @@ class _HomePageState extends State<HomePage> {
       for (int offset = 0; offset < 14; offset++) {
         final date = today.add(Duration(days: offset));
         final week = _weekForDate(date);
-        final effectiveCourses = ScheduleService.instance.buildEffectiveWeekCourses(
-          courses: snapshot.courses,
-          week: week,
-          changeRules: snapshot.changeRules,
-        );
-        final dayCourses = effectiveCourses
-            .where((c) => c.weekday == date.weekday)
-            .where((c) => offset > 0 || c.startLesson >= nextLessonToday)
-            .toList()
-          ..sort((a, b) => a.startLesson.compareTo(b.startLesson));
+        final effectiveCourses = ScheduleService.instance
+            .buildEffectiveWeekCourses(
+              courses: snapshot.courses,
+              week: week,
+              changeRules: snapshot.changeRules,
+            );
+        final dayCourses =
+            effectiveCourses
+                .where((c) => c.weekday == date.weekday)
+                .where((c) => offset > 0 || c.startLesson >= nextLessonToday)
+                .toList()
+              ..sort((a, b) => a.startLesson.compareTo(b.startLesson));
         if (dayCourses.isNotEmpty) {
           nextCourse = dayCourses.first;
           nextCourseLabel = _labelForDate(date, today);
@@ -201,7 +201,6 @@ class _HomePageState extends State<HomePage> {
 
     return (
       hasScheduleCache: hasScheduleCache,
-      scheduleUpdatedAt: snapshot?.lastUpdatedAt,
       courseLoggedIn: ZhengfangAuth.instance.isLoggedIn || hasScheduleCache,
       nextCourse: nextCourse,
       nextCourseLabel: nextCourseLabel,
@@ -227,7 +226,6 @@ class _HomePageState extends State<HomePage> {
       dormService.cachedElectricity,
     );
     _hasScheduleCache = scheduleState.hasScheduleCache;
-    _scheduleUpdatedAt = scheduleState.scheduleUpdatedAt;
     _courseLoggedIn = scheduleState.courseLoggedIn;
     _nextCourse = scheduleState.nextCourse;
     _nextCourseLabel = scheduleState.nextCourseLabel;
@@ -254,7 +252,6 @@ class _HomePageState extends State<HomePage> {
 
       setState(() {
         _hasScheduleCache = scheduleState.hasScheduleCache;
-        _scheduleUpdatedAt = scheduleState.scheduleUpdatedAt;
         _courseLoggedIn = scheduleState.courseLoggedIn;
         _nextCourse = scheduleState.nextCourse;
         _nextCourseLabel = scheduleState.nextCourseLabel;
@@ -310,126 +307,60 @@ class _HomePageState extends State<HomePage> {
     _refreshNextCourse();
   }
 
-  String _formatScheduleUpdatedAt(DateTime? value) {
-    if (value == null) return '未缓存';
-    final month = value.month.toString().padLeft(2, '0');
-    final day = value.day.toString().padLeft(2, '0');
-    final hour = value.hour.toString().padLeft(2, '0');
-    final minute = value.minute.toString().padLeft(2, '0');
-    return '$month-$day $hour:$minute';
-  }
-
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bgImagePath = HomeController.instance.backgroundImagePath.value;
-    return Scaffold(
-      backgroundColor: isDark ? null : const Color(0xFFF5F5F5),
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          _buildBackgroundLayer(context, isDark, bgImagePath),
-          SafeArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: HomeHeaderScheduleStatus(
-                      hasScheduleCache: _hasScheduleCache,
-                      updatedAtText: _formatScheduleUpdatedAt(_scheduleUpdatedAt),
-                    ),
-                  ),
+    final topInset = MediaQuery.paddingOf(context).top;
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.dark.copyWith(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        statusBarBrightness: Brightness.light,
+      ),
+      child: Scaffold(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (bgImagePath != null) HomeBackgroundLayer(path: bgImagePath),
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: topInset,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.surface.withValues(alpha: 0.94),
                 ),
-                const SizedBox(height: 8),
-                _buildHeader(context),
-                const SizedBox(height: 16),
-                Expanded(
-                  child: _buildDashboardSection(context, isDark),
-                ),
-              ],
+              ),
             ),
-          ),
-        ],
+            SafeArea(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 28),
+                  _buildHeader(context),
+                  const SizedBox(height: 16),
+                  Expanded(child: _buildDashboardSection(context, isDark)),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildBackgroundLayer(
-    BuildContext context,
-    bool isDark,
-    String? bgImagePath,
-  ) {
-    if (bgImagePath == null) return const SizedBox.expand();
-    return ValueListenableBuilder<bool>(
-      valueListenable: HomeController.instance.colorFilterEnabled,
-      builder: (context, filterEnabled, _) {
-        return ValueListenableBuilder<double>(
-          valueListenable: HomeController.instance.backgroundOpacity,
-          builder: (context, opacity, _) {
-            return ValueListenableBuilder<Alignment>(
-              valueListenable: HomeController.instance.backgroundAlignment,
-              builder: (context, alignment, _) {
-                if (!filterEnabled) {
-                  return Opacity(
-                    opacity: opacity,
-                    child: _buildAlignedImage(context, bgImagePath, alignment),
-                  );
-                }
-                return ValueListenableBuilder<double>(
-                  valueListenable: HomeController.instance.filterStrength,
-                  builder: (context, strength, _) {
-                    return ValueListenableBuilder<HomeFilterMode>(
-                      valueListenable: HomeController.instance.filterMode,
-                      builder: (context, mode, _) {
-                        return FutureBuilder<List<double>>(
-                          future: HomeController.instance.buildFilterMatrix(strength),
-                          builder: (context, snapshot) {
-                            final matrix = snapshot.data;
-                            if (matrix == null) {
-                              return Opacity(
-                                opacity: opacity,
-                                child: _buildAlignedImage(context, bgImagePath, alignment),
-                              );
-                            }
-                            return Opacity(
-                              opacity: opacity,
-                              child: ColorFiltered(
-                                colorFilter: ColorFilter.matrix(matrix),
-                                child: _buildAlignedImage(context, bgImagePath, alignment),
-                              ),
-                            );
-                          },
-                        );
-                      },
-                    );
-                  },
-                );
-              },
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildAlignedImage(BuildContext context, String path, Alignment alignment) {
-    return Image.file(
-      File(path),
-      fit: BoxFit.cover,
-      alignment: alignment,
-      errorBuilder: (_, _, _) => const SizedBox.expand(),
-    );
-  }
-
   Widget _buildDashboardSection(BuildContext context, bool isDark) {
-    final learningEntries = FeatureEntryCatalog.instance
-        .entriesByPlacement(FeatureEntryPlacement.homeLearning);
+    final learningEntries = FeatureEntryCatalog.instance.entriesByPlacement(
+      FeatureEntryPlacement.homeLearning,
+    );
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -566,42 +497,56 @@ class _HomePageState extends State<HomePage> {
     FeatureEntryDefinition entry,
   ) {
     final cs = Theme.of(context).colorScheme;
-    return HomeCardContainer(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-      child: InkWell(
-        onTap: () => context.pushNamed(entry.routeName),
-        borderRadius: BorderRadius.circular(12),
-        child: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: entry.accentColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(entry.icon, color: entry.accentColor, size: 20),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                entry.title,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: cs.onSurface,
-                  fontWeight: FontWeight.w600,
+    final entryColor = AppThemeController.instance.resolveIconColor(
+      context,
+      entry.accentColor,
+    );
+    final primaryTextColor = AppThemeController.instance.resolveHomeTextColor(
+      context,
+      cs.onSurface,
+    );
+    final secondaryTextColor = AppThemeController.instance
+        .resolveHomeSecondaryTextColor(context, cs.onSurfaceVariant);
+    return ValueListenableBuilder<HomeTextColorMode>(
+      valueListenable: AppThemeController.instance.homeTextColorMode,
+      builder: (context, _, _) {
+        return HomeCardContainer(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+          onTap: () => context.pushNamed(entry.routeName),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: entryColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+                child: Icon(entry.icon, color: entryColor, size: 20),
               ),
-            ),
-            Icon(Icons.arrow_forward_ios, size: 12, color: cs.onSurfaceVariant),
-          ],
-        ),
-      ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  entry.title,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: primaryTextColor,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Icon(
+                Icons.arrow_forward_ios,
+                size: 12,
+                color: secondaryTextColor,
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
-
-
 }

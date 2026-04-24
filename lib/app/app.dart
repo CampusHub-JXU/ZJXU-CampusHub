@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../core/logging/app_logger.dart';
 import '../core/network/proxy_mode.dart';
+import 'app_theme_controller.dart';
 import 'routes.dart';
 import 'text_scale_controller.dart';
 import 'theme.dart';
@@ -43,6 +44,7 @@ class _JXUCampusHubAppState extends State<JXUCampusHubApp> {
   static const _startupProxyWarningMessage = '检测到系统代理或 VPN，部分校务功能可能异常';
 
   final _themeModeController = ThemeModeController.instance;
+  final _appThemeController = AppThemeController.instance;
   final _textScaleController = TextScaleController.instance;
   final _scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
   bool _shouldShowStartupProxyWarning = false;
@@ -53,6 +55,7 @@ class _JXUCampusHubAppState extends State<JXUCampusHubApp> {
   void initState() {
     super.initState();
     _themeModeController.themeMode.addListener(_onAppAppearanceChanged);
+    _appThemeController.seedColor.addListener(_onAppAppearanceChanged);
     _textScaleController.textScaleFactor.addListener(_onAppAppearanceChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_checkStartupGuards());
@@ -62,6 +65,7 @@ class _JXUCampusHubAppState extends State<JXUCampusHubApp> {
   @override
   void dispose() {
     _themeModeController.themeMode.removeListener(_onAppAppearanceChanged);
+    _appThemeController.seedColor.removeListener(_onAppAppearanceChanged);
     _textScaleController.textScaleFactor.removeListener(
       _onAppAppearanceChanged,
     );
@@ -140,10 +144,11 @@ class _JXUCampusHubAppState extends State<JXUCampusHubApp> {
     if (_shouldShowStartupProxyWarning) {
       _scheduleStartupProxyWarning();
     }
+    final seedColor = _appThemeController.seedColor.value;
     return MaterialApp.router(
       title: '嘉兴大学-智能中台',
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
+      theme: AppTheme.lightThemeFor(seedColor),
+      darkTheme: AppTheme.darkThemeFor(seedColor),
       themeMode: _themeModeController.themeMode.value,
       scaffoldMessengerKey: _scaffoldMessengerKey,
       // Disable the built-in AnimatedTheme transition — it forces every

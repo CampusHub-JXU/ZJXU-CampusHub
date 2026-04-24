@@ -46,7 +46,16 @@ class _DormElectricitySettingsPageState
 
   bool _alertEnabled = false;
   double _alertThreshold = DormElectricityService.defaultAlertThreshold;
-  static const _thresholdOptions = [5.0, 10.0, 15.0, 20.0, 25.0, 30.0, 40.0, 50.0];
+  static const _thresholdOptions = [
+    5.0,
+    10.0,
+    15.0,
+    20.0,
+    25.0,
+    30.0,
+    40.0,
+    50.0,
+  ];
 
   @override
   void initState() {
@@ -286,8 +295,11 @@ class _DormElectricitySettingsPageState
                           ? null
                           : () {
                               Navigator.of(ctx).pop();
-                              final b = currentBuildings[tempBuildingIdx
-                                  .clamp(0, currentBuildings.length - 1)];
+                              final b =
+                                  currentBuildings[tempBuildingIdx.clamp(
+                                    0,
+                                    currentBuildings.length - 1,
+                                  )];
                               setState(() {
                                 _selectedBuilding = b;
                                 _selectedRoom = null;
@@ -310,8 +322,9 @@ class _DormElectricitySettingsPageState
                                   currentBuildings = currentGroup.buildings;
                                   tempBuildingIdx = 0;
                                 });
-                                WidgetsBinding.instance
-                                    .addPostFrameCallback((_) {
+                                WidgetsBinding.instance.addPostFrameCallback((
+                                  _,
+                                ) {
                                   buildingCtrl.jumpToItem(0);
                                 });
                               },
@@ -408,8 +421,11 @@ class _DormElectricitySettingsPageState
                           : () {
                               Navigator.of(ctx).pop();
                               setState(() {
-                                _selectedRoom = currentRooms[tempRoomIdx
-                                    .clamp(0, currentRooms.length - 1)];
+                                _selectedRoom =
+                                    currentRooms[tempRoomIdx.clamp(
+                                      0,
+                                      currentRooms.length - 1,
+                                    )];
                               });
                             },
                     ),
@@ -427,8 +443,9 @@ class _DormElectricitySettingsPageState
                                   currentRooms = _floorMap[currentFloor]!;
                                   tempRoomIdx = 0;
                                 });
-                                WidgetsBinding.instance
-                                    .addPostFrameCallback((_) {
+                                WidgetsBinding.instance.addPostFrameCallback((
+                                  _,
+                                ) {
                                   roomCtrl.jumpToItem(0);
                                 });
                               },
@@ -488,10 +505,7 @@ class _DormElectricitySettingsPageState
       height: 48,
       child: Row(
         children: [
-          TextButton(
-            onPressed: onCancel,
-            child: const Text('取消'),
-          ),
+          TextButton(onPressed: onCancel, child: const Text('取消')),
           const Spacer(),
           Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
           const Spacer(),

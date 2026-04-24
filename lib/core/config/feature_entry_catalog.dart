@@ -126,10 +126,7 @@ class AppFeaturesConfig {
         compact: FeatureEntrySpan(columns: 1, rows: 1),
         expanded: FeatureEntrySpan(columns: 1, rows: 1),
       ),
-      placements: {
-        FeatureEntryPlacement.serviceHub,
-        FeatureEntryPlacement.homeLearning,
-      },
+      placements: {FeatureEntryPlacement.serviceHub},
       sortOrder: 40,
     ),
     FeatureEntryDefinition(
@@ -143,9 +140,7 @@ class AppFeaturesConfig {
         compact: FeatureEntrySpan(columns: 1, rows: 1),
         expanded: FeatureEntrySpan(columns: 1, rows: 1),
       ),
-      placements: {
-        FeatureEntryPlacement.serviceHub,
-      },
+      placements: {FeatureEntryPlacement.serviceHub},
       sortOrder: 50,
     ),
     FeatureEntryDefinition(

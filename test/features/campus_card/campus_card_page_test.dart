@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/features/campus_card/campus_card_page.dart';
 import 'package:jxu_campus_hub/features/campus_card/campus_card_service.dart';
-import 'package:jxu_campus_hub/shared/widgets/webvpn_protected_webview_page.dart';
+import 'package:jxu_campus_hub/shared/widgets/unified_auth_protected_webview_page.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -84,6 +84,6 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    expect(find.byType(WebVpnProtectedWebViewPage), findsOneWidget);
+    expect(find.byType(UnifiedAuthProtectedWebViewPage), findsOneWidget);
   });
 }

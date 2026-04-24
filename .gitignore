@@ -27,6 +27,7 @@ migrate_working_dir/
 **/doc/api/
 **/ios/Flutter/.last_build_id
 .dart_tool/
+android/.gradle/
 .flutter-plugins-dependencies
 .pub-cache/
 .pub/
@@ -57,6 +58,7 @@ logcat_dump.txt
 
 # Local runtime logs and crash dumps
 flutter_*.log
+analyze.out
 hs_err_pid*.log
 android/hs_err_pid*.log
 android/replay_pid*.log

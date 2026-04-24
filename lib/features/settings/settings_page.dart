@@ -424,7 +424,8 @@ class SettingsPage extends StatelessWidget {
                               AppNotificationService.instance.showNotification(
                                 id: 999,
                                 title: '测试通知',
-                                body: '这是一条来自开发模式的测试通知，${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}',
+                                body:
+                                    '这是一条来自开发模式的测试通知，${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}',
                                 payload: 'test',
                               );
                             },

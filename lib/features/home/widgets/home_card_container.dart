@@ -22,22 +22,44 @@ class HomeCardContainer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: HomeController.instance.frostedGlassEnabled,
+      builder: (context, _, _) {
+        return ValueListenableBuilder<double>(
+          valueListenable: HomeController.instance.glassBlur,
+          builder: (context, _, _) {
+            return ValueListenableBuilder<double>(
+              valueListenable: HomeController.instance.glassOpacity,
+              builder: (context, _, _) => _buildContent(context),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final glassEnabled = HomeController.instance.frostedGlassEnabled.value;
+    final glassBlur = HomeController.instance.glassBlur.value;
+    final glassOpacity = HomeController.instance.glassOpacity.value;
     final radius = BorderRadius.circular(20);
     final bgColor = glassEnabled
         ? (isDark
-              ? cs.surfaceContainerLowest.withValues(alpha: 0.72)
-              : Colors.white.withValues(alpha: 0.58))
-        : (isDark ? cs.surfaceContainerLowest : Colors.white);
+              ? cs.surfaceContainerLowest.withValues(alpha: glassOpacity * 0.86)
+              : cs.surfaceContainerLowest.withValues(alpha: glassOpacity))
+        : (isDark ? cs.surfaceContainerLowest : cs.surfaceContainerLowest);
     final borderColor = glassEnabled
         ? (isDark
               ? Colors.white.withValues(alpha: 0.12)
-              : Colors.white.withValues(alpha: 0.38))
+              : cs.outlineVariant.withValues(alpha: 0.32))
         : (isDark
               ? cs.outline.withValues(alpha: 0.3)
-              : cs.outline.withValues(alpha: 0.2));
+              : cs.outlineVariant.withValues(alpha: 0.48));
+    final shadowColor = isDark
+        ? Colors.black.withValues(alpha: glassEnabled ? 0.14 : 0.08)
+        : cs.shadow.withValues(alpha: glassEnabled ? 0.06 : 0.04);
 
     final content = Container(
       width: width,
@@ -46,39 +68,46 @@ class HomeCardContainer extends StatelessWidget {
         color: bgColor,
         borderRadius: radius,
         border: Border.all(color: borderColor, width: 1),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: glassEnabled ? 0.08 : 0.05),
-            blurRadius: glassEnabled ? 18 : 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
       ),
       padding: padding,
       child: child,
     );
 
-    final decorated = glassEnabled
-        ? ClipRRect(
-            borderRadius: radius,
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+    final clippedContent = ClipRRect(
+      borderRadius: radius,
+      child: glassEnabled
+          ? BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: glassBlur, sigmaY: glassBlur),
               child: content,
-            ),
-          )
-        : content;
-
-    if (onTap == null) {
-      return decorated;
-    }
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: radius,
-        onTap: onTap,
-        child: decorated,
-      ),
+            )
+          : content,
     );
+
+    final decorated = DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: radius,
+        boxShadow: [
+          BoxShadow(
+            color: shadowColor,
+            blurRadius: glassEnabled ? 14 : 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: onTap == null
+          ? clippedContent
+          : Material(
+              color: Colors.transparent,
+              borderRadius: radius,
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                borderRadius: radius,
+                onTap: onTap,
+                child: clippedContent,
+              ),
+            ),
+    );
+
+    return decorated;
   }
 }

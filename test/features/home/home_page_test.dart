@@ -86,7 +86,6 @@ void main() {
   ) async {
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
 
-    expect(find.text('未更新'), findsOneWidget);
     expect(find.text('登录后查看课程'), findsOneWidget);
     expect(find.text('余额未刷新，请先登录一卡通'), findsOneWidget);
   });
@@ -143,7 +142,6 @@ void main() {
 
     expect(find.text('23.5'), findsOneWidget);
     expect(find.text('剩余 42 度'), findsOneWidget);
-    expect(find.textContaining('课表更新于'), findsOneWidget);
     expect(find.text('线性代数'), findsOneWidget);
     expect(find.text('明天 08:00-08:40'), findsOneWidget);
   });

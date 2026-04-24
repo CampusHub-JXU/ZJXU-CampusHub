@@ -21,7 +21,7 @@ void main() {
       page.serviceUrl,
       'https://libapp.zjxu.edu.cn/Info/Thirdparty/ssoFromDingDing',
     );
-    expect(page.loginDescription, '统一认证登录后可直接进入图书馆，必要时自动补齐 WebVPN 会话');
+    expect(page.loginDescription, '图书馆仅支持校园网内直连访问，请连接校园网后登录统一认证');
     expect(page.showWebViewBottomBackButton, isTrue);
   });
 }

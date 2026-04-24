@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:jxu_campus_hub/core/config/feature_entry_catalog.dart';
+import 'package:jxu_campus_hub/features/service_hub/service_hub_layout.dart';
 import 'package:jxu_campus_hub/features/service_hub/service_hub_page.dart';
 
 void main() {

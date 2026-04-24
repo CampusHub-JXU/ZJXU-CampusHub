@@ -16,7 +16,6 @@ class ScheduleChangeSheet extends StatelessWidget {
   final int displayWeek;
   final ScrollController scrollController;
 
-
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -214,4 +213,3 @@ class ScheduleChangeSheet extends StatelessWidget {
     return '第${slot.week}周 周$weekday 第$lessonRange节';
   }
 }
-

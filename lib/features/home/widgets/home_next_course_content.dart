@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/app_theme_controller.dart';
 import '../../schedule/schedule_model.dart';
 
 class HomeNextCourseContent extends StatelessWidget {
@@ -20,24 +21,38 @@ class HomeNextCourseContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final primaryTextColor = AppThemeController.instance.resolveHomeTextColor(
+      context,
+      Colors.white,
+    );
+    final secondaryTextColor = AppThemeController.instance
+        .resolveHomeSecondaryTextColor(
+          context,
+          Colors.white.withValues(alpha: 0.90),
+        );
+    final tertiaryTextColor = AppThemeController.instance
+        .resolveHomeSecondaryTextColor(
+          context,
+          Colors.white.withValues(alpha: 0.60),
+        );
     if (!courseLoggedIn) {
-      return const Text(
+      return Text(
         '登录后查看课程',
         style: TextStyle(
           fontSize: 18,
           fontWeight: FontWeight.bold,
-          color: Colors.white,
+          color: primaryTextColor,
         ),
       );
     }
 
     if (nextCourse == null) {
-      return const Text(
+      return Text(
         '近期无课',
         style: TextStyle(
           fontSize: 18,
           fontWeight: FontWeight.bold,
-          color: Colors.white,
+          color: primaryTextColor,
         ),
       );
     }
@@ -55,15 +70,17 @@ class HomeNextCourseContent extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.2),
+              color: primaryTextColor.withValues(alpha: 0.16),
               borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
+              border: Border.all(
+                color: primaryTextColor.withValues(alpha: 0.20),
+              ),
             ),
             child: Text(
               course.courseName,
               style: TextStyle(
                 fontSize: 12,
-                color: Colors.white.withValues(alpha: 0.95),
+                color: primaryTextColor.withValues(alpha: 0.95),
                 fontWeight: FontWeight.w500,
               ),
               maxLines: 1,
@@ -74,26 +91,16 @@ class HomeNextCourseContent extends StatelessWidget {
         const SizedBox(height: 3),
         Row(
           children: [
-            Icon(
-              Icons.schedule,
-              size: 14,
-              color: Colors.white.withValues(alpha: 0.8),
-            ),
+            Icon(Icons.schedule, size: 14, color: secondaryTextColor),
             const SizedBox(width: 4),
             Text(
               whenText,
-              style: TextStyle(
-                fontSize: 13,
-                color: Colors.white.withValues(alpha: 0.9),
-              ),
+              style: TextStyle(fontSize: 13, color: secondaryTextColor),
             ),
             const SizedBox(width: 4),
             Text(
               '第 ${course.startLesson}-${course.endLesson} 节',
-              style: TextStyle(
-                fontSize: 11,
-                color: Colors.white.withValues(alpha: 0.6),
-              ),
+              style: TextStyle(fontSize: 11, color: tertiaryTextColor),
             ),
           ],
         ),
@@ -103,16 +110,13 @@ class HomeNextCourseContent extends StatelessWidget {
             Icon(
               Icons.location_on_outlined,
               size: 14,
-              color: Colors.white.withValues(alpha: 0.8),
+              color: secondaryTextColor,
             ),
             const SizedBox(width: 4),
             Expanded(
               child: Text(
                 locationText,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.white.withValues(alpha: 0.9),
-                ),
+                style: TextStyle(fontSize: 13, color: secondaryTextColor),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),

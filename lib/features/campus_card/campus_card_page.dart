@@ -174,10 +174,8 @@ class _CampusCardPageState extends State<CampusCardPage> {
                     const Spacer(),
                     _headerIcon(
                       icon: Icons.refresh_rounded,
-                      onTap: () => _openCampusCardWebView(
-                        title: '刷新余额',
-                        autoPop: true,
-                      ),
+                      onTap: () =>
+                          _openCampusCardWebView(title: '刷新余额', autoPop: true),
                       tooltip: '刷新余额',
                     ),
                     const SizedBox(width: 2),
@@ -221,10 +219,8 @@ class _CampusCardPageState extends State<CampusCardPage> {
                 // Bottom row: time + status chip
                 if (balance == null)
                   GestureDetector(
-                    onTap: () => _openCampusCardWebView(
-                      title: '校园卡账单',
-                      autoPop: true,
-                    ),
+                    onTap: () =>
+                        _openCampusCardWebView(title: '校园卡账单', autoPop: true),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 12,
@@ -292,7 +288,11 @@ class _CampusCardPageState extends State<CampusCardPage> {
         borderRadius: BorderRadius.circular(8),
         child: Padding(
           padding: const EdgeInsets.all(6),
-          child: Icon(icon, size: 18, color: Colors.white.withValues(alpha: 0.6)),
+          child: Icon(
+            icon,
+            size: 18,
+            color: Colors.white.withValues(alpha: 0.6),
+          ),
         ),
       ),
     );
@@ -300,19 +300,14 @@ class _CampusCardPageState extends State<CampusCardPage> {
 
   // ── Quick Actions Row ───────────────────────────────────────────────────
 
-  Widget _buildQuickActions(
-    BuildContext context,
-    ColorScheme cs,
-    bool isDark,
-  ) {
+  Widget _buildQuickActions(BuildContext context, ColorScheme cs, bool isDark) {
     return Row(
       children: [
         _quickActionChip(
           icon: Icons.refresh_rounded,
           label: '刷新',
           isDark: isDark,
-          onTap: () =>
-              _openCampusCardWebView(title: '刷新余额', autoPop: true),
+          onTap: () => _openCampusCardWebView(title: '刷新余额', autoPop: true),
         ),
         const SizedBox(width: 8),
         _quickActionChip(
@@ -394,9 +389,9 @@ class _CampusCardPageState extends State<CampusCardPage> {
 
   Future<void> _openRechargePage() async {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('请到微信「嘉兴大学校园卡」服务号完成充值')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('请到微信「嘉兴大学校园卡」服务号完成充值')));
   }
 
   Future<void> _requestPaymentShortcut() async {

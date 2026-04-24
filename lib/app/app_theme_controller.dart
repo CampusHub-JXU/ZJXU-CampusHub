@@ -1,0 +1,153 @@
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../features/home/home_controller.dart';
+import 'theme.dart';
+
+enum AppThemeSeedMode {
+  brandRed('默认红色'),
+  monet('莫奈取色');
+
+  const AppThemeSeedMode(this.label);
+  final String label;
+}
+
+enum HomeTextColorMode {
+  system('跟随系统'),
+  dark('深色文字'),
+  light('浅色文字');
+
+  const HomeTextColorMode(this.label);
+  final String label;
+}
+
+class AppThemeController {
+  AppThemeController._();
+
+  static final AppThemeController instance = AppThemeController._();
+
+  static const _prefKey = 'app_theme_seed_mode';
+  static const _uniformIconColorKey = 'app_theme_uniform_icon_color';
+  static const _monetSeedIndexKey = 'app_theme_monet_seed_index';
+  static const _homeTextColorModeKey = 'app_theme_home_text_color_mode';
+
+  final ValueNotifier<AppThemeSeedMode> seedMode = ValueNotifier(
+    AppThemeSeedMode.brandRed,
+  );
+  final ValueNotifier<Color> seedColor = ValueNotifier(AppColors.primary);
+  final ValueNotifier<bool> uniformIconColor = ValueNotifier(false);
+  final ValueNotifier<int> monetSeedIndex = ValueNotifier(1);
+  final ValueNotifier<HomeTextColorMode> homeTextColorMode = ValueNotifier(
+    HomeTextColorMode.system,
+  );
+
+  Future<void> init() async {
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getInt(_prefKey);
+    if (stored != null &&
+        stored >= 0 &&
+        stored < AppThemeSeedMode.values.length) {
+      seedMode.value = AppThemeSeedMode.values[stored];
+    }
+    uniformIconColor.value = prefs.getBool(_uniformIconColorKey) ?? false;
+    monetSeedIndex.value = (prefs.getInt(_monetSeedIndexKey) ?? 1).clamp(0, 4);
+    final storedHomeTextMode = prefs.getInt(_homeTextColorModeKey);
+    if (storedHomeTextMode != null &&
+        storedHomeTextMode >= 0 &&
+        storedHomeTextMode < HomeTextColorMode.values.length) {
+      homeTextColorMode.value = HomeTextColorMode.values[storedHomeTextMode];
+    }
+    await _refreshSeedColor();
+  }
+
+  Future<void> setSeedMode(AppThemeSeedMode mode) async {
+    if (seedMode.value == mode) return;
+    seedMode.value = mode;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_prefKey, mode.index);
+    await _refreshSeedColor();
+  }
+
+  Future<void> setUniformIconColor(bool enabled) async {
+    if (uniformIconColor.value == enabled) return;
+    uniformIconColor.value = enabled;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_uniformIconColorKey, enabled);
+  }
+
+  Future<void> setMonetSeedIndex(int index) async {
+    final safeIndex = index.clamp(0, 4);
+    if (monetSeedIndex.value == safeIndex) return;
+    monetSeedIndex.value = safeIndex;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_monetSeedIndexKey, safeIndex);
+    await _refreshSeedColor();
+  }
+
+  Future<void> setHomeTextColorMode(HomeTextColorMode mode) async {
+    if (homeTextColorMode.value == mode) return;
+    homeTextColorMode.value = mode;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_homeTextColorModeKey, mode.index);
+  }
+
+  Color resolveIconColor(BuildContext context, Color fallback) {
+    if (!uniformIconColor.value) return fallback;
+    return Theme.of(context).colorScheme.primary;
+  }
+
+  Color resolveHomeTextColor(BuildContext context, Color fallback) {
+    return switch (homeTextColorMode.value) {
+      HomeTextColorMode.system => fallback,
+      HomeTextColorMode.dark => const Color(0xFF1F1A1D),
+      HomeTextColorMode.light => Colors.white,
+    };
+  }
+
+  Color resolveHomeSecondaryTextColor(BuildContext context, Color fallback) {
+    return switch (homeTextColorMode.value) {
+      HomeTextColorMode.system => fallback,
+      HomeTextColorMode.dark => const Color(0xFF4C4247),
+      HomeTextColorMode.light => Colors.white.withValues(alpha: 0.82),
+    };
+  }
+
+  Future<void> refreshMonetSeed() async {
+    if (seedMode.value != AppThemeSeedMode.monet) return;
+    await _refreshSeedColor();
+  }
+
+  Future<void> _refreshSeedColor() async {
+    if (seedMode.value == AppThemeSeedMode.brandRed) {
+      seedColor.value = AppColors.primary;
+      return;
+    }
+
+    final colors = await HomeController.instance.getMonetColors();
+    seedColor.value = _pickMonetSeed(colors);
+  }
+
+  Color _pickMonetSeed(List<Color> colors) {
+    if (colors.isEmpty) return AppColors.primary;
+    final selectedIndex = monetSeedIndex.value;
+    if (selectedIndex < colors.length &&
+        colors[selectedIndex].computeLuminance() > 0.03) {
+      return colors[selectedIndex];
+    }
+    for (final index in const [1, 0, 2, 3, 4]) {
+      if (index < colors.length && colors[index].computeLuminance() > 0.05) {
+        return colors[index];
+      }
+    }
+    return colors.first;
+  }
+
+  @visibleForTesting
+  void debugReset({AppThemeSeedMode mode = AppThemeSeedMode.brandRed}) {
+    seedMode.value = mode;
+    seedColor.value = AppColors.primary;
+    uniformIconColor.value = false;
+    monetSeedIndex.value = 1;
+    homeTextColorMode.value = HomeTextColorMode.system;
+  }
+}

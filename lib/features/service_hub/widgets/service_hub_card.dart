@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../app/app_theme_controller.dart';
 import '../../../core/config/feature_entry_catalog.dart';
 import '../../home/widgets/home_card_container.dart';
 import '../service_hub_layout.dart';
@@ -269,14 +270,18 @@ class _CardIconBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final iconColor = AppThemeController.instance.resolveIconColor(
+      context,
+      card.accentColor,
+    );
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: card.accentColor.withValues(alpha: 0.12),
+        color: iconColor.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(radius),
       ),
-      child: Icon(card.icon, color: card.accentColor, size: iconSize),
+      child: Icon(card.icon, color: iconColor, size: iconSize),
     );
   }
 }
@@ -288,6 +293,10 @@ class _CardChevron extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final iconColor = AppThemeController.instance.resolveIconColor(
+      context,
+      card.accentColor,
+    );
     return Positioned(
       right: 14,
       bottom: 14,
@@ -295,14 +304,10 @@ class _CardChevron extends StatelessWidget {
         width: 28,
         height: 28,
         decoration: BoxDecoration(
-          color: card.accentColor.withValues(alpha: 0.12),
+          color: iconColor.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(999),
         ),
-        child: Icon(
-          Icons.chevron_right_rounded,
-          size: 18,
-          color: card.accentColor,
-        ),
+        child: Icon(Icons.chevron_right_rounded, size: 18, color: iconColor),
       ),
     );
   }

@@ -246,10 +246,7 @@ class DormElectricityService {
   }
 
   Future<void> checkAndAlert({
-    required void Function({
-      required double value,
-      required double threshold,
-    })
+    required void Function({required double value, required double threshold})
     onAlert,
   }) async {
     final enabled = await getAlertEnabled();
