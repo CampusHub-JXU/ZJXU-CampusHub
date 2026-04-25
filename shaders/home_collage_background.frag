@@ -113,7 +113,7 @@ void main() {
       sin(flow.y * 0.72 + flow.x * 0.28 + drift_time * 0.21 + organic * 2.2),
       cos(flow.x * 0.68 - flow.y * 0.32 - drift_time * 0.18 + organic * 1.7)
     );
-    vec2 next = flow + drift * time * mix(0.016, 0.040, intensity);
+    vec2 next = flow + drift * sin(drift_time * 0.33 + fi) * mix(0.035, 0.085, intensity);
     next.x += 0.30 / fi * sin(fi * flow.y + direction * drift_time * (0.70 + 0.06 * fi) + 0.3 * fi);
     next.y += 0.52 / fi * sin(fi * flow.x - direction * drift_time * (0.58 + 0.05 * fi) + 0.3 * (fi + 10.0));
     next += vec2(
@@ -125,13 +125,14 @@ void main() {
     flow = next;
   }
 
-  vec3 c0 = mix(vec3(u_monet_0_r, u_monet_0_g, u_monet_0_b), vec3(1.0), 0.48 * light_mode);
-  vec3 c1 = mix(vec3(u_monet_1_r, u_monet_1_g, u_monet_1_b), vec3(1.0), 0.48 * light_mode);
-  vec3 c2 = mix(vec3(u_monet_2_r, u_monet_2_g, u_monet_2_b), vec3(1.0), 0.48 * light_mode);
-  vec3 k0 = mix(vec3(u_complement_0_r, u_complement_0_g, u_complement_0_b), vec3(1.0), 0.62 * light_mode);
-  vec3 k1 = mix(vec3(u_complement_1_r, u_complement_1_g, u_complement_1_b), vec3(1.0), 0.62 * light_mode);
-  vec3 k2 = mix(vec3(u_complement_2_r, u_complement_2_g, u_complement_2_b), vec3(1.0), 0.62 * light_mode);
   vec3 theme = vec3(u_theme_r, u_theme_g, u_theme_b);
+  vec3 light_tint = mix(vec3(0.78, 0.88, 1.0), theme, 0.34);
+  vec3 c0 = mix(vec3(u_monet_0_r, u_monet_0_g, u_monet_0_b), light_tint, 0.08 * light_mode);
+  vec3 c1 = mix(vec3(u_monet_1_r, u_monet_1_g, u_monet_1_b), light_tint, 0.08 * light_mode);
+  vec3 c2 = mix(vec3(u_monet_2_r, u_monet_2_g, u_monet_2_b), light_tint, 0.08 * light_mode);
+  vec3 k0 = mix(vec3(u_complement_0_r, u_complement_0_g, u_complement_0_b), light_tint, 0.14 * light_mode);
+  vec3 k1 = mix(vec3(u_complement_1_r, u_complement_1_g, u_complement_1_b), light_tint, 0.14 * light_mode);
+  vec3 k2 = mix(vec3(u_complement_2_r, u_complement_2_g, u_complement_2_b), light_tint, 0.14 * light_mode);
 
   vec2 coupled_flow = flow + vec2(
     sin(flow.y * 0.64 + organic * 3.2 + drift_time * 0.17),
@@ -177,25 +178,25 @@ void main() {
   );
   float vein = smoothstep(0.16, 0.88, vein_raw);
   float blend_softness = smoothstep(0.12, 0.86, organic + fine * 0.34);
-  float contrast_mix = vein * blend_softness * mix(0.18 + 0.24 * intensity, 0.08 + 0.14 * intensity, light_mode);
-  float secondary_mix = (1.0 - vein) * (0.55 + 0.45 * blend_softness) * mix(0.08 + 0.16 * intensity, 0.04 + 0.08 * intensity, light_mode);
+  float contrast_mix = vein * blend_softness * mix(0.18 + 0.24 * intensity, 0.14 + 0.20 * intensity, light_mode);
+  float secondary_mix = (1.0 - vein) * (0.55 + 0.45 * blend_softness) * mix(0.08 + 0.16 * intensity, 0.07 + 0.12 * intensity, light_mode);
   vec3 color = mix(base, contrast, contrast_mix);
   color = mix(color, secondary, secondary_mix);
   float ridge = smoothstep(0.66, 0.98, vein_raw) * smoothstep(0.22, 0.78, organic);
   float speckle = smoothstep(mix(0.78, 0.86, light_mode), 1.0, micro + fine * 0.24);
-  vec3 highlight = mix(vec3(1.0), mix(theme, c1, 0.55), mix(0.18, 0.34, light_mode));
-  color = mix(color, theme, (0.04 + 0.10 * intensity) * mix(1.0, 0.45, light_mode));
+  vec3 highlight = mix(mix(vec3(0.86, 0.93, 1.0), light_tint, 0.45), mix(theme, c1, 0.55), mix(0.18, 0.34, light_mode));
+  color = mix(color, theme, (0.10 + 0.18 * intensity) * mix(1.0, 0.68, light_mode));
   color = mix(color, highlight, ridge * (0.035 + 0.075 * intensity) * mix(1.0, 0.52, light_mode));
   color *= 0.92 + organic * mix(0.18, 0.30, intensity);
   color += speckle * (0.018 + 0.038 * intensity) * mix(1.0, 0.72, light_mode);
-  color = saturate_color(color, mix(mix(1.08, 1.30, intensity), mix(1.00, 1.10, intensity), light_mode));
-  color = mix(color, vec3(1.0), (0.32 + 0.22 * intensity) * light_mode);
+  color = saturate_color(color, mix(mix(1.10, 1.34, intensity), mix(1.42, 1.68, intensity), light_mode));
+  color = mix(color, light_tint, (0.045 + 0.055 * intensity) * light_mode);
 
   vec2 centered = uv - vec2(0.5);
   float vignette = smoothstep(0.92, 0.24, dot(centered, centered));
   color *= mix(
     mix(0.80, 1.05, vignette),
-    mix(0.98, 1.04, vignette),
+    mix(0.88, 1.08, vignette),
     light_mode
   );
 

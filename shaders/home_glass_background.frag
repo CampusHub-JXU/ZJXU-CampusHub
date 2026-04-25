@@ -78,13 +78,13 @@ void main() {
   vec3 quantized = floor(blurred * levels + 0.5) / levels;
   vec3 glass = mix(blurred, quantized, quantize_mix);
 
-  glass = saturate_color(glass, mix(0.92, 0.68, intensity));
-  glass = contrast_color(glass, mix(0.98, 0.82, intensity));
+  glass = saturate_color(glass, mix(1.08, 0.78, intensity));
+  glass = contrast_color(glass, mix(1.04, 0.88, intensity));
 
   float lum = luminance(glass);
-  vec3 theme_wash = mix(vec3(lum), theme, 0.46);
-  glass = mix(glass, theme_wash, (0.18 + 0.34 * intensity) * mix(1.0, 0.42, light_mode));
-  glass = mix(glass, vec3(1.0), mix(0.08 + 0.20 * intensity, 0.34 + 0.34 * intensity, light_mode));
+  vec3 theme_wash = mix(vec3(lum), theme, mix(0.58, 0.72, light_mode));
+  glass = mix(glass, theme_wash, (0.24 + 0.40 * intensity) * mix(1.0, 0.78, light_mode));
+  glass = mix(glass, mix(vec3(0.84, 0.92, 1.0), theme, 0.24), mix(0.05 + 0.12 * intensity, 0.06 + 0.09 * intensity, light_mode));
 
   float edge = edge_sobel(uv, px);
   glass = mix(glass, glass * mix(0.82, 0.94, light_mode), edge * (0.05 + 0.12 * intensity));
@@ -101,6 +101,6 @@ void main() {
   glass += grain * (0.006 + 0.010 * intensity);
 
   vec3 color = mix(src.rgb, clamp(glass, 0.0, 1.0), intensity);
-  color = mix(color, mix(vec3(1.0), color, 0.42 + 0.24 * intensity), light_mode);
+  color = mix(color, mix(mix(vec3(0.82, 0.91, 1.0), theme, 0.26), color, 0.74 + 0.18 * intensity), light_mode);
   frag_color = vec4(color, src.a * u_opacity);
 }

@@ -586,6 +586,11 @@ class _PersonalizationPageState extends State<PersonalizationPage> {
                       icon: Icon(Icons.auto_awesome_outlined, size: 18),
                       label: Text('莫奈取色'),
                     ),
+                    ButtonSegment(
+                      value: AppThemeSeedMode.preset,
+                      icon: Icon(Icons.palette_outlined, size: 18),
+                      label: Text('预设颜色'),
+                    ),
                   ],
                   selected: {seedMode},
                   onSelectionChanged: (selection) async {
@@ -692,59 +697,130 @@ class _PersonalizationPageState extends State<PersonalizationPage> {
             return ValueListenableBuilder<int>(
               valueListenable: AppThemeController.instance.monetSeedIndex,
               builder: (context, monetSeedIndex, _) {
-                return ValueListenableBuilder<List<Color>?>(
-                  valueListenable: HomeController.instance.monetColors,
-                  builder: (context, monetColors, _) {
-                    final colors =
-                        monetColors ??
-                        HomeController.instance.cachedMonetColors;
-                    return Column(
-                      children: [
-                        ListTile(
-                          leading: CircleAvatar(backgroundColor: seedColor),
-                          title: const Text('当前主题色'),
-                          subtitle: Text(
-                            seedMode == AppThemeSeedMode.monet
-                                ? '从首页背景图提取 Material 3 主题色，可在下方切换候选色'
-                                : '使用嘉大默认红色主题',
-                          ),
-                          trailing: seedMode == AppThemeSeedMode.monet
-                              ? IconButton(
-                                  tooltip: '重新取色',
-                                  icon: const Icon(Icons.refresh_outlined),
-                                  onPressed: AppThemeController
-                                      .instance
-                                      .refreshMonetSeed,
-                                )
-                              : null,
-                        ),
-                        if (seedMode == AppThemeSeedMode.monet &&
-                            colors != null)
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                            child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: Wrap(
-                                spacing: 10,
-                                runSpacing: 10,
-                                children: [
-                                  for (var i = 0; i < colors.length; i++)
-                                    ChoiceChip(
-                                      label: Text('色 ${i + 1}'),
-                                      selected: i == monetSeedIndex,
-                                      avatar: CircleAvatar(
-                                        backgroundColor: colors[i],
-                                      ),
-                                      onSelected: (_) {
-                                        AppThemeController.instance
-                                            .setMonetSeedIndex(i);
-                                      },
-                                    ),
-                                ],
-                              ),
+                return ValueListenableBuilder<int>(
+                  valueListenable: AppThemeController.instance.presetSeedIndex,
+                  builder: (context, presetSeedIndex, _) {
+                    return ValueListenableBuilder<List<Color>?>(
+                      valueListenable: HomeController.instance.monetColors,
+                      builder: (context, monetColors, _) {
+                        final colors =
+                            monetColors ??
+                            HomeController.instance.cachedMonetColors;
+                        return Column(
+                          children: [
+                            ListTile(
+                              leading: CircleAvatar(backgroundColor: seedColor),
+                              title: const Text('当前主题色'),
+                              subtitle: Text(switch (seedMode) {
+                                AppThemeSeedMode.monet =>
+                                  '从首页背景图提取 Material 3 主题色，可在下方切换候选色',
+                                AppThemeSeedMode.preset => '使用内置预设颜色，无需设置首页背景图',
+                                AppThemeSeedMode.brandRed => '使用嘉大默认红色主题',
+                              }),
+                              trailing: seedMode == AppThemeSeedMode.monet
+                                  ? IconButton(
+                                      tooltip: '重新取色',
+                                      icon: const Icon(Icons.refresh_outlined),
+                                      onPressed: AppThemeController
+                                          .instance
+                                          .refreshMonetSeed,
+                                    )
+                                  : null,
                             ),
-                          ),
-                      ],
+                            if (seedMode == AppThemeSeedMode.preset)
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  0,
+                                  16,
+                                  12,
+                                ),
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Wrap(
+                                    spacing: 10,
+                                    runSpacing: 10,
+                                    children: [
+                                      for (
+                                        var i = 0;
+                                        i <
+                                            AppThemeController
+                                                .presetSeedColors
+                                                .length;
+                                        i++
+                                      )
+                                        ChoiceChip(
+                                          label: Text(
+                                            AppThemeController
+                                                .presetSeedLabels[i],
+                                          ),
+                                          selected: i == presetSeedIndex,
+                                          avatar: CircleAvatar(
+                                            backgroundColor: AppThemeController
+                                                .presetSeedColors[i],
+                                          ),
+                                          onSelected: (_) {
+                                            AppThemeController.instance
+                                                .setPresetSeedIndex(i);
+                                          },
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            if (seedMode == AppThemeSeedMode.monet &&
+                                colors != null)
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  0,
+                                  16,
+                                  12,
+                                ),
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Wrap(
+                                    spacing: 10,
+                                    runSpacing: 10,
+                                    children: [
+                                      for (var i = 0; i < colors.length; i++)
+                                        ChoiceChip(
+                                          label: Text('色 ${i + 1}'),
+                                          selected: i == monetSeedIndex,
+                                          avatar: CircleAvatar(
+                                            backgroundColor: colors[i],
+                                          ),
+                                          onSelected: (_) {
+                                            AppThemeController.instance
+                                                .setMonetSeedIndex(i);
+                                          },
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            if (seedMode == AppThemeSeedMode.monet &&
+                                colors == null)
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  0,
+                                  16,
+                                  12,
+                                ),
+                                child: Text(
+                                  '未设置首页背景图时，莫奈取色会使用默认品牌色；也可以切换到预设颜色。',
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.onSurfaceVariant,
+                                      ),
+                                ),
+                              ),
+                          ],
+                        );
+                      },
                     );
                   },
                 );
@@ -799,6 +875,7 @@ class _PersonalizationPageState extends State<PersonalizationPage> {
                   ),
                   if (shaderEnabled) ...[
                     _buildShaderModePicker(context, textTheme),
+                    _buildShaderAnimationSpeedSlider(context),
                     _buildShaderStrengthSlider(context),
                     _buildShaderOpacitySlider(context),
                   ],
@@ -865,6 +942,41 @@ class _PersonalizationPageState extends State<PersonalizationPage> {
               ),
             ),
           ],
+        );
+      },
+    );
+  }
+
+  Widget _buildShaderAnimationSpeedSlider(BuildContext context) {
+    return ValueListenableBuilder<HomeShaderMode>(
+      valueListenable: HomeController.instance.shaderMode,
+      builder: (context, shaderMode, _) {
+        if (shaderMode == HomeShaderMode.glass) {
+          return const SizedBox.shrink();
+        }
+        return ValueListenableBuilder<double>(
+          valueListenable: HomeController.instance.shaderAnimationSpeed,
+          builder: (context, speed, _) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  child: Text(
+                    '动画速度  ${speed.toStringAsFixed(1)}x',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+                Slider.adaptive(
+                  value: speed,
+                  min: 0.0,
+                  max: 2.0,
+                  divisions: 20,
+                  onChanged: HomeController.instance.setShaderAnimationSpeed,
+                ),
+              ],
+            );
+          },
         );
       },
     );

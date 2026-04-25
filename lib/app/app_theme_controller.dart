@@ -6,7 +6,8 @@ import 'theme.dart';
 
 enum AppThemeSeedMode {
   brandRed('默认红色'),
-  monet('莫奈取色');
+  monet('莫奈取色'),
+  preset('预设颜色');
 
   const AppThemeSeedMode(this.label);
   final String label;
@@ -29,6 +30,7 @@ class AppThemeController {
   static const _prefKey = 'app_theme_seed_mode';
   static const _uniformIconColorKey = 'app_theme_uniform_icon_color';
   static const _monetSeedIndexKey = 'app_theme_monet_seed_index';
+  static const _presetSeedIndexKey = 'app_theme_preset_seed_index';
   static const _homeTextColorModeKey = 'app_theme_home_text_color_mode';
 
   final ValueNotifier<AppThemeSeedMode> seedMode = ValueNotifier(
@@ -37,9 +39,30 @@ class AppThemeController {
   final ValueNotifier<Color> seedColor = ValueNotifier(AppColors.primary);
   final ValueNotifier<bool> uniformIconColor = ValueNotifier(false);
   final ValueNotifier<int> monetSeedIndex = ValueNotifier(1);
+  final ValueNotifier<int> presetSeedIndex = ValueNotifier(0);
   final ValueNotifier<HomeTextColorMode> homeTextColorMode = ValueNotifier(
     HomeTextColorMode.system,
   );
+
+  static const presetSeedColors = <Color>[
+    Color(0xFF1565C0),
+    Color(0xFF00A6A6),
+    Color(0xFF6C5CE7),
+    Color(0xFFE94B9B),
+    Color(0xFFFF8A00),
+    Color(0xFF2E7D32),
+    Color(0xFF455A64),
+  ];
+
+  static const presetSeedLabels = <String>[
+    '嘉大蓝',
+    '湖青',
+    '紫罗兰',
+    '樱粉',
+    '暖橙',
+    '松绿',
+    '石墨',
+  ];
 
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
@@ -51,6 +74,10 @@ class AppThemeController {
     }
     uniformIconColor.value = prefs.getBool(_uniformIconColorKey) ?? false;
     monetSeedIndex.value = (prefs.getInt(_monetSeedIndexKey) ?? 1).clamp(0, 4);
+    presetSeedIndex.value = (prefs.getInt(_presetSeedIndexKey) ?? 0).clamp(
+      0,
+      presetSeedColors.length - 1,
+    );
     final storedHomeTextMode = prefs.getInt(_homeTextColorModeKey);
     if (storedHomeTextMode != null &&
         storedHomeTextMode >= 0 &&
@@ -81,6 +108,15 @@ class AppThemeController {
     monetSeedIndex.value = safeIndex;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_monetSeedIndexKey, safeIndex);
+    await _refreshSeedColor();
+  }
+
+  Future<void> setPresetSeedIndex(int index) async {
+    final safeIndex = index.clamp(0, presetSeedColors.length - 1);
+    if (presetSeedIndex.value == safeIndex) return;
+    presetSeedIndex.value = safeIndex;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_presetSeedIndexKey, safeIndex);
     await _refreshSeedColor();
   }
 
@@ -122,6 +158,10 @@ class AppThemeController {
       seedColor.value = AppColors.primary;
       return;
     }
+    if (seedMode.value == AppThemeSeedMode.preset) {
+      seedColor.value = presetSeedColors[presetSeedIndex.value];
+      return;
+    }
 
     final colors = await HomeController.instance.getMonetColors();
     seedColor.value = _pickMonetSeed(colors);
@@ -148,6 +188,7 @@ class AppThemeController {
     seedColor.value = AppColors.primary;
     uniformIconColor.value = false;
     monetSeedIndex.value = 1;
+    presetSeedIndex.value = 0;
     homeTextColorMode.value = HomeTextColorMode.system;
   }
 }

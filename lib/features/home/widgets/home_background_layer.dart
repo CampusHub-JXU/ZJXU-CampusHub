@@ -56,27 +56,42 @@ class HomeBackgroundLayer extends StatelessWidget {
                                   valueListenable:
                                       HomeController.instance.shaderOpacity,
                                   builder: (context, shaderOpacity, _) {
-                                    return ValueListenableBuilder<
-                                      HomeShaderMode
-                                    >(
-                                      valueListenable:
-                                          HomeController.instance.shaderMode,
-                                      builder: (context, mode, _) {
-                                        final themeColor = AppThemeController
-                                            .instance
-                                            .seedColor
-                                            .value;
-                                        return HomeGlassBackgroundFilter(
-                                          mode: mode,
-                                          intensity: strength.clamp(0.0, 1.0),
-                                          levels: 14.0 - strength * 4.0,
-                                          themeColor: themeColor,
-                                          monetColors: monetColors,
-                                          isDarkMode:
-                                              Theme.of(context).brightness ==
-                                              Brightness.dark,
-                                          opacity: shaderOpacity,
-                                          child: image,
+                                    return ValueListenableBuilder<double>(
+                                      valueListenable: HomeController
+                                          .instance
+                                          .shaderAnimationSpeed,
+                                      builder: (context, animationSpeed, _) {
+                                        return ValueListenableBuilder<
+                                          HomeShaderMode
+                                        >(
+                                          valueListenable: HomeController
+                                              .instance
+                                              .shaderMode,
+                                          builder: (context, mode, _) {
+                                            final themeColor =
+                                                AppThemeController
+                                                    .instance
+                                                    .seedColor
+                                                    .value;
+                                            return HomeGlassBackgroundFilter(
+                                              mode: mode,
+                                              intensity: strength.clamp(
+                                                0.0,
+                                                1.0,
+                                              ),
+                                              levels: 14.0 - strength * 4.0,
+                                              themeColor: themeColor,
+                                              monetColors: monetColors,
+                                              isDarkMode:
+                                                  Theme.of(
+                                                    context,
+                                                  ).brightness ==
+                                                  Brightness.dark,
+                                              opacity: shaderOpacity,
+                                              animationSpeed: animationSpeed,
+                                              child: image,
+                                            );
+                                          },
                                         );
                                       },
                                     );

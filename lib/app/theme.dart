@@ -200,36 +200,49 @@ class AppTheme {
   // ── Dark Theme ───────────────────────────────────────────────────────────
 
   // Pre-computed colors to avoid repeated withValues() allocations.
-  static final _darkAppBarBg = AppColors.darkSurface.withValues(alpha: 0.8);
-  static final _darkNavBg = AppColors.darkSurface.withValues(alpha: 0.8);
   static final _darkDivider = Colors.white.withValues(alpha: 0.08);
-  static final _darkCardBorder = Colors.white.withValues(alpha: 0.08);
+
+  static Color _mix(Color a, Color b, double t) => Color.lerp(a, b, t)!;
+
+  static Color _darkSeedTone(Color seedColor, double lightness) {
+    final hsl = HSLColor.fromColor(seedColor);
+    return hsl
+        .withSaturation((hsl.saturation * 0.72).clamp(0.28, 0.78))
+        .withLightness(lightness)
+        .toColor();
+  }
 
   static ThemeData _buildDarkTheme(Color seedColor) {
+    final seedBase = _darkSeedTone(seedColor, 0.12);
+    final seedRaised = _darkSeedTone(seedColor, 0.18);
+    final seedHigh = _darkSeedTone(seedColor, 0.24);
+    final background = _mix(AppColors.darkBackground, seedBase, 0.42);
+    final surface = _mix(AppColors.darkSurface, seedRaised, 0.52);
+    final surfaceHigh = _mix(const Color(0xFF3D2E33), seedHigh, 0.58);
     final colorScheme =
         ColorScheme.fromSeed(
           seedColor: seedColor,
           brightness: Brightness.dark,
         ).copyWith(
-          surface: AppColors.darkSurface,
-          surfaceContainerHighest: const Color(0xFF3D2E33),
-          surfaceContainerHigh: const Color(0xFF35272C),
-          surfaceContainer: const Color(0xFF2D1F23),
-          surfaceContainerLow: const Color(0xFF251A1E),
-          surfaceContainerLowest: const Color(0xFF1A1214),
+          surface: surface,
+          surfaceContainerHighest: surfaceHigh,
+          surfaceContainerHigh: _mix(const Color(0xFF35272C), seedHigh, 0.55),
+          surfaceContainer: surface,
+          surfaceContainerLow: _mix(const Color(0xFF251A1E), seedRaised, 0.48),
+          surfaceContainerLowest: background,
         );
 
     return ThemeData(
       useMaterial3: true,
       colorScheme: colorScheme,
       fontFamily: 'Inter',
-      scaffoldBackgroundColor: AppColors.darkBackground,
+      scaffoldBackgroundColor: background,
 
       appBarTheme: AppBarTheme(
         centerTitle: true,
         elevation: 0,
         scrolledUnderElevation: 0,
-        backgroundColor: _darkAppBarBg,
+        backgroundColor: surface.withValues(alpha: 0.86),
         foregroundColor: colorScheme.onSurface,
         surfaceTintColor: Colors.transparent,
         titleTextStyle: const TextStyle(
@@ -240,11 +253,14 @@ class AppTheme {
       ),
 
       cardTheme: CardThemeData(
-        color: AppColors.darkSurface,
+        color: surface,
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: _darkCardBorder, width: 0.5),
+          side: BorderSide(
+            color: _mix(seedColor, Colors.white, 0.35).withValues(alpha: 0.13),
+            width: 0.5,
+          ),
         ),
         margin: EdgeInsets.zero,
       ),
@@ -277,7 +293,7 @@ class AppTheme {
 
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: const Color(0xFF35272C),
+        fillColor: colorScheme.surfaceContainerHigh,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide.none,
@@ -300,12 +316,12 @@ class AppTheme {
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
-        backgroundColor: AppColors.darkSurface,
+        backgroundColor: surface,
       ),
 
       navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: _darkNavBg,
-        indicatorColor: colorScheme.primary.withValues(alpha: 0.2),
+        backgroundColor: surface.withValues(alpha: 0.88),
+        indicatorColor: colorScheme.primary.withValues(alpha: 0.28),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
             return TextStyle(
@@ -331,7 +347,7 @@ class AppTheme {
       ),
 
       chipTheme: ChipThemeData(
-        backgroundColor: const Color(0xFF35272C),
+        backgroundColor: colorScheme.surfaceContainerHigh,
         selectedColor: colorScheme.primary.withValues(alpha: 0.2),
         labelStyle: const TextStyle(fontSize: 13, color: Color(0xFFE6E1E5)),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),

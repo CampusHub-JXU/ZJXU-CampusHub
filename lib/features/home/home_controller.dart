@@ -37,6 +37,7 @@ class HomeController {
   static const _keyFrostedGlass = 'home_frosted_glass_enabled';
   static const _keyShaderStrength = 'home_shader_strength';
   static const _keyShaderOpacity = 'home_shader_opacity';
+  static const _keyShaderAnimationSpeed = 'home_shader_animation_speed';
   static const _keyLegacyFilterStrength = 'home_filter_strength';
   static const _keyBackgroundOpacity = 'home_background_opacity';
   static const _keyHeaderGlass = 'home_header_glass_enabled';
@@ -56,6 +57,7 @@ class HomeController {
   final ValueNotifier<bool> headerGlassEnabled = ValueNotifier(false);
   final ValueNotifier<double> shaderStrength = ValueNotifier(0.45);
   final ValueNotifier<double> shaderOpacity = ValueNotifier(1.0);
+  final ValueNotifier<double> shaderAnimationSpeed = ValueNotifier(1.0);
   final ValueNotifier<double> backgroundOpacity = ValueNotifier(1.0);
   final ValueNotifier<Alignment> backgroundAlignment = ValueNotifier(
     Alignment.center,
@@ -275,6 +277,8 @@ class HomeController {
       0.0,
       1.0,
     );
+    shaderAnimationSpeed.value =
+        (prefs.getDouble(_keyShaderAnimationSpeed) ?? 1.0).clamp(0.0, 2.0);
     backgroundOpacity.value = prefs.getDouble(_keyBackgroundOpacity) ?? 1.0;
 
     final bgX = prefs.getDouble(_keyBgAlignX);
@@ -355,6 +359,13 @@ class HomeController {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_keyShaderOpacity, opacity);
     shaderOpacity.value = opacity;
+  }
+
+  Future<void> setShaderAnimationSpeed(double value) async {
+    final speed = value.clamp(0.0, 2.0);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_keyShaderAnimationSpeed, speed);
+    shaderAnimationSpeed.value = speed;
   }
 
   Future<void> setBackgroundOpacity(double value) async {

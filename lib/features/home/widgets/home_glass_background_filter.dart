@@ -15,6 +15,7 @@ class HomeGlassBackgroundFilter extends StatefulWidget {
     required this.monetColors,
     required this.isDarkMode,
     required this.opacity,
+    required this.animationSpeed,
     required this.child,
   });
 
@@ -25,6 +26,7 @@ class HomeGlassBackgroundFilter extends StatefulWidget {
   final List<Color>? monetColors;
   final bool isDarkMode;
   final double opacity;
+  final double animationSpeed;
   final Widget child;
 
   @override
@@ -33,21 +35,53 @@ class HomeGlassBackgroundFilter extends StatefulWidget {
 }
 
 class _HomeGlassBackgroundFilterState extends State<HomeGlassBackgroundFilter>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+  static const _frameInterval = Duration(milliseconds: 33);
+  static const _maxTickDelta = Duration(milliseconds: 120);
+
   late final Ticker _ticker;
   ui.FragmentShader? _fragmentShader;
-  Duration _elapsed = Duration.zero;
+  Duration _lastTickElapsed = Duration.zero;
+  Duration _lastPaintElapsed = Duration.zero;
+  Duration _pendingTickDelta = Duration.zero;
+  double _shaderTimeSeconds = 0.0;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadShader();
     _ticker = createTicker((elapsed) {
       if (widget.mode != HomeShaderMode.ribbon &&
           widget.mode != HomeShaderMode.collage) {
         return;
       }
-      setState(() => _elapsed = elapsed);
+      if (_lastTickElapsed == Duration.zero) {
+        _lastTickElapsed = elapsed;
+        return;
+      }
+      final delta = elapsed - _lastTickElapsed;
+      _lastTickElapsed = elapsed;
+      if (delta <= Duration.zero) {
+        return;
+      }
+      if (delta > _maxTickDelta) {
+        _pendingTickDelta = Duration.zero;
+        return;
+      }
+      _pendingTickDelta += delta;
+      if (elapsed - _lastPaintElapsed < _frameInterval) {
+        return;
+      }
+      _lastPaintElapsed = elapsed;
+      _shaderTimeSeconds =
+          (_shaderTimeSeconds +
+              _pendingTickDelta.inMicroseconds /
+                  1000000.0 *
+                  widget.animationSpeed.clamp(0.0, 2.0)) %
+          60.0;
+      _pendingTickDelta = Duration.zero;
+      setState(() {});
     });
     if (widget.mode == HomeShaderMode.ribbon ||
         widget.mode == HomeShaderMode.collage) {
@@ -70,7 +104,32 @@ class _HomeGlassBackgroundFilterState extends State<HomeGlassBackgroundFilter>
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _lastTickElapsed = Duration.zero;
+      _lastPaintElapsed = Duration.zero;
+      _pendingTickDelta = Duration.zero;
+      if ((widget.mode == HomeShaderMode.ribbon ||
+              widget.mode == HomeShaderMode.collage) &&
+          !_ticker.isActive) {
+        _ticker.start();
+      }
+      return;
+    }
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _ticker.stop();
+      _lastTickElapsed = Duration.zero;
+      _lastPaintElapsed = Duration.zero;
+      _pendingTickDelta = Duration.zero;
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _ticker.dispose();
     _fragmentShader?.dispose();
     super.dispose();
@@ -104,7 +163,7 @@ class _HomeGlassBackgroundFilterState extends State<HomeGlassBackgroundFilter>
           ..setFloat(8, widget.isDarkMode ? 1.0 : 0.0);
       case HomeShaderMode.ribbon:
         _fragmentShader!
-          ..setFloat(2, _elapsed.inMilliseconds / 1000.0)
+          ..setFloat(2, _shaderTimeSeconds)
           ..setFloat(3, widget.intensity.clamp(0.0, 1.0))
           ..setFloat(4, widget.themeColor.r)
           ..setFloat(5, widget.themeColor.g)
@@ -114,7 +173,7 @@ class _HomeGlassBackgroundFilterState extends State<HomeGlassBackgroundFilter>
       case HomeShaderMode.collage:
         final colors = _shaderPalette();
         _fragmentShader!
-          ..setFloat(2, _elapsed.inMilliseconds / 1000.0)
+          ..setFloat(2, _shaderTimeSeconds)
           ..setFloat(3, widget.intensity.clamp(0.0, 1.0))
           ..setFloat(4, widget.themeColor.r)
           ..setFloat(5, widget.themeColor.g)
