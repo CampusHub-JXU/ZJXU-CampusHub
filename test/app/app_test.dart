@@ -7,6 +7,9 @@ import 'package:jxu_campus_hub/core/network/proxy_mode.dart';
 
 import '../helpers/test_setup.dart';
 
+const startupProxyWarningText =
+    '检测到系统代理或 VPN/TUN；若校务功能异常，请排除本 App 或将 *.zjxu.edu.cn 设为 DIRECT';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -60,7 +63,7 @@ void main() {
           null,
     );
 
-    expect(find.text('检测到系统代理或 VPN，部分校务功能可能异常'), findsNothing);
+    expect(find.text(startupProxyWarningText), findsNothing);
     expect(find.text('首页内容'), findsOneWidget);
   });
 
@@ -73,7 +76,7 @@ void main() {
           'PROXY 127.0.0.1:8888',
     );
 
-    expect(find.text('检测到系统代理或 VPN，部分校务功能可能异常'), findsOneWidget);
+    expect(find.text(startupProxyWarningText), findsOneWidget);
     expect(find.text('首页内容'), findsOneWidget);
     expect(find.text('退出'), findsNothing);
   });
@@ -88,7 +91,7 @@ void main() {
       connectivityChecker: () async => const [ConnectivityResult.vpn],
     );
 
-    expect(find.text('检测到系统代理或 VPN，部分校务功能可能异常'), findsOneWidget);
+    expect(find.text(startupProxyWarningText), findsOneWidget);
   });
 
   testWidgets(
@@ -104,7 +107,7 @@ void main() {
         ],
       );
 
-      expect(find.text('检测到系统代理或 VPN，部分校务功能可能异常'), findsOneWidget);
+      expect(find.text(startupProxyWarningText), findsOneWidget);
     },
   );
 
@@ -127,7 +130,7 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      expect(find.text('检测到系统代理或 VPN，部分校务功能可能异常'), findsOneWidget);
+      expect(find.text(startupProxyWarningText), findsOneWidget);
 
       await tester.pump(const Duration(seconds: 1));
       await tester.pumpAndSettle();

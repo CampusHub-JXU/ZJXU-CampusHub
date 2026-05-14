@@ -53,7 +53,7 @@ class UpdateService {
         receiveTimeout: const Duration(seconds: 15),
         headers: const {
           'Accept': 'application/json',
-          'User-Agent': 'JXU-Portal-App',
+          'User-Agent': 'JXU-CampusHub-App',
         },
       ),
     );
@@ -103,6 +103,13 @@ class UpdateService {
       AppUpdateMode.remoteManifest => RemoteManifestUpdateSource(
         dio: _dio ??= _createDio(),
         manifestUrl: AppConfig.updateManifestUrl,
+      ),
+      AppUpdateMode.githubRelease => GitHubReleaseUpdateSource(
+        dio: _dio ??= _createDio(),
+        latestReleaseApiUrl: AppConfig.updateGithubLatestReleaseApiUrl,
+        latestReleaseFallbackApiUrls:
+            AppConfig.updateGithubLatestReleaseFallbackApiUrls,
+        releaseMirrorPrefix: AppConfig.updateGithubReleaseMirrorPrefix,
       ),
     };
   }

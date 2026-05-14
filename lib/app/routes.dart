@@ -17,6 +17,7 @@ import '../features/notice/notice_list_page.dart';
 import '../features/sjjx_notice/sjjx_notice_list_page.dart';
 import '../features/service_hall/service_hall_page.dart';
 import '../features/notification_center/notification_center_page.dart';
+import '../features/exam/exam_page.dart';
 import '../features/settings/settings_page.dart';
 import '../features/settings/personalization_page.dart';
 import '../features/dorm_electricity/dorm_electricity_page.dart';
@@ -83,6 +84,11 @@ final GoRouter appRouter = GoRouter(
       path: '/grades',
       name: 'grades',
       builder: (context, state) => const GradesPage(),
+    ),
+    GoRoute(
+      path: '/exam',
+      name: 'exam',
+      builder: (context, state) => const ExamPage(),
     ),
     GoRoute(
       path: '/campus-card',

@@ -1,0 +1,152 @@
+name: CI Test
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      run_apk_build:
+        description: Run optional Android APK build smoke test
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-test-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: '3.41.6'
+
+jobs:
+  flutter-test:
+    name: Flutter Analyze And Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout private repository
+        uses: actions/checkout@v5
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Print tool versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter --version
+          dart --version
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Verify formatting
+        run: dart format --output=none --set-exit-if-changed lib test integration_test
+
+      - name: Analyze project source
+        run: flutter analyze
+
+      - name: Run test diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/test_diagnostics.py --self-test
+          python tools/test_diagnostics.py --output build/test_diagnostics --fail-on error
+
+      - name: Run focused regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter test test/core/update/update_service_test.dart
+          flutter test test/shared/widgets/protected_webview_auth_test.dart --plain-name "shows login guidance"
+
+      - name: Run full test suite
+        run: flutter test --coverage
+
+      - name: Summarize test diagnostics
+        if: always()
+        shell: bash
+        run: |
+          if [ -f build/test_diagnostics/test_diagnostics.md ]; then
+            cat build/test_diagnostics/test_diagnostics.md >> "${GITHUB_STEP_SUMMARY}"
+          fi
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: coverage/lcov.info
+          if-no-files-found: ignore
+
+      - name: Upload test diagnostics artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-diagnostics
+          path: build/test_diagnostics/
+          if-no-files-found: ignore
+
+      - name: Optional Android APK build smoke test
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_apk_build == true }}
+        run: flutter build apk --debug
+
+  workflow-smoke:
+    name: Workflow Smoke Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout private repository
+        uses: actions/checkout@v5
+
+      - name: Parse workflow YAML files
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruby -e 'require "yaml"; Dir[".github/workflows/*.{yml,yaml}"].sort.each { |path| YAML.load_file(path); puts "parsed #{path}" }'
+
+      - name: Validate release workflow target
+        shell: bash
+        run: |
+          set -euo pipefail
+          workflow=".github/workflows/release-to-public-github.yml"
+          test -f "${workflow}"
+          grep -q 'PUBLIC_GH_REPO: ZJXU-CampusHub' "${workflow}"
+          grep -q 'PUBLIC_TARGET_BRANCH: main' "${workflow}"
+          grep -q 'gh release upload' "${workflow}"
+          if grep -q 'GITEE_TOKEN\|GITEE_REPO\|gitee.com' "${workflow}"; then
+            echo "Release workflow still contains Gitee publishing references" >&2
+            exit 1
+          fi
+
+      - name: Summarize workflow smoke test
+        shell: bash
+        run: |
+          {
+            echo "## Workflow Smoke Test"
+            echo
+            echo "- CI workflow parsed successfully"
+            echo "- Release workflow targets FHfanshu/ZJXU-CampusHub main"
+            echo "- Gitee publishing references are absent"
+          } >> "${GITHUB_STEP_SUMMARY}"

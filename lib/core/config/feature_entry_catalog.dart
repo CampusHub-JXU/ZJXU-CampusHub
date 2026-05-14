@@ -172,6 +172,20 @@ class AppFeaturesConfig {
       sortOrder: 70,
     ),
     FeatureEntryDefinition(
+      id: 'exam',
+      title: '考试安排',
+      subtitle: '考试倒数日与详细信息',
+      icon: Icons.quiz_outlined,
+      accentColor: Color(0xFFE53935),
+      routeName: 'exam',
+      spans: FeatureEntryResponsiveSpan(
+        compact: FeatureEntrySpan(columns: 1, rows: 1),
+        expanded: FeatureEntrySpan(columns: 1, rows: 1),
+      ),
+      placements: {FeatureEntryPlacement.serviceHub},
+      sortOrder: 75,
+    ),
+    FeatureEntryDefinition(
       id: 'dorm-electricity',
       title: '宿舍电费',
       subtitle: '查询剩余电量并管理宿舍配置',

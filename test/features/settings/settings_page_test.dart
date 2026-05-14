@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/app/text_scale_controller.dart';
@@ -22,7 +22,7 @@ void main() {
 
     await tester.scrollUntilVisible(find.text('检查更新'), 300);
     expect(find.text('检查更新'), findsOneWidget);
-    expect(find.text('当前版本暂未开放在线更新'), findsOneWidget);
+    expect(find.text('当前版本暂未开放在线更新'), findsNothing);
 
     final slider = tester.widget<Slider>(find.byType(Slider));
     slider.onChanged?.call(1.15);

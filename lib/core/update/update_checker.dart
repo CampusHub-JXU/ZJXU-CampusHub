@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../logging/app_logger.dart';
 import 'update_model.dart';
 import 'update_service.dart';
+import 'update_source.dart';
 
 enum UpdateCheckStatus { disabled, updateAvailable, upToDate, error, checking }
 
@@ -45,6 +46,9 @@ class UpdateChecker {
         UpdateCheckStatus.updateAvailable,
         release: release,
       );
+    } on UpdateSourceUnavailableException catch (error) {
+      AppLogger.instance.network(LogLevel.debug, '更新源暂不可用: $error');
+      return const UpdateCheckResult(UpdateCheckStatus.error);
     } catch (error) {
       AppLogger.instance.network(LogLevel.warn, '更新检查异常: $error');
       return const UpdateCheckResult(UpdateCheckStatus.error);

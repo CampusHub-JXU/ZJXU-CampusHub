@@ -22,6 +22,7 @@ class UnifiedAuthProtectedWebViewPage extends StatefulWidget {
     this.showWebViewBottomBackButton = false,
     this.onHomePressed,
     this.appBarActions = const [],
+    this.autoPromptLogin = true,
   });
 
   final String title;
@@ -34,6 +35,7 @@ class UnifiedAuthProtectedWebViewPage extends StatefulWidget {
   final bool showWebViewBottomBackButton;
   final VoidCallback? onHomePressed;
   final List<Widget> appBarActions;
+  final bool autoPromptLogin;
 
   @override
   State<UnifiedAuthProtectedWebViewPage> createState() =>
@@ -107,14 +109,38 @@ class _UnifiedAuthProtectedWebViewPageState
   }
 
   Future<void> _resolveInitialAuthentication() async {
-    final validated = await UnifiedAuthService.instance.validateSession(
-      serviceUrl: widget.serviceUrl,
-    );
-    if (!mounted) return;
-    setState(() {
-      _authenticated = validated ?? UnifiedAuthService.instance.isLoggedIn;
-      _authResolved = true;
-    });
+    try {
+      final validated = await UnifiedAuthService.instance.validateSession(
+        serviceUrl: widget.serviceUrl,
+      );
+      if (!mounted) return;
+      setState(() {
+        _authenticated = validated ?? UnifiedAuthService.instance.isLoggedIn;
+        _authResolved = true;
+      });
+    } catch (error, stackTrace) {
+      AppLogger.instance.auth(
+        LogLevel.warn,
+        '统一认证登录态校验失败，切换为登录引导',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      if (!mounted) return;
+      setState(() {
+        _authenticated = false;
+        _authResolved = true;
+      });
+      try {
+        await UnifiedAuthService.instance.markLoggedOut();
+      } catch (logoutError, logoutStackTrace) {
+        AppLogger.instance.auth(
+          LogLevel.warn,
+          '清理统一认证登录态失败',
+          error: logoutError,
+          stackTrace: logoutStackTrace,
+        );
+      }
+    }
   }
 
   Future<void> _handleLoadStop(
@@ -226,7 +252,9 @@ class _UnifiedAuthProtectedWebViewPageState
       );
     }
 
-    _scheduleLoginPrompt();
+    if (widget.autoPromptLogin) {
+      _scheduleLoginPrompt();
+    }
 
     return Scaffold(
       appBar: AppBar(

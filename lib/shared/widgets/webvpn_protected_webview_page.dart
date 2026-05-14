@@ -56,9 +56,21 @@ class _WebVpnProtectedWebViewPageState
   }
 
   Future<void> _resolveInitialSession() async {
-    final valid = await ZhengfangAuth.instance.validateWebVpnTargetSession(
-      widget.url,
-    );
+    bool? valid;
+    try {
+      valid = await ZhengfangAuth.instance.validateWebVpnTargetSession(
+        widget.url,
+      );
+    } catch (error, stackTrace) {
+      AppLogger.instance.webview(
+        LogLevel.warn,
+        'WebVPN 登录态校验失败，切换为登录引导',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      valid = false;
+    }
+
     if (!mounted) return;
 
     if (valid == false) {

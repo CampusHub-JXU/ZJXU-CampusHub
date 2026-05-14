@@ -1,16 +1,20 @@
-﻿import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_test/flutter_test.dart';
 
+import 'package:jxu_campus_hub/core/logging/app_logger.dart';
 import 'package:jxu_campus_hub/core/update/update_checker.dart';
 import 'package:jxu_campus_hub/core/update/update_model.dart';
 import 'package:jxu_campus_hub/core/update/update_service.dart';
+import 'package:jxu_campus_hub/core/update/update_source.dart';
 
 void main() {
   setUp(() {
+    AppLogger.instance.debugReset();
     UpdateService.instance.debugReset();
     UpdateChecker.instance.debugReset();
   });
 
   tearDown(() {
+    AppLogger.instance.debugReset();
     UpdateService.instance.debugReset();
     UpdateChecker.instance.debugReset();
   });
@@ -96,4 +100,30 @@ void main() {
     );
     expect(UpdateChecker.instance.isChecking.value, isFalse);
   });
+
+  test(
+    'treats unavailable update source as non-warning check failure',
+    () async {
+      UpdateService.instance.debugReleaseProvider = () async {
+        throw const UpdateSourceUnavailableException('GitHub Release 暂不可用');
+      };
+      UpdateService.instance.debugCurrentVersionProvider = () async => '0.1.0';
+      UpdateService.instance.debugIsRemoteUpdateEnabled = true;
+      AppLogger.instance.config.value = const LogConfig.defaults().copyWith(
+        minimumLevel: LogLevel.debug,
+      );
+
+      final result = await UpdateChecker.instance.check();
+
+      expect(result.status, UpdateCheckStatus.error);
+      expect(
+        AppLogger.instance.entries.map((entry) => entry.level),
+        isNot(contains(LogLevel.warn)),
+      );
+      expect(
+        AppLogger.instance.entries.map((entry) => entry.message),
+        contains(contains('更新源暂不可用')),
+      );
+    },
+  );
 }

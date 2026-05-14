@@ -14,6 +14,8 @@ import '../../shared/widgets/login_shell.dart';
 import '../../shared/widgets/update_dialog.dart';
 import '../campus_card/campus_card_service.dart';
 import '../dorm_electricity/dorm_electricity_service.dart';
+import '../exam/exam_model.dart';
+import '../exam/exam_service.dart';
 import '../schedule/schedule_cache_snapshot.dart';
 import '../schedule/schedule_model.dart';
 import '../schedule/schedule_service.dart';
@@ -23,6 +25,7 @@ import 'widgets/home_card_container.dart';
 import 'widgets/home_campus_card_balance_card.dart';
 import 'widgets/home_dorm_electricity_card.dart';
 import 'widgets/home_dorm_services_card.dart';
+import 'widgets/home_exam_countdown_card.dart';
 import 'widgets/home_header_card.dart';
 import 'widgets/home_more_services_card.dart';
 import 'widgets/home_next_course_content.dart';
@@ -39,6 +42,7 @@ class _HomePageState extends State<HomePage> {
 
   String _campusCardBalance = '--';
   String _dormElectricity = '--';
+  ExamEntry? _nextExam;
   CourseEntry? _nextCourse;
   String _nextCourseLabel = '';
   bool _courseLoggedIn = false;
@@ -233,7 +237,11 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _refreshDeferredContent() async {
     await _refreshCampusCardBalance();
-    await Future.wait<void>([_refreshNextCourse(), _refreshDormElectricity()]);
+    await Future.wait<void>([
+      _refreshNextCourse(),
+      _refreshDormElectricity(),
+      _refreshExam(),
+    ]);
   }
 
   Future<void> _refreshNextCourse() async {
@@ -299,6 +307,20 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       _dormElectricity = service.formatElectricity(value);
     });
+  }
+
+  Future<void> _refreshExam() async {
+    if (!_isBootstrapReady) return;
+    if (!ZhengfangAuth.instance.isLoggedIn) return;
+    try {
+      await ExamService.instance.fetchExams();
+      if (!mounted) return;
+      setState(() {
+        _nextExam = ExamService.instance.nextExam;
+      });
+    } catch (_) {
+      // Silent fail — exam card will show no data
+    }
   }
 
   Future<void> _openSchedule(BuildContext context) async {
@@ -401,7 +423,7 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           const SizedBox(width: 12),
-          // Right column: dorm electricity → more services (content-driven)
+          // Right column: dorm electricity → exam → more services
           Expanded(
             child: Column(
               children: [
@@ -411,6 +433,15 @@ class _HomePageState extends State<HomePage> {
                     await context.pushNamed('dorm-electricity');
                     if (!mounted) return;
                     await _refreshDormElectricity();
+                  },
+                ),
+                const SizedBox(height: 10),
+                HomeExamCountdownCard(
+                  exam: _nextExam,
+                  onTap: () async {
+                    await context.pushNamed('exam');
+                    if (!mounted) return;
+                    _refreshExam();
                   },
                 ),
                 const SizedBox(height: 10),

@@ -57,7 +57,16 @@ class _ZhengfangProtectedWebViewPageState
   }
 
   Future<void> _showNativeLogin() async {
-    await ZhengfangAuth.instance.markLoggedOut();
+    try {
+      await ZhengfangAuth.instance.markLoggedOut();
+    } catch (error, stackTrace) {
+      AppLogger.instance.auth(
+        LogLevel.warn,
+        '清理教务登录态失败，继续显示登录引导',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
     if (mounted) {
       setState(() {
         _authenticated = false;
@@ -69,8 +78,19 @@ class _ZhengfangProtectedWebViewPageState
     if (!mounted || _loginPromptInFlight) return;
     _loginPromptShown = true;
     _loginPromptInFlight = true;
-    final loggedIn = await showAcademicSystemLoginModal(context);
-    _loginPromptInFlight = false;
+    bool loggedIn = false;
+    try {
+      loggedIn = await showAcademicSystemLoginModal(context);
+    } catch (error, stackTrace) {
+      AppLogger.instance.auth(
+        LogLevel.warn,
+        '教务登录弹窗打开失败，保留登录引导',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    } finally {
+      _loginPromptInFlight = false;
+    }
     if (!mounted || !loggedIn) return;
     await _prepareWebViewSession(recreateWebView: true);
   }
