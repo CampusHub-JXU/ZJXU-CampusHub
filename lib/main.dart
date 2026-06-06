@@ -61,6 +61,20 @@ Future<void> main() async {
       }
       AppBootstrapController.instance.scheduleWarmUpAfterFirstFrame();
       await BackgroundTaskService.instance.initialize();
+
+      // Check electricity on app resume (foreground) for timely notifications.
+      final lifecycleListener = AppLifecycleListener(
+        onStateChange: (state) {
+          if (state == AppLifecycleState.resumed) {
+            unawaited(
+              BackgroundTaskService.instance.foregroundCheckAndNotify(),
+            );
+          }
+        },
+      );
+      // Keep listener alive for app lifetime.
+      // ignore: unused_local_variable
+      lifecycleListener;
     },
     (error, stackTrace) {
       AppLogger.instance.log(

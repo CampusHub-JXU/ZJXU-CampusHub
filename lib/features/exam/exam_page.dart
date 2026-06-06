@@ -29,12 +29,30 @@ class _ExamPageState extends State<ExamPage> {
     _loggedIn = ZhengfangAuth.instance.isLoggedIn;
     ZhengfangAuth.instance.addListener(_handleAuthChanged);
     if (_loggedIn) {
-      _fetchExams();
+      _loadCachedThenFetch();
     } else {
+      // Show cached data even when not logged in (session may have expired).
+      _showCachedIfAvailable();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         unawaited(_presentLoginPrompt());
       });
+    }
+  }
+
+  /// Show cached data immediately, then fetch fresh data in the background.
+  void _loadCachedThenFetch() {
+    final cached = ExamService.instance.cachedExams;
+    if (cached != null && cached.isNotEmpty) {
+      _exams = cached;
+    }
+    _fetchExams();
+  }
+
+  void _showCachedIfAvailable() {
+    final cached = ExamService.instance.cachedExams;
+    if (cached != null && cached.isNotEmpty) {
+      setState(() => _exams = cached);
     }
   }
 
@@ -63,13 +81,14 @@ class _ExamPageState extends State<ExamPage> {
     }
   }
 
-  Future<void> _fetchExams() async {
+  Future<void> _fetchExams({bool forceRefresh = false}) async {
     setState(() {
-      _loading = true;
+      _loading = _exams.isEmpty; // Only show spinner if no cached data
       _error = null;
     });
     try {
-      final exams = await ExamService.instance.fetchExams();
+      final exams =
+          await ExamService.instance.fetchExams(forceRefresh: forceRefresh);
       if (mounted) setState(() => _exams = exams);
     } on ExamAuthExpiredException {
       if (!mounted) return;
@@ -116,7 +135,7 @@ class _ExamPageState extends State<ExamPage> {
             ? [
                 IconButton(
                   icon: const Icon(Icons.refresh),
-                  onPressed: _fetchExams,
+                  onPressed: () => _fetchExams(forceRefresh: true),
                 ),
               ]
             : null,

@@ -142,4 +142,18 @@ class ExamEntry {
       weekNumber: weekNumber,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'kcmc': courseName,
+        'kch': courseCode,
+        'kssj': examTimeRaw,
+        'cdmc': location,
+        'cdxqmc': campus,
+        'zwh': seatNumber,
+        'ksmc': examName,
+        'kkxy': department,
+        'cxbj': isRetake ? '是' : '',
+        'xnmc': academicYear,
+        'xqmmc': semester,
+      };
 }

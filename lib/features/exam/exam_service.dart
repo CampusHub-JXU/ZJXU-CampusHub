@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/network/dio_client.dart';
@@ -7,6 +10,10 @@ import 'exam_model.dart';
 class ExamService {
   ExamService._();
   static final ExamService instance = ExamService._();
+
+  static const _cacheKey = 'exam_cached_data';
+  static const _cacheTimeKey = 'exam_cached_at';
+  static const _refreshWindow = Duration(hours: 6);
 
   List<ExamEntry>? _cachedExams;
 
@@ -25,7 +32,65 @@ class ExamService {
     return _cachedExams!.where((e) => e.hasDate && !e.isPast).toList();
   }
 
-  Future<List<ExamEntry>> fetchExams([String? studentId]) async {
+  /// Restore exam cache from disk. Returns true if data was restored.
+  Future<bool> restoreCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_cacheKey);
+      if (raw == null) return false;
+      final list = (jsonDecode(raw) as List<dynamic>)
+          .cast<Map<String, dynamic>>()
+          .map(ExamEntry.fromJson)
+          .toList()
+        ..sort((a, b) {
+          if (!a.hasDate && !b.hasDate) return 0;
+          if (!a.hasDate) return 1;
+          if (!b.hasDate) return -1;
+          return a.examDate!.compareTo(b.examDate!);
+        });
+      _cachedExams = list;
+      final savedAt = prefs.getInt(_cacheTimeKey);
+      if (savedAt != null) {
+        _lastSavedAt = DateTime.fromMillisecondsSinceEpoch(savedAt);
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Whether the cached data is still within the refresh window.
+  bool get isCacheFresh {
+    final prefs = _lastSavedAt;
+    if (prefs == null) return false;
+    return DateTime.now().difference(prefs) < _refreshWindow;
+  }
+
+  DateTime? _lastSavedAt;
+
+  Future<void> _persistCache(List<ExamEntry> exams) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _cacheKey,
+        jsonEncode(exams.map((e) => e.toJson()).toList()),
+      );
+      _lastSavedAt = DateTime.now();
+      await prefs.setInt(_cacheTimeKey, _lastSavedAt!.millisecondsSinceEpoch);
+    } catch (_) {}
+  }
+
+  /// Fetch exams from network, with cache-first strategy.
+  /// If [forceRefresh] is false and cache is fresh, returns cached data.
+  Future<List<ExamEntry>> fetchExams({
+    String? studentId,
+    bool forceRefresh = false,
+  }) async {
+    // Return in-memory cache if fresh and not forced.
+    if (!forceRefresh && _cachedExams != null && isCacheFresh) {
+      return _cachedExams!;
+    }
+
     await DioClient.instance.ensureInitialized();
     final dio = DioClient.instance.dio;
 
@@ -71,6 +136,7 @@ class ExamService {
             });
 
       _cachedExams = exams;
+      await _persistCache(exams);
       return exams;
     } on DioException catch (e) {
       if (e.response?.statusCode == 302 || e.response?.statusCode == 403) {

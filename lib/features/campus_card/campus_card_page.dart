@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
+import '../../app/app_bootstrap_controller.dart';
 import '../../app/theme.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/shortcut/app_shortcut_service.dart';
@@ -23,13 +24,41 @@ class _CampusCardPageState extends State<CampusCardPage> {
   @override
   void initState() {
     super.initState();
-    // Auto-open WebView to capture balance if not cached yet.
-    if (CampusCardService.instance.cachedBalance == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        _openCampusCardWebView(title: '校园卡账单', autoPop: true);
-      });
+    _scheduleAutoOpenIfNeeded();
+  }
+
+  void _scheduleAutoOpenIfNeeded() {
+    if (CampusCardService.instance.cachedBalance != null) return;
+
+    final phase = AppBootstrapController.instance.phase;
+    if (phase.value == AppBootstrapPhase.localStateReady ||
+        phase.value == AppBootstrapPhase.completed) {
+      // Warm-up already done — balance is genuinely missing.
+      _autoOpenWebView();
+      return;
     }
+
+    // Wait for bootstrap warm-up to restore persisted balance first.
+    void listener() {
+      final p = AppBootstrapController.instance.phase.value;
+      if (p == AppBootstrapPhase.localStateReady ||
+          p == AppBootstrapPhase.completed) {
+        AppBootstrapController.instance.phase.removeListener(listener);
+        if (!mounted) return;
+        if (CampusCardService.instance.cachedBalance == null) {
+          _autoOpenWebView();
+        }
+      }
+    }
+
+    AppBootstrapController.instance.phase.addListener(listener);
+  }
+
+  void _autoOpenWebView() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _openCampusCardWebView(title: '校园卡账单', autoPop: true);
+    });
   }
 
   bool _capturedInCurrentDetailPage = false;
