@@ -45,6 +45,9 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Release signing keystore (stored in GitHub Secrets, never commit)
+*.jks
+
 # Logcat dumps (may contain App IDs and other secrets)
 logcat_dump.txt
 
