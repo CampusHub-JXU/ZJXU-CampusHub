@@ -13,6 +13,7 @@ import 'package:jxu_campus_hub/core/update/update_service.dart';
 import 'package:jxu_campus_hub/features/campus_card/campus_card_service.dart';
 import 'package:jxu_campus_hub/features/changxing_jiada/changxing_jiada_service.dart';
 import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_service.dart';
+import 'package:jxu_campus_hub/features/exam/exam_service.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';
 
 Future<void> resetTestEnvironment() async {
@@ -38,4 +39,5 @@ Future<void> resetTestEnvironment() async {
   ChangxingJiadaService.instance.debugReset();
   DormElectricityService.instance.debugReset();
   await ScheduleService.instance.debugClearCache();
+  ExamService.instance.debugReset();
 }

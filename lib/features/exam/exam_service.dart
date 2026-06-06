@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/auth/zhengfang_auth.dart';
@@ -30,6 +31,12 @@ class ExamService {
   List<ExamEntry> get upcomingExams {
     if (_cachedExams == null) return [];
     return _cachedExams!.where((e) => e.hasDate && !e.isPast).toList();
+  }
+
+  @visibleForTesting
+  void debugReset() {
+    _cachedExams = null;
+    _lastSavedAt = null;
   }
 
   /// Restore exam cache from disk. Returns true if data was restored.

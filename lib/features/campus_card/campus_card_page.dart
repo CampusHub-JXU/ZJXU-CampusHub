@@ -12,6 +12,9 @@ import 'campus_card_service.dart';
 class CampusCardPage extends StatefulWidget {
   const CampusCardPage({super.key});
 
+  /// Whether the auto-open logic was triggered (for testing).
+  static bool debugAutoOpenTriggered = false;
+
   @override
   State<CampusCardPage> createState() => _CampusCardPageState();
 }
@@ -55,6 +58,7 @@ class _CampusCardPageState extends State<CampusCardPage> {
   }
 
   void _autoOpenWebView() {
+    CampusCardPage.debugAutoOpenTriggered = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _openCampusCardWebView(title: '校园卡账单', autoPop: true);
