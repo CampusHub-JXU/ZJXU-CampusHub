@@ -45,16 +45,17 @@ class ExamService {
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(_cacheKey);
       if (raw == null) return false;
-      final list = (jsonDecode(raw) as List<dynamic>)
-          .cast<Map<String, dynamic>>()
-          .map(ExamEntry.fromJson)
-          .toList()
-        ..sort((a, b) {
-          if (!a.hasDate && !b.hasDate) return 0;
-          if (!a.hasDate) return 1;
-          if (!b.hasDate) return -1;
-          return a.examDate!.compareTo(b.examDate!);
-        });
+      final list =
+          (jsonDecode(raw) as List<dynamic>)
+              .cast<Map<String, dynamic>>()
+              .map(ExamEntry.fromJson)
+              .toList()
+            ..sort((a, b) {
+              if (!a.hasDate && !b.hasDate) return 0;
+              if (!a.hasDate) return 1;
+              if (!b.hasDate) return -1;
+              return a.examDate!.compareTo(b.examDate!);
+            });
       _cachedExams = list;
       final savedAt = prefs.getInt(_cacheTimeKey);
       if (savedAt != null) {

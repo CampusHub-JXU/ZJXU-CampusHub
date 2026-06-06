@@ -69,10 +69,13 @@ void main() {
     test('sorts exams by date during restore', () async {
       final prefs = await SharedPreferences.getInstance();
       // Reverse chronological order in stored data.
-      await prefs.setString('exam_cached_data', jsonEncode([
-        sampleItems[1], // July
-        sampleItems[0], // June
-      ]));
+      await prefs.setString(
+        'exam_cached_data',
+        jsonEncode([
+          sampleItems[1], // July
+          sampleItems[0], // June
+        ]),
+      );
       await prefs.setInt(
         'exam_cached_at',
         DateTime.now().millisecondsSinceEpoch,

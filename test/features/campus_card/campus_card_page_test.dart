@@ -91,21 +91,18 @@ void main() {
   });
 
   group('bootstrap-aware auto-open', () {
-    testWidgets(
-      'does not auto-open WebView while bootstrap is still warming',
-      (tester) async {
-        CampusCardService.instance.debugSetCachedBalance(null);
-        AppBootstrapController.instance.debugSetPhase(
-          AppBootstrapPhase.warming,
-        );
+    testWidgets('does not auto-open WebView while bootstrap is still warming', (
+      tester,
+    ) async {
+      CampusCardService.instance.debugSetCachedBalance(null);
+      AppBootstrapController.instance.debugSetPhase(AppBootstrapPhase.warming);
 
-        await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
-        await tester.pumpAndSettle();
+      await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+      await tester.pumpAndSettle();
 
-        // WebView should NOT have been pushed yet.
-        expect(find.byType(UnifiedAuthProtectedWebViewPage), findsNothing);
-      },
-    );
+      // WebView should NOT have been pushed yet.
+      expect(find.byType(UnifiedAuthProtectedWebViewPage), findsNothing);
+    });
 
     testWidgets(
       'auto-opens WebView when bootstrap completes with no cached balance',

@@ -87,8 +87,9 @@ class _ExamPageState extends State<ExamPage> {
       _error = null;
     });
     try {
-      final exams =
-          await ExamService.instance.fetchExams(forceRefresh: forceRefresh);
+      final exams = await ExamService.instance.fetchExams(
+        forceRefresh: forceRefresh,
+      );
       if (mounted) setState(() => _exams = exams);
     } on ExamAuthExpiredException {
       if (!mounted) return;

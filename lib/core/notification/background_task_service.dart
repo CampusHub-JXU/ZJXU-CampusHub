@@ -229,9 +229,7 @@ Future<void> _scheduleDailyAlarmNotification() async {
     );
 
     if (kDebugMode) {
-      debugPrint(
-        'Scheduled daily electricity alarm at $scheduled',
-      );
+      debugPrint('Scheduled daily electricity alarm at $scheduled');
     }
   } catch (e) {
     if (kDebugMode) debugPrint('Failed to schedule daily alarm: $e');
