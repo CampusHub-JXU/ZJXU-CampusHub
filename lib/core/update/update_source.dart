@@ -130,7 +130,7 @@ class GitHubReleaseUpdateSource implements UpdateSource {
   }
 
   /// Pick the best APK asset for this device's ABI.
-  /// Priority: matching arch-specific APK > universal APK > first APK.
+  /// Priority: matching arch-specific APK > first APK.
   Map<String, dynamic>? _bestApkAssetForDevice(
     List<Map<String, dynamic>> assets,
   ) {
@@ -147,13 +147,7 @@ class GitHubReleaseUpdateSource implements UpdateSource {
       }
     }
 
-    // 2. Fall back to universal APK.
-    for (final asset in apks) {
-      final name = (asset['name'] as String? ?? '').toLowerCase();
-      if (name.contains('universal')) return asset;
-    }
-
-    // 3. Fall back to first APK.
+    // 2. Fall back to first APK.
     return apks.first;
   }
 
