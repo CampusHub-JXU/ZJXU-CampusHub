@@ -4,8 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
-import '../../app/text_scale_controller.dart';
-import '../../app/theme_mode_controller.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/notification/app_notification_service.dart';
 import '../../core/semester/semester_calendar.dart';
@@ -15,8 +13,6 @@ import '../../shared/widgets/update_dialog.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
-
-  String _formatScaleFactor(double value) => '${(value * 100).round()}%';
 
   String _formatLogLevel(LogLevel level) {
     return switch (level) {
@@ -93,128 +89,21 @@ class SettingsPage extends StatelessWidget {
         children: [
           Text('外观', style: textTheme.titleMedium),
           const SizedBox(height: 12),
-          ValueListenableBuilder<ThemeMode>(
-            valueListenable: ThemeModeController.instance.themeMode,
-            builder: (context, themeMode, child) {
-              return Card(
-                clipBehavior: Clip.antiAlias,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 14, 12, 8),
-                      child: Text('主题模式', style: textTheme.titleSmall),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-                      child: SegmentedButton<ThemeMode>(
-                        segments: const [
-                          ButtonSegment<ThemeMode>(
-                            value: ThemeMode.system,
-                            icon: Icon(Icons.brightness_auto),
-                            label: Text(
-                              '跟随系统',
-                              overflow: TextOverflow.ellipsis,
-                              softWrap: false,
-                            ),
-                          ),
-                          ButtonSegment<ThemeMode>(
-                            value: ThemeMode.light,
-                            icon: Icon(Icons.light_mode),
-                            label: Text('浅色'),
-                          ),
-                          ButtonSegment<ThemeMode>(
-                            value: ThemeMode.dark,
-                            icon: Icon(Icons.dark_mode),
-                            label: Text('深色'),
-                          ),
-                        ],
-                        selected: {themeMode},
-                        onSelectionChanged: (selection) {
-                          ThemeModeController.instance.setThemeMode(
-                            selection.first,
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 12),
-          ValueListenableBuilder<double>(
-            valueListenable: TextScaleController.instance.textScaleFactor,
-            builder: (context, textScaleFactor, child) {
-              return Card(
-                clipBehavior: Clip.antiAlias,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    ListTile(
-                      title: const Text('应用字号'),
-                      subtitle: const Text('基于系统字号缩放，最大限制到 120%'),
-                      trailing: Text(_formatScaleFactor(textScaleFactor)),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                      child: Column(
-                        children: [
-                          Slider.adaptive(
-                            min: TextScaleController.minScaleFactor,
-                            max: TextScaleController.maxScaleFactor,
-                            divisions: TextScaleController.sliderDivisions,
-                            label: _formatScaleFactor(textScaleFactor),
-                            value: textScaleFactor,
-                            onChanged: (value) {
-                              TextScaleController.instance.setTextScaleFactor(
-                                value,
-                              );
-                            },
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  '紧凑 ${_formatScaleFactor(TextScaleController.minScaleFactor)}',
-                                  style: textTheme.bodySmall,
-                                ),
-                                Text(
-                                  '上限 ${_formatScaleFactor(TextScaleController.maxScaleFactor)}',
-                                  style: textTheme.bodySmall,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                        child: TextButton(
-                          onPressed: () {
-                            TextScaleController.instance.setTextScaleFactor(
-                              TextScaleController.defaultScaleFactor,
-                            );
-                          },
-                          child: const Text('恢复默认'),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
+          Card(
+            clipBehavior: Clip.antiAlias,
+            child: ListTile(
+              leading: const Icon(Icons.palette_outlined),
+              title: const Text('主题与外观'),
+              subtitle: const Text('主题模式、颜色、纯黑模式、文本缩放'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.pushNamed('theme-settings'),
+            ),
           ),
           const SizedBox(height: 12),
           Card(
             clipBehavior: Clip.antiAlias,
             child: ListTile(
-              leading: const Icon(Icons.palette_outlined),
+              leading: const Icon(Icons.wallpaper_outlined),
               title: const Text('首页个性化'),
               subtitle: const Text('背景图片、Shader、毛玻璃效果'),
               trailing: const Icon(Icons.chevron_right),
@@ -429,6 +318,15 @@ class SettingsPage extends StatelessWidget {
                                 payload: 'test',
                               );
                             },
+                          ),
+                          const Divider(height: 1),
+                          ListTile(
+                            leading:
+                                const Icon(Icons.notifications_active_outlined),
+                            title: const Text('推送令牌'),
+                            subtitle: const Text('查看 FCM 推送注册状态'),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () => context.pushNamed('push-debug'),
                           ),
                         ],
                       ),
