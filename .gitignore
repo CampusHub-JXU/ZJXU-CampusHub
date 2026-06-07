@@ -65,3 +65,4 @@ analyze.out
 hs_err_pid*.log
 android/hs_err_pid*.log
 android/replay_pid*.log
+android/app/google-services.json
