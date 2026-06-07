@@ -10,6 +10,7 @@ class ThemePalette {
 
 /// Built-in palette presets.
 const themePalettes = <ThemePalette>[
+  ThemePalette(label: '嘉大红', primary: Color(0xFF8B1A2D)),
   ThemePalette(label: '嘉大蓝', primary: Color(0xFF1565C0)),
   ThemePalette(label: '湖青', primary: Color(0xFF00A6A6)),
   ThemePalette(label: '紫罗兰', primary: Color(0xFF6C5CE7)),

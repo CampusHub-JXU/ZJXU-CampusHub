@@ -24,7 +24,7 @@ class AppPreferencesStore {
     );
 
     // paletteIndex — map from existing presetSeedIndex
-    final paletteIndex = (prefs.getInt(_presetSeedIndexKey) ?? 0).clamp(0, 6);
+    final paletteIndex = (prefs.getInt(_presetSeedIndexKey) ?? 0).clamp(0, 7);
 
     // pureBlack
     final pureBlack = prefs.getBool(_pureBlackKey) ?? false;

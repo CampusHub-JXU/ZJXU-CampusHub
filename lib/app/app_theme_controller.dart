@@ -45,6 +45,7 @@ class AppThemeController {
   );
 
   static const presetSeedColors = <Color>[
+    Color(0xFF8B1A2D),
     Color(0xFF1565C0),
     Color(0xFF00A6A6),
     Color(0xFF6C5CE7),
@@ -55,6 +56,7 @@ class AppThemeController {
   ];
 
   static const presetSeedLabels = <String>[
+    '嘉大红',
     '嘉大蓝',
     '湖青',
     '紫罗兰',

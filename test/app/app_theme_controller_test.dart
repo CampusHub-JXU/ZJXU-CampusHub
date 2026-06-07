@@ -54,14 +54,14 @@ void main() {
       expect(AppThemeController.instance.homeTextColorMode.value, HomeTextColorMode.dark);
     });
 
-    test('presetSeedColors 应包含 7 种颜色', () {
-      expect(AppThemeController.presetSeedColors.length, 7);
+    test('presetSeedColors 应包含 8 种颜色', () {
+      expect(AppThemeController.presetSeedColors.length, 8);
     });
 
-    test('presetSeedLabels 应包含 7 个标签', () {
-      expect(AppThemeController.presetSeedLabels.length, 7);
-      expect(AppThemeController.presetSeedLabels[0], '嘉大蓝');
-      expect(AppThemeController.presetSeedLabels[6], '石墨');
+    test('presetSeedLabels 应包含 8 个标签', () {
+      expect(AppThemeController.presetSeedLabels.length, 8);
+      expect(AppThemeController.presetSeedLabels[0], '嘉大红');
+      expect(AppThemeController.presetSeedLabels[7], '石墨');
     });
   });
 }
