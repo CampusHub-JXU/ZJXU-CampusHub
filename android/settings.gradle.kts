@@ -14,9 +14,12 @@ pluginManagement {
         google()
         mavenCentral()
         gradlePluginPortal()
-        maven(url = "https://maven.aliyun.com/repository/google")
-        maven(url = "https://maven.aliyun.com/repository/public")
-        maven(url = "https://maven.aliyun.com/repository/jcenter")
+        // Aliyun mirrors for China — skipped in CI (set CI=true in workflow).
+        if (System.getenv("CI") != "true") {
+            maven(url = "https://maven.aliyun.com/repository/google")
+            maven(url = "https://maven.aliyun.com/repository/public")
+            maven(url = "https://maven.aliyun.com/repository/jcenter")
+        }
     }
 }
 
