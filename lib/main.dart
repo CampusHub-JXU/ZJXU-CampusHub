@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui';
 
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 
 import 'app/app.dart';
@@ -8,6 +9,7 @@ import 'app/app_bootstrap_controller.dart';
 import 'core/logging/app_logger.dart';
 import 'core/notification/app_notification_service.dart';
 import 'core/notification/background_task_service.dart';
+import 'core/push/push_service.dart';
 import 'core/shortcut/app_shortcut_service.dart';
 import 'app/routes.dart';
 
@@ -45,6 +47,8 @@ Future<void> main() async {
         navigateToNamedRoute: appRouter.pushNamed,
       );
       await AppNotificationService.instance.initialize();
+      await PushService.instance.initialize();
+      FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
       runApp(JXUCampusHubApp());
       AppNotificationService.instance.onTap = (payload) {
         if (payload == 'dorm-electricity') {
