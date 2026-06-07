@@ -155,9 +155,6 @@ class _JXUCampusHubAppState extends State<JXUCampusHubApp> {
         final normalizedScale = TextScaleController.normalizeScaleFactor(
           prefs.textScale,
         );
-        if (normalizedScale == TextScaleController.defaultScaleFactor) {
-          return child;
-        }
         return MediaQuery(
           data: MediaQuery.of(
             context,
