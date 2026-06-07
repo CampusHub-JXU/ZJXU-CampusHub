@@ -110,36 +110,66 @@ class _UnifiedAuthProtectedWebViewPageState
 
   Future<void> _resolveInitialAuthentication() async {
     try {
+      // 首先检查是否有保存的会话
+      final hasStoredSession = UnifiedAuthService.instance.isLoggedIn;
+      if (!hasStoredSession) {
+        // 没有保存的会话，显示登录弹窗
+        if (!mounted) return;
+        setState(() {
+          _authenticated = false;
+          _authResolved = true;
+        });
+        return;
+      }
+
+      // 有保存的会话，尝试验证但不清除会话
       final validated = await UnifiedAuthService.instance.validateSession(
         serviceUrl: widget.serviceUrl,
       );
       if (!mounted) return;
+
+      // 验证结果为 null 表示网络错误，不清除会话
+      if (validated == null) {
+        // 网络错误时，信任保存的会话，让用户继续使用
+        setState(() {
+          _authenticated = true;
+          _authResolved = true;
+        });
+        return;
+      }
+
       setState(() {
-        _authenticated = validated ?? UnifiedAuthService.instance.isLoggedIn;
+        _authenticated = validated;
         _authResolved = true;
       });
+
+      // 只有在明确验证失败时才清除会话
+      if (!validated) {
+        try {
+          await UnifiedAuthService.instance.markLoggedOut();
+        } catch (logoutError, logoutStackTrace) {
+          AppLogger.instance.auth(
+            LogLevel.warn,
+            '清理统一认证登录态失败',
+            error: logoutError,
+            stackTrace: logoutStackTrace,
+          );
+        }
+      }
     } catch (error, stackTrace) {
       AppLogger.instance.auth(
         LogLevel.warn,
-        '统一认证登录态校验失败，切换为登录引导',
+        '统一认证登录态校验失败，保持当前状态',
         error: error,
         stackTrace: stackTrace,
       );
       if (!mounted) return;
+
+      // 其他错误时，信任保存的会话
       setState(() {
-        _authenticated = false;
+        _authenticated = UnifiedAuthService.instance.isLoggedIn;
         _authResolved = true;
       });
-      try {
-        await UnifiedAuthService.instance.markLoggedOut();
-      } catch (logoutError, logoutStackTrace) {
-        AppLogger.instance.auth(
-          LogLevel.warn,
-          '清理统一认证登录态失败',
-          error: logoutError,
-          stackTrace: logoutStackTrace,
-        );
-      }
     }
   }
 

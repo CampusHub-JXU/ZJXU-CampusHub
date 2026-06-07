@@ -26,6 +26,14 @@ class ThemeModeController {
     await prefs.setInt(_prefKey, mode.index);
   }
 
+  /// 循环切换主题模式
+  void toggleThemeMode() {
+    final nextMode = ThemeMode.values[
+      (themeMode.value.index + 1) % ThemeMode.values.length
+    ];
+    setThemeMode(nextMode);
+  }
+
   @visibleForTesting
   void debugReset({ThemeMode mode = ThemeMode.system}) {
     themeMode.value = mode;

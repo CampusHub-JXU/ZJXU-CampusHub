@@ -10,7 +10,7 @@ class TextScaleController {
   static const double minScaleFactor = 0.7;
   static const double maxScaleFactor = 1.2;
   static const double scaleStep = 0.05;
-  static const double defaultScaleFactor = 1.0;
+  static const double defaultScaleFactor = 0.9;
 
   static int get sliderDivisions =>
       ((maxScaleFactor - minScaleFactor) / scaleStep).round();

@@ -123,12 +123,19 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _maybeShowInitialUnifiedAuthPrompt() async {
-    if (_initialLoginPromptChecked || UnifiedAuthService.instance.isLoggedIn) {
-      _initialLoginPromptChecked = true;
+    // 如果已经检查过，直接返回
+    if (_initialLoginPromptChecked) return;
+    _initialLoginPromptChecked = true;
+
+    // 检查是否有保存的会话（即使验证失败也不弹窗）
+    final hasStoredSession = UnifiedAuthService.instance.currentAccount != null &&
+        UnifiedAuthService.instance.currentAccount!.isNotEmpty;
+    if (hasStoredSession) {
+      // 有保存的会话，信任它，不弹窗
       return;
     }
 
-    _initialLoginPromptChecked = true;
+    // 没有保存的会话，首次使用，弹出登录窗口
     if (!mounted) return;
 
     await showUnifiedAuthLoginModal(
