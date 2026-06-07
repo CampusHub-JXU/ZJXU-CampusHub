@@ -47,6 +47,7 @@ app.*.map.json
 
 # Release signing keystore (stored in GitHub Secrets, never commit)
 *.jks
+android/keystore.properties
 
 # Logcat dumps (may contain App IDs and other secrets)
 logcat_dump.txt

@@ -1,9 +1,21 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
     id("com.google.gms.google-services")
+}
+
+val keystorePropsFile = rootProject.file("keystore.properties")
+val keystoreProps = Properties()
+if (keystorePropsFile.exists()) {
+    keystoreProps.load(keystorePropsFile.inputStream())
+}
+
+fun envOrProp(envKey: String, propKey: String): String {
+    return System.getenv(envKey)?.takeIf { it.isNotEmpty() }
+        ?: keystoreProps.getProperty(propKey, "")
 }
 
 android {
@@ -31,19 +43,19 @@ android {
 
     signingConfigs {
         create("release") {
-            val ksFilePath = System.getenv("KEYSTORE_FILE") ?: ""
+            val ksFilePath = envOrProp("KEYSTORE_FILE", "storeFile")
             if (ksFilePath.isNotEmpty()) {
                 storeFile = file(ksFilePath)
-                storePassword = System.getenv("KEYSTORE_PASSWORD") ?: ""
-                keyAlias = System.getenv("KEY_ALIAS") ?: ""
-                keyPassword = System.getenv("KEY_PASSWORD") ?: ""
+                storePassword = envOrProp("KEYSTORE_PASSWORD", "storePassword")
+                keyAlias = envOrProp("KEY_ALIAS", "keyAlias")
+                keyPassword = envOrProp("KEY_PASSWORD", "keyPassword")
             }
         }
     }
 
     buildTypes {
         release {
-            val ksFilePath = System.getenv("KEYSTORE_FILE") ?: ""
+            val ksFilePath = envOrProp("KEYSTORE_FILE", "storeFile")
             if (ksFilePath.isNotEmpty()) {
                 signingConfig = signingConfigs.getByName("release")
             } else {
