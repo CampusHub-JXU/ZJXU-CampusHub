@@ -38,4 +38,26 @@ void main() {
 
     expect(ThemeModeController.instance.themeMode.value, ThemeMode.light);
   });
+
+  test('toggleThemeMode 应循环切换', () {
+    final controller = ThemeModeController.instance;
+
+    // system -> light
+    controller.toggleThemeMode();
+    expect(controller.themeMode.value, ThemeMode.light);
+
+    // light -> dark
+    controller.toggleThemeMode();
+    expect(controller.themeMode.value, ThemeMode.dark);
+
+    // dark -> system
+    controller.toggleThemeMode();
+    expect(controller.themeMode.value, ThemeMode.system);
+  });
+
+  test('setThemeMode 应持久化到 SharedPreferences', () async {
+    await ThemeModeController.instance.setThemeMode(ThemeMode.light);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getInt('theme_mode'), ThemeMode.light.index);
+  });
 }

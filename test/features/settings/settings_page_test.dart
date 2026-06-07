@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:jxu_campus_hub/app/text_scale_controller.dart';
 import 'package:jxu_campus_hub/features/settings/settings_page.dart';
 
 import '../../helpers/pump_app.dart';
@@ -14,20 +13,14 @@ void main() {
     await resetTestEnvironment();
   });
 
-  testWidgets('allows changing text scale from settings page', (tester) async {
+  testWidgets('显示外观设置链接和学期设置', (tester) async {
     await pumpPage(tester, const SettingsPage());
 
-    expect(find.text('应用字号'), findsOneWidget);
-    expect(find.text('上限 120%'), findsOneWidget);
+    expect(find.text('外观'), findsOneWidget);
+    expect(find.text('主题与外观'), findsOneWidget);
+    expect(find.text('首页个性化'), findsOneWidget);
 
     await tester.scrollUntilVisible(find.text('检查更新'), 300);
     expect(find.text('检查更新'), findsOneWidget);
-    expect(find.text('当前版本暂未开放在线更新'), findsNothing);
-
-    final slider = tester.widget<Slider>(find.byType(Slider));
-    slider.onChanged?.call(1.15);
-    await tester.pump();
-
-    expect(TextScaleController.instance.textScaleFactor.value, 1.15);
   });
 }

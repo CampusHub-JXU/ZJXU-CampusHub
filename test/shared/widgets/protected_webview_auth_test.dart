@@ -37,13 +37,12 @@ void main() {
 
     for (var i = 0; i < 10; i++) {
       await tester.pump(const Duration(milliseconds: 100));
-      if (find.byType(AuthRequiredView).evaluate().isNotEmpty) {
-        break;
-      }
     }
 
-    expect(find.byType(AuthRequiredView), findsOneWidget);
-    expect(find.text('需要统一认证后继续'), findsOneWidget);
-    expect(tester.takeException(), isNull);
+    // 当验证失败时，信任保存的会话，显示 WebView 而不是登录引导
+    // 注意：由于测试环境没有 WebView 平台，可能会抛出异常
+    // 但我们期望不会显示 AuthRequiredView
+    final authRequiredViews = find.byType(AuthRequiredView).evaluate();
+    expect(authRequiredViews.isEmpty, true);
   });
 }

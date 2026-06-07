@@ -2,12 +2,15 @@
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:jxu_campus_hub/app/app_preferences_controller.dart';
 import 'package:jxu_campus_hub/app/text_scale_controller.dart';
+import 'package:jxu_campus_hub/app/theme_mode_controller.dart';
 import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/core/network/dio_client.dart';
 import 'package:jxu_campus_hub/core/logging/app_logger.dart';
 import 'package:jxu_campus_hub/core/network/network_settings.dart';
+import 'package:jxu_campus_hub/core/push/push_service.dart';
 import 'package:jxu_campus_hub/core/update/update_checker.dart';
 import 'package:jxu_campus_hub/core/update/update_service.dart';
 import 'package:jxu_campus_hub/features/campus_card/campus_card_service.dart';
@@ -28,6 +31,8 @@ Future<void> resetTestEnvironment() async {
   );
 
   TextScaleController.instance.debugReset();
+  AppPreferencesController.instance.debugReset();
+  ThemeModeController.instance.debugReset();
   UnifiedAuthService.instance.debugReset();
   ZhengfangAuth.instance.debugReset();
   NetworkSettings.instance.debugReset();
@@ -39,5 +44,6 @@ Future<void> resetTestEnvironment() async {
   ChangxingJiadaService.instance.debugReset();
   DormElectricityService.instance.debugReset();
   await ScheduleService.instance.debugClearCache();
+  PushService.instance.debugReset();
   ExamService.instance.debugReset();
 }
