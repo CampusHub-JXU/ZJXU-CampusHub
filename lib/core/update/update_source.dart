@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:dio/dio.dart';
 
 import 'update_model.dart';
@@ -98,7 +100,7 @@ class GitHubReleaseUpdateSource implements UpdateSource {
     final assets = data['assets'] is List
         ? (data['assets'] as List).whereType<Map<String, dynamic>>().toList()
         : const <Map<String, dynamic>>[];
-    final apkAsset = _firstOrNull(assets.where(_isApkAsset));
+    final apkAsset = _bestApkAssetForDevice(assets) ?? _firstOrNull(assets);
     final fallbackAsset = _firstOrNull(assets);
     final downloadUrl = _mirrorUrl(
       ((apkAsset ?? fallbackAsset)?['browser_download_url'] as String? ?? '')
@@ -124,9 +126,49 @@ class GitHubReleaseUpdateSource implements UpdateSource {
 
   bool _isApkAsset(Map<String, dynamic> asset) {
     final name = (asset['name'] as String? ?? '').toLowerCase();
-    final downloadUrl = (asset['browser_download_url'] as String? ?? '')
-        .toLowerCase();
-    return name.endsWith('.apk') || downloadUrl.endsWith('.apk');
+    return name.endsWith('.apk');
+  }
+
+  /// Pick the best APK asset for this device's ABI.
+  /// Priority: matching arch-specific APK > universal APK > first APK.
+  Map<String, dynamic>? _bestApkAssetForDevice(
+    List<Map<String, dynamic>> assets,
+  ) {
+    final apks = assets.where(_isApkAsset).toList();
+    if (apks.isEmpty) return null;
+
+    final deviceAbi = _deviceAbiSuffix();
+
+    // 1. Try arch-specific match first.
+    if (deviceAbi != null) {
+      for (final asset in apks) {
+        final name = (asset['name'] as String? ?? '').toLowerCase();
+        if (name.contains(deviceAbi)) return asset;
+      }
+    }
+
+    // 2. Fall back to universal APK.
+    for (final asset in apks) {
+      final name = (asset['name'] as String? ?? '').toLowerCase();
+      if (name.contains('universal')) return asset;
+    }
+
+    // 3. Fall back to first APK.
+    return apks.first;
+  }
+
+  /// Returns the ABI suffix used in our APK filenames, or null if unknown.
+  static String? _deviceAbiSuffix() {
+    if (!Platform.isAndroid) return null;
+    // On Android, Platform.version gives the primary ABI via Dart's runtime.
+    final arch = Platform.version.toLowerCase();
+    if (arch.contains('arm64') || arch.contains('aarch64')) {
+      return 'arm64-v8a';
+    }
+    if (arch.contains('arm')) {
+      return 'armeabi-v7a';
+    }
+    return null;
   }
 
   String _mirrorUrl(String rawUrl) {
