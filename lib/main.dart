@@ -43,13 +43,15 @@ Future<void> main() async {
       };
 
       await AppBootstrapController.instance.prepareForFirstFrame();
-      await AppShortcutService.instance.initialize(
-        navigateToNamedRoute: appRouter.pushNamed,
-      );
-      await AppNotificationService.instance.initialize();
-      await PushService.instance.initialize();
-      FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
       runApp(JXUCampusHubApp());
+      unawaited(
+        AppShortcutService.instance.initialize(
+          navigateToNamedRoute: appRouter.pushNamed,
+        ),
+      );
+      unawaited(AppNotificationService.instance.initialize());
+      FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+      unawaited(PushService.instance.initialize());
       AppNotificationService.instance.onTap = (payload) {
         if (payload == 'dorm-electricity') {
           appRouter.goNamed('dorm-electricity');
