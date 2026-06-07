@@ -321,8 +321,9 @@ class SettingsPage extends StatelessWidget {
                           ),
                           const Divider(height: 1),
                           ListTile(
-                            leading:
-                                const Icon(Icons.notifications_active_outlined),
+                            leading: const Icon(
+                              Icons.notifications_active_outlined,
+                            ),
                             title: const Text('推送令牌'),
                             subtitle: const Text('查看 FCM 推送注册状态'),
                             trailing: const Icon(Icons.chevron_right),

@@ -16,10 +16,7 @@ class PushDebugPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text(
-            'FCM 推送通道',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
+          Text('FCM 推送通道', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 12),
           Card(
             clipBehavior: Clip.antiAlias,
@@ -33,8 +30,9 @@ class PushDebugPage extends StatelessWidget {
                       Icon(
                         token != null ? Icons.check_circle : Icons.pending,
                         size: 18,
-                        color:
-                            token != null ? Colors.green : cs.onSurfaceVariant,
+                        color: token != null
+                            ? Colors.green
+                            : cs.onSurfaceVariant,
                       ),
                       const SizedBox(width: 8),
                       Text(
@@ -49,8 +47,7 @@ class PushDebugPage extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 12,
                       fontFamily: 'monospace',
-                      color:
-                          token != null ? cs.onSurface : cs.onSurfaceVariant,
+                      color: token != null ? cs.onSurface : cs.onSurfaceVariant,
                     ),
                     maxLines: 3,
                     overflow: TextOverflow.ellipsis,

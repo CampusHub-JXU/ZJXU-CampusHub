@@ -128,7 +128,8 @@ class _HomePageState extends State<HomePage> {
     _initialLoginPromptChecked = true;
 
     // 检查是否有保存的会话（即使验证失败也不弹窗）
-    final hasStoredSession = UnifiedAuthService.instance.currentAccount != null &&
+    final hasStoredSession =
+        UnifiedAuthService.instance.currentAccount != null &&
         UnifiedAuthService.instance.currentAccount!.isNotEmpty;
     if (hasStoredSession) {
       // 有保存的会话，信任它，不弹窗

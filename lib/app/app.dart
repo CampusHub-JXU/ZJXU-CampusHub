@@ -152,15 +152,16 @@ class _JXUCampusHubAppState extends State<JXUCampusHubApp> {
       themeAnimationDuration: Duration.zero,
       builder: (context, child) {
         if (child == null) return const SizedBox.shrink();
-        final normalizedScale =
-            TextScaleController.normalizeScaleFactor(prefs.textScale);
+        final normalizedScale = TextScaleController.normalizeScaleFactor(
+          prefs.textScale,
+        );
         if (normalizedScale == TextScaleController.defaultScaleFactor) {
           return child;
         }
         return MediaQuery(
-          data: MediaQuery.of(context).copyWith(
-            textScaler: TextScaler.linear(normalizedScale),
-          ),
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(normalizedScale)),
           child: child,
         );
       },

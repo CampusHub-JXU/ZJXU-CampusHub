@@ -30,116 +30,110 @@ class HomeCampusCardBalanceCard extends StatelessWidget {
             .resolveHomeTextColor(context, cs.onSurface);
         final secondaryTextColor = AppThemeController.instance
             .resolveHomeSecondaryTextColor(context, cs.onSurfaceVariant);
-            return HomeCardContainer(
-              height: 160,
-              onTap: () => onTap(),
-              child: Stack(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(right: 28),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '校园卡',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: accentColor,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        balanceText == '--'
-                            ? Text(
-                                '余额未刷新，请先登录一卡通',
+        return HomeCardContainer(
+          height: 160,
+          onTap: () => onTap(),
+          child: Stack(
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(right: 28),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '校园卡',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: accentColor,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    balanceText == '--'
+                        ? Text(
+                            '余额未刷新，请先登录一卡通',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: secondaryTextColor,
+                            ),
+                          )
+                        : Row(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.baseline,
+                            textBaseline: TextBaseline.alphabetic,
+                            children: [
+                              Text(
+                                balanceText,
                                 style: TextStyle(
-                                  fontSize: 12,
-                                  color: secondaryTextColor,
+                                  fontSize: 32,
+                                  height: 1,
+                                  fontWeight: FontWeight.w700,
+                                  color: primaryTextColor,
                                 ),
-                              )
-                            : Row(
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                '元',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  height: 1,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppThemeController.instance
+                                      .resolveHomeSecondaryTextColor(
+                                        context,
+                                        cs.onSurface.withValues(alpha: 0.7),
+                                      ),
+                                ),
+                              ),
+                            ],
+                          ),
+                  ],
+                ),
+              ),
+              Align(
+                alignment: Alignment.bottomLeft,
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: () => onPaymentTap(),
+                    child: Transform.translate(
+                      offset: const Offset(-4, 0),
+                      child: IntrinsicWidth(
+                        child: Container(
+                          height: 44,
+                          constraints: const BoxConstraints(minWidth: 80),
+                          padding: const EdgeInsets.only(left: 12, right: 14),
+                          decoration: BoxDecoration(
+                            color: accentColor.withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Row(
                                 mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.baseline,
-                                textBaseline: TextBaseline.alphabetic,
+                                crossAxisAlignment: CrossAxisAlignment.center,
                                 children: [
-                                  Text(
-                                    balanceText,
-                                    style: TextStyle(
-                                      fontSize: 32,
-                                      height: 1,
-                                      fontWeight: FontWeight.w700,
-                                      color: primaryTextColor,
-                                    ),
+                                  Icon(
+                                    Icons.qr_code_2_rounded,
+                                    size: 28,
+                                    color: accentColor,
                                   ),
                                   const SizedBox(width: 6),
                                   Text(
-                                    '元',
+                                    '付款码',
                                     style: TextStyle(
-                                      fontSize: 16,
-                                      height: 1,
+                                      fontSize: 14,
                                       fontWeight: FontWeight.w600,
-                                      color: AppThemeController.instance
-                                          .resolveHomeSecondaryTextColor(
-                                            context,
-                                            cs.onSurface.withValues(alpha: 0.7),
-                                          ),
+                                      color: primaryTextColor,
+                                      height: 1.0,
                                     ),
+                                    maxLines: 1,
                                   ),
                                 ],
-                              ),
-                      ],
-                    ),
-                  ),
-                  Align(
-                    alignment: Alignment.bottomLeft,
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(16),
-                        onTap: () => onPaymentTap(),
-                        child: Transform.translate(
-                          offset: const Offset(-4, 0),
-                          child: IntrinsicWidth(
-                            child: Container(
-                              height: 44,
-                              constraints: const BoxConstraints(minWidth: 80),
-                              padding: const EdgeInsets.only(
-                                left: 12,
-                                right: 14,
-                              ),
-                              decoration: BoxDecoration(
-                                color: accentColor.withValues(alpha: 0.10),
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: Align(
-                                alignment: Alignment.centerLeft,
-                                child: FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  alignment: Alignment.centerLeft,
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.center,
-                                    children: [
-                                      Icon(
-                                        Icons.qr_code_2_rounded,
-                                        size: 28,
-                                        color: accentColor,
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        '付款码',
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w600,
-                                          color: primaryTextColor,
-                                          height: 1.0,
-                                        ),
-                                        maxLines: 1,
-                                      ),
-                                    ],
-                                  ),
-                                ),
                               ),
                             ),
                           ),
@@ -147,21 +141,23 @@ class HomeCampusCardBalanceCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  Align(
-                    alignment: Alignment.bottomRight,
-                    child: Padding(
-                      padding: const EdgeInsets.only(right: 2, bottom: 4),
-                      child: Icon(
-                        Icons.arrow_forward_ios,
-                        size: 14,
-                        color: secondaryTextColor,
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
-            );
-          },
+              Align(
+                alignment: Alignment.bottomRight,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 2, bottom: 4),
+                  child: Icon(
+                    Icons.arrow_forward_ios,
+                    size: 14,
+                    color: secondaryTextColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
         );
+      },
+    );
   }
 }

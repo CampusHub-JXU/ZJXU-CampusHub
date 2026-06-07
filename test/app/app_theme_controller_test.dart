@@ -16,20 +16,29 @@ void main() {
 
   group('AppThemeController', () {
     test('初始状态应为 brandRed', () {
-      expect(AppThemeController.instance.seedMode.value, AppThemeSeedMode.brandRed);
+      expect(
+        AppThemeController.instance.seedMode.value,
+        AppThemeSeedMode.brandRed,
+      );
       expect(AppThemeController.instance.seedColor.value, AppColors.primary);
     });
 
     test('setSeedMode 应正确更新 seedMode', () async {
       await AppThemeController.instance.setSeedMode(AppThemeSeedMode.preset);
-      expect(AppThemeController.instance.seedMode.value, AppThemeSeedMode.preset);
+      expect(
+        AppThemeController.instance.seedMode.value,
+        AppThemeSeedMode.preset,
+      );
     });
 
     test('setPresetSeedIndex 应正确更新 presetSeedIndex', () async {
       await AppThemeController.instance.setSeedMode(AppThemeSeedMode.preset);
       await AppThemeController.instance.setPresetSeedIndex(2);
       expect(AppThemeController.instance.presetSeedIndex.value, 2);
-      expect(AppThemeController.instance.seedColor.value, AppThemeController.presetSeedColors[2]);
+      expect(
+        AppThemeController.instance.seedColor.value,
+        AppThemeController.presetSeedColors[2],
+      );
     });
 
     test('setPureBlackMode 应正确更新 pureBlackMode', () async {
@@ -50,8 +59,13 @@ void main() {
     });
 
     test('setHomeTextColorMode 应正确更新 homeTextColorMode', () async {
-      await AppThemeController.instance.setHomeTextColorMode(HomeTextColorMode.dark);
-      expect(AppThemeController.instance.homeTextColorMode.value, HomeTextColorMode.dark);
+      await AppThemeController.instance.setHomeTextColorMode(
+        HomeTextColorMode.dark,
+      );
+      expect(
+        AppThemeController.instance.homeTextColorMode.value,
+        HomeTextColorMode.dark,
+      );
     });
 
     test('presetSeedColors 应包含 8 种颜色', () {
