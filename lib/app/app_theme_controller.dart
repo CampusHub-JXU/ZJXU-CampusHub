@@ -28,7 +28,7 @@ class AppThemeController {
   static final AppThemeController instance = AppThemeController._();
 
   static const _prefKey = 'app_theme_seed_mode';
-  static const _uniformIconColorKey = 'app_theme_uniform_icon_color';
+  static const _pureBlackModeKey = 'app_theme_pure_black_mode';
   static const _monetSeedIndexKey = 'app_theme_monet_seed_index';
   static const _presetSeedIndexKey = 'app_theme_preset_seed_index';
   static const _homeTextColorModeKey = 'app_theme_home_text_color_mode';
@@ -37,7 +37,7 @@ class AppThemeController {
     AppThemeSeedMode.brandRed,
   );
   final ValueNotifier<Color> seedColor = ValueNotifier(AppColors.primary);
-  final ValueNotifier<bool> uniformIconColor = ValueNotifier(false);
+  final ValueNotifier<bool> pureBlackMode = ValueNotifier(false);
   final ValueNotifier<int> monetSeedIndex = ValueNotifier(1);
   final ValueNotifier<int> presetSeedIndex = ValueNotifier(0);
   final ValueNotifier<HomeTextColorMode> homeTextColorMode = ValueNotifier(
@@ -72,7 +72,7 @@ class AppThemeController {
         stored < AppThemeSeedMode.values.length) {
       seedMode.value = AppThemeSeedMode.values[stored];
     }
-    uniformIconColor.value = prefs.getBool(_uniformIconColorKey) ?? false;
+    pureBlackMode.value = prefs.getBool(_pureBlackModeKey) ?? false;
     monetSeedIndex.value = (prefs.getInt(_monetSeedIndexKey) ?? 1).clamp(0, 4);
     presetSeedIndex.value = (prefs.getInt(_presetSeedIndexKey) ?? 0).clamp(
       0,
@@ -95,11 +95,11 @@ class AppThemeController {
     await _refreshSeedColor();
   }
 
-  Future<void> setUniformIconColor(bool enabled) async {
-    if (uniformIconColor.value == enabled) return;
-    uniformIconColor.value = enabled;
+  Future<void> setPureBlackMode(bool enabled) async {
+    if (pureBlackMode.value == enabled) return;
+    pureBlackMode.value = enabled;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_uniformIconColorKey, enabled);
+    await prefs.setBool(_pureBlackModeKey, enabled);
   }
 
   Future<void> setMonetSeedIndex(int index) async {
@@ -128,7 +128,7 @@ class AppThemeController {
   }
 
   Color resolveIconColor(BuildContext context, Color fallback) {
-    if (!uniformIconColor.value) return fallback;
+    // 图标默认跟随主题色
     return Theme.of(context).colorScheme.primary;
   }
 
@@ -186,7 +186,7 @@ class AppThemeController {
   void debugReset({AppThemeSeedMode mode = AppThemeSeedMode.brandRed}) {
     seedMode.value = mode;
     seedColor.value = AppColors.primary;
-    uniformIconColor.value = false;
+    pureBlackMode.value = false;
     monetSeedIndex.value = 1;
     presetSeedIndex.value = 0;
     homeTextColorMode.value = HomeTextColorMode.system;

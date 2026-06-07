@@ -19,20 +19,17 @@ class HomeCampusCardBalanceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return ValueListenableBuilder<bool>(
-      valueListenable: AppThemeController.instance.uniformIconColor,
+    return ValueListenableBuilder<HomeTextColorMode>(
+      valueListenable: AppThemeController.instance.homeTextColorMode,
       builder: (context, _, _) {
-        return ValueListenableBuilder<HomeTextColorMode>(
-          valueListenable: AppThemeController.instance.homeTextColorMode,
-          builder: (context, _, _) {
-            final accentColor = AppThemeController.instance.resolveIconColor(
-              context,
-              AppColors.primary,
-            );
-            final primaryTextColor = AppThemeController.instance
-                .resolveHomeTextColor(context, cs.onSurface);
-            final secondaryTextColor = AppThemeController.instance
-                .resolveHomeSecondaryTextColor(context, cs.onSurfaceVariant);
+        final accentColor = AppThemeController.instance.resolveIconColor(
+          context,
+          AppColors.primary,
+        );
+        final primaryTextColor = AppThemeController.instance
+            .resolveHomeTextColor(context, cs.onSurface);
+        final secondaryTextColor = AppThemeController.instance
+            .resolveHomeSecondaryTextColor(context, cs.onSurfaceVariant);
             return HomeCardContainer(
               height: 160,
               onTap: () => onTap(),
@@ -166,7 +163,5 @@ class HomeCampusCardBalanceCard extends StatelessWidget {
             );
           },
         );
-      },
-    );
   }
 }

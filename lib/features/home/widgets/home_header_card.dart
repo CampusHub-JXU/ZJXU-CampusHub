@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../app/app_theme_controller.dart';
-import '../../../app/theme.dart';
 import '../home_controller.dart';
 
 class HomeHeaderCard extends StatelessWidget {
@@ -107,11 +106,7 @@ class HomeHeaderCard extends StatelessWidget {
     required BorderRadius radius,
   }) {
     final headerAlpha = (glassOpacity * 0.68).clamp(0.42, 0.66);
-    final themeController = AppThemeController.instance;
-    final headerBaseColor =
-        themeController.seedMode.value == AppThemeSeedMode.monet
-        ? themeController.seedColor.value
-        : AppColors.primary;
+    final headerBaseColor = AppThemeController.instance.seedColor.value;
     final headerDarkColor = _shiftHeaderColor(
       headerBaseColor,
       saturationBoost: 1.08,
