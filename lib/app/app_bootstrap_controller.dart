@@ -15,6 +15,7 @@ import '../features/dorm_electricity/dorm_electricity_service.dart';
 import '../features/exam/exam_service.dart';
 import '../features/schedule/schedule_service.dart';
 import '../features/home/home_controller.dart';
+import 'app_preferences_controller.dart';
 import 'app_theme_controller.dart';
 import 'text_scale_controller.dart';
 import 'theme_mode_controller.dart';
@@ -44,6 +45,10 @@ class AppBootstrapController {
   }
 
   Future<void> _prepareForFirstFrame() async {
+    // Unified preferences restore — syncs to legacy singletons internally
+    await AppPreferencesController.instance.restore();
+
+    // Legacy individual restores (kept for non-theme preferences)
     await Future.wait<void>([
       TextScaleController.instance.init(),
       ThemeModeController.instance.init(),

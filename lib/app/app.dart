@@ -5,11 +5,10 @@ import 'package:flutter/material.dart';
 
 import '../core/logging/app_logger.dart';
 import '../core/network/proxy_mode.dart';
-import 'app_theme_controller.dart';
+import 'app_preferences_controller.dart';
 import 'routes.dart';
 import 'text_scale_controller.dart';
 import 'theme.dart';
-import 'theme_mode_controller.dart';
 
 typedef SystemProxyDetector = Future<String?> Function({String testUrl});
 typedef ConnectivityChecker = Future<List<ConnectivityResult>> Function();
@@ -44,9 +43,7 @@ class _JXUCampusHubAppState extends State<JXUCampusHubApp> {
   static const _startupProxyWarningMessage =
       '检测到系统代理或 VPN/TUN；若校务功能异常，请排除本 App 或将 *.zjxu.edu.cn 设为 DIRECT';
 
-  final _themeModeController = ThemeModeController.instance;
-  final _appThemeController = AppThemeController.instance;
-  final _textScaleController = TextScaleController.instance;
+  final _preferencesController = AppPreferencesController.instance;
   final _scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
   bool _shouldShowStartupProxyWarning = false;
   bool _startupProxyWarningShown = false;
@@ -55,9 +52,7 @@ class _JXUCampusHubAppState extends State<JXUCampusHubApp> {
   @override
   void initState() {
     super.initState();
-    _themeModeController.themeMode.addListener(_onAppAppearanceChanged);
-    _appThemeController.seedColor.addListener(_onAppAppearanceChanged);
-    _textScaleController.textScaleFactor.addListener(_onAppAppearanceChanged);
+    _preferencesController.addListener(_onPreferencesChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_checkStartupGuards());
     });
@@ -65,15 +60,11 @@ class _JXUCampusHubAppState extends State<JXUCampusHubApp> {
 
   @override
   void dispose() {
-    _themeModeController.themeMode.removeListener(_onAppAppearanceChanged);
-    _appThemeController.seedColor.removeListener(_onAppAppearanceChanged);
-    _textScaleController.textScaleFactor.removeListener(
-      _onAppAppearanceChanged,
-    );
+    _preferencesController.removeListener(_onPreferencesChanged);
     super.dispose();
   }
 
-  void _onAppAppearanceChanged() => setState(() {});
+  void _onPreferencesChanged() => setState(() {});
 
   Future<void> _checkStartupGuards() async {
     if (_shouldShowStartupProxyWarning || _startupProxyWarningShown) return;
@@ -145,12 +136,15 @@ class _JXUCampusHubAppState extends State<JXUCampusHubApp> {
     if (_shouldShowStartupProxyWarning) {
       _scheduleStartupProxyWarning();
     }
-    final seedColor = _appThemeController.seedColor.value;
+    final prefs = _preferencesController.state;
     return MaterialApp.router(
       title: '嘉兴大学-智能中台',
-      theme: AppTheme.lightThemeFor(seedColor),
-      darkTheme: AppTheme.darkThemeFor(seedColor),
-      themeMode: _themeModeController.themeMode.value,
+      theme: AppTheme.lightThemeFor(prefs.seedColor),
+      darkTheme: AppTheme.darkThemeFor(
+        prefs.seedColor,
+        pureBlack: prefs.pureBlack,
+      ),
+      themeMode: prefs.materialThemeMode,
       scaffoldMessengerKey: _scaffoldMessengerKey,
       // Disable the built-in AnimatedTheme transition — it forces every
       // Theme.of(context) dependent to rebuild on every animation frame,
@@ -158,8 +152,15 @@ class _JXUCampusHubAppState extends State<JXUCampusHubApp> {
       themeAnimationDuration: Duration.zero,
       builder: (context, child) {
         if (child == null) return const SizedBox.shrink();
-        return AppTextScaleScope(
-          scaleFactor: _textScaleController.textScaleFactor.value,
+        final normalizedScale =
+            TextScaleController.normalizeScaleFactor(prefs.textScale);
+        if (normalizedScale == TextScaleController.defaultScaleFactor) {
+          return child;
+        }
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: TextScaler.linear(normalizedScale),
+          ),
           child: child,
         );
       },
