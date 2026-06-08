@@ -1,4 +1,4 @@
-﻿import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_cache_snapshot.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_model.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';
@@ -67,7 +67,7 @@ void main() {
       expect(restored.lastUpdatedAt, DateTime(2026, 4, 8, 9, 30));
     });
 
-    test('uses separate refresh windows for schedule and change rules', () {
+    test('detects stale schedule and change rules with explicit windows', () {
       final snapshot = ScheduleCacheSnapshot(
         studentId: '20230001',
         termContext: const ScheduleTermContext(academicYear: 2025, term: 12),
@@ -78,21 +78,21 @@ void main() {
       expect(
         snapshot.needsScheduleRefresh(
           DateTime(2026, 4, 8, 8, 0),
-          maxAge: ScheduleService.scheduleRefreshWindow,
+          maxAge: const Duration(days: 7),
         ),
         isTrue,
       );
       expect(
         snapshot.needsChangeRulesRefresh(
           DateTime(2026, 4, 8, 8, 0),
-          maxAge: ScheduleService.changeRuleRefreshWindow,
+          maxAge: const Duration(days: 1),
         ),
         isTrue,
       );
       expect(
         snapshot.needsChangeRulesRefresh(
           DateTime(2026, 4, 7, 20, 0),
-          maxAge: ScheduleService.changeRuleRefreshWindow,
+          maxAge: const Duration(days: 1),
         ),
         isFalse,
       );
@@ -191,44 +191,41 @@ void main() {
       );
     });
 
-    test(
-      'returns cached snapshot without refresh when cache is fresh',
-      () async {
-        const termContext = ScheduleTermContext(academicYear: 2025, term: 12);
-        ScheduleService.instance.debugSetSnapshot(
-          ScheduleCacheSnapshot(
-            studentId: '20230001',
-            termContext: termContext,
-            courses: const [
-              CourseEntry(
-                courseName: '缓存课表',
-                teacherName: '教师A',
-                weekday: 1,
-                startLesson: 1,
-                endLesson: 2,
-                weekRange: '1-18周',
-                classroom: '101',
-                campus: '嘉兴校区',
-                typeSymbol: '',
-              ),
-            ],
-            scheduleUpdatedAt: DateTime.now(),
-            changeRulesUpdatedAt: DateTime.now(),
-          ),
-        );
-
-        final result = await ScheduleService.instance.loadScheduleSnapshot(
+    test('returns cached snapshot without age-based refresh', () async {
+      const termContext = ScheduleTermContext(academicYear: 2025, term: 12);
+      ScheduleService.instance.debugSetSnapshot(
+        ScheduleCacheSnapshot(
           studentId: '20230001',
           termContext: termContext,
-        );
+          courses: const [
+            CourseEntry(
+              courseName: '缓存课表',
+              teacherName: '教师A',
+              weekday: 1,
+              startLesson: 1,
+              endLesson: 2,
+              weekRange: '1-18周',
+              classroom: '101',
+              campus: '嘉兴校区',
+              typeSymbol: '',
+            ),
+          ],
+          scheduleUpdatedAt: DateTime.now(),
+          changeRulesUpdatedAt: DateTime.now(),
+        ),
+      );
 
-        expect(result.usedCache, isTrue);
-        expect(result.didRefresh, isFalse);
-        expect(result.snapshot?.courses.single.courseName, '缓存课表');
-      },
-    );
+      final result = await ScheduleService.instance.loadScheduleSnapshot(
+        studentId: '20230001',
+        termContext: termContext,
+      );
 
-    test('keeps stale cache visible when refresh requires login', () async {
+      expect(result.usedCache, isTrue);
+      expect(result.didRefresh, isFalse);
+      expect(result.snapshot?.courses.single.courseName, '缓存课表');
+    });
+
+    test('keeps old cache visible without requiring login', () async {
       const termContext = ScheduleTermContext(academicYear: 2025, term: 12);
       ScheduleService.instance.debugSetSnapshot(
         ScheduleCacheSnapshot(
@@ -247,11 +244,9 @@ void main() {
               typeSymbol: '',
             ),
           ],
-          scheduleUpdatedAt: DateTime.now().subtract(
-            ScheduleService.scheduleRefreshWindow + const Duration(hours: 1),
-          ),
+          scheduleUpdatedAt: DateTime.now().subtract(const Duration(days: 30)),
           changeRulesUpdatedAt: DateTime.now().subtract(
-            ScheduleService.changeRuleRefreshWindow + const Duration(hours: 1),
+            const Duration(days: 2),
           ),
         ),
       );
@@ -261,9 +256,47 @@ void main() {
         termContext: termContext,
       );
 
-      expect(result.requiresLogin, isTrue);
+      expect(result.requiresLogin, isFalse);
       expect(result.usedCache, isTrue);
       expect(result.snapshot?.courses.single.courseName, '旧课表');
+      expect(result.message, isNull);
+    });
+
+    test('keeps cache visible when forced refresh requires login', () async {
+      const termContext = ScheduleTermContext(academicYear: 2025, term: 12);
+      ScheduleService.instance.debugSetSnapshot(
+        ScheduleCacheSnapshot(
+          studentId: '20230001',
+          termContext: termContext,
+          courses: const [
+            CourseEntry(
+              courseName: '缓存课表',
+              teacherName: '教师A',
+              weekday: 1,
+              startLesson: 1,
+              endLesson: 2,
+              weekRange: '1-18周',
+              classroom: '101',
+              campus: '嘉兴校区',
+              typeSymbol: '',
+            ),
+          ],
+          scheduleUpdatedAt: DateTime.now().subtract(const Duration(days: 30)),
+          changeRulesUpdatedAt: DateTime.now().subtract(
+            const Duration(days: 2),
+          ),
+        ),
+      );
+
+      final result = await ScheduleService.instance.loadScheduleSnapshot(
+        studentId: '20230001',
+        termContext: termContext,
+        forceRefresh: true,
+      );
+
+      expect(result.requiresLogin, isTrue);
+      expect(result.usedCache, isTrue);
+      expect(result.snapshot?.courses.single.courseName, '缓存课表');
       expect(result.message, contains('缓存'));
     });
   });

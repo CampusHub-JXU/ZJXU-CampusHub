@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -68,7 +68,7 @@ void main() {
       ),
     ]);
     CampusCardService.instance.debugSetCachedBalance(null);
-    DormElectricityService.instance.debugSetCachedElectricity(null);
+    DormElectricityService.instance.debugReset();
     SemesterCalendar.instance.semesterStartDate.value = DateTime(
       now.year,
       now.month,
@@ -88,6 +88,20 @@ void main() {
 
     expect(find.text('登录后查看课程'), findsOneWidget);
     expect(find.text('余额未刷新，请先登录一卡通'), findsOneWidget);
+  });
+
+  testWidgets('does not prompt unified auth login after bootstrap', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+
+    AppBootstrapController.instance.debugSetPhase(
+      AppBootstrapPhase.localStateReady,
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('登录一卡通'), findsNothing);
   });
 
   testWidgets('hydrates cached data after bootstrap local state is ready', (

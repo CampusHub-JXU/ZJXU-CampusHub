@@ -57,10 +57,8 @@ class _UnifiedAuthProtectedWebViewPageState
     super.initState();
     _webViewUrl = widget.url;
     _authenticated = UnifiedAuthService.instance.isLoggedIn;
-    _authResolved = !_authenticated;
-    if (!_authResolved) {
-      _resolveInitialAuthentication();
-    }
+    _authResolved = false;
+    unawaited(_resolveInitialAuthentication());
   }
 
   @override
@@ -110,6 +108,15 @@ class _UnifiedAuthProtectedWebViewPageState
 
   Future<void> _resolveInitialAuthentication() async {
     try {
+      // 受保护页面可能早于启动 warm-up 打开，先主动恢复本地会话。
+      await UnifiedAuthService.instance.restoreSession(
+        syncWebViewCookies: false,
+      );
+
+      if (!mounted) return;
+
+      _authenticated = UnifiedAuthService.instance.isLoggedIn;
+
       // 首先检查是否有保存的会话
       final hasStoredSession = UnifiedAuthService.instance.isLoggedIn;
       if (!hasStoredSession) {

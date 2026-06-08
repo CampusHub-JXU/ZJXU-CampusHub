@@ -32,11 +32,13 @@ class _ExamPageState extends State<ExamPage> {
       _loadCachedThenFetch();
     } else {
       // Show cached data even when not logged in (session may have expired).
-      _showCachedIfAvailable();
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        unawaited(_presentLoginPrompt());
-      });
+      final hasCachedExams = _showCachedIfAvailable();
+      if (!hasCachedExams) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          unawaited(_presentLoginPrompt());
+        });
+      }
     }
   }
 
@@ -49,11 +51,13 @@ class _ExamPageState extends State<ExamPage> {
     _fetchExams();
   }
 
-  void _showCachedIfAvailable() {
+  bool _showCachedIfAvailable() {
     final cached = ExamService.instance.cachedExams;
     if (cached != null && cached.isNotEmpty) {
-      setState(() => _exams = cached);
+      _exams = cached;
+      return true;
     }
+    return false;
   }
 
   @override
@@ -132,16 +136,20 @@ class _ExamPageState extends State<ExamPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('考试安排'),
-        actions: _loggedIn
+        actions: (_loggedIn || _exams.isNotEmpty)
             ? [
                 IconButton(
                   icon: const Icon(Icons.refresh),
-                  onPressed: () => _fetchExams(forceRefresh: true),
+                  onPressed: _loggedIn
+                      ? () => _fetchExams(forceRefresh: true)
+                      : () => _presentLoginPrompt(force: true),
                 ),
               ]
             : null,
       ),
-      body: _loggedIn ? _buildExamBody() : _buildLoginBody(),
+      body: (_loggedIn || _exams.isNotEmpty)
+          ? _buildExamBody()
+          : _buildLoginBody(),
     );
   }
 
@@ -155,7 +163,7 @@ class _ExamPageState extends State<ExamPage> {
 
   Widget _buildExamBody() {
     if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_error != null) {
+    if (_error != null && _exams.isEmpty) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,

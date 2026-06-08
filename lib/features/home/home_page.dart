@@ -5,12 +5,10 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/app_bootstrap_controller.dart';
 import '../../app/app_theme_controller.dart';
-import '../../core/auth/unified_auth.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/config/feature_entry_catalog.dart';
 import '../../core/semester/semester_calendar.dart';
 import '../../core/update/update_checker.dart';
-import '../../shared/widgets/login_shell.dart';
 import '../../shared/widgets/update_dialog.dart';
 import '../campus_card/campus_card_service.dart';
 import '../dorm_electricity/dorm_electricity_service.dart';
@@ -49,7 +47,6 @@ class _HomePageState extends State<HomePage> {
   bool _hasScheduleCache = false;
   bool _hasAvailableUpdate = false;
   bool _hasHydratedBootstrapState = false;
-  bool _initialLoginPromptChecked = false;
   static const _weekdayLabels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
   int get _currentWeek => SemesterCalendar.instance.weekForDate(DateTime.now());
@@ -118,32 +115,7 @@ class _HomePageState extends State<HomePage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       unawaited(_refreshDeferredContent());
-      unawaited(_maybeShowInitialUnifiedAuthPrompt());
     });
-  }
-
-  Future<void> _maybeShowInitialUnifiedAuthPrompt() async {
-    // 如果已经检查过，直接返回
-    if (_initialLoginPromptChecked) return;
-    _initialLoginPromptChecked = true;
-
-    // 检查是否有保存的会话（即使验证失败也不弹窗）
-    final hasStoredSession =
-        UnifiedAuthService.instance.currentAccount != null &&
-        UnifiedAuthService.instance.currentAccount!.isNotEmpty;
-    if (hasStoredSession) {
-      // 有保存的会话，信任它，不弹窗
-      return;
-    }
-
-    // 没有保存的会话，首次使用，弹出登录窗口
-    if (!mounted) return;
-
-    await showUnifiedAuthLoginModal(
-      context,
-      title: '登录一卡通',
-      description: '首次使用请在校园网环境下登录统一认证，后续可直接进入一卡通与服务大厅',
-    );
   }
 
   int _nextStartLesson(DateTime now) {
@@ -237,6 +209,7 @@ class _HomePageState extends State<HomePage> {
     _dormElectricity = dormService.formatElectricity(
       dormService.cachedElectricity,
     );
+    _nextExam = ExamService.instance.nextExam;
     _hasScheduleCache = scheduleState.hasScheduleCache;
     _courseLoggedIn = scheduleState.courseLoggedIn;
     _nextCourse = scheduleState.nextCourse;
@@ -319,6 +292,12 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _refreshExam() async {
     if (!_isBootstrapReady) return;
+    final cached = ExamService.instance.nextExam;
+    if (cached != null && mounted) {
+      setState(() {
+        _nextExam = cached;
+      });
+    }
     if (!ZhengfangAuth.instance.isLoggedIn) return;
     try {
       await ExamService.instance.fetchExams();

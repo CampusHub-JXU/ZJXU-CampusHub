@@ -14,11 +14,11 @@ class ExamService {
 
   static const _cacheKey = 'exam_cached_data';
   static const _cacheTimeKey = 'exam_cached_at';
-  static const _refreshWindow = Duration(hours: 6);
 
   List<ExamEntry>? _cachedExams;
 
   List<ExamEntry>? get cachedExams => _cachedExams;
+  DateTime? get lastSavedAt => _lastSavedAt;
 
   ExamEntry? get nextExam {
     if (_cachedExams == null) return null;
@@ -67,12 +67,8 @@ class ExamService {
     }
   }
 
-  /// Whether the cached data is still within the refresh window.
-  bool get isCacheFresh {
-    final prefs = _lastSavedAt;
-    if (prefs == null) return false;
-    return DateTime.now().difference(prefs) < _refreshWindow;
-  }
+  /// Exam cache is kept until a successful refresh replaces it.
+  bool get hasCache => _cachedExams != null;
 
   DateTime? _lastSavedAt;
 
@@ -89,13 +85,13 @@ class ExamService {
   }
 
   /// Fetch exams from network, with cache-first strategy.
-  /// If [forceRefresh] is false and cache is fresh, returns cached data.
+  /// If [forceRefresh] is false and cache exists, returns cached data.
   Future<List<ExamEntry>> fetchExams({
     String? studentId,
     bool forceRefresh = false,
   }) async {
-    // Return in-memory cache if fresh and not forced.
-    if (!forceRefresh && _cachedExams != null && isCacheFresh) {
+    // Return in-memory cache until the user or caller explicitly refreshes.
+    if (!forceRefresh && _cachedExams != null) {
       return _cachedExams!;
     }
 

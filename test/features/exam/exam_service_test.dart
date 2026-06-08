@@ -87,12 +87,12 @@ void main() {
     });
   });
 
-  group('ExamService.isCacheFresh', () {
+  group('ExamService.hasCache', () {
     test('returns false when no cache time is recorded', () {
-      expect(ExamService.instance.isCacheFresh, isFalse);
+      expect(ExamService.instance.hasCache, isFalse);
     });
 
-    test('returns true when cache is within refresh window', () async {
+    test('returns true when cache is restored', () async {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('exam_cached_data', jsonEncode(sampleItems));
       await prefs.setInt(
@@ -102,23 +102,23 @@ void main() {
 
       await ExamService.instance.restoreCache();
 
-      expect(ExamService.instance.isCacheFresh, isTrue);
+      expect(ExamService.instance.hasCache, isTrue);
     });
 
-    test('returns false when cache is older than refresh window', () async {
+    test('keeps old cache available until replaced', () async {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('exam_cached_data', jsonEncode(sampleItems));
-      // 12 hours ago — beyond 6-hour window.
       await prefs.setInt(
         'exam_cached_at',
         DateTime.now()
-            .subtract(const Duration(hours: 12))
+            .subtract(const Duration(days: 30))
             .millisecondsSinceEpoch,
       );
 
       await ExamService.instance.restoreCache();
 
-      expect(ExamService.instance.isCacheFresh, isFalse);
+      expect(ExamService.instance.hasCache, isTrue);
+      expect(ExamService.instance.cachedExams, hasLength(2));
     });
   });
 

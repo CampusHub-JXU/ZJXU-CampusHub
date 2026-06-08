@@ -50,8 +50,6 @@ class ScheduleService {
 
   static final ScheduleService instance = ScheduleService._();
 
-  static const scheduleRefreshWindow = Duration(days: 7);
-  static const changeRuleRefreshWindow = Duration(days: 1);
   static const _cacheStorageKey = 'zjxu_schedule_cache_snapshots_v1';
   static const _lastStudentStorageKey = 'zjxu_schedule_last_student_id_v1';
 
@@ -133,16 +131,14 @@ class ScheduleService {
           termContext: context,
         );
 
-    final now = DateTime.now();
+    if (!forceRefresh && cachedSnapshot.hasData) {
+      return ScheduleLoadResult(snapshot: cachedSnapshot, usedCache: true);
+    }
+
     final shouldRefreshSchedule =
-        forceRefresh ||
-        cachedSnapshot.needsScheduleRefresh(now, maxAge: scheduleRefreshWindow);
+        forceRefresh || cachedSnapshot.scheduleUpdatedAt == null;
     final shouldRefreshChangeRules =
-        forceRefresh ||
-        cachedSnapshot.needsChangeRulesRefresh(
-          now,
-          maxAge: changeRuleRefreshWindow,
-        );
+        forceRefresh || cachedSnapshot.changeRulesUpdatedAt == null;
     final needsRefresh = shouldRefreshSchedule || shouldRefreshChangeRules;
 
     if (!needsRefresh) {
