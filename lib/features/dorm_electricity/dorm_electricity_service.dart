@@ -7,6 +7,7 @@ import 'package:html/parser.dart' as html_parser;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/logging/app_logger.dart';
+import '../../core/network/legacy_dio_factory.dart';
 import '../../core/network/network_settings.dart';
 import '../../core/network/proxy_mode.dart';
 
@@ -86,27 +87,11 @@ class DormElectricityService {
   String? get lastError => _lastError;
 
   Dio _createProxyFallbackDio() {
-    final baseOptions = _dio?.options;
-    final client = Dio(
-      BaseOptions(
-        connectTimeout:
-            baseOptions?.connectTimeout ?? const Duration(seconds: 10),
-        receiveTimeout:
-            baseOptions?.receiveTimeout ?? const Duration(seconds: 10),
-        sendTimeout: baseOptions?.sendTimeout,
-        headers: baseOptions?.headers != null
-            ? Map<String, dynamic>.from(baseOptions!.headers)
-            : {
-                'User-Agent':
-                    'Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 '
-                    '(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-                'X-Requested-With': 'XMLHttpRequest',
-              },
-        responseType: ResponseType.bytes,
-      ),
+    return createCampusBytesDioFromOptions(
+      _dio?.options,
+      fallbackHeaders: const {'X-Requested-With': 'XMLHttpRequest'},
+      ignoreSystemProxy: false,
     );
-    applyProxyModeToDio(client, ignoreSystemProxy: false);
-    return client;
   }
 
   bool _shouldRetryWithSystemProxyForAny(Object error) {
@@ -449,24 +434,9 @@ class DormElectricityService {
   }
 
   Dio _createDio() {
-    final client = Dio(
-      BaseOptions(
-        connectTimeout: const Duration(seconds: 10),
-        receiveTimeout: const Duration(seconds: 10),
-        headers: {
-          'User-Agent':
-              'Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 '
-              '(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-          'X-Requested-With': 'XMLHttpRequest',
-        },
-        responseType: ResponseType.bytes,
-      ),
+    return createCampusBytesDio(
+      headers: const {'X-Requested-With': 'XMLHttpRequest'},
     );
-    applyProxyModeToDio(
-      client,
-      ignoreSystemProxy: NetworkSettings.instance.ignoreSystemProxy.value,
-    );
-    return client;
   }
 
   Future<Dio> _ensureDio() async {

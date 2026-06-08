@@ -11,6 +11,7 @@ import '../../core/auth/credential_store.dart';
 import '../../core/logging/app_logger.dart';
 import 'qr_scanner_page.dart';
 
+part 'webview_page_helpers.dart';
 part 'webview_page_build.dart';
 
 typedef WebViewLoadStopCallback =
@@ -26,141 +27,6 @@ typedef _WebViewPageSnapshot = ({
   int textLength,
   int childCount,
 });
-
-const _serviceHallHomeUrl =
-    'https://mobilehall.zjxu.edu.cn/mportal/start/index.html#/business/ydd/portal/home';
-const _serviceHallHost = 'mobilehall.zjxu.edu.cn';
-const _serviceHallPath = '/mportal/start/index.html';
-const _serviceHallHomeFragment = '/business/ydd/portal/home';
-const _webViewConsoleNoiseKeywords = <String>[
-  'dingtalk bridge',
-  'weixinjsbridge',
-  '__wxjs_environment',
-  'not implemented on the current platform',
-  'text input plugin',
-  'inputmethodmanager',
-  'keyboard',
-];
-
-enum WebViewQuickFillKind { zhengfang, unifiedAuth }
-
-WebViewQuickFillKind? detectWebViewQuickFillKind(String currentUrl) {
-  final normalizedUrl = currentUrl.trim().toLowerCase();
-  if (normalizedUrl.isEmpty) return null;
-  if (normalizedUrl.contains('/xtgl/login_slogin.html')) {
-    return WebViewQuickFillKind.zhengfang;
-  }
-  if (normalizedUrl.contains('/cas/login')) {
-    return WebViewQuickFillKind.unifiedAuth;
-  }
-  return null;
-}
-
-String selectLoadedWebViewUrl({
-  required String fallbackUrl,
-  String? reportedUrl,
-  String? controllerUrl,
-}) {
-  for (final candidate in [controllerUrl, reportedUrl, fallbackUrl]) {
-    final value = candidate?.trim() ?? '';
-    if (value.isNotEmpty) return value;
-  }
-  return '';
-}
-
-bool isServiceHallHomeUrl(String currentUrl) {
-  final raw = currentUrl.trim();
-  if (raw.isEmpty) return false;
-
-  final uri = Uri.tryParse(raw);
-  if (uri == null) return false;
-  if (uri.host.toLowerCase() != _serviceHallHost ||
-      uri.path != _serviceHallPath) {
-    return false;
-  }
-
-  final fragment = uri.fragment.trim();
-  if (fragment.isEmpty) return false;
-
-  final fragmentPath =
-      '/${fragment.split('?').first.replaceFirst(RegExp(r'^/+'), '')}';
-  return fragmentPath == _serviceHallHomeFragment;
-}
-
-bool _isDeniedWeChatSdkRequest(Uri uri) {
-  if (uri.host.toLowerCase() != 'webvpn.zjxu.edu.cn') return false;
-
-  final path = uri.path.toLowerCase();
-  return path.contains('/open/js/jweixin-1.6.0.js');
-}
-
-WebResourceResponse _buildWeChatSdkStubResponse() {
-  const script = '''
-(function () {
-  if (window.wx) return;
-  var noop = function () {};
-  var wx = {
-    config: noop,
-    ready: function (cb) { if (typeof cb === 'function') setTimeout(cb, 0); },
-    error: noop,
-    checkJsApi: noop,
-    updateAppMessageShareData: noop,
-    updateTimelineShareData: noop,
-    onMenuShareTimeline: noop,
-    onMenuShareAppMessage: noop,
-    hideOptionMenu: noop,
-    showOptionMenu: noop,
-    closeWindow: noop,
-    miniProgram: { getEnv: noop, navigateTo: noop },
-    scanQRCode: function (opts) {
-      var needResult = (opts && opts.needResult) ? opts.needResult : 0;
-      var successCb = (opts && typeof opts.onSuccess === 'function') ? opts.onSuccess : null;
-      var errorCb = (opts && typeof opts.onError === 'function') ? opts.onError : null;
-      try {
-        window.flutter_inappwebview.callHandler('wxScanQRCode', JSON.stringify({ needResult: needResult }))
-          .then(function (resultJson) {
-            var result = JSON.parse(resultJson || '{}');
-            if (result.cancelled) {
-              if (errorCb) errorCb({ errMsg: 'scanQRCode:cancel' });
-              return;
-            }
-            if (successCb) {
-              var scanResult = result.resultStr || '';
-              successCb({ resultStr: scanResult });
-            }
-          })
-          .catch(function (e) {
-            if (errorCb) errorCb({ errMsg: 'scanQRCode:fail ' + (e.message || e) });
-          });
-      } catch (e) {
-        if (errorCb) errorCb({ errMsg: 'scanQRCode:fail ' + (e.message || e) });
-      }
-    }
-  };
-  window.wx = wx;
-})();
-''';
-
-  return WebResourceResponse(
-    contentType: 'application/javascript',
-    contentEncoding: 'utf-8',
-    data: Uint8List.fromList(utf8.encode(script)),
-    headers: const {'cache-control': 'no-store'},
-    statusCode: 200,
-    reasonPhrase: 'OK',
-  );
-}
-
-String? buildEmbeddedWeChatUserAgent(TargetPlatform platform) {
-  switch (platform) {
-    case TargetPlatform.iOS:
-      return 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.40(0x18002829) NetType/WIFI Language/zh_CN';
-    case TargetPlatform.android:
-      return 'Mozilla/5.0 (Linux; Android 13; Pixel 7 Build/TP1A.220624.014) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36 MicroMessenger/8.0.40.2420';
-    default:
-      return null;
-  }
-}
 
 /// Reusable full-screen WebView page with progress bar and error handling.
 class WebViewPage extends StatefulWidget {
@@ -302,6 +168,14 @@ class _WebViewPageState extends State<WebViewPage> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  void _setQuickFillBusy(bool value) {
+    if (mounted) {
+      setState(() => _quickFillBusy = value);
+    } else {
+      _quickFillBusy = value;
+    }
   }
 
   Future<bool> _goBackInWebViewIfPossible() async {
@@ -537,117 +411,6 @@ class _WebViewPageState extends State<WebViewPage> {
     return snapshot.textLength == 0 &&
         snapshot.childCount == 0 &&
         snapshot.readyState == 'complete';
-  }
-
-  Future<void> _fillSavedCredentials({
-    required bool fillUsername,
-    required bool fillPassword,
-  }) async {
-    final controller = _controller;
-    final kind = _quickFillKind;
-    if (controller == null || kind == null || _quickFillBusy) return;
-
-    final credentials = switch (kind) {
-      WebViewQuickFillKind.zhengfang => _savedZhengfangCredentials,
-      WebViewQuickFillKind.unifiedAuth => _savedUnifiedCredentials,
-    };
-
-    if (credentials == null) {
-      final loginType = kind == WebViewQuickFillKind.zhengfang ? '教务' : '一卡通';
-      _showHint('还没有记住$loginType账号密码，请先用应用内登录一次');
-      return;
-    }
-
-    setState(() => _quickFillBusy = true);
-
-    final username = jsonEncode(fillUsername ? credentials.$1 : '');
-    final password = jsonEncode(fillPassword ? credentials.$2 : '');
-    final script = switch (kind) {
-      WebViewQuickFillKind.zhengfang =>
-        '''
-(() => {
-  const setInputValue = (selectors, value) => {
-    if (!value) return false;
-    for (const selector of selectors) {
-      const input = document.querySelector(selector);
-      if (!input) continue;
-      input.focus();
-      input.value = value;
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      input.dispatchEvent(new Event('change', { bubbles: true }));
-      return true;
-    }
-    return false;
-  };
-
-  return {
-    usernameFilled: setInputValue(['#yhm', 'input[name="yhm"]'], $username),
-    passwordFilled: setInputValue(
-      ['#mm', 'input[name="mm"]', 'input[type="password"]'],
-      $password
-    ),
-  };
-})()
-''',
-      WebViewQuickFillKind.unifiedAuth =>
-        '''
-(() => {
-  const setInputValue = (selectors, value) => {
-    if (!value) return false;
-    for (const selector of selectors) {
-      const input = document.querySelector(selector);
-      if (!input) continue;
-      input.focus();
-      input.value = value;
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      input.dispatchEvent(new Event('change', { bubbles: true }));
-      return true;
-    }
-    return false;
-  };
-
-  return {
-    usernameFilled: setInputValue(['#username', 'input[name="username"]'], $username),
-    passwordFilled: setInputValue(
-      ['#password', 'input[name="password"]', 'input[type="password"]'],
-      $password
-    ),
-  };
-})()
-''',
-    };
-
-    try {
-      final result = await controller.evaluateJavascript(source: script);
-      final resultMap = result is Map
-          ? Map<Object?, Object?>.from(result)
-          : const {};
-      final usernameFilled = '${resultMap['usernameFilled']}' == 'true';
-      final passwordFilled = '${resultMap['passwordFilled']}' == 'true';
-
-      if (!mounted) return;
-
-      if ((fillUsername && !usernameFilled) ||
-          (fillPassword && !passwordFilled)) {
-        _showHint('当前登录页字段未识别到，请手动输入');
-      } else {
-        _showHint(
-          kind == WebViewQuickFillKind.zhengfang ? '已填充教务账号密码' : '已填充一卡通账号密码',
-        );
-      }
-    } catch (error) {
-      AppLogger.instance.webview(
-        LogLevel.error,
-        'WebView 快速填充失败: $_currentUrl :: $error',
-      );
-      _showHint('快速填充失败，请手动输入');
-    } finally {
-      if (mounted) {
-        setState(() => _quickFillBusy = false);
-      } else {
-        _quickFillBusy = false;
-      }
-    }
   }
 
   @override

@@ -1,13 +1,14 @@
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:workmanager/workmanager.dart';
+
+import '../logging/app_logger.dart';
 
 const _dormElectricityCheckTask = 'dormElectricityCheck';
 const _scheduledNotificationId = 200;
@@ -45,6 +46,21 @@ String _todayString() {
 String _formatElectricity(double value) {
   if (value == value.truncateToDouble()) return value.toInt().toString();
   return value.toStringAsFixed(2);
+}
+
+void _logBackgroundTask(
+  LogLevel level,
+  String message, {
+  Object? error,
+  StackTrace? stackTrace,
+}) {
+  AppLogger.instance.log(
+    level,
+    LogCategory.general,
+    message,
+    error: error,
+    stackTrace: stackTrace,
+  );
 }
 
 /// Fetch electricity value from the dorm API. Returns null on failure.
@@ -136,8 +152,13 @@ Future<bool> _executeBackgroundElectricityCheck() async {
     }
 
     return true;
-  } catch (e) {
-    if (kDebugMode) debugPrint('Background electricity check failed: $e');
+  } catch (error, stackTrace) {
+    _logBackgroundTask(
+      LogLevel.warn,
+      '后台电费检查失败',
+      error: error,
+      stackTrace: stackTrace,
+    );
     return false;
   }
 }
@@ -228,11 +249,14 @@ Future<void> _scheduleDailyAlarmNotification() async {
       matchDateTimeComponents: DateTimeComponents.time,
     );
 
-    if (kDebugMode) {
-      debugPrint('Scheduled daily electricity alarm at $scheduled');
-    }
-  } catch (e) {
-    if (kDebugMode) debugPrint('Failed to schedule daily alarm: $e');
+    _logBackgroundTask(LogLevel.info, '已安排每日电费提醒: $scheduled');
+  } catch (error, stackTrace) {
+    _logBackgroundTask(
+      LogLevel.warn,
+      '安排每日电费提醒失败',
+      error: error,
+      stackTrace: stackTrace,
+    );
   }
 }
 
@@ -312,8 +336,13 @@ class BackgroundTaskService {
 
       // Reschedule daily alarm with fresh cached value.
       await _scheduleDailyAlarmNotification();
-    } catch (e) {
-      if (kDebugMode) debugPrint('Foreground electricity check failed: $e');
+    } catch (error, stackTrace) {
+      _logBackgroundTask(
+        LogLevel.warn,
+        '前台电费检查失败',
+        error: error,
+        stackTrace: stackTrace,
+      );
     }
   }
 }

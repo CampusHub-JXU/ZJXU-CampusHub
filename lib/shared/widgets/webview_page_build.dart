@@ -91,6 +91,113 @@ extension _WebViewPageBuildExtension on _WebViewPageState {
     );
   }
 
+  Future<void> _fillSavedCredentials({
+    required bool fillUsername,
+    required bool fillPassword,
+  }) async {
+    final controller = _controller;
+    final kind = _quickFillKind;
+    if (controller == null || kind == null || _quickFillBusy) return;
+
+    final credentials = switch (kind) {
+      WebViewQuickFillKind.zhengfang => _savedZhengfangCredentials,
+      WebViewQuickFillKind.unifiedAuth => _savedUnifiedCredentials,
+    };
+
+    if (credentials == null) {
+      final loginType = kind == WebViewQuickFillKind.zhengfang ? '教务' : '一卡通';
+      _showHint('还没有记住$loginType账号密码，请先用应用内登录一次');
+      return;
+    }
+
+    _setQuickFillBusy(true);
+
+    final username = jsonEncode(fillUsername ? credentials.$1 : '');
+    final password = jsonEncode(fillPassword ? credentials.$2 : '');
+    final script = switch (kind) {
+      WebViewQuickFillKind.zhengfang =>
+        '''
+(() => {
+  const setInputValue = (selectors, value) => {
+    if (!value) return false;
+    for (const selector of selectors) {
+      const input = document.querySelector(selector);
+      if (!input) continue;
+      input.focus();
+      input.value = value;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    }
+    return false;
+  };
+
+  return {
+    usernameFilled: setInputValue(['#yhm', 'input[name="yhm"]'], $username),
+    passwordFilled: setInputValue(
+      ['#mm', 'input[name="mm"]', 'input[type="password"]'],
+      $password
+    ),
+  };
+})()
+''',
+      WebViewQuickFillKind.unifiedAuth =>
+        '''
+(() => {
+  const setInputValue = (selectors, value) => {
+    if (!value) return false;
+    for (const selector of selectors) {
+      const input = document.querySelector(selector);
+      if (!input) continue;
+      input.focus();
+      input.value = value;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    }
+    return false;
+  };
+
+  return {
+    usernameFilled: setInputValue(['#username', 'input[name="username"]'], $username),
+    passwordFilled: setInputValue(
+      ['#password', 'input[name="password"]', 'input[type="password"]'],
+      $password
+    ),
+  };
+})()
+''',
+    };
+
+    try {
+      final result = await controller.evaluateJavascript(source: script);
+      final resultMap = result is Map
+          ? Map<Object?, Object?>.from(result)
+          : const {};
+      final usernameFilled = '${resultMap['usernameFilled']}' == 'true';
+      final passwordFilled = '${resultMap['passwordFilled']}' == 'true';
+
+      if (!mounted) return;
+
+      if ((fillUsername && !usernameFilled) ||
+          (fillPassword && !passwordFilled)) {
+        _showHint('当前登录页字段未识别到，请手动输入');
+      } else {
+        _showHint(
+          kind == WebViewQuickFillKind.zhengfang ? '已填充教务账号密码' : '已填充一卡通账号密码',
+        );
+      }
+    } catch (error) {
+      AppLogger.instance.webview(
+        LogLevel.error,
+        'WebView 快速填充失败: $_currentUrl :: $error',
+      );
+      _showHint('快速填充失败，请手动输入');
+    } finally {
+      _setQuickFillBusy(false);
+    }
+  }
+
   Widget _buildWebViewNavigationBar() {
     if (!widget.showWebViewBottomBackButton) {
       return const SizedBox.shrink();

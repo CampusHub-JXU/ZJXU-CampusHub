@@ -10,6 +10,8 @@ import 'package:path_provider/path_provider.dart';
 import '../../app/app_theme_controller.dart';
 import '../home/home_controller.dart';
 import '../home/widgets/home_background_layer.dart';
+import 'widgets/glass_preset_control.dart';
+import 'widgets/shader_tuning_controls.dart';
 
 class PersonalizationPage extends StatefulWidget {
   const PersonalizationPage({super.key});
@@ -598,9 +600,9 @@ class _PersonalizationPageState extends State<PersonalizationPage> {
                   ),
                   if (shaderEnabled) ...[
                     _buildShaderModePicker(context, textTheme),
-                    _buildShaderAnimationSpeedSlider(context),
-                    _buildShaderStrengthSlider(context),
-                    _buildShaderOpacitySlider(context),
+                    const ShaderAnimationSpeedSlider(),
+                    const ShaderStrengthSlider(),
+                    const ShaderOpacitySlider(),
                   ],
                 ],
               );
@@ -670,95 +672,6 @@ class _PersonalizationPageState extends State<PersonalizationPage> {
     );
   }
 
-  Widget _buildShaderAnimationSpeedSlider(BuildContext context) {
-    return ValueListenableBuilder<HomeShaderMode>(
-      valueListenable: HomeController.instance.shaderMode,
-      builder: (context, shaderMode, _) {
-        if (shaderMode == HomeShaderMode.glass) {
-          return const SizedBox.shrink();
-        }
-        return ValueListenableBuilder<double>(
-          valueListenable: HomeController.instance.shaderAnimationSpeed,
-          builder: (context, speed, _) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                  child: Text(
-                    '动画速度  ${speed.toStringAsFixed(1)}x',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ),
-                Slider.adaptive(
-                  value: speed,
-                  min: 0.0,
-                  max: 2.0,
-                  divisions: 20,
-                  onChanged: HomeController.instance.setShaderAnimationSpeed,
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildShaderStrengthSlider(BuildContext context) {
-    return ValueListenableBuilder<double>(
-      valueListenable: HomeController.instance.shaderStrength,
-      builder: (context, strength, _) {
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: Text(
-                'Shader 强度  ${(strength * 100).round()}%',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ),
-            Slider.adaptive(
-              value: strength,
-              min: 0.0,
-              max: 1.0,
-              divisions: 10,
-              onChanged: HomeController.instance.setShaderStrength,
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildShaderOpacitySlider(BuildContext context) {
-    return ValueListenableBuilder<double>(
-      valueListenable: HomeController.instance.shaderOpacity,
-      builder: (context, opacity, _) {
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-              child: Text(
-                'Shader 透明度  ${(opacity * 100).round()}%',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ),
-            Slider.adaptive(
-              value: opacity,
-              min: 0.0,
-              max: 1.0,
-              divisions: 20,
-              onChanged: HomeController.instance.setShaderOpacity,
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   // --- Glass ---
 
   Widget _buildGlassSection(BuildContext context, TextTheme textTheme) {
@@ -806,7 +719,7 @@ class _PersonalizationPageState extends State<PersonalizationPage> {
     return ValueListenableBuilder<double>(
       valueListenable: HomeController.instance.glassBlur,
       builder: (context, blur, _) {
-        return _GlassPresetControl(
+        return GlassPresetControl(
           label: '模糊强度',
           value: blur,
           min: 0,
@@ -827,7 +740,7 @@ class _PersonalizationPageState extends State<PersonalizationPage> {
     return ValueListenableBuilder<double>(
       valueListenable: HomeController.instance.glassOpacity,
       builder: (context, opacity, _) {
-        return _GlassPresetControl(
+        return GlassPresetControl(
           label: '卡片透明度',
           value: opacity,
           min: 0.2,
@@ -843,172 +756,5 @@ class _PersonalizationPageState extends State<PersonalizationPage> {
         );
       },
     );
-  }
-}
-
-class _GlassPresetControl extends StatefulWidget {
-  const _GlassPresetControl({
-    required this.label,
-    required this.value,
-    required this.min,
-    required this.max,
-    required this.presets,
-    required this.decimals,
-    required this.suffix,
-    required this.onPreview,
-    required this.onCommit,
-    this.displayMultiplier = 1,
-  });
-
-  final String label;
-  final double value;
-  final double min;
-  final double max;
-  final List<double> presets;
-  final int decimals;
-  final String suffix;
-  final double displayMultiplier;
-  final ValueChanged<double> onPreview;
-  final ValueChanged<double> onCommit;
-
-  @override
-  State<_GlassPresetControl> createState() => _GlassPresetControlState();
-}
-
-class _GlassPresetControlState extends State<_GlassPresetControl> {
-  late final TextEditingController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(text: _formatValue(widget.value));
-  }
-
-  @override
-  void didUpdateWidget(covariant _GlassPresetControl oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if ((widget.value - oldWidget.value).abs() > 0.001) {
-      final text = _formatValue(widget.value);
-      if (_controller.text != text) {
-        _controller.text = text;
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final closest = _closestPresetIndex(widget.value);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '${widget.label}  ${_formatValue(widget.value)}${widget.suffix}',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ),
-              SizedBox(
-                width: 76,
-                child: TextField(
-                  controller: _controller,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodySmall,
-                  decoration: InputDecoration(
-                    isDense: true,
-                    suffixText: widget.suffix.isEmpty ? null : widget.suffix,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 8,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                  onSubmitted: _commitText,
-                  onTapOutside: (_) => _commitText(_controller.text),
-                ),
-              ),
-            ],
-          ),
-          Slider.adaptive(
-            value: closest.toDouble(),
-            min: 0,
-            max: (widget.presets.length - 1).toDouble(),
-            divisions: widget.presets.length - 1,
-            label: '${_formatValue(widget.presets[closest])}${widget.suffix}',
-            onChanged: (index) {
-              final value = widget.presets[index.round()];
-              widget.onPreview(value);
-            },
-            onChangeEnd: (index) {
-              widget.onCommit(widget.presets[index.round()]);
-            },
-          ),
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            children: [
-              for (final preset in widget.presets)
-                ChoiceChip(
-                  label: Text('${_formatValue(preset)}${widget.suffix}'),
-                  selected: (widget.value - preset).abs() < 0.001,
-                  onSelected: (_) {
-                    widget.onPreview(preset);
-                    widget.onCommit(preset);
-                  },
-                  visualDensity: VisualDensity.compact,
-                ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  int _closestPresetIndex(double value) {
-    var closest = 0;
-    var diff = double.infinity;
-    for (var i = 0; i < widget.presets.length; i++) {
-      final itemDiff = (widget.presets[i] - value).abs();
-      if (itemDiff < diff) {
-        closest = i;
-        diff = itemDiff;
-      }
-    }
-    return closest;
-  }
-
-  String _formatValue(double value) {
-    final displayValue = value * widget.displayMultiplier;
-    return widget.decimals == 0
-        ? displayValue.round().toString()
-        : displayValue.toStringAsFixed(widget.decimals);
-  }
-
-  void _commitText(String text) {
-    final parsed = double.tryParse(text.trim());
-    if (parsed == null) {
-      _controller.text = _formatValue(widget.value);
-      return;
-    }
-    final rawValue = (parsed / widget.displayMultiplier).clamp(
-      widget.min,
-      widget.max,
-    );
-    widget.onPreview(rawValue);
-    widget.onCommit(rawValue);
   }
 }

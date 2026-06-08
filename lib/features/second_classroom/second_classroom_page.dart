@@ -5,6 +5,27 @@ import 'package:go_router/go_router.dart';
 import '../../core/logging/app_logger.dart';
 import '../../shared/widgets/webview_page.dart';
 
+bool isSecondClassroomAuthProviderEntryUrl(String currentUrl) {
+  final uri = Uri.tryParse(currentUrl);
+  if (uri == null) return false;
+
+  final host = uri.host.toLowerCase();
+  final path = uri.path.toLowerCase();
+  return host == 'twdekt.zjxu.edu.cn' &&
+      path == '/dekt/' &&
+      uri.queryParameters.containsKey('_auth_provider_');
+}
+
+bool isSecondClassroomLandingRootUrl(String currentUrl) {
+  final uri = Uri.tryParse(currentUrl);
+  if (uri == null) return false;
+
+  final host = uri.host.toLowerCase();
+  final normalizedPath = uri.path.toLowerCase();
+  return host == 'twdekt.zjxu.edu.cn' &&
+      (normalizedPath == '/dekt/' || normalizedPath == '/dekt');
+}
+
 class SecondClassroomPage extends StatefulWidget {
   const SecondClassroomPage({super.key});
 
@@ -23,24 +44,11 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
   String get _wechatPageUrl => SecondClassroomPage.initialUrl;
 
   bool _isProviderEntryUrl(String currentUrl) {
-    final uri = Uri.tryParse(currentUrl);
-    if (uri == null) return false;
-
-    final host = uri.host.toLowerCase();
-    final path = uri.path.toLowerCase();
-    return host == 'twdekt.zjxu.edu.cn' &&
-        path == '/dekt/' &&
-        uri.queryParameters.containsKey('_auth_provider_');
+    return isSecondClassroomAuthProviderEntryUrl(currentUrl);
   }
 
   bool _isLandingRootUrl(String currentUrl) {
-    final uri = Uri.tryParse(currentUrl);
-    if (uri == null) return false;
-
-    final host = uri.host.toLowerCase();
-    final normalizedPath = uri.path.toLowerCase();
-    return host == 'twdekt.zjxu.edu.cn' &&
-        (normalizedPath == '/dekt/' || normalizedPath == '/dekt');
+    return isSecondClassroomLandingRootUrl(currentUrl);
   }
 
   Future<void> _redirectToWechatPage(

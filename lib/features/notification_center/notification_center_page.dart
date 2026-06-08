@@ -145,9 +145,8 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
                 'title': notice.title,
                 'url': notice.url,
                 'emulateDingTalkEnvironment': false,
-                'requireUnifiedAuthProtection': _shouldOpenViaUnifiedAuth(
-                  notice.url,
-                ),
+                'requireUnifiedAuthProtection':
+                    shouldOpenCampusNoticeViaUnifiedAuth(notice.url),
                 'serviceUrl': notice.url,
                 'loginDescription': '通知公告可直连访问，但需先完成统一认证',
                 'showWebViewBottomBackButton': true,
@@ -327,7 +326,7 @@ Widget _buildNoticeTile(
   );
 }
 
-bool _shouldOpenViaUnifiedAuth(String url) {
+bool shouldOpenCampusNoticeViaUnifiedAuth(String url) {
   final uri = Uri.tryParse(url);
   if (uri == null) return false;
   return uri.host.toLowerCase() == 'jwc.zjxu.edu.cn';
