@@ -92,10 +92,7 @@ class AppFeaturesConfig {
         compact: FeatureEntrySpan(columns: 1, rows: 1),
         expanded: FeatureEntrySpan(columns: 1, rows: 1),
       ),
-      placements: {
-        FeatureEntryPlacement.serviceHub,
-        FeatureEntryPlacement.homeLearning,
-      },
+      placements: {FeatureEntryPlacement.homeLearning},
       sortOrder: 20,
     ),
     FeatureEntryDefinition(
@@ -109,10 +106,7 @@ class AppFeaturesConfig {
         compact: FeatureEntrySpan(columns: 1, rows: 1),
         expanded: FeatureEntrySpan(columns: 1, rows: 1),
       ),
-      placements: {
-        FeatureEntryPlacement.serviceHub,
-        FeatureEntryPlacement.homeLearning,
-      },
+      placements: {FeatureEntryPlacement.homeLearning},
       sortOrder: 30,
     ),
     FeatureEntryDefinition(
@@ -170,34 +164,6 @@ class AppFeaturesConfig {
       ),
       placements: {FeatureEntryPlacement.serviceHub},
       sortOrder: 70,
-    ),
-    FeatureEntryDefinition(
-      id: 'exam',
-      title: '考试安排',
-      subtitle: '考试倒数日与详细信息',
-      icon: Icons.quiz_outlined,
-      accentColor: Color(0xFFE53935),
-      routeName: 'exam',
-      spans: FeatureEntryResponsiveSpan(
-        compact: FeatureEntrySpan(columns: 1, rows: 1),
-        expanded: FeatureEntrySpan(columns: 1, rows: 1),
-      ),
-      placements: {FeatureEntryPlacement.serviceHub},
-      sortOrder: 75,
-    ),
-    FeatureEntryDefinition(
-      id: 'dorm-electricity',
-      title: '宿舍电费',
-      subtitle: '查询剩余电量并管理宿舍配置',
-      icon: Icons.bolt_outlined,
-      accentColor: Color(0xFF7B61FF),
-      routeName: 'dorm-electricity',
-      spans: FeatureEntryResponsiveSpan(
-        compact: FeatureEntrySpan(columns: 1, rows: 1),
-        expanded: FeatureEntrySpan(columns: 1, rows: 1),
-      ),
-      placements: {FeatureEntryPlacement.serviceHub},
-      sortOrder: 80,
     ),
   ];
 
