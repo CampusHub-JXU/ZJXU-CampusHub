@@ -6,7 +6,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $noisePattern =
-  "AccessibilityBridge|MIUIInput|ViewRootImpl|VRI\[|CompatChangeReporter|BufferQueue|OpenGLRenderer|InsetsController"
+  "AccessibilityBridge|MIUIInput|ViewRootImpl|VRI\[|CompatChangeReporter|BufferQueue|OpenGLRenderer|InsetsController|InsetsSource"
 $appPattern =
   "\[JXU\]|E/flutter|══╡|Exception|Error|Hot reload|Hot restart|Restarted application|Flutter run key commands|To hot reload"
 
