@@ -243,6 +243,7 @@ class _BatteryPixelPainter extends CustomPainter {
     final progress = (fraction * fillAnimationValue).clamp(0.0, 1.0).toDouble();
     final progressX = size.width * progress;
     final breath = ((breathValue - 0.5) * 2).clamp(-1.0, 1.0).toDouble();
+    final pulse = ((breath + 1) / 2).clamp(0.0, 1.0).toDouble();
 
     const dotSize = 4.0;
     const gap = 2.8;
@@ -267,8 +268,8 @@ class _BatteryPixelPainter extends CustomPainter {
         final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(1.1));
 
         if (litAmount <= 0) {
-          final emptyAlpha = ((isDark ? 0.12 : 0.075) + breath * 0.006)
-              .clamp(0.0, 0.14)
+          final emptyAlpha = ((isDark ? 0.10 : 0.06) + pulse * 0.03)
+              .clamp(0.0, 0.16)
               .toDouble();
           canvas.drawRRect(
             rrect,
@@ -277,14 +278,26 @@ class _BatteryPixelPainter extends CustomPainter {
           continue;
         }
 
-        final alpha =
-            ((isDark ? 0.18 : 0.15) + edgeBand * 0.07 + breath * 0.018)
-                .clamp(0.0, 0.28)
+        final glowAlpha =
+            ((isDark ? 0.08 : 0.06) + pulse * 0.12 + edgeBand * 0.05)
+                .clamp(0.0, 0.24)
                 .toDouble();
+        final glowRect = RRect.fromRectAndRadius(
+          rect.inflate(1.4),
+          const Radius.circular(2.4),
+        );
+        canvas.drawRRect(
+          glowRect,
+          Paint()..color = activeColor.withValues(alpha: glowAlpha),
+        );
+
+        final alpha = ((isDark ? 0.26 : 0.22) + edgeBand * 0.1 + pulse * 0.16)
+            .clamp(0.16, 0.56)
+            .toDouble();
         final color = Color.lerp(
           Colors.white,
           activeColor,
-          isDark ? 0.08 : 0.18,
+          isDark ? 0.24 : 0.42,
         )!.withValues(alpha: alpha);
 
         canvas.drawRRect(rrect, Paint()..color = color);
