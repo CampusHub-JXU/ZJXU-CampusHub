@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 class ElectricityBatteryHeader extends StatelessWidget {
@@ -6,8 +8,8 @@ class ElectricityBatteryHeader extends StatelessWidget {
     required this.valueText,
     required this.statusLabel,
     required this.fraction,
-    required this.fillAnimationValue,
-    required this.breathValue,
+    required this.fillAnimation,
+    required this.breathAnimation,
     required this.accentColor,
     required this.statusBackgroundColor,
   });
@@ -15,8 +17,8 @@ class ElectricityBatteryHeader extends StatelessWidget {
   final String valueText;
   final String statusLabel;
   final double fraction;
-  final double fillAnimationValue;
-  final double breathValue;
+  final Animation<double> fillAnimation;
+  final Animation<double> breathAnimation;
   final Color accentColor;
   final Color statusBackgroundColor;
 
@@ -122,8 +124,8 @@ class ElectricityBatteryHeader extends StatelessWidget {
                         child: CustomPaint(
                           painter: _BatteryPixelPainter(
                             fraction: fraction,
-                            fillAnimationValue: fillAnimationValue,
-                            breathValue: breathValue,
+                            fillAnimation: fillAnimation,
+                            breathAnimation: breathAnimation,
                             activeColor: accentColor,
                             emptyColor: Color.lerp(
                               cs.onSurfaceVariant,
@@ -208,35 +210,38 @@ class ElectricityBatteryHeader extends StatelessWidget {
 class _BatteryPixelPainter extends CustomPainter {
   _BatteryPixelPainter({
     required this.fraction,
-    required this.fillAnimationValue,
-    required this.breathValue,
+    required this.fillAnimation,
+    required this.breathAnimation,
     required this.activeColor,
     required this.emptyColor,
     required this.isDark,
-  });
+  }) : super(repaint: Listenable.merge([fillAnimation, breathAnimation]));
 
   final double fraction;
-  final double fillAnimationValue;
-  final double breathValue;
+  final Animation<double> fillAnimation;
+  final Animation<double> breathAnimation;
   final Color activeColor;
   final Color emptyColor;
   final bool isDark;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final progress = (fraction * fillAnimationValue).clamp(0.0, 1.0).toDouble();
+    final progress = (fraction * fillAnimation.value)
+        .clamp(0.0, 1.0)
+        .toDouble();
     final progressX = size.width * progress;
-    final breath = ((breathValue - 0.5) * 2).clamp(-1.0, 1.0).toDouble();
-    final pulse = ((breath + 1) / 2).clamp(0.0, 1.0).toDouble();
-    final flickerStep = (breathValue * 18).floor();
+    final breathValue = breathAnimation.value;
+    final phase = breathValue * math.pi * 2;
+    final pulse = ((math.sin(phase) + 1) / 2).clamp(0.0, 1.0).toDouble();
 
-    const dotSize = 4.4;
-    const gap = 2.4;
+    const dotSize = 3.2;
+    const gap = 1.45;
     const stride = dotSize + gap;
     final columns = (size.width / stride).ceil() + 2;
     final rows = (size.height / stride).ceil() + 2;
     const startX = -stride;
     final startY = -stride;
+    final dotPaint = Paint();
 
     for (var row = 0; row < rows; row++) {
       for (var column = 0; column < columns; column++) {
@@ -250,57 +255,78 @@ class _BatteryPixelPainter extends CustomPainter {
             .clamp(0.0, 1.0)
             .toDouble();
         final rect = Rect.fromLTWH(x, y, dotSize, dotSize);
-        final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(1.1));
-        final staticNoise = _noise(column, row, 0);
-        final flickerNoise = _noise(column, row, flickerStep);
-        final alphaNoise = (staticNoise * 0.65 + flickerNoise * 0.35)
-            .clamp(0.0, 1.0)
-            .toDouble();
+        final staticGrain = _noise(column, row, 7);
+        final randomField = _smoothNoise(
+          column,
+          row,
+          breathValue,
+          frameCount: 8,
+          seedBase: 41,
+        );
+        // Keep every temporal term periodic so repeat() never pops at 1 -> 0.
+        final cellPhase = staticGrain * math.pi * 2;
+        final shimmer =
+            (math.sin(phase * 2 + cellPhase + column * 0.15 - row * 0.05) + 1) /
+            2;
+        final flow = (math.sin(phase - column * 0.2 + row * 0.11) + 1) / 2;
+        final sweep = (math.sin(phase + column * 0.08) + 1) / 2;
+        final alphaNoise =
+            (staticGrain * 0.34 +
+                    randomField * 0.18 +
+                    shimmer * 0.26 +
+                    flow * 0.14 +
+                    sweep * 0.08)
+                .clamp(0.0, 1.0)
+                .toDouble();
 
         if (litAmount <= 0) {
           final emptyAlpha =
-              ((isDark ? 0.045 : 0.026) + alphaNoise * 0.052 + pulse * 0.014)
+              ((isDark ? 0.034 : 0.018) + alphaNoise * 0.034 + pulse * 0.006)
                   .clamp(0.0, 0.16)
                   .toDouble();
-          canvas.drawRRect(
-            rrect,
-            Paint()..color = emptyColor.withValues(alpha: emptyAlpha),
-          );
+          dotPaint.color = emptyColor.withValues(alpha: emptyAlpha);
+          canvas.drawRect(rect, dotPaint);
           continue;
         }
 
-        final fillBreath = 0.72 + pulse * 0.34;
-        final glowAlpha =
-            ((isDark ? 0.07 : 0.05) +
-                    alphaNoise * 0.16 +
-                    pulse * 0.1 +
-                    edgeBand * 0.08)
-                .clamp(0.0, 0.32)
-                .toDouble();
-        final glowRect = RRect.fromRectAndRadius(
-          rect.inflate(1.4),
-          const Radius.circular(2.4),
-        );
-        canvas.drawRRect(
-          glowRect,
-          Paint()..color = activeColor.withValues(alpha: glowAlpha),
-        );
-
+        final fillBreath = 0.76 + pulse * 0.32;
+        final sparkBoost = math.pow(shimmer, 2.4).toDouble() * 0.12;
         final alpha =
-            (((isDark ? 0.24 : 0.2) + alphaNoise * 0.38 + edgeBand * 0.14) *
+            (((isDark ? 0.23 : 0.19) +
+                        alphaNoise * 0.44 +
+                        edgeBand * 0.1 +
+                        sparkBoost) *
                     fillBreath *
                     litAmount)
-                .clamp(0.12, 0.78)
+                .clamp(0.06, 0.84)
                 .toDouble();
         final color = Color.lerp(
           Colors.white,
           activeColor,
-          (isDark ? 0.2 : 0.34) + alphaNoise * 0.18,
+          (isDark ? 0.22 : 0.36) + alphaNoise * 0.22,
         )!.withValues(alpha: alpha);
 
-        canvas.drawRRect(rrect, Paint()..color = color);
+        dotPaint.color = color;
+        canvas.drawRect(rect, dotPaint);
       }
     }
+  }
+
+  double _smoothNoise(
+    int column,
+    int row,
+    double phase, {
+    required int frameCount,
+    required int seedBase,
+  }) {
+    final frame = phase * frameCount;
+    final currentFrame = frame.floor() % frameCount;
+    final nextFrame = (currentFrame + 1) % frameCount;
+    final t = frame - frame.floor();
+    final easedT = t * t * (3 - 2 * t);
+    final current = _noise(column, row, seedBase + currentFrame);
+    final next = _noise(column, row, seedBase + nextFrame);
+    return current + (next - current) * easedT;
   }
 
   double _noise(int column, int row, int seed) {
@@ -313,8 +339,8 @@ class _BatteryPixelPainter extends CustomPainter {
   @override
   bool shouldRepaint(_BatteryPixelPainter old) =>
       fraction != old.fraction ||
-      fillAnimationValue != old.fillAnimationValue ||
-      breathValue != old.breathValue ||
+      fillAnimation != old.fillAnimation ||
+      breathAnimation != old.breathAnimation ||
       activeColor != old.activeColor ||
       emptyColor != old.emptyColor ||
       isDark != old.isDark;

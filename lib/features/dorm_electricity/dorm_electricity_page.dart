@@ -43,14 +43,14 @@ class _DormElectricityPageState extends State<DormElectricityPage>
 
     final breathController = _matrixBreathController ??= AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 3200),
+      duration: const Duration(milliseconds: 2800),
     );
     _matrixBreathAnim ??= CurvedAnimation(
       parent: breathController,
-      curve: Curves.easeInOut,
+      curve: Curves.linear,
     );
     if (!breathController.isAnimating) {
-      breathController.repeat(reverse: true);
+      breathController.repeat();
     }
   }
 
@@ -332,32 +332,27 @@ class _DormElectricityPageState extends State<DormElectricityPage>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          AnimatedBuilder(
-            animation: Listenable.merge([matrixFillAnim, matrixBreathAnim]),
-            builder: (context, _) {
-              return TweenAnimationBuilder<Color?>(
-                tween: ColorTween(end: colors.primary),
-                duration: const Duration(milliseconds: 260),
-                curve: Curves.easeOutCubic,
-                builder: (context, animatedColor, _) {
-                  final accent = animatedColor ?? colors.primary;
-                  final statusBackgroundColor = accent.withValues(
-                    alpha: Theme.of(context).brightness == Brightness.light
-                        ? 0.1
-                        : 0.16,
-                  );
-                  return RepaintBoundary(
-                    child: ElectricityBatteryHeader(
-                      valueText: value,
-                      statusLabel: colors.label,
-                      fraction: _chargeFraction,
-                      fillAnimationValue: matrixFillAnim.value,
-                      breathValue: matrixBreathAnim.value,
-                      accentColor: accent,
-                      statusBackgroundColor: statusBackgroundColor,
-                    ),
-                  );
-                },
+          TweenAnimationBuilder<Color?>(
+            tween: ColorTween(end: colors.primary),
+            duration: const Duration(milliseconds: 260),
+            curve: Curves.easeOutCubic,
+            builder: (context, animatedColor, _) {
+              final accent = animatedColor ?? colors.primary;
+              final statusBackgroundColor = accent.withValues(
+                alpha: Theme.of(context).brightness == Brightness.light
+                    ? 0.1
+                    : 0.16,
+              );
+              return RepaintBoundary(
+                child: ElectricityBatteryHeader(
+                  valueText: value,
+                  statusLabel: colors.label,
+                  fraction: _chargeFraction,
+                  fillAnimation: matrixFillAnim,
+                  breathAnimation: matrixBreathAnim,
+                  accentColor: accent,
+                  statusBackgroundColor: statusBackgroundColor,
+                ),
               );
             },
           ),
