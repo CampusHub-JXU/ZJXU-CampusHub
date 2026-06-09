@@ -5,10 +5,10 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/auth/credential_store.dart';
 import '../../core/logging/app_logger.dart';
+import 'external_url_launcher.dart';
 import 'qr_scanner_page.dart';
 
 part 'webview_page_helpers.dart';
@@ -677,21 +677,11 @@ class _WebViewPageState extends State<WebViewPage> {
                             }
 
                             if (scheme == 'weixin') {
-                              if (await canLaunchUrl(uri)) {
-                                await launchUrl(
-                                  uri,
-                                  mode: LaunchMode.externalApplication,
-                                );
-                              }
+                              await launchExternalUriFromWebView(uri);
                               return NavigationActionPolicy.CANCEL;
                             }
 
-                            if (await canLaunchUrl(uri)) {
-                              await launchUrl(
-                                uri,
-                                mode: LaunchMode.externalApplication,
-                              );
-                            }
+                            await launchExternalUriFromWebView(uri);
                             return NavigationActionPolicy.CANCEL;
                           },
                       onConsoleMessage: (controller, consoleMessage) {

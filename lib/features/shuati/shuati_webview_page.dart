@@ -3,9 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/shortcut/app_shortcut_service.dart';
+import '../../shared/widgets/external_url_launcher.dart';
 import 'shuati_asset_service.dart';
 
 class ShuatiWebViewPage extends StatefulWidget {
@@ -215,9 +215,7 @@ class _ShuatiWebViewPageState extends State<ShuatiWebViewPage> {
                 if (scheme == 'http' || scheme == 'https') {
                   return NavigationActionPolicy.ALLOW;
                 }
-                if (await canLaunchUrl(uri)) {
-                  await launchUrl(uri, mode: LaunchMode.externalApplication);
-                }
+                await launchExternalUriFromWebView(uri, logPrefix: '刷题助手外部链接');
                 return NavigationActionPolicy.CANCEL;
               },
               onReceivedError: (controller, request, error) {

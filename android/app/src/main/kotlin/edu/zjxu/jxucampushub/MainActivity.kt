@@ -5,6 +5,13 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Rect
+import android.graphics.RectF
+import android.graphics.Typeface
 import android.graphics.drawable.Icon
 import android.net.Uri
 import android.os.Build
@@ -13,6 +20,7 @@ import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import kotlin.math.roundToInt
 
 class MainActivity : FlutterActivity() {
     companion object {
@@ -168,6 +176,7 @@ class MainActivity : FlutterActivity() {
             val shortcutManager = getSystemService(ShortcutManager::class.java)
                 ?: return ShortcutRequestResult.UNSUPPORTED
             val shortcut = buildShortcutInfo(
+                action = action,
                 shortcutId = shortcutId,
                 shortcutIntent = shortcutIntent,
                 shortLabelRes = shortLabelRes,
@@ -186,6 +195,7 @@ class MainActivity : FlutterActivity() {
                     return ShortcutRequestResult.REJECTED
                 }
                 shortcutManager.removeDynamicShortcuts(shortcutIdsToReplace)
+                updateExistingShortcut(shortcutManager, shortcut)
                 return if (shortcutManager.requestPinShortcut(shortcut, null)) {
                     ShortcutRequestResult.REQUESTED
                 } else {
@@ -207,13 +217,35 @@ class MainActivity : FlutterActivity() {
                     getString(shortLabelRes),
                 )
                 putExtra(
-                    Intent.EXTRA_SHORTCUT_ICON_RESOURCE,
-                    Intent.ShortcutIconResource.fromContext(this@MainActivity, R.mipmap.ic_launcher),
+                    if (action == SHUATI_ACTION) {
+                        Intent.EXTRA_SHORTCUT_ICON
+                    } else {
+                        Intent.EXTRA_SHORTCUT_ICON_RESOURCE
+                    },
+                    if (action == SHUATI_ACTION) {
+                        createShuatiShortcutIconBitmap()
+                    } else {
+                        Intent.ShortcutIconResource.fromContext(this@MainActivity, R.mipmap.ic_launcher)
+                    },
                 )
                 putExtra("duplicate", false)
             },
         )
         return ShortcutRequestResult.REQUESTED
+    }
+
+    private fun updateExistingShortcut(
+        shortcutManager: ShortcutManager,
+        shortcut: ShortcutInfo,
+    ) {
+        try {
+            shortcutManager.updateShortcuts(listOf(shortcut))
+        } catch (error: Throwable) {
+            android.util.Log.d(
+                "Shortcut",
+                "Unable to update existing shortcut icon: ${error.javaClass.simpleName}",
+            )
+        }
     }
 
     private fun isMiuiShortcutPermissionDenied(): Boolean {
@@ -256,22 +288,48 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun openShortcutPermissionSettings(): Boolean {
-        val miuiIntent = Intent("miui.intent.action.APP_PERM_EDITOR").apply {
-            setClassName(
-                "com.miui.securitycenter",
-                "com.miui.permcenter.permissions.PermissionsEditorActivity",
-            )
-            putExtra("extra_pkgname", packageName)
-            putExtra("packageName", packageName)
-        }
-        if (tryStartActivity(miuiIntent)) {
-            return true
+        for (intent in miuiPermissionSettingsIntents()) {
+            if (tryStartActivity(intent)) {
+                return true
+            }
         }
 
         val appDetailsIntent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
             data = Uri.parse("package:$packageName")
         }
         return tryStartActivity(appDetailsIntent)
+    }
+
+    private fun miuiPermissionSettingsIntents(): List<Intent> {
+        val actions = listOf(
+            "miui.intent.action.APP_PERM_EDITOR",
+            "miui.intent.action.APP_PERM_EDITOR_PRIVATE",
+        )
+        val classes = listOf(
+            "com.miui.permcenter.permissions.PermissionsEditorActivity",
+            "com.miui.permcenter.permissions.AppPermissionsEditorActivity",
+        )
+        val intents = mutableListOf<Intent>()
+
+        for (action in actions) {
+            for (className in classes) {
+                intents += Intent(action).apply {
+                    setClassName("com.miui.securitycenter", className)
+                    addMiuiPackageExtras()
+                }
+            }
+            intents += Intent(action).apply {
+                setPackage("com.miui.securitycenter")
+                addMiuiPackageExtras()
+            }
+        }
+
+        return intents
+    }
+
+    private fun Intent.addMiuiPackageExtras() {
+        putExtra("extra_pkgname", packageName)
+        putExtra("packageName", packageName)
     }
 
     private fun tryStartActivity(intent: Intent): Boolean {
@@ -295,6 +353,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun buildShortcutInfo(
+        action: String,
         shortcutId: String,
         shortcutIntent: Intent,
         shortLabelRes: Int,
@@ -303,9 +362,68 @@ class MainActivity : FlutterActivity() {
         return ShortcutInfo.Builder(this, shortcutId)
             .setShortLabel(getString(shortLabelRes))
             .setLongLabel(getString(longLabelRes))
-            .setIcon(Icon.createWithResource(this, R.mipmap.ic_launcher))
+            .setIcon(buildShortcutIcon(action))
             .setIntent(shortcutIntent)
             .build()
+    }
+
+    private fun buildShortcutIcon(action: String): Icon {
+        if (action == SHUATI_ACTION) {
+            return Icon.createWithBitmap(createShuatiShortcutIconBitmap())
+        }
+        return Icon.createWithResource(this, R.mipmap.ic_launcher)
+    }
+
+    private fun createShuatiShortcutIconBitmap(): Bitmap {
+        val density = resources.displayMetrics.density
+        val size = (108 * density).roundToInt().coerceAtLeast(108)
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        val cornerRadius = size * 0.2f
+        val iconBounds = RectF(0f, 0f, size.toFloat(), size.toFloat())
+        paint.color = Color.rgb(37, 99, 235)
+        canvas.drawRoundRect(iconBounds, cornerRadius, cornerRadius, paint)
+
+        paint.color = Color.WHITE
+        paint.textAlign = Paint.Align.CENTER
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        paint.textSize = size * 0.56f
+        val textBaseline = size / 2f - (paint.descent() + paint.ascent()) / 2f
+        canvas.drawText("刷", size / 2f, textBaseline, paint)
+
+        val badgeSize = (size * 0.36f).roundToInt()
+        val badgeMargin = (size * 0.06f).roundToInt()
+        val badgeLeft = size - badgeSize - badgeMargin
+        val badgeTop = size - badgeSize - badgeMargin
+        val badgeCenterX = badgeLeft + badgeSize / 2f
+        val badgeCenterY = badgeTop + badgeSize / 2f
+        val badgeRadius = badgeSize / 2f
+
+        paint.style = Paint.Style.FILL
+        paint.color = Color.argb(45, 0, 0, 0)
+        canvas.drawCircle(
+            badgeCenterX,
+            badgeCenterY + badgeSize * 0.05f,
+            badgeRadius * 1.08f,
+            paint,
+        )
+        paint.color = Color.WHITE
+        canvas.drawCircle(badgeCenterX, badgeCenterY, badgeRadius, paint)
+
+        val appIconInset = (badgeSize * 0.14f).roundToInt()
+        val appIconBounds = Rect(
+            badgeLeft + appIconInset,
+            badgeTop + appIconInset,
+            badgeLeft + badgeSize - appIconInset,
+            badgeTop + badgeSize - appIconInset,
+        )
+        val appIcon = applicationInfo.loadIcon(packageManager)
+        appIcon.setBounds(appIconBounds)
+        appIcon.draw(canvas)
+
+        return bitmap
     }
 
     private fun createShortcutIntent(shortcutAction: String): Intent {
