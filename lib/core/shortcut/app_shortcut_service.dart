@@ -207,7 +207,7 @@ extension AppShortcutRequestResultMessage on AppShortcutRequestResult {
   String get message => switch (this) {
     AppShortcutRequestResult.requested => '已发起添加请求，请在系统提示中确认',
     AppShortcutRequestResult.unsupported => '当前桌面未开放应用内添加快捷方式，请检查创建桌面快捷方式权限',
-    AppShortcutRequestResult.rejected => '系统桌面未接收添加请求，请检查创建桌面快捷方式权限',
+    AppShortcutRequestResult.rejected => '系统未允许创建桌面快捷方式，请点“去设置”开启权限',
     AppShortcutRequestResult.unavailable => '快捷方式组件未就绪，请重新安装或重启应用后再试',
     AppShortcutRequestResult.failed => '添加桌面快捷方式失败，请稍后重试',
   };

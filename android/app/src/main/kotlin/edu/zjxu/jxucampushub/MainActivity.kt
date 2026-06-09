@@ -1,5 +1,6 @@
 package edu.zjxu.jxucampushub
 
+import android.app.AppOpsManager
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.ShortcutInfo
@@ -25,6 +26,7 @@ class MainActivity : FlutterActivity() {
         private const val CAMPUS_CARD_PAYMENT_PINNED_SHORTCUT_ID = "campus_card_payment_pinned_v2"
         private const val SHUATI_PINNED_SHORTCUT_ID = "shuati_practice_pinned"
         private const val LEGACY_CAMPUS_CARD_PAYMENT_SHORTCUT_ID = "campus_card_payment_pinned"
+        private const val MIUI_INSTALL_SHORTCUT_OP = 10017
     }
 
     private var pendingShortcutAction: String? = null
@@ -172,13 +174,18 @@ class MainActivity : FlutterActivity() {
                 longLabelRes = longLabelRes,
             )
 
-            shortcutManager.removeDynamicShortcuts(shortcutIdsToReplace)
-            shortcutManager.addDynamicShortcuts(listOf(shortcut))
-
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 if (!shortcutManager.isRequestPinShortcutSupported) {
                     return ShortcutRequestResult.UNSUPPORTED
                 }
+                if (isMiuiShortcutPermissionDenied()) {
+                    android.util.Log.w(
+                        "Shortcut",
+                        "MIUI/HyperOS rejected shortcut permission before pin request: $action",
+                    )
+                    return ShortcutRequestResult.REJECTED
+                }
+                shortcutManager.removeDynamicShortcuts(shortcutIdsToReplace)
                 return if (shortcutManager.requestPinShortcut(shortcut, null)) {
                     ShortcutRequestResult.REQUESTED
                 } else {
@@ -186,6 +193,8 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
+            shortcutManager.removeDynamicShortcuts(shortcutIdsToReplace)
+            shortcutManager.addDynamicShortcuts(listOf(shortcut))
             return ShortcutRequestResult.REQUESTED
         }
 
@@ -205,6 +214,45 @@ class MainActivity : FlutterActivity() {
             },
         )
         return ShortcutRequestResult.REQUESTED
+    }
+
+    private fun isMiuiShortcutPermissionDenied(): Boolean {
+        if (!isMiuiLikeDevice()) {
+            return false
+        }
+
+        val mode = readMiuiAppOpMode(MIUI_INSTALL_SHORTCUT_OP) ?: return false
+        return mode != AppOpsManager.MODE_ALLOWED && mode != AppOpsManager.MODE_DEFAULT
+    }
+
+    private fun isMiuiLikeDevice(): Boolean {
+        val manufacturer = Build.MANUFACTURER.lowercase()
+        val brand = Build.BRAND.lowercase()
+        return manufacturer.contains("xiaomi") ||
+            manufacturer.contains("redmi") ||
+            manufacturer.contains("poco") ||
+            brand.contains("xiaomi") ||
+            brand.contains("redmi") ||
+            brand.contains("poco")
+    }
+
+    private fun readMiuiAppOpMode(opCode: Int): Int? {
+        return try {
+            val appOps = getSystemService(AppOpsManager::class.java) ?: return null
+            val method = AppOpsManager::class.java.getMethod(
+                "checkOpNoThrow",
+                Int::class.javaPrimitiveType,
+                Int::class.javaPrimitiveType,
+                String::class.java,
+            )
+            method.invoke(appOps, opCode, applicationInfo.uid, packageName) as? Int
+        } catch (error: Throwable) {
+            android.util.Log.d(
+                "Shortcut",
+                "Unable to read MIUI shortcut app-op: ${error.javaClass.simpleName}",
+            )
+            null
+        }
     }
 
     private fun openShortcutPermissionSettings(): Boolean {

@@ -53,7 +53,7 @@ void main() {
     final result = AppShortcutRequestResult.fromPlatformValue('rejected');
 
     expect(result, AppShortcutRequestResult.rejected);
-    expect(result.message, contains('创建桌面快捷方式权限'));
+    expect(result.message, contains('去设置'));
     expect(result.canOpenPermissionSettings, isTrue);
   });
 
