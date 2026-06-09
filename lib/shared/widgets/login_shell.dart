@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../app/theme.dart';
 import '../../core/auth/unified_auth.dart';
 import 'login_widget.dart';
 import 'unified_auth_login_widget.dart';
@@ -35,19 +34,15 @@ class LoginShell extends StatelessWidget {
     final keyboardVisible = keyboardInset > 0;
     final isDark = theme.brightness == Brightness.dark;
     final pageBackground = theme.scaffoldBackgroundColor;
-    final formSurface = isDark ? const Color(0xFF24191D) : Colors.white;
-    final inputFill = isDark
-        ? const Color(0xFF312429)
-        : const Color(0xFFFFFBFA);
-    final inputBorder = isDark
-        ? BorderSide(color: Colors.white.withValues(alpha: 0.06))
-        : const BorderSide(color: Color(0xFFE9E2DF));
-    final focusBorder = isDark ? AppColors.primaryLight : AppColors.primary;
+    final formSurface = colorScheme.surfaceContainerLowest;
+    final inputFill = colorScheme.surfaceContainerHighest;
+    final inputBorder = BorderSide(color: colorScheme.outlineVariant);
+    final focusBorder = colorScheme.primary;
     final formShadow = isDark
         ? <BoxShadow>[]
         : [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
+              color: colorScheme.shadow.withValues(alpha: 0.05),
               blurRadius: 24,
               offset: const Offset(0, 10),
             ),
@@ -77,21 +72,19 @@ class LoginShell extends StatelessWidget {
               ),
               errorBorder: OutlineInputBorder(
                 borderRadius: _kInputRadius,
-                borderSide: BorderSide(color: Colors.red.shade300),
+                borderSide: BorderSide(color: colorScheme.error),
               ),
               focusedErrorBorder: OutlineInputBorder(
                 borderRadius: _kInputRadius,
-                borderSide: BorderSide(color: Colors.red.shade300, width: 1.6),
+                borderSide: BorderSide(color: colorScheme.error, width: 1.6),
               ),
-              prefixIconColor: isDark
-                  ? Colors.white70
-                  : const Color(0xFF8D837E),
+              prefixIconColor: colorScheme.onSurfaceVariant,
               prefixIconConstraints: const BoxConstraints(
                 minWidth: 54,
                 minHeight: 54,
               ),
               hintStyle: TextStyle(
-                color: isDark ? Colors.white38 : const Color(0xFFAEA39D),
+                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.72),
                 fontSize: 16,
               ),
               contentPadding: const EdgeInsets.symmetric(
@@ -101,8 +94,8 @@ class LoginShell extends StatelessWidget {
             ),
             filledButtonTheme: FilledButtonThemeData(
               style: FilledButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
+                backgroundColor: colorScheme.primary,
+                foregroundColor: colorScheme.onPrimary,
                 minimumSize: const Size(double.infinity, 54),
                 padding: const EdgeInsets.symmetric(vertical: 15),
                 elevation: 0,
@@ -148,9 +141,9 @@ class LoginShell extends StatelessWidget {
                           color: formSurface,
                           borderRadius: BorderRadius.circular(_kFormCardRadius),
                           border: Border.all(
-                            color: isDark
-                                ? Colors.white.withValues(alpha: 0.08)
-                                : const Color(0xFFF0E7E4),
+                            color: colorScheme.outlineVariant.withValues(
+                              alpha: isDark ? 0.42 : 1,
+                            ),
                           ),
                           boxShadow: formShadow,
                         ),
@@ -170,7 +163,7 @@ class LoginShell extends StatelessWidget {
                                           vertical: 7,
                                         ),
                                         decoration: BoxDecoration(
-                                          color: AppColors.primary.withValues(
+                                          color: colorScheme.primary.withValues(
                                             alpha: isDark ? 0.18 : 0.08,
                                           ),
                                           borderRadius: BorderRadius.circular(
@@ -181,7 +174,7 @@ class LoginShell extends StatelessWidget {
                                           badgeText!,
                                           style: theme.textTheme.labelLarge
                                               ?.copyWith(
-                                                color: AppColors.primary,
+                                                color: colorScheme.primary,
                                                 fontWeight: FontWeight.w700,
                                               ),
                                         ),
@@ -251,7 +244,7 @@ Future<bool> showUnifiedAuthLoginModal(
     useRootNavigator: true,
     barrierDismissible: barrierDismissible,
     barrierLabel: '关闭统一认证登录',
-    barrierColor: Colors.black.withValues(alpha: 0.4),
+    barrierColor: Theme.of(context).colorScheme.scrim.withValues(alpha: 0.4),
     transitionDuration: const Duration(milliseconds: 240),
     pageBuilder: (dialogContext, animation0, secondaryAnimation0) {
       return LoginShell(
@@ -302,7 +295,7 @@ Future<bool> showAcademicSystemLoginModal(
     useRootNavigator: true,
     barrierDismissible: barrierDismissible,
     barrierLabel: '关闭教务系统登录',
-    barrierColor: Colors.black.withValues(alpha: 0.4),
+    barrierColor: Theme.of(context).colorScheme.scrim.withValues(alpha: 0.4),
     transitionDuration: const Duration(milliseconds: 240),
     pageBuilder: (dialogContext, animation0, secondaryAnimation0) {
       return LoginShell(

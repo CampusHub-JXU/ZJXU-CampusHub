@@ -114,22 +114,20 @@ class ScheduleCourseCell extends StatelessWidget {
         ? _blendColor(cellBackgroundColor, color, isDark ? 0.18 : 0.1)
         : _blendColor(
             cellBackgroundColor,
-            isDark ? Colors.white : Colors.grey.shade400,
+            cs.outlineVariant,
             isDark ? 0.04 : 0.06,
           );
     final titleColor = isCurrentWeek
-        ? (isDark ? _blendColor(color, Colors.white, 0.24) : color)
-        : (isDark ? Colors.grey.shade300 : Colors.grey.shade500);
+        ? (isDark ? _blendColor(color, cs.onSurface, 0.24) : color)
+        : cs.onSurfaceVariant;
     final metaColor = isCurrentWeek
         ? (isDark
-              ? _blendColor(color, Colors.white, 0.14)
+              ? _blendColor(color, cs.onSurface, 0.14)
               : _blendColor(cellFillColor, titleColor, 0.75))
-        : (isDark
-              ? Colors.grey.shade400
-              : _blendColor(cellFillColor, titleColor, 0.75));
+        : _blendColor(cellFillColor, cs.onSurfaceVariant, 0.75);
     final accentColor = isCurrentWeek
         ? color
-        : (isDark ? Colors.grey.shade500 : Colors.grey.shade300);
+        : _blendColor(color, cs.outline, 0.35);
     final cellHeight = scheduleGridSlotHeight * span;
     final narrow = dayColumnWidth < 24;
     final dense = cellHeight < 92;
@@ -227,9 +225,7 @@ class ScheduleCourseCell extends StatelessWidget {
                               scheduleInactiveWeekTag,
                               style: TextStyle(
                                 fontSize: 9,
-                                color: isDark
-                                    ? Colors.grey.shade400
-                                    : Colors.grey.shade500,
+                                color: cs.onSurfaceVariant,
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,

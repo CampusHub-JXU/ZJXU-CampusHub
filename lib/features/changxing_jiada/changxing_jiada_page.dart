@@ -529,6 +529,7 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
   }
 
   Widget _buildStatsRow() {
+    final cs = Theme.of(context).colorScheme;
     return Row(
       children: [
         Expanded(
@@ -536,7 +537,7 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
             title: '未读消息',
             value: _unreadCount.toString(),
             icon: Icons.mark_chat_unread_outlined,
-            color: const Color(0xFF1D7D72),
+            color: cs.primary,
           ),
         ),
         const SizedBox(width: 10),
@@ -545,7 +546,7 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
             title: '办理中',
             value: _pendingCount.toString(),
             icon: Icons.pending_actions_outlined,
-            color: const Color(0xFFD88413),
+            color: cs.tertiary,
           ),
         ),
         const SizedBox(width: 10),
@@ -554,7 +555,7 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
             title: '申请总数',
             value: _applications.length.toString(),
             icon: Icons.assignment_outlined,
-            color: const Color(0xFF3F6FB5),
+            color: cs.secondary,
           ),
         ),
       ],
@@ -632,27 +633,28 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
   }
 
   Widget _buildQuickActions() {
+    final cs = Theme.of(context).colorScheme;
     final actionMeta =
         <ChangxingFormType, ({IconData icon, String hint, Color color})>{
           ChangxingFormType.leaveRequest: (
             icon: Icons.event_note_outlined,
             hint: '临时请假',
-            color: const Color(0xFF8B1A2D),
+            color: cs.primary,
           ),
           ChangxingFormType.leaveSchool: (
             icon: Icons.directions_walk_outlined,
             hint: '离校出行',
-            color: const Color(0xFF1D7D72),
+            color: cs.secondary,
           ),
           ChangxingFormType.backSchool: (
             icon: Icons.how_to_reg_outlined,
             hint: '返校确认',
-            color: const Color(0xFF3F6FB5),
+            color: cs.tertiary,
           ),
           ChangxingFormType.overtime: (
             icon: Icons.schedule_outlined,
             hint: '晚归补登',
-            color: const Color(0xFFD88413),
+            color: _themeAccent(cs.primary, hueOffset: 72, colorScheme: cs),
           ),
         };
 
@@ -772,7 +774,7 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
   Widget _buildApplicationCard(ChangxingApplication item) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
-    final color = _statusColor(item.status);
+    final color = _statusColor(cs, item.status);
     final typeIcon = _typeIcon(item.type);
 
     return Container(
@@ -899,22 +901,36 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
     );
   }
 
-  Color _statusColor(int status) {
+  Color _themeAccent(
+    Color base, {
+    required double hueOffset,
+    required ColorScheme colorScheme,
+  }) {
+    final hsl = HSLColor.fromColor(base);
+    final isDark = colorScheme.brightness == Brightness.dark;
+    return hsl
+        .withHue((hsl.hue + hueOffset) % 360.0)
+        .withSaturation((hsl.saturation * 0.86).clamp(0.42, 0.92))
+        .withLightness(isDark ? 0.66 : 0.42)
+        .toColor();
+  }
+
+  Color _statusColor(ColorScheme cs, int status) {
     switch (status) {
       case 0:
       case 1:
-        return const Color(0xFFD88413);
+        return cs.tertiary;
       case 2:
-        return Colors.red.shade700;
+        return cs.error;
       case 3:
-        return Colors.grey.shade600;
+        return cs.onSurfaceVariant;
       case 4:
       case 6:
-        return Colors.green.shade700;
+        return cs.primary;
       case 5:
-        return Colors.blue.shade700;
+        return cs.secondary;
       default:
-        return Colors.grey.shade700;
+        return cs.onSurfaceVariant;
     }
   }
 

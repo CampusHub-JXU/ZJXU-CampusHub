@@ -164,11 +164,12 @@ class _ExamPageState extends State<ExamPage> {
   Widget _buildExamBody() {
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null && _exams.isEmpty) {
+      final cs = Theme.of(context).colorScheme;
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(_error!, style: const TextStyle(color: Colors.red)),
+            Text(_error!, style: TextStyle(color: cs.error)),
             const SizedBox(height: 12),
             FilledButton(onPressed: _fetchExams, child: const Text('重试')),
           ],

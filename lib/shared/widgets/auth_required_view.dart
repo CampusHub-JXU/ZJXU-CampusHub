@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../app/theme.dart';
-
 class AuthRequiredView extends StatelessWidget {
   const AuthRequiredView({
     super.key,
@@ -38,10 +36,10 @@ class AuthRequiredView extends StatelessWidget {
                     width: 56,
                     height: 56,
                     decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.12),
+                      color: cs.primary.withValues(alpha: 0.12),
                       shape: BoxShape.circle,
                     ),
-                    child: Icon(icon, color: AppColors.primary, size: 28),
+                    child: Icon(icon, color: cs.primary, size: 28),
                   ),
                   const SizedBox(height: 16),
                   Text(

@@ -18,27 +18,7 @@ class ScheduleGrid extends StatelessWidget {
   final int actualCurrentWeek;
   int get currentWeek => weekViewModel.week;
 
-  static const _courseColors = [
-    Color(0xFF8B1A2D),
-    Color(0xFF1565C0),
-    Color(0xFF2E7D32),
-    Color(0xFFD4AF37),
-    Color(0xFF7B1FA2),
-    Color(0xFF00838F),
-    Color(0xFFE65100),
-    Color(0xFFAD1457),
-  ];
-
-  static const _inactiveColors = [
-    Color(0xFFD4A5B0),
-    Color(0xFFA5C4E0),
-    Color(0xFFA5D4A5),
-    Color(0xFFE0D4A5),
-    Color(0xFFC4A5D4),
-    Color(0xFFA5D4D4),
-    Color(0xFFE0BFA5),
-    Color(0xFFD4A5C4),
-  ];
+  static const _courseHueOffsets = <double>[0, 34, 72, 116, 164, 208, 258, 310];
 
   /// Merge adjacent/overlapping same-name courses on the same day into one
   /// entry spanning the full range, then deduplicate.
@@ -114,13 +94,26 @@ class ScheduleGrid extends StatelessWidget {
     return mergeAdjacentCourses(deduped);
   }
 
-  Color _colorForCourse(String name, bool isCurrentWeek) {
-    final index = name.hashCode.abs() % _courseColors.length;
-    return isCurrentWeek ? _courseColors[index] : _inactiveColors[index];
+  Color _colorForCourse(
+    String name,
+    bool isCurrentWeek,
+    ColorScheme cs,
+    bool isDark,
+  ) {
+    final index = name.hashCode.abs() % _courseHueOffsets.length;
+    final offset = _courseHueOffsets[index];
+    return _themeCourseColor(
+      cs.primary,
+      hueOffset: offset,
+      isCurrentWeek: isCurrentWeek,
+      isDark: isDark,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return LayoutBuilder(
       builder: (context, constraints) {
         final dayColumnWidth =
@@ -152,7 +145,8 @@ class ScheduleGrid extends StatelessWidget {
                           otherWeekCourses: weekViewModel
                               .coursesForDay(day)
                               .otherWeekCourses,
-                          colorFor: _colorForCourse,
+                          colorFor: (name, isCurrentWeek) =>
+                              _colorForCourse(name, isCurrentWeek, cs, isDark),
                           dayColumnWidth: dayColumnWidth,
                           displayWeek: currentWeek,
                         ),
@@ -166,6 +160,26 @@ class ScheduleGrid extends StatelessWidget {
       },
     );
   }
+}
+
+Color _themeCourseColor(
+  Color base, {
+  required double hueOffset,
+  required bool isCurrentWeek,
+  required bool isDark,
+}) {
+  final hsl = HSLColor.fromColor(base);
+  final saturation = isCurrentWeek
+      ? (hsl.saturation * 0.88).clamp(0.42, 0.92)
+      : (hsl.saturation * 0.34).clamp(0.14, 0.42);
+  final lightness = isCurrentWeek
+      ? (isDark ? 0.66 : 0.42)
+      : (isDark ? 0.48 : 0.72);
+  return hsl
+      .withHue((hsl.hue + hueOffset) % 360.0)
+      .withSaturation(saturation)
+      .withLightness(lightness)
+      .toColor();
 }
 
 class _DayColumn extends StatelessWidget {

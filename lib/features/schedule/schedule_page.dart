@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../app/theme.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../shared/widgets/auth_required_view.dart';
 import '../../shared/widgets/login_shell.dart';
@@ -143,14 +142,12 @@ class _SchedulePageState extends State<SchedulePage> {
       return const Center(child: CircularProgressIndicator());
     }
     if (_controller.error != null && _controller.courses.isEmpty) {
+      final cs = Theme.of(context).colorScheme;
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              _controller.error!,
-              style: const TextStyle(color: AppColors.error),
-            ),
+            Text(_controller.error!, style: TextStyle(color: cs.error)),
             const SizedBox(height: 12),
             FilledButton(
               onPressed: _refreshScheduleOrLogin,

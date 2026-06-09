@@ -254,19 +254,22 @@ class _LoginWidgetState extends State<LoginWidget> {
               padding: const EdgeInsets.only(left: 4),
               child: Text(
                 '点击右侧验证码刷新',
-                style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                style: TextStyle(
+                  color: colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                ),
               ),
             ),
             const SizedBox(height: 18),
             FilledButton(
               onPressed: _loading ? null : _login,
               child: _loading
-                  ? const SizedBox(
+                  ? SizedBox(
                       height: 20,
                       width: 20,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: Colors.white,
+                        color: colorScheme.onPrimary,
                       ),
                     )
                   : const Text('登录'),

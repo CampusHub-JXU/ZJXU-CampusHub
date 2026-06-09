@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../../app/theme.dart';
 import 'ship_card.dart';
 
 /// Campus Card Balance display widget.
@@ -46,7 +45,7 @@ class _BalanceCardState extends State<BalanceCard> {
           // Header row
           Row(
             children: [
-              Icon(Icons.credit_card, color: AppColors.primary, size: 20),
+              Icon(Icons.credit_card, color: cs.primary, size: 20),
               const SizedBox(width: 8),
               Text(
                 '校园卡',
@@ -142,6 +141,8 @@ class _ActionChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
@@ -150,13 +151,13 @@ class _ActionChip extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 16, color: AppColors.primary),
+            Icon(icon, size: 16, color: cs.primary),
             const SizedBox(width: 4),
             Text(
               label,
               style: TextStyle(
                 fontSize: 13,
-                color: AppColors.primary,
+                color: cs.primary,
                 fontWeight: FontWeight.w500,
               ),
             ),

@@ -105,13 +105,14 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    final cs = Theme.of(context).colorScheme;
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(_error!, style: TextStyle(color: Colors.grey[500])),
+            Text(_error!, style: TextStyle(color: cs.onSurfaceVariant)),
             const SizedBox(height: 12),
             FilledButton.tonal(onPressed: _load, child: const Text('重试')),
           ],
@@ -120,7 +121,7 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
     }
     if (_notices.isEmpty) {
       return Center(
-        child: Text('暂无校园公告', style: TextStyle(color: Colors.grey[500])),
+        child: Text('暂无校园公告', style: TextStyle(color: cs.onSurfaceVariant)),
       );
     }
     return RefreshIndicator(
@@ -134,9 +135,7 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
           return _buildNoticeTile(
             context,
             tag: notice.category,
-            tagColor: notice.category == '通知公告'
-                ? const Color(0xFF1565C0)
-                : Colors.red,
+            tagColor: notice.category == '通知公告' ? cs.primary : cs.error,
             title: notice.title,
             date: notice.date,
             onTap: () => context.pushNamed(
@@ -207,13 +206,14 @@ class _PracticeNoticeTabState extends State<_PracticeNoticeTab>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    final cs = Theme.of(context).colorScheme;
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(_error!, style: TextStyle(color: Colors.grey[500])),
+            Text(_error!, style: TextStyle(color: cs.onSurfaceVariant)),
             const SizedBox(height: 12),
             FilledButton.tonal(onPressed: _load, child: const Text('重试')),
           ],
@@ -222,7 +222,7 @@ class _PracticeNoticeTabState extends State<_PracticeNoticeTab>
     }
     if (_notices.isEmpty) {
       return Center(
-        child: Text('暂无实践通知', style: TextStyle(color: Colors.grey[500])),
+        child: Text('暂无实践通知', style: TextStyle(color: cs.onSurfaceVariant)),
       );
     }
     return RefreshIndicator(
@@ -233,13 +233,10 @@ class _PracticeNoticeTabState extends State<_PracticeNoticeTab>
         separatorBuilder: (_, _) => const SizedBox(height: 10),
         itemBuilder: (context, index) {
           final notice = _notices[index];
-          final colorValue = SjjxNotice.categoryColors[notice.category];
           return _buildNoticeTile(
             context,
             tag: notice.category,
-            tagColor: colorValue != null
-                ? Color(colorValue)
-                : const Color(0xFF757575),
+            tagColor: _sjjxCategoryColor(notice.category, cs),
             title: notice.title,
             date: notice.date,
             onTap: () => context.pushNamed(
@@ -269,11 +266,12 @@ Widget _buildNoticeTile(
 }) {
   final cs = Theme.of(context).colorScheme;
   final publishDate = (date ?? '').trim();
+  final tagForeground = _contrastOn(tagColor);
   return Material(
-    color: cs.surface,
+    color: cs.surfaceContainerLowest,
     borderRadius: BorderRadius.circular(12),
     elevation: 0.5,
-    shadowColor: Colors.black12,
+    shadowColor: cs.shadow.withValues(alpha: 0.12),
     child: InkWell(
       borderRadius: BorderRadius.circular(12),
       onTap: onTap,
@@ -289,8 +287,8 @@ Widget _buildNoticeTile(
               ),
               child: Text(
                 tag,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: tagForeground,
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
                 ),
@@ -303,7 +301,7 @@ Widget _buildNoticeTile(
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(fontSize: 15),
+                    style: TextStyle(fontSize: 15, color: cs.onSurface),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -311,14 +309,17 @@ Widget _buildNoticeTile(
                     const SizedBox(height: 4),
                     Text(
                       publishDate,
-                      style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: cs.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ],
               ),
             ),
             const SizedBox(width: 8),
-            Icon(Icons.chevron_right, size: 20, color: Colors.grey[400]),
+            Icon(Icons.chevron_right, size: 20, color: cs.onSurfaceVariant),
           ],
         ),
       ),
@@ -330,4 +331,20 @@ bool shouldOpenCampusNoticeViaUnifiedAuth(String url) {
   final uri = Uri.tryParse(url);
   if (uri == null) return false;
   return uri.host.toLowerCase() == 'jwc.zjxu.edu.cn';
+}
+
+Color _sjjxCategoryColor(String category, ColorScheme cs) {
+  final index = SjjxNotice.categoryOrder.indexOf(category);
+  final hueOffset = index < 0 ? category.hashCode.abs() % 360 : index * 38.0;
+  final hsl = HSLColor.fromColor(cs.primary);
+  final isDark = cs.brightness == Brightness.dark;
+  return hsl
+      .withHue((hsl.hue + hueOffset) % 360.0)
+      .withSaturation((hsl.saturation * 0.86).clamp(0.42, 0.92))
+      .withLightness(isDark ? 0.66 : 0.42)
+      .toColor();
+}
+
+Color _contrastOn(Color background) {
+  return background.computeLuminance() > 0.45 ? Colors.black : Colors.white;
 }

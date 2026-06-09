@@ -508,6 +508,8 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildUpdateAction(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -533,9 +535,9 @@ class _HomePageState extends State<HomePage> {
             width: 9,
             height: 9,
             decoration: BoxDecoration(
-              color: const Color(0xFFFF6B6B),
+              color: cs.error,
               shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 1.2),
+              border: Border.all(color: cs.onError, width: 1.2),
             ),
           ),
         ),

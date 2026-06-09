@@ -12,30 +12,21 @@ class AppThemeBuilder {
   // ── Light ──────────────────────────────────────────────────────────────
 
   static ThemeData light(Color seedColor) {
-    final colorScheme =
-        ColorScheme.fromSeed(
-          seedColor: seedColor,
-          brightness: Brightness.light,
-        ).copyWith(
-          primary: seedColor,
-          surface: const Color(0xFFFBF9F8),
-          surfaceContainerHighest: const Color(0xFFFFFFFF),
-          surfaceContainerHigh: const Color(0xFFF5F3F2),
-          surfaceContainer: const Color(0xFFF5F3F2),
-          surfaceContainerLow: const Color(0xFFF5F3F2),
-          surfaceContainerLowest: const Color(0xFFFFFFFF),
-        );
+    final colorScheme = ColorScheme.fromSeed(
+      seedColor: seedColor,
+      brightness: Brightness.light,
+    ).copyWith(primary: seedColor);
 
     return ThemeData(
       useMaterial3: true,
       colorScheme: colorScheme,
       fontFamily: 'Inter',
-      scaffoldBackgroundColor: const Color(0xFFFBF9F8),
+      scaffoldBackgroundColor: colorScheme.surface,
       appBarTheme: AppBarTheme(
         centerTitle: true,
         elevation: 0,
         scrolledUnderElevation: 2,
-        backgroundColor: const Color(0xFFFBF9F8),
+        backgroundColor: colorScheme.surface,
         foregroundColor: colorScheme.onSurface,
         surfaceTintColor: colorScheme.primary,
         titleTextStyle: TextStyle(
@@ -45,7 +36,7 @@ class AppThemeBuilder {
         ),
       ),
       cardTheme: CardThemeData(
-        color: const Color(0xFFFFFFFF),
+        color: colorScheme.surfaceContainerLowest,
         elevation: 0,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         margin: EdgeInsets.zero,
@@ -75,7 +66,7 @@ class AppThemeBuilder {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: const Color(0xFFF5F3F2),
+        fillColor: colorScheme.surfaceContainerHighest,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide.none,
@@ -93,14 +84,14 @@ class AppThemeBuilder {
           vertical: 14,
         ),
       ),
-      bottomSheetTheme: const BottomSheetThemeData(
-        shape: RoundedRectangleBorder(
+      bottomSheetTheme: BottomSheetThemeData(
+        shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
-        backgroundColor: Color(0xFFFFFFFF),
+        backgroundColor: colorScheme.surfaceContainerLowest,
       ),
       navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: const Color(0xFFFFFFFF),
+        backgroundColor: colorScheme.surfaceContainerLowest,
         indicatorColor: colorScheme.primary.withValues(alpha: 0.12),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
@@ -110,7 +101,7 @@ class AppThemeBuilder {
               color: colorScheme.primary,
             );
           }
-          return const TextStyle(fontSize: 12);
+          return TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant);
         }),
         iconTheme: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
@@ -119,15 +110,15 @@ class AppThemeBuilder {
           return IconThemeData(color: colorScheme.onSurfaceVariant);
         }),
       ),
-      dividerTheme: const DividerThemeData(
-        color: Color(0xFFE0E0E0),
+      dividerTheme: DividerThemeData(
+        color: colorScheme.outlineVariant,
         thickness: 0.5,
         space: 1,
       ),
       chipTheme: ChipThemeData(
-        backgroundColor: const Color(0xFFF5F3F2),
+        backgroundColor: colorScheme.surfaceContainerHighest,
         selectedColor: colorScheme.primary.withValues(alpha: 0.12),
-        labelStyle: const TextStyle(fontSize: 13),
+        labelStyle: TextStyle(fontSize: 13, color: colorScheme.onSurface),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         side: BorderSide.none,
       ),
@@ -135,8 +126,8 @@ class AppThemeBuilder {
         color: colorScheme.primary,
       ),
       snackBarTheme: SnackBarThemeData(
-        backgroundColor: const Color(0xFF323232),
-        contentTextStyle: const TextStyle(color: Colors.white),
+        backgroundColor: colorScheme.inverseSurface,
+        contentTextStyle: TextStyle(color: colorScheme.onInverseSurface),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         behavior: SnackBarBehavior.floating,
       ),
@@ -160,6 +151,10 @@ class AppThemeBuilder {
 
   static ThemeData dark(Color seedColor, {bool pureBlack = false}) {
     final isGraphiteSeed = seedColor == _graphiteSeed;
+    final baseScheme = ColorScheme.fromSeed(
+      seedColor: seedColor,
+      brightness: Brightness.dark,
+    );
     final seedBase = _darkSeedTone(seedColor, 0.12);
     final seedRaised = _darkSeedTone(seedColor, 0.18);
     final seedHigh = _darkSeedTone(seedColor, 0.24);
@@ -168,17 +163,17 @@ class AppThemeBuilder {
         ? const Color(0xFF000000)
         : isGraphiteSeed
         ? const Color(0xFF101418)
-        : const Color(0xFF1A1214);
+        : baseScheme.surface;
     final darkSurf = pureBlack
         ? const Color(0xFF0A0A0A)
         : isGraphiteSeed
         ? const Color(0xFF171C20)
-        : const Color(0xFF2D1F23);
+        : baseScheme.surfaceContainerLow;
     final darkSurfHigh = pureBlack
         ? const Color(0xFF111111)
         : isGraphiteSeed
         ? const Color(0xFF242B30)
-        : const Color(0xFF3D2E33);
+        : baseScheme.surfaceContainerHigh;
 
     final background = isGraphiteSeed
         ? darkBase
@@ -189,30 +184,30 @@ class AppThemeBuilder {
     final surfaceHigh = isGraphiteSeed
         ? darkSurfHigh
         : _mix(darkSurfHigh, seedHigh, pureBlack ? 0.0 : 0.58);
-    var colorScheme =
-        ColorScheme.fromSeed(
-          seedColor: seedColor,
-          brightness: Brightness.dark,
-        ).copyWith(
-          surface: surface,
-          surfaceContainerHighest: surfaceHigh,
-          surfaceContainerHigh: isGraphiteSeed
-              ? surfaceHigh
-              : _mix(
-                  pureBlack ? const Color(0xFF0E0E0E) : const Color(0xFF35272C),
-                  seedHigh,
-                  pureBlack ? 0.0 : 0.55,
-                ),
-          surfaceContainer: surface,
-          surfaceContainerLow: isGraphiteSeed
-              ? const Color(0xFF12171B)
-              : _mix(
-                  pureBlack ? const Color(0xFF060606) : const Color(0xFF251A1E),
-                  seedRaised,
-                  pureBlack ? 0.0 : 0.48,
-                ),
-          surfaceContainerLowest: background,
-        );
+    var colorScheme = baseScheme.copyWith(
+      surface: surface,
+      surfaceContainerHighest: surfaceHigh,
+      surfaceContainerHigh: isGraphiteSeed
+          ? surfaceHigh
+          : _mix(
+              pureBlack
+                  ? const Color(0xFF0E0E0E)
+                  : baseScheme.surfaceContainerHigh,
+              seedHigh,
+              pureBlack ? 0.0 : 0.28,
+            ),
+      surfaceContainer: surface,
+      surfaceContainerLow: isGraphiteSeed
+          ? const Color(0xFF12171B)
+          : _mix(
+              pureBlack
+                  ? const Color(0xFF060606)
+                  : baseScheme.surfaceContainerLow,
+              seedRaised,
+              pureBlack ? 0.0 : 0.22,
+            ),
+      surfaceContainerLowest: background,
+    );
     if (isGraphiteSeed) {
       colorScheme = colorScheme.copyWith(
         primary: seedColor,
@@ -234,10 +229,10 @@ class AppThemeBuilder {
         backgroundColor: surface.withValues(alpha: 0.86),
         foregroundColor: colorScheme.onSurface,
         surfaceTintColor: Colors.transparent,
-        titleTextStyle: const TextStyle(
+        titleTextStyle: TextStyle(
           fontSize: 20,
           fontWeight: FontWeight.w600,
-          color: Color(0xFFE6E1E5),
+          color: colorScheme.onSurface,
         ),
       ),
       cardTheme: CardThemeData(
@@ -312,13 +307,13 @@ class AppThemeBuilder {
               color: colorScheme.primary,
             );
           }
-          return const TextStyle(fontSize: 12, color: Color(0xFFCAC4D0));
+          return TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant);
         }),
         iconTheme: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
             return IconThemeData(color: colorScheme.primary);
           }
-          return const IconThemeData(color: Color(0xFF938F99));
+          return IconThemeData(color: colorScheme.onSurfaceVariant);
         }),
       ),
       dividerTheme: DividerThemeData(
@@ -329,7 +324,7 @@ class AppThemeBuilder {
       chipTheme: ChipThemeData(
         backgroundColor: colorScheme.surfaceContainerHigh,
         selectedColor: colorScheme.primary.withValues(alpha: 0.2),
-        labelStyle: const TextStyle(fontSize: 13, color: Color(0xFFE6E1E5)),
+        labelStyle: TextStyle(fontSize: 13, color: colorScheme.onSurface),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         side: BorderSide.none,
       ),
@@ -337,8 +332,8 @@ class AppThemeBuilder {
         color: colorScheme.primary,
       ),
       snackBarTheme: SnackBarThemeData(
-        backgroundColor: const Color(0xFFE6E1E5),
-        contentTextStyle: const TextStyle(color: Color(0xFF1C1B1F)),
+        backgroundColor: colorScheme.inverseSurface,
+        contentTextStyle: TextStyle(color: colorScheme.onInverseSurface),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         behavior: SnackBarBehavior.floating,
       ),

@@ -30,9 +30,7 @@ class PushDebugPage extends StatelessWidget {
                       Icon(
                         token != null ? Icons.check_circle : Icons.pending,
                         size: 18,
-                        color: token != null
-                            ? Colors.green
-                            : cs.onSurfaceVariant,
+                        color: token != null ? cs.primary : cs.onSurfaceVariant,
                       ),
                       const SizedBox(width: 8),
                       Text(

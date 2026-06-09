@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/app_theme_controller.dart';
-import '../../app/theme.dart';
 import '../../core/auth/unified_auth.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../shared/widgets/login_shell.dart';
@@ -175,11 +174,11 @@ class _MyPageState extends State<MyPage> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final accountIconColor = AppThemeController.instance.resolveIconColor(
       context,
-      AppColors.primary,
+      cs.primary,
     );
     final academicIconColor = AppThemeController.instance.resolveIconColor(
       context,
-      AppColors.info,
+      cs.secondary,
     );
     return Scaffold(
       appBar: AppBar(title: const Text('我的')),
@@ -264,7 +263,7 @@ class _MyPageState extends State<MyPage> {
             child: Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: isDark ? cs.surfaceContainerLowest : Colors.white,
+                color: cs.surfaceContainerLowest,
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
                   color: isDark
@@ -274,7 +273,7 @@ class _MyPageState extends State<MyPage> {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
+                    color: cs.shadow.withValues(alpha: 0.05),
                     blurRadius: 10,
                     offset: const Offset(0, 2),
                   ),
@@ -362,7 +361,7 @@ class _AccountStatusCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: isDark ? cs.surfaceContainerLowest : Colors.white,
+        color: cs.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: isDark
@@ -372,7 +371,7 @@ class _AccountStatusCard extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: cs.shadow.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),

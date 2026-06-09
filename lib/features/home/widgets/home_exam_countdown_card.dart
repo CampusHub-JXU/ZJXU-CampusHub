@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../../app/app_theme_controller.dart';
-import '../../../app/theme.dart';
 import '../../exam/exam_model.dart';
 import 'home_card_container.dart';
 
@@ -27,7 +26,7 @@ class HomeExamCountdownCard extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final iconColor = AppThemeController.instance.resolveIconColor(
       context,
-      AppColors.error,
+      cs.primary,
     );
     final primaryTextColor = AppThemeController.instance.resolveHomeTextColor(
       context,

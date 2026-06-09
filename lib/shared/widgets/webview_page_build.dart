@@ -25,7 +25,7 @@ extension _WebViewPageBuildExtension on _WebViewPageState {
           border: Border(top: BorderSide(color: cs.outlineVariant)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
+              color: cs.shadow.withValues(alpha: 0.05),
               blurRadius: 10,
               offset: const Offset(0, -2),
             ),
@@ -225,11 +225,12 @@ extension _WebViewPageBuildExtension on _WebViewPageState {
   }
 
   Widget _buildError() {
+    final cs = Theme.of(context).colorScheme;
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.wifi_off, size: 64, color: Colors.grey),
+          Icon(Icons.wifi_off, size: 64, color: cs.onSurfaceVariant),
           const SizedBox(height: 16),
           const Text('页面加载失败'),
           const SizedBox(height: 12),

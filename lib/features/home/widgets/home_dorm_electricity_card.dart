@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../../app/app_theme_controller.dart';
-import '../../../app/theme.dart';
 import 'home_card_container.dart';
 
 class HomeDormElectricityCard extends StatelessWidget {
@@ -26,7 +25,7 @@ class HomeDormElectricityCard extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final iconColor = AppThemeController.instance.resolveIconColor(
       context,
-      AppColors.success,
+      cs.primary,
     );
     final primaryTextColor = AppThemeController.instance.resolveHomeTextColor(
       context,

@@ -494,7 +494,7 @@ class _CampusCardFallbackPaymentPageState
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.check_circle, size: 64, color: Colors.green),
+            Icon(Icons.check_circle, size: 64, color: colorScheme.primary),
             const SizedBox(height: 16),
             Text(
               _lastPaymentInfo ?? '支付成功',

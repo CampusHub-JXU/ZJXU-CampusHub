@@ -3,7 +3,6 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/app_bootstrap_controller.dart';
-import '../../app/theme.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/shortcut/app_shortcut_service.dart';
 import '../../shared/widgets/ship_card.dart';
@@ -115,7 +114,7 @@ class _CampusCardPageState extends State<CampusCardPage> {
               delegate: SliverChildListDelegate([
                 _buildBalanceCard(context, balance, lastUpdated, isDark),
                 const SizedBox(height: 16),
-                _buildQuickActions(context, cs, isDark),
+                _buildQuickActions(context, cs),
               ]),
             ),
           ),
@@ -138,14 +137,19 @@ class _CampusCardPageState extends State<CampusCardPage> {
               '${lastUpdated.hour.toString().padLeft(2, '0')}:'
               '${lastUpdated.minute.toString().padLeft(2, '0')} 更新'
         : '暂未获取余额';
+    final cs = Theme.of(context).colorScheme;
+    final cardForeground = _contrastOn(cs.primary);
+    final gradientEnd = _shiftColor(
+      cs.primary,
+      lightnessDelta: isDark ? -0.18 : -0.12,
+      saturationDelta: 0.04,
+    );
 
     return ShipCard(
       gradient: LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-        colors: isDark
-            ? const [Color(0xFF5C2030), Color(0xFF3D1018)]
-            : const [AppColors.primary, AppColors.primaryDark],
+        colors: [cs.primary, gradientEnd],
       ),
       padding: EdgeInsets.zero,
       elevation: isDark ? 0 : 4,
@@ -160,7 +164,7 @@ class _CampusCardPageState extends State<CampusCardPage> {
               height: 120,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.white.withValues(alpha: 0.04),
+                color: cardForeground.withValues(alpha: 0.04),
               ),
             ),
           ),
@@ -172,7 +176,7 @@ class _CampusCardPageState extends State<CampusCardPage> {
               height: 80,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.white.withValues(alpha: 0.03),
+                color: cardForeground.withValues(alpha: 0.03),
               ),
             ),
           ),
@@ -187,22 +191,22 @@ class _CampusCardPageState extends State<CampusCardPage> {
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.12),
+                        color: cardForeground.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.credit_card,
-                        color: Colors.white,
+                        color: cardForeground,
                         size: 18,
                       ),
                     ),
                     const SizedBox(width: 10),
-                    const Text(
+                    Text(
                       '校园卡余额',
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w500,
-                        color: Colors.white,
+                        color: cardForeground,
                       ),
                     ),
                     const Spacer(),
@@ -211,6 +215,7 @@ class _CampusCardPageState extends State<CampusCardPage> {
                       onTap: () =>
                           _openCampusCardWebView(title: '刷新余额', autoPop: true),
                       tooltip: '刷新余额',
+                      foreground: cardForeground,
                     ),
                     const SizedBox(width: 2),
                     _headerIcon(
@@ -219,6 +224,7 @@ class _CampusCardPageState extends State<CampusCardPage> {
                           : Icons.visibility_rounded,
                       onTap: () => setState(() => _obscured = !_obscured),
                       tooltip: _obscured ? '显示余额' : '隐藏余额',
+                      foreground: cardForeground,
                     ),
                   ],
                 ),
@@ -233,17 +239,17 @@ class _CampusCardPageState extends State<CampusCardPage> {
                       style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w500,
-                        color: Colors.white.withValues(alpha: 0.6),
+                        color: cardForeground.withValues(alpha: 0.6),
                       ),
                     ),
                     const SizedBox(width: 4),
                     Text(
                       _obscured ? '****' : balanceText,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 48,
                         fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        fontFeatures: [FontFeature.tabularFigures()],
+                        color: cardForeground,
+                        fontFeatures: const [FontFeature.tabularFigures()],
                         letterSpacing: -1,
                       ),
                     ),
@@ -261,7 +267,7 @@ class _CampusCardPageState extends State<CampusCardPage> {
                         vertical: 6,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.12),
+                        color: cardForeground.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Row(
@@ -270,14 +276,14 @@ class _CampusCardPageState extends State<CampusCardPage> {
                           Icon(
                             Icons.touch_app,
                             size: 14,
-                            color: Colors.white.withValues(alpha: 0.8),
+                            color: cardForeground.withValues(alpha: 0.8),
                           ),
                           const SizedBox(width: 6),
                           Text(
                             '点击查询余额',
                             style: TextStyle(
                               fontSize: 12,
-                              color: Colors.white.withValues(alpha: 0.8),
+                              color: cardForeground.withValues(alpha: 0.8),
                             ),
                           ),
                         ],
@@ -290,14 +296,14 @@ class _CampusCardPageState extends State<CampusCardPage> {
                       Icon(
                         Icons.schedule,
                         size: 13,
-                        color: Colors.white.withValues(alpha: 0.4),
+                        color: cardForeground.withValues(alpha: 0.4),
                       ),
                       const SizedBox(width: 4),
                       Text(
                         timeText,
                         style: TextStyle(
                           fontSize: 12,
-                          color: Colors.white.withValues(alpha: 0.4),
+                          color: cardForeground.withValues(alpha: 0.4),
                         ),
                       ),
                     ],
@@ -314,6 +320,7 @@ class _CampusCardPageState extends State<CampusCardPage> {
     required IconData icon,
     required VoidCallback onTap,
     required String tooltip,
+    required Color foreground,
   }) {
     return Tooltip(
       message: tooltip,
@@ -322,11 +329,7 @@ class _CampusCardPageState extends State<CampusCardPage> {
         borderRadius: BorderRadius.circular(8),
         child: Padding(
           padding: const EdgeInsets.all(6),
-          child: Icon(
-            icon,
-            size: 18,
-            color: Colors.white.withValues(alpha: 0.6),
-          ),
+          child: Icon(icon, size: 18, color: foreground.withValues(alpha: 0.6)),
         ),
       ),
     );
@@ -334,27 +337,27 @@ class _CampusCardPageState extends State<CampusCardPage> {
 
   // ── Quick Actions Row ───────────────────────────────────────────────────
 
-  Widget _buildQuickActions(BuildContext context, ColorScheme cs, bool isDark) {
+  Widget _buildQuickActions(BuildContext context, ColorScheme cs) {
     return Row(
       children: [
         _quickActionChip(
           icon: Icons.refresh_rounded,
           label: '刷新',
-          isDark: isDark,
+          cs: cs,
           onTap: () => _openCampusCardWebView(title: '刷新余额', autoPop: true),
         ),
         const SizedBox(width: 8),
         _quickActionChip(
           icon: Icons.receipt_long_outlined,
           label: '账单',
-          isDark: isDark,
+          cs: cs,
           onTap: () => _openCampusCardWebView(title: '校园卡账单'),
         ),
         const SizedBox(width: 8),
         _quickActionChip(
           icon: Icons.add_circle_outline,
           label: '充值',
-          isDark: isDark,
+          cs: cs,
           onTap: _openRechargePage,
         ),
       ],
@@ -364,12 +367,12 @@ class _CampusCardPageState extends State<CampusCardPage> {
   Widget _quickActionChip({
     required IconData icon,
     required String label,
-    required bool isDark,
+    required ColorScheme cs,
     required VoidCallback onTap,
   }) {
     return Expanded(
       child: Material(
-        color: isDark ? const Color(0xFF2D1F23) : Colors.white,
+        color: cs.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           onTap: onTap,
@@ -379,13 +382,14 @@ class _CampusCardPageState extends State<CampusCardPage> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(icon, size: 18, color: AppColors.primary),
+                Icon(icon, size: 18, color: cs.primary),
                 const SizedBox(width: 6),
                 Text(
                   label,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
+                    color: cs.onSurface,
                   ),
                 ),
               ],
@@ -556,3 +560,19 @@ class _CampusCardPageState extends State<CampusCardPage> {
 // ── Campus Card Action ──────────────────────────────────────────────────────
 
 enum _CampusCardMenuAction { addShortcut }
+
+Color _shiftColor(
+  Color color, {
+  double lightnessDelta = 0,
+  double saturationDelta = 0,
+}) {
+  final hsl = HSLColor.fromColor(color);
+  return hsl
+      .withLightness((hsl.lightness + lightnessDelta).clamp(0.0, 1.0))
+      .withSaturation((hsl.saturation + saturationDelta).clamp(0.0, 1.0))
+      .toColor();
+}
+
+Color _contrastOn(Color background) {
+  return background.computeLuminance() > 0.45 ? Colors.black : Colors.white;
+}

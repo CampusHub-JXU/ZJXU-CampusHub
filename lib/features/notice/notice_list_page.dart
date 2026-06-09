@@ -129,16 +129,20 @@ class _NoticeListPageState extends State<NoticeListPage> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.error_outline, size: 64, color: Colors.grey[400]),
+                  Icon(
+                    Icons.error_outline,
+                    size: 64,
+                    color: cs.onSurfaceVariant,
+                  ),
                   const SizedBox(height: 12),
                   Text(
                     '加载失败',
-                    style: TextStyle(fontSize: 16, color: Colors.grey[500]),
+                    style: TextStyle(fontSize: 16, color: cs.onSurfaceVariant),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     _error!,
-                    style: TextStyle(fontSize: 13, color: Colors.grey[400]),
+                    style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
                   ),
                   const SizedBox(height: 16),
                   FilledButton.tonal(
@@ -156,12 +160,12 @@ class _NoticeListPageState extends State<NoticeListPage> {
                   Icon(
                     Icons.article_outlined,
                     size: 64,
-                    color: Colors.grey[400],
+                    color: cs.onSurfaceVariant,
                   ),
                   const SizedBox(height: 12),
                   Text(
                     '暂无通知',
-                    style: TextStyle(fontSize: 16, color: Colors.grey[500]),
+                    style: TextStyle(fontSize: 16, color: cs.onSurfaceVariant),
                   ),
                 ],
               ),
@@ -230,14 +234,17 @@ class _NoticeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isNotice = notice.category == '通知公告';
-    final tagColor = isNotice ? const Color(0xFF1565C0) : Colors.red;
+    final tagColor = isNotice ? colorScheme.primary : colorScheme.error;
+    final tagForeground = isNotice
+        ? colorScheme.onPrimary
+        : colorScheme.onError;
     final publishDate = (notice.date ?? '').trim();
 
     return Material(
-      color: colorScheme.surface,
+      color: colorScheme.surfaceContainerLowest,
       borderRadius: BorderRadius.circular(12),
       elevation: 0.5,
-      shadowColor: Colors.black12,
+      shadowColor: colorScheme.shadow.withValues(alpha: 0.12),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: onTap,
@@ -253,8 +260,8 @@ class _NoticeCard extends StatelessWidget {
                 ),
                 child: Text(
                   notice.category,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: tagForeground,
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
                   ),
@@ -267,7 +274,10 @@ class _NoticeCard extends StatelessWidget {
                   children: [
                     Text(
                       notice.title,
-                      style: const TextStyle(fontSize: 15),
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: colorScheme.onSurface,
+                      ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -275,14 +285,21 @@ class _NoticeCard extends StatelessWidget {
                       const SizedBox(height: 4),
                       Text(
                         '发布日期：$publishDate',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ],
                   ],
                 ),
               ),
               const SizedBox(width: 8),
-              Icon(Icons.chevron_right, size: 20, color: Colors.grey[400]),
+              Icon(
+                Icons.chevron_right,
+                size: 20,
+                color: colorScheme.onSurfaceVariant,
+              ),
             ],
           ),
         ),

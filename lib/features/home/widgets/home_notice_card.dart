@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../app/theme.dart';
 import 'home_card_container.dart';
 
 class HomeNoticeCard extends StatelessWidget {
@@ -21,14 +20,10 @@ class HomeNoticeCard extends StatelessWidget {
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                color: AppColors.gold.withValues(alpha: 0.1),
+                color: cs.primary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(
-                Icons.campaign_outlined,
-                color: AppColors.gold,
-                size: 20,
-              ),
+              child: Icon(Icons.campaign_outlined, color: cs.primary, size: 20),
             ),
             const SizedBox(width: 12),
             Expanded(

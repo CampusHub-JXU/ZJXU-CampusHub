@@ -37,8 +37,8 @@ class ShipCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final surfaceColor =
-        color ?? Theme.of(context).colorScheme.surfaceContainerLowest;
+    final cs = Theme.of(context).colorScheme;
+    final surfaceColor = color ?? cs.surfaceContainerLowest;
 
     Widget content = Container(
       padding: padding,
@@ -49,7 +49,7 @@ class ShipCard extends StatelessWidget {
         boxShadow: elevation > 0
             ? [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.08),
+                  color: cs.shadow.withValues(alpha: 0.08),
                   blurRadius: elevation * 4,
                   offset: Offset(0, elevation),
                 ),

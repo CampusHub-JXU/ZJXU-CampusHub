@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../app/theme.dart';
 import '../../core/notification/app_notification_service.dart';
 import 'dorm_electricity_service.dart';
 import 'widgets/electricity_battery_header.dart';
@@ -209,14 +208,10 @@ class _DormElectricityPageState extends State<DormElectricityPage>
               width: 72,
               height: 72,
               decoration: BoxDecoration(
-                color: AppColors.success.withValues(alpha: 0.1),
+                color: cs.primary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: const Icon(
-                Icons.home_outlined,
-                size: 36,
-                color: AppColors.success,
-              ),
+              child: Icon(Icons.home_outlined, size: 36, color: cs.primary),
             ),
             const SizedBox(height: 20),
             Text(
@@ -478,7 +473,7 @@ class _InfoTile extends StatelessWidget {
         boxShadow: isLight
             ? [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.025),
+                  color: cs.shadow.withValues(alpha: 0.025),
                   blurRadius: 14,
                   offset: const Offset(0, 6),
                 ),

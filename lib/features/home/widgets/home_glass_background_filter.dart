@@ -212,12 +212,18 @@ class _HomeGlassBackgroundFilterState extends State<HomeGlassBackgroundFilter>
   List<Color> _shaderPalette() {
     final colors = widget.monetColors;
     if (colors == null || colors.isEmpty) {
-      final second = widget.isDarkMode
-          ? const Color(0xFF1E1826)
-          : const Color(0xFFF3E8F5);
-      final third = widget.isDarkMode
-          ? const Color(0xFF0B1020)
-          : const Color(0xFFFFF7FA);
+      final second = _themeTone(
+        widget.themeColor,
+        hueDelta: 18,
+        saturationScale: 0.72,
+        lightness: widget.isDarkMode ? 0.18 : 0.91,
+      );
+      final third = _themeTone(
+        widget.themeColor,
+        hueDelta: -24,
+        saturationScale: 0.44,
+        lightness: widget.isDarkMode ? 0.08 : 0.97,
+      );
       return [
         widget.themeColor,
         second,
@@ -246,6 +252,20 @@ class _HomeGlassBackgroundFilterState extends State<HomeGlassBackgroundFilter>
         .withHue((hsl.hue + 180.0) % 360.0)
         .withSaturation((hsl.saturation * 1.08).clamp(0.0, 1.0))
         .withLightness((1.0 - hsl.lightness).clamp(0.18, 0.82))
+        .toColor();
+  }
+
+  Color _themeTone(
+    Color color, {
+    required double hueDelta,
+    required double saturationScale,
+    required double lightness,
+  }) {
+    final hsl = HSLColor.fromColor(color);
+    return hsl
+        .withHue((hsl.hue + hueDelta) % 360.0)
+        .withSaturation((hsl.saturation * saturationScale).clamp(0.0, 1.0))
+        .withLightness(lightness.clamp(0.0, 1.0))
         .toColor();
   }
 }

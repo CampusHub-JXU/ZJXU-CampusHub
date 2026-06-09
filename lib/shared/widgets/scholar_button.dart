@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../../app/theme.dart';
 
 /// ScholarButton: Primary action button with Wine Red gradient + StadiumBorder.
 class ScholarButton extends StatelessWidget {
@@ -26,15 +25,19 @@ class ScholarButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final gradientEnd = _shiftColor(
+      cs.primary,
+      lightnessDelta: -0.12,
+      saturationDelta: 0.04,
+    );
     final button = Container(
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [AppColors.primary, AppColors.primaryDark],
-        ),
+        gradient: LinearGradient(colors: [cs.primary, gradientEnd]),
         borderRadius: BorderRadius.circular(100),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.3),
+            color: cs.primary.withValues(alpha: 0.3),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -54,7 +57,7 @@ class ScholarButton extends StatelessWidget {
                         : MainAxisSize.min,
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(icon, color: Colors.white, size: 18),
+                      Icon(icon, color: cs.onPrimary, size: 18),
                       const SizedBox(width: 8),
                       child,
                     ],
@@ -72,6 +75,18 @@ class ScholarButton extends StatelessWidget {
   }
 }
 
+Color _shiftColor(
+  Color color, {
+  double lightnessDelta = 0,
+  double saturationDelta = 0,
+}) {
+  final hsl = HSLColor.fromColor(color);
+  return hsl
+      .withLightness((hsl.lightness + lightnessDelta).clamp(0.0, 1.0))
+      .withSaturation((hsl.saturation + saturationDelta).clamp(0.0, 1.0))
+      .toColor();
+}
+
 class _ScholarButtonText extends ScholarButton {
   _ScholarButtonText({
     super.key,
@@ -80,11 +95,13 @@ class _ScholarButtonText extends ScholarButton {
     super.icon,
     super.expanded,
   }) : super(
-         child: Text(
-           text,
-           style: const TextStyle(
-             color: Colors.white,
-             fontWeight: FontWeight.w600,
+         child: Builder(
+           builder: (context) => Text(
+             text,
+             style: TextStyle(
+               color: Theme.of(context).colorScheme.onPrimary,
+               fontWeight: FontWeight.w600,
+             ),
            ),
          ),
        );

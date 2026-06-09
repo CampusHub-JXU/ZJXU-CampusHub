@@ -343,19 +343,19 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
             padding: const EdgeInsets.only(left: 4),
             child: Text(
               _captchaBytes == null ? '正在准备验证码...' : '点击右侧验证码刷新',
-              style: TextStyle(color: Colors.grey[500], fontSize: 12),
+              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
             ),
           ),
           const SizedBox(height: 18),
           FilledButton(
             onPressed: (_loading || _captchaBytes == null) ? null : _login,
             child: _loading
-                ? const SizedBox(
+                ? SizedBox(
                     height: 20,
                     width: 20,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: Colors.white,
+                      color: cs.onPrimary,
                     ),
                   )
                 : const Text('登录'),

@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../app/app_theme_controller.dart';
-import '../../app/theme.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../shared/widgets/auth_required_view.dart';
 import '../../shared/widgets/login_shell.dart';
@@ -600,11 +599,13 @@ class _GpaSummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final accent = AppThemeController.instance.resolveIconColor(
       context,
-      AppColors.primary,
+      cs.primary,
     );
     final darkAccent = _shiftColor(accent, lightness: -0.08);
+    final foreground = _contrastOn(accent);
 
     return Container(
       clipBehavior: Clip.antiAlias,
@@ -631,7 +632,7 @@ class _GpaSummaryCard extends StatelessWidget {
                     fontSize: 44,
                     height: 1,
                     fontWeight: FontWeight.w900,
-                    color: Colors.white,
+                    color: foreground,
                     letterSpacing: -1.5,
                   ),
                 ),
@@ -641,7 +642,7 @@ class _GpaSummaryCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
-                    color: Colors.white.withValues(alpha: 0.6),
+                    color: foreground.withValues(alpha: 0.6),
                     letterSpacing: 1.5,
                   ),
                 ),
@@ -650,8 +651,16 @@ class _GpaSummaryCard extends StatelessWidget {
             const SizedBox(height: 14),
             Row(
               children: [
-                _SummaryStat(label: 'GPA', value: gpa.toStringAsFixed(2)),
-                _SummaryStat(label: '课程数', value: '$courseCount'),
+                _SummaryStat(
+                  label: 'GPA',
+                  value: gpa.toStringAsFixed(2),
+                  foreground: foreground,
+                ),
+                _SummaryStat(
+                  label: '课程数',
+                  value: '$courseCount',
+                  foreground: foreground,
+                ),
               ],
             ),
           ],
@@ -666,13 +675,22 @@ class _GpaSummaryCard extends StatelessWidget {
         .withLightness((hsl.lightness + lightness).clamp(0.1, 0.9))
         .toColor();
   }
+
+  Color _contrastOn(Color background) {
+    return background.computeLuminance() > 0.45 ? Colors.black : Colors.white;
+  }
 }
 
 class _SummaryStat extends StatelessWidget {
-  const _SummaryStat({required this.label, required this.value});
+  const _SummaryStat({
+    required this.label,
+    required this.value,
+    required this.foreground,
+  });
 
   final String label;
   final String value;
+  final Color foreground;
 
   @override
   Widget build(BuildContext context) {
@@ -685,7 +703,7 @@ class _SummaryStat extends StatelessWidget {
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.w800,
-              color: Colors.white,
+              color: foreground,
               height: 1.1,
             ),
           ),
@@ -695,7 +713,7 @@ class _SummaryStat extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w500,
-              color: Colors.white.withValues(alpha: 0.55),
+              color: foreground.withValues(alpha: 0.55),
             ),
           ),
         ],

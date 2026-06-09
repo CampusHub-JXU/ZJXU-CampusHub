@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../../app/app_theme_controller.dart';
-import '../../../app/theme.dart';
 import '../../grades/grades_model.dart';
 import 'home_card_container.dart';
 
@@ -32,7 +31,7 @@ class HomeGradeChartCard extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final iconColor = AppThemeController.instance.resolveIconColor(
       context,
-      AppColors.primary,
+      cs.primary,
     );
     final primaryTextColor = AppThemeController.instance.resolveHomeTextColor(
       context,

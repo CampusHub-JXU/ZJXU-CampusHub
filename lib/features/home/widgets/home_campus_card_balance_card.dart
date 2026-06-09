@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../../app/app_theme_controller.dart';
-import '../../../app/theme.dart';
 import 'home_card_container.dart';
 
 class HomeCampusCardBalanceCard extends StatelessWidget {
@@ -24,7 +23,7 @@ class HomeCampusCardBalanceCard extends StatelessWidget {
       builder: (context, _, _) {
         final accentColor = AppThemeController.instance.resolveIconColor(
           context,
-          AppColors.primary,
+          cs.primary,
         );
         final primaryTextColor = AppThemeController.instance
             .resolveHomeTextColor(context, cs.onSurface);

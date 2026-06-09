@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../app/theme.dart';
 import '../../../core/semester/semester_calendar.dart';
 import '../schedule_constants.dart';
 
@@ -77,9 +76,7 @@ class ScheduleDayHeaders extends StatelessWidget {
                           vertical: 4,
                         ),
                         decoration: BoxDecoration(
-                          color: isToday
-                              ? AppColors.primary
-                              : Colors.transparent,
+                          color: isToday ? cs.primary : Colors.transparent,
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
@@ -89,7 +86,7 @@ class ScheduleDayHeaders extends StatelessWidget {
                             fontWeight: isToday
                                 ? FontWeight.w700
                                 : FontWeight.w500,
-                            color: isToday ? Colors.white : cs.onSurface,
+                            color: isToday ? cs.onPrimary : cs.onSurface,
                           ),
                         ),
                       ),
@@ -101,9 +98,7 @@ class ScheduleDayHeaders extends StatelessWidget {
                           fontWeight: isToday
                               ? FontWeight.w700
                               : FontWeight.normal,
-                          color: isToday
-                              ? AppColors.primary
-                              : cs.onSurfaceVariant,
+                          color: isToday ? cs.primary : cs.onSurfaceVariant,
                         ),
                       ),
                     ],

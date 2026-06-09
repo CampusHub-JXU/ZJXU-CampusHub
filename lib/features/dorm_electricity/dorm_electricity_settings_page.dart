@@ -501,6 +501,7 @@ class _DormElectricitySettingsPageState
     required VoidCallback? onCancel,
     required VoidCallback? onConfirm,
   }) {
+    final cs = Theme.of(context).colorScheme;
     return SizedBox(
       height: 48,
       child: Row(
@@ -515,7 +516,9 @@ class _DormElectricitySettingsPageState
               '确定',
               style: TextStyle(
                 fontWeight: FontWeight.w600,
-                color: onConfirm != null ? null : Colors.grey,
+                color: onConfirm != null
+                    ? null
+                    : cs.onSurfaceVariant.withValues(alpha: 0.5),
               ),
             ),
           ),
@@ -565,6 +568,7 @@ class _DormElectricitySettingsPageState
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('选择寝室')),
       body: _loadingBuildings
@@ -574,7 +578,7 @@ class _DormElectricitySettingsPageState
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(_error!, style: const TextStyle(color: Colors.red)),
+                  Text(_error!, style: TextStyle(color: cs.error)),
                   const SizedBox(height: 12),
                   FilledButton(
                     onPressed: () {
@@ -618,12 +622,12 @@ class _DormElectricitySettingsPageState
                         ? _save
                         : null,
                     child: _saving
-                        ? const SizedBox(
+                        ? SizedBox(
                             height: 18,
                             width: 18,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              color: Colors.white,
+                              color: cs.onPrimary,
                             ),
                           )
                         : const Text('保存'),

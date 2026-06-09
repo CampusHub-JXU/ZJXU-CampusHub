@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../app/theme.dart';
 import '../schedule_change_rule.dart';
 import '../schedule_constants.dart';
 
@@ -32,11 +31,7 @@ class ScheduleChangeSheet extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
             child: Row(
               children: [
-                Icon(
-                  Icons.swap_horiz_rounded,
-                  size: 20,
-                  color: AppColors.primary,
-                ),
+                Icon(Icons.swap_horiz_rounded, size: 20, color: cs.primary),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -126,9 +121,9 @@ class ScheduleChangeSheet extends StatelessWidget {
       CourseChangeType.makeup => '补课',
     };
     final tagColor = switch (rule.type) {
-      CourseChangeType.reschedule => const Color(0xFF1565C0),
-      CourseChangeType.cancel => AppColors.error,
-      CourseChangeType.makeup => const Color(0xFF2E7D32),
+      CourseChangeType.reschedule => cs.primary,
+      CourseChangeType.cancel => cs.error,
+      CourseChangeType.makeup => cs.tertiary,
     };
     final courseName = (rule.courseName ?? '').trim();
     final meta = [
