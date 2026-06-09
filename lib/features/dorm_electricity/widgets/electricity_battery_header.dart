@@ -7,6 +7,7 @@ class ElectricityBatteryHeader extends StatelessWidget {
     required this.statusLabel,
     required this.fraction,
     required this.fillAnimationValue,
+    required this.breathValue,
     required this.accentColor,
     required this.statusBackgroundColor,
   });
@@ -15,6 +16,7 @@ class ElectricityBatteryHeader extends StatelessWidget {
   final String statusLabel;
   final double fraction;
   final double fillAnimationValue;
+  final double breathValue;
   final Color accentColor;
   final Color statusBackgroundColor;
 
@@ -137,6 +139,7 @@ class ElectricityBatteryHeader extends StatelessWidget {
                           painter: _BatteryPixelPainter(
                             fraction: fraction,
                             fillAnimationValue: fillAnimationValue,
+                            breathValue: breathValue,
                             activeColor: accentColor,
                             emptyColor: Color.lerp(
                               cs.onSurfaceVariant,
@@ -222,6 +225,7 @@ class _BatteryPixelPainter extends CustomPainter {
   _BatteryPixelPainter({
     required this.fraction,
     required this.fillAnimationValue,
+    required this.breathValue,
     required this.activeColor,
     required this.emptyColor,
     required this.isDark,
@@ -229,6 +233,7 @@ class _BatteryPixelPainter extends CustomPainter {
 
   final double fraction;
   final double fillAnimationValue;
+  final double breathValue;
   final Color activeColor;
   final Color emptyColor;
   final bool isDark;
@@ -237,6 +242,7 @@ class _BatteryPixelPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final progress = (fraction * fillAnimationValue).clamp(0.0, 1.0).toDouble();
     final progressX = size.width * progress;
+    final breath = ((breathValue - 0.5) * 2).clamp(-1.0, 1.0).toDouble();
 
     const dotSize = 4.0;
     const gap = 2.8;
@@ -261,17 +267,20 @@ class _BatteryPixelPainter extends CustomPainter {
         final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(1.1));
 
         if (litAmount <= 0) {
+          final emptyAlpha = ((isDark ? 0.12 : 0.075) + breath * 0.006)
+              .clamp(0.0, 0.14)
+              .toDouble();
           canvas.drawRRect(
             rrect,
-            Paint()
-              ..color = emptyColor.withValues(alpha: isDark ? 0.12 : 0.075),
+            Paint()..color = emptyColor.withValues(alpha: emptyAlpha),
           );
           continue;
         }
 
-        final alpha = ((isDark ? 0.18 : 0.15) + edgeBand * 0.07)
-            .clamp(0.0, 0.28)
-            .toDouble();
+        final alpha =
+            ((isDark ? 0.18 : 0.15) + edgeBand * 0.07 + breath * 0.018)
+                .clamp(0.0, 0.28)
+                .toDouble();
         final color = Color.lerp(
           Colors.white,
           activeColor,
@@ -287,6 +296,7 @@ class _BatteryPixelPainter extends CustomPainter {
   bool shouldRepaint(_BatteryPixelPainter old) =>
       fraction != old.fraction ||
       fillAnimationValue != old.fillAnimationValue ||
+      breathValue != old.breathValue ||
       activeColor != old.activeColor ||
       emptyColor != old.emptyColor ||
       isDark != old.isDark;

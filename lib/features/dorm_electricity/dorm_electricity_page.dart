@@ -14,7 +14,7 @@ class DormElectricityPage extends StatefulWidget {
 }
 
 class _DormElectricityPageState extends State<DormElectricityPage>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   final _service = DormElectricityService.instance;
   double? _electricity;
   bool _loading = true;
@@ -22,6 +22,8 @@ class _DormElectricityPageState extends State<DormElectricityPage>
   String? _error;
   AnimationController? _matrixFillController;
   Animation<double>? _matrixFillAnim;
+  AnimationController? _matrixBreathController;
+  Animation<double>? _matrixBreathAnim;
 
   @override
   void initState() {
@@ -39,11 +41,24 @@ class _DormElectricityPageState extends State<DormElectricityPage>
       parent: fillController,
       curve: Curves.easeOutCubic,
     );
+
+    final breathController = _matrixBreathController ??= AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 3200),
+    );
+    _matrixBreathAnim ??= CurvedAnimation(
+      parent: breathController,
+      curve: Curves.easeInOut,
+    );
+    if (!breathController.isAnimating) {
+      breathController.repeat(reverse: true);
+    }
   }
 
   @override
   void dispose() {
     _matrixFillController?.dispose();
+    _matrixBreathController?.dispose();
     super.dispose();
   }
 
@@ -301,6 +316,7 @@ class _DormElectricityPageState extends State<DormElectricityPage>
   ) {
     _ensureMatrixAnimations();
     final matrixFillAnim = _matrixFillAnim!;
+    final matrixBreathAnim = _matrixBreathAnim!;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 260),
@@ -322,7 +338,7 @@ class _DormElectricityPageState extends State<DormElectricityPage>
         mainAxisSize: MainAxisSize.min,
         children: [
           AnimatedBuilder(
-            animation: matrixFillAnim,
+            animation: Listenable.merge([matrixFillAnim, matrixBreathAnim]),
             builder: (context, _) {
               return TweenAnimationBuilder<Color?>(
                 tween: ColorTween(end: colors.primary),
@@ -341,6 +357,7 @@ class _DormElectricityPageState extends State<DormElectricityPage>
                       statusLabel: colors.label,
                       fraction: _chargeFraction,
                       fillAnimationValue: matrixFillAnim.value,
+                      breathValue: matrixBreathAnim.value,
                       accentColor: accent,
                       statusBackgroundColor: statusBackgroundColor,
                     ),
