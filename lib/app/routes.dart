@@ -122,7 +122,8 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/second-classroom',
       name: 'second-classroom',
-      builder: (context, state) => const SecondClassroomPage(),
+      builder: (context, state) =>
+          SecondClassroomPage(initialActivityId: _parseOptionalId(state)),
     ),
     GoRoute(
       path: '/settings',

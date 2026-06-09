@@ -149,7 +149,7 @@ class AppFeaturesConfig {
     FeatureEntryDefinition(
       id: 'second-classroom',
       title: '第二课堂',
-      subtitle: '学分活动、个人中心与微信版页面',
+      subtitle: '学分活动浏览、订阅提醒与微信版入口',
       icon: Icons.workspace_premium_outlined,
       accentColor: AppColors.gold,
       routeName: 'second-classroom',

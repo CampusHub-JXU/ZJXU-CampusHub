@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:ui';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -8,9 +9,11 @@ import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:workmanager/workmanager.dart';
 
+import '../../features/second_classroom/second_classroom_subscription_service.dart';
 import '../logging/app_logger.dart';
 
 const _dormElectricityCheckTask = 'dormElectricityCheck';
+const _secondClassroomMonitorTask = 'secondClassroomRecruitingMonitor';
 const _scheduledNotificationId = 200;
 const _immediateNotificationId = 100;
 const _channelId = 'dorm_electricity_alert';
@@ -31,8 +34,12 @@ const _keyCachedElectricity = 'dorm_cached_electricity';
 @pragma('vm:entry-point')
 void callbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
+    DartPluginRegistrant.ensureInitialized();
     if (task == _dormElectricityCheckTask) {
       return await _executeBackgroundElectricityCheck();
+    }
+    if (task == _secondClassroomMonitorTask) {
+      return await _executeBackgroundSecondClassroomMonitor();
     }
     return true;
   });
@@ -138,6 +145,28 @@ Future<bool> _executeBackgroundElectricityCheck() async {
 
     return true;
   } catch (_) {
+    return false;
+  }
+}
+
+Future<bool> _executeBackgroundSecondClassroomMonitor() async {
+  try {
+    final result = await SecondClassroomSubscriptionService.instance
+        .checkRecruitingMatches();
+    if (result.notificationCount > 0) {
+      AppLogger.instance.storage(
+        LogLevel.info,
+        '第二课堂后台监控发现 ${result.notificationCount} 个同名招募活动',
+      );
+    }
+    return true;
+  } catch (error, stackTrace) {
+    AppLogger.instance.storage(
+      LogLevel.warn,
+      '第二课堂后台监控失败',
+      error: error,
+      stackTrace: stackTrace,
+    );
     return false;
   }
 }
@@ -253,6 +282,7 @@ class BackgroundTaskService {
     // Secondary: WorkManager periodic task as fallback.
     await Workmanager().initialize(callbackDispatcher);
     await _registerWorkManagerTask();
+    await _registerSecondClassroomMonitorTask();
 
     _initialized = true;
   }
@@ -262,6 +292,16 @@ class BackgroundTaskService {
       _dormElectricityCheckTask,
       _dormElectricityCheckTask,
       frequency: const Duration(hours: 8),
+      constraints: Constraints(networkType: NetworkType.connected),
+      existingWorkPolicy: ExistingPeriodicWorkPolicy.keep,
+    );
+  }
+
+  Future<void> _registerSecondClassroomMonitorTask() async {
+    await Workmanager().registerPeriodicTask(
+      _secondClassroomMonitorTask,
+      _secondClassroomMonitorTask,
+      frequency: const Duration(hours: 1),
       constraints: Constraints(networkType: NetworkType.connected),
       existingWorkPolicy: ExistingPeriodicWorkPolicy.keep,
     );
@@ -285,6 +325,8 @@ class BackgroundTaskService {
   /// notification immediately if below threshold, then reschedules the
   /// daily alarm with fresh data.
   Future<void> foregroundCheckAndNotify() async {
+    await _executeBackgroundSecondClassroomMonitor();
+
     try {
       final prefs = await SharedPreferences.getInstance();
       final alertEnabled = prefs.getBool(_keyAlertEnabled) ?? false;

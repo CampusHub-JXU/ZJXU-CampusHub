@@ -6,12 +6,32 @@ import 'package:flutter/material.dart';
 
 import 'app/app.dart';
 import 'app/app_bootstrap_controller.dart';
+import 'app/routes.dart';
 import 'core/logging/app_logger.dart';
 import 'core/notification/app_notification_service.dart';
 import 'core/notification/background_task_service.dart';
 import 'core/push/push_service.dart';
 import 'core/shortcut/app_shortcut_service.dart';
-import 'app/routes.dart';
+import 'features/second_classroom/second_classroom_subscription_service.dart';
+
+void _handleNotificationPayload(String payload) {
+  if (payload == 'dorm-electricity') {
+    appRouter.goNamed('dorm-electricity');
+    return;
+  }
+
+  final uri = Uri.tryParse(payload);
+  if (uri == null) return;
+  if (uri.path == 'second-classroom') {
+    final id = uri.queryParameters['id']?.trim();
+    appRouter.goNamed(
+      'second-classroom',
+      queryParameters: id == null || id.isEmpty
+          ? const <String, String>{}
+          : {'id': id},
+    );
+  }
+}
 
 Future<void> main() async {
   runZonedGuarded(
@@ -50,20 +70,19 @@ Future<void> main() async {
         ),
       );
       unawaited(AppNotificationService.instance.initialize());
+      unawaited(
+        SecondClassroomSubscriptionService.instance.checkRecruitingMatches(),
+      );
       FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
       unawaited(PushService.instance.initialize());
       AppNotificationService.instance.onTap = (payload) {
-        if (payload == 'dorm-electricity') {
-          appRouter.goNamed('dorm-electricity');
-        }
+        _handleNotificationPayload(payload);
       };
       // Handle cold-start from notification tap.
       final pending = AppNotificationService.instance.pendingPayload;
       if (pending != null) {
         AppNotificationService.instance.clearPendingPayload();
-        if (pending == 'dorm-electricity') {
-          appRouter.goNamed('dorm-electricity');
-        }
+        _handleNotificationPayload(pending);
       }
       AppBootstrapController.instance.scheduleWarmUpAfterFirstFrame();
       await BackgroundTaskService.instance.initialize();
