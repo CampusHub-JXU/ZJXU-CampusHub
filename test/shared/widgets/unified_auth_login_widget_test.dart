@@ -10,6 +10,76 @@ import 'package:jxu_campus_hub/shared/widgets/unified_auth_login_widget.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  Uint8List tinyPng() => Uint8List.fromList(const [
+    0x89,
+    0x50,
+    0x4E,
+    0x47,
+    0x0D,
+    0x0A,
+    0x1A,
+    0x0A,
+    0x00,
+    0x00,
+    0x00,
+    0x0D,
+    0x49,
+    0x48,
+    0x44,
+    0x52,
+    0x00,
+    0x00,
+    0x00,
+    0x01,
+    0x00,
+    0x00,
+    0x00,
+    0x01,
+    0x08,
+    0x06,
+    0x00,
+    0x00,
+    0x00,
+    0x1F,
+    0x15,
+    0xC4,
+    0x89,
+    0x00,
+    0x00,
+    0x00,
+    0x0A,
+    0x49,
+    0x44,
+    0x41,
+    0x54,
+    0x78,
+    0x9C,
+    0x63,
+    0x00,
+    0x01,
+    0x00,
+    0x00,
+    0x05,
+    0x00,
+    0x01,
+    0x0D,
+    0x0A,
+    0x2D,
+    0xB4,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x49,
+    0x45,
+    0x4E,
+    0x44,
+    0xAE,
+    0x42,
+    0x60,
+    0x82,
+  ]);
+
   tearDown(() {
     UnifiedAuthService.instance.debugReset();
   });
@@ -223,5 +293,38 @@ void main() {
       tester.widget<TextField>(find.byType(TextField).at(1)).obscureText,
       isFalse,
     );
+  });
+
+  testWidgets('keeps login failure visible after refreshing captcha', (
+    tester,
+  ) async {
+    var captchaLoads = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UnifiedAuthLoginWidget(
+            onLoginSuccess: () {},
+            loadSavedCredentials: () async => ('2025000123', 'wrong-password'),
+            sessionPreflight: () async => false,
+            captchaLoader: () async {
+              captchaLoads += 1;
+              return tinyPng();
+            },
+            loginHandler: (_, _, _) async => '账号或密码错误，请检查后重试',
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    expect(captchaLoads, 1);
+
+    await tester.enterText(find.byType(TextField).at(2), 'abcd');
+    await tester.tap(find.text('登录'));
+    await tester.pumpAndSettle();
+
+    expect(captchaLoads, 2);
+    expect(find.text('账号或密码错误，请检查后重试'), findsOneWidget);
   });
 }

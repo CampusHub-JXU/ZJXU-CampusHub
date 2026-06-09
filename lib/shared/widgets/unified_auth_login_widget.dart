@@ -103,6 +103,15 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
       }
     }
 
+    if (widget.loginHandler != null && widget.captchaLoader != null) {
+      setState(() {
+        _error = null;
+        _captchaBytes = null;
+      });
+      await _refreshCaptcha();
+      return false;
+    }
+
     final hasActiveSession = await UnifiedAuthService.instance.prepareLogin(
       serviceUrl: widget.serviceUrl,
     );
@@ -139,7 +148,8 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
     }
   }
 
-  Future<void> _refreshCaptcha() async {
+  Future<void> _refreshCaptcha({bool preserveError = false}) async {
+    final previousError = preserveError ? _error : null;
     try {
       final bytes =
           await widget.captchaLoader?.call() ??
@@ -151,7 +161,7 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
       if (!mounted) return;
       setState(() {
         _captchaBytes = bytes;
-        _error = null;
+        _error = previousError;
       });
     } on UnifiedAuthCaptchaException catch (error) {
       if (!mounted) return;
@@ -221,7 +231,7 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
         _error = message;
       });
       _captchaCtrl.clear();
-      _refreshCaptcha();
+      await _refreshCaptcha(preserveError: true);
       return;
     }
 
@@ -247,7 +257,7 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
           _error = message;
         });
         _captchaCtrl.clear();
-        _refreshCaptcha();
+        await _refreshCaptcha(preserveError: true);
     }
   }
 
