@@ -43,7 +43,7 @@ class _DormElectricityPageState extends State<DormElectricityPage>
 
     final breathController = _matrixBreathController ??= AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2800),
+      duration: const Duration(milliseconds: 4700),
     );
     _matrixBreathAnim ??= CurvedAnimation(
       parent: breathController,
@@ -106,11 +106,7 @@ class _DormElectricityPageState extends State<DormElectricityPage>
     final value = _electricity;
     _ElectricityColors buildColors(Color statusColor, String label) {
       final accent = Color.lerp(statusColor, cs.primary, isLight ? 0.18 : 0.1)!;
-      return _ElectricityColors(
-        primary: accent,
-        cardBg: isLight ? cs.surfaceContainerLowest : cs.surfaceContainerLow,
-        label: label,
-      );
+      return _ElectricityColors(primary: accent, label: label);
     }
 
     if (value == null) {
@@ -260,7 +256,7 @@ class _DormElectricityPageState extends State<DormElectricityPage>
             _buildErrorBanner(cs),
             const SizedBox(height: 12),
           ],
-          _buildElectricityDetailCard(context, cs, colors, value),
+          _buildElectricityDetailCard(context, colors, value),
           const SizedBox(height: 12),
           Row(
             children: [
@@ -305,7 +301,6 @@ class _DormElectricityPageState extends State<DormElectricityPage>
 
   Widget _buildElectricityDetailCard(
     BuildContext context,
-    ColorScheme cs,
     _ElectricityColors colors,
     String value,
   ) {
@@ -313,86 +308,27 @@ class _DormElectricityPageState extends State<DormElectricityPage>
     final matrixFillAnim = _matrixFillAnim!;
     final matrixBreathAnim = _matrixBreathAnim!;
 
-    return AnimatedContainer(
+    return TweenAnimationBuilder<Color?>(
+      tween: ColorTween(end: colors.primary),
       duration: const Duration(milliseconds: 260),
       curve: Curves.easeOutCubic,
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: colors.cardBg,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: Color.lerp(
-            cs.outlineVariant,
-            colors.primary,
-            0.34,
-          )!.withValues(alpha: 0.36),
-          width: 0.8,
-        ),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TweenAnimationBuilder<Color?>(
-            tween: ColorTween(end: colors.primary),
-            duration: const Duration(milliseconds: 260),
-            curve: Curves.easeOutCubic,
-            builder: (context, animatedColor, _) {
-              final accent = animatedColor ?? colors.primary;
-              final statusBackgroundColor = accent.withValues(
-                alpha: Theme.of(context).brightness == Brightness.light
-                    ? 0.1
-                    : 0.16,
-              );
-              return RepaintBoundary(
-                child: ElectricityBatteryHeader(
-                  valueText: value,
-                  statusLabel: colors.label,
-                  fraction: _chargeFraction,
-                  fillAnimation: matrixFillAnim,
-                  breathAnimation: matrixBreathAnim,
-                  accentColor: accent,
-                  statusBackgroundColor: statusBackgroundColor,
-                ),
-              );
-            },
+      builder: (context, animatedColor, _) {
+        final accent = animatedColor ?? colors.primary;
+        final statusBackgroundColor = accent.withValues(
+          alpha: Theme.of(context).brightness == Brightness.light ? 0.1 : 0.16,
+        );
+        return RepaintBoundary(
+          child: ElectricityBatteryHeader(
+            valueText: value,
+            statusLabel: colors.label,
+            fraction: _chargeFraction,
+            fillAnimation: matrixFillAnim,
+            breathAnimation: matrixBreathAnim,
+            accentColor: accent,
+            statusBackgroundColor: statusBackgroundColor,
           ),
-          if (_electricity != null && _electricity! < 10)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  color: cs.errorContainer,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.warning_amber_rounded,
-                      size: 16,
-                      color: cs.onErrorContainer,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        '电量不足，请及时充值',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: cs.onErrorContainer,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -509,13 +445,8 @@ class _InfoTile extends StatelessWidget {
 // ── Color Set ────────────────────────────────────────────────────────────────
 
 class _ElectricityColors {
-  const _ElectricityColors({
-    required this.primary,
-    required this.cardBg,
-    required this.label,
-  });
+  const _ElectricityColors({required this.primary, required this.label});
 
   final Color primary;
-  final Color cardBg;
   final String label;
 }

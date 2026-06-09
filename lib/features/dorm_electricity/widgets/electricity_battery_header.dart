@@ -162,41 +162,44 @@ class ElectricityBatteryHeader extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           Center(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 18),
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.baseline,
-                  mainAxisSize: MainAxisSize.min,
-                  textBaseline: TextBaseline.alphabetic,
-                  children: [
-                    Text(
-                      valueText,
-                      style: TextStyle(
-                        fontFamily: 'DIN Alternate',
-                        fontFamilyFallback: const ['Roboto', 'Arial'],
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                        fontSize: 48,
-                        fontWeight: FontWeight.w700,
-                        height: 1,
-                        letterSpacing: 0,
-                        color: valueColor,
+              padding: const EdgeInsets.fromLTRB(18, 2, 18, 4),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 58),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    mainAxisSize: MainAxisSize.min,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Text(
+                        valueText,
+                        style: TextStyle(
+                          fontFamily: 'DIN Alternate',
+                          fontFamilyFallback: const ['Roboto', 'Arial'],
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                          fontSize: 48,
+                          fontWeight: FontWeight.w700,
+                          height: 1.12,
+                          letterSpacing: 0,
+                          color: valueColor,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 7),
-                    Text(
-                      '度',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        height: 1,
-                        color: unitColor,
+                      const SizedBox(width: 7),
+                      Text(
+                        '度',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          height: 1.12,
+                          color: unitColor,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -303,7 +306,7 @@ class _BatteryPixelPainter extends CustomPainter {
         final color = Color.lerp(
           Colors.white,
           activeColor,
-          (isDark ? 0.22 : 0.36) + alphaNoise * 0.22,
+          (isDark ? 0.42 : 0.58) + alphaNoise * 0.28,
         )!.withValues(alpha: alpha);
 
         dotPaint.color = color;
