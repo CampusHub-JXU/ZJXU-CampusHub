@@ -58,6 +58,7 @@ void main() {
     expect(find.text('电量详情'), findsOneWidget);
     expect(find.text('66.60'), findsOneWidget);
     expect(find.text('度'), findsOneWidget);
+    expect(find.text('剩余'), findsOneWidget);
     expect(find.text('充足'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
