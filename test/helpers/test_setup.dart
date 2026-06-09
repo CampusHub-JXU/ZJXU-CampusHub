@@ -1,4 +1,4 @@
-﻿import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -11,13 +11,16 @@ import 'package:jxu_campus_hub/core/network/dio_client.dart';
 import 'package:jxu_campus_hub/core/logging/app_logger.dart';
 import 'package:jxu_campus_hub/core/network/network_settings.dart';
 import 'package:jxu_campus_hub/core/push/push_service.dart';
+import 'package:jxu_campus_hub/core/shortcut/app_shortcut_service.dart';
 import 'package:jxu_campus_hub/core/update/update_checker.dart';
 import 'package:jxu_campus_hub/core/update/update_service.dart';
 import 'package:jxu_campus_hub/features/campus_card/campus_card_service.dart';
 import 'package:jxu_campus_hub/features/changxing_jiada/changxing_jiada_service.dart';
 import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_service.dart';
 import 'package:jxu_campus_hub/features/exam/exam_service.dart';
+import 'package:jxu_campus_hub/features/grades/grades_service.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';
+import 'package:jxu_campus_hub/features/service_hub/service_hub_usage_store.dart';
 
 Future<void> resetTestEnvironment() async {
   SharedPreferences.setMockInitialValues({});
@@ -38,6 +41,7 @@ Future<void> resetTestEnvironment() async {
   NetworkSettings.instance.debugReset();
   DioClient.instance.debugReset();
   AppLogger.instance.debugReset();
+  AppShortcutService.instance.debugReset();
   UpdateService.instance.debugReset();
   UpdateChecker.instance.debugReset();
   CampusCardService.instance.debugSetCachedBalance(null);
@@ -46,4 +50,6 @@ Future<void> resetTestEnvironment() async {
   await ScheduleService.instance.debugClearCache();
   PushService.instance.debugReset();
   ExamService.instance.debugReset();
+  GradesService.instance.debugReset();
+  ServiceHubUsageStore.instance.debugReset();
 }
