@@ -67,3 +67,7 @@ hs_err_pid*.log
 android/hs_err_pid*.log
 android/replay_pid*.log
 android/app/google-services.json
+
+# Local browser/debug extraction artifacts
+/.playwright-cli/
+/output/
