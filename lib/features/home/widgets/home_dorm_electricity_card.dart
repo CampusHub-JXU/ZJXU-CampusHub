@@ -35,8 +35,9 @@ class HomeDormElectricityCard extends StatelessWidget {
     final secondaryTextColor = AppThemeController.instance
         .resolveHomeSecondaryTextColor(context, cs.onSurfaceVariant);
     return HomeCardContainer(
-      height: 136,
+      height: 126,
       onTap: () => onTap(),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
       child: Stack(
         children: [
           Align(

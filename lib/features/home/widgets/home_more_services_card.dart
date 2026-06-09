@@ -27,7 +27,7 @@ class HomeMoreServicesCard extends StatelessWidget {
         .resolveHomeSecondaryTextColor(context, cs.onSurfaceVariant);
     return HomeCardContainer(
       onTap: onTap,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Row(
         children: [
           Container(

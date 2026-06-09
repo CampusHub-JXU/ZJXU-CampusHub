@@ -31,8 +31,9 @@ class HomeCampusCardBalanceCard extends StatelessWidget {
         final secondaryTextColor = AppThemeController.instance
             .resolveHomeSecondaryTextColor(context, cs.onSurfaceVariant);
         return HomeCardContainer(
-          height: 160,
+          height: 148,
           onTap: () => onTap(),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
           child: Stack(
             children: [
               Padding(
@@ -48,7 +49,7 @@ class HomeCampusCardBalanceCard extends StatelessWidget {
                         color: accentColor,
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 10),
                     balanceText == '--'
                         ? Text(
                             '余额未刷新，请先登录一卡通',
@@ -101,12 +102,12 @@ class HomeCampusCardBalanceCard extends StatelessWidget {
                       offset: const Offset(-4, 0),
                       child: IntrinsicWidth(
                         child: Container(
-                          height: 44,
+                          height: 40,
                           constraints: const BoxConstraints(minWidth: 80),
-                          padding: const EdgeInsets.only(left: 12, right: 14),
+                          padding: const EdgeInsets.only(left: 11, right: 13),
                           decoration: BoxDecoration(
                             color: accentColor.withValues(alpha: 0.10),
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(14),
                           ),
                           child: Align(
                             alignment: Alignment.centerLeft,
@@ -119,7 +120,7 @@ class HomeCampusCardBalanceCard extends StatelessWidget {
                                 children: [
                                   Icon(
                                     Icons.qr_code_2_rounded,
-                                    size: 28,
+                                    size: 24,
                                     color: accentColor,
                                   ),
                                   const SizedBox(width: 6),
@@ -127,7 +128,7 @@ class HomeCampusCardBalanceCard extends StatelessWidget {
                                     '付款码',
                                     style: TextStyle(
                                       fontSize: 14,
-                                      fontWeight: FontWeight.w600,
+                                      fontWeight: FontWeight.w700,
                                       color: primaryTextColor,
                                       height: 1.0,
                                     ),

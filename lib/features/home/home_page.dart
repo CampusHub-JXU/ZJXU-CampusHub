@@ -14,6 +14,8 @@ import '../campus_card/campus_card_service.dart';
 import '../dorm_electricity/dorm_electricity_service.dart';
 import '../exam/exam_model.dart';
 import '../exam/exam_service.dart';
+import '../grades/grades_model.dart';
+import '../grades/grades_service.dart';
 import '../schedule/schedule_cache_snapshot.dart';
 import '../schedule/schedule_model.dart';
 import '../schedule/schedule_service.dart';
@@ -24,6 +26,7 @@ import 'widgets/home_campus_card_balance_card.dart';
 import 'widgets/home_dorm_electricity_card.dart';
 import 'widgets/home_dorm_services_card.dart';
 import 'widgets/home_exam_countdown_card.dart';
+import 'widgets/home_grade_chart_card.dart';
 import 'widgets/home_header_card.dart';
 import 'widgets/home_more_services_card.dart';
 import 'widgets/home_next_course_content.dart';
@@ -41,6 +44,7 @@ class _HomePageState extends State<HomePage> {
   String _campusCardBalance = '--';
   String _dormElectricity = '--';
   ExamEntry? _nextExam;
+  List<GradeEntry> _grades = [];
   CourseEntry? _nextCourse;
   String _nextCourseLabel = '';
   bool _courseLoggedIn = false;
@@ -214,6 +218,9 @@ class _HomePageState extends State<HomePage> {
     _courseLoggedIn = scheduleState.courseLoggedIn;
     _nextCourse = scheduleState.nextCourse;
     _nextCourseLabel = scheduleState.nextCourseLabel;
+
+    final cachedGrades = GradesService.instance.cachedGrades;
+    if (cachedGrades != null) _grades = cachedGrades;
   }
 
   Future<void> _refreshDeferredContent() async {
@@ -222,6 +229,7 @@ class _HomePageState extends State<HomePage> {
       _refreshNextCourse(),
       _refreshDormElectricity(),
       _refreshExam(),
+      _refreshGrades(),
     ]);
   }
 
@@ -307,6 +315,19 @@ class _HomePageState extends State<HomePage> {
       });
     } catch (_) {
       // Silent fail — exam card will show no data
+    }
+  }
+
+  Future<void> _refreshGrades() async {
+    if (!_isBootstrapReady) return;
+    if (!ZhengfangAuth.instance.isLoggedIn) return;
+    try {
+      final studentId = ZhengfangAuth.instance.currentStudentId ?? '';
+      final grades = await GradesService.instance.fetchGrades(studentId);
+      if (!mounted) return;
+      setState(() => _grades = grades);
+    } catch (_) {
+      // Silent fail — grade chart card will show cached or empty
     }
   }
 
@@ -429,6 +450,15 @@ class _HomePageState extends State<HomePage> {
                     await context.pushNamed('exam');
                     if (!mounted) return;
                     _refreshExam();
+                  },
+                ),
+                const SizedBox(height: 10),
+                HomeGradeChartCard(
+                  grades: _grades,
+                  onTap: () async {
+                    await context.pushNamed('grades');
+                    if (!mounted) return;
+                    _refreshGrades();
                   },
                 ),
                 const SizedBox(height: 10),

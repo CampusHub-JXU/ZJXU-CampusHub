@@ -39,8 +39,8 @@ class HomeNextCourseContent extends StatelessWidget {
       return Text(
         '登录后查看课程',
         style: TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.bold,
+          fontSize: 17,
+          fontWeight: FontWeight.w800,
           color: primaryTextColor,
         ),
       );
@@ -50,8 +50,8 @@ class HomeNextCourseContent extends StatelessWidget {
       return Text(
         '近期无课',
         style: TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.bold,
+          fontSize: 17,
+          fontWeight: FontWeight.w800,
           color: primaryTextColor,
         ),
       );
@@ -65,46 +65,46 @@ class HomeNextCourseContent extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Transform.translate(
-          offset: const Offset(-2, -4),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: primaryTextColor.withValues(alpha: 0.16),
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(
-                color: primaryTextColor.withValues(alpha: 0.20),
-              ),
+        Container(
+          constraints: const BoxConstraints(maxWidth: 210),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: primaryTextColor.withValues(alpha: 0.14),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: primaryTextColor.withValues(alpha: 0.18)),
+          ),
+          child: Text(
+            course.courseName,
+            style: TextStyle(
+              fontSize: 12,
+              color: primaryTextColor.withValues(alpha: 0.96),
+              fontWeight: FontWeight.w700,
             ),
-            child: Text(
-              course.courseName,
-              style: TextStyle(
-                fontSize: 12,
-                color: primaryTextColor.withValues(alpha: 0.95),
-                fontWeight: FontWeight.w500,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
-        const SizedBox(height: 3),
+        const SizedBox(height: 10),
         Row(
           children: [
-            Icon(Icons.schedule, size: 14, color: secondaryTextColor),
-            const SizedBox(width: 4),
+            Icon(Icons.schedule_rounded, size: 14, color: secondaryTextColor),
+            const SizedBox(width: 5),
             Text(
               whenText,
-              style: TextStyle(fontSize: 13, color: secondaryTextColor),
+              style: TextStyle(
+                fontSize: 13,
+                color: secondaryTextColor,
+                fontWeight: FontWeight.w600,
+              ),
             ),
-            const SizedBox(width: 4),
+            const SizedBox(width: 5),
             Text(
               '第 ${course.startLesson}-${course.endLesson} 节',
-              style: TextStyle(fontSize: 11, color: tertiaryTextColor),
+              style: TextStyle(fontSize: 12, color: tertiaryTextColor),
             ),
           ],
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 6),
         Row(
           children: [
             Icon(
