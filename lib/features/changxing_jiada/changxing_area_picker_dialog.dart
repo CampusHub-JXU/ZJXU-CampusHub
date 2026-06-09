@@ -217,6 +217,7 @@ class _ChangxingAreaPickerDialogState
 
     return DropdownButtonFormField<ChangxingAreaNode>(
       initialValue: effectiveValue,
+      dropdownColor: Theme.of(context).colorScheme.surfaceContainerHigh,
       items: items
           .map(
             (item) => DropdownMenuItem<ChangxingAreaNode>(

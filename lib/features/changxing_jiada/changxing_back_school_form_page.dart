@@ -408,6 +408,9 @@ class _ChangxingBackSchoolFormPageState
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     initialValue: _trafficTool,
+                    dropdownColor: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHigh,
                     items: _trafficOptions
                         .map(
                           (it) => DropdownMenuItem<String>(
