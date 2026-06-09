@@ -1,6 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jxu_campus_hub/core/network/dio_client.dart';
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/features/changxing_jiada/changxing_jiada_service.dart';
+
+import '../../helpers/mock_http_client_adapter.dart';
+import '../../helpers/test_setup.dart';
 
 void main() {
   group('Changxing unified auth response detection', () {
@@ -80,6 +84,90 @@ void main() {
         ChangxingJiadaService.normalizeSsoRedirectUrl(callbackUrl),
         ZhengfangAuth.instance.buildWebVpnProxyUrl(callbackUrl),
       );
+    });
+  });
+
+  group('Changxing CAS login flow', () {
+    setUp(() async {
+      await resetTestEnvironment();
+      DioClient.instance.debugCookieDirectoryPathProvider =
+          (folderName) async => 'test/$folderName';
+      await DioClient.instance.ensureInitialized();
+    });
+
+    test('captures token from first SSO redirect chain', () async {
+      const casLoginLocation =
+          'https://newca.zjxu.edu.cn/cas/login?service=https%3A%2F%2Fzhx.zjxu.edu.cn%2Fapi%2Fcas_wap_login';
+      const tokenCallback =
+          'http://zhx.zjxu.edu.cn:8443/api/wap/cas_login_back?tokenId=T-1';
+
+      final adapter = MockHttpClientAdapter()
+        ..registerText(
+          'GET',
+          '/api/cas_wap_login',
+          '',
+          statusCode: 302,
+          headers: {
+            'location': [casLoginLocation],
+          },
+        )
+        ..registerText(
+          'GET',
+          '/cas/login',
+          '',
+          statusCode: 302,
+          headers: {
+            'location': [tokenCallback],
+          },
+        )
+        ..registerJson('GET', '/api/getToken', {
+          'data': {'code': '20000', 'token': 'jwt-token'},
+        });
+
+      DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
+
+      await ChangxingJiadaService.instance.loginViaCas();
+
+      expect(ChangxingJiadaService.instance.hasToken, isTrue);
+      expect(adapter.requestLog, [
+        'GET /api/cas_wap_login',
+        'GET /cas/login',
+        'GET /api/getToken',
+      ]);
+    });
+
+    test('asks for unified auth when SSO chain ends on login form', () async {
+      const casLoginLocation =
+          'https://newca.zjxu.edu.cn/cas/login?service=https%3A%2F%2Fzhx.zjxu.edu.cn%2Fapi%2Fcas_wap_login';
+      const loginHtml = '''
+        <html>
+          <form id="fm1">
+            <input type="hidden" name="lt" value="LT-1" />
+            <input type="hidden" name="execution" value="e1s1" />
+          </form>
+        </html>
+      ''';
+
+      final adapter = MockHttpClientAdapter()
+        ..registerText(
+          'GET',
+          '/api/cas_wap_login',
+          '',
+          statusCode: 302,
+          headers: {
+            'location': [casLoginLocation],
+          },
+        )
+        ..registerText('GET', '/cas/login', loginHtml);
+
+      DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
+
+      await expectLater(
+        ChangxingJiadaService.instance.loginViaCas(),
+        throwsA(isA<ChangxingNeedUnifiedAuthException>()),
+      );
+
+      expect(adapter.requestLog, ['GET /api/cas_wap_login', 'GET /cas/login']);
     });
   });
 }

@@ -79,19 +79,10 @@ class ChangxingJiadaService {
   /// 前提：用户已通过 UnifiedAuthService 完成一卡通登录，且当前处于校园网环境。
   Future<void> loginViaCas() async {
     await DioClient.instance.ensureInitialized();
-    final validated = await UnifiedAuthService.instance.validateSession(
-      serviceUrl: _casLoginUrl,
-      syncWebViewCookies: false,
-    );
-    if (validated != true) {
-      AppLogger.instance.auth(LogLevel.warn, '畅行嘉大：统一认证会话不可用，需要重新登录一卡通');
-      throw ChangxingNeedUnifiedAuthException();
-    }
-
     final dio = DioClient.instance.unifiedAuthDio;
 
     try {
-      // 1. 发起 CAS 登录，手动跟随重定向链以提取 tokenId
+      // 发起 CAS 登录并在同一条重定向链里提取 tokenId，避免预校验消耗 ticket。
       var nextUrl = _casLoginUrl;
       String? tokenId;
 
