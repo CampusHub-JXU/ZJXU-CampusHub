@@ -1,15 +1,16 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/app_theme_controller.dart';
 import '../../core/config/feature_entry_catalog.dart';
-import 'service_hub_layout.dart';
 import 'service_hub_usage_store.dart';
-import 'widgets/service_hub_card.dart';
 import 'widgets/service_hub_header.dart';
+
+const _surfaceRadius = 18.0;
+const _iconBadgeRadius = 13.0;
+const _gridGap = 14.0;
 
 class ServiceHubPage extends StatefulWidget {
   const ServiceHubPage({super.key});
@@ -133,25 +134,38 @@ class _ServiceHubPageState extends State<ServiceHubPage> {
                                 hasQuery: _query.isNotEmpty,
                                 onClear: _clearSearch,
                               ),
-                              if (featuredEntries.isNotEmpty) ...[
-                                const SizedBox(height: 18),
-                                _FeaturedEntriesSection(
-                                  entries: featuredEntries,
+                              const SizedBox(height: 26),
+                              if (_query.isNotEmpty)
+                                if (filteredEntries.isEmpty)
+                                  _ServiceHubSearchEmptyState(query: _query)
+                                else
+                                  _ServiceHubSection(
+                                    title: '搜索结果',
+                                    subtitle: '${filteredEntries.length} 个匹配',
+                                    entries: filteredEntries,
+                                    snapshot: _usageStore.snapshot,
+                                    onTap: _openEntry,
+                                    onLongPress: _togglePinned,
+                                  )
+                              else ...[
+                                if (featuredEntries.isNotEmpty) ...[
+                                  _ServiceHubSection(
+                                    title: '常用',
+                                    subtitle: '长按入口可置顶',
+                                    entries: featuredEntries,
+                                    snapshot: _usageStore.snapshot,
+                                    onTap: _openEntry,
+                                    onLongPress: _togglePinned,
+                                  ),
+                                  const SizedBox(height: 30),
+                                ],
+                                _CategoryServiceSections(
+                                  entries: entries,
                                   snapshot: _usageStore.snapshot,
                                   onTap: _openEntry,
                                   onLongPress: _togglePinned,
                                 ),
                               ],
-                              const SizedBox(height: 18),
-                              if (filteredEntries.isEmpty)
-                                _ServiceHubSearchEmptyState(query: _query)
-                              else
-                                _MasonryServiceGrid(
-                                  entries: filteredEntries,
-                                  snapshot: _usageStore.snapshot,
-                                  onTap: _openEntry,
-                                  onLongPress: _togglePinned,
-                                ),
                             ],
                           ),
                         ),
@@ -218,8 +232,92 @@ class _ServiceHubPageState extends State<ServiceHubPage> {
   }
 }
 
-class _MasonryServiceGrid extends StatelessWidget {
-  const _MasonryServiceGrid({
+class _CategoryServiceSections extends StatelessWidget {
+  const _CategoryServiceSections({
+    required this.entries,
+    required this.snapshot,
+    required this.onTap,
+    required this.onLongPress,
+  });
+
+  final List<FeatureEntryDefinition> entries;
+  final ServiceHubUsageSnapshot snapshot;
+  final ValueChanged<FeatureEntryDefinition> onTap;
+  final ValueChanged<FeatureEntryDefinition> onLongPress;
+
+  @override
+  Widget build(BuildContext context) {
+    final groupedEntries = _groupEntriesByCategory(entries);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final category in FeatureEntryCategory.values)
+          if (groupedEntries[category]!.isNotEmpty) ...[
+            _ServiceHubSection(
+              title: category.label,
+              subtitle: '${groupedEntries[category]!.length} 项',
+              entries: groupedEntries[category]!,
+              snapshot: snapshot,
+              onTap: onTap,
+              onLongPress: onLongPress,
+            ),
+            if (category != FeatureEntryCategory.values.last)
+              const SizedBox(height: 30),
+          ],
+      ],
+    );
+  }
+
+  Map<FeatureEntryCategory, List<FeatureEntryDefinition>>
+  _groupEntriesByCategory(List<FeatureEntryDefinition> entries) {
+    final grouped = {
+      for (final category in FeatureEntryCategory.values)
+        category: <FeatureEntryDefinition>[],
+    };
+    for (final entry in entries) {
+      grouped[entry.category]!.add(entry);
+    }
+    return grouped;
+  }
+}
+
+class _ServiceHubSection extends StatelessWidget {
+  const _ServiceHubSection({
+    required this.title,
+    required this.entries,
+    required this.snapshot,
+    required this.onTap,
+    required this.onLongPress,
+    this.subtitle,
+  });
+
+  final String title;
+  final String? subtitle;
+  final List<FeatureEntryDefinition> entries;
+  final ServiceHubUsageSnapshot snapshot;
+  final ValueChanged<FeatureEntryDefinition> onTap;
+  final ValueChanged<FeatureEntryDefinition> onLongPress;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionTitle(title: title, subtitle: subtitle),
+        const SizedBox(height: 14),
+        _ServiceHubEntryGrid(
+          entries: entries,
+          snapshot: snapshot,
+          onTap: onTap,
+          onLongPress: onLongPress,
+        ),
+      ],
+    );
+  }
+}
+
+class _ServiceHubEntryGrid extends StatelessWidget {
+  const _ServiceHubEntryGrid({
     required this.entries,
     required this.snapshot,
     required this.onTap,
@@ -235,89 +333,183 @@ class _MasonryServiceGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final gridColumns = serviceHubGridColumnCount(constraints.maxWidth);
-        final pinnedIds = snapshot.pinnedIds;
-
-        final sortedEntries = List<FeatureEntryDefinition>.from(entries)
-          ..sort((a, b) {
-            final aPinned = pinnedIds.contains(a.id);
-            final bPinned = pinnedIds.contains(b.id);
-            if (aPinned && !bPinned) return -1;
-            if (!aPinned && bPinned) return 1;
-            return 0;
-          });
-
-        return StaggeredGrid.count(
-          crossAxisCount: gridColumns,
-          mainAxisSpacing: 10,
-          crossAxisSpacing: 10,
-          children: [
-            for (final entry in sortedEntries)
-              StaggeredGridTile.count(
-                crossAxisCellCount: entry.spanForGridColumns(gridColumns).columns,
-                mainAxisCellCount: entry.spanForGridColumns(gridColumns).rows,
-                child: _MasonryCard(
-                  entry: entry,
-                  pinned: snapshot.isPinned(entry.id),
-                  activeSpan: entry.spanForGridColumns(gridColumns),
-                  activeCardType: entry.cardTypeForGridColumns(gridColumns),
-                  onTap: () => onTap(entry),
-                  onLongPress: () => onLongPress(entry),
-                ),
-              ),
-          ],
+        final columns = _serviceHubGridColumnCount(constraints.maxWidth);
+        return GridView.builder(
+          padding: EdgeInsets.zero,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: entries.length,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            crossAxisSpacing: _gridGap,
+            mainAxisSpacing: _gridGap,
+            mainAxisExtent: _serviceHubTileHeight(context),
+          ),
+          itemBuilder: (context, index) {
+            final entry = entries[index];
+            return _ServiceHubEntryTile(
+              entry: entry,
+              pinned: snapshot.isPinned(entry.id),
+              onTap: () => onTap(entry),
+              onLongPress: () => onLongPress(entry),
+            );
+          },
         );
       },
     );
   }
 }
 
-class _MasonryCard extends StatelessWidget {
-  const _MasonryCard({
+int _serviceHubGridColumnCount(double maxWidth) {
+  if (maxWidth >= 900) return 4;
+  if (maxWidth >= 600) return 3;
+  return 2;
+}
+
+double _serviceHubTileHeight(BuildContext context) {
+  final textScale = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.8);
+  return (136 + (textScale - 1) * 40).clamp(136.0, 168.0).toDouble();
+}
+
+class _ServiceHubEntryTile extends StatelessWidget {
+  const _ServiceHubEntryTile({
     required this.entry,
     required this.pinned,
-    required this.activeSpan,
-    required this.activeCardType,
     required this.onTap,
     required this.onLongPress,
   });
 
   final FeatureEntryDefinition entry;
   final bool pinned;
-  final FeatureEntrySpan activeSpan;
-  final FeatureEntryCardType activeCardType;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        ServiceHubCard(
-          card: entry,
-          activeSpan: activeSpan,
-          activeCardType: activeCardType,
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final borderColor = isDark
+        ? cs.outline.withValues(alpha: 0.22)
+        : cs.outlineVariant.withValues(alpha: 0.38);
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(_surfaceRadius),
+      side: BorderSide(color: borderColor),
+    );
+    final detailColor = cs.onSurfaceVariant.withValues(
+      alpha: isDark ? 0.68 : 0.62,
+    );
+
+    return Semantics(
+      button: true,
+      label: entry.title,
+      hint: entry.subtitle,
+      child: Material(
+        color: cs.surfaceContainerHighest.withValues(
+          alpha: isDark ? 0.22 : 0.3,
+        ),
+        shape: shape,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
           onTap: onTap,
           onLongPress: onLongPress,
-        ),
-        if (pinned)
-          Positioned(
-            top: 8,
-            right: 8,
-            child: Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.push_pin_rounded,
-                size: 12,
-                color: Theme.of(context).colorScheme.onPrimary,
-              ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 13),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    _EntryIconBadge(
+                      entry: entry,
+                      size: 38,
+                      radius: _iconBadgeRadius,
+                      iconSize: 21,
+                    ),
+                    const Spacer(),
+                    if (pinned) ...[
+                      _PinnedIndicator(colorScheme: cs),
+                      const SizedBox(width: 6),
+                    ],
+                    _EntryActionIndicator(entry: entry),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  entry.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    height: 1.12,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  entry.subtitle,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: detailColor,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w400,
+                    height: 1.24,
+                  ),
+                ),
+              ],
             ),
           ),
-      ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PinnedIndicator extends StatelessWidget {
+  const _PinnedIndicator({required this.colorScheme});
+
+  final ColorScheme colorScheme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 18,
+      height: 18,
+      decoration: BoxDecoration(
+        color: colorScheme.primary,
+        shape: BoxShape.circle,
+      ),
+      child: Icon(
+        Icons.push_pin_rounded,
+        size: 11,
+        color: colorScheme.onPrimary,
+      ),
+    );
+  }
+}
+
+class _EntryActionIndicator extends StatelessWidget {
+  const _EntryActionIndicator({required this.entry});
+
+  final FeatureEntryDefinition entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final iconColor = AppThemeController.instance.resolveIconColor(
+      context,
+      entry.accentColor,
+    );
+    return Container(
+      width: 24,
+      height: 24,
+      decoration: BoxDecoration(
+        color: iconColor.withValues(alpha: 0.08),
+        shape: BoxShape.circle,
+      ),
+      child: Icon(
+        Icons.chevron_right_rounded,
+        size: 18,
+        color: iconColor.withValues(alpha: 0.76),
+      ),
     );
   }
 }
@@ -352,121 +544,22 @@ class _ServiceHubSearchField extends StatelessWidget {
         filled: true,
         fillColor: cs.surfaceContainerHighest.withValues(alpha: 0.55),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(_surfaceRadius),
           borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(_surfaceRadius),
           borderSide: BorderSide(
             color: cs.outlineVariant.withValues(alpha: 0.5),
           ),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(_surfaceRadius),
           borderSide: BorderSide(color: cs.primary, width: 1.4),
         ),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 14,
-        ),
-      ),
-    );
-  }
-}
-
-class _FeaturedEntriesSection extends StatelessWidget {
-  const _FeaturedEntriesSection({
-    required this.entries,
-    required this.snapshot,
-    required this.onTap,
-    required this.onLongPress,
-  });
-
-  final List<FeatureEntryDefinition> entries;
-  final ServiceHubUsageSnapshot snapshot;
-  final ValueChanged<FeatureEntryDefinition> onTap;
-  final ValueChanged<FeatureEntryDefinition> onLongPress;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _SectionTitle(title: '常用', subtitle: '长按入口可置顶'),
-        const SizedBox(height: 10),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final entry in entries)
-              _FeaturedEntryChip(
-                entry: entry,
-                pinned: snapshot.isPinned(entry.id),
-                onTap: () => onTap(entry),
-                onLongPress: () => onLongPress(entry),
-              ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class _FeaturedEntryChip extends StatelessWidget {
-  const _FeaturedEntryChip({
-    required this.entry,
-    required this.pinned,
-    required this.onTap,
-    required this.onLongPress,
-  });
-
-  final FeatureEntryDefinition entry;
-  final bool pinned;
-  final VoidCallback onTap;
-  final VoidCallback onLongPress;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final shape = RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(14),
-      side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.36)),
-    );
-    return Material(
-      color: cs.surfaceContainerHighest.withValues(alpha: 0.36),
-      shape: shape,
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        onLongPress: onLongPress,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _EntryIconBadge(
-                entry: entry,
-                size: 30,
-                radius: 10,
-                iconSize: 18,
-              ),
-              const SizedBox(width: 9),
-              Flexible(
-                child: Text(
-                  entry.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              if (pinned) ...[
-                const SizedBox(width: 6),
-                Icon(Icons.push_pin_rounded, size: 15, color: cs.primary),
-              ],
-            ],
-          ),
         ),
       ),
     );
@@ -519,7 +612,7 @@ class _SectionTitle extends StatelessWidget {
           title,
           style: Theme.of(
             context,
-          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
         ),
         if (subtitle != null) ...[
           const SizedBox(width: 8),
@@ -552,7 +645,7 @@ class _ServiceHubSearchEmptyState extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 32),
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest.withValues(alpha: 0.45),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(_surfaceRadius),
         border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.4)),
       ),
       child: Column(

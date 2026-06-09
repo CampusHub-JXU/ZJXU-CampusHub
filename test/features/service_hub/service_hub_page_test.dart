@@ -76,23 +76,32 @@ void main() {
     ServiceHubUsageStore.instance.debugReset();
   });
 
-  testWidgets('shows searchable masonry service grid', (tester) async {
+  testWidgets('shows categorized compact grids and searchable results', (
+    tester,
+  ) async {
     await tester.pumpWidget(const MaterialApp(home: ServiceHubPage()));
     await tester.pumpAndSettle();
 
     expect(find.byType(TextField), findsOneWidget);
+    expect(find.text('学业'), findsOneWidget);
+    expect(find.text('校园生活'), findsOneWidget);
+    expect(find.text('通知公告'), findsOneWidget);
+    expect(find.text('办事与账号'), findsOneWidget);
     expect(find.text('成绩查询'), findsOneWidget);
-    expect(find.text('课表'), findsWidgets);
+    expect(find.text('课表'), findsOneWidget);
     expect(find.text('刷题助手'), findsOneWidget);
     expect(find.text('宿舍电费'), findsOneWidget);
     expect(find.text('校园公告'), findsOneWidget);
     expect(find.text('服务大厅'), findsOneWidget);
+    expect(find.byIcon(Icons.chevron_right_rounded), findsWidgets);
 
     await tester.enterText(find.byType(TextField), '刷题');
     await tester.pumpAndSettle();
 
+    expect(find.text('搜索结果'), findsOneWidget);
     expect(find.text('刷题助手'), findsOneWidget);
     expect(find.text('宿舍电费'), findsNothing);
+    expect(find.text('学业'), findsNothing);
 
     await tester.tap(find.byTooltip('清除搜索'));
     await tester.pumpAndSettle();
@@ -100,6 +109,7 @@ void main() {
     await tester.enterText(find.byType(TextField), '电量');
     await tester.pumpAndSettle();
 
+    expect(find.text('搜索结果'), findsOneWidget);
     expect(find.text('宿舍电费'), findsOneWidget);
     expect(find.text('成绩查询'), findsNothing);
 
@@ -111,8 +121,34 @@ void main() {
     await tester.tap(find.byTooltip('清除搜索'));
     await tester.pumpAndSettle();
 
+    expect(find.text('学业'), findsOneWidget);
     expect(find.text('成绩查询'), findsOneWidget);
     expect(find.text('宿舍电费'), findsOneWidget);
+  });
+
+  testWidgets('uses 2, 3, and 4 column grids across widths', (tester) async {
+    await _pumpServiceHubAtWidth(tester, 390);
+    expect(_firstGridDelegate(tester).crossAxisCount, 2);
+    expect(_firstGridDelegate(tester).mainAxisExtent, 136);
+
+    final subtitle = tester.widget<Text>(find.text('题库导入、错题重练、离线练习'));
+    expect(subtitle.maxLines, 2);
+
+    await _pumpServiceHubAtWidth(tester, 700);
+    expect(_firstGridDelegate(tester).crossAxisCount, 3);
+
+    await _pumpServiceHubAtWidth(tester, 1024);
+    expect(_firstGridDelegate(tester).crossAxisCount, 4);
+  });
+
+  testWidgets('keeps compact tiles stable at increased text scale', (
+    tester,
+  ) async {
+    await _pumpServiceHubAtWidth(tester, 390, textScale: 1.6);
+
+    expect(tester.takeException(), isNull);
+    expect(_firstGridDelegate(tester).crossAxisCount, 2);
+    expect(_firstGridDelegate(tester).mainAxisExtent, greaterThan(136));
   });
 
   testWidgets('records visits and shows frequently used entries', (
@@ -154,6 +190,41 @@ void main() {
 
     expect(find.text('已取消置顶 服务大厅'), findsOneWidget);
   });
+}
+
+Future<void> _pumpServiceHubAtWidth(
+  WidgetTester tester,
+  double width, {
+  double textScale = 1,
+}) async {
+  tester.view.physicalSize = Size(width, 900);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(() {
+    tester.view.resetPhysicalSize();
+    tester.view.resetDevicePixelRatio();
+  });
+
+  await tester.pumpWidget(
+    MaterialApp(
+      builder: (context, child) {
+        return MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(textScale)),
+          child: child!,
+        );
+      },
+      home: const ServiceHubPage(),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+SliverGridDelegateWithFixedCrossAxisCount _firstGridDelegate(
+  WidgetTester tester,
+) {
+  final grid = tester.widget<GridView>(find.byType(GridView).first);
+  return grid.gridDelegate as SliverGridDelegateWithFixedCrossAxisCount;
 }
 
 Widget _buildRouterApp() {
