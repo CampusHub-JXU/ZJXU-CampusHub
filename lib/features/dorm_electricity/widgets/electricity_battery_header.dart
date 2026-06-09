@@ -30,10 +30,6 @@ class ElectricityBatteryHeader extends StatelessWidget {
     final wellColor = isDark
         ? Color.lerp(cs.surfaceContainerLowest, accentColor, 0.08)!
         : Color.lerp(cs.surfaceContainerHigh, accentColor, 0.07)!;
-    final fillColor = accentColor.withValues(alpha: isDark ? 0.34 : 0.24);
-    final animatedFraction = (fraction * fillAnimationValue)
-        .clamp(0.0, 1.0)
-        .toDouble();
     final borderColor = Color.lerp(
       isDark ? Colors.white : cs.outlineVariant,
       accentColor,
@@ -122,18 +118,6 @@ class ElectricityBatteryHeader extends StatelessWidget {
                   child: Stack(
                     children: [
                       Positioned.fill(child: ColoredBox(color: wellColor)),
-                      if (animatedFraction > 0)
-                        Positioned.fill(
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: FractionallySizedBox(
-                              widthFactor: animatedFraction,
-                              heightFactor: 1,
-                              alignment: Alignment.centerLeft,
-                              child: ColoredBox(color: fillColor),
-                            ),
-                          ),
-                        ),
                       Positioned.fill(
                         child: CustomPaint(
                           painter: _BatteryPixelPainter(
@@ -244,9 +228,10 @@ class _BatteryPixelPainter extends CustomPainter {
     final progressX = size.width * progress;
     final breath = ((breathValue - 0.5) * 2).clamp(-1.0, 1.0).toDouble();
     final pulse = ((breath + 1) / 2).clamp(0.0, 1.0).toDouble();
+    final flickerStep = (breathValue * 18).floor();
 
-    const dotSize = 4.0;
-    const gap = 2.8;
+    const dotSize = 4.4;
+    const gap = 2.4;
     const stride = dotSize + gap;
     final columns = (size.width / stride).ceil() + 2;
     final rows = (size.height / stride).ceil() + 2;
@@ -258,19 +243,25 @@ class _BatteryPixelPainter extends CustomPainter {
         final x = startX + column * stride;
         final y = startY + row * stride;
         final centerX = x + dotSize / 2;
-        final litAmount = ((progressX - centerX) / 22)
+        final litAmount = ((progressX - centerX) / 26)
             .clamp(0.0, 1.0)
             .toDouble();
-        final edgeBand = ((22 - (progressX - centerX).abs()) / 22)
+        final edgeBand = ((28 - (progressX - centerX).abs()) / 28)
             .clamp(0.0, 1.0)
             .toDouble();
         final rect = Rect.fromLTWH(x, y, dotSize, dotSize);
         final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(1.1));
+        final staticNoise = _noise(column, row, 0);
+        final flickerNoise = _noise(column, row, flickerStep);
+        final alphaNoise = (staticNoise * 0.65 + flickerNoise * 0.35)
+            .clamp(0.0, 1.0)
+            .toDouble();
 
         if (litAmount <= 0) {
-          final emptyAlpha = ((isDark ? 0.10 : 0.06) + pulse * 0.03)
-              .clamp(0.0, 0.16)
-              .toDouble();
+          final emptyAlpha =
+              ((isDark ? 0.045 : 0.026) + alphaNoise * 0.052 + pulse * 0.014)
+                  .clamp(0.0, 0.16)
+                  .toDouble();
           canvas.drawRRect(
             rrect,
             Paint()..color = emptyColor.withValues(alpha: emptyAlpha),
@@ -278,9 +269,13 @@ class _BatteryPixelPainter extends CustomPainter {
           continue;
         }
 
+        final fillBreath = 0.72 + pulse * 0.34;
         final glowAlpha =
-            ((isDark ? 0.08 : 0.06) + pulse * 0.12 + edgeBand * 0.05)
-                .clamp(0.0, 0.24)
+            ((isDark ? 0.07 : 0.05) +
+                    alphaNoise * 0.16 +
+                    pulse * 0.1 +
+                    edgeBand * 0.08)
+                .clamp(0.0, 0.32)
                 .toDouble();
         final glowRect = RRect.fromRectAndRadius(
           rect.inflate(1.4),
@@ -291,18 +286,28 @@ class _BatteryPixelPainter extends CustomPainter {
           Paint()..color = activeColor.withValues(alpha: glowAlpha),
         );
 
-        final alpha = ((isDark ? 0.26 : 0.22) + edgeBand * 0.1 + pulse * 0.16)
-            .clamp(0.16, 0.56)
-            .toDouble();
+        final alpha =
+            (((isDark ? 0.24 : 0.2) + alphaNoise * 0.38 + edgeBand * 0.14) *
+                    fillBreath *
+                    litAmount)
+                .clamp(0.12, 0.78)
+                .toDouble();
         final color = Color.lerp(
           Colors.white,
           activeColor,
-          isDark ? 0.24 : 0.42,
+          (isDark ? 0.2 : 0.34) + alphaNoise * 0.18,
         )!.withValues(alpha: alpha);
 
         canvas.drawRRect(rrect, Paint()..color = color);
       }
     }
+  }
+
+  double _noise(int column, int row, int seed) {
+    var hash = column * 374761393 + row * 668265263 + seed * 1442695041;
+    hash = (hash ^ (hash >> 13)) * 1274126177;
+    hash = hash ^ (hash >> 16);
+    return (hash & 0x7fffffff) / 0x7fffffff;
   }
 
   @override
