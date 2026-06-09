@@ -70,6 +70,12 @@ try {
     if ($content -notmatch 'gh release upload') {
       throw 'Release workflow does not upload an APK to a GitHub release'
     }
+    if ($content -notmatch 'FHfanshu/shuatipwa') {
+      throw 'Release workflow does not checkout the Shuati PWA source'
+    }
+    if ($content -notmatch 'sync_shuati_pwa\.ps1') {
+      throw 'Release workflow does not sync the Shuati PWA before build'
+    }
     if ($content -match 'GITEE_TOKEN|GITEE_REPO|gitee\.com') {
       throw 'Release workflow still contains Gitee publishing references'
     }
