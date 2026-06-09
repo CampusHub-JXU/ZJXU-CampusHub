@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/theme.dart';
 import '../../core/notification/app_notification_service.dart';
 import 'dorm_electricity_service.dart';
+import 'widgets/electricity_battery_header.dart';
 
 class DormElectricityPage extends StatefulWidget {
   const DormElectricityPage({super.key});
@@ -19,26 +20,30 @@ class _DormElectricityPageState extends State<DormElectricityPage>
   bool _loading = true;
   bool _hasConfig = false;
   String? _error;
-  late AnimationController _batteryAnimController;
-  late Animation<double> _batteryAnim;
+  AnimationController? _matrixFillController;
+  Animation<double>? _matrixFillAnim;
 
   @override
   void initState() {
     super.initState();
-    _batteryAnimController = AnimationController(
+    _ensureMatrixAnimations();
+    _load(forceRefresh: true);
+  }
+
+  void _ensureMatrixAnimations() {
+    final fillController = _matrixFillController ??= AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 900),
+      duration: const Duration(milliseconds: 820),
     );
-    _batteryAnim = CurvedAnimation(
-      parent: _batteryAnimController,
+    _matrixFillAnim ??= CurvedAnimation(
+      parent: fillController,
       curve: Curves.easeOutCubic,
     );
-    _load(forceRefresh: true);
   }
 
   @override
   void dispose() {
-    _batteryAnimController.dispose();
+    _matrixFillController?.dispose();
     super.dispose();
   }
 
@@ -69,9 +74,11 @@ class _DormElectricityPageState extends State<DormElectricityPage>
 
       if (mounted) {
         if (oldValue == null && _electricity != null) {
-          _batteryAnimController.forward(from: 0);
+          _ensureMatrixAnimations();
+          _matrixFillController?.forward(from: 0);
         } else if (_electricity != oldValue) {
-          _batteryAnimController.forward(from: 0);
+          _ensureMatrixAnimations();
+          _matrixFillController?.forward(from: 0);
         }
       }
     }
@@ -81,45 +88,47 @@ class _DormElectricityPageState extends State<DormElectricityPage>
 
   _ElectricityColors _resolveColors(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isLight = Theme.of(context).brightness == Brightness.light;
     final value = _electricity;
+    _ElectricityColors buildColors(Color statusColor, String label) {
+      final accent = Color.lerp(statusColor, cs.primary, isLight ? 0.18 : 0.1)!;
+      return _ElectricityColors(
+        primary: accent,
+        cardBg: isLight ? cs.surfaceContainerLowest : cs.surfaceContainerLow,
+        label: label,
+      );
+    }
+
     if (value == null) {
-      return _ElectricityColors(
-        primary: AppColors.success,
-        background: AppColors.success.withValues(alpha: 0.08),
-        cardBg: cs.surfaceContainerLow,
-        label: '未知',
-      );
+      return buildColors(cs.primary, '未知');
     }
-    if (value >= 50) {
-      return _ElectricityColors(
-        primary: const Color(0xFF16A34A),
-        background: const Color(0xFF16A34A).withValues(alpha: 0.06),
-        cardBg: cs.surfaceContainerLow,
-        label: '充足',
-      );
-    }
+    return buildColors(_statusColorFor(value), _statusLabelFor(value));
+  }
+
+  Color _statusColorFor(double value) {
+    const safe = Color(0xFF16A34A);
+    const warning = Color(0xFFE79A16);
+    const low = Color(0xFFE86A1A);
+    const danger = Color(0xFFC73434);
+
+    if (value >= 50) return safe;
     if (value >= 20) {
-      return _ElectricityColors(
-        primary: const Color(0xFFF59E0B),
-        background: const Color(0xFFF59E0B).withValues(alpha: 0.06),
-        cardBg: cs.surfaceContainerLow,
-        label: '适中',
-      );
+      final t = ((value - 20) / 30).clamp(0.0, 1.0).toDouble();
+      return Color.lerp(warning, safe, t)!;
     }
     if (value >= 10) {
-      return _ElectricityColors(
-        primary: const Color(0xFFF97316),
-        background: const Color(0xFFF97316).withValues(alpha: 0.06),
-        cardBg: cs.surfaceContainerLow,
-        label: '偏低',
-      );
+      final t = ((value - 10) / 10).clamp(0.0, 1.0).toDouble();
+      return Color.lerp(low, warning, t)!;
     }
-    return _ElectricityColors(
-      primary: const Color(0xFFDC2626),
-      background: const Color(0xFFDC2626).withValues(alpha: 0.06),
-      cardBg: cs.surfaceContainerLow,
-      label: '不足',
-    );
+    final t = (value / 10).clamp(0.0, 1.0).toDouble();
+    return Color.lerp(danger, low, t)!;
+  }
+
+  String _statusLabelFor(double value) {
+    if (value >= 50) return '充足';
+    if (value >= 20) return '适中';
+    if (value >= 10) return '偏低';
+    return '不足';
   }
 
   // ── Build ──────────────────────────────────────────────────────────────────
@@ -145,7 +154,10 @@ class _DormElectricityPageState extends State<DormElectricityPage>
           ? _buildLoadingState(cs)
           : !_hasConfig
           ? _buildNoConfig(context, cs)
-          : _buildContent(context, cs),
+          : RefreshIndicator(
+              onRefresh: () => _load(forceRefresh: true),
+              child: _buildContent(context, cs),
+            ),
     );
   }
 
@@ -228,33 +240,36 @@ class _DormElectricityPageState extends State<DormElectricityPage>
         ? '未刷新'
         : '${updatedAt.hour.toString().padLeft(2, '0')}:${updatedAt.minute.toString().padLeft(2, '0')}';
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+    return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (_error != null) ...[
             _buildErrorBanner(cs),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
           ],
           _buildElectricityDetailCard(context, cs, colors, value),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
                 child: _InfoTile(
-                  icon: Icons.access_time_rounded,
+                  icon: Icons.access_time_outlined,
                   label: '更新时间',
                   value: updatedAtText,
+                  iconColor: colors.primary,
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: _InfoTile(
-                  icon: Icons.speed_rounded,
+                  icon: Icons.speed_outlined,
                   label: '预警阈值',
                   value:
                       '${DormElectricityService.defaultAlertThreshold.toInt()}度',
+                  iconColor: colors.primary,
                 ),
               ),
             ],
@@ -264,6 +279,7 @@ class _DormElectricityPageState extends State<DormElectricityPage>
             icon: Icons.notifications_outlined,
             label: '低电量通知',
             value: '低于阈值时推送提醒',
+            iconColor: colors.primary,
             trailing: Icon(
               Icons.arrow_forward_ios,
               size: 13,
@@ -283,13 +299,22 @@ class _DormElectricityPageState extends State<DormElectricityPage>
     _ElectricityColors colors,
     String value,
   ) {
-    return Container(
+    _ensureMatrixAnimations();
+    final matrixFillAnim = _matrixFillAnim!;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: colors.cardBg,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: colors.primary.withValues(alpha: 0.12),
+          color: Color.lerp(
+            cs.outlineVariant,
+            colors.primary,
+            0.34,
+          )!.withValues(alpha: 0.36),
           width: 0.8,
         ),
       ),
@@ -297,122 +322,77 @@ class _DormElectricityPageState extends State<DormElectricityPage>
         mainAxisSize: MainAxisSize.min,
         children: [
           AnimatedBuilder(
-            animation: _batteryAnim,
+            animation: matrixFillAnim,
             builder: (context, _) {
-              return _BatteryHeader(
-                fraction: _gaugeFraction,
-                animationValue: _batteryAnim.value,
-                colors: colors,
+              return TweenAnimationBuilder<Color?>(
+                tween: ColorTween(end: colors.primary),
+                duration: const Duration(milliseconds: 260),
+                curve: Curves.easeOutCubic,
+                builder: (context, animatedColor, _) {
+                  final accent = animatedColor ?? colors.primary;
+                  final statusBackgroundColor = accent.withValues(
+                    alpha: Theme.of(context).brightness == Brightness.light
+                        ? 0.1
+                        : 0.16,
+                  );
+                  return RepaintBoundary(
+                    child: ElectricityBatteryHeader(
+                      valueText: value,
+                      statusLabel: colors.label,
+                      fraction: _chargeFraction,
+                      fillAnimationValue: matrixFillAnim.value,
+                      accentColor: accent,
+                      statusBackgroundColor: statusBackgroundColor,
+                    ),
+                  );
+                },
               );
             },
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
-            child: Column(
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '当前剩余',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: cs.onSurfaceVariant,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  value,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 48,
-                                    fontWeight: FontWeight.w900,
-                                    height: 0.95,
-                                    color: colors.primary,
-                                  ),
-                                ),
-                              ),
-                              Padding(
-                                padding: const EdgeInsets.only(
-                                  left: 5,
-                                  bottom: 4,
-                                ),
-                                child: Text(
-                                  '度',
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w700,
-                                    color: colors.primary.withValues(
-                                      alpha: 0.72,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    _ElectricityStatePill(colors: colors),
-                  ],
+          if (_electricity != null && _electricity! < 10)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
                 ),
-                if (_electricity != null && _electricity! < 10) ...[
-                  const SizedBox(height: 14),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
+                decoration: BoxDecoration(
+                  color: cs.errorContainer,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.warning_amber_rounded,
+                      size: 16,
+                      color: cs.onErrorContainer,
                     ),
-                    decoration: BoxDecoration(
-                      color: cs.errorContainer,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.warning_amber_rounded,
-                          size: 16,
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '电量不足，请及时充值',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
                           color: cs.onErrorContainer,
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            '电量不足，请及时充值',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: cs.onErrorContainer,
-                            ),
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
-                ],
-              ],
+                  ],
+                ),
+              ),
             ),
-          ),
         ],
       ),
     );
   }
 
-  double get _gaugeFraction {
+  double get _chargeFraction {
     final value = _electricity;
     if (value == null) return 0;
-    return (value / 100).clamp(0.0, 1.0);
+    return (value / 100).clamp(0.0, 1.0).toDouble();
   }
 
   // ── Error Banner ───────────────────────────────────────────────────────────
@@ -441,231 +421,6 @@ class _DormElectricityPageState extends State<DormElectricityPage>
   }
 }
 
-// ── Battery Header ──────────────────────────────────────────────────────────
-
-class _BatteryHeader extends StatelessWidget {
-  const _BatteryHeader({
-    required this.fraction,
-    required this.animationValue,
-    required this.colors,
-  });
-
-  final double fraction;
-  final double animationValue;
-  final _ElectricityColors colors;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 148,
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF202124), Color(0xFF303236)],
-        ),
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              const Expanded(
-                child: Text(
-                  '电量详情',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.08),
-                  ),
-                ),
-                child: Text(
-                  colors.label,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: colors.primary,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const Spacer(),
-          SizedBox(
-            width: double.infinity,
-            height: 58,
-            child: CustomPaint(
-              painter: _BatteryTrackPainter(
-                fraction: fraction,
-                animationValue: animationValue,
-                fillColor: colors.primary,
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Text(
-                '0 度',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white.withValues(alpha: 0.42),
-                ),
-              ),
-              const Spacer(),
-              Text(
-                '100 度',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white.withValues(alpha: 0.42),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _BatteryTrackPainter extends CustomPainter {
-  _BatteryTrackPainter({
-    required this.fraction,
-    required this.animationValue,
-    required this.fillColor,
-  });
-
-  final double fraction;
-  final double animationValue;
-  final Color fillColor;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final bodyRect = Rect.fromLTWH(0, 6, size.width - 18, size.height - 12);
-    final bodyRadius = Radius.circular(bodyRect.height / 2.8);
-    final bodyRRect = RRect.fromRectAndRadius(bodyRect, bodyRadius);
-
-    canvas.drawRRect(
-      bodyRRect,
-      Paint()..color = Colors.white.withValues(alpha: 0.08),
-    );
-    canvas.drawRRect(
-      bodyRRect,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1
-        ..color = Colors.white.withValues(alpha: 0.14),
-    );
-
-    final terminalRect = Rect.fromLTWH(
-      bodyRect.right + 5,
-      size.height / 2 - 10,
-      10,
-      20,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(terminalRect, const Radius.circular(3)),
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.4
-        ..color = Colors.white.withValues(alpha: 0.32),
-    );
-
-    final innerRect = bodyRect.deflate(9);
-    final progress = (fraction * animationValue).clamp(0.0, 1.0);
-    final fillRight = innerRect.left + innerRect.width * progress;
-    const dotSize = 3.1;
-    const dotGap = 3.0;
-
-    for (var y = innerRect.top; y <= innerRect.bottom - dotSize; y += 6.1) {
-      for (var x = innerRect.left; x <= innerRect.right - dotSize; x += 6.1) {
-        final dotCenterX = x + dotSize / 2;
-        final lit = dotCenterX <= fillRight;
-        final normalizedX = ((dotCenterX - innerRect.left) / innerRect.width)
-            .clamp(0.0, 1.0);
-        final alpha = lit ? 0.36 + normalizedX * 0.52 : 0.08;
-        final dotColor = lit
-            ? Color.lerp(
-                fillColor.withValues(alpha: 0.64),
-                Colors.white,
-                normalizedX * 0.12,
-              )!.withValues(alpha: alpha)
-            : Colors.white.withValues(alpha: alpha);
-
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(
-            Rect.fromLTWH(x, y, dotSize, dotSize),
-            const Radius.circular(0.8),
-          ),
-          Paint()..color = dotColor,
-        );
-      }
-    }
-
-    if (progress <= 0) return;
-
-    final capCenterX = fillRight
-        .clamp(innerRect.left + 12, innerRect.right - 12)
-        .toDouble();
-    final capRect = Rect.fromCenter(
-      center: Offset(capCenterX, innerRect.center.dy),
-      width: 24,
-      height: innerRect.height + dotGap,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(capRect, const Radius.circular(8)),
-      Paint()..color = Colors.white.withValues(alpha: 0.95),
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(capRect.deflate(1.2), const Radius.circular(7)),
-      Paint()..color = fillColor.withValues(alpha: 0.08),
-    );
-  }
-
-  @override
-  bool shouldRepaint(_BatteryTrackPainter old) =>
-      fraction != old.fraction ||
-      animationValue != old.animationValue ||
-      fillColor != old.fillColor;
-}
-
-class _ElectricityStatePill extends StatelessWidget {
-  const _ElectricityStatePill({required this.colors});
-
-  final _ElectricityColors colors;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-      decoration: BoxDecoration(
-        color: colors.background,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        '电量${colors.label}',
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-          color: colors.primary,
-        ),
-      ),
-    );
-  }
-}
-
 // ── Info Tile ────────────────────────────────────────────────────────────────
 
 class _InfoTile extends StatelessWidget {
@@ -673,30 +428,49 @@ class _InfoTile extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.value,
+    this.iconColor,
     this.trailing,
   });
 
   final IconData icon;
   final String label;
   final String value;
+  final Color? iconColor;
   final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final resolvedIconColor = iconColor ?? cs.primary;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
       decoration: BoxDecoration(
-        color: cs.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(14),
+        color: isLight ? cs.surfaceContainerLowest : cs.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: cs.outlineVariant.withValues(alpha: 0.4),
+          color: Color.lerp(
+            cs.outlineVariant,
+            resolvedIconColor,
+            0.12,
+          )!.withValues(alpha: isLight ? 0.5 : 0.32),
           width: 0.8,
         ),
+        boxShadow: isLight
+            ? [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.025),
+                  blurRadius: 14,
+                  offset: const Offset(0, 6),
+                ),
+              ]
+            : null,
       ),
       child: Row(
         children: [
-          Icon(icon, size: 18, color: cs.onSurfaceVariant),
+          Icon(icon, size: 18, color: resolvedIconColor),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -730,13 +504,11 @@ class _InfoTile extends StatelessWidget {
 class _ElectricityColors {
   const _ElectricityColors({
     required this.primary,
-    required this.background,
     required this.cardBg,
     required this.label,
   });
 
   final Color primary;
-  final Color background;
   final Color cardBg;
   final String label;
 }

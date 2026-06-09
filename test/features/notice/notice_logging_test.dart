@@ -8,6 +8,8 @@ import '../../helpers/mock_http_client_adapter.dart';
 import '../../helpers/test_setup.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   setUp(() async {
     await resetTestEnvironment();
     NoticeService.instance.debugReset();

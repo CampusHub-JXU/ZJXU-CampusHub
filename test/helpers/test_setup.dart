@@ -1,4 +1,5 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -23,6 +24,7 @@ import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';
 import 'package:jxu_campus_hub/features/service_hub/service_hub_usage_store.dart';
 
 Future<void> resetTestEnvironment() async {
+  TestWidgetsFlutterBinding.ensureInitialized();
   SharedPreferences.setMockInitialValues({});
   FlutterSecureStorage.setMockInitialValues({});
   PackageInfo.setMockInitialValues(
