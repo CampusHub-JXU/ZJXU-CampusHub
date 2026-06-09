@@ -1,180 +1,227 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:jxu_campus_hub/core/config/feature_entry_catalog.dart';
-import 'package:jxu_campus_hub/features/service_hub/service_hub_layout.dart';
 import 'package:jxu_campus_hub/features/service_hub/service_hub_page.dart';
+import 'package:jxu_campus_hub/features/service_hub/service_hub_usage_store.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() {
+    SharedPreferences.setMockInitialValues({});
+    ServiceHubUsageStore.instance.debugReset();
     FeatureEntryCatalog.instance.debugSetEntries([
-      _serviceHallEntry(),
       _entry(
-        id: 'second-classroom',
-        title: '第二课堂',
-        subtitle: '学分活动、个人中心与微信版页面',
-        icon: Icons.workspace_premium_outlined,
-        accentColor: const Color(0xFFD4AF37),
-        placements: const {FeatureEntryPlacement.serviceHub},
-        sortOrder: 20,
-        spans: const FeatureEntryResponsiveSpan(
-          compact: FeatureEntrySpan(columns: 2, rows: 1),
-          expanded: FeatureEntrySpan(columns: 2, rows: 1),
-        ),
-      ),
-      _entry(
-        id: 'changxing-jiada',
-        title: '畅行嘉大',
-        subtitle: '请假、返校、离校与加班申请',
-        icon: Icons.north_rounded,
-        accentColor: const Color(0xFF2EA567),
-        placements: const {FeatureEntryPlacement.serviceHub},
-        sortOrder: 30,
-        spans: const FeatureEntryResponsiveSpan(
-          compact: FeatureEntrySpan(columns: 2, rows: 1),
-          expanded: FeatureEntrySpan(columns: 1, rows: 2),
-        ),
+        id: 'schedule',
+        title: '课表',
+        subtitle: '查看课程安排',
+        routeName: 'schedule',
+        category: FeatureEntryCategory.academic,
+        keywords: const ['课程'],
+        sortOrder: 10,
       ),
       _entry(
         id: 'grades',
         title: '成绩查询',
         subtitle: '查看成绩、绩点和学业进展',
-        icon: Icons.school_outlined,
-        accentColor: const Color(0xFFF57C00),
-        placements: const {FeatureEntryPlacement.serviceHub},
+        routeName: 'grades',
+        category: FeatureEntryCategory.academic,
+        keywords: const ['绩点'],
+        sortOrder: 20,
+      ),
+      _entry(
+        id: 'shuati-practice',
+        title: '刷题助手',
+        subtitle: '题库导入、错题重练、离线练习',
+        routeName: 'shuati-practice',
+        category: FeatureEntryCategory.academic,
+        keywords: const ['题库', '练习'],
+        sortOrder: 25,
+      ),
+      _entry(
+        id: 'dorm-electricity',
+        title: '宿舍电费',
+        subtitle: '查询寝室剩余电量',
+        routeName: 'dorm-electricity',
+        category: FeatureEntryCategory.campusLife,
+        keywords: const ['电量'],
+        sortOrder: 30,
+      ),
+      _entry(
+        id: 'notice-list',
+        title: '校园公告',
+        subtitle: '校级通知与重要公告',
+        routeName: 'notice-list',
+        category: FeatureEntryCategory.notices,
+        keywords: const ['通知'],
         sortOrder: 40,
+      ),
+      _entry(
+        id: 'service-hall',
+        title: '服务大厅',
+        subtitle: '统一入口',
+        routeName: 'service-hall',
+        category: FeatureEntryCategory.servicesAccounts,
+        keywords: const ['办事'],
+        sortOrder: 50,
       ),
     ]);
   });
 
   tearDown(() {
     FeatureEntryCatalog.instance.debugReset();
+    ServiceHubUsageStore.instance.debugReset();
   });
 
-  testWidgets('uses two columns on narrow screens', (tester) async {
-    tester.view.devicePixelRatio = 1.0;
-    tester.view.physicalSize = const Size(390, 844);
-    addTearDown(() {
-      tester.view.resetPhysicalSize();
-      tester.view.resetDevicePixelRatio();
-    });
-
+  testWidgets('shows searchable masonry service grid', (tester) async {
     await tester.pumpWidget(const MaterialApp(home: ServiceHubPage()));
     await tester.pumpAndSettle();
 
-    final serviceHall = _serviceHallEntry();
-
-    expect(serviceHubGridColumnCount(390), 2);
-    expect(serviceHubActiveSpan(serviceHall, 2).rows, 1);
-    expect(
-      serviceHubActiveCardType(serviceHall, 2),
-      FeatureEntryCardType.wideRect,
-    );
-    expect(
-      serviceHubActiveCardType(serviceHall, 4),
-      FeatureEntryCardType.largeSquare,
-    );
-    expect(serviceHubChevronAlignment(1), Alignment.bottomRight);
-    expect(serviceHubChevronAlignment(2), Alignment.bottomRight);
-    expect(find.text('服务大厅'), findsOneWidget);
+    expect(find.byType(TextField), findsOneWidget);
     expect(find.text('成绩查询'), findsOneWidget);
-    expect(find.byIcon(Icons.chevron_right_rounded), findsNWidgets(4));
-    expect(find.text('进入服务'), findsNothing);
+    expect(find.text('课表'), findsWidgets);
+    expect(find.text('刷题助手'), findsOneWidget);
+    expect(find.text('宿舍电费'), findsOneWidget);
+    expect(find.text('校园公告'), findsOneWidget);
+    expect(find.text('服务大厅'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), '刷题');
+    await tester.pumpAndSettle();
+
+    expect(find.text('刷题助手'), findsOneWidget);
+    expect(find.text('宿舍电费'), findsNothing);
+
+    await tester.tap(find.byTooltip('清除搜索'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '电量');
+    await tester.pumpAndSettle();
+
+    expect(find.text('宿舍电费'), findsOneWidget);
+    expect(find.text('成绩查询'), findsNothing);
+
+    await tester.enterText(find.byType(TextField), '不存在');
+    await tester.pumpAndSettle();
+
+    expect(find.text('未找到相关功能'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('清除搜索'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('成绩查询'), findsOneWidget);
+    expect(find.text('宿舍电费'), findsOneWidget);
   });
 
-  testWidgets('uses four columns on wide screens and navigates on tap', (
+  testWidgets('records visits and shows frequently used entries', (
     tester,
   ) async {
-    tester.view.devicePixelRatio = 1.0;
-    tester.view.physicalSize = const Size(1024, 900);
-    addTearDown(() {
-      tester.view.resetPhysicalSize();
-      tester.view.resetDevicePixelRatio();
-    });
-
-    final router = GoRouter(
-      routes: [
-        GoRoute(
-          path: '/',
-          name: 'service-hub',
-          builder: (context, state) => const ServiceHubPage(),
-        ),
-        GoRoute(
-          path: '/service-hall',
-          name: 'service-hall',
-          builder: (context, state) => const Scaffold(body: Text('服务大厅页面')),
-        ),
-        GoRoute(
-          path: '/second-classroom',
-          name: 'second-classroom',
-          builder: (context, state) => const Scaffold(body: Text('第二课堂页面')),
-        ),
-        GoRoute(
-          path: '/changxing-jiada',
-          name: 'changxing-jiada',
-          builder: (context, state) => const Scaffold(body: Text('畅行嘉大页面')),
-        ),
-        GoRoute(
-          path: '/grades',
-          name: 'grades',
-          builder: (context, state) => const Scaffold(body: Text('成绩查询页面')),
-        ),
-      ],
-    );
-
-    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpWidget(_buildRouterApp());
     await tester.pumpAndSettle();
 
-    expect(serviceHubGridColumnCount(1024), 4);
+    expect(find.text('常用'), findsNothing);
 
-    await tester.tap(find.text('服务大厅'));
+    await tester.tap(find.text('成绩查询'));
+    await tester.pumpAndSettle();
+    expect(find.text('成绩查询页面'), findsOneWidget);
+
+    final router = GoRouter.of(tester.element(find.text('成绩查询页面')));
+    router.go('/');
     await tester.pumpAndSettle();
 
-    expect(find.text('服务大厅页面'), findsOneWidget);
+    expect(find.text('常用'), findsOneWidget);
+    expect(find.text('成绩查询'), findsWidgets);
+  });
+
+  testWidgets('long press toggles pinned entry', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: ServiceHubPage()));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('服务大厅'));
+    await tester.pumpAndSettle();
+    await tester.longPress(find.text('服务大厅'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('已置顶 服务大厅'), findsOneWidget);
+    expect(find.byIcon(Icons.push_pin_rounded), findsWidgets);
+
+    await tester.ensureVisible(find.text('服务大厅').last);
+    await tester.pumpAndSettle();
+    await tester.longPress(find.text('服务大厅').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('已取消置顶 服务大厅'), findsOneWidget);
   });
 }
 
-FeatureEntryDefinition _serviceHallEntry() {
-  return _entry(
-    id: 'service-hall',
-    title: '服务大厅',
-    subtitle: '统一入口，继续保留主页快捷访问',
-    icon: Icons.dashboard_customize_outlined,
-    accentColor: const Color(0xFF8B1A2D),
-    placements: const {FeatureEntryPlacement.serviceHub},
-    sortOrder: 10,
-    spans: const FeatureEntryResponsiveSpan(
-      compact: FeatureEntrySpan(columns: 2, rows: 1),
-      expanded: FeatureEntrySpan(columns: 2, rows: 2),
-    ),
+Widget _buildRouterApp() {
+  final router = GoRouter(
+    routes: [
+      GoRoute(
+        path: '/',
+        name: 'service-hub',
+        builder: (context, state) => const ServiceHubPage(),
+      ),
+      GoRoute(
+        path: '/schedule',
+        name: 'schedule',
+        builder: (context, state) => const Scaffold(body: Text('课表页面')),
+      ),
+      GoRoute(
+        path: '/grades',
+        name: 'grades',
+        builder: (context, state) => const Scaffold(body: Text('成绩查询页面')),
+      ),
+      GoRoute(
+        path: '/shuati-practice',
+        name: 'shuati-practice',
+        builder: (context, state) => const Scaffold(body: Text('刷题助手页面')),
+      ),
+      GoRoute(
+        path: '/dorm-electricity',
+        name: 'dorm-electricity',
+        builder: (context, state) => const Scaffold(body: Text('宿舍电费页面')),
+      ),
+      GoRoute(
+        path: '/notice-list',
+        name: 'notice-list',
+        builder: (context, state) => const Scaffold(body: Text('校园公告页面')),
+      ),
+      GoRoute(
+        path: '/service-hall',
+        name: 'service-hall',
+        builder: (context, state) => const Scaffold(body: Text('服务大厅页面')),
+      ),
+    ],
   );
+  return MaterialApp.router(routerConfig: router);
 }
 
 FeatureEntryDefinition _entry({
   required String id,
   required String title,
   required String subtitle,
-  required IconData icon,
-  required Color accentColor,
-  required Set<FeatureEntryPlacement> placements,
+  required String routeName,
+  required FeatureEntryCategory category,
   required int sortOrder,
-  FeatureEntryResponsiveSpan spans = const FeatureEntryResponsiveSpan(
-    compact: FeatureEntrySpan(columns: 1, rows: 1),
-    expanded: FeatureEntrySpan(columns: 1, rows: 1),
-  ),
+  List<String> keywords = const [],
 }) {
   return FeatureEntryDefinition(
     id: id,
     title: title,
     subtitle: subtitle,
-    icon: icon,
-    accentColor: accentColor,
-    routeName: id,
-    spans: spans,
-    placements: placements,
+    icon: Icons.extension_outlined,
+    accentColor: const Color(0xFF8B1A2D),
+    routeName: routeName,
+    spans: const FeatureEntryResponsiveSpan(
+      compact: FeatureEntrySpan(columns: 1, rows: 1),
+      expanded: FeatureEntrySpan(columns: 1, rows: 1),
+    ),
+    placements: const {FeatureEntryPlacement.serviceHub},
     sortOrder: sortOrder,
+    category: category,
+    keywords: keywords,
   );
 }

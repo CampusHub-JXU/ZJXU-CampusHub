@@ -12,11 +12,15 @@ class ServiceHubCard extends StatelessWidget {
     required this.card,
     required this.activeSpan,
     required this.activeCardType,
+    this.onTap,
+    this.onLongPress,
   });
 
   final FeatureEntryDefinition card;
   final FeatureEntrySpan activeSpan;
   final FeatureEntryCardType activeCardType;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -30,7 +34,8 @@ class ServiceHubCard extends StatelessWidget {
 
         return HomeCardContainer(
           padding: EdgeInsets.zero,
-          onTap: () => context.pushNamed(card.routeName),
+          onTap: onTap ?? () => context.pushNamed(card.routeName),
+          onLongPress: onLongPress,
           child: ConstrainedBox(
             constraints: BoxConstraints(minHeight: minHeight),
             child: Stack(

@@ -12,6 +12,7 @@ class HomeCardContainer extends StatelessWidget {
     this.width = double.infinity,
     this.padding = const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
     this.onTap,
+    this.onLongPress,
   });
 
   final Widget child;
@@ -19,6 +20,7 @@ class HomeCardContainer extends StatelessWidget {
   final double width;
   final EdgeInsetsGeometry padding;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -94,7 +96,7 @@ class HomeCardContainer extends StatelessWidget {
           ),
         ],
       ),
-      child: onTap == null
+      child: onTap == null && onLongPress == null
           ? clippedContent
           : Material(
               color: Colors.transparent,
@@ -103,6 +105,7 @@ class HomeCardContainer extends StatelessWidget {
               child: InkWell(
                 borderRadius: radius,
                 onTap: onTap,
+                onLongPress: onLongPress,
                 child: clippedContent,
               ),
             ),
