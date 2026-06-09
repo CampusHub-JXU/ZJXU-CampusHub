@@ -41,6 +41,33 @@ void main() {
       );
     });
 
+    test('setCustomSeedColor 应切换到自定义主题色', () async {
+      const customColor = Color(0xFF3366CC);
+      await AppThemeController.instance.setCustomSeedColor(customColor);
+      expect(
+        AppThemeController.instance.seedMode.value,
+        AppThemeSeedMode.custom,
+      );
+      expect(AppThemeController.instance.customSeedColor.value, customColor);
+      expect(AppThemeController.instance.seedColor.value, customColor);
+    });
+
+    test('init 应恢复自定义主题色', () async {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('app_theme_seed_mode', AppThemeSeedMode.custom.index);
+      await prefs.setInt('app_theme_custom_seed_color', 0xFF3366CC);
+
+      await AppThemeController.instance.init();
+      expect(
+        AppThemeController.instance.seedMode.value,
+        AppThemeSeedMode.custom,
+      );
+      expect(
+        AppThemeController.instance.seedColor.value,
+        const Color(0xFF3366CC),
+      );
+    });
+
     test('setPureBlackMode 应正确更新 pureBlackMode', () async {
       await AppThemeController.instance.setPureBlackMode(true);
       expect(AppThemeController.instance.pureBlackMode.value, true);

@@ -7,7 +7,8 @@ import 'theme.dart';
 enum AppThemeSeedMode {
   brandRed('默认红色'),
   monet('莫奈取色'),
-  preset('预设颜色');
+  preset('预设颜色'),
+  custom('自定义颜色');
 
   const AppThemeSeedMode(this.label);
   final String label;
@@ -31,12 +32,17 @@ class AppThemeController {
   static const _pureBlackModeKey = 'app_theme_pure_black_mode';
   static const _monetSeedIndexKey = 'app_theme_monet_seed_index';
   static const _presetSeedIndexKey = 'app_theme_preset_seed_index';
+  static const _customSeedColorKey = 'app_theme_custom_seed_color';
   static const _homeTextColorModeKey = 'app_theme_home_text_color_mode';
+  static const defaultCustomSeedColor = AppColors.primary;
 
   final ValueNotifier<AppThemeSeedMode> seedMode = ValueNotifier(
     AppThemeSeedMode.brandRed,
   );
   final ValueNotifier<Color> seedColor = ValueNotifier(AppColors.primary);
+  final ValueNotifier<Color> customSeedColor = ValueNotifier(
+    defaultCustomSeedColor,
+  );
   final ValueNotifier<bool> pureBlackMode = ValueNotifier(false);
   final ValueNotifier<int> monetSeedIndex = ValueNotifier(1);
   final ValueNotifier<int> presetSeedIndex = ValueNotifier(0);
@@ -80,6 +86,11 @@ class AppThemeController {
       0,
       presetSeedColors.length - 1,
     );
+    customSeedColor.value = _opaqueColor(
+      Color(
+        prefs.getInt(_customSeedColorKey) ?? defaultCustomSeedColor.toARGB32(),
+      ),
+    );
     final storedHomeTextMode = prefs.getInt(_homeTextColorModeKey);
     if (storedHomeTextMode != null &&
         storedHomeTextMode >= 0 &&
@@ -120,6 +131,21 @@ class AppThemeController {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_presetSeedIndexKey, safeIndex);
     await _refreshSeedColor();
+  }
+
+  Future<void> setCustomSeedColor(Color color) async {
+    final safeColor = _opaqueColor(color);
+    final prefs = await SharedPreferences.getInstance();
+
+    if (customSeedColor.value != safeColor) {
+      customSeedColor.value = safeColor;
+      await prefs.setInt(_customSeedColorKey, safeColor.toARGB32());
+    }
+    if (seedMode.value != AppThemeSeedMode.custom) {
+      seedMode.value = AppThemeSeedMode.custom;
+      await prefs.setInt(_prefKey, AppThemeSeedMode.custom.index);
+    }
+    seedColor.value = safeColor;
   }
 
   Future<void> setHomeTextColorMode(HomeTextColorMode mode) async {
@@ -164,10 +190,16 @@ class AppThemeController {
       seedColor.value = presetSeedColors[presetSeedIndex.value];
       return;
     }
+    if (seedMode.value == AppThemeSeedMode.custom) {
+      seedColor.value = customSeedColor.value;
+      return;
+    }
 
     final colors = await HomeController.instance.getMonetColors();
     seedColor.value = _pickMonetSeed(colors);
   }
+
+  Color _opaqueColor(Color color) => color.withValues(alpha: 1);
 
   Color _pickMonetSeed(List<Color> colors) {
     if (colors.isEmpty) return AppColors.primary;
@@ -188,6 +220,7 @@ class AppThemeController {
   void debugReset({AppThemeSeedMode mode = AppThemeSeedMode.brandRed}) {
     seedMode.value = mode;
     seedColor.value = AppColors.primary;
+    customSeedColor.value = defaultCustomSeedColor;
     pureBlackMode.value = false;
     monetSeedIndex.value = 1;
     presetSeedIndex.value = 0;

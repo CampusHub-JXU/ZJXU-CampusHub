@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../app/app_preferences_controller.dart';
 import '../../app/text_scale_controller.dart';
 import '../../core/theme/app_theme_palette.dart';
+import 'widgets/hsv_color_picker_sheet.dart';
 
 class ThemeSettingsPage extends StatefulWidget {
   const ThemeSettingsPage({super.key});
@@ -127,17 +128,17 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
       ),
       itemBuilder: (context, index) {
         if (index == themePalettes.length) {
-          return _AddPaletteButton(
-            onTap: () {
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(const SnackBar(content: Text('自定义颜色将在后续版本支持')));
-            },
+          return _CustomPaletteButton(
+            preview: previewColorsFromSeed(prefs.customSeedColor),
+            selected: prefs.colorSource == AppColorPreference.custom,
+            onTap: () => _openCustomColorPicker(prefs),
           );
         }
         final palette = themePalettes[index];
         final preview = previewColorsFromSeed(palette.primary);
-        final selected = prefs.paletteIndex == index;
+        final selected =
+            prefs.colorSource == AppColorPreference.preset &&
+            prefs.paletteIndex == index;
         return _PaletteCard(
           preview: preview,
           selected: selected,
@@ -145,6 +146,23 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
         );
       },
     );
+  }
+
+  Future<void> _openCustomColorPicker(AppPreferences prefs) async {
+    final initialColor = prefs.colorSource == AppColorPreference.custom
+        ? prefs.customSeedColor
+        : prefs.seedColor;
+    final selected = await showHsvColorPickerSheet(
+      context,
+      initialColor: initialColor,
+    );
+    if (selected == null) return;
+
+    await _ctrl.setCustomSeedColor(selected);
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('自定义主题色已保存')));
   }
 
   Widget _buildTextScale(AppPreferences prefs) {
@@ -381,27 +399,95 @@ class _PaletteCard extends StatelessWidget {
   }
 }
 
-// ── Add Palette Button ───────────────────────────────────────────────────
-
-class _AddPaletteButton extends StatelessWidget {
+class _CustomPaletteButton extends StatelessWidget {
+  final ({Color primary, Color secondary, Color tertiary, Color surface})
+  preview;
+  final bool selected;
   final VoidCallback onTap;
 
-  const _AddPaletteButton({required this.onTap});
+  const _CustomPaletteButton({
+    required this.preview,
+    required this.selected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
 
     return GestureDetector(
+      key: const ValueKey('custom-theme-color-button'),
       onTap: onTap,
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
         decoration: BoxDecoration(
           color: colors.surfaceContainerHighest.withValues(alpha: 0.35),
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: colors.outlineVariant),
+          border: Border.all(
+            color: selected ? colors.primary : colors.outlineVariant,
+            width: selected ? 1.5 : 1,
+          ),
         ),
         child: Center(
-          child: Icon(Icons.add, color: colors.onSurfaceVariant, size: 28),
+          child: SizedBox(
+            width: 54,
+            height: 54,
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                SizedBox(
+                  width: 48,
+                  height: 48,
+                  child: ClipOval(
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        GridView.count(
+                          crossAxisCount: 2,
+                          physics: const NeverScrollableScrollPhysics(),
+                          padding: EdgeInsets.zero,
+                          children: [
+                            ColoredBox(color: preview.primary),
+                            ColoredBox(color: preview.tertiary),
+                            ColoredBox(color: preview.secondary),
+                            ColoredBox(
+                              color: preview.primary.withValues(alpha: 0.45),
+                            ),
+                          ],
+                        ),
+                        if (selected)
+                          const Icon(
+                            Icons.check,
+                            size: 20,
+                            color: Colors.white,
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                Positioned(
+                  right: -2,
+                  bottom: -2,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: colors.surfaceContainerLowest,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: colors.outlineVariant),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(3),
+                      child: Icon(
+                        Icons.edit_outlined,
+                        color: colors.onSurfaceVariant,
+                        size: 13,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
