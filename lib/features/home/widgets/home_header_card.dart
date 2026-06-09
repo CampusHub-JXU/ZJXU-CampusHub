@@ -106,31 +106,66 @@ class HomeHeaderCard extends StatelessWidget {
     required BorderRadius radius,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final headerAccentColor = AppThemeController.instance.resolveIconColor(
       context,
       colorScheme.primary,
     );
+    final headerBaseColor = isDark
+        ? _blendHeaderTint(
+            colorScheme.surfaceContainerHigh,
+            _shiftHeaderColor(
+              headerAccentColor,
+              saturationBoost: 0.68,
+              lightnessShift: -0.54,
+              maxLightness: 0.26,
+            ),
+            0.24,
+          )
+        : headerAccentColor;
     final headerDeepColor = _shiftHeaderColor(
       headerAccentColor,
-      saturationBoost: 1.04,
-      lightnessShift: -0.12,
+      saturationBoost: isDark ? 0.62 : 1.04,
+      lightnessShift: isDark ? -0.62 : -0.12,
+      maxLightness: isDark ? 0.2 : 0.86,
     );
     final headerGlowColor = _shiftHeaderColor(
       headerAccentColor,
-      saturationBoost: 0.94,
-      lightnessShift: 0.06,
+      saturationBoost: isDark ? 0.56 : 0.94,
+      lightnessShift: isDark ? -0.46 : 0.06,
+      maxLightness: isDark ? 0.3 : 0.86,
     );
     final solidGradientColors = [
-      headerAccentColor.withValues(alpha: 0.94),
-      headerDeepColor,
+      headerBaseColor.withValues(alpha: isDark ? 0.96 : 0.94),
+      isDark
+          ? _blendHeaderTint(
+              colorScheme.surfaceContainerLowest,
+              headerDeepColor,
+              0.28,
+            )
+          : headerDeepColor,
     ];
     final glassGradientColors = [
-      headerAccentColor.withValues(
-        alpha: (glassOpacity * 0.62).clamp(0.42, 0.58),
-      ),
-      headerDeepColor.withValues(
-        alpha: (glassOpacity * 0.56).clamp(0.36, 0.52),
-      ),
+      if (isDark)
+        _blendHeaderTint(
+          colorScheme.surfaceContainer,
+          headerGlowColor,
+          (glassOpacity * 0.22).clamp(0.12, 0.2),
+        )
+      else
+        headerBaseColor.withValues(
+          alpha: (glassOpacity * 0.62).clamp(0.42, 0.58),
+        ),
+      if (isDark)
+        _blendHeaderTint(
+          colorScheme.surfaceContainerLowest,
+          headerDeepColor,
+          (glassOpacity * 0.3).clamp(0.16, 0.24),
+        )
+      else
+        headerDeepColor.withValues(
+          alpha: (glassOpacity * 0.56).clamp(0.36, 0.52),
+        ),
     ];
     final primaryTextColor = AppThemeController.instance.resolveHomeTextColor(
       context,
@@ -159,7 +194,7 @@ class HomeHeaderCard extends StatelessWidget {
             ),
             borderRadius: radius,
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.20),
+              color: Colors.white.withValues(alpha: isDark ? 0.07 : 0.2),
               width: 1,
             ),
           )
@@ -185,7 +220,7 @@ class HomeHeaderCard extends StatelessWidget {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: Colors.white.withValues(
-                  alpha: glassEnabled ? 0.06 : 0.08,
+                  alpha: isDark ? 0.025 : (glassEnabled ? 0.06 : 0.08),
                 ),
               ),
             ),
@@ -194,7 +229,7 @@ class HomeHeaderCard extends StatelessWidget {
             right: -30,
             top: -20,
             child: Opacity(
-              opacity: glassEnabled ? 0.04 : 0.12,
+              opacity: isDark ? 0.045 : (glassEnabled ? 0.04 : 0.12),
               child: SvgPicture.asset(
                 'assets/header_texture.svg',
                 width: 200,
@@ -211,8 +246,8 @@ class HomeHeaderCard extends StatelessWidget {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      Colors.white.withValues(alpha: 0.12),
-                      headerGlowColor.withValues(alpha: 0.05),
+                      Colors.white.withValues(alpha: isDark ? 0.018 : 0.12),
+                      headerGlowColor.withValues(alpha: isDark ? 0.018 : 0.05),
                       Colors.transparent,
                     ],
                   ),
@@ -227,9 +262,13 @@ class HomeHeaderCard extends StatelessWidget {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomRight,
                   colors: [
-                    Colors.white.withValues(alpha: glassEnabled ? 0.08 : 0.10),
+                    Colors.white.withValues(
+                      alpha: isDark ? 0.016 : (glassEnabled ? 0.08 : 0.10),
+                    ),
                     Colors.transparent,
-                    Colors.black.withValues(alpha: glassEnabled ? 0.08 : 0.14),
+                    Colors.black.withValues(
+                      alpha: isDark ? 0.44 : (glassEnabled ? 0.08 : 0.14),
+                    ),
                   ],
                 ),
               ),
@@ -305,11 +344,17 @@ class HomeHeaderCard extends StatelessWidget {
     Color color, {
     required double saturationBoost,
     required double lightnessShift,
+    double maxLightness = 0.86,
   }) {
     final hsl = HSLColor.fromColor(color);
     return hsl
         .withSaturation((hsl.saturation * saturationBoost).clamp(0.0, 1.0))
-        .withLightness((hsl.lightness + lightnessShift).clamp(0.14, 0.86))
+        .withLightness(
+          (hsl.lightness + lightnessShift).clamp(0.14, maxLightness),
+        )
         .toColor();
   }
+
+  Color _blendHeaderTint(Color base, Color tint, double amount) =>
+      Color.lerp(base, tint, amount)!;
 }

@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:jxu_campus_hub/app/app_theme_controller.dart';
@@ -75,6 +76,16 @@ void main() {
       expect(AppThemeController.presetSeedLabels.length, 8);
       expect(AppThemeController.presetSeedLabels[0], '嘉大红');
       expect(AppThemeController.presetSeedLabels[7], '石墨');
+    });
+
+    test('石墨暗色主题应保持中性灰阶', () {
+      final theme = AppTheme.darkThemeFor(
+        AppThemeController.presetSeedColors[7],
+      );
+
+      expect(theme.colorScheme.primary, const Color(0xFF455A64));
+      expect(theme.colorScheme.surface, const Color(0xFF171C20));
+      expect(theme.scaffoldBackgroundColor, const Color(0xFF101418));
     });
   });
 }

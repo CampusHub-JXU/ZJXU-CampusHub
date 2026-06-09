@@ -7,6 +7,8 @@ import 'package:flutter/material.dart';
 class AppThemeBuilder {
   AppThemeBuilder._();
 
+  static const Color _graphiteSeed = Color(0xFF455A64);
+
   // ── Light ──────────────────────────────────────────────────────────────
 
   static ThemeData light(Color seedColor) {
@@ -145,6 +147,9 @@ class AppThemeBuilder {
 
   static Color _mix(Color a, Color b, double t) => Color.lerp(a, b, t)!;
 
+  static Color _foregroundFor(Color background) =>
+      background.computeLuminance() > 0.45 ? Colors.black : Colors.white;
+
   static Color _darkSeedTone(Color seedColor, double lightness) {
     final hsl = HSLColor.fromColor(seedColor);
     return hsl
@@ -154,43 +159,66 @@ class AppThemeBuilder {
   }
 
   static ThemeData dark(Color seedColor, {bool pureBlack = false}) {
+    final isGraphiteSeed = seedColor == _graphiteSeed;
     final seedBase = _darkSeedTone(seedColor, 0.12);
     final seedRaised = _darkSeedTone(seedColor, 0.18);
     final seedHigh = _darkSeedTone(seedColor, 0.24);
 
     final darkBase = pureBlack
         ? const Color(0xFF000000)
+        : isGraphiteSeed
+        ? const Color(0xFF101418)
         : const Color(0xFF1A1214);
     final darkSurf = pureBlack
         ? const Color(0xFF0A0A0A)
+        : isGraphiteSeed
+        ? const Color(0xFF171C20)
         : const Color(0xFF2D1F23);
     final darkSurfHigh = pureBlack
         ? const Color(0xFF111111)
+        : isGraphiteSeed
+        ? const Color(0xFF242B30)
         : const Color(0xFF3D2E33);
 
-    final background = _mix(darkBase, seedBase, pureBlack ? 0.0 : 0.42);
-    final surface = _mix(darkSurf, seedRaised, pureBlack ? 0.0 : 0.52);
-    final surfaceHigh = _mix(darkSurfHigh, seedHigh, pureBlack ? 0.0 : 0.58);
-    final colorScheme =
+    final background = isGraphiteSeed
+        ? darkBase
+        : _mix(darkBase, seedBase, pureBlack ? 0.0 : 0.42);
+    final surface = isGraphiteSeed
+        ? darkSurf
+        : _mix(darkSurf, seedRaised, pureBlack ? 0.0 : 0.52);
+    final surfaceHigh = isGraphiteSeed
+        ? darkSurfHigh
+        : _mix(darkSurfHigh, seedHigh, pureBlack ? 0.0 : 0.58);
+    var colorScheme =
         ColorScheme.fromSeed(
           seedColor: seedColor,
           brightness: Brightness.dark,
         ).copyWith(
           surface: surface,
           surfaceContainerHighest: surfaceHigh,
-          surfaceContainerHigh: _mix(
-            pureBlack ? const Color(0xFF0E0E0E) : const Color(0xFF35272C),
-            seedHigh,
-            pureBlack ? 0.0 : 0.55,
-          ),
+          surfaceContainerHigh: isGraphiteSeed
+              ? surfaceHigh
+              : _mix(
+                  pureBlack ? const Color(0xFF0E0E0E) : const Color(0xFF35272C),
+                  seedHigh,
+                  pureBlack ? 0.0 : 0.55,
+                ),
           surfaceContainer: surface,
-          surfaceContainerLow: _mix(
-            pureBlack ? const Color(0xFF060606) : const Color(0xFF251A1E),
-            seedRaised,
-            pureBlack ? 0.0 : 0.48,
-          ),
+          surfaceContainerLow: isGraphiteSeed
+              ? const Color(0xFF12171B)
+              : _mix(
+                  pureBlack ? const Color(0xFF060606) : const Color(0xFF251A1E),
+                  seedRaised,
+                  pureBlack ? 0.0 : 0.48,
+                ),
           surfaceContainerLowest: background,
         );
+    if (isGraphiteSeed) {
+      colorScheme = colorScheme.copyWith(
+        primary: seedColor,
+        onPrimary: _foregroundFor(seedColor),
+      );
+    }
 
     final darkDivider = Colors.white.withValues(alpha: 0.08);
 
