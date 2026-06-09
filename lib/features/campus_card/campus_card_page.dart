@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../app/app_bootstrap_controller.dart';
 import '../../app/theme.dart';
@@ -412,6 +413,7 @@ class _CampusCardPageState extends State<CampusCardPage> {
           serviceUrl: CampusCardService.statusPageCasServiceUrl,
           loginDescription: '校园卡仅支持校园网内直连访问，请连接校园网后登录统一认证',
           onLoadStop: _captureBalanceFromDetailPage,
+          onHomePressed: () => context.goNamed('home'),
         ),
       ),
     );
@@ -428,15 +430,23 @@ class _CampusCardPageState extends State<CampusCardPage> {
   }
 
   Future<void> _requestPaymentShortcut() async {
-    final created = await AppShortcutService.instance
-        .requestCampusCardPaymentShortcut();
+    final result = await AppShortcutService.instance
+        .requestCampusCardPaymentShortcutResult();
     if (!mounted) return;
 
     final messenger = ScaffoldMessenger.of(context);
     messenger.hideCurrentSnackBar();
     messenger.showSnackBar(
       SnackBar(
-        content: Text(created ? '已发起添加请求，请在系统提示中确认' : '当前设备暂不支持添加桌面快捷方式'),
+        content: Text(result.message),
+        action: result.canOpenPermissionSettings
+            ? SnackBarAction(
+                label: '去设置',
+                onPressed: () {
+                  AppShortcutService.instance.openShortcutPermissionSettings();
+                },
+              )
+            : null,
       ),
     );
   }

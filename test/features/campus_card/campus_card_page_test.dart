@@ -37,7 +37,7 @@ void main() {
             return null;
           }
           if (call.method == 'requestCampusCardPaymentShortcut') {
-            return true;
+            return 'requested';
           }
           return null;
         });
@@ -63,6 +63,45 @@ void main() {
       contains('requestCampusCardPaymentShortcut'),
     );
     expect(find.text('已发起添加请求，请在系统提示中确认'), findsOneWidget);
+  });
+
+  testWidgets('offers shortcut permission settings when launcher rejects', (
+    tester,
+  ) async {
+    final calls = <MethodCall>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(shortcutChannel, (call) async {
+          calls.add(call);
+          return switch (call.method) {
+            'consumeInitialShortcutAction' => null,
+            'requestCampusCardPaymentShortcut' => 'rejected',
+            'openShortcutPermissionSettings' => true,
+            _ => null,
+          };
+        });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(platform: TargetPlatform.android),
+        home: const CampusCardPage(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('更多操作'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('添加至桌面'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('去设置'), findsOneWidget);
+
+    await tester.tap(find.text('去设置'));
+    await tester.pumpAndSettle();
+
+    expect(
+      calls.map((call) => call.method),
+      contains('openShortcutPermissionSettings'),
+    );
   });
 
   testWidgets('hides add-to-desktop action on iOS themed page', (tester) async {

@@ -12,4 +12,16 @@
             android:targetClass="edu.zjxu.jxucampushub.MainActivity"
             android:targetPackage="edu.zjxu.jxucampushub" />
     </shortcut>
+    <shortcut
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutId="shuati_practice"
+        android:shortcutLongLabel="@string/shortcut_shuati_long_label"
+        android:shortcutShortLabel="@string/shortcut_shuati_short_label">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="jxucampushub://shortcut/shuati-practice"
+            android:targetClass="edu.zjxu.jxucampushub.MainActivity"
+            android:targetPackage="edu.zjxu.jxucampushub" />
+    </shortcut>
 </shortcuts>
