@@ -48,21 +48,6 @@ String _formatElectricity(double value) {
   return value.toStringAsFixed(2);
 }
 
-void _logBackgroundTask(
-  LogLevel level,
-  String message, {
-  Object? error,
-  StackTrace? stackTrace,
-}) {
-  AppLogger.instance.log(
-    level,
-    LogCategory.general,
-    message,
-    error: error,
-    stackTrace: stackTrace,
-  );
-}
-
 /// Fetch electricity value from the dorm API. Returns null on failure.
 Future<double?> _fetchElectricityValue() async {
   final prefs = await SharedPreferences.getInstance();
@@ -152,13 +137,7 @@ Future<bool> _executeBackgroundElectricityCheck() async {
     }
 
     return true;
-  } catch (error, stackTrace) {
-    _logBackgroundTask(
-      LogLevel.warn,
-      '后台电费检查失败',
-      error: error,
-      stackTrace: stackTrace,
-    );
+  } catch (_) {
     return false;
   }
 }
@@ -249,14 +228,9 @@ Future<void> _scheduleDailyAlarmNotification() async {
       matchDateTimeComponents: DateTimeComponents.time,
     );
 
-    _logBackgroundTask(LogLevel.info, '已安排每日电费提醒: $scheduled');
-  } catch (error, stackTrace) {
-    _logBackgroundTask(
-      LogLevel.warn,
-      '安排每日电费提醒失败',
-      error: error,
-      stackTrace: stackTrace,
-    );
+    AppLogger.instance.storage(LogLevel.debug, '已安排寝室电费每日提醒: $scheduled');
+  } catch (e) {
+    AppLogger.instance.storage(LogLevel.warn, '安排寝室电费每日提醒失败: $e');
   }
 }
 
@@ -336,13 +310,8 @@ class BackgroundTaskService {
 
       // Reschedule daily alarm with fresh cached value.
       await _scheduleDailyAlarmNotification();
-    } catch (error, stackTrace) {
-      _logBackgroundTask(
-        LogLevel.warn,
-        '前台电费检查失败',
-        error: error,
-        stackTrace: stackTrace,
-      );
+    } catch (e) {
+      AppLogger.instance.storage(LogLevel.warn, '前台电费检查失败: $e');
     }
   }
 }

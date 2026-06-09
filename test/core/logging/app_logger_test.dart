@@ -36,6 +36,15 @@ void main() {
     expect(entry.formatted, contains(' [INFO] [network] hello'));
   });
 
+  test('defaults keep noisy diagnostics opt-in', () {
+    const defaults = LogConfig.defaults();
+
+    expect(defaults.minimumLevel, LogLevel.info);
+    expect(defaults.webviewLifecycleEnabled, isFalse);
+    expect(defaults.webviewConsoleEnabled, isFalse);
+    expect(defaults.networkVerboseEnabled, isFalse);
+  });
+
   test('respects minimum level and category unless forced', () {
     AppLogger.instance.config.value = const LogConfig.defaults().copyWith(
       minimumLevel: LogLevel.warn,

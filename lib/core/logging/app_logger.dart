@@ -19,7 +19,7 @@ class LogConfig {
   });
 
   const LogConfig.defaults()
-    : minimumLevel = kDebugMode ? LogLevel.debug : LogLevel.info,
+    : minimumLevel = LogLevel.info,
       enabledCategories = const {
         LogCategory.auth,
         LogCategory.network,
@@ -30,7 +30,7 @@ class LogConfig {
         LogCategory.general,
       },
       webviewConsoleEnabled = false,
-      webviewLifecycleEnabled = true,
+      webviewLifecycleEnabled = false,
       networkVerboseEnabled = false;
 
   final LogLevel minimumLevel;
