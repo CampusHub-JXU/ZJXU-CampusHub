@@ -37,4 +37,17 @@ class GradeEntry {
       courseRequirement: json['kcxzmc'] as String? ?? '',
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'kcmc': courseName,
+    'cj': grade,
+    'bfzcj': percentageScore,
+    'jd': gpaPoints.toString(),
+    'xf': credits.toString(),
+    'xnmmc': academicYear,
+    'xqmmc': semester,
+    'ksxz': examType,
+    'khfsmc': assessmentMethod,
+    'kcxzmc': courseRequirement,
+  };
 }

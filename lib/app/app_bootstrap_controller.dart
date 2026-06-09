@@ -13,6 +13,7 @@ import '../features/campus_card/campus_card_service.dart';
 import '../features/changxing_jiada/changxing_jiada_service.dart';
 import '../features/dorm_electricity/dorm_electricity_service.dart';
 import '../features/exam/exam_service.dart';
+import '../features/grades/grades_service.dart';
 import '../features/schedule/schedule_service.dart';
 import '../features/home/home_controller.dart';
 import 'app_preferences_controller.dart';
@@ -97,6 +98,7 @@ class AppBootstrapController {
       DormElectricityService.instance.restoreCache(),
       ScheduleService.instance.restoreCache(),
       ExamService.instance.restoreCache(),
+      GradesService.instance.restoreCache(),
     ]);
 
     phase.value = AppBootstrapPhase.localStateReady;
