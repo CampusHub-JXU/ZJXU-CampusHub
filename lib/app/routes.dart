@@ -18,6 +18,7 @@ import '../features/sjjx_notice/sjjx_notice_list_page.dart';
 import '../features/service_hall/service_hall_page.dart';
 import '../features/notification_center/notification_center_page.dart';
 import '../features/exam/exam_page.dart';
+import '../features/shuati/shuati_webview_page.dart';
 import '../features/settings/settings_page.dart';
 import '../features/settings/personalization_page.dart';
 import '../features/settings/push_debug_page.dart';
@@ -92,6 +93,11 @@ final GoRouter appRouter = GoRouter(
       path: '/exam',
       name: 'exam',
       builder: (context, state) => const ExamPage(),
+    ),
+    GoRoute(
+      path: '/shuati-practice',
+      name: 'shuati-practice',
+      builder: (context, state) => const ShuatiWebViewPage(),
     ),
     GoRoute(
       path: '/campus-card',
@@ -183,6 +189,7 @@ final GoRouter appRouter = GoRouter(
         return WebViewPage(
           title: extra['title'] as String? ?? '新闻详情',
           url: extra['url'] as String? ?? '',
+          onHomePressed: () => context.goNamed('home'),
         );
       },
     ),
@@ -216,6 +223,7 @@ final GoRouter appRouter = GoRouter(
                 extra['emulateDingTalkEnvironment'] == true,
             showWebViewBottomBackButton:
                 extra['showWebViewBottomBackButton'] == true,
+            onHomePressed: () => context.goNamed('home'),
           );
         }
         return WebViewPage(
@@ -226,6 +234,7 @@ final GoRouter appRouter = GoRouter(
               extra['emulateDingTalkEnvironment'] == true,
           showWebViewBottomBackButton:
               extra['showWebViewBottomBackButton'] == true,
+          onHomePressed: () => context.goNamed('home'),
         );
       },
     ),

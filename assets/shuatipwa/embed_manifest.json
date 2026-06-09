@@ -1,0 +1,9 @@
+{
+  "generatedBy": "tools/sync_shuati_pwa.ps1",
+  "packageName": "shuatipwa",
+  "packageVersion": "0.2.5",
+  "sourceCommit": "df87b7684b5a",
+  "sourceDirty": false,
+  "distHash": "e4fcdb573b996a288462d4775de932d46f9880c668836d1251693c9081b369a6",
+  "fileCount": 9
+}

@@ -48,7 +48,9 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - assets/
+    - assets/header_texture.svg
+    - assets/shuatipwa/
+    - assets/shuatipwa/assets/
   shaders:
     - shaders/home_glass_background.frag
     - shaders/home_ribbon_background.frag

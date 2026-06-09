@@ -1,0 +1,1 @@
+{"name":"刷题助手 - 本地离线刷题","short_name":"刷题助手","description":"本地离线刷题 PWA，数据不离开你的设备","start_url":"/shuatipwa/","display":"standalone","background_color":"#f9fafb","theme_color":"#faf8f5","lang":"en","scope":"/shuatipwa/","orientation":"portrait","icons":[{"src":"favicon.svg","sizes":"any","type":"image/svg+xml"}]}
