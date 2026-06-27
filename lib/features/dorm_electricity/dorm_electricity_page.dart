@@ -102,36 +102,63 @@ class _DormElectricityPageState extends State<DormElectricityPage>
 
   _ElectricityColors _resolveColors(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final isLight = Theme.of(context).brightness == Brightness.light;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final value = _electricity;
-    _ElectricityColors buildColors(Color statusColor, String label) {
-      final accent = Color.lerp(statusColor, cs.primary, isLight ? 0.18 : 0.1)!;
-      return _ElectricityColors(primary: accent, label: label);
-    }
 
     if (value == null) {
-      return buildColors(cs.primary, '未知');
+      // 未知状态用主题色，暗色酒红下提亮避免字体发脏。
+      final unknownAccent = isDark
+          ? HSLColor.fromColor(cs.primary)
+                .withLightness(
+                  (HSLColor.fromColor(cs.primary).lightness + 0.12).clamp(
+                    0.5,
+                    0.7,
+                  ),
+                )
+                .withSaturation(
+                  (HSLColor.fromColor(cs.primary).saturation * 0.9).clamp(
+                    0.4,
+                    0.7,
+                  ),
+                )
+                .toColor()
+          : cs.primary;
+      return _ElectricityColors(primary: unknownAccent, label: '未知');
     }
-    return buildColors(_statusColorFor(value), _statusLabelFor(value));
+    // 状态色保持纯净，不再与品牌酒红 lerp，避免暗色下变脏。
+    return _ElectricityColors(
+      primary: _statusColorFor(value, isDark: isDark),
+      label: _statusLabelFor(value),
+    );
   }
 
-  Color _statusColorFor(double value) {
+  Color _statusColorFor(double value, {required bool isDark}) {
     const safe = Color(0xFF16A34A);
     const warning = Color(0xFFE79A16);
     const low = Color(0xFFE86A1A);
     const danger = Color(0xFFC73434);
 
-    if (value >= 50) return safe;
+    Color resolve(Color c) {
+      if (!isDark) return c;
+      // 暗色下统一提亮 + 略降饱和，避免低明度状态色在深背景上发脏。
+      final hsl = HSLColor.fromColor(c);
+      return hsl
+          .withLightness((hsl.lightness + 0.08).clamp(0.45, 0.68))
+          .withSaturation((hsl.saturation * 0.92).clamp(0.4, 0.72))
+          .toColor();
+    }
+
+    if (value >= 50) return resolve(safe);
     if (value >= 20) {
       final t = ((value - 20) / 30).clamp(0.0, 1.0).toDouble();
-      return Color.lerp(warning, safe, t)!;
+      return resolve(Color.lerp(warning, safe, t)!);
     }
     if (value >= 10) {
       final t = ((value - 10) / 10).clamp(0.0, 1.0).toDouble();
-      return Color.lerp(low, warning, t)!;
+      return resolve(Color.lerp(low, warning, t)!);
     }
     final t = (value / 10).clamp(0.0, 1.0).toDouble();
-    return Color.lerp(danger, low, t)!;
+    return resolve(Color.lerp(danger, low, t)!);
   }
 
   String _statusLabelFor(double value) {
@@ -248,7 +275,7 @@ class _DormElectricityPageState extends State<DormElectricityPage>
 
     return SingleChildScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -256,42 +283,7 @@ class _DormElectricityPageState extends State<DormElectricityPage>
             _buildErrorBanner(cs),
             const SizedBox(height: 12),
           ],
-          _buildElectricityDetailCard(context, colors, value),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _InfoTile(
-                  icon: Icons.access_time_outlined,
-                  label: '更新时间',
-                  value: updatedAtText,
-                  iconColor: colors.primary,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _InfoTile(
-                  icon: Icons.speed_outlined,
-                  label: '预警阈值',
-                  value:
-                      '${DormElectricityService.defaultAlertThreshold.toInt()}度',
-                  iconColor: colors.primary,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          _InfoTile(
-            icon: Icons.notifications_outlined,
-            label: '低电量通知',
-            value: '低于阈值时推送提醒',
-            iconColor: colors.primary,
-            trailing: Icon(
-              Icons.arrow_forward_ios,
-              size: 13,
-              color: cs.onSurfaceVariant,
-            ),
-          ),
+          _buildDetailCard(context, cs, colors, value, updatedAtText),
         ],
       ),
     );
@@ -299,14 +291,17 @@ class _DormElectricityPageState extends State<DormElectricityPage>
 
   // ── Electricity Detail Card ────────────────────────────────────────────────
 
-  Widget _buildElectricityDetailCard(
+  Widget _buildDetailCard(
     BuildContext context,
+    ColorScheme cs,
     _ElectricityColors colors,
     String value,
+    String updatedAtText,
   ) {
     _ensureMatrixAnimations();
     final matrixFillAnim = _matrixFillAnim!;
     final matrixBreathAnim = _matrixBreathAnim!;
+    final isLight = Theme.of(context).brightness == Brightness.light;
 
     return TweenAnimationBuilder<Color?>(
       tween: ColorTween(end: colors.primary),
@@ -315,20 +310,123 @@ class _DormElectricityPageState extends State<DormElectricityPage>
       builder: (context, animatedColor, _) {
         final accent = animatedColor ?? colors.primary;
         final statusBackgroundColor = accent.withValues(
-          alpha: Theme.of(context).brightness == Brightness.light ? 0.1 : 0.16,
+          alpha: isLight ? 0.1 : 0.16,
         );
         return RepaintBoundary(
-          child: ElectricityBatteryHeader(
-            valueText: value,
-            statusLabel: colors.label,
-            fraction: _chargeFraction,
-            fillAnimation: matrixFillAnim,
-            breathAnimation: matrixBreathAnim,
-            accentColor: accent,
-            statusBackgroundColor: statusBackgroundColor,
+          child: Card(
+            clipBehavior: Clip.antiAlias,
+            margin: EdgeInsets.zero,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  ElectricityBatteryHeader(
+                    valueText: value,
+                    statusLabel: colors.label,
+                    fraction: _chargeFraction,
+                    fillAnimation: matrixFillAnim,
+                    breathAnimation: matrixBreathAnim,
+                    accentColor: accent,
+                    statusBackgroundColor: statusBackgroundColor,
+                  ),
+                  const SizedBox(height: 20),
+                  _buildInfoSection(context, accent, updatedAtText),
+                ],
+              ),
+            ),
           ),
         );
       },
+    );
+  }
+
+  Widget _buildInfoSection(
+    BuildContext context,
+    Color accent,
+    String updatedAtText,
+  ) {
+    final cs = Theme.of(context).colorScheme;
+    final dim = cs.onSurfaceVariant;
+    final dividerColor = cs.outlineVariant.withValues(alpha: 0.45);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        IntrinsicHeight(
+          child: Row(
+            children: [
+              Expanded(
+                child: _InfoRow(
+                  icon: Icons.update_outlined,
+                  label: '更新时间',
+                  value: updatedAtText,
+                  accent: accent,
+                ),
+              ),
+              VerticalDivider(
+                width: 1,
+                thickness: 0.6,
+                color: dividerColor,
+                indent: 4,
+                endIndent: 4,
+              ),
+              Expanded(
+                child: _InfoRow(
+                  icon: Icons.bolt_outlined,
+                  label: '预警阈值',
+                  value:
+                      '${DormElectricityService.defaultAlertThreshold.toInt()} 度',
+                  accent: accent,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 6),
+        Divider(height: 1, thickness: 0.6, color: dividerColor),
+        const SizedBox(height: 2),
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: () async {
+              await context.pushNamed('dorm-electricity-settings');
+              if (mounted) _load(forceRefresh: true);
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+              child: Row(
+                children: [
+                  Icon(Icons.notifications_outlined, size: 18, color: accent),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '低电量通知',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: cs.onSurface,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '低于阈值时推送提醒',
+                          style: TextStyle(fontSize: 11, color: dim),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(Icons.chevron_right, size: 18, color: dim),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -364,78 +462,57 @@ class _DormElectricityPageState extends State<DormElectricityPage>
   }
 }
 
-// ── Info Tile ────────────────────────────────────────────────────────────────
+// ── Info Row ────────────────────────────────────────────────────────────────
 
-class _InfoTile extends StatelessWidget {
-  const _InfoTile({
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({
     required this.icon,
     required this.label,
     required this.value,
-    this.iconColor,
-    this.trailing,
+    required this.accent,
   });
 
   final IconData icon;
   final String label;
   final String value;
-  final Color? iconColor;
-  final Widget? trailing;
+  final Color accent;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final isLight = Theme.of(context).brightness == Brightness.light;
-    final resolvedIconColor = iconColor ?? cs.primary;
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 260),
-      curve: Curves.easeOutCubic,
-      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
-      decoration: BoxDecoration(
-        color: isLight ? cs.surfaceContainerLowest : cs.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: Color.lerp(
-            cs.outlineVariant,
-            resolvedIconColor,
-            0.12,
-          )!.withValues(alpha: isLight ? 0.5 : 0.32),
-          width: 0.8,
-        ),
-        boxShadow: isLight
-            ? [
-                BoxShadow(
-                  color: cs.shadow.withValues(alpha: 0.025),
-                  blurRadius: 14,
-                  offset: const Offset(0, 6),
-                ),
-              ]
-            : null,
-      ),
+    final dim = cs.onSurfaceVariant;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
       child: Row(
         children: [
-          Icon(icon, size: 18, color: resolvedIconColor),
+          Icon(icon, size: 18, color: accent),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   label,
-                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: dim,
+                    letterSpacing: 0.2,
+                  ),
                 ),
-                const SizedBox(height: 1),
+                const SizedBox(height: 2),
                 Text(
                   value,
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
                     color: cs.onSurface,
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
               ],
             ),
           ),
-          ?trailing,
         ],
       ),
     );

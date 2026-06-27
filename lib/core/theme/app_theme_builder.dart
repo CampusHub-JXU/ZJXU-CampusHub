@@ -8,6 +8,13 @@ class AppThemeBuilder {
   AppThemeBuilder._();
 
   static const Color _graphiteSeed = Color(0xFF455A64);
+  static const Color _brandRedSeed = Color(0xFF8B1A2D);
+
+  /// 深色模式下使用中性石墨/黑灰背景的种子色集合。
+  /// 品牌红（嘉大红）保留为 primary 用于强调色，但 surface/scaffold
+  /// 不再掺入酒红，避免深色模式出现"血色/阴间"观感。
+  static bool _isNeutralDarkSeed(Color seedColor) =>
+      seedColor == _graphiteSeed || seedColor == _brandRedSeed;
 
   // ── Light ──────────────────────────────────────────────────────────────
 
@@ -150,7 +157,7 @@ class AppThemeBuilder {
   }
 
   static ThemeData dark(Color seedColor, {bool pureBlack = false}) {
-    final isGraphiteSeed = seedColor == _graphiteSeed;
+    final isNeutralDark = _isNeutralDarkSeed(seedColor);
     final baseScheme = ColorScheme.fromSeed(
       seedColor: seedColor,
       brightness: Brightness.dark,
@@ -161,33 +168,33 @@ class AppThemeBuilder {
 
     final darkBase = pureBlack
         ? const Color(0xFF000000)
-        : isGraphiteSeed
+        : isNeutralDark
         ? const Color(0xFF101418)
         : baseScheme.surface;
     final darkSurf = pureBlack
         ? const Color(0xFF0A0A0A)
-        : isGraphiteSeed
+        : isNeutralDark
         ? const Color(0xFF171C20)
         : baseScheme.surfaceContainerLow;
     final darkSurfHigh = pureBlack
         ? const Color(0xFF111111)
-        : isGraphiteSeed
+        : isNeutralDark
         ? const Color(0xFF242B30)
         : baseScheme.surfaceContainerHigh;
 
-    final background = isGraphiteSeed
+    final background = isNeutralDark
         ? darkBase
         : _mix(darkBase, seedBase, pureBlack ? 0.0 : 0.42);
-    final surface = isGraphiteSeed
+    final surface = isNeutralDark
         ? darkSurf
         : _mix(darkSurf, seedRaised, pureBlack ? 0.0 : 0.52);
-    final surfaceHigh = isGraphiteSeed
+    final surfaceHigh = isNeutralDark
         ? darkSurfHigh
         : _mix(darkSurfHigh, seedHigh, pureBlack ? 0.0 : 0.58);
     var colorScheme = baseScheme.copyWith(
       surface: surface,
       surfaceContainerHighest: surfaceHigh,
-      surfaceContainerHigh: isGraphiteSeed
+      surfaceContainerHigh: isNeutralDark
           ? surfaceHigh
           : _mix(
               pureBlack
@@ -197,7 +204,7 @@ class AppThemeBuilder {
               pureBlack ? 0.0 : 0.28,
             ),
       surfaceContainer: surface,
-      surfaceContainerLow: isGraphiteSeed
+      surfaceContainerLow: isNeutralDark
           ? const Color(0xFF12171B)
           : _mix(
               pureBlack
@@ -208,7 +215,7 @@ class AppThemeBuilder {
             ),
       surfaceContainerLowest: background,
     );
-    if (isGraphiteSeed) {
+    if (isNeutralDark) {
       colorScheme = colorScheme.copyWith(
         primary: seedColor,
         onPrimary: _foregroundFor(seedColor),
@@ -216,6 +223,9 @@ class AppThemeBuilder {
     }
 
     final darkDivider = Colors.white.withValues(alpha: 0.08);
+    final cardBorderColor = isNeutralDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : _mix(seedColor, Colors.white, 0.35).withValues(alpha: 0.13);
 
     return ThemeData(
       useMaterial3: true,
@@ -240,10 +250,7 @@ class AppThemeBuilder {
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: BorderSide(
-            color: _mix(seedColor, Colors.white, 0.35).withValues(alpha: 0.13),
-            width: 0.5,
-          ),
+          side: BorderSide(color: cardBorderColor, width: 0.5),
         ),
         margin: EdgeInsets.zero,
       ),

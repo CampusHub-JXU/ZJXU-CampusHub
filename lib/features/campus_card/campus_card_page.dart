@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/app_bootstrap_controller.dart';
-import '../../core/logging/app_logger.dart';
 import '../../core/shortcut/app_shortcut_service.dart';
 import '../../shared/widgets/ship_card.dart';
 import '../../shared/widgets/unified_auth_protected_webview_page.dart';
@@ -12,32 +10,28 @@ import 'campus_card_service.dart';
 class CampusCardPage extends StatefulWidget {
   const CampusCardPage({super.key});
 
-  /// Whether the auto-open logic was triggered (for testing).
-  static bool debugAutoOpenTriggered = false;
+  /// Whether the automatic balance refresh was triggered (for testing).
+  static bool debugAutoRefreshTriggered = false;
 
   @override
   State<CampusCardPage> createState() => _CampusCardPageState();
 }
 
 class _CampusCardPageState extends State<CampusCardPage> {
-  static const _serviceHallHost = 'mobilehall.zjxu.edu.cn';
-  static const _statusPathKeyword = '/decision/view/form';
-  static const _statusViewletKeyword = 'ykt.frm';
-
   @override
   void initState() {
     super.initState();
-    _scheduleAutoOpenIfNeeded();
+    _scheduleAutoRefreshIfNeeded();
   }
 
-  void _scheduleAutoOpenIfNeeded() {
+  void _scheduleAutoRefreshIfNeeded() {
     if (CampusCardService.instance.cachedBalance != null) return;
 
     final phase = AppBootstrapController.instance.phase;
     if (phase.value == AppBootstrapPhase.localStateReady ||
         phase.value == AppBootstrapPhase.completed) {
       // Warm-up already done — balance is genuinely missing.
-      _autoOpenWebView();
+      _autoRefreshBalance();
       return;
     }
 
@@ -49,7 +43,7 @@ class _CampusCardPageState extends State<CampusCardPage> {
         AppBootstrapController.instance.phase.removeListener(listener);
         if (!mounted) return;
         if (CampusCardService.instance.cachedBalance == null) {
-          _autoOpenWebView();
+          _autoRefreshBalance();
         }
       }
     }
@@ -57,16 +51,15 @@ class _CampusCardPageState extends State<CampusCardPage> {
     AppBootstrapController.instance.phase.addListener(listener);
   }
 
-  void _autoOpenWebView() {
-    CampusCardPage.debugAutoOpenTriggered = true;
+  void _autoRefreshBalance() {
+    CampusCardPage.debugAutoRefreshTriggered = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _openCampusCardWebView(title: '校园卡账单', autoPop: true);
+      _refreshBalance(showFeedback: false);
     });
   }
 
-  bool _capturedInCurrentDetailPage = false;
-  bool _autoPopAfterCapture = false;
+  bool _balanceLoading = false;
   bool _obscured = false;
 
   @override
@@ -212,8 +205,7 @@ class _CampusCardPageState extends State<CampusCardPage> {
                     const Spacer(),
                     _headerIcon(
                       icon: Icons.refresh_rounded,
-                      onTap: () =>
-                          _openCampusCardWebView(title: '刷新余额', autoPop: true),
+                      onTap: _balanceLoading ? null : _refreshBalance,
                       tooltip: '刷新余额',
                       foreground: cardForeground,
                     ),
@@ -259,8 +251,7 @@ class _CampusCardPageState extends State<CampusCardPage> {
                 // Bottom row: time + status chip
                 if (balance == null)
                   GestureDetector(
-                    onTap: () =>
-                        _openCampusCardWebView(title: '校园卡账单', autoPop: true),
+                    onTap: _balanceLoading ? null : _refreshBalance,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 12,
@@ -280,7 +271,7 @@ class _CampusCardPageState extends State<CampusCardPage> {
                           ),
                           const SizedBox(width: 6),
                           Text(
-                            '点击查询余额',
+                            _balanceLoading ? '正在查询余额' : '点击查询余额',
                             style: TextStyle(
                               fontSize: 12,
                               color: cardForeground.withValues(alpha: 0.8),
@@ -318,7 +309,7 @@ class _CampusCardPageState extends State<CampusCardPage> {
 
   Widget _headerIcon({
     required IconData icon,
-    required VoidCallback onTap,
+    required VoidCallback? onTap,
     required String tooltip,
     required Color foreground,
   }) {
@@ -344,7 +335,7 @@ class _CampusCardPageState extends State<CampusCardPage> {
           icon: Icons.refresh_rounded,
           label: '刷新',
           cs: cs,
-          onTap: () => _openCampusCardWebView(title: '刷新余额', autoPop: true),
+          onTap: _balanceLoading ? null : _refreshBalance,
         ),
         const SizedBox(width: 8),
         _quickActionChip(
@@ -368,7 +359,7 @@ class _CampusCardPageState extends State<CampusCardPage> {
     required IconData icon,
     required String label,
     required ColorScheme cs,
-    required VoidCallback onTap,
+    required VoidCallback? onTap,
   }) {
     return Expanded(
       child: Material(
@@ -402,13 +393,7 @@ class _CampusCardPageState extends State<CampusCardPage> {
 
   // ── WebView ─────────────────────────────────────────────────────────────
 
-  Future<void> _openCampusCardWebView({
-    required String title,
-    bool autoPop = false,
-  }) async {
-    _capturedInCurrentDetailPage = false;
-    _autoPopAfterCapture = autoPop;
-
+  Future<void> _openCampusCardWebView({required String title}) async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => UnifiedAuthProtectedWebViewPage(
@@ -416,7 +401,6 @@ class _CampusCardPageState extends State<CampusCardPage> {
           url: CampusCardService.statusPageUrl,
           serviceUrl: CampusCardService.statusPageCasServiceUrl,
           loginDescription: '校园卡仅支持校园网内直连访问，请连接校园网后登录统一认证',
-          onLoadStop: _captureBalanceFromDetailPage,
           onHomePressed: () => context.goNamed('home'),
         ),
       ),
@@ -424,6 +408,27 @@ class _CampusCardPageState extends State<CampusCardPage> {
 
     if (!mounted) return;
     setState(() {});
+  }
+
+  Future<void> _refreshBalance({bool showFeedback = true}) async {
+    if (_balanceLoading) return;
+    setState(() => _balanceLoading = true);
+
+    final balance = await CampusCardService.instance.fetchBalance(
+      forceRefresh: true,
+    );
+    if (!mounted) return;
+
+    setState(() => _balanceLoading = false);
+    if (!showFeedback) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(balance == null ? '余额页面中未找到余额，请稍后重试' : '校园卡余额已刷新'),
+      ),
+    );
   }
 
   Future<void> _openRechargePage() async {
@@ -453,107 +458,6 @@ class _CampusCardPageState extends State<CampusCardPage> {
             : null,
       ),
     );
-  }
-
-  Future<void> _captureBalanceFromDetailPage(
-    InAppWebViewController controller,
-    String currentUrl,
-  ) async {
-    if (_capturedInCurrentDetailPage) return;
-
-    final uri = Uri.tryParse(currentUrl);
-    final path = uri?.path.toLowerCase();
-    if (AppLogger.instance.config.value.webviewLifecycleEnabled) {
-      AppLogger.instance.webview(LogLevel.debug, '校园卡 onLoadStop: $currentUrl');
-    }
-    if (uri == null || !_isCampusCardStatusPage(uri)) {
-      if (AppLogger.instance.config.value.webviewLifecycleEnabled) {
-        AppLogger.instance.webview(
-          LogLevel.debug,
-          '校园卡 跳过余额提取 (host=${uri?.host}, path=$path)',
-        );
-      }
-      return;
-    }
-
-    final balance = await _extractBalanceWithRetry(controller);
-    AppLogger.instance.webview(LogLevel.info, '校园卡余额提取结果: $balance');
-    if (balance == null) return;
-
-    CampusCardService.instance.updateCachedBalance(balance);
-    _capturedInCurrentDetailPage = true;
-
-    if (!mounted) return;
-    setState(() {});
-    if (_autoPopAfterCapture) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        Navigator.maybeOf(context)?.maybePop();
-      });
-    }
-  }
-
-  Future<double?> _extractBalanceWithRetry(
-    InAppWebViewController controller,
-  ) async {
-    const delaysInMs = [0, 700, 1400, 2200];
-
-    for (final delayInMs in delaysInMs) {
-      if (delayInMs > 0) {
-        await Future<void>.delayed(Duration(milliseconds: delayInMs));
-      }
-
-      try {
-        final rawText = await controller.evaluateJavascript(
-          source: '''
-          (() => {
-            const texts = [];
-            const bodyText = document.body?.innerText;
-            if (bodyText) texts.push(bodyText);
-            const frames = document.querySelectorAll('iframe');
-            for (const frame of frames) {
-              try {
-                const frameText = frame.contentDocument?.body?.innerText;
-                if (frameText) texts.push(frameText);
-              } catch (_) {}
-            }
-            return texts.join('\\n');
-          })();
-        ''',
-        );
-
-        final text = rawText is String ? rawText : '${rawText ?? ''}';
-        if (AppLogger.instance.config.value.webviewLifecycleEnabled) {
-          AppLogger.instance.webview(
-            LogLevel.debug,
-            '校园卡 retry[$delayInMs ms] 文本长度=${text.length}',
-          );
-        }
-        final balance = CampusCardService.instance.parseBalanceFromPageText(
-          text,
-        );
-        if (balance != null) return balance;
-      } catch (e) {
-        if (AppLogger.instance.config.value.webviewLifecycleEnabled) {
-          AppLogger.instance.webview(LogLevel.debug, '校园卡 JS 提取异常: $e');
-        }
-        continue;
-      }
-    }
-
-    return null;
-  }
-
-  bool _isCampusCardStatusPage(Uri uri) {
-    final host = uri.host.toLowerCase();
-    final path = uri.path.toLowerCase();
-    final viewlet = uri.queryParameters['viewlet']?.toLowerCase() ?? '';
-
-    final isExpectedHost = host == _serviceHallHost;
-    if (!isExpectedHost) return false;
-
-    return path.contains(_statusPathKeyword) &&
-        viewlet.contains(_statusViewletKeyword);
   }
 }
 

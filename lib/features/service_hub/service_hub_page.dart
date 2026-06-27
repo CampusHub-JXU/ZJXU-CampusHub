@@ -5,12 +5,11 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/app_theme_controller.dart';
 import '../../core/config/feature_entry_catalog.dart';
+import '../../core/theme/app_design_tokens.dart';
+import '../../shared/widgets/app_icon_badge.dart';
+import '../../shared/widgets/app_search_field.dart';
 import 'service_hub_usage_store.dart';
 import 'widgets/service_hub_header.dart';
-
-const _surfaceRadius = 18.0;
-const _iconBadgeRadius = 13.0;
-const _gridGap = 14.0;
 
 class ServiceHubPage extends StatefulWidget {
   const ServiceHubPage({super.key});
@@ -129,10 +128,12 @@ class _ServiceHubPageState extends State<ServiceHubPage> {
                             children: [
                               const ServiceHubHeader(),
                               const SizedBox(height: 16),
-                              _ServiceHubSearchField(
+                              AppSearchField(
                                 controller: _searchController,
-                                hasQuery: _query.isNotEmpty,
+                                hintText: '搜索功能',
+                                onChanged: (_) {},
                                 onClear: _clearSearch,
+                                fillAlpha: 0.55,
                               ),
                               const SizedBox(height: 26),
                               if (_query.isNotEmpty)
@@ -341,8 +342,8 @@ class _ServiceHubEntryGrid extends StatelessWidget {
           itemCount: entries.length,
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: columns,
-            crossAxisSpacing: _gridGap,
-            mainAxisSpacing: _gridGap,
+            crossAxisSpacing: AppSpacing.gridGap,
+            mainAxisSpacing: AppSpacing.gridGap,
             mainAxisExtent: _serviceHubTileHeight(context),
           ),
           itemBuilder: (context, index) {
@@ -392,7 +393,7 @@ class _ServiceHubEntryTile extends StatelessWidget {
         ? cs.outline.withValues(alpha: 0.22)
         : cs.outlineVariant.withValues(alpha: 0.38);
     final shape = RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(_surfaceRadius),
+      borderRadius: BorderRadius.circular(AppRadius.tile),
       side: BorderSide(color: borderColor),
     );
     final detailColor = cs.onSurfaceVariant.withValues(
@@ -419,11 +420,10 @@ class _ServiceHubEntryTile extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    _EntryIconBadge(
-                      entry: entry,
-                      size: 38,
-                      radius: _iconBadgeRadius,
-                      iconSize: 21,
+                    AppIconBadge(
+                      icon: entry.icon,
+                      accentColor: entry.accentColor,
+                      size: AppIconBadgeSize.medium,
                     ),
                     const Spacer(),
                     if (pinned) ...[
@@ -514,89 +514,6 @@ class _EntryActionIndicator extends StatelessWidget {
   }
 }
 
-class _ServiceHubSearchField extends StatelessWidget {
-  const _ServiceHubSearchField({
-    required this.controller,
-    required this.hasQuery,
-    required this.onClear,
-  });
-
-  final TextEditingController controller;
-  final bool hasQuery;
-  final VoidCallback onClear;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return TextField(
-      controller: controller,
-      textInputAction: TextInputAction.search,
-      decoration: InputDecoration(
-        hintText: '搜索功能',
-        prefixIcon: const Icon(Icons.search_rounded),
-        suffixIcon: hasQuery
-            ? IconButton(
-                onPressed: onClear,
-                icon: const Icon(Icons.close_rounded),
-                tooltip: '清除搜索',
-              )
-            : null,
-        filled: true,
-        fillColor: cs.surfaceContainerHighest.withValues(alpha: 0.55),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(_surfaceRadius),
-          borderSide: BorderSide.none,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(_surfaceRadius),
-          borderSide: BorderSide(
-            color: cs.outlineVariant.withValues(alpha: 0.5),
-          ),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(_surfaceRadius),
-          borderSide: BorderSide(color: cs.primary, width: 1.4),
-        ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 14,
-        ),
-      ),
-    );
-  }
-}
-
-class _EntryIconBadge extends StatelessWidget {
-  const _EntryIconBadge({
-    required this.entry,
-    required this.size,
-    required this.radius,
-    required this.iconSize,
-  });
-
-  final FeatureEntryDefinition entry;
-  final double size;
-  final double radius;
-  final double iconSize;
-
-  @override
-  Widget build(BuildContext context) {
-    final iconColor = AppThemeController.instance.resolveIconColor(
-      context,
-      entry.accentColor,
-    );
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: iconColor.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(radius),
-      ),
-      child: Icon(entry.icon, color: iconColor, size: iconSize),
-    );
-  }
-}
-
 class _SectionTitle extends StatelessWidget {
   const _SectionTitle({required this.title, this.subtitle});
 
@@ -645,7 +562,7 @@ class _ServiceHubSearchEmptyState extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 32),
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest.withValues(alpha: 0.45),
-        borderRadius: BorderRadius.circular(_surfaceRadius),
+        borderRadius: BorderRadius.circular(AppRadius.tile),
         border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.4)),
       ),
       child: Column(

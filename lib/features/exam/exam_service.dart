@@ -96,7 +96,7 @@ class ExamService {
     }
 
     await DioClient.instance.ensureInitialized();
-    final dio = DioClient.instance.dio;
+    final dio = ZhengfangAuth.instance.academicDio;
 
     final resolvedId = studentId?.trim().isNotEmpty == true
         ? studentId!.trim()
@@ -112,7 +112,7 @@ class ExamService {
 
     try {
       final resp = await dio.post<Map<String, dynamic>>(
-        '/kwgl/kscx_cxXsksxxIndex.html',
+        ZhengfangAuth.instance.buildPortalUrl('/kwgl/kscx_cxXsksxxIndex.html'),
         queryParameters: {
           'doType': 'query',
           'gnmkdm': 'N358105',
@@ -125,7 +125,10 @@ class ExamService {
             '&queryModel.sortName=&queryModel.sortOrder=asc&time=0',
         options: Options(
           contentType: 'application/x-www-form-urlencoded',
-          headers: {'x-requested-with': 'XMLHttpRequest'},
+          headers: {
+            'Referer': ZhengfangAuth.instance.academicServiceUrl,
+            'X-Requested-With': 'XMLHttpRequest',
+          },
         ),
       );
 

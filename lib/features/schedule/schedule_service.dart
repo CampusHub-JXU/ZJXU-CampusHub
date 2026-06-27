@@ -62,7 +62,10 @@ class ScheduleService {
   bool _restored = false;
   String? _lastStudentId;
 
-  Dio get _dio => DioClient.instance.dio;
+  Dio get _dio => ZhengfangAuth.instance.academicDio;
+
+  String _academicUrl(String path) =>
+      ZhengfangAuth.instance.buildPortalUrl(path);
 
   int getCurrentWeek() {
     return SemesterCalendar.instance.weekForDate(DateTime.now());
@@ -193,7 +196,7 @@ class ScheduleService {
     );
 
     final resp = await _dio.post<dynamic>(
-      '/kbcx/xskbcx_cxXsKb.html',
+      _academicUrl('/kbcx/xskbcx_cxXsKb.html'),
       queryParameters: {'gnmkdm': 'N2151', 'su': studentId},
       data: 'xnm=$year&xqm=$term&kzlx=ck',
       options: Options(
@@ -241,7 +244,7 @@ class ScheduleService {
 
     final referer = ZhengfangAuth.instance.academicServiceUrl;
     final resp = await _dio.post<String>(
-      '/xtgl/index_cxAreaThree.html',
+      _academicUrl('/xtgl/index_cxAreaThree.html'),
       queryParameters: {
         'localeKey': 'zh_CN',
         'gnmkdm': 'index',
@@ -275,7 +278,7 @@ class ScheduleService {
   Future<List<String>> _fetchInboxChangeMessages() async {
     await DioClient.instance.ensureInitialized();
     final resp = await _dio.post<dynamic>(
-      '/xtgl/index_cxDbsy.html',
+      _academicUrl('/xtgl/index_cxDbsy.html'),
       queryParameters: {'flag': '1'},
       options: Options(
         validateStatus: (status) => status != null && status < 1000,

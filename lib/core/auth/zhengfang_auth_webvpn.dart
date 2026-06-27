@@ -1,15 +1,6 @@
 part of 'zhengfang_auth.dart';
 
 extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
-  @visibleForTesting
-  String extractHiddenField(String html, String fieldName) {
-    final pattern = RegExp(
-      'name=["\']$fieldName["\'][^>]*value=["\']([^"\']+)["\']',
-      caseSensitive: false,
-    );
-    return pattern.firstMatch(html)?.group(1)?.trim() ?? '';
-  }
-
   /// 同步 WebVPN Cookie 到 WebView
   Future<void> syncWebVpnCookiesToWebView() async {
     if (_mode != ZhengfangMode.webVpn) return;
@@ -17,16 +8,21 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
 
     final cookieManager = CookieManager.instance();
     final uris = [
-      Uri.parse('$ZhengfangAuth._webVpnBase/'),
+      Uri.parse('${ZhengfangAuth._webVpnBase}/'),
       Uri.parse(_loginPageUrl),
       Uri.parse(
-        '$ZhengfangAuth._webVpnBase$ZhengfangAuth._webVpnJwglxtPrefix/',
+        '${ZhengfangAuth._webVpnBase}${ZhengfangAuth._webVpnJwglxtPrefix}/',
       ),
     ];
 
     for (final uri in uris) {
       try {
         final cookies = await _webVpnCookieJar.loadForRequest(uri);
+        // WebView may still hold an older HttpOnly WebVPN ticket. Android's
+        // CookieManager does not reliably replace that cookie in-place, which
+        // leaves Dio authenticated while the embedded page is redirected back
+        // to login. Remove matching cookies before writing the current jar.
+        await _clearWebViewCookiesForUri(cookieManager, uri, cookies);
         for (final cookie in cookies) {
           final domain = (cookie.domain ?? '').trim();
           await cookieManager.setCookie(
@@ -42,6 +38,26 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
             expiresDate: cookie.expires?.millisecondsSinceEpoch,
           );
         }
+
+        final syncedCookies = await cookieManager.getCookies(
+          url: WebUri('${uri.scheme}://${uri.host}${uri.path}'),
+        );
+        final expectedValues = {
+          for (final cookie in cookies) cookie.name: cookie.value,
+        };
+        final syncedValues = {
+          for (final cookie in syncedCookies) cookie.name: cookie.value,
+        };
+        final mismatchCount = expectedValues.entries
+            .where((entry) => syncedValues[entry.key] != entry.value)
+            .length;
+        if (mismatchCount > 0) {
+          AppLogger.instance.auth(
+            LogLevel.warn,
+            'WebVPN Cookie 同步不完整: ${uri.host}${uri.path} '
+            '($mismatchCount 项未更新)',
+          );
+        }
       } catch (e) {
         AppLogger.instance.auth(LogLevel.error, '同步 WebVPN Cookie 失败: $e');
       }
@@ -55,9 +71,11 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
 
     final cookieManager = CookieManager.instance();
     final uris = [
-      Uri.parse('$ZhengfangAuth._directOrigin/'),
-      Uri.parse('$ZhengfangAuth._directOrigin$ZhengfangAuth._directLoginPath'),
-      Uri.parse('$ZhengfangAuth._directBase/'),
+      Uri.parse('${ZhengfangAuth._directOrigin}/'),
+      Uri.parse(
+        '${ZhengfangAuth._directOrigin}${ZhengfangAuth._directLoginPath}',
+      ),
+      Uri.parse('${ZhengfangAuth._directBase}/'),
       Uri.parse(
         '${ZhengfangAuth._directOrigin}/jwglxt/xtgl/index_initMenu.html?jsdm=xs',
       ),
@@ -196,7 +214,7 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
             responseType: ResponseType.plain,
             followRedirects: false,
             validateStatus: (status) => status != null && status < 1000,
-            headers: {'Referer': '$ZhengfangAuth._webVpnBase/'},
+            headers: {'Referer': '${ZhengfangAuth._webVpnBase}/'},
           ),
         ),
       );
@@ -272,12 +290,12 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
       final response = await _sendWithProxyFallback<String>(
         label: 'WebVPN 网关会话校验',
         request: (dio) => dio.get<String>(
-          '$ZhengfangAuth._webVpnBase$ZhengfangAuth._webVpnCasPath',
+          ZhengfangAuth.webVpnGatewayLoginUrl,
           options: Options(
             responseType: ResponseType.plain,
             followRedirects: true,
             validateStatus: (status) => status != null && status < 1000,
-            headers: {'Referer': '$ZhengfangAuth._webVpnBase/'},
+            headers: {'Referer': '${ZhengfangAuth._webVpnBase}/'},
           ),
         ),
       );
@@ -343,7 +361,7 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
           responseType: ResponseType.plain,
           followRedirects: true,
           validateStatus: (status) => status != null && status < 1000,
-          headers: {'Referer': '$ZhengfangAuth._webVpnBase/'},
+          headers: {'Referer': '${ZhengfangAuth._webVpnBase}/'},
         ),
       ),
     );
@@ -353,37 +371,5 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
       return null;
     }
     return retryResp;
-  }
-
-  /// 跟随 WebVPN CAS 重定向链建立 session
-  Future<void> _followWebVpnRedirectChain(
-    String referer,
-    String location,
-  ) async {
-    var nextUrl = location;
-    if (nextUrl.startsWith('/')) {
-      nextUrl = '$ZhengfangAuth._webVpnBase$nextUrl';
-    }
-    for (var i = 0; i < 8; i++) {
-      final resp = await _sendWithProxyFallback<String>(
-        label: 'WebVPN CAS 重定向链',
-        request: (dio) => dio.get<String>(
-          nextUrl,
-          options: Options(
-            responseType: ResponseType.plain,
-            followRedirects: false,
-            validateStatus: (s) => s != null && s < 1000,
-            headers: {'Referer': referer},
-          ),
-        ),
-      );
-      final redirect = resp.headers.value('location') ?? '';
-      if (redirect.isEmpty) return;
-      nextUrl = redirect;
-      if (nextUrl.startsWith('/')) {
-        final uri = Uri.parse(referer);
-        nextUrl = '${uri.scheme}://${uri.host}$nextUrl';
-      }
-    }
   }
 }

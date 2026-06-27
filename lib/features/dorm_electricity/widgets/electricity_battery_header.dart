@@ -2,6 +2,15 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+/// 电量详情卡的核心视觉。
+///
+/// 排版层级（自上而下）：
+/// 1. 眉标 "电量详情" + 状态徽章（右）
+/// 2. 大数字 hero（左对齐）+ 单位/标签
+/// 3. 细长点阵像素充电条（数字的下划线）
+/// 4. 百分比（左）+ 满电刻度（右）
+///
+/// 配色完全跟随 [accentColor] 与主题 [ColorScheme]。
 class ElectricityBatteryHeader extends StatelessWidget {
   const ElectricityBatteryHeader({
     super.key,
@@ -26,209 +35,192 @@ class ElectricityBatteryHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final panelColor = isDark
-        ? Color.lerp(Colors.black, accentColor, 0.1)!
-        : Color.lerp(cs.surfaceContainerLowest, accentColor, 0.06)!;
-    final wellColor = isDark
-        ? Color.lerp(Colors.black, accentColor, 0.07)!
-        : Color.lerp(const Color(0xFF06110A), accentColor, 0.08)!;
-    final borderColor = Color.lerp(
-      isDark ? Colors.white : cs.outlineVariant,
-      accentColor,
-      isDark ? 0.22 : 0.16,
-    )!.withValues(alpha: isDark ? 0.26 : 0.56);
-    final valueColor = isDark
-        ? Colors.white
-        : Color.lerp(cs.onSurface, accentColor, 0.18)!;
-    final unitColor = isDark
-        ? Colors.white.withValues(alpha: 0.9)
-        : Color.lerp(cs.onSurfaceVariant, accentColor, 0.34)!;
+    final trackColor = isDark
+        ? cs.surfaceContainerHighest.withValues(alpha: 0.55)
+        : cs.surfaceContainerHighest;
+    final valueColor = cs.onSurface;
+    final unitColor = cs.onSurfaceVariant;
+    final dimColor = cs.onSurfaceVariant.withValues(alpha: 0.9);
+    final pillBg = Color.lerp(
+      statusBackgroundColor,
+      cs.surfaceContainerLowest,
+      isDark ? 0.12 : 0.5,
+    )!;
+    final pillBorder = accentColor.withValues(alpha: isDark ? 0.3 : 0.24);
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '电量详情',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                    color: cs.onSurface,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // ── 眉标 + 状态徽章 ──
+        Row(
+          children: [
+            Text(
+              '电量详情',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: dimColor,
+                letterSpacing: 1.2,
+              ),
+            ),
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: pillBg,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: pillBorder, width: 1),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: accentColor,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: accentColor.withValues(alpha: 0.4),
+                          blurRadius: 5,
+                          spreadRadius: 0.3,
+                        ),
+                      ],
+                    ),
                   ),
+                  const SizedBox(width: 6),
+                  Text(
+                    statusLabel,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: accentColor,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        // ── 大数字 hero（左对齐）──
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            mainAxisSize: MainAxisSize.min,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                valueText,
+                style: TextStyle(
+                  fontFamily: 'DIN Alternate',
+                  fontFamilyFallback: const ['Roboto', 'Arial'],
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                  fontSize: 60,
+                  fontWeight: FontWeight.w700,
+                  height: 1.0,
+                  letterSpacing: -1.5,
+                  color: valueColor,
                 ),
               ),
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 260),
-                curve: Curves.easeOutCubic,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 5,
+              const SizedBox(width: 7),
+              Text(
+                '度',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  height: 1.0,
+                  color: unitColor,
                 ),
-                decoration: BoxDecoration(
-                  color: Color.lerp(
-                    statusBackgroundColor,
-                    cs.surfaceContainerLowest,
-                    isDark ? 0.1 : 0.46,
-                  ),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(
-                    color: accentColor.withValues(alpha: isDark ? 0.24 : 0.18),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: accentColor.withValues(alpha: isDark ? 0.08 : 0.1),
-                      blurRadius: 14,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: Text(
-                  statusLabel,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    color: accentColor,
-                  ),
+              ),
+              const SizedBox(width: 5),
+              Text(
+                '剩余',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  height: 1.0,
+                  letterSpacing: 0.4,
+                  color: dimColor,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          SizedBox(
-            height: 128,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: panelColor,
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: borderColor, width: 1.4),
-                boxShadow: [
-                  BoxShadow(
-                    color: accentColor.withValues(alpha: isDark ? 0.06 : 0.05),
-                    blurRadius: 18,
-                    offset: const Offset(0, 9),
-                  ),
-                ],
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(7),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(17),
-                  child: Stack(
-                    children: [
-                      Positioned.fill(child: ColoredBox(color: wellColor)),
-                      Positioned.fill(
-                        child: CustomPaint(
-                          painter: _BatteryPixelPainter(
-                            fraction: fraction,
-                            fillAnimation: fillAnimation,
-                            breathAnimation: breathAnimation,
-                            activeColor: accentColor,
-                            emptyColor: isDark
-                                ? Color.lerp(Colors.black, accentColor, 0.08)!
-                                : Color.lerp(
-                                    const Color(0xFF06110A),
-                                    accentColor,
-                                    0.12,
-                                  )!,
-                            isDark: isDark,
-                          ),
+        ),
+        const SizedBox(height: 14),
+        // ── 点阵像素充电条（数字的下划线）──
+        SizedBox(
+          height: 18,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return ClipRRect(
+                borderRadius: BorderRadius.circular(9),
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: ColoredBox(
+                        color: trackColor,
+                        child: const SizedBox.shrink(),
+                      ),
+                    ),
+                    Positioned.fill(
+                      child: CustomPaint(
+                        painter: _PixelMatrixBarPainter(
+                          fraction: fraction,
+                          fillAnimation: fillAnimation,
+                          breathAnimation: breathAnimation,
+                          activeColor: accentColor,
+                          trackColor: trackColor,
+                          isDark: isDark,
                         ),
                       ),
-                      Positioned.fill(
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.centerLeft,
-                              end: Alignment.centerRight,
-                              colors: [
-                                wellColor.withValues(
-                                  alpha: isDark ? 0.46 : 0.12,
-                                ),
-                                wellColor.withValues(alpha: 0.02),
-                                wellColor.withValues(
-                                  alpha: isDark ? 0.34 : 0.2,
-                                ),
-                              ],
-                              stops: const [0, 0.5, 1],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 7),
+        // ── 百分比（左）+ 满电刻度（右）──
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Text(
+              '${(fraction * 100).round()}%',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: accentColor,
+                fontFeatures: const [FontFeature.tabularFigures()],
               ),
             ),
-          ),
-          const SizedBox(height: 14),
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(18, 2, 18, 4),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: 58),
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    mainAxisSize: MainAxisSize.min,
-                    textBaseline: TextBaseline.alphabetic,
-                    children: [
-                      Text(
-                        valueText,
-                        style: TextStyle(
-                          fontFamily: 'DIN Alternate',
-                          fontFamilyFallback: const ['Roboto', 'Arial'],
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                          fontSize: 48,
-                          fontWeight: FontWeight.w700,
-                          height: 1.12,
-                          letterSpacing: 0,
-                          color: valueColor,
-                        ),
-                      ),
-                      const SizedBox(width: 7),
-                      Text(
-                        '度',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          height: 1.12,
-                          color: unitColor,
-                        ),
-                      ),
-                      const SizedBox(width: 5),
-                      Text(
-                        '剩余',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                          height: 1.12,
-                          color: unitColor.withValues(alpha: 0.78),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+            const Spacer(),
+            Text('满电 100 度', style: TextStyle(fontSize: 11, color: dimColor)),
+          ],
+        ),
+      ],
     );
   }
 }
 
-class _BatteryPixelPainter extends CustomPainter {
-  _BatteryPixelPainter({
+/// 细长点阵像素充电条绘制。
+///
+/// 在 18px 高的胶囊轨道上排列 ~3.4px 像素方点：
+/// - 已充段（progressX 左侧）点阵根据 wake light / shimmer / flow / fizz
+///   动效网点亮度，颜色跟随 [activeColor]，无硬编码亮绿。
+/// - 未充段点阵以极低 alpha 静态噪点呈现像素纹理，不喧宾夺主。
+/// - 保留进场 fill 动画（左侧逐渐点亮）与 4.7s 呼吸节律。
+class _PixelMatrixBarPainter extends CustomPainter {
+  _PixelMatrixBarPainter({
     required this.fraction,
     required this.fillAnimation,
     required this.breathAnimation,
     required this.activeColor,
-    required this.emptyColor,
+    required this.trackColor,
     required this.isDark,
   }) : super(repaint: Listenable.merge([fillAnimation, breathAnimation]));
 
@@ -236,7 +228,7 @@ class _BatteryPixelPainter extends CustomPainter {
   final Animation<double> fillAnimation;
   final Animation<double> breathAnimation;
   final Color activeColor;
-  final Color emptyColor;
+  final Color trackColor;
   final bool isDark;
 
   @override
@@ -247,333 +239,217 @@ class _BatteryPixelPainter extends CustomPainter {
         .clamp(0.0, 1.0)
         .toDouble();
     final progressX = size.width * progress;
-    final breathValue = breathAnimation.value;
-    final phase = breathValue * math.pi * 2;
+    final breath = breathAnimation.value;
+    final phase = breath * math.pi * 2;
     final pulse = ((math.sin(phase) + 1) / 2).clamp(0.0, 1.0).toDouble();
 
-    _drawFlowBase(canvas, size, progressX);
-
-    const dotSize = 3.2;
-    const gap = 1.45;
+    // 点阵网格：自适应尺寸，保证至少 2 行。
+    const dotSize = 3.0;
+    const gap = 1.6;
     const stride = dotSize + gap;
-    final columns = (size.width / stride).ceil() + 2;
-    final rows = (size.height / stride).ceil() + 2;
-    const startX = -stride;
-    final startY = -stride;
+    final columns = (size.width / stride).ceil() + 1;
+    final rows = (size.height / stride).ceil();
+    final startX = (size.width - (columns - 1) * stride - dotSize) / 2;
+    final startY = (size.height - (rows - 1) * stride - dotSize) / 2;
     final dotPaint = Paint();
 
+    // 水平衰减 envelope：[0, 0.5] 保持亮度，[0.5, 0.75] 线性衰减到 0，之后为 0。
+    double attenuate(double normalizedX) {
+      if (normalizedX <= 0.5) return 1.0;
+      if (normalizedX >= 0.75) return 0.0;
+      return 1.0 - (normalizedX - 0.5) / 0.25;
+    }
+
     for (var row = 0; row < rows; row++) {
-      for (var column = 0; column < columns; column++) {
-        final x = startX + column * stride;
+      for (var col = 0; col < columns; col++) {
+        final x = startX + col * stride;
         final y = startY + row * stride;
         final centerX = x + dotSize / 2;
-        final fillRamp = progressX <= 0
-            ? 0.0
-            : (centerX / progressX).clamp(0.0, 1.0).toDouble();
-        final wakeGradient = math.pow(fillRamp, 1.55).toDouble();
-        final litAmount = ((progressX - centerX) / 26)
-            .clamp(0.0, 1.0)
-            .toDouble();
-        final edgeBand = ((28 - (progressX - centerX).abs()) / 28)
-            .clamp(0.0, 1.0)
-            .toDouble();
         final rect = Rect.fromLTWH(x, y, dotSize, dotSize);
-        final staticGrain = _noise(column, row, 7);
-        final randomField = _smoothNoise(
-          column,
-          row,
-          breathValue,
-          frameCount: 8,
-          seedBase: 41,
-        );
-        // Keep every temporal term periodic so repeat() never pops at 1 -> 0.
-        final cellPhase = staticGrain * math.pi * 2;
-        final shimmer =
-            (math.sin(phase * 2 + cellPhase + column * 0.15 - row * 0.05) + 1) /
-            2;
-        final flow = (math.sin(phase - column * 0.2 + row * 0.11) + 1) / 2;
-        final sweep = (math.sin(phase + column * 0.08) + 1) / 2;
-        final wakeLight = _dotCosWakeLight(
-          column,
-          row,
-          breathValue,
-          columns: columns,
-        );
-        final fizzField = _dotFizzField(
-          column,
-          row,
-          breathValue,
-          columns: columns,
-          rows: rows,
-        );
-        final alphaNoise =
-            (staticGrain * 0.34 +
-                    randomField * 0.18 +
-                    shimmer * 0.26 +
-                    flow * 0.14 +
-                    sweep * 0.08 +
-                    wakeGradient * 0.36 +
-                    wakeLight * 0.46 +
-                    fizzField * 0.2)
-                .clamp(0.0, 1.0)
-                .toDouble();
-        final fizzSpark = math.pow(fizzField, 2.6).toDouble();
 
-        if (litAmount <= 0) {
+        // 已充段内每点的视觉权重
+        if (progressX <= 0 || centerX > progressX) {
+          // 未充段：极低 alpha 像素纹理
+          final grain = _noise(col, row, 7);
           final emptyAlpha =
-              ((isDark ? 0.026 : 0.012) +
-                      alphaNoise * 0.026 +
-                      fizzSpark * 0.02 +
-                      wakeLight * 0.018 +
-                      pulse * 0.004)
-                  .clamp(0.0, 0.12)
+              ((isDark ? 0.022 : 0.014) + grain * 0.02 + pulse * 0.004)
+                  .clamp(0.0, 0.08)
                   .toDouble();
-          dotPaint.color = emptyColor.withValues(alpha: emptyAlpha);
+          dotPaint.color = trackColor.withValues(alpha: emptyAlpha);
           canvas.drawRect(rect, dotPaint);
           continue;
         }
 
-        final fillBreath = 0.76 + pulse * 0.32;
-        final sparkBoost =
-            math.pow(shimmer, 2.4).toDouble() * 0.1 +
-            wakeGradient * 0.2 +
-            wakeLight * 0.48 +
-            fizzSpark * 0.2;
-        final alpha =
-            (((isDark ? 0.28 : 0.23) +
-                        alphaNoise * 0.5 +
-                        edgeBand * 0.12 +
-                        sparkBoost) *
-                    fillBreath *
-                    litAmount)
-                .clamp(0.035, 0.96)
+        // 已充段：综合 wake light / shimmer / flow / fizz 动效
+        final litAmount = ((progressX - centerX) / 22)
+            .clamp(0.0, 1.0)
+            .toDouble();
+        final wakeGradient = math
+            .pow((centerX / progressX).clamp(0.0, 1.0).toDouble(), 1.55)
+            .toDouble();
+        final staticGrain = _noise(col, row, 7);
+        final shimmer =
+            (math.sin(phase * 2 + staticGrain * math.pi * 2 + col * 0.15) + 1) /
+            2;
+        final flow = (math.sin(phase - col * 0.2 + row * 0.5) + 1) / 2;
+        final wakeLight = _wakeLight(
+          col,
+          row,
+          breath,
+          columns: columns,
+          rows: rows,
+        );
+        final fizz = _fizz(col, row, breath, columns: columns, rows: rows);
+
+        final alphaNoise =
+            ((staticGrain * 0.28 +
+                    shimmer * 0.24 +
+                    flow * 0.12 +
+                    wakeGradient * 0.3 +
+                    wakeLight * 0.5 +
+                    fizz * 0.18))
+                .clamp(0.0, 1.0)
                 .toDouble();
-        final darkDotColor = Color.lerp(
-          isDark ? Colors.black : emptyColor,
+        final fillBreath = 0.74 + pulse * 0.32;
+        final sparkBoost =
+            math.pow(shimmer, 2.4).toDouble() * 0.08 +
+            wakeGradient * 0.16 +
+            wakeLight * 0.5 +
+            math.pow(fizz, 2.4).toDouble() * 0.18;
+
+        final alpha =
+            (((isDark ? 0.24 : 0.2) + alphaNoise * 0.5 + sparkBoost) *
+                    fillBreath *
+                    litAmount *
+                    attenuate(centerX / size.width))
+                .clamp(0.0, 0.95)
+                .toDouble();
+
+        // 颜色仅在 activeColor 与其暗化/亮化变体间插值，不再硬编码亮绿。
+        final dimDot = Color.lerp(
           activeColor,
-          isDark ? 0.18 : 0.26,
+          Colors.black,
+          isDark ? 0.18 : 0.28,
         )!;
-        final brightDotColor = Color.lerp(
-          activeColor,
-          isDark ? const Color(0xFF4ED37D) : const Color(0xFF5FD687),
-          0.26,
-        )!;
-        final color = Color.lerp(
-          darkDotColor,
-          brightDotColor,
-          (wakeGradient * 0.5 + wakeLight * 0.56 + alphaNoise * 0.12).clamp(
-            0.0,
-            1.0,
-          ),
+        final brightDot = Color.lerp(activeColor, Colors.white, 0.22)!;
+        final dotColor = Color.lerp(
+          dimDot,
+          brightDot,
+          (wakeGradient * 0.4 + wakeLight * 0.6 + alphaNoise * 0.1)
+              .clamp(0.0, 1.0)
+              .toDouble(),
         )!.withValues(alpha: alpha);
 
-        dotPaint.color = color;
+        dotPaint.color = dotColor;
         canvas.drawRect(rect, dotPaint);
+      }
+    }
+
+    // 右边缘亮线（已充段末尾），随水平衰减 envelope 同步淡化。
+    if (progressX > 0 && progressX < size.width) {
+      final edgeAtt = attenuate(progressX / size.width);
+      if (edgeAtt > 0) {
+        canvas.drawRect(
+          Rect.fromLTRB(progressX - 1.2, 0, progressX, size.height),
+          Paint()
+            ..color = activeColor.withValues(
+              alpha: (isDark ? 0.32 : 0.42) * edgeAtt,
+            ),
+        );
       }
     }
   }
 
-  void _drawFlowBase(Canvas canvas, Size size, double progressX) {
-    final rect = Offset.zero & size;
-    final basePaint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.centerLeft,
-        end: Alignment.centerRight,
-        colors: [
-          Color.lerp(
-            emptyColor,
-            activeColor,
-            isDark ? 0.24 : 0.18,
-          )!.withValues(alpha: isDark ? 0.22 : 0.14),
-          emptyColor.withValues(alpha: isDark ? 0.11 : 0.07),
-          Color.lerp(
-            emptyColor,
-            activeColor,
-            isDark ? 0.02 : 0.06,
-          )!.withValues(alpha: isDark ? 0.055 : 0.035),
-        ],
-        stops: const [0, 0.58, 1],
-      ).createShader(rect);
-    canvas.drawRect(rect, basePaint);
-
-    if (progressX <= 0) return;
-
-    final activeRect = Rect.fromLTRB(0, 0, progressX, size.height);
-    final activePaint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.centerLeft,
-        end: Alignment.centerRight,
-        colors: [
-          activeColor.withValues(alpha: isDark ? 0.46 : 0.38),
-          Color.lerp(
-            activeColor,
-            emptyColor,
-            isDark ? 0.34 : 0.42,
-          )!.withValues(alpha: isDark ? 0.3 : 0.22),
-          Color.lerp(
-            emptyColor,
-            activeColor,
-            isDark ? 0.06 : 0.1,
-          )!.withValues(alpha: isDark ? 0.13 : 0.08),
-        ],
-        stops: const [0, 0.42, 1],
-      ).createShader(rect);
-    final verticalDepthPaint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          activeColor.withValues(alpha: isDark ? 0.09 : 0.12),
-          Colors.transparent,
-          Colors.black.withValues(alpha: isDark ? 0.2 : 0.16),
-        ],
-        stops: const [0, 0.42, 1],
-      ).createShader(activeRect);
-
-    canvas.save();
-    canvas.clipRect(activeRect);
-    canvas.drawRect(rect, activePaint);
-    canvas.drawRect(activeRect, verticalDepthPaint);
-
-    final rightMaskPaint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.centerLeft,
-        end: Alignment.centerRight,
-        colors: [
-          Colors.transparent,
-          Color.lerp(
-            emptyColor,
-            Colors.black,
-            isDark ? 0.62 : 0.5,
-          )!.withValues(alpha: isDark ? 0.36 : 0.28),
-          Color.lerp(
-            emptyColor,
-            Colors.black,
-            isDark ? 0.76 : 0.62,
-          )!.withValues(alpha: isDark ? 0.74 : 0.48),
-          Color.lerp(
-            emptyColor,
-            Colors.black,
-            isDark ? 0.88 : 0.76,
-          )!.withValues(alpha: isDark ? 0.98 : 0.72),
-        ],
-        stops: const [0, 0.42, 0.68, 1],
-      ).createShader(activeRect);
-    canvas.drawRect(activeRect, rightMaskPaint);
-    canvas.restore();
-  }
-
-  double _dotCosWakeLight(
-    int column,
+  /// 移动光头尾迹：从左到右扫描，在尾迹弧内点亮像素。
+  double _wakeLight(
+    int col,
     int row,
-    double breathValue, {
+    double breath, {
     required int columns,
+    required int rows,
   }) {
-    final x = column / math.max(columns - 1, 1);
+    final x = col / math.max(columns - 1, 1);
     final turbulence =
-        math.sin(row * 0.62 + breathValue * math.pi * 2) * 0.016 +
-        math.sin((column + row) * 0.17 - breathValue * math.pi * 4) * 0.01;
-    final easedLocal = _cyclicEasePhase(breathValue);
-    final head = (easedLocal + turbulence) % 1.0;
-    final behindHead = (head - x + 1) % 1.0;
+        math.sin(row * 0.62 + breath * math.pi * 2) * 0.016 +
+        math.sin((col + row) * 0.17 - breath * math.pi * 4) * 0.01;
+    final eased = (breath).clamp(0.0, 1.0);
+    final head = (eased + turbulence) % 1.0;
+    final behind = (head - x + 1) % 1.0;
     const tailLength = 0.66;
     var strength = 0.0;
-    if (behindHead <= tailLength) {
-      final tailT = (behindHead / tailLength).clamp(0.0, 1.0).toDouble();
-      final tailEnvelope = math.pow((math.cos(tailT * math.pi) + 1) / 2, 1.7);
-      final headT = (behindHead / 0.15).clamp(0.0, 1.0).toDouble();
-      final headCap = math.pow((math.cos(headT * math.pi) + 1) / 2, 5.0);
+    if (behind <= tailLength) {
+      final tailT = (behind / tailLength).clamp(0.0, 1.0).toDouble();
+      final tailEnvelope = math
+          .pow((math.cos(tailT * math.pi) + 1) / 2, 1.7)
+          .toDouble();
+      final headT = (behind / 0.15).clamp(0.0, 1.0).toDouble();
+      final headCap = math
+          .pow((math.cos(headT * math.pi) + 1) / 2, 5.0)
+          .toDouble();
       strength = tailEnvelope * 0.58 + headCap * 0.54;
     }
     final turbulentSpark =
         math
             .pow(
-              (math.cos(
-                        (x * 7.0 + row * 0.31 - breathValue * 2.6) *
-                            math.pi *
-                            2,
-                      ) +
+              (math.cos((x * 7.0 + row * 0.31 - breath * 2.6) * math.pi * 2) +
                       1) /
                   2,
               6.0,
             )
             .toDouble() *
-        0.16;
+        0.14;
     return (strength + turbulentSpark).clamp(0.0, 1.0).toDouble();
   }
 
-  double _dotFizzField(
-    int column,
+  /// Fizz 闪烁场：少量随机移动的发光簇，制造像素点间歇性闪烁。
+  double _fizz(
+    int col,
     int row,
-    double breathValue, {
+    double breath, {
     required int columns,
     required int rows,
   }) {
-    const clusterCount = 9;
+    const clusterCount = 6;
     var strength = 0.0;
     for (var cluster = 0; cluster < clusterCount; cluster++) {
       final phaseOffset = _noise(cluster, 1, 211);
       final speedStep = 1 + (_noise(cluster, 4, 239) * 2).floor();
-      final local = (breathValue * speedStep + phaseOffset) % 1.0;
-      final travel = _cyclicEasePhase(local);
-      final centerColumn = -2.0 + travel * (columns + 4);
+      final local = (breath * speedStep + phaseOffset) % 1.0;
+      final centerCol = -2.0 + local * (columns + 4);
       final baseRow = 1.0 + _noise(cluster, 6, 251) * math.max(rows - 2, 1);
       final wobble =
-          math.sin(breathValue * math.pi * 2 + cluster * 1.7) *
-          (1.2 + _noise(cluster, 8, 271) * 2.6);
+          math.sin(breath * math.pi * 2 + cluster * 1.7) *
+          (0.8 + _noise(cluster, 8, 271) * 1.6);
       final centerRow = baseRow + wobble;
-      final radiusX = 2.2 + _noise(cluster, 10, 281) * 4.2;
-      final radiusY = 1.2 + _noise(cluster, 12, 293) * 3.0;
-      final dx = (column - centerColumn) / radiusX;
+      final radiusX = 2.0 + _noise(cluster, 10, 281) * 3.6;
+      final radiusY = 1.0 + _noise(cluster, 12, 293) * 2.4;
+      final dx = (col - centerCol) / radiusX;
       final dy = (row - centerRow) / radiusY;
       final distance = dx * dx + dy * dy;
       if (distance >= 1) continue;
-
       final ring = math.sin((1 - distance) * math.pi).abs();
-      final grain = _noise(column, row, 307 + cluster);
+      final grain = _noise(col, row, 307 + cluster);
       strength = math.max(
         strength,
-        (ring * 0.78 + grain * 0.22) * (1 - distance * 0.22),
+        (ring * 0.72 + grain * 0.22) * (1 - distance * 0.22),
       );
     }
     return strength.clamp(0.0, 1.0).toDouble();
   }
 
-  double _smoothNoise(
-    int column,
-    int row,
-    double phase, {
-    required int frameCount,
-    required int seedBase,
-  }) {
-    final frame = phase * frameCount;
-    final currentFrame = frame.floor() % frameCount;
-    final nextFrame = (currentFrame + 1) % frameCount;
-    final t = frame - frame.floor();
-    final easedT = t * t * (3 - 2 * t);
-    final current = _noise(column, row, seedBase + currentFrame);
-    final next = _noise(column, row, seedBase + nextFrame);
-    return current + (next - current) * easedT;
-  }
-
-  double _cyclicEasePhase(double value) {
-    final t = value.clamp(0.0, 1.0).toDouble();
-    return (t + math.sin(t * math.pi * 2) * 0.11).clamp(0.0, 1.0).toDouble();
-  }
-
-  double _noise(int column, int row, int seed) {
-    var hash = column * 374761393 + row * 668265263 + seed * 1442695041;
+  double _noise(int col, int row, int seed) {
+    var hash = col * 374761393 + row * 668265263 + seed * 1442695041;
     hash = (hash ^ (hash >> 13)) * 1274126177;
     hash = hash ^ (hash >> 16);
     return (hash & 0x7fffffff) / 0x7fffffff;
   }
 
   @override
-  bool shouldRepaint(_BatteryPixelPainter old) =>
+  bool shouldRepaint(_PixelMatrixBarPainter old) =>
       fraction != old.fraction ||
       fillAnimation != old.fillAnimation ||
       breathAnimation != old.breathAnimation ||
       activeColor != old.activeColor ||
-      emptyColor != old.emptyColor ||
+      trackColor != old.trackColor ||
       isDark != old.isDark;
 }

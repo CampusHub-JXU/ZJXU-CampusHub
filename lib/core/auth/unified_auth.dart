@@ -424,7 +424,7 @@ class UnifiedAuthService extends ChangeNotifier {
 
       final location = response.headers.value('location') ?? '';
       final html = response.data ?? '';
-      if (_isLoginSuccess(response.statusCode, location, html)) {
+      if (isLoginSuccess(response.statusCode, location, html)) {
         await _followRedirectChain(context.actionUri, location);
         unawaited(_syncCookiesToWebViewSafely());
         _sessionActive = true;
@@ -437,7 +437,7 @@ class UnifiedAuthService extends ChangeNotifier {
       }
 
       _cachedContext = null;
-      final msg = _extractLoginFailureMessage(html);
+      final msg = extractLoginFailureMessage(html);
       AppLogger.instance.auth(LogLevel.warn, '统一认证登录失败: $msg');
       return UnifiedAuthLoginFailure(msg);
     } on DioException catch (error) {
@@ -678,9 +678,11 @@ class UnifiedAuthService extends ChangeNotifier {
     }
   }
 
-  bool _isLoginSuccess(int? statusCode, String location, String html) {
+  @visibleForTesting
+  bool isLoginSuccess(int? statusCode, String location, String html) {
     if (statusCode == 302 || statusCode == 303) {
-      return isUnifiedAuthAuthenticatedUrl(location);
+      return isUnifiedAuthAuthenticatedUrl(location) ||
+          urlHasCasTicket(location);
     }
 
     final lowerHtml = html.toLowerCase();
@@ -690,7 +692,8 @@ class UnifiedAuthService extends ChangeNotifier {
         lowerHtml.contains('casclient/login');
   }
 
-  String _extractLoginFailureMessage(String html) {
+  @visibleForTesting
+  String extractLoginFailureMessage(String html) {
     final match = RegExp(
       r'''id=["']msg["'][^>]*>([\s\S]*?)</[^>]+>''',
       caseSensitive: false,
@@ -700,9 +703,13 @@ class UnifiedAuthService extends ChangeNotifier {
     );
     if (message.isNotEmpty) return message;
 
-    if (html.contains('验证码')) return '验证码错误或已过期，请刷新后重试';
-    if (html.contains('用户名') || html.contains('密码')) {
-      return '账号或密码错误，请检查后重试';
+    if (html.contains('用户名或密码错误') || html.contains('密码错误')) {
+      return '一卡通账号或密码错误，请检查后重试';
+    }
+    if (html.contains('验证码错误') ||
+        html.contains('验证码已失效') ||
+        html.contains('验证码不正确')) {
+      return '验证码错误或已过期，请刷新后重试';
     }
 
     return '统一认证登录失败，请检查账号、密码和验证码';

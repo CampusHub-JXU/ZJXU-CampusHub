@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/auth/zhengfang_auth.dart';
 import '../../core/network/dio_client.dart';
 import 'grades_model.dart';
 
@@ -65,10 +66,10 @@ class GradesService {
     }
 
     await DioClient.instance.ensureInitialized();
-    final dio = DioClient.instance.dio;
+    final dio = ZhengfangAuth.instance.academicDio;
     final ts = DateTime.now().millisecondsSinceEpoch;
     final resp = await dio.post<Map<String, dynamic>>(
-      '/cjcx/cjcx_cxDgXscj.html',
+      ZhengfangAuth.instance.buildPortalUrl('/cjcx/cjcx_cxDgXscj.html'),
       queryParameters: {
         'doType': 'query',
         'gnmkdm': 'N305005',
@@ -78,7 +79,13 @@ class GradesService {
           'xnm=&xqm=&_search=false&nd=$ts'
           '&queryModel.showCount=100&queryModel.currentPage=1'
           '&queryModel.sortName=&queryModel.sortOrder=asc&time=1',
-      options: Options(contentType: 'application/x-www-form-urlencoded'),
+      options: Options(
+        contentType: 'application/x-www-form-urlencoded',
+        headers: {
+          'Referer': ZhengfangAuth.instance.academicServiceUrl,
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+      ),
     );
 
     final items = resp.data?['items'] as List<dynamic>? ?? [];

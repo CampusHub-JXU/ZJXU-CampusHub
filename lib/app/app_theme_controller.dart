@@ -156,8 +156,13 @@ class AppThemeController {
   }
 
   Color resolveIconColor(BuildContext context, Color fallback) {
-    // 图标默认跟随主题色
-    return Theme.of(context).colorScheme.primary;
+    // 莫奈取色模式下整体主题源自背景图，图标统一跟随主题色以保持协调；
+    // 其余模式（品牌红 / 预设 / 自定义）透传调用方传入的 accent 色，
+    // 让 feature_entry_catalog 中为每个入口定义的 accentColor 生效。
+    return switch (seedMode.value) {
+      AppThemeSeedMode.monet => Theme.of(context).colorScheme.primary,
+      _ => fallback,
+    };
   }
 
   Color resolveHomeTextColor(BuildContext context, Color fallback) {
@@ -165,6 +170,36 @@ class AppThemeController {
       HomeTextColorMode.system => fallback,
       HomeTextColorMode.dark => const Color(0xFF1F1A1D),
       HomeTextColorMode.light => Colors.white,
+    };
+  }
+
+  /// System 模式下根据背景亮度自动选择 light/dark 文字，保证 WCAG AA 对比度。
+  /// 其余模式保持用户显式选择。供首页头部等渐变/玻璃材质文案使用。
+  Color resolveHomeTextColorForBackground(
+    BuildContext context,
+    Color background,
+  ) {
+    return switch (homeTextColorMode.value) {
+      HomeTextColorMode.system =>
+        background.computeLuminance() < 0.42
+            ? Colors.white
+            : const Color(0xFF1F1A1D),
+      HomeTextColorMode.dark => const Color(0xFF1F1A1D),
+      HomeTextColorMode.light => Colors.white,
+    };
+  }
+
+  Color resolveHomeSecondaryTextColorForBackground(
+    BuildContext context,
+    Color background,
+  ) {
+    return switch (homeTextColorMode.value) {
+      HomeTextColorMode.system =>
+        background.computeLuminance() < 0.42
+            ? Colors.white.withValues(alpha: 0.82)
+            : const Color(0xFF4C4247),
+      HomeTextColorMode.dark => const Color(0xFF4C4247),
+      HomeTextColorMode.light => Colors.white.withValues(alpha: 0.82),
     };
   }
 

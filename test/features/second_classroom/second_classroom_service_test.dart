@@ -1,3 +1,7 @@
+import 'dart:async';
+import 'dart:typed_data';
+
+import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/features/second_classroom/second_classroom_service.dart';
@@ -107,4 +111,48 @@ void main() {
       'https://twdekt.zjxu.edu.cn/dekt/wx/index?_WXFTL=0#/hd-detail?hdId=2485',
     );
   });
+
+  test('reports auth hint when endpoint returns html', () async {
+    final dio = Dio()
+      ..httpClientAdapter = _StaticResponseAdapter('''
+      <!DOCTYPE html>
+      <html><body><a href="https://open.weixin.qq.com/connect/oauth2/authorize">login</a></body></html>
+    ''');
+    final service = SecondClassroomService(dio: dio);
+
+    await expectLater(
+      service.fetchCatalog(),
+      throwsA(
+        isA<SecondClassroomServiceException>().having(
+          (error) => error.message,
+          'message',
+          '第二课堂登录态失效，请在微信中重新授权',
+        ),
+      ),
+    );
+  });
+}
+
+class _StaticResponseAdapter implements HttpClientAdapter {
+  const _StaticResponseAdapter(this.body);
+
+  final String body;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    return ResponseBody.fromString(
+      body,
+      200,
+      headers: const {
+        Headers.contentTypeHeader: ['text/html; charset=utf-8'],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
 }

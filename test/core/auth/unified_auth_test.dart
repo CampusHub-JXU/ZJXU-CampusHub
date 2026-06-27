@@ -120,6 +120,48 @@ void main() {
     });
   });
 
+  group('Unified auth login result parsing', () {
+    test('accepts a WebVPN service redirect carrying a CAS ticket', () {
+      expect(
+        UnifiedAuthService.instance.isLoginSuccess(
+          302,
+          'https://webvpn.zjxu.edu.cn/login?cas_login=true&ticket=ST-1-test',
+          '',
+        ),
+        isTrue,
+      );
+    });
+
+    test('rejects a WebVPN redirect without a CAS ticket', () {
+      expect(
+        UnifiedAuthService.instance.isLoginSuccess(
+          302,
+          'https://webvpn.zjxu.edu.cn/login?cas_login=true',
+          '',
+        ),
+        isFalse,
+      );
+    });
+
+    test('prefers the real password error over captcha form labels', () {
+      expect(
+        UnifiedAuthService.instance.extractLoginFailureMessage(
+          '<div>验证码</div><span>用户名或密码错误!</span>',
+        ),
+        '一卡通账号或密码错误，请检查后重试',
+      );
+    });
+
+    test('recognizes an explicit captcha error', () {
+      expect(
+        UnifiedAuthService.instance.extractLoginFailureMessage(
+          '<span>验证码错误!</span>',
+        ),
+        '验证码错误或已过期，请刷新后重试',
+      );
+    });
+  });
+
   group('UnifiedAuthService session short-circuit', () {
     setUp(() {
       UnifiedAuthService.instance.debugReset();

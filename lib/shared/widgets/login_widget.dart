@@ -6,6 +6,23 @@ import 'package:flutter/material.dart';
 
 import '../../core/auth/credential_store.dart';
 import '../../core/auth/zhengfang_auth.dart';
+import 'unified_auth_login_widget.dart';
+
+typedef AcademicReachabilityChecker = Future<bool> Function();
+typedef AcademicGatewaySessionEnsurer = Future<bool?> Function();
+typedef AcademicCaptchaLoader = Future<Uint8List> Function();
+typedef AcademicLoginHandler =
+    Future<LoginResult> Function(
+      String username,
+      String password,
+      String captcha,
+    );
+typedef AcademicCredentialLoader = Future<(String, String)?> Function();
+typedef AcademicCredentialSaver =
+    Future<void> Function(String username, String password);
+typedef AcademicModeSetter = void Function(ZhengfangMode mode);
+typedef UnifiedAuthStageBuilder =
+    Widget Function(BuildContext context, VoidCallback onLoginSuccess);
 
 class LoginWidget extends StatefulWidget {
   const LoginWidget({
@@ -13,14 +30,40 @@ class LoginWidget extends StatefulWidget {
     required this.onLoginSuccess,
     this.showHeader = true,
     this.padding = const EdgeInsets.all(24),
+    this.directReachabilityChecker,
+    this.webVpnReachabilityChecker,
+    this.gatewaySessionEnsurer,
+    this.captchaLoader,
+    this.loginHandler,
+    this.credentialLoader,
+    this.credentialSaver,
+    this.modeSetter,
+    this.unifiedAuthStageBuilder,
   });
 
   final VoidCallback onLoginSuccess;
   final bool showHeader;
   final EdgeInsetsGeometry padding;
+  final AcademicReachabilityChecker? directReachabilityChecker;
+  final AcademicReachabilityChecker? webVpnReachabilityChecker;
+  final AcademicGatewaySessionEnsurer? gatewaySessionEnsurer;
+  final AcademicCaptchaLoader? captchaLoader;
+  final AcademicLoginHandler? loginHandler;
+  final AcademicCredentialLoader? credentialLoader;
+  final AcademicCredentialSaver? credentialSaver;
+  final AcademicModeSetter? modeSetter;
+  final UnifiedAuthStageBuilder? unifiedAuthStageBuilder;
 
   @override
   State<LoginWidget> createState() => _LoginWidgetState();
+}
+
+enum _AcademicLoginStage {
+  detecting,
+  unifiedAuth,
+  preparingAcademic,
+  academic,
+  unavailable,
 }
 
 class _LoginWidgetState extends State<LoginWidget> {
@@ -32,89 +75,188 @@ class _LoginWidgetState extends State<LoginWidget> {
   bool _loading = false;
   bool _obscurePassword = true;
   String? _error;
-
-  bool _autoDetecting = true;
+  ZhengfangMode _mode = ZhengfangMode.direct;
+  _AcademicLoginStage _stage = _AcademicLoginStage.detecting;
 
   static const _proxyHint = '请求超时，请检查手机系统代理或 VPN 软件';
 
   @override
   void initState() {
     super.initState();
-    _loadSaved();
-    _autoDetectNetwork();
+    _bootstrap();
   }
 
-  Future<void> _autoDetectNetwork() async {
-    if (!_autoDetecting) return;
+  Future<void> _bootstrap() async {
+    await _loadSaved();
+    if (!mounted) return;
+    await _detectLoginPath();
+  }
+
+  Future<void> _detectLoginPath() async {
+    if (mounted) {
+      setState(() {
+        _stage = _AcademicLoginStage.detecting;
+        _captchaBytes = null;
+        _error = null;
+      });
+    }
 
     try {
-      final directReachable = await ZhengfangAuth.checkDirectReachable();
+      final directReachable =
+          await widget.directReachabilityChecker?.call() ??
+          await ZhengfangAuth.checkDirectReachable();
       if (!mounted) return;
 
       if (directReachable) {
-        setState(() {
-          _autoDetecting = false;
-        });
-        ZhengfangAuth.instance.setMode(ZhengfangMode.direct);
-        await _refreshCaptcha();
+        _setMode(ZhengfangMode.direct);
+        await _enterAcademicStage();
         return;
       }
 
-      setState(() {
-        _autoDetecting = false;
-        _captchaBytes = null;
-        _error = '无法连接教务系统，请检查网络或在校园网环境下使用';
-      });
+      final webVpnReachable =
+          await widget.webVpnReachabilityChecker?.call() ??
+          await ZhengfangAuth.checkWebVpnReachable();
+      if (!mounted) return;
+
+      if (!webVpnReachable) {
+        setState(() {
+          _stage = _AcademicLoginStage.unavailable;
+          _error = '无法连接教务系统，请检查网络连接';
+        });
+        return;
+      }
+
+      _setMode(ZhengfangMode.webVpn);
+      final gatewayReady = await _ensureGatewaySession();
+      if (!mounted) return;
+
+      if (gatewayReady) {
+        await _enterAcademicStage();
+      } else {
+        setState(() {
+          _stage = _AcademicLoginStage.unifiedAuth;
+          _error = null;
+        });
+      }
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _autoDetecting = false;
-        _captchaBytes = null;
+        _stage = _AcademicLoginStage.unavailable;
         _error = _friendlyNetworkMessage(error, fallback: '教务系统初始化失败，请稍后重试');
       });
     }
   }
 
-  Future<void> _loadSaved() async {
-    final creds = await CredentialStore.instance.loadCredentials();
-    if (creds != null) {
-      _usernameCtrl.text = creds.$1;
-      _passwordCtrl.text = creds.$2;
+  void _setMode(ZhengfangMode mode) {
+    _mode = mode;
+    final setter = widget.modeSetter;
+    if (setter != null) {
+      setter(mode);
+    } else {
+      ZhengfangAuth.instance.setMode(mode);
     }
   }
 
-  Future<void> _refreshCaptcha() async {
+  Future<bool> _ensureGatewaySession() async {
+    final result =
+        await widget.gatewaySessionEnsurer?.call() ??
+        await ZhengfangAuth.instance.ensureWebVpnGatewaySession(
+          syncWebViewCookies: false,
+        );
+    return result == true;
+  }
+
+  Future<void> _handleUnifiedAuthSuccess() async {
+    if (!mounted) return;
+    setState(() {
+      _stage = _AcademicLoginStage.preparingAcademic;
+      _error = null;
+    });
+
     try {
-      final bytes = await ZhengfangAuth.instance.fetchCaptcha();
+      final gatewayReady = await _ensureGatewaySession();
+      if (!mounted) return;
+      if (!gatewayReady) {
+        setState(() {
+          _stage = _AcademicLoginStage.unavailable;
+          _error = '一卡通认证完成，但 WebVPN 会话校验失败，请重新检测';
+        });
+        return;
+      }
+      await _enterAcademicStage();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _stage = _AcademicLoginStage.unavailable;
+        _error = _friendlyNetworkMessage(
+          error,
+          fallback: 'WebVPN 会话建立失败，请重新检测',
+        );
+      });
+    }
+  }
+
+  Future<void> _enterAcademicStage() async {
+    if (!mounted) return;
+    setState(() {
+      _stage = _AcademicLoginStage.academic;
+      _captchaBytes = null;
+      _error = null;
+    });
+    await _refreshCaptcha();
+  }
+
+  Future<void> _loadSaved() async {
+    final credentials =
+        await widget.credentialLoader?.call() ??
+        await CredentialStore.instance.loadCredentials();
+    if (credentials != null) {
+      _usernameCtrl.text = credentials.$1;
+      _passwordCtrl.text = credentials.$2;
+    }
+  }
+
+  Future<void> _refreshCaptcha({bool preserveError = false}) async {
+    final previousError = preserveError ? _error : null;
+    try {
+      final bytes =
+          await widget.captchaLoader?.call() ??
+          await ZhengfangAuth.instance.fetchCaptcha();
       final codec = await ui.instantiateImageCodec(bytes);
       codec.dispose();
-      if (mounted) {
+      if (!mounted) return;
+      setState(() {
+        _captchaBytes = bytes;
+        _error = previousError;
+      });
+    } on CaptchaException catch (error) {
+      if (!mounted) return;
+      if (_mode == ZhengfangMode.webVpn &&
+          (error.message.contains('已过期') || error.message.contains('认证'))) {
+        ZhengfangAuth.instance.markWebVpnLoggedOut();
         setState(() {
-          _captchaBytes = bytes;
-          _error = null;
-        });
-      }
-    } on CaptchaException catch (e) {
-      if (mounted) {
-        setState(() {
+          _stage = _AcademicLoginStage.unifiedAuth;
           _captchaBytes = null;
-          _error = e.message;
+          _error = '一卡通认证已过期，请重新认证';
         });
+        return;
       }
-    } on DioException catch (e) {
-      if (mounted) {
-        setState(() {
-          _captchaBytes = null;
-          _error = _friendlyNetworkMessage(e, fallback: '无法加载验证码，请重试');
-        });
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _captchaBytes = null;
-          _error = '无法加载验证码，请重试';
-        });
-      }
+      setState(() {
+        _captchaBytes = null;
+        _error = error.message;
+      });
+    } on DioException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _captchaBytes = null;
+        _error = _friendlyNetworkMessage(error, fallback: '无法加载验证码，请重试');
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _captchaBytes = null;
+        _error = _friendlyNetworkMessage(error, fallback: '无法加载验证码，请重试');
+      });
     }
   }
 
@@ -145,19 +287,21 @@ class _LoginWidgetState extends State<LoginWidget> {
       setState(() => _error = '请填写学号、密码和验证码');
       return;
     }
+
     setState(() {
       _loading = true;
       _error = null;
     });
-    final result = await ZhengfangAuth.instance.login(
-      username,
-      password,
-      captcha,
-    );
+
+    final result =
+        await widget.loginHandler?.call(username, password, captcha) ??
+        await ZhengfangAuth.instance.login(username, password, captcha);
     if (!mounted) return;
+
     switch (result) {
       case LoginSuccess():
-        await CredentialStore.instance.saveCredentials(username, password);
+        await (widget.credentialSaver?.call(username, password) ??
+            CredentialStore.instance.saveCredentials(username, password));
         widget.onLoginSuccess();
       case LoginFailure(:final message):
         setState(() {
@@ -165,7 +309,7 @@ class _LoginWidgetState extends State<LoginWidget> {
           _error = message;
         });
         _captchaCtrl.clear();
-        _refreshCaptcha();
+        await _refreshCaptcha(preserveError: true);
     }
   }
 
@@ -187,7 +331,13 @@ class _LoginWidgetState extends State<LoginWidget> {
         children: [
           if (widget.showHeader) ...[
             const SizedBox(height: 24),
-            Icon(Icons.school_outlined, size: 64, color: colorScheme.primary),
+            Icon(
+              _mode == ZhengfangMode.direct
+                  ? Icons.school_outlined
+                  : Icons.vpn_lock_outlined,
+              size: 64,
+              color: colorScheme.primary,
+            ),
             const SizedBox(height: 16),
             Text(
               '登录教务系统',
@@ -196,86 +346,19 @@ class _LoginWidgetState extends State<LoginWidget> {
             ),
             const SizedBox(height: 32),
           ],
-
-          if (_autoDetecting)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 32),
-              child: Column(
-                children: [
-                  const CircularProgressIndicator(),
-                  const SizedBox(height: 16),
-                  Text(
-                    '正在检测网络环境...',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
+          if (_stage == _AcademicLoginStage.detecting ||
+              _stage == _AcademicLoginStage.preparingAcademic)
+            _buildProgressState(colorScheme),
+          if (_stage == _AcademicLoginStage.unifiedAuth)
+            _buildUnifiedAuthStage(context, colorScheme),
+          if (_stage == _AcademicLoginStage.academic)
+            _buildAcademicStage(colorScheme),
+          if (_stage == _AcademicLoginStage.unavailable)
+            OutlinedButton.icon(
+              onPressed: _detectLoginPath,
+              icon: const Icon(Icons.refresh),
+              label: const Text('重新检测'),
             ),
-
-          if (!_autoDetecting) ...[
-            TextField(
-              controller: _usernameCtrl,
-              decoration: const InputDecoration(
-                hintText: '学号',
-                prefixIcon: Icon(Icons.person_outline),
-              ),
-              keyboardType: TextInputType.number,
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _passwordCtrl,
-              decoration: InputDecoration(
-                hintText: '密码',
-                prefixIcon: const Icon(Icons.lock_outline),
-                suffixIcon: IconButton(
-                  tooltip: _obscurePassword ? '显示密码' : '隐藏密码',
-                  onPressed: () {
-                    setState(() {
-                      _obscurePassword = !_obscurePassword;
-                    });
-                  },
-                  icon: Icon(
-                    _obscurePassword
-                        ? Icons.visibility_outlined
-                        : Icons.visibility_off_outlined,
-                  ),
-                ),
-              ),
-              obscureText: _obscurePassword,
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            _buildCaptchaRow(colorScheme),
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.only(left: 4),
-              child: Text(
-                '点击右侧验证码刷新',
-                style: TextStyle(
-                  color: colorScheme.onSurfaceVariant,
-                  fontSize: 12,
-                ),
-              ),
-            ),
-            const SizedBox(height: 18),
-            FilledButton(
-              onPressed: _loading ? null : _login,
-              child: _loading
-                  ? SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: colorScheme.onPrimary,
-                      ),
-                    )
-                  : const Text('登录'),
-            ),
-          ],
-
           if (_error != null) ...[
             const SizedBox(height: 12),
             Text(
@@ -289,6 +372,155 @@ class _LoginWidgetState extends State<LoginWidget> {
     );
   }
 
+  Widget _buildProgressState(ColorScheme colorScheme) {
+    final preparingAcademic = _stage == _AcademicLoginStage.preparingAcademic;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 32),
+      child: Column(
+        children: [
+          const CircularProgressIndicator(),
+          const SizedBox(height: 16),
+          Text(
+            preparingAcademic ? '正在建立 WebVPN 会话...' : '正在检测网络环境...',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUnifiedAuthStage(BuildContext context, ColorScheme colorScheme) {
+    final builder = widget.unifiedAuthStageBuilder;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildStepLabel(
+          colorScheme,
+          icon: Icons.vpn_key_outlined,
+          label: '第 1 步：一卡通认证',
+        ),
+        const SizedBox(height: 12),
+        if (builder != null)
+          builder(context, _handleUnifiedAuthSuccess)
+        else
+          UnifiedAuthLoginWidget(
+            serviceUrl: ZhengfangAuth.webVpnGatewayServiceUrl,
+            title: '登录一卡通',
+            description: '先完成统一认证，再登录教务系统',
+            sessionPreflight: _ensureGatewaySession,
+            showHeader: false,
+            padding: EdgeInsets.zero,
+            onLoginSuccess: _handleUnifiedAuthSuccess,
+          ),
+      ],
+    );
+  }
+
+  Widget _buildAcademicStage(ColorScheme colorScheme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_mode == ZhengfangMode.webVpn) ...[
+          _buildStepLabel(
+            colorScheme,
+            icon: Icons.school_outlined,
+            label: '第 2 步：教务系统登录',
+          ),
+          const SizedBox(height: 16),
+        ],
+        TextField(
+          controller: _usernameCtrl,
+          decoration: const InputDecoration(
+            hintText: '学号',
+            prefixIcon: Icon(Icons.person_outline),
+          ),
+          keyboardType: TextInputType.number,
+          textInputAction: TextInputAction.next,
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _passwordCtrl,
+          decoration: InputDecoration(
+            hintText: '教务系统密码',
+            prefixIcon: const Icon(Icons.lock_outline),
+            suffixIcon: IconButton(
+              tooltip: _obscurePassword ? '显示密码' : '隐藏密码',
+              onPressed: () {
+                setState(() {
+                  _obscurePassword = !_obscurePassword;
+                });
+              },
+              icon: Icon(
+                _obscurePassword
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined,
+              ),
+            ),
+          ),
+          obscureText: _obscurePassword,
+          textInputAction: TextInputAction.next,
+        ),
+        const SizedBox(height: 12),
+        _buildCaptchaRow(colorScheme),
+        const SizedBox(height: 8),
+        Padding(
+          padding: const EdgeInsets.only(left: 4),
+          child: Text(
+            _captchaBytes == null ? '正在准备教务验证码...' : '点击右侧验证码刷新',
+            style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12),
+          ),
+        ),
+        const SizedBox(height: 18),
+        FilledButton(
+          onPressed: (_loading || _captchaBytes == null) ? null : _login,
+          child: _loading
+              ? SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: colorScheme.onPrimary,
+                  ),
+                )
+              : const Text('登录教务系统'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStepLabel(
+    ColorScheme colorScheme, {
+    required IconData icon,
+    required String label,
+  }) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: colorScheme.primary.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: colorScheme.primary),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: colorScheme.primary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildCaptchaRow(ColorScheme colorScheme) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -297,7 +529,7 @@ class _LoginWidgetState extends State<LoginWidget> {
           child: TextField(
             controller: _captchaCtrl,
             decoration: const InputDecoration(
-              hintText: '验证码',
+              hintText: '教务验证码',
               prefixIcon: Icon(Icons.shield_outlined),
             ),
             textInputAction: TextInputAction.done,

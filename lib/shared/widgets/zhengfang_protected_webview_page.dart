@@ -58,16 +58,18 @@ class _ZhengfangProtectedWebViewPageState
     }
   }
 
-  Future<void> _showNativeLogin() async {
-    try {
-      await ZhengfangAuth.instance.markLoggedOut();
-    } catch (error, stackTrace) {
-      AppLogger.instance.auth(
-        LogLevel.warn,
-        '清理教务登录态失败，继续显示登录引导',
-        error: error,
-        stackTrace: stackTrace,
-      );
+  Future<void> _showNativeLogin({bool clearInvalidSession = false}) async {
+    if (clearInvalidSession) {
+      try {
+        await ZhengfangAuth.instance.markLoggedOut();
+      } catch (error, stackTrace) {
+        AppLogger.instance.auth(
+          LogLevel.warn,
+          '清理失效的教务登录态失败，继续显示登录引导',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
     }
     if (mounted) {
       setState(() {
@@ -109,9 +111,26 @@ class _ZhengfangProtectedWebViewPageState
         return;
       }
 
+      final sessionValidation = await ZhengfangAuth.instance.validateSession();
+      if (!mounted) return;
+
+      if (sessionValidation == true && !_recoveryAttempted) {
+        _recoveryAttempted = true;
+        await _prepareWebViewSession(recreateWebView: true);
+        return;
+      }
+
+      if (sessionValidation == true) {
+        AppLogger.instance.webview(
+          LogLevel.error,
+          '原生教务会话有效，但 WebView Cookie 同步后仍停留在登录页',
+        );
+        return;
+      }
+
       if (_recoveryAttempted || !ZhengfangAuth.instance.isLoggedIn) {
         AppLogger.instance.webview(LogLevel.warn, '教务 WebView 会话恢复失败，切换为应用内登录');
-        await _showNativeLogin();
+        await _showNativeLogin(clearInvalidSession: sessionValidation == false);
         return;
       }
 

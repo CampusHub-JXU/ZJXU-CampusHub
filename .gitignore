@@ -71,3 +71,4 @@ android/app/google-services.json
 # Local browser/debug extraction artifacts
 /.playwright-cli/
 /output/
+/tmp/

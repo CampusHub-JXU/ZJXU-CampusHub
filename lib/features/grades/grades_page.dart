@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 
 import '../../app/app_theme_controller.dart';
 import '../../core/auth/zhengfang_auth.dart';
+import '../../core/theme/app_design_tokens.dart';
+import '../../shared/widgets/app_search_field.dart';
 import '../../shared/widgets/auth_required_view.dart';
 import '../../shared/widgets/login_shell.dart';
 import 'grades_model.dart';
@@ -197,9 +199,10 @@ class _GradesPageState extends State<GradesPage> {
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-            child: _GradesSearchField(
+            child: AppSearchField(
               controller: _searchController,
-              hasQuery: _query.isNotEmpty,
+              hintText: '搜索课程',
+              onChanged: (_) {},
               onClear: () => _searchController.clear(),
             ),
           ),
@@ -368,60 +371,6 @@ class _GradesPageState extends State<GradesPage> {
               ).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Search Field ──────────────────────────────────────────────────────────────
-
-class _GradesSearchField extends StatelessWidget {
-  const _GradesSearchField({
-    required this.controller,
-    required this.hasQuery,
-    required this.onClear,
-  });
-
-  final TextEditingController controller;
-  final bool hasQuery;
-  final VoidCallback onClear;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return TextField(
-      controller: controller,
-      textInputAction: TextInputAction.search,
-      decoration: InputDecoration(
-        hintText: '搜索课程',
-        prefixIcon: const Icon(Icons.search_rounded),
-        suffixIcon: hasQuery
-            ? IconButton(
-                onPressed: onClear,
-                icon: const Icon(Icons.close_rounded),
-                tooltip: '清除搜索',
-              )
-            : null,
-        filled: true,
-        fillColor: cs.surfaceContainerHighest.withValues(alpha: 0.5),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide.none,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(
-            color: cs.outlineVariant.withValues(alpha: 0.45),
-          ),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: cs.primary, width: 1.4),
-        ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: 12,
         ),
       ),
     );
@@ -615,7 +564,7 @@ class _GpaSummaryCard extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: [accent.withValues(alpha: 0.92), darkAccent],
         ),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(22, 20, 22, 18),
@@ -778,7 +727,7 @@ class _GradeCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: cs.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.cardAlt),
         border: Border.all(
           color: cs.outlineVariant.withValues(alpha: 0.4),
           width: 0.8,

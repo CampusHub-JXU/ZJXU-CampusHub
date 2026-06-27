@@ -8,6 +8,13 @@ void main() {
   });
 
   group('ZhengfangAuth portal urls', () {
+    test('builds an absolute WebVPN gateway login URL', () {
+      expect(
+        ZhengfangAuth.webVpnGatewayLoginUrl,
+        'https://webvpn.zjxu.edu.cn/login',
+      );
+    });
+
     test('builds direct portal urls in direct mode', () {
       ZhengfangAuth.instance.setMode(ZhengfangMode.direct);
 
@@ -28,7 +35,7 @@ void main() {
           '/xtgl/index_initMenu.html',
           queryParameters: {'jsdm': 'xs'},
         ),
-        'https://webvpn.zjxu.edu.cn/http/77726476706e69737468656265737421fae05b84692a62486b468ca88d1b203b/jwglxt/xtgl/index_initMenu.html?jsdm=xs',
+        'https://webvpn.zjxu.edu.cn/https/77726476706e69737468656265737421fae05b84692a62486b468ca88d1b203b/jwglxt/xtgl/index_initMenu.html?jsdm=xs',
       );
     });
 
@@ -44,6 +51,12 @@ void main() {
     });
 
     test('builds generic webvpn proxy urls for external services', () {
+      expect(
+        ZhengfangAuth.instance.buildWebVpnProxyUrl(
+          'https://mobilehall.zjxu.edu.cn/webroot/decision/view/form?op=h5',
+        ),
+        'https://webvpn.zjxu.edu.cn/https/77726476706e69737468656265737421fdf843952b3560517204c7b6924d367bdd166b13aa07/webroot/decision/view/form?op=h5',
+      );
       expect(
         ZhengfangAuth.instance.buildWebVpnProxyUrl(
           'https://twdekt.zjxu.edu.cn/dekt/wx/index?_WXFTL=0',

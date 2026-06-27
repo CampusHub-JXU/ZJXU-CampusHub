@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/app_design_tokens.dart';
 import '../home_controller.dart';
 
 class HomeCardContainer extends StatelessWidget {
@@ -46,7 +47,7 @@ class HomeCardContainer extends StatelessWidget {
     final glassEnabled = HomeController.instance.frostedGlassEnabled.value;
     final glassBlur = HomeController.instance.glassBlur.value;
     final glassOpacity = HomeController.instance.glassOpacity.value;
-    final radius = BorderRadius.circular(20);
+    final radius = AppRadius.cardBorder;
     final bgColor = glassEnabled
         ? (isDark
               ? cs.surfaceContainerLowest.withValues(alpha: glassOpacity * 0.86)

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../app/app_theme_controller.dart';
+import '../../../shared/widgets/app_icon_badge.dart';
 import '../../grades/grades_model.dart';
 import 'home_card_container.dart';
 
@@ -48,14 +49,11 @@ class HomeGradeChartCard extends StatelessWidget {
         children: [
           Align(
             alignment: Alignment.topLeft,
-            child: Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: iconColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(9),
-              ),
-              child: Icon(Icons.school_outlined, color: iconColor, size: 20),
+            child: AppIconBadge(
+              icon: Icons.school_outlined,
+              accentColor: iconColor,
+              size: AppIconBadgeSize.small,
+              backgroundAlpha: 0.1,
             ),
           ),
           Align(

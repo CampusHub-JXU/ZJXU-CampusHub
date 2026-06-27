@@ -7,11 +7,17 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  String dateText(DateTime date) =>
+      '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+
+  final firstExamDate = dateText(DateTime.now().add(const Duration(days: 14)));
+  final secondExamDate = dateText(DateTime.now().add(const Duration(days: 30)));
+
   final sampleItems = [
     {
       'kcmc': '高等数学',
       'kch': 'MATH101',
-      'kssj': '第5周 周三(2026-06-15) 14:00-16:00',
+      'kssj': '第5周 周三($firstExamDate) 14:00-16:00',
       'cdmc': '教学楼A301',
       'cdxqmc': '本部',
       'zwh': '15',
@@ -24,7 +30,7 @@ void main() {
     {
       'kcmc': '大学物理',
       'kch': 'PHY101',
-      'kssj': '第8周 周一(2026-07-01) 09:00-11:00',
+      'kssj': '第8周 周一($secondExamDate) 09:00-11:00',
       'cdmc': '实验楼B201',
       'cdxqmc': '本部',
       'zwh': '',

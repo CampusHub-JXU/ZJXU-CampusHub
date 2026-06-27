@@ -155,6 +155,8 @@ class SecondClassroomService {
         stackTrace: stackTrace,
       );
       throw const SecondClassroomServiceException('第二课堂数据解析失败');
+    } on SecondClassroomServiceException {
+      rethrow;
     }
   }
 
@@ -170,11 +172,25 @@ class SecondClassroomService {
     if (data is Map<String, dynamic>) return data;
     if (data is Map) return Map<String, dynamic>.from(data);
     if (data is String) {
+      final text = data.trimLeft();
+      if (_looksLikeHtmlResponse(text)) {
+        throw const SecondClassroomServiceException('第二课堂登录态失效，请在微信中重新授权');
+      }
       final decoded = jsonDecode(data);
       if (decoded is Map<String, dynamic>) return decoded;
       if (decoded is Map) return Map<String, dynamic>.from(decoded);
     }
     throw const FormatException('第二课堂响应不是 JSON 对象');
+  }
+
+  bool _looksLikeHtmlResponse(String text) {
+    if (text.isEmpty) return false;
+    final lower = text.toLowerCase();
+    return lower.startsWith('<!doctype html') ||
+        lower.startsWith('<html') ||
+        lower.contains('_auth_provider_') ||
+        lower.contains('open.weixin.qq.com') ||
+        lower.contains('wechat_redirect');
   }
 
   Map<String, dynamic> _menuData() {

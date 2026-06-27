@@ -143,7 +143,6 @@ void main() {
     (tester) async {
       var loginSucceeded = false;
       var captchaRequested = false;
-      var preflightCalled = false;
 
       UnifiedAuthService.instance.debugSetSession(
         active: true,
@@ -156,10 +155,6 @@ void main() {
             body: UnifiedAuthLoginWidget(
               onLoginSuccess: () => loginSucceeded = true,
               loadSavedCredentials: () async => ('', ''),
-              sessionPreflight: () async {
-                preflightCalled = true;
-                return true;
-              },
               captchaLoader: () async {
                 captchaRequested = true;
                 return Uint8List(0);
@@ -176,7 +171,6 @@ void main() {
 
       expect(loginSucceeded, isTrue);
       expect(captchaRequested, isFalse);
-      expect(preflightCalled, isFalse);
     },
   );
 
@@ -186,6 +180,11 @@ void main() {
     var loginSucceeded = false;
     var captchaRequested = false;
     var preflightCalled = false;
+
+    UnifiedAuthService.instance.debugSetSession(
+      active: true,
+      account: '1234567890',
+    );
 
     await tester.pumpWidget(
       MaterialApp(

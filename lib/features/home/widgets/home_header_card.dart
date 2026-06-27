@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../app/app_theme_controller.dart';
+import '../../../core/theme/app_design_tokens.dart';
 import '../home_controller.dart';
 
 class HomeHeaderCard extends StatelessWidget {
@@ -68,7 +69,7 @@ class HomeHeaderCard extends StatelessWidget {
     double glassBlur,
     double glassOpacity,
   ) {
-    final radius = BorderRadius.circular(glassEnabled ? 20 : 12);
+    final radius = BorderRadius.circular(glassEnabled ? AppRadius.card : 12);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
       child: GestureDetector(
@@ -167,24 +168,15 @@ class HomeHeaderCard extends StatelessWidget {
           alpha: (glassOpacity * 0.56).clamp(0.36, 0.52),
         ),
     ];
-    final primaryTextColor = AppThemeController.instance.resolveHomeTextColor(
-      context,
-      Colors.white,
-    );
+    final primaryTextColor = AppThemeController.instance
+        .resolveHomeTextColorForBackground(context, headerBaseColor);
     final secondaryTextColor = AppThemeController.instance
-        .resolveHomeSecondaryTextColor(
-          context,
-          Colors.white.withValues(alpha: 0.72),
-        );
+        .resolveHomeSecondaryTextColorForBackground(context, headerBaseColor);
     final tertiaryTextColor = AppThemeController.instance
-        .resolveHomeSecondaryTextColor(
-          context,
-          Colors.white.withValues(alpha: 0.50),
-        );
-    final iconColor = AppThemeController.instance.resolveHomeTextColor(
-      context,
-      Colors.white,
-    );
+        .resolveHomeSecondaryTextColorForBackground(context, headerBaseColor)
+        .withValues(alpha: 0.78);
+    final iconColor = AppThemeController.instance
+        .resolveHomeTextColorForBackground(context, headerBaseColor);
     final decoration = glassEnabled
         ? BoxDecoration(
             gradient: LinearGradient(

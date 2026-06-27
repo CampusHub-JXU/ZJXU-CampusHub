@@ -14,6 +14,57 @@ void main() {
     AppThemeController.instance.debugReset();
   });
 
+  group('resolveIconColor', () {
+    testWidgets('brandRed 模式应透传 fallback accent 色', (tester) async {
+      const accent = Color(0xFF7B61FF);
+      Color? resolved;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) {
+              resolved = AppThemeController.instance.resolveIconColor(
+                context,
+                accent,
+              );
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+      );
+      expect(resolved, accent);
+    });
+
+    testWidgets('monet 模式应跟随 colorScheme.primary', (tester) async {
+      AppThemeController.instance.debugReset(mode: AppThemeSeedMode.monet);
+      const accent = Color(0xFF7B61FF);
+      Color? resolved;
+      Color? primary;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(
+            useMaterial3: true,
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: AppColors.primary,
+              brightness: Brightness.light,
+            ),
+          ),
+          home: Builder(
+            builder: (context) {
+              primary = Theme.of(context).colorScheme.primary;
+              resolved = AppThemeController.instance.resolveIconColor(
+                context,
+                accent,
+              );
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+      );
+      expect(resolved, primary);
+      expect(resolved, isNot(accent));
+    });
+  });
+
   group('AppThemeController', () {
     test('初始状态应为 brandRed', () {
       expect(

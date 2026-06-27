@@ -6,6 +6,9 @@ import 'package:go_router/go_router.dart';
 import '../../app/app_theme_controller.dart';
 import '../../core/auth/unified_auth.dart';
 import '../../core/auth/zhengfang_auth.dart';
+import '../../core/theme/app_design_tokens.dart';
+import '../../shared/widgets/app_card.dart';
+import '../../shared/widgets/app_icon_badge.dart';
 import '../../shared/widgets/login_shell.dart';
 import '../schedule/schedule_service.dart';
 
@@ -171,7 +174,6 @@ class _MyPageState extends State<MyPage> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final accountIconColor = AppThemeController.instance.resolveIconColor(
       context,
       cs.primary,
@@ -189,18 +191,10 @@ class _MyPageState extends State<MyPage> {
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
             child: Row(
               children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: accountIconColor.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    Icons.account_circle_outlined,
-                    color: accountIconColor,
-                    size: 22,
-                  ),
+                AppIconBadge(
+                  icon: Icons.account_circle_outlined,
+                  accentColor: accountIconColor,
+                  size: AppIconBadgeSize.large,
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -260,39 +254,15 @@ class _MyPageState extends State<MyPage> {
               if (!mounted) return;
               await _refreshStatus();
             },
-            child: Container(
+            child: AppCard(
               padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: cs.surfaceContainerLowest,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: isDark
-                      ? cs.outline.withValues(alpha: 0.3)
-                      : cs.outline.withValues(alpha: 0.2),
-                  width: 1,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: cs.shadow.withValues(alpha: 0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
+              elevation: AppElevation.level3,
               child: Row(
                 children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: cs.primary.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(
-                      Icons.settings_outlined,
-                      color: cs.primary,
-                      size: 22,
-                    ),
+                  AppIconBadge(
+                    icon: Icons.settings_outlined,
+                    accentColor: cs.primary,
+                    size: AppIconBadgeSize.large,
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -357,39 +327,18 @@ class _AccountStatusCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
+    return AppCard(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isDark
-              ? cs.outline.withValues(alpha: 0.3)
-              : cs.outline.withValues(alpha: 0.2),
-          width: 1,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: cs.shadow.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
+      elevation: AppElevation.level3,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: iconColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(icon, color: iconColor, size: 22),
+              AppIconBadge(
+                icon: icon,
+                accentColor: iconColor,
+                size: AppIconBadgeSize.large,
               ),
               const SizedBox(width: 12),
               Expanded(

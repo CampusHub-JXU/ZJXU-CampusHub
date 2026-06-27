@@ -1,8 +1,9 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/core/network/dio_client.dart';
 import 'package:jxu_campus_hub/features/grades/grades_service.dart';
 
@@ -66,4 +67,25 @@ void main() {
 
     expect(result, isEmpty);
   });
+
+  test(
+    'webvpn mode uses the authenticated cookie client and proxy URL',
+    () async {
+      ZhengfangAuth.instance.setMode(ZhengfangMode.webVpn);
+      final endpoint = ZhengfangAuth.instance.buildPortalUrl(
+        '/cjcx/cjcx_cxDgXscj.html',
+      );
+      final adapter = MockHttpClientAdapter();
+      adapter.registerJson('POST', Uri.parse(endpoint).path, {'items': []});
+      DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
+
+      final result = await GradesService.instance.fetchGrades(
+        '20250001',
+        forceRefresh: true,
+      );
+
+      expect(result, isEmpty);
+      expect(adapter.requestLog, ['POST ${Uri.parse(endpoint).path}']);
+    },
+  );
 }

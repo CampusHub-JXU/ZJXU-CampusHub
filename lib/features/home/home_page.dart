@@ -9,6 +9,7 @@ import '../../core/auth/zhengfang_auth.dart';
 import '../../core/config/feature_entry_catalog.dart';
 import '../../core/semester/semester_calendar.dart';
 import '../../core/update/update_checker.dart';
+import '../../shared/widgets/app_icon_badge.dart';
 import '../../shared/widgets/update_dialog.dart';
 import '../campus_card/campus_card_service.dart';
 import '../dorm_electricity/dorm_electricity_service.dart';
@@ -426,10 +427,16 @@ class _HomePageState extends State<HomePage> {
                     },
                   ),
                 ),
-                for (final entry in learningEntries) ...[
-                  const SizedBox(height: 10),
-                  _buildLearningServiceEntryCard(context, entry),
-                ],
+                if (learningEntries.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: _buildEmptyLearningSlot(context),
+                  )
+                else
+                  for (final entry in learningEntries) ...[
+                    const SizedBox(height: 10),
+                    _buildLearningServiceEntryCard(context, entry),
+                  ],
               ],
             ),
           ),
@@ -545,6 +552,33 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Widget _buildEmptyLearningSlot(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return HomeCardContainer(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+      child: Row(
+        children: [
+          AppIconBadge(
+            icon: Icons.menu_book_outlined,
+            accentColor: cs.primary,
+            size: AppIconBadgeSize.small,
+            backgroundAlpha: 0.1,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              '更多学习入口在功能页',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+            ),
+          ),
+          Icon(Icons.arrow_forward_ios, size: 12, color: cs.onSurfaceVariant),
+        ],
+      ),
+    );
+  }
+
   Widget _buildLearningServiceEntryCard(
     BuildContext context,
     FeatureEntryDefinition entry,
@@ -569,14 +603,11 @@ class _HomePageState extends State<HomePage> {
           onTap: () => context.pushNamed(entry.routeName),
           child: Row(
             children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: entryColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(entry.icon, color: entryColor, size: 20),
+              AppIconBadge(
+                icon: entry.icon,
+                accentColor: entryColor,
+                size: AppIconBadgeSize.small,
+                backgroundAlpha: 0.1,
               ),
               const SizedBox(width: 12),
               Expanded(

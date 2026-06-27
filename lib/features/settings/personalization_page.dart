@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../app/app_theme_controller.dart';
+import '../../core/theme/app_design_tokens.dart';
 import '../home/home_controller.dart';
 import '../home/widgets/home_background_layer.dart';
 import 'widgets/glass_preset_control.dart';
@@ -158,7 +159,7 @@ class _PersonalizationPageState extends State<PersonalizationPage> {
                         width: frameWidth,
                         height: frameHeight,
                         child: ClipRRect(
-                          borderRadius: BorderRadius.circular(18),
+                          borderRadius: AppRadius.tileBorder,
                           child: DecoratedBox(
                             decoration: BoxDecoration(
                               color: Theme.of(
@@ -229,7 +230,9 @@ class _PersonalizationPageState extends State<PersonalizationPage> {
                                         color: Colors.black.withValues(
                                           alpha: 0.42,
                                         ),
-                                        borderRadius: BorderRadius.circular(8),
+                                        borderRadius: BorderRadius.circular(
+                                          AppRadius.chip,
+                                        ),
                                       ),
                                       child: const Text(
                                         '首页可见区域 · 拖动/双指缩放',

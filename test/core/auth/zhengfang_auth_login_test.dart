@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -113,18 +113,6 @@ void main() {
     });
   });
 
-  group('extractHiddenField', () {
-    test('extracts execution field from hidden input', () {
-      const html =
-          '<input type="hidden" name="execution" value="e1s1-abc123" />';
-      expect(auth.extractHiddenField(html, 'execution'), 'e1s1-abc123');
-    });
-
-    test('returns empty string when hidden field is absent', () {
-      expect(auth.extractHiddenField('<html></html>', 'execution'), '');
-    });
-  });
-
   group('decodeHtmlEntities', () {
     test('decodes common HTML entities', () {
       expect(auth.decodeHtmlEntities('&lt;script&gt;'), '<script>');
@@ -173,11 +161,35 @@ void main() {
       expect(adapter.logoutCount, 0);
       expect(adapter.requestLog.last, 'POST /jwglxt/xtgl/login_slogin.html');
     });
+
+    test(
+      'keeps an authenticated session when login entry redirects to index',
+      () async {
+        await DioClient.instance.ensureInitialized();
+        auth.setMode(ZhengfangMode.direct);
+
+        final adapter = _RecordingZhengfangAdapter(existingSession: true);
+        DioClient.instance.dio.httpClientAdapter = adapter;
+
+        final result = await auth.login('2024001', 'password123', '2468');
+
+        expect(result, isA<LoginSuccess>());
+        expect(auth.isLoggedIn, isTrue);
+        expect(adapter.logoutCount, 0);
+        expect(
+          adapter.requestLog,
+          equals(['GET /jwglxt/xtgl/login_slogin.html']),
+        );
+      },
+    );
   });
 }
 
 class _RecordingZhengfangAdapter implements HttpClientAdapter {
-  _RecordingZhengfangAdapter({this.forceCaptchaFailure = false});
+  _RecordingZhengfangAdapter({
+    this.forceCaptchaFailure = false,
+    this.existingSession = false,
+  });
 
   static const _modulus =
       '18vI4XcZMDybHwuQYgp+fxR8kAgAQWPnKFNLVDoTopVtDgtb1PlyJAmV85T1TVUmTVCGqw1adAmVgdDm3MaAO+CrS6bsfywyqMqT8yTNadF79hkFqf3DW0PUCWk59/vfc8QRnPyJBAIN6pNmukJxdL2Z4WLuQ4e63VivUoacFeE=';
@@ -186,6 +198,7 @@ class _RecordingZhengfangAdapter implements HttpClientAdapter {
       '<html><input type="hidden" id="csrftoken" name="csrftoken" value="csrf-token-123" /></html>';
 
   final bool forceCaptchaFailure;
+  final bool existingSession;
   final List<String> requestLog = <String>[];
   int logoutCount = 0;
   bool _sessionValid = true;
@@ -200,6 +213,16 @@ class _RecordingZhengfangAdapter implements HttpClientAdapter {
     requestLog.add('${options.method} $path');
 
     if (path.endsWith('/xtgl/login_slogin.html') && options.method == 'GET') {
+      if (existingSession) {
+        return ResponseBody.fromString(
+          '',
+          302,
+          isRedirect: true,
+          headers: <String, List<String>>{
+            'location': <String>['/jwglxt/xtgl/index_initMenu.html?jsdm=xs'],
+          },
+        );
+      }
       return ResponseBody.fromString(
         _loginPageHtml,
         200,

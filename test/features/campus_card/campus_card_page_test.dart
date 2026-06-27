@@ -14,7 +14,8 @@ void main() {
 
   setUp(() {
     AppBootstrapController.instance.debugReset();
-    CampusCardPage.debugAutoOpenTriggered = false;
+    CampusCardPage.debugAutoRefreshTriggered = false;
+    CampusCardService.instance.debugBalanceFetcher = null;
     CampusCardService.instance.debugSetCachedBalance(
       23.5,
       updatedAt: DateTime(2026, 4, 10, 8, 0),
@@ -129,8 +130,8 @@ void main() {
     expect(find.byType(UnifiedAuthProtectedWebViewPage), findsOneWidget);
   });
 
-  group('bootstrap-aware auto-open', () {
-    testWidgets('does not auto-open WebView while bootstrap is still warming', (
+  group('bootstrap-aware balance refresh', () {
+    testWidgets('does not query balance while bootstrap is still warming', (
       tester,
     ) async {
       CampusCardService.instance.debugSetCachedBalance(null);
@@ -139,14 +140,16 @@ void main() {
       await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
       await tester.pumpAndSettle();
 
-      // WebView should NOT have been pushed yet.
+      // No balance query or WebView navigation should happen yet.
+      expect(CampusCardPage.debugAutoRefreshTriggered, isFalse);
       expect(find.byType(UnifiedAuthProtectedWebViewPage), findsNothing);
     });
 
     testWidgets(
-      'auto-opens WebView when bootstrap completes with no cached balance',
+      'queries HTML directly when bootstrap completes with no cached balance',
       (tester) async {
         CampusCardService.instance.debugSetCachedBalance(null);
+        CampusCardService.instance.debugBalanceFetcher = () async => 42.5;
         AppBootstrapController.instance.debugSetPhase(
           AppBootstrapPhase.warming,
         );
@@ -158,15 +161,15 @@ void main() {
         AppBootstrapController.instance.debugSetPhase(
           AppBootstrapPhase.localStateReady,
         );
-        await tester.pump();
-        await tester.pump();
+        await tester.pumpAndSettle();
 
-        expect(CampusCardPage.debugAutoOpenTriggered, isTrue);
+        expect(CampusCardPage.debugAutoRefreshTriggered, isTrue);
+        expect(find.byType(UnifiedAuthProtectedWebViewPage), findsNothing);
       },
     );
 
     testWidgets(
-      'does not auto-open WebView when balance is restored by bootstrap',
+      'does not query balance when bootstrap restores the cached value',
       (tester) async {
         CampusCardService.instance.debugSetCachedBalance(null);
         AppBootstrapController.instance.debugSetPhase(
@@ -187,7 +190,7 @@ void main() {
         await tester.pump();
         await tester.pump();
 
-        expect(CampusCardPage.debugAutoOpenTriggered, isFalse);
+        expect(CampusCardPage.debugAutoRefreshTriggered, isFalse);
       },
     );
   });

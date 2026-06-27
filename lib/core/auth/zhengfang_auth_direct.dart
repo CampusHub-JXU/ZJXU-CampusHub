@@ -242,14 +242,16 @@ extension ZhengfangAuthDirectExtension on ZhengfangAuth {
 
   Future<void> _clearZhengfangCookies() async {
     final uris = [
-      Uri.parse('$ZhengfangAuth._directOrigin/'),
-      Uri.parse('$ZhengfangAuth._directOrigin$ZhengfangAuth._directLoginPath'),
-      Uri.parse('$ZhengfangAuth._directBase/'),
+      Uri.parse('${ZhengfangAuth._directOrigin}/'),
+      Uri.parse(
+        '${ZhengfangAuth._directOrigin}${ZhengfangAuth._directLoginPath}',
+      ),
+      Uri.parse('${ZhengfangAuth._directBase}/'),
       Uri.parse(
         '${ZhengfangAuth._directOrigin}/jwglxt/xtgl/index_initMenu.html?jsdm=xs',
       ),
       Uri.parse(
-        '$ZhengfangAuth._webVpnBase$ZhengfangAuth._webVpnJwglxtPrefix/',
+        '${ZhengfangAuth._webVpnBase}${ZhengfangAuth._webVpnJwglxtPrefix}/',
       ),
       Uri.parse(_loginPageUrl),
     ];
@@ -277,27 +279,35 @@ extension ZhengfangAuthDirectExtension on ZhengfangAuth {
     for (final cookie in cookies) {
       final domain = (cookie.domain ?? '').trim();
       final targetDomain = domain.isNotEmpty ? domain : uri.host;
+      final normalizedDomain = targetDomain.replaceFirst(RegExp(r'^\.'), '');
+      final domainCandidates = <String>{
+        targetDomain,
+        normalizedDomain,
+        '.$normalizedDomain',
+      };
       final targetPath = (cookie.path ?? '').trim().isNotEmpty
           ? cookie.path!.trim()
           : normalizedPath;
 
       for (final rootUrl in rootUrls) {
-        try {
-          await cookieManager.deleteCookie(
-            url: WebUri(rootUrl),
-            name: cookie.name,
-            domain: targetDomain,
-            path: '/',
-          );
-        } catch (_) {}
-        try {
-          await cookieManager.deleteCookie(
-            url: WebUri(rootUrl),
-            name: cookie.name,
-            domain: targetDomain,
-            path: targetPath,
-          );
-        } catch (_) {}
+        for (final candidate in domainCandidates) {
+          try {
+            await cookieManager.deleteCookie(
+              url: WebUri(rootUrl),
+              name: cookie.name,
+              domain: candidate,
+              path: '/',
+            );
+          } catch (_) {}
+          try {
+            await cookieManager.deleteCookie(
+              url: WebUri(rootUrl),
+              name: cookie.name,
+              domain: candidate,
+              path: targetPath,
+            );
+          } catch (_) {}
+        }
       }
     }
   }
@@ -329,54 +339,14 @@ extension ZhengfangAuthDirectExtension on ZhengfangAuth {
       throw CaptchaException('WebVPN 认证已过期，请重新登录');
     }
     if (isLoginSuccess(statusCode, location, '')) {
-      AppLogger.instance.auth(
-        LogLevel.warn,
-        '检测到 302 重定向到首页，旧会话可能已过期，清除 Cookie 后重新获取登录页',
-      );
-      await _clearZhengfangCookies();
-      _sessionActive = false;
+      // Accessing the login entry while already authenticated is expected to
+      // redirect to the index page. This proves the academic session is valid;
+      // clearing cookies here used to destroy or desynchronise a good session.
+      _sessionActive = true;
       _cachedCsrfToken = null;
+      _contextIndicatesLoggedIn = true;
+      AppLogger.instance.auth(LogLevel.info, '检测到教务已有有效会话');
       _notifyAuthListeners();
-
-      final retryResp = await _sendWithProxyFallback<String>(
-        label: '教务登录页上下文重试',
-        request: (dio) => dio.get<String>(
-          '$_baseUrl/xtgl/login_slogin.html',
-          options: Options(
-            responseType: ResponseType.plain,
-            headers: {'Referer': _loginPageUrl},
-          ),
-        ),
-      );
-
-      final retryLocation = retryResp.headers.value('location') ?? '';
-      if (isZhengfangGatewayLoginUrl(retryLocation)) {
-        AppLogger.instance.auth(
-          LogLevel.warn,
-          '清除 Cookie 后跳转到 WebVPN 登录页，需要重新认证',
-        );
-        await markLoggedOut();
-        throw CaptchaException('WebVPN 认证已过期，请重新登录');
-      }
-      if (isLoginSuccess(retryResp.statusCode, retryLocation, '')) {
-        _sessionActive = true;
-        _cachedCsrfToken = null;
-        _contextIndicatesLoggedIn = true;
-        AppLogger.instance.auth(LogLevel.info, '清除 Cookie 后仍检测到有效会话');
-        _notifyAuthListeners();
-        return '';
-      }
-
-      final retryHtml = retryResp.data ?? '';
-      final retryToken = extractCsrfFromHtml(retryHtml);
-      if (retryToken.isNotEmpty) {
-        _cachedCsrfToken = retryToken;
-        _contextIndicatesLoggedIn = false;
-        return retryToken;
-      }
-
-      AppLogger.instance.auth(LogLevel.warn, '清除 Cookie 后仍无法获取 CSRF Token');
-      _contextIndicatesLoggedIn = false;
       return '';
     }
 
@@ -464,9 +434,6 @@ extension ZhengfangAuthDirectExtension on ZhengfangAuth {
     _contextIndicatesLoggedIn = false;
     _sessionActive = false;
     currentStudentId = null;
-    _cachedCasExecution = null;
-    _cachedCasLt = null;
-    _cachedCasLoginUrl = null;
     _mode = ZhengfangMode.direct;
   }
 }

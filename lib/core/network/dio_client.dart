@@ -161,7 +161,11 @@ class DioClient {
               '← $code ${requestOptions.method} $uri ($duration) → $location',
             );
             final normalizedLocation = location.toLowerCase();
-            if (normalizedLocation.contains('webvpn.zjxu.edu.cn/login')) {
+            final redirectUri = Uri.tryParse(location);
+            final casTicket = redirectUri?.queryParameters['ticket'] ?? '';
+            final isCasServiceRedirect = casTicket.startsWith('ST-');
+            if (normalizedLocation.contains('webvpn.zjxu.edu.cn/login') &&
+                !isCasServiceRedirect) {
               AppLogger.instance.network(
                 LogLevel.warn,
                 '检测到重定向到 WebVPN 登录页，当前会话可能已失效或需要重新认证',

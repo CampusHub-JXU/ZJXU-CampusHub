@@ -73,12 +73,6 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
   Future<void> _bootstrapLoginState() async {
     try {
       await _loadSaved();
-
-      if (UnifiedAuthService.instance.isLoggedIn) {
-        if (mounted) widget.onLoginSuccess();
-        return;
-      }
-
       final hasActiveSession = await _preparePrimaryLoginMode();
       if (!mounted) return;
 
@@ -101,6 +95,8 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
       if (!mounted || hasActiveSession) {
         return hasActiveSession;
       }
+    } else if (UnifiedAuthService.instance.isLoggedIn) {
+      return true;
     }
 
     if (widget.loginHandler != null && widget.captchaLoader != null) {
