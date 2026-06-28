@@ -376,5 +376,4 @@ class _PersonalizationPageState extends State<PersonalizationPage> {
     HomeController.instance.backgroundScale.value = (_gestureStartScale * scale)
         .clamp(0.5, 3.0);
   }
-
 }

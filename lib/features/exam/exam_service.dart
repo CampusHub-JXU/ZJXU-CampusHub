@@ -115,7 +115,9 @@ class ExamService {
       final resp = await AcademicAuthGuard.guardRequest<Map<String, dynamic>>(
         authExpiredException: const ExamAuthExpiredException(),
         request: () => dio.post<Map<String, dynamic>>(
-          ZhengfangAuth.instance.buildPortalUrl('/kwgl/kscx_cxXsksxxIndex.html'),
+          ZhengfangAuth.instance.buildPortalUrl(
+            '/kwgl/kscx_cxXsksxxIndex.html',
+          ),
           queryParameters: {
             'doType': 'query',
             'gnmkdm': 'N358105',

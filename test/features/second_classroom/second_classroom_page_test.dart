@@ -90,7 +90,10 @@ void main() {
     expect(find.text('榜样分享活动'), findsOneWidget);
     expect(find.text('招募中'), findsOneWidget);
     expect(find.byTooltip('在微信中打开'), findsOneWidget);
-    expect(find.byWidgetPredicate((widget) => widget is AppDropdown), findsNWidgets(5));
+    expect(
+      find.byWidgetPredicate((widget) => widget is AppDropdown),
+      findsNWidgets(5),
+    );
   });
 
   testWidgets('opens second classroom in WeChat from app bar', (tester) async {

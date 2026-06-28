@@ -33,9 +33,7 @@ class PersonalizationBackgroundSection extends StatelessWidget {
                   ListTile(
                     leading: const Icon(Icons.wallpaper_outlined),
                     title: const Text('选择背景图片'),
-                    subtitle: Text(
-                      bgPath != null ? '已设置自定义背景' : '未设置，使用默认背景',
-                    ),
+                    subtitle: Text(bgPath != null ? '已设置自定义背景' : '未设置，使用默认背景'),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => _pickHomeBackgroundImage(context),
                   ),
@@ -105,10 +103,7 @@ class PersonalizationBackgroundSection extends StatelessWidget {
           trailing: AppDropdown<HomeBackgroundFit>(
             value: fit,
             items: HomeBackgroundFit.values
-                .map(
-                  (item) =>
-                      AppDropdownItem(value: item, label: item.label),
-                )
+                .map((item) => AppDropdownItem(value: item, label: item.label))
                 .toList(),
             onChanged: (value) {
               if (value == null) return;

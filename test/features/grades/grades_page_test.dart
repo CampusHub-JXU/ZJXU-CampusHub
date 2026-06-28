@@ -29,7 +29,9 @@ void main() {
     required List<Map<String, dynamic>> items,
   }) async {
     final adapter = MockHttpClientAdapter();
-    adapter.register('POST', '/jwglxt/cjcx/cjcx_cxDgXscj.html', (options) async {
+    adapter.register('POST', '/jwglxt/cjcx/cjcx_cxDgXscj.html', (
+      options,
+    ) async {
       return ResponseBody.fromString(
         jsonEncode({'items': items}),
         200,
@@ -40,9 +42,7 @@ void main() {
     });
     DioClient.instance.dio.httpClientAdapter = adapter;
 
-    await tester.pumpWidget(
-      MaterialApp(home: Scaffold(body: GradesPage())),
-    );
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: GradesPage())));
     await tester.pumpAndSettle();
   }
 
@@ -87,26 +87,25 @@ void main() {
     },
   );
 
-  testWidgets(
-    'falls back to latest available term when current is absent',
-    (tester) async {
-      await pumpGradesPage(
-        tester,
-        items: [
-          grade('程序设计', '2024-2025', '第二学期'),
-          grade('思政课', '2024-2025', '第一学期'),
-        ],
-      );
+  testWidgets('falls back to latest available term when current is absent', (
+    tester,
+  ) async {
+    await pumpGradesPage(
+      tester,
+      items: [
+        grade('程序设计', '2024-2025', '第二学期'),
+        grade('思政课', '2024-2025', '第一学期'),
+      ],
+    );
 
-      final dropdown = tester.widget<AppDropdown<String>>(
-        find.byType(AppDropdown<String>),
-      );
-      // 最新可用学期为 2024-2025 第二学期
-      expect(dropdown.value, '2024-2025|第二学期');
-      expect(find.text('程序设计'), findsOneWidget);
-      expect(find.text('思政课'), findsNothing);
-    },
-  );
+    final dropdown = tester.widget<AppDropdown<String>>(
+      find.byType(AppDropdown<String>),
+    );
+    // 最新可用学期为 2024-2025 第二学期
+    expect(dropdown.value, '2024-2025|第二学期');
+    expect(find.text('程序设计'), findsOneWidget);
+    expect(find.text('思政课'), findsNothing);
+  });
 
   testWidgets('distribution card and stats reflect only the selected term', (
     tester,

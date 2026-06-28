@@ -18,7 +18,10 @@ class AppThemeBuilder {
 
   // ── Light ──────────────────────────────────────────────────────────────
 
-  static ThemeData light(Color seedColor, {bool filledButtonSoftStyle = false}) {
+  static ThemeData light(
+    Color seedColor, {
+    bool filledButtonSoftStyle = false,
+  }) {
     final colorScheme = ColorScheme.fromSeed(
       seedColor: seedColor,
       brightness: Brightness.light,

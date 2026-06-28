@@ -286,10 +286,7 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
       return true;
     }
     if (mode != ZhengfangMode.webVpn) {
-      AppLogger.instance.auth(
-        LogLevel.warn,
-        'WebVPN 网关会话不可用：直连与 WebVPN 均不可达',
-      );
+      AppLogger.instance.auth(LogLevel.warn, 'WebVPN 网关会话不可用：直连与 WebVPN 均不可达');
       return false;
     }
     setMode(ZhengfangMode.webVpn);

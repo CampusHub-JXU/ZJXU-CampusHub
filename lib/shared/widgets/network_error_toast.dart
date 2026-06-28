@@ -41,8 +41,7 @@ class NetworkErrorToast {
       final message = (error.message ?? '').toLowerCase();
       if (message.contains('proxy') ||
           message.contains('代理') ||
-          error.type == DioExceptionType.unknown &&
-              message.contains('socks')) {
+          error.type == DioExceptionType.unknown && message.contains('socks')) {
         return NetworkErrorKind.proxyConflict;
       }
       switch (error.type) {

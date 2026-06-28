@@ -346,31 +346,28 @@ class _GradesPageState extends State<GradesPage>
                 crossAxisSpacing: 6,
                 childAspectRatio: 1.02,
               ),
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final grade = filteredGrades[index];
-                  final interval = Interval(
-                    (index * 0.04).clamp(0.0, 0.6),
-                    ((index * 0.04) + 0.4).clamp(0.0, 1.0),
-                    curve: Curves.easeOutCubic,
-                  );
-                  final fadeAnim = CurvedAnimation(
-                    parent: _staggerController,
-                    curve: interval,
-                  );
-                  return FadeTransition(
-                    opacity: fadeAnim,
-                    child: SlideTransition(
-                      position: Tween(
-                        begin: const Offset(0, 0.06),
-                        end: Offset.zero,
-                      ).animate(fadeAnim),
-                      child: GradesGradeCard(grade: grade),
-                    ),
-                  );
-                },
-                childCount: filteredGrades.length,
-              ),
+              delegate: SliverChildBuilderDelegate((context, index) {
+                final grade = filteredGrades[index];
+                final interval = Interval(
+                  (index * 0.04).clamp(0.0, 0.6),
+                  ((index * 0.04) + 0.4).clamp(0.0, 1.0),
+                  curve: Curves.easeOutCubic,
+                );
+                final fadeAnim = CurvedAnimation(
+                  parent: _staggerController,
+                  curve: interval,
+                );
+                return FadeTransition(
+                  opacity: fadeAnim,
+                  child: SlideTransition(
+                    position: Tween(
+                      begin: const Offset(0, 0.06),
+                      end: Offset.zero,
+                    ).animate(fadeAnim),
+                    child: GradesGradeCard(grade: grade),
+                  ),
+                );
+              }, childCount: filteredGrades.length),
             ),
           ),
         const SliverToBoxAdapter(child: SizedBox(height: 24)),
@@ -405,11 +402,7 @@ class _GradesPageState extends State<GradesPage>
             accent: cs.primary,
           ),
           _Divider(),
-          _StatCell(
-            label: '课程数',
-            value: '$_courseCount',
-            accent: cs.tertiary,
-          ),
+          _StatCell(label: '课程数', value: '$_courseCount', accent: cs.tertiary),
           _Divider(),
           _StatCell(
             label: '均分',
@@ -589,9 +582,9 @@ class _Divider extends StatelessWidget {
       width: 0.8,
       height: 28,
       margin: const EdgeInsets.symmetric(horizontal: 2),
-      color: Theme.of(context).colorScheme.outlineVariant.withValues(
-        alpha: 0.3,
-      ),
+      color: Theme.of(
+        context,
+      ).colorScheme.outlineVariant.withValues(alpha: 0.3),
     );
   }
 }

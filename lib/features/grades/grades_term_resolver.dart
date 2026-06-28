@@ -46,10 +46,7 @@ class GradesTermResolver {
 
   /// 选择默认学期：若 [previousKey] 仍可用则保持，否则默认选**最新可用学期**
   ///（即排序后第一个），而非当前学期——用户最关心的是最近出分的结果。
-  static String? pickDefault(
-    List<GradeEntry> grades, {
-    String? previousKey,
-  }) {
+  static String? pickDefault(List<GradeEntry> grades, {String? previousKey}) {
     final terms = availableTerms(grades);
     if (terms.isEmpty) return null;
     final keys = terms.map((t) => '${t.academicYear}|${t.semester}').toSet();

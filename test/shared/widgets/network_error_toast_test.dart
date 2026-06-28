@@ -57,9 +57,7 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(body: const SizedBox.shrink()),
-        ),
+        MaterialApp(home: Scaffold(body: const SizedBox.shrink())),
       );
 
       final context = tester.element(find.byType(Scaffold));
@@ -71,10 +69,7 @@ void main() {
       NetworkErrorToast.show(context, err);
       await tester.pump();
 
-      expect(
-        find.text('网络异常，请检查网络连接或切换 WLAN/流量后重试'),
-        findsOneWidget,
-      );
+      expect(find.text('网络异常，请检查网络连接或切换 WLAN/流量后重试'), findsOneWidget);
       expect(find.byType(SnackBar), findsOneWidget);
     });
 

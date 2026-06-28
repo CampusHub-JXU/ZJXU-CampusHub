@@ -33,10 +33,7 @@ class AcademicAuthGuard {
     final resp = await _safeRequest(request);
     if (!_isAuthExpired<T>(resp)) return resp;
 
-    AppLogger.instance.auth(
-      LogLevel.warn,
-      '教务请求命中认证过期，尝试恢复会话后重试一次',
-    );
+    AppLogger.instance.auth(LogLevel.warn, '教务请求命中认证过期，尝试恢复会话后重试一次');
     final recovered = await _attemptRecovery();
     if (!recovered) {
       await ZhengfangAuth.instance.markLoggedOut();
@@ -46,10 +43,7 @@ class AcademicAuthGuard {
     final retry = await _safeRequest(request);
     if (!_isAuthExpired<T>(retry)) return retry;
 
-    AppLogger.instance.auth(
-      LogLevel.warn,
-      '教务请求重试后仍命中认证过期，标记登出',
-    );
+    AppLogger.instance.auth(LogLevel.warn, '教务请求重试后仍命中认证过期，标记登出');
     await ZhengfangAuth.instance.markLoggedOut();
     throw authExpiredException;
   }

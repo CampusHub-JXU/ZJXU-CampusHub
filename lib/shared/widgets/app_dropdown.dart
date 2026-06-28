@@ -73,13 +73,10 @@ class _AppDropdownState<T> extends State<AppDropdown<T>>
       parent: _animController,
       curve: Curves.easeOutCubic,
     );
-    _slideAnim = Tween<Offset>(
-      begin: const Offset(0, -0.08),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _animController,
-      curve: Curves.easeOutCubic,
-    ));
+    _slideAnim = Tween<Offset>(begin: const Offset(0, -0.08), end: Offset.zero)
+        .animate(
+          CurvedAnimation(parent: _animController, curve: Curves.easeOutCubic),
+        );
   }
 
   @override
@@ -94,9 +91,7 @@ class _AppDropdownState<T> extends State<AppDropdown<T>>
 
   AppDropdownItem<T>? get _selectedItem {
     if (widget.value == null) return null;
-    return widget.items
-        .where((item) => item.value == widget.value)
-        .firstOrNull;
+    return widget.items.where((item) => item.value == widget.value).firstOrNull;
   }
 
   void _toggleOverlay() {
@@ -300,7 +295,10 @@ class _AppDropdownOverlay<T> extends StatelessWidget {
     final cs = colorScheme;
     final menuWidth = math.min(buttonWidth + 80, overlaySize.width - 24);
     final leftMargin = 12.0;
-    final maxLeft = math.max(leftMargin, overlaySize.width - menuWidth - leftMargin);
+    final maxLeft = math.max(
+      leftMargin,
+      overlaySize.width - menuWidth - leftMargin,
+    );
     final left = buttonRect.left.clamp(leftMargin, maxLeft).toDouble();
     final estimatedHeight = math.min(items.length * 44.0 + 8.0, 320.0);
     final aboveTop = buttonRect.top - 6.0 - estimatedHeight;
@@ -408,9 +406,7 @@ class _DropdownOption<T> extends StatelessWidget {
               Icon(
                 item.icon,
                 size: 18,
-                color: isSelected
-                    ? cs.primary
-                    : cs.onSurfaceVariant,
+                color: isSelected ? cs.primary : cs.onSurfaceVariant,
               ),
               const SizedBox(width: 8),
             ],
@@ -425,11 +421,7 @@ class _DropdownOption<T> extends StatelessWidget {
               ),
             ),
             if (isSelected)
-              Icon(
-                Icons.check_rounded,
-                size: 18,
-                color: cs.primary,
-              ),
+              Icon(Icons.check_rounded, size: 18, color: cs.primary),
           ],
         ),
       ),

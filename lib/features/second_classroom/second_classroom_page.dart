@@ -333,9 +333,9 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
       showDragHandle: true,
       builder: (sheetContext) {
         return Theme(
-          data: Theme.of(sheetContext).copyWith(
-            splashFactory: InkRipple.splashFactory,
-          ),
+          data: Theme.of(
+            sheetContext,
+          ).copyWith(splashFactory: InkRipple.splashFactory),
           child: StatefulBuilder(
             builder: (context, setSheetState) {
               return _ActivityDetailSheet(
@@ -407,9 +407,9 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
       builder: (sheetContext) {
         var activities = subscriptions;
         return Theme(
-          data: Theme.of(sheetContext).copyWith(
-            splashFactory: InkRipple.splashFactory,
-          ),
+          data: Theme.of(
+            sheetContext,
+          ).copyWith(splashFactory: InkRipple.splashFactory),
           child: StatefulBuilder(
             builder: (context, setSheetState) {
               return _SubscriptionSheet(
@@ -422,17 +422,21 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
                   await _subscriptionService.unsubscribeActivity(activity);
                   if (mounted) {
                     setState(() {
-                      _subscribedKeys = {..._subscribedKeys}
-                        ..remove(secondClassroomSubscriptionKey(activity.title));
+                      _subscribedKeys = {
+                        ..._subscribedKeys,
+                      }..remove(secondClassroomSubscriptionKey(activity.title));
                     });
                   }
                   if (sheetContext.mounted) {
                     setSheetState(() {
-                      final key = secondClassroomSubscriptionKey(activity.title);
+                      final key = secondClassroomSubscriptionKey(
+                        activity.title,
+                      );
                       activities = activities
                           .where(
                             (item) =>
-                                secondClassroomSubscriptionKey(item.title) != key,
+                                secondClassroomSubscriptionKey(item.title) !=
+                                key,
                           )
                           .toList();
                     });
@@ -695,12 +699,7 @@ class _EnumFilterMenu<T> extends StatelessWidget {
       value: value,
       prefixIcon: icon,
       items: values
-          .map(
-            (item) => AppDropdownItem<T>(
-              value: item,
-              label: labelFor(item),
-            ),
-          )
+          .map((item) => AppDropdownItem<T>(value: item, label: labelFor(item)))
           .toList(),
       onChanged: (selected) {
         if (selected == null) return;
@@ -734,10 +733,8 @@ class _OptionFilterMenu extends StatelessWidget {
       items: [
         AppDropdownItem<String>(value: '', label: allLabel),
         ...options.map(
-          (option) => AppDropdownItem<String>(
-            value: option.value,
-            label: option.text,
-          ),
+          (option) =>
+              AppDropdownItem<String>(value: option.value, label: option.text),
         ),
       ],
       onChanged: (selected) {

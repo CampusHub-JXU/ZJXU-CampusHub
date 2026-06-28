@@ -17,13 +17,16 @@ void main() {
     expect(await resolver.resolve(), ZhengfangMode.direct);
   });
 
-  test('resolve returns webVpn when direct fails but webvpn reachable', () async {
-    final resolver = ConnectModeResolver.instance;
-    resolver.directReachabilityChecker = () async => false;
-    resolver.webVpnReachabilityChecker = () async => true;
+  test(
+    'resolve returns webVpn when direct fails but webvpn reachable',
+    () async {
+      final resolver = ConnectModeResolver.instance;
+      resolver.directReachabilityChecker = () async => false;
+      resolver.webVpnReachabilityChecker = () async => true;
 
-    expect(await resolver.resolve(), ZhengfangMode.webVpn);
-  });
+      expect(await resolver.resolve(), ZhengfangMode.webVpn);
+    },
+  );
 
   test('resolve returns null when both unreachable', () async {
     final resolver = ConnectModeResolver.instance;

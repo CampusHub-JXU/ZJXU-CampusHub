@@ -35,9 +35,7 @@ void main() {
               child: AppDropdown<String>(
                 value: null,
                 hint: '请选择',
-                items: const [
-                  AppDropdownItem(value: 'a', label: 'Alpha'),
-                ],
+                items: const [AppDropdownItem(value: 'a', label: 'Alpha')],
                 onChanged: (_) {},
               ),
             ),
@@ -56,9 +54,7 @@ void main() {
               child: AppDropdown<String>(
                 value: 'a',
                 prefixIcon: Icons.school,
-                items: const [
-                  AppDropdownItem(value: 'a', label: 'Alpha'),
-                ],
+                items: const [AppDropdownItem(value: 'a', label: 'Alpha')],
                 onChanged: (_) {},
               ),
             ),
@@ -129,7 +125,9 @@ void main() {
       await tester.tap(find.byType(AppDropdown<String>));
       await tester.pumpAndSettle();
 
-      final menuRect = tester.getRect(find.byKey(const ValueKey('app-dropdown-menu')));
+      final menuRect = tester.getRect(
+        find.byKey(const ValueKey('app-dropdown-menu')),
+      );
       expect(menuRect.right, lessThanOrEqualTo(320));
       expect(menuRect.left, greaterThanOrEqualTo(12));
     });

@@ -29,17 +29,18 @@ class AppTheme {
   static ThemeData lightThemeFor(
     Color seedColor, {
     bool filledButtonSoftStyle = false,
-  }) =>
-      AppThemeBuilder.light(seedColor, filledButtonSoftStyle: filledButtonSoftStyle);
+  }) => AppThemeBuilder.light(
+    seedColor,
+    filledButtonSoftStyle: filledButtonSoftStyle,
+  );
 
   static ThemeData darkThemeFor(
     Color seedColor, {
     bool pureBlack = false,
     bool filledButtonSoftStyle = false,
-  }) =>
-      AppThemeBuilder.dark(
-        seedColor,
-        pureBlack: pureBlack,
-        filledButtonSoftStyle: filledButtonSoftStyle,
-      );
+  }) => AppThemeBuilder.dark(
+    seedColor,
+    pureBlack: pureBlack,
+    filledButtonSoftStyle: filledButtonSoftStyle,
+  );
 }

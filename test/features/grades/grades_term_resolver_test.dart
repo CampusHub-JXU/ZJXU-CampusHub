@@ -28,10 +28,7 @@ void main() {
 
   group('GradesTermResolver.labelOf', () {
     test('renders "year semester" without extra suffix', () {
-      expect(
-        GradesTermResolver.labelOf('2025-2026', '第二学期'),
-        '2025-2026 第二学期',
-      );
+      expect(GradesTermResolver.labelOf('2025-2026', '第二学期'), '2025-2026 第二学期');
     });
   });
 
@@ -123,7 +120,10 @@ void main() {
         _g('b', '2024-2025', '第一学期'),
       ];
       expect(
-        GradesTermResolver.filterByTermKey(grades, GradesTermResolver.allTermKey),
+        GradesTermResolver.filterByTermKey(
+          grades,
+          GradesTermResolver.allTermKey,
+        ),
         grades,
       );
     });
@@ -136,10 +136,7 @@ void main() {
     test('filters to a single term', () {
       final a = _g('a', '2025-2026', '第二学期');
       final b = _g('b', '2024-2025', '第一学期');
-      expect(
-        GradesTermResolver.filterByTermKey([a, b], '2025-2026|第二学期'),
-        [a],
-      );
+      expect(GradesTermResolver.filterByTermKey([a, b], '2025-2026|第二学期'), [a]);
     });
   });
 }

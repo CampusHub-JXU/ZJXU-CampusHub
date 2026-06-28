@@ -68,15 +68,17 @@ class ConnectModeResolver {
       }
     }
 
-    final direct = await (directReachabilityChecker?.call() ??
-        ZhengfangAuth.checkDirectReachable());
+    final direct =
+        await (directReachabilityChecker?.call() ??
+            ZhengfangAuth.checkDirectReachable());
     if (direct) {
       _cache(ZhengfangMode.direct);
       return ZhengfangMode.direct;
     }
 
-    final webVpn = await (webVpnReachabilityChecker?.call() ??
-        ZhengfangAuth.checkWebVpnReachable());
+    final webVpn =
+        await (webVpnReachabilityChecker?.call() ??
+            ZhengfangAuth.checkWebVpnReachable());
     final mode = webVpn ? ZhengfangMode.webVpn : null;
     _cache(mode);
     return mode;

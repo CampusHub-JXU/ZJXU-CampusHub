@@ -29,16 +29,16 @@ void main() {
   });
 
   Response<Map<String, dynamic>> okResponse() => Response(
-        requestOptions: RequestOptions(path: '/x'),
-        statusCode: 200,
-        data: {'items': []},
-      );
+    requestOptions: RequestOptions(path: '/x'),
+    statusCode: 200,
+    data: {'items': []},
+  );
 
   Response<Map<String, dynamic>> redirectResponse() => Response(
-        requestOptions: RequestOptions(path: '/x'),
-        statusCode: 302,
-        data: null,
-      );
+    requestOptions: RequestOptions(path: '/x'),
+    statusCode: 302,
+    data: null,
+  );
 
   test('passes through when first request is ok', () async {
     var calls = 0;
