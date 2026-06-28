@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../shared/widgets/auth_required_view.dart';
 import '../../shared/widgets/login_shell.dart';
+import '../../shared/widgets/network_error_toast.dart';
 import 'exam_model.dart';
 import 'exam_service.dart';
 
@@ -98,12 +99,16 @@ class _ExamPageState extends State<ExamPage> {
     } on ExamAuthExpiredException {
       if (!mounted) return;
       setState(() => _error = '登录状态已过期，请重新登录');
+      NetworkErrorToast.show(context, ExamAuthExpiredException());
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         unawaited(_presentLoginPrompt(force: true));
       });
     } catch (e) {
-      if (mounted) setState(() => _error = '获取考试信息失败：$e');
+      if (mounted) {
+        setState(() => _error = '获取考试信息失败：$e');
+        NetworkErrorToast.show(context, e);
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
