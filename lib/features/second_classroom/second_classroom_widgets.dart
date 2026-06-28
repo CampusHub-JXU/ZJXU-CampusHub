@@ -175,10 +175,22 @@ class _ActivityDetailSheet extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 10),
-                IconButton.filledTonal(
-                  onPressed: onOpenInWeChat,
-                  icon: const Icon(Icons.open_in_new_rounded),
-                  tooltip: '微信版',
+                Tooltip(
+                  message: '微信版',
+                  child: Material(
+                    color: cs.secondaryContainer.withValues(alpha: 0.85),
+                    shape: const CircleBorder(),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      splashFactory: InkRipple.splashFactory,
+                      onTap: onOpenInWeChat,
+                      child: const SizedBox(
+                        width: 48,
+                        height: 48,
+                        child: Icon(Icons.open_in_new_rounded),
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),

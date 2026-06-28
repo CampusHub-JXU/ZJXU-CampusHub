@@ -22,7 +22,6 @@ import '../features/shuati/shuati_webview_page.dart';
 import '../features/settings/settings_page.dart';
 import '../features/settings/personalization_page.dart';
 import '../features/settings/push_debug_page.dart';
-import '../features/settings/theme_page.dart';
 import '../features/settings/theme_settings_page.dart';
 import '../features/dorm_electricity/dorm_electricity_page.dart';
 import '../features/dorm_electricity/dorm_electricity_settings_page.dart';
@@ -138,7 +137,7 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/theme',
       name: 'theme',
-      builder: (context, state) => const ThemePage(),
+      redirect: (context, state) => '/theme-settings',
     ),
     GoRoute(
       path: '/theme-settings',

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/logging/app_logger.dart';
+import '../../shared/widgets/app_dropdown.dart';
 import 'second_classroom_cache_store.dart';
 import 'second_classroom_model.dart';
 import 'second_classroom_service.dart';
@@ -331,33 +332,38 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
       useSafeArea: true,
       showDragHandle: true,
       builder: (sheetContext) {
-        return StatefulBuilder(
-          builder: (context, setSheetState) {
-            return _ActivityDetailSheet(
-              detail: detail,
-              imageUrl: _service.imageUrl(detail.activity.coverId),
-              subscribed: subscribed,
-              busy: busy,
-              onOpenInWeChat: () {
-                _openInWeChat(
-                  _service.activityWebUrl(detail.activity.id),
-                  successMessage: '已打开微信，可直接查看该活动详情',
-                );
-              },
-              onToggleSubscription: () async {
-                setSheetState(() => busy = true);
-                final nextSubscribed = await _toggleSubscription(
-                  detail.activity,
-                );
-                if (sheetContext.mounted) {
-                  setSheetState(() {
-                    subscribed = nextSubscribed;
-                    busy = false;
-                  });
-                }
-              },
-            );
-          },
+        return Theme(
+          data: Theme.of(sheetContext).copyWith(
+            splashFactory: InkRipple.splashFactory,
+          ),
+          child: StatefulBuilder(
+            builder: (context, setSheetState) {
+              return _ActivityDetailSheet(
+                detail: detail,
+                imageUrl: _service.imageUrl(detail.activity.coverId),
+                subscribed: subscribed,
+                busy: busy,
+                onOpenInWeChat: () {
+                  _openInWeChat(
+                    _service.activityWebUrl(detail.activity.id),
+                    successMessage: '已打开微信，可直接查看该活动详情',
+                  );
+                },
+                onToggleSubscription: () async {
+                  setSheetState(() => busy = true);
+                  final nextSubscribed = await _toggleSubscription(
+                    detail.activity,
+                  );
+                  if (sheetContext.mounted) {
+                    setSheetState(() {
+                      subscribed = nextSubscribed;
+                      busy = false;
+                    });
+                  }
+                },
+              );
+            },
+          ),
         );
       },
     );
@@ -400,36 +406,41 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
       showDragHandle: true,
       builder: (sheetContext) {
         var activities = subscriptions;
-        return StatefulBuilder(
-          builder: (context, setSheetState) {
-            return _SubscriptionSheet(
-              activities: activities,
-              onOpen: (activity) {
-                Navigator.of(sheetContext).pop();
-                unawaited(_openActivityDetail(activity));
-              },
-              onRemove: (activity) async {
-                await _subscriptionService.unsubscribeActivity(activity);
-                if (mounted) {
-                  setState(() {
-                    _subscribedKeys = {..._subscribedKeys}
-                      ..remove(secondClassroomSubscriptionKey(activity.title));
-                  });
-                }
-                if (sheetContext.mounted) {
-                  setSheetState(() {
-                    final key = secondClassroomSubscriptionKey(activity.title);
-                    activities = activities
-                        .where(
-                          (item) =>
-                              secondClassroomSubscriptionKey(item.title) != key,
-                        )
-                        .toList();
-                  });
-                }
-              },
-            );
-          },
+        return Theme(
+          data: Theme.of(sheetContext).copyWith(
+            splashFactory: InkRipple.splashFactory,
+          ),
+          child: StatefulBuilder(
+            builder: (context, setSheetState) {
+              return _SubscriptionSheet(
+                activities: activities,
+                onOpen: (activity) {
+                  Navigator.of(sheetContext).pop();
+                  unawaited(_openActivityDetail(activity));
+                },
+                onRemove: (activity) async {
+                  await _subscriptionService.unsubscribeActivity(activity);
+                  if (mounted) {
+                    setState(() {
+                      _subscribedKeys = {..._subscribedKeys}
+                        ..remove(secondClassroomSubscriptionKey(activity.title));
+                    });
+                  }
+                  if (sheetContext.mounted) {
+                    setSheetState(() {
+                      final key = secondClassroomSubscriptionKey(activity.title);
+                      activities = activities
+                          .where(
+                            (item) =>
+                                secondClassroomSubscriptionKey(item.title) != key,
+                          )
+                          .toList();
+                    });
+                  }
+                },
+              );
+            },
+          ),
         );
       },
     );
@@ -444,32 +455,35 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('第二课堂'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_outlined),
-            tooltip: '已订阅活动名',
-            onPressed: _openSubscriptionsSheet,
-          ),
-          IconButton(
-            icon: const Icon(Icons.open_in_new_rounded),
-            tooltip: '在微信中打开',
-            onPressed: () {
-              _openInWeChat(_wechatPageUrl);
-            },
-          ),
-        ],
-      ),
-      body: _loading
-          ? const _LoadingState()
-          : _error != null && _activities.isEmpty
-          ? _ErrorState(message: _error!, onRetry: _loadInitial)
-          : RefreshIndicator(
-              onRefresh: _reloadActivities,
-              child: _buildActivityList(),
+    return Theme(
+      data: Theme.of(context).copyWith(splashFactory: InkRipple.splashFactory),
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('第二课堂'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.notifications_outlined),
+              tooltip: '已订阅活动名',
+              onPressed: _openSubscriptionsSheet,
             ),
+            IconButton(
+              icon: const Icon(Icons.open_in_new_rounded),
+              tooltip: '在微信中打开',
+              onPressed: () {
+                _openInWeChat(_wechatPageUrl);
+              },
+            ),
+          ],
+        ),
+        body: _loading
+            ? const _LoadingState()
+            : _error != null && _activities.isEmpty
+            ? _ErrorState(message: _error!, onRetry: _loadInitial)
+            : RefreshIndicator(
+                onRefresh: _reloadActivities,
+                child: _buildActivityList(),
+              ),
+      ),
     );
   }
 
@@ -615,13 +629,8 @@ class _SearchAndFilters extends StatelessWidget {
               const SizedBox(width: 8),
               _OptionFilterMenu(
                 icon: Icons.category_outlined,
-                label: _optionLabel(
-                  catalog?.categories,
-                  query.categoryId,
-                  '全部分类',
-                ),
-                allLabel: '全部分类',
                 value: query.categoryId,
+                allLabel: '全部分类',
                 options: catalog?.categories ?? const [],
                 onSelected: (value) {
                   onQueryChanged(query.copyWith(categoryId: value));
@@ -642,11 +651,6 @@ class _SearchAndFilters extends StatelessWidget {
               const SizedBox(width: 8),
               _OptionFilterMenu(
                 icon: Icons.apartment_outlined,
-                label: _optionLabel(
-                  catalog?.departments,
-                  query.departmentId,
-                  '全部学院',
-                ),
                 allLabel: '全部学院',
                 value: query.departmentId,
                 options: catalog?.departments ?? const [],
@@ -668,18 +672,6 @@ class _SearchAndFilters extends StatelessWidget {
       ],
     );
   }
-
-  String _optionLabel(
-    List<SecondClassroomFilterOption>? options,
-    String value,
-    String fallback,
-  ) {
-    if (value.isEmpty) return fallback;
-    for (final option in options ?? const <SecondClassroomFilterOption>[]) {
-      if (option.value == value) return option.text;
-    }
-    return fallback;
-  }
 }
 
 class _EnumFilterMenu<T> extends StatelessWidget {
@@ -699,14 +691,21 @@ class _EnumFilterMenu<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return PopupMenuButton<T>(
-      initialValue: value,
-      onSelected: onSelected,
-      itemBuilder: (context) => [
-        for (final item in values)
-          PopupMenuItem<T>(value: item, child: Text(labelFor(item))),
-      ],
-      child: _FilterButton(icon: icon, label: labelFor(value)),
+    return AppDropdown<T>(
+      value: value,
+      prefixIcon: icon,
+      items: values
+          .map(
+            (item) => AppDropdownItem<T>(
+              value: item,
+              label: labelFor(item),
+            ),
+          )
+          .toList(),
+      onChanged: (selected) {
+        if (selected == null) return;
+        onSelected(selected);
+      },
     );
   }
 }
@@ -714,7 +713,6 @@ class _EnumFilterMenu<T> extends StatelessWidget {
 class _OptionFilterMenu extends StatelessWidget {
   const _OptionFilterMenu({
     required this.icon,
-    required this.label,
     required this.allLabel,
     required this.value,
     required this.options,
@@ -722,7 +720,6 @@ class _OptionFilterMenu extends StatelessWidget {
   });
 
   final IconData icon;
-  final String label;
   final String allLabel;
   final String value;
   final List<SecondClassroomFilterOption> options;
@@ -730,54 +727,22 @@ class _OptionFilterMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return PopupMenuButton<String>(
-      initialValue: value,
-      onSelected: onSelected,
-      itemBuilder: (context) => [
-        PopupMenuItem<String>(value: '', child: Text(allLabel)),
-        for (final option in options)
-          PopupMenuItem<String>(value: option.value, child: Text(option.text)),
-      ],
-      child: _FilterButton(icon: icon, label: label),
-    );
-  }
-}
-
-class _FilterButton extends StatelessWidget {
-  const _FilterButton({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      height: 38,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.6)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16, color: cs.primary),
-          const SizedBox(width: 6),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 150),
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.labelLarge,
-            ),
+    return AppDropdown<String>(
+      value: value.isEmpty ? null : value,
+      hint: allLabel,
+      prefixIcon: icon,
+      items: [
+        AppDropdownItem<String>(value: '', label: allLabel),
+        ...options.map(
+          (option) => AppDropdownItem<String>(
+            value: option.value,
+            label: option.text,
           ),
-          const SizedBox(width: 4),
-          Icon(Icons.expand_more_rounded, size: 16, color: cs.onSurfaceVariant),
-        ],
-      ),
+        ),
+      ],
+      onChanged: (selected) {
+        onSelected(selected ?? '');
+      },
     );
   }
 }

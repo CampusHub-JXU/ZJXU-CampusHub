@@ -10,6 +10,7 @@ import '../../core/config/feature_entry_catalog.dart';
 import '../../core/semester/semester_calendar.dart';
 import '../../core/update/update_checker.dart';
 import '../../shared/widgets/app_icon_badge.dart';
+import '../../shared/widgets/network_error_toast.dart';
 import '../../shared/widgets/update_dialog.dart';
 import '../campus_card/campus_card_service.dart';
 import '../dorm_electricity/dorm_electricity_service.dart';
@@ -273,13 +274,18 @@ class _HomePageState extends State<HomePage> {
       });
       return;
     }
-    final networkBalance = await CampusCardService.instance.fetchBalance();
-    if (!mounted) return;
-    setState(() {
-      _campusCardBalance = CampusCardService.instance.formatBalance(
-        networkBalance,
-      );
-    });
+    try {
+      final networkBalance = await CampusCardService.instance.fetchBalance();
+      if (!mounted) return;
+      setState(() {
+        _campusCardBalance = CampusCardService.instance.formatBalance(
+          networkBalance,
+        );
+      });
+    } catch (e) {
+      if (!mounted) return;
+      NetworkErrorToast.show(context, e);
+    }
   }
 
   Future<void> _refreshDormElectricity() async {
@@ -292,11 +298,16 @@ class _HomePageState extends State<HomePage> {
       });
       return;
     }
-    final value = await service.fetchElectricity();
-    if (!mounted) return;
-    setState(() {
-      _dormElectricity = service.formatElectricity(value);
-    });
+    try {
+      final value = await service.fetchElectricity();
+      if (!mounted) return;
+      setState(() {
+        _dormElectricity = service.formatElectricity(value);
+      });
+    } catch (e) {
+      if (!mounted) return;
+      NetworkErrorToast.show(context, e);
+    }
   }
 
   Future<void> _refreshExam() async {
@@ -314,8 +325,9 @@ class _HomePageState extends State<HomePage> {
       setState(() {
         _nextExam = ExamService.instance.nextExam;
       });
-    } catch (_) {
-      // Silent fail — exam card will show no data
+    } catch (e) {
+      if (!mounted) return;
+      NetworkErrorToast.show(context, e);
     }
   }
 
@@ -327,8 +339,9 @@ class _HomePageState extends State<HomePage> {
       final grades = await GradesService.instance.fetchGrades(studentId);
       if (!mounted) return;
       setState(() => _grades = grades);
-    } catch (_) {
-      // Silent fail — grade chart card will show cached or empty
+    } catch (e) {
+      if (!mounted) return;
+      NetworkErrorToast.show(context, e);
     }
   }
 

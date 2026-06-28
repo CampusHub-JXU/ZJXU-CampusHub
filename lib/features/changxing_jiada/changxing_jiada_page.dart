@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../shared/widgets/login_shell.dart';
+import '../../shared/widgets/network_error_toast.dart';
 import 'changxing_jiada_model.dart';
 import 'changxing_jiada_service.dart';
 import 'changxing_jiada_widgets.dart';
@@ -26,9 +27,6 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
   ChangxingJiadaService get _service => ChangxingJiadaService.instance;
 
   bool get _loggedIn => _service.hasToken && _profile != null;
-
-  /// 是否需要先登录一卡通（CAS 未登录时显示统一认证提示）
-  bool _needUnifiedAuth = false;
 
   int get _pendingCount => _applications
       .where((item) => item.status == 0 || item.status == 1 || item.status == 5)
@@ -57,6 +55,9 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
     await _service.restoreSession();
     if (_service.hasToken) {
       await _loadDashboard(showGlobalLoading: false);
+    } else {
+      // FR-5: 无 token 时自动尝试 CAS SSO，不显示"一键登录"中间页。
+      await _loginViaCas();
     }
 
     if (!mounted) return;
@@ -109,11 +110,10 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
       _applications = [];
       _unreadCount = 0;
       _error = null;
-      _needUnifiedAuth = false;
     });
   }
 
-  Future<void> _loginViaCas() async {
+  Future<void> _loginViaCas({bool allowUnifiedAuthPrompt = true}) async {
     setState(() {
       _loggingIn = true;
       _error = null;
@@ -122,34 +122,36 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
     try {
       await _service.loginViaCas();
       if (!mounted) return;
-      setState(() => _needUnifiedAuth = false);
       await _loadDashboard(showGlobalLoading: false);
     } on ChangxingNeedUnifiedAuthException {
       if (!mounted) return;
-      setState(() => _needUnifiedAuth = true);
+      if (!allowUnifiedAuthPrompt) {
+        setState(() => _error = '需要先完成一卡通统一认证后重试');
+        NetworkErrorToast.show(context, ChangxingNeedUnifiedAuthException());
+        return;
+      }
+      // FR-5: 自动弹统一认证 Modal，成功后重试一次。
+      final loggedIn = await showUnifiedAuthLoginModal(
+        context,
+        title: '登录一卡通',
+        description: '畅行嘉大仅支持校园网内直连访问，请连接校园网后完成统一认证',
+        barrierDismissible: false,
+      );
+      if (!mounted || !loggedIn) return;
+      await _loginViaCas(allowUnifiedAuthPrompt: false);
     } on ChangxingCasLoginException catch (e) {
       if (!mounted) return;
       setState(() => _error = e.message);
+      NetworkErrorToast.show(context, e);
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = '登录失败：$e');
+      NetworkErrorToast.show(context, e);
     } finally {
       if (mounted) {
         setState(() => _loggingIn = false);
       }
     }
-  }
-
-  Future<void> _promptCasLogin() async {
-    final loggedIn = await showUnifiedAuthLoginModal(
-      context,
-      title: '登录一卡通',
-      description: '畅行嘉大仅支持校园网内直连访问，请连接校园网后完成统一认证',
-      barrierDismissible: false,
-    );
-    if (!mounted || !loggedIn) return;
-    setState(() => _needUnifiedAuth = false);
-    await _loginViaCas();
   }
 
   @override
@@ -185,188 +187,67 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
         duration: const Duration(milliseconds: 220),
         child: _loggedIn
             ? _buildDashboardBody(key: const ValueKey('dashboard'))
-            : _buildLoginBody(key: const ValueKey('login')),
+            : _buildAuthPendingBody(key: const ValueKey('auth-pending')),
       ),
     );
   }
 
-  Widget _buildLoginBody({Key? key}) {
-    final needsUnifiedAuth = _needUnifiedAuth;
+  /// FR-5: 未登录时的简化重试态（图标 + 文案 + 重试按钮），不显示装饰性中间页。
+  Widget _buildAuthPendingBody({Key? key}) {
+    final cs = Theme.of(context).colorScheme;
     return SafeArea(
       key: key,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final minHeight = constraints.maxHeight > 44
-              ? constraints.maxHeight - 44
-              : 0.0;
-          return SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: minHeight),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _buildLoginPanel(needsUnifiedAuth: needsUnifiedAuth),
-                ],
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Icon(
+                  Icons.directions_walk_outlined,
+                  color: cs.onSurfaceVariant,
+                  size: 32,
+                ),
               ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildLoginPanel({required bool needsUnifiedAuth}) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-    final title = needsUnifiedAuth ? '需要统一认证' : '同步校园通行身份';
-    final message = needsUnifiedAuth
-        ? '请先完成一卡通统一认证，再进入畅行嘉大办理申请。'
-        : '使用已保存的一卡通会话进入畅行嘉大，查看申请进度并快速发起办理。';
-    final buttonLabel = needsUnifiedAuth ? '登录统一认证' : '一键登录畅行嘉大';
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.55)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _buildPassMark(needsUnifiedAuth: needsUnifiedAuth),
-          const SizedBox(height: 24),
-          Text(
-            title,
-            style: theme.textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.w800,
-              height: 1.12,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            message,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: cs.onSurfaceVariant,
-              height: 1.5,
-            ),
-          ),
-          const SizedBox(height: 18),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: const [
-              ChangxingLoginPill(icon: Icons.wifi_tethering, label: '校园网'),
-              ChangxingLoginPill(
-                icon: Icons.verified_user_outlined,
-                label: '统一认证',
+              const SizedBox(height: 18),
+              Text(
+                '畅行嘉大',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-              ChangxingLoginPill(
-                icon: Icons.assignment_outlined,
-                label: '通行申请',
+              const SizedBox(height: 8),
+              Text(
+                _error ?? '正在连接校园通行服务…',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 20),
+              FilledButton.tonalIcon(
+                onPressed: _loggingIn
+                    ? null
+                    : () => _loginViaCas(allowUnifiedAuthPrompt: true),
+                icon: _loggingIn
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh_rounded, size: 18),
+                label: Text(_loggingIn ? '登录中...' : '重试'),
               ),
             ],
           ),
-          if (_error != null) ...[
-            const SizedBox(height: 18),
-            ChangxingErrorBanner(message: _error!),
-          ],
-          const SizedBox(height: 24),
-          FilledButton.icon(
-            onPressed: _loggingIn
-                ? null
-                : needsUnifiedAuth
-                ? _promptCasLogin
-                : _loginViaCas,
-            icon: _loggingIn
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Icon(needsUnifiedAuth ? Icons.login : Icons.north_east),
-            label: Text(_loggingIn ? '登录中...' : buttonLabel),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            '若刚完成统一认证仍失败，请保持校园网连接后重试一次。',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: cs.onSurfaceVariant,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPassMark({required bool needsUnifiedAuth}) {
-    final cs = Theme.of(context).colorScheme;
-    final accent = needsUnifiedAuth ? cs.tertiary : cs.primary;
-    return Container(
-      height: 154,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        color: cs.surfaceContainerHigh,
-        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5)),
-      ),
-      child: Stack(
-        children: [
-          Positioned(
-            left: 0,
-            top: 0,
-            bottom: 0,
-            child: Container(
-              width: 4,
-              decoration: BoxDecoration(
-                color: accent,
-                borderRadius: BorderRadius.circular(999),
-              ),
-            ),
-          ),
-          Align(
-            alignment: Alignment.topLeft,
-            child: Text(
-              '校园通行',
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                color: cs.onSurfaceVariant,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-          Align(
-            alignment: Alignment.center,
-            child: Container(
-              width: 74,
-              height: 74,
-              decoration: BoxDecoration(
-                color: cs.surfaceContainerLowest,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: cs.outlineVariant),
-              ),
-              child: Icon(
-                needsUnifiedAuth
-                    ? Icons.lock_open_outlined
-                    : Icons.directions_walk_outlined,
-                color: accent,
-                size: 38,
-              ),
-            ),
-          ),
-          Align(
-            alignment: Alignment.bottomRight,
-            child: Text(
-              needsUnifiedAuth ? '需要认证' : '已就绪',
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                color: cs.onSurfaceVariant,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

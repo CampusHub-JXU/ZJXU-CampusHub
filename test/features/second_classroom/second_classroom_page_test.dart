@@ -7,6 +7,7 @@ import 'package:jxu_campus_hub/features/second_classroom/second_classroom_model.
 import 'package:jxu_campus_hub/features/second_classroom/second_classroom_page.dart';
 import 'package:jxu_campus_hub/features/second_classroom/second_classroom_service.dart';
 import 'package:jxu_campus_hub/features/second_classroom/second_classroom_subscription_service.dart';
+import 'package:jxu_campus_hub/shared/widgets/app_dropdown.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -89,6 +90,7 @@ void main() {
     expect(find.text('榜样分享活动'), findsOneWidget);
     expect(find.text('招募中'), findsOneWidget);
     expect(find.byTooltip('在微信中打开'), findsOneWidget);
+    expect(find.byWidgetPredicate((widget) => widget is AppDropdown), findsNWidgets(5));
   });
 
   testWidgets('opens second classroom in WeChat from app bar', (tester) async {
