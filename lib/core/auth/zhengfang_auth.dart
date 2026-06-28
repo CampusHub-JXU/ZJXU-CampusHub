@@ -14,6 +14,7 @@ import '../network/dio_client.dart';
 import '../network/network_settings.dart';
 import '../network/proxy_mode.dart';
 import 'credential_store.dart';
+import 'connect_mode_resolver.dart';
 import 'unified_auth.dart';
 
 part 'zhengfang_auth_webvpn.dart';

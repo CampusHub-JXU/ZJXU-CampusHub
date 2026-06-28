@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'dart:ui';
 
-import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 
 import 'app/app.dart';
 import 'app/app_bootstrap_controller.dart';
 import 'app/routes.dart';
+import 'core/auth/connect_mode_resolver.dart';
 import 'core/logging/app_logger.dart';
 import 'core/notification/app_notification_service.dart';
 import 'core/notification/background_task_service.dart';
@@ -63,6 +63,7 @@ Future<void> main() async {
       };
 
       await AppBootstrapController.instance.prepareForFirstFrame();
+      ConnectModeResolver.instance.start();
       runApp(JXUCampusHubApp());
       unawaited(
         AppShortcutService.instance.initialize(
@@ -73,7 +74,6 @@ Future<void> main() async {
       unawaited(
         SecondClassroomSubscriptionService.instance.checkRecruitingMatches(),
       );
-      FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
       unawaited(PushService.instance.initialize());
       AppNotificationService.instance.onTap = (payload) {
         _handleNotificationPayload(payload);

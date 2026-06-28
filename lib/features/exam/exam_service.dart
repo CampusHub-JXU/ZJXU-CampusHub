@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/auth/academic_auth_guard.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/network/dio_client.dart';
 import 'exam_model.dart';
@@ -111,24 +112,27 @@ class ExamService {
     final ts = now.millisecondsSinceEpoch;
 
     try {
-      final resp = await dio.post<Map<String, dynamic>>(
-        ZhengfangAuth.instance.buildPortalUrl('/kwgl/kscx_cxXsksxxIndex.html'),
-        queryParameters: {
-          'doType': 'query',
-          'gnmkdm': 'N358105',
-          'su': resolvedId,
-        },
-        data:
-            'xnm=$academicYear&xqm=$term&ksmcdmb_id=&kch=&kc=&ksrq='
-            '&kkbm_id=&ksmc=&_search=false&nd=$ts'
-            '&queryModel.showCount=100&queryModel.currentPage=1'
-            '&queryModel.sortName=&queryModel.sortOrder=asc&time=0',
-        options: Options(
-          contentType: 'application/x-www-form-urlencoded',
-          headers: {
-            'Referer': ZhengfangAuth.instance.academicServiceUrl,
-            'X-Requested-With': 'XMLHttpRequest',
+      final resp = await AcademicAuthGuard.guardRequest<Map<String, dynamic>>(
+        authExpiredException: const ExamAuthExpiredException(),
+        request: () => dio.post<Map<String, dynamic>>(
+          ZhengfangAuth.instance.buildPortalUrl('/kwgl/kscx_cxXsksxxIndex.html'),
+          queryParameters: {
+            'doType': 'query',
+            'gnmkdm': 'N358105',
+            'su': resolvedId,
           },
+          data:
+              'xnm=$academicYear&xqm=$term&ksmcdmb_id=&kch=&kc=&ksrq='
+              '&kkbm_id=&ksmc=&_search=false&nd=$ts'
+              '&queryModel.showCount=100&queryModel.currentPage=1'
+              '&queryModel.sortName=&queryModel.sortOrder=asc&time=0',
+          options: Options(
+            contentType: 'application/x-www-form-urlencoded',
+            headers: {
+              'Referer': ZhengfangAuth.instance.academicServiceUrl,
+              'X-Requested-With': 'XMLHttpRequest',
+            },
+          ),
         ),
       );
 
@@ -145,10 +149,11 @@ class ExamService {
       _cachedExams = exams;
       await _persistCache(exams);
       return exams;
+    } on ExamAuthExpiredException {
+      rethrow;
+    } on AcademicAuthExpiredException {
+      throw const ExamAuthExpiredException();
     } on DioException catch (e) {
-      if (e.response?.statusCode == 302 || e.response?.statusCode == 403) {
-        throw const ExamAuthExpiredException();
-      }
       throw ExamRequestException('获取考试信息失败：${e.message}');
     }
   }

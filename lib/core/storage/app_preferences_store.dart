@@ -16,6 +16,7 @@ class AppPreferencesStore {
   static const _pureBlackKey = 'app_theme_pure_black_mode';
   static const _textScaleKey = 'text_scale_factor';
   static const _homeTextColorModeKey = 'app_theme_home_text_color_mode';
+  static const _filledButtonSoftStyleKey = 'app_theme_filled_button_soft_style';
 
   Future<AppPreferences> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -59,6 +60,10 @@ class AppPreferencesStore {
       orElse: () => HomeTextColorPreference.system,
     );
 
+    // filledButtonSoftStyle
+    final filledButtonSoftStyle =
+        prefs.getBool(_filledButtonSoftStyleKey) ?? false;
+
     return AppPreferences(
       themeMode: themeMode,
       colorSource: colorSource,
@@ -67,6 +72,7 @@ class AppPreferencesStore {
       pureBlack: pureBlack,
       textScale: textScale,
       homeTextColor: homeTextColor,
+      filledButtonSoftStyle: filledButtonSoftStyle,
     );
   }
 
@@ -103,5 +109,10 @@ class AppPreferencesStore {
   Future<void> saveHomeTextColor(HomeTextColorPreference value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_homeTextColorModeKey, value.index);
+  }
+
+  Future<void> saveFilledButtonSoftStyle(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_filledButtonSoftStyleKey, value);
   }
 }

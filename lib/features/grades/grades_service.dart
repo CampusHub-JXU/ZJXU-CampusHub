@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/auth/academic_auth_guard.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/network/dio_client.dart';
 import 'grades_model.dart';
@@ -68,34 +69,43 @@ class GradesService {
     await DioClient.instance.ensureInitialized();
     final dio = ZhengfangAuth.instance.academicDio;
     final ts = DateTime.now().millisecondsSinceEpoch;
-    final resp = await dio.post<Map<String, dynamic>>(
-      ZhengfangAuth.instance.buildPortalUrl('/cjcx/cjcx_cxDgXscj.html'),
-      queryParameters: {
-        'doType': 'query',
-        'gnmkdm': 'N305005',
-        'su': studentId,
-      },
-      data:
-          'xnm=&xqm=&_search=false&nd=$ts'
-          '&queryModel.showCount=100&queryModel.currentPage=1'
-          '&queryModel.sortName=&queryModel.sortOrder=asc&time=1',
-      options: Options(
-        contentType: 'application/x-www-form-urlencoded',
-        headers: {
-          'Referer': ZhengfangAuth.instance.academicServiceUrl,
-          'X-Requested-With': 'XMLHttpRequest',
-        },
-      ),
-    );
+    try {
+      final resp = await AcademicAuthGuard.guardRequest<Map<String, dynamic>>(
+        authExpiredException: const GradesAuthExpiredException(),
+        request: () => dio.post<Map<String, dynamic>>(
+          ZhengfangAuth.instance.buildPortalUrl('/cjcx/cjcx_cxDgXscj.html'),
+          queryParameters: {
+            'doType': 'query',
+            'gnmkdm': 'N305005',
+            'su': studentId,
+          },
+          data:
+              'xnm=&xqm=&_search=false&nd=$ts'
+              '&queryModel.showCount=100&queryModel.currentPage=1'
+              '&queryModel.sortName=&queryModel.sortOrder=asc&time=1',
+          options: Options(
+            contentType: 'application/x-www-form-urlencoded',
+            headers: {
+              'Referer': ZhengfangAuth.instance.academicServiceUrl,
+              'X-Requested-With': 'XMLHttpRequest',
+            },
+          ),
+        ),
+      );
 
-    final items = resp.data?['items'] as List<dynamic>? ?? [];
-    final grades = items
-        .cast<Map<String, dynamic>>()
-        .map(GradeEntry.fromJson)
-        .toList();
+      final items = resp.data?['items'] as List<dynamic>? ?? [];
+      final grades = items
+          .cast<Map<String, dynamic>>()
+          .map(GradeEntry.fromJson)
+          .toList();
 
-    await _persistCache(grades);
-    return grades;
+      await _persistCache(grades);
+      return grades;
+    } on GradesAuthExpiredException {
+      rethrow;
+    } on AcademicAuthExpiredException {
+      throw const GradesAuthExpiredException();
+    }
   }
 
   @visibleForTesting
@@ -103,4 +113,15 @@ class GradesService {
     _cachedGrades = null;
     _lastSavedAt = null;
   }
+}
+
+class GradesRequestException implements Exception {
+  const GradesRequestException(this.message);
+  final String message;
+  @override
+  String toString() => message;
+}
+
+class GradesAuthExpiredException extends GradesRequestException {
+  const GradesAuthExpiredException() : super('登录状态已过期，请重新登录');
 }

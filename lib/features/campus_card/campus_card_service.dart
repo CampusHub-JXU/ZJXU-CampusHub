@@ -173,7 +173,7 @@ class CampusCardService {
     if (gatewayReady != true) {
       AppLogger.instance.auth(
         gatewayReady == false ? LogLevel.warn : LogLevel.debug,
-        '校园卡余额直连查询跳过：WebVPN 网关会话不可用',
+        '校园卡余额查询跳过：教务网关会话不可用',
       );
       return clearCachedBalance();
     }
@@ -185,7 +185,7 @@ class CampusCardService {
     if (sessionReady != true) {
       AppLogger.instance.auth(
         sessionReady == false ? LogLevel.warn : LogLevel.debug,
-        '校园卡余额直连查询跳过：统一认证会话不可用',
+        '校园卡余额查询跳过：统一认证会话不可用',
       );
       return clearCachedBalance();
     }
@@ -204,11 +204,12 @@ class CampusCardService {
     }
 
     try {
-      final proxyPageUrl = ZhengfangAuth.instance.buildWebVpnProxyUrl(
-        statusPageUrl,
-      );
+      // FR-1: 直连模式下直接加载 mobilehall 原始页面；WebVPN 模式下走代理 URL。
+      final targetUrl = ZhengfangAuth.instance.mode == ZhengfangMode.webVpn
+          ? ZhengfangAuth.instance.buildWebVpnProxyUrl(statusPageUrl)
+          : statusPageUrl;
       webView = HeadlessInAppWebView(
-        initialUrlRequest: URLRequest(url: WebUri(proxyPageUrl)),
+        initialUrlRequest: URLRequest(url: WebUri(targetUrl)),
         initialSettings: InAppWebViewSettings(
           javaScriptEnabled: true,
           domStorageEnabled: true,
