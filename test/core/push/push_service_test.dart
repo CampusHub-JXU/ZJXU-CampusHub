@@ -49,4 +49,11 @@ void main() {
 
     expect(PushService.instance.fcmToken, 'first');
   });
+
+  test('initialize does not throw when firebase is unavailable', () async {
+    await PushService.instance.initialize();
+
+    expect(PushService.instance.fcmToken, isNull);
+    expect(PushService.instance.tokens, isEmpty);
+  });
 }

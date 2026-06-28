@@ -19,6 +19,7 @@ class AppPreferences {
   final bool pureBlack;
   final double textScale;
   final HomeTextColorPreference homeTextColor;
+  final bool filledButtonSoftStyle;
 
   const AppPreferences({
     this.themeMode = AppThemePreference.system,
@@ -28,6 +29,7 @@ class AppPreferences {
     this.pureBlack = false,
     this.textScale = 0.9,
     this.homeTextColor = HomeTextColorPreference.system,
+    this.filledButtonSoftStyle = false,
   });
 
   AppPreferences copyWith({
@@ -38,6 +40,7 @@ class AppPreferences {
     bool? pureBlack,
     double? textScale,
     HomeTextColorPreference? homeTextColor,
+    bool? filledButtonSoftStyle,
   }) {
     return AppPreferences(
       themeMode: themeMode ?? this.themeMode,
@@ -47,6 +50,8 @@ class AppPreferences {
       pureBlack: pureBlack ?? this.pureBlack,
       textScale: textScale ?? this.textScale,
       homeTextColor: homeTextColor ?? this.homeTextColor,
+      filledButtonSoftStyle:
+          filledButtonSoftStyle ?? this.filledButtonSoftStyle,
     );
   }
 
@@ -172,6 +177,16 @@ class AppPreferencesController extends ChangeNotifier {
     };
     await AppThemeController.instance.setHomeTextColorMode(legacyMode);
     await AppPreferencesStore.instance.saveHomeTextColor(value);
+  }
+
+  // ── Filled Button Soft Style ──────────────────────────────────────────
+
+  Future<void> setFilledButtonSoftStyle(bool value) async {
+    if (_state.filledButtonSoftStyle == value) return;
+    _state = _state.copyWith(filledButtonSoftStyle: value);
+    notifyListeners();
+
+    await AppPreferencesStore.instance.saveFilledButtonSoftStyle(value);
   }
 
   // ── Legacy sync ────────────────────────────────────────────────────────

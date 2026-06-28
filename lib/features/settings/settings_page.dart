@@ -9,6 +9,7 @@ import '../../core/notification/app_notification_service.dart';
 import '../../core/semester/semester_calendar.dart';
 import '../../core/update/update_checker.dart';
 import '../../core/update/update_model.dart';
+import '../../shared/widgets/app_dropdown.dart';
 import '../../shared/widgets/update_dialog.dart';
 
 class SettingsPage extends StatelessWidget {
@@ -250,7 +251,7 @@ class SettingsPage extends StatelessWidget {
                             subtitle: Text(
                               _formatLogLevel(logConfig.minimumLevel),
                             ),
-                            trailing: DropdownButton<LogLevel>(
+                            trailing: AppDropdown<LogLevel>(
                               value: logConfig.minimumLevel,
                               onChanged: (value) {
                                 if (value == null) return;
@@ -260,9 +261,9 @@ class SettingsPage extends StatelessWidget {
                               },
                               items: LogLevel.values
                                   .map(
-                                    (level) => DropdownMenuItem<LogLevel>(
+                                    (level) => AppDropdownItem(
                                       value: level,
-                                      child: Text(_formatLogLevel(level)),
+                                      label: _formatLogLevel(level),
                                     ),
                                   )
                                   .toList(),

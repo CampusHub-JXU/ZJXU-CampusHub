@@ -12,7 +12,13 @@ import '../notification/app_notification_service.dart';
 /// Top-level handler for FCM background messages.
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
+  try {
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp();
+    }
+  } catch (_) {
+    return;
+  }
 }
 
 /// Push service using Firebase Cloud Messaging.
@@ -43,12 +49,19 @@ class PushService {
 
   Future<void> _initFCM() async {
     try {
-      await Firebase.initializeApp();
+      if (Firebase.apps.isEmpty) {
+        await Firebase.initializeApp();
+      }
+
+      FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+
       final messaging = FirebaseMessaging.instance;
 
       await messaging.requestPermission(alert: true, badge: true, sound: true);
 
-      final token = await messaging.getToken();
+      final token = await messaging.getToken().timeout(
+        const Duration(seconds: 10),
+      );
       if (token != null) {
         _fcmToken = token;
         await _cacheFcmToken(token);
@@ -68,13 +81,15 @@ class PushService {
       if (initialMessage != null) {
         _handleMessageOpened(initialMessage);
       }
+    } on TimeoutException catch (_) {
+      AppLogger.instance.ui(LogLevel.warn, 'FCM 初始化超时，已跳过推送通道');
     } on FirebaseException catch (e) {
       AppLogger.instance.ui(
         LogLevel.warn,
         'Firebase 初始化失败（可能是缺少 google-services.json）: ${e.message}',
       );
     } catch (e) {
-      AppLogger.instance.ui(LogLevel.error, 'FCM 初始化异常: $e');
+      AppLogger.instance.ui(LogLevel.warn, 'FCM 初始化失败，已跳过推送通道: $e');
     }
   }
 

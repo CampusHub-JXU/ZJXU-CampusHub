@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:jxu_campus_hub/app/app_preferences_controller.dart';
 import 'package:jxu_campus_hub/app/text_scale_controller.dart';
 import 'package:jxu_campus_hub/app/theme_mode_controller.dart';
+import 'package:jxu_campus_hub/core/auth/connect_mode_resolver.dart';
 import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/core/network/dio_client.dart';
@@ -40,6 +41,7 @@ Future<void> resetTestEnvironment() async {
   ThemeModeController.instance.debugReset();
   UnifiedAuthService.instance.debugReset();
   ZhengfangAuth.instance.debugReset();
+  ConnectModeResolver.instance.debugReset();
   NetworkSettings.instance.debugReset();
   DioClient.instance.debugReset();
   AppLogger.instance.debugReset();

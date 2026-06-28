@@ -18,7 +18,7 @@ class AppThemeBuilder {
 
   // ── Light ──────────────────────────────────────────────────────────────
 
-  static ThemeData light(Color seedColor) {
+  static ThemeData light(Color seedColor, {bool filledButtonSoftStyle = false}) {
     final colorScheme = ColorScheme.fromSeed(
       seedColor: seedColor,
       brightness: Brightness.light,
@@ -50,8 +50,12 @@ class AppThemeBuilder {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: colorScheme.primary,
-          foregroundColor: colorScheme.onPrimary,
+          backgroundColor: filledButtonSoftStyle
+              ? colorScheme.primaryContainer
+              : colorScheme.primary,
+          foregroundColor: filledButtonSoftStyle
+              ? colorScheme.onPrimaryContainer
+              : colorScheme.onPrimary,
           shape: const StadiumBorder(),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
           textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
@@ -156,7 +160,11 @@ class AppThemeBuilder {
         .toColor();
   }
 
-  static ThemeData dark(Color seedColor, {bool pureBlack = false}) {
+  static ThemeData dark(
+    Color seedColor, {
+    bool pureBlack = false,
+    bool filledButtonSoftStyle = false,
+  }) {
     final isNeutralDark = _isNeutralDarkSeed(seedColor);
     final baseScheme = ColorScheme.fromSeed(
       seedColor: seedColor,
@@ -256,8 +264,12 @@ class AppThemeBuilder {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: colorScheme.primary,
-          foregroundColor: colorScheme.onPrimary,
+          backgroundColor: filledButtonSoftStyle
+              ? colorScheme.primaryContainer
+              : colorScheme.primary,
+          foregroundColor: filledButtonSoftStyle
+              ? colorScheme.onPrimaryContainer
+              : colorScheme.onPrimary,
           shape: const StadiumBorder(),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
           textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),

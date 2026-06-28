@@ -54,6 +54,13 @@ android {
     }
 
     buildTypes {
+        debug {
+            val ksFilePath = envOrProp("KEYSTORE_FILE", "storeFile")
+            if (ksFilePath.isNotEmpty()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
+
         release {
             val ksFilePath = envOrProp("KEYSTORE_FILE", "storeFile")
             if (ksFilePath.isNotEmpty()) {

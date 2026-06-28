@@ -62,6 +62,17 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
               ),
 
               const SizedBox(height: 8),
+              // ── 强调色按钮样式 ──
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                secondary: const Icon(Icons.smart_button_outlined),
+                title: const Text('柔和强调色按钮'),
+                subtitle: const Text('强调按钮使用主题柔和色块，降低视觉强度'),
+                value: prefs.filledButtonSoftStyle,
+                onChanged: _ctrl.setFilledButtonSoftStyle,
+              ),
+
+              const SizedBox(height: 8),
               // ── 文本缩放 ──
               _buildTextScale(prefs),
 
