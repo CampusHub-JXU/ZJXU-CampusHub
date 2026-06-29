@@ -93,14 +93,18 @@ class _GradesPageState extends State<GradesPage>
     }
   }
 
-  Future<void> _fetchGrades() async {
+  Future<void> _fetchGrades({bool forceRefresh = false}) async {
     final studentId = ZhengfangAuth.instance.currentStudentId ?? '';
+    final hasExistingData = _grades.isNotEmpty;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final grades = await GradesService.instance.fetchGrades(studentId);
+      final grades = await GradesService.instance.fetchGrades(
+        studentId,
+        forceRefresh: forceRefresh,
+      );
       if (mounted) {
         setState(() => _grades = grades);
         _ensureSelectedTerm();
@@ -118,7 +122,10 @@ class _GradesPageState extends State<GradesPage>
         unawaited(_presentLoginPrompt(force: true));
       });
     } catch (e) {
-      if (mounted) {
+      if (!mounted) return;
+      if (hasExistingData) {
+        NetworkErrorToast.show(context, e);
+      } else {
         setState(() => _error = '获取成绩失败：$e');
         NetworkErrorToast.show(context, e);
       }
@@ -132,7 +139,7 @@ class _GradesPageState extends State<GradesPage>
       _loggedIn = true;
       _error = null;
     });
-    _fetchGrades();
+    _fetchGrades(forceRefresh: true);
   }
 
   Future<void> _presentLoginPrompt({bool force = false}) async {
@@ -236,8 +243,19 @@ class _GradesPageState extends State<GradesPage>
         actions: _loggedIn
             ? [
                 IconButton(
-                  icon: const Icon(Icons.refresh),
-                  onPressed: _fetchGrades,
+                  icon: _loading
+                      ? SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        )
+                      : const Icon(Icons.refresh),
+                  onPressed: _loading
+                      ? null
+                      : () => _fetchGrades(forceRefresh: true),
                   tooltip: '刷新',
                 ),
               ]
@@ -256,7 +274,7 @@ class _GradesPageState extends State<GradesPage>
   );
 
   Widget _buildGradesBody() {
-    if (_loading) return _buildLoadingState();
+    if (_loading && _grades.isEmpty) return _buildLoadingState();
     if (_error != null) return _buildErrorState();
     if (_grades.isEmpty) return _buildEmptyState();
 
@@ -477,7 +495,7 @@ class _GradesPageState extends State<GradesPage>
             ),
             const SizedBox(height: 20),
             FilledButton.tonalIcon(
-              onPressed: _fetchGrades,
+              onPressed: () => _fetchGrades(forceRefresh: true),
               icon: const Icon(Icons.refresh_rounded, size: 18),
               label: const Text('重试'),
             ),
