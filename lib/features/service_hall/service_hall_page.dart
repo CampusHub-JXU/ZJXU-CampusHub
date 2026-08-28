@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/logging/app_logger.dart';
+import '../../core/wechat/wechat_launcher.dart';
 import '../../shared/widgets/unified_auth_protected_webview_page.dart';
 
-class ServiceHallPage extends StatelessWidget {
+class ServiceHallPage extends StatefulWidget {
   const ServiceHallPage({super.key});
 
   static const titleText = '服务大厅';
@@ -13,14 +17,64 @@ class ServiceHallPage extends StatelessWidget {
   static const authLoginDescription = '服务大厅仅支持校园网内直连访问，请连接校园网后登录统一认证';
 
   @override
+  State<ServiceHallPage> createState() => _ServiceHallPageState();
+}
+
+class _ServiceHallPageState extends State<ServiceHallPage> {
+  bool _openingInWeChat = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(_openInWeChat());
+    });
+  }
+
+  Future<void> _openInWeChat() async {
+    if (_openingInWeChat) return;
+    setState(() {
+      _openingInWeChat = true;
+    });
+
+    AppLogger.instance.webview(
+      LogLevel.info,
+      '服务大厅尝试在微信中打开: ${ServiceHallPage.homeUrl}',
+    );
+
+    final opened = await WechatLauncher.instance.openUrl(
+      ServiceHallPage.homeUrl,
+    );
+    if (!mounted) return;
+
+    setState(() {
+      _openingInWeChat = false;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(opened ? '已打开微信，请在学校公众号服务中继续' : '未能打开微信，请确认已安装微信'),
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     return UnifiedAuthProtectedWebViewPage(
-      title: titleText,
-      url: homeUrl,
-      serviceUrl: authServiceUrl,
-      loginDescription: authLoginDescription,
+      title: ServiceHallPage.titleText,
+      url: ServiceHallPage.homeUrl,
+      serviceUrl: ServiceHallPage.authServiceUrl,
+      loginDescription: ServiceHallPage.authLoginDescription,
       showWebViewBottomBackButton: true,
       onHomePressed: () => context.goNamed('home'),
+      appBarActions: [
+        IconButton(
+          tooltip: '在微信中打开',
+          icon: const Icon(Icons.open_in_new),
+          onPressed: _openingInWeChat ? null : () => unawaited(_openInWeChat()),
+        ),
+      ],
     );
   }
 }

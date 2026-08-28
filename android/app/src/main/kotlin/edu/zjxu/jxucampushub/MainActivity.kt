@@ -111,31 +111,59 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun openUrlInWeChat(url: String): Boolean {
-        // 直接指定微信内置浏览器 Activity，绕过 intent-filter 解析问题
-        val intent = Intent().apply {
-            action = Intent.ACTION_VIEW
-            data = Uri.parse(url)
-            setClassName(
-                "com.tencent.mm",
-                "com.tencent.mm.plugin.webview.ui.tools.SDKWebViewUI",
-            )
+        if (packageManager.getLaunchIntentForPackage("com.tencent.mm") == null) {
+            android.util.Log.w("WeChat", "WeChat is not installed")
+            return false
         }
+
+        val uri = Uri.parse(url)
+        val attempts = listOf(
+            Intent(Intent.ACTION_VIEW, uri).apply {
+                setPackage("com.tencent.mm")
+                addCategory(Intent.CATEGORY_BROWSABLE)
+            },
+            createWeChatWebViewIntent(url, "com.tencent.mm.plugin.webview.ui.tools.SDKWebViewUI"),
+            createWeChatWebViewIntent(url, "com.tencent.mm.plugin.webview.ui.tools.WebViewUI"),
+        )
+
+        for ((index, intent) in attempts.withIndex()) {
+            if (tryStartWeChatIntent(intent, "url-attempt-$index")) return true
+        }
+
+        val launchIntent = packageManager.getLaunchIntentForPackage("com.tencent.mm")
+        if (launchIntent != null && tryStartWeChatIntent(launchIntent, "launcher")) {
+            return true
+        }
+
+        return tryStartWeChatIntent(
+            Intent(Intent.ACTION_VIEW, Uri.parse("weixin://")).apply {
+                setPackage("com.tencent.mm")
+            },
+            "scheme-home",
+        )
+    }
+
+    private fun createWeChatWebViewIntent(url: String, className: String): Intent {
+        return Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+            setClassName("com.tencent.mm", className)
+            addCategory(Intent.CATEGORY_BROWSABLE)
+            putExtra("rawUrl", url)
+        }
+    }
+
+    private fun tryStartWeChatIntent(intent: Intent, label: String): Boolean {
         return try {
             startActivity(intent)
+            android.util.Log.i("WeChat", "Started WeChat route: $label")
             true
         } catch (e: ActivityNotFoundException) {
-            android.util.Log.w("WeChat", "SDKWebViewUI not found, trying package route")
-            val fallback = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
-                setPackage("com.tencent.mm")
-            }
-            try {
-                startActivity(fallback)
-                true
-            } catch (_: Exception) {
-                false
-            }
+            android.util.Log.w("WeChat", "Route not found: $label")
+            false
+        } catch (e: SecurityException) {
+            android.util.Log.w("WeChat", "Route not exported: $label")
+            false
         } catch (e: Exception) {
-            android.util.Log.e("WeChat", "Failed: ${e.javaClass.simpleName}: ${e.message}")
+            android.util.Log.e("WeChat", "Route failed: $label, ${e.javaClass.simpleName}: ${e.message}")
             false
         }
     }
