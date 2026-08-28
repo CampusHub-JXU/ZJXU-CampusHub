@@ -6,7 +6,9 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../core/logging/app_logger.dart';
 import '../../core/notification/app_notification_service.dart';
+import '../../core/semester/current_term_resolver.dart';
 import '../../core/semester/semester_calendar.dart';
+import '../../core/semester/schedule_term_context.dart';
 import '../../core/update/update_checker.dart';
 import '../../core/update/update_model.dart';
 import '../../shared/widgets/app_dropdown.dart';
@@ -116,11 +118,14 @@ class SettingsPage extends StatelessWidget {
           const SizedBox(height: 12),
           ValueListenableBuilder<DateTime>(
             valueListenable: SemesterCalendar.instance.semesterStartDate,
+            child: const _CurrentTermTile(),
             builder: (context, semesterStartDate, child) {
               return Card(
                 clipBehavior: Clip.antiAlias,
                 child: Column(
                   children: [
+                    ?child,
+                    const Divider(height: 1, indent: 16, endIndent: 16),
                     ListTile(
                       title: const Text('当前学期开学日'),
                       subtitle: Text(
@@ -143,7 +148,9 @@ class SettingsPage extends StatelessWidget {
                             await SemesterCalendar.instance
                                 .resetSemesterStartDate();
                           },
-                          child: const Text('恢复默认（3月2日）'),
+                          child: Text(
+                            '恢复默认（${_formatDate(SemesterCalendar.defaultSemesterStartFor(DateTime.now()))}）',
+                          ),
                         ),
                       ),
                     ),
@@ -340,6 +347,64 @@ class SettingsPage extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+/// 设置页展示自动识别出的当前学年学期。
+///
+/// 复用 [CurrentTermResolver] 的 TTL 缓存：未过期时零请求，
+/// 过期且已登录教务时才发起一次识别请求。
+class _CurrentTermTile extends StatefulWidget {
+  const _CurrentTermTile();
+
+  @override
+  State<_CurrentTermTile> createState() => _CurrentTermTileState();
+}
+
+class _CurrentTermTileState extends State<_CurrentTermTile> {
+  ScheduleTermContext? _resolved;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_resolveTerm());
+  }
+
+  Future<void> _resolveTerm() async {
+    final resolved = await CurrentTermResolver.instance.resolve();
+    if (!mounted) return;
+    setState(() {
+      _resolved = resolved;
+      _loading = false;
+    });
+  }
+
+  String _termLabel(ScheduleTermContext term) {
+    return '${term.academicYear}-${term.academicYear + 1}学年 ${term.termLabel}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final term = _resolved ?? ScheduleTermContext.current();
+    final subtitle = _loading
+        ? '正在从教务系统识别…'
+        : _resolved != null
+        ? '已从教务系统自动识别'
+        : '按日期推算（未登录或教务不可达）';
+
+    return ListTile(
+      leading: const Icon(Icons.school_outlined),
+      title: const Text('当前学年学期'),
+      subtitle: Text('${_termLabel(term)} · $subtitle'),
+      trailing: _loading
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : null,
     );
   }
 }

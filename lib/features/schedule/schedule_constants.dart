@@ -10,6 +10,7 @@ const scheduleTermLabelPrefix = '第';
 const scheduleWeekLabelSuffix = '周';
 const scheduleCurrentWeekLabel = '本周';
 const scheduleNonCurrentWeekLabel = '非本周';
+const scheduleNotStartedLabel = '未开学';
 const scheduleSlotTimes = [
   ['08:00', '08:40'],
   ['08:45', '09:25'],

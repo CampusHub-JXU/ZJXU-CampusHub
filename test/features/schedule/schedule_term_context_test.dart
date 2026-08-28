@@ -17,4 +17,30 @@ void main() {
     expect(context.termLabel, '第二学期');
     expect(context.toJson(), {'academicYear': 2025, 'term': 12});
   });
+
+  test('previous walks back across the academic year boundary', () {
+    expect(
+      const ScheduleTermContext(academicYear: 2025, term: 3).previous(),
+      const ScheduleTermContext(academicYear: 2024, term: 12),
+    );
+    expect(
+      const ScheduleTermContext(academicYear: 2025, term: 12).previous(),
+      const ScheduleTermContext(academicYear: 2025, term: 3),
+    );
+  });
+
+  test('equality and hashCode match on year and term', () {
+    expect(
+      const ScheduleTermContext(academicYear: 2025, term: 3),
+      const ScheduleTermContext(academicYear: 2025, term: 3),
+    );
+    expect(
+      const ScheduleTermContext(academicYear: 2025, term: 3).hashCode,
+      const ScheduleTermContext(academicYear: 2025, term: 3).hashCode,
+    );
+    expect(
+      const ScheduleTermContext(academicYear: 2025, term: 3),
+      isNot(const ScheduleTermContext(academicYear: 2025, term: 12)),
+    );
+  });
 }

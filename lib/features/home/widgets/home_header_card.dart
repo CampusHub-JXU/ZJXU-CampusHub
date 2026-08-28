@@ -10,7 +10,7 @@ import '../home_controller.dart';
 class HomeHeaderCard extends StatelessWidget {
   const HomeHeaderCard({
     super.key,
-    required this.currentWeek,
+    required this.weekLabelText,
     required this.canShowUpdateAction,
     required this.onTap,
     required this.onNoticeTap,
@@ -18,7 +18,8 @@ class HomeHeaderCard extends StatelessWidget {
     this.updateAction,
   });
 
-  final int currentWeek;
+  /// 周次文案：教学周内为"第 N 周"，未开学/学期结束后显示对应状态。
+  final String weekLabelText;
   final bool canShowUpdateAction;
   final VoidCallback onTap;
   final VoidCallback onNoticeTap;
@@ -278,7 +279,7 @@ class HomeHeaderCard extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            '第 $currentWeek 周',
+                            weekLabelText,
                             style: TextStyle(
                               fontSize: 22,
                               fontWeight: FontWeight.w700,

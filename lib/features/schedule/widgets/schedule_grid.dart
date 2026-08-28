@@ -15,7 +15,9 @@ class ScheduleGrid extends StatelessWidget {
   });
 
   final ScheduleWeekViewModel weekViewModel;
-  final int actualCurrentWeek;
+
+  /// 真实当前周；null 表示当前不存在"本周"（未开学或学期已结束）。
+  final int? actualCurrentWeek;
   int get currentWeek => weekViewModel.week;
 
   static const _courseHueOffsets = <double>[0, 34, 72, 116, 164, 208, 258, 310];
@@ -125,7 +127,10 @@ class ScheduleGrid extends StatelessWidget {
               slotColumnWidth: scheduleGridSlotColumnWidth,
               dayColumnWidth: dayColumnWidth,
               currentWeek: currentWeek,
-              isCurrentWeek: currentWeek == actualCurrentWeek,
+              isCurrentWeek:
+                  actualCurrentWeek != null && currentWeek == actualCurrentWeek,
+              showNotStartedBadge:
+                  actualCurrentWeek == null && currentWeek == 1,
             ),
             Expanded(
               child: SingleChildScrollView(

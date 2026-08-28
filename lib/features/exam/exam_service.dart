@@ -7,6 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/auth/academic_auth_guard.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/network/dio_client.dart';
+import '../../core/semester/current_term_resolver.dart';
+import '../../core/semester/schedule_term_context.dart';
 import 'exam_model.dart';
 
 class ExamService {
@@ -106,10 +108,13 @@ class ExamService {
       throw const ExamRequestException('未获取到学号，请先登录教务系统');
     }
 
-    final now = DateTime.now();
-    final academicYear = now.month < 8 ? now.year - 1 : now.year;
-    final term = now.month >= 2 && now.month < 8 ? 12 : 3;
-    final ts = now.millisecondsSinceEpoch;
+    // 与课表一致：优先以教务系统解析的当前学期为准，失败时按日期推算。
+    final termContext =
+        await CurrentTermResolver.instance.resolve(studentId: resolvedId) ??
+        ScheduleTermContext.current();
+    final academicYear = termContext.academicYear;
+    final term = termContext.term;
+    final ts = DateTime.now().millisecondsSinceEpoch;
 
     try {
       final resp = await AcademicAuthGuard.guardRequest<Map<String, dynamic>>(

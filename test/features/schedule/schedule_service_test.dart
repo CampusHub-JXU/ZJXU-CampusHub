@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jxu_campus_hub/core/semester/current_term_resolver.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_cache_snapshot.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_model.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';
@@ -12,6 +13,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     await ScheduleService.instance.restoreCache();
     await ScheduleService.instance.debugClearCache();
+    await CurrentTermResolver.instance.debugReset();
   });
 
   group('ScheduleCacheSnapshot', () {
@@ -298,6 +300,87 @@ void main() {
       expect(result.usedCache, isTrue);
       expect(result.snapshot?.courses.single.courseName, '缓存课表');
       expect(result.message, contains('缓存'));
+    });
+  });
+
+  group('ScheduleService auto term resolution', () {
+    test(
+      'falls back to previous term cache when current term has no data',
+      () async {
+        final previous = ScheduleTermContext.current().previous();
+        ScheduleService.instance.debugSetSnapshot(
+          ScheduleCacheSnapshot(
+            studentId: '20230001',
+            termContext: previous,
+            courses: const [
+              CourseEntry(
+                courseName: '上学期课表',
+                teacherName: '教师A',
+                weekday: 1,
+                startLesson: 1,
+                endLesson: 2,
+                weekRange: '1-18周',
+                classroom: '101',
+                campus: '嘉兴校区',
+                typeSymbol: '',
+              ),
+            ],
+            scheduleUpdatedAt: DateTime.now(),
+            changeRulesUpdatedAt: DateTime.now(),
+          ),
+        );
+
+        final result = await ScheduleService.instance.loadScheduleSnapshot(
+          studentId: '20230001',
+        );
+
+        expect(result.effectiveTermContext, previous);
+        expect(result.snapshot?.courses.single.courseName, '上学期课表');
+        expect(result.message, contains('上一学期'));
+      },
+    );
+
+    test('returns cached current term snapshot without fallback', () async {
+      final current = ScheduleTermContext.current();
+      ScheduleService.instance.debugSetSnapshot(
+        ScheduleCacheSnapshot(
+          studentId: '20230001',
+          termContext: current,
+          courses: const [
+            CourseEntry(
+              courseName: '本学期课表',
+              teacherName: '教师A',
+              weekday: 2,
+              startLesson: 3,
+              endLesson: 4,
+              weekRange: '1-18周',
+              classroom: '102',
+              campus: '嘉兴校区',
+              typeSymbol: '',
+            ),
+          ],
+          scheduleUpdatedAt: DateTime.now(),
+          changeRulesUpdatedAt: DateTime.now(),
+        ),
+      );
+
+      final result = await ScheduleService.instance.loadScheduleSnapshot(
+        studentId: '20230001',
+      );
+
+      expect(result.effectiveTermContext, isNull);
+      expect(result.snapshot?.courses.single.courseName, '本学期课表');
+    });
+
+    test('explicit term context never triggers fallback', () async {
+      final result = await ScheduleService.instance.loadScheduleSnapshot(
+        studentId: '20230001',
+        termContext: const ScheduleTermContext(academicYear: 2025, term: 3),
+      );
+
+      expect(result.requiresLogin, isTrue);
+      expect(result.effectiveTermContext, isNull);
+      expect(result.snapshot, isNull);
     });
   });
 

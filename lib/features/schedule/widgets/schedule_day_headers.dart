@@ -10,6 +10,7 @@ class ScheduleDayHeaders extends StatelessWidget {
     required this.dayColumnWidth,
     required this.currentWeek,
     required this.isCurrentWeek,
+    this.showNotStartedBadge = false,
   });
 
   final double slotColumnWidth;
@@ -17,13 +18,15 @@ class ScheduleDayHeaders extends StatelessWidget {
   final int currentWeek;
   final bool isCurrentWeek;
 
+  /// 第 1 周且当前不存在"本周"（未开学）时，周徽标显示"未开学"。
+  final bool showNotStartedBadge;
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final today = DateTime.now().weekday;
-    final weekStartDate = SemesterCalendar.instance.semesterStartDate.value.add(
-      Duration(days: (currentWeek - 1) * 7),
-    );
+    // 一周以周一为起点，日期必须与真实星期对齐。
+    final weekStartDate = SemesterCalendar.instance.weekStartFor(currentWeek);
 
     return Container(
       color: cs.surfaceContainerLowest,
@@ -52,6 +55,8 @@ class ScheduleDayHeaders extends StatelessWidget {
                 Text(
                   isCurrentWeek
                       ? scheduleCurrentWeekLabel
+                      : showNotStartedBadge
+                      ? scheduleNotStartedLabel
                       : scheduleNonCurrentWeekLabel,
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant),

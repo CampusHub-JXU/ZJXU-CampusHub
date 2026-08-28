@@ -55,7 +55,12 @@ class _HomePageState extends State<HomePage> {
   bool _hasHydratedBootstrapState = false;
   static const _weekdayLabels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
-  int get _currentWeek => SemesterCalendar.instance.weekForDate(DateTime.now());
+  String get _weekLabelText {
+    if (SemesterCalendar.instance.isBeforeSemesterStart()) return '未开学';
+    if (SemesterCalendar.instance.isAfterSemesterEnd()) return '学期已结束';
+    return '第 ${SemesterCalendar.instance.weekForDate(DateTime.now())} 周';
+  }
+
   bool get _isBootstrapReady =>
       _bootstrapController.phase.value.index >=
       AppBootstrapPhase.localStateReady.index;
@@ -166,8 +171,15 @@ class _HomePageState extends State<HomePage> {
     var nextCourseLabel = '';
 
     if (snapshot != null && snapshot.hasData) {
+      // 未开学时从开学日起算，避免把假期里的今天映射到第 1 周的课上。
+      final scanningToday = !today.isBefore(
+        SemesterCalendar.instance.semesterStartDate.value,
+      );
+      final scanStart = scanningToday
+          ? today
+          : SemesterCalendar.instance.semesterStartDate.value;
       for (int offset = 0; offset < 14; offset++) {
-        final date = today.add(Duration(days: offset));
+        final date = scanStart.add(Duration(days: offset));
         final week = _weekForDate(date);
         final effectiveCourses = ScheduleService.instance
             .buildEffectiveWeekCourses(
@@ -178,7 +190,12 @@ class _HomePageState extends State<HomePage> {
         final dayCourses =
             effectiveCourses
                 .where((c) => c.weekday == date.weekday)
-                .where((c) => offset > 0 || c.startLesson >= nextLessonToday)
+                .where(
+                  (c) =>
+                      offset > 0 ||
+                      !scanningToday ||
+                      c.startLesson >= nextLessonToday,
+                )
                 .toList()
               ..sort((a, b) => a.startLesson.compareTo(b.startLesson));
         if (dayCourses.isNotEmpty) {
@@ -512,7 +529,7 @@ class _HomePageState extends State<HomePage> {
               : (classroom.isEmpty ? campus : '$campus $classroom'));
 
     return HomeHeaderCard(
-      currentWeek: _currentWeek,
+      weekLabelText: _weekLabelText,
       canShowUpdateAction: _canShowUpdateAction,
       onTap: () => _openSchedule(context),
       onNoticeTap: () => context.pushNamed('notification-center'),

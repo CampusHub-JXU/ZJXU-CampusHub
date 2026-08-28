@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/auth/zhengfang_auth.dart';
+import '../../core/semester/semester_calendar.dart';
 import '../../shared/widgets/auth_required_view.dart';
 import '../../shared/widgets/login_shell.dart';
 import 'controllers/schedule_page_controller.dart';
@@ -177,16 +178,33 @@ class _SchedulePageState extends State<SchedulePage> {
     return Column(
       children: [
         if (_controller.loading) const LinearProgressIndicator(minHeight: 2),
-        if (_controller.infoMessage != null ||
-            _controller.scheduleUpdatedAt != null)
-          ScheduleInfoBanner(
-            message: _controller.infoMessage,
-            updatedAt: _controller.scheduleUpdatedAt,
-            loggedIn: _controller.loggedIn,
-          ),
+        ScheduleInfoBanner(
+          message: _bannerMessage(),
+          updatedAt: _controller.scheduleUpdatedAt,
+          loggedIn: _controller.loggedIn,
+        ),
         Expanded(child: _buildWeekPager()),
       ],
     );
+  }
+
+  /// 假期/开学前的状态提示，非教学周时说明真实的日期状态。
+  String? get _termStatusMessage {
+    if (_controller.isBeforeSemesterStart) {
+      final start = SemesterCalendar.instance.semesterStartDate.value;
+      final weekOne = SemesterCalendar.instance.weekOneStartDate;
+      return '未开学 · ${start.month}月${start.day}日开学，第1周自${weekOne.month}月${weekOne.day}日（周一）起算';
+    }
+    if (_controller.isAfterSemesterEnd) {
+      return '本学期教学周已结束';
+    }
+    return null;
+  }
+
+  String? _bannerMessage() {
+    final parts = <String>[?_termStatusMessage, ?_controller.infoMessage];
+    if (parts.isEmpty) return null;
+    return parts.join(' · ');
   }
 
   Widget _buildWeekPager() {
@@ -202,7 +220,9 @@ class _SchedulePageState extends State<SchedulePage> {
           child: ScheduleGrid(
             key: ValueKey('week-grid-$week'),
             weekViewModel: weekViewModel,
-            actualCurrentWeek: _controller.currentWeek,
+            actualCurrentWeek: _controller.hasCurrentWeek
+                ? _controller.currentWeek
+                : null,
           ),
         );
       },

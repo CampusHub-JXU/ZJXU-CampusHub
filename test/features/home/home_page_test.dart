@@ -120,6 +120,8 @@ void main() {
     });
 
     CampusCardService.instance.debugSetCachedBalance(23.5, updatedAt: now);
+    // 把开学日固定为今天，避免假期窗口运行时"明天"落在第 1 周之前。
+    await SemesterCalendar.instance.setSemesterStartDate(now);
     DormElectricityService.instance.debugSetCachedElectricity(
       42,
       updatedAt: now,

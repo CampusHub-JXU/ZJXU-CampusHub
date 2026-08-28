@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/network/dio_client.dart';
+import '../../core/semester/current_term_resolver.dart';
 import '../../core/semester/semester_calendar.dart';
 import 'schedule_cache_snapshot.dart';
 import 'schedule_change_rule.dart';
@@ -14,6 +15,7 @@ import 'schedule_term_context.dart';
 
 export 'schedule_change_rule.dart';
 
+part 'schedule_service_change_parser.dart';
 part 'schedule_service_helpers.dart';
 
 class ScheduleRequestException implements Exception {
@@ -36,6 +38,7 @@ class ScheduleLoadResult {
     this.requiresLogin = false,
     this.usedCache = false,
     this.didRefresh = false,
+    this.effectiveTermContext,
   });
 
   final ScheduleCacheSnapshot? snapshot;
@@ -43,6 +46,10 @@ class ScheduleLoadResult {
   final bool requiresLogin;
   final bool usedCache;
   final bool didRefresh;
+
+  /// 自动识别发生学期回退时，实际展示课表的学期上下文；
+  /// null 表示与请求时的学期一致。
+  final ScheduleTermContext? effectiveTermContext;
 
   bool get hasData => snapshot?.hasData ?? false;
 }
@@ -111,7 +118,10 @@ class ScheduleService {
   }) {
     final resolvedStudentId = _resolveStudentId(studentId);
     if (resolvedStudentId == null || resolvedStudentId.isEmpty) return null;
-    final context = termContext ?? getCurrentTermContext();
+    final context =
+        termContext ??
+        CurrentTermResolver.instance.knownCurrentTerm ??
+        getCurrentTermContext();
     return _snapshots[_cacheKeyFor(resolvedStudentId, context)];
   }
 
@@ -122,19 +132,69 @@ class ScheduleService {
   }) async {
     await _ensureRestored();
 
-    final context = termContext ?? getCurrentTermContext();
     final resolvedStudentId = _resolveStudentId(studentId);
     if (resolvedStudentId == null || resolvedStudentId.isEmpty) {
       return const ScheduleLoadResult(requiresLogin: true, message: '请先登录教务系统');
     }
 
-    final cacheKey = _cacheKeyFor(resolvedStudentId, context);
+    final autoResolveTerm = termContext == null;
+    final context =
+        termContext ?? await _resolveAutoTermContext(resolvedStudentId);
+    final result = await _loadSnapshotForContext(
+      studentId: resolvedStudentId,
+      context: context,
+      forceRefresh: forceRefresh,
+    );
+
+    // 未显式指定学期且当前学期没有课表数据（常见于新学期开学前），
+    // 回退展示上一学期，避免假期里打开课表是一片空白。
+    if (!autoResolveTerm || (result.snapshot?.hasData ?? false)) {
+      return result;
+    }
+    final previousContext = context.previous();
+    final fallback = await _loadSnapshotForContext(
+      studentId: resolvedStudentId,
+      context: previousContext,
+      forceRefresh: false,
+    );
+    if (fallback.snapshot?.hasData != true) {
+      return result;
+    }
+    final requiresLogin = result.requiresLogin || fallback.requiresLogin;
+    return ScheduleLoadResult(
+      snapshot: fallback.snapshot,
+      requiresLogin: requiresLogin,
+      usedCache: true,
+      didRefresh: fallback.didRefresh,
+      effectiveTermContext: previousContext,
+      message: requiresLogin
+          ? '当前学期暂无课表，已显示上一学期课表，刷新需要重新登录教务'
+          : '当前学期暂无课表，已显示上一学期课表',
+    );
+  }
+
+  /// 自动识别当前学期：优先以教务系统解析结果为准，失败时按日期推算。
+  Future<ScheduleTermContext> _resolveAutoTermContext(String studentId) async {
+    try {
+      final resolved = await CurrentTermResolver.instance.resolve(
+        studentId: studentId,
+      );
+      if (resolved != null) return resolved;
+    } catch (_) {
+      // 解析失败时回退到日期推算。
+    }
+    return getCurrentTermContext();
+  }
+
+  Future<ScheduleLoadResult> _loadSnapshotForContext({
+    required String studentId,
+    required ScheduleTermContext context,
+    required bool forceRefresh,
+  }) async {
+    final cacheKey = _cacheKeyFor(studentId, context);
     final cachedSnapshot =
         _snapshots[cacheKey] ??
-        ScheduleCacheSnapshot.empty(
-          studentId: resolvedStudentId,
-          termContext: context,
-        );
+        ScheduleCacheSnapshot.empty(studentId: studentId, termContext: context);
 
     if (!forceRefresh && cachedSnapshot.hasData) {
       return ScheduleLoadResult(snapshot: cachedSnapshot, usedCache: true);
@@ -155,7 +215,7 @@ class ScheduleService {
 
     final canRefresh =
         ZhengfangAuth.instance.isLoggedIn &&
-        ZhengfangAuth.instance.currentStudentId == resolvedStudentId;
+        ZhengfangAuth.instance.currentStudentId == studentId;
     if (!canRefresh) {
       if (cachedSnapshot.hasData) {
         return ScheduleLoadResult(
@@ -172,7 +232,7 @@ class ScheduleService {
       cacheKey,
       () => _refreshSnapshot(
         existingSnapshot: cachedSnapshot,
-        studentId: resolvedStudentId,
+        studentId: studentId,
         termContext: context,
         refreshSchedule: shouldRefreshSchedule,
         refreshChangeRules: shouldRefreshChangeRules,
@@ -321,149 +381,8 @@ class ScheduleService {
         .toList();
   }
 
-  List<CourseChangeRule> parseCourseChangeMessages(Iterable<String> messages) {
-    final rules = <CourseChangeRule>[];
-    final seen = <String>{};
-
-    for (final rawMessage in messages) {
-      final message = rawMessage.trim();
-      if (!message.contains('调课提醒') &&
-          !message.contains('停课提醒') &&
-          !message.contains('补课提醒')) {
-        continue;
-      }
-
-      final rule = _parseCourseChangeRule(message);
-      if (rule == null || !seen.add(rule.signature)) continue;
-      rules.add(rule);
-    }
-
-    return rules;
-  }
-
-  CourseChangeRule? _parseCourseChangeRule(String message) {
-    final lessons = _extractLessonInfos(message);
-    final courseName = _extractCourseName(message);
-
-    if (message.contains('调课提醒')) {
-      final originalLesson = lessons.isNotEmpty ? lessons.first : null;
-      final targetLesson = lessons.length > 1 ? lessons[1] : null;
-      if (originalLesson == null) return null;
-
-      return CourseChangeRule(
-        type: targetLesson == null
-            ? CourseChangeType.cancel
-            : CourseChangeType.reschedule,
-        originalLesson: originalLesson,
-        targetLesson: targetLesson,
-        courseName: courseName,
-        teacherName:
-            _extractAdjustedTeacherName(message) ??
-            _extractTeacherName(message),
-        classroom: _extractAdjustedClassroom(message),
-      );
-    }
-
-    if (message.contains('停课提醒')) {
-      final originalLesson = lessons.isNotEmpty ? lessons.first : null;
-      if (originalLesson == null) return null;
-
-      return CourseChangeRule(
-        type: CourseChangeType.cancel,
-        originalLesson: originalLesson,
-        courseName: courseName,
-      );
-    }
-
-    if (message.contains('补课提醒')) {
-      final targetLesson = lessons.isNotEmpty ? lessons.first : null;
-      if (targetLesson == null) return null;
-
-      return CourseChangeRule(
-        type: CourseChangeType.makeup,
-        targetLesson: targetLesson,
-        courseName: courseName,
-        teacherName: _extractTeacherName(message),
-        classroom: _extractAdjustedClassroom(message),
-      );
-    }
-
-    return null;
-  }
-
-  List<CourseLessonSlot> _extractLessonInfos(String message) {
-    final slots = <CourseLessonSlot>[];
-    final pattern = RegExp(
-      r'第\s*(\d+)\s*周\s*星期([一二三四五六日天])\s*第\s*(\d+)(?:\s*[-~]\s*(\d+))?\s*节',
-    );
-
-    for (final match in pattern.allMatches(message)) {
-      final week = int.tryParse(match.group(1) ?? '');
-      final weekday = _weekdayToInt(match.group(2) ?? '');
-      final startLesson = int.tryParse(match.group(3) ?? '');
-      final endLesson = int.tryParse(match.group(4) ?? match.group(3) ?? '');
-      if (week == null ||
-          weekday == null ||
-          startLesson == null ||
-          endLesson == null) {
-        continue;
-      }
-
-      slots.add(
-        CourseLessonSlot(
-          week: week,
-          weekday: weekday,
-          startLesson: startLesson,
-          endLesson: endLesson,
-        ),
-      );
-    }
-
-    return slots;
-  }
-
-  String? _extractCourseName(String message) {
-    final patterns = [
-      RegExp(r'上的(.+?)课程调课'),
-      RegExp(r'对课程(.+?)进行停课'),
-      RegExp(r'上的(.+?)课程停课'),
-      RegExp(r'对课程(.+?)进行补课'),
-      RegExp(r'上的(.+?)课程进行补课'),
-    ];
-
-    for (final pattern in patterns) {
-      final match = pattern.firstMatch(message);
-      final name = match?.group(1)?.trim() ?? '';
-      if (name.isNotEmpty) return name;
-    }
-
-    return null;
-  }
-
-  String? _extractTeacherName(String message) {
-    final match = RegExp(
-      r'(?:调课提醒|补课提醒|停课提醒)[:：]?\s*(?:原定)?(.+?)老师',
-    ).firstMatch(message);
-    final name = match?.group(1)?.trim() ?? '';
-    return name.isEmpty ? null : name;
-  }
-
-  String? _extractAdjustedTeacherName(String message) {
-    final match = RegExp(r'调课到由(.+?)老师').firstMatch(message);
-    final name = match?.group(1)?.trim() ?? '';
-    return name.isEmpty ? null : name;
-  }
-
-  String? _extractAdjustedClassroom(String message) {
-    final segment = message.contains('调课到')
-        ? message.split('调课到').last
-        : message;
-    final match = RegExp(
-      r'第\s*\d+\s*周\s*星期[一二三四五六日天]\s*第\s*\d+(?:\s*[-~]\s*\d+)?\s*节(?:在|于)(.+?)上',
-    ).firstMatch(segment);
-    final classroom = match?.group(1)?.trim() ?? '';
-    return classroom.isEmpty ? null : classroom;
-  }
+  List<CourseChangeRule> parseCourseChangeMessages(Iterable<String> messages) =>
+      parseScheduleChangeMessages(messages);
 
   List<String> _extractAreaThreeMessages(String html) {
     final messages = <String>[];
