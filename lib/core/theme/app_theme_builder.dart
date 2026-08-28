@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 
+import 'app_design_tokens.dart';
+
 /// Material 3 theme builder.
 ///
 /// Builds light/dark [ThemeData] from a seed color, optionally
 /// overriding dark surfaces for pure-black (AMOLED) mode.
+///
+/// 形状语言采用连续曲率圆角（squircle，[RoundedSuperellipseBorder]），
+/// 与玻璃材质组件（GlassContainer）共用 [AppRadius] 阶梯。
 class AppThemeBuilder {
   AppThemeBuilder._();
 
@@ -48,8 +53,14 @@ class AppThemeBuilder {
       cardTheme: CardThemeData(
         color: colorScheme.surfaceContainerLowest,
         elevation: 0,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape: RoundedSuperellipseBorder(borderRadius: AppRadius.cardAltBorder),
         margin: EdgeInsets.zero,
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: colorScheme.surfaceContainerLow,
+        shape: RoundedSuperellipseBorder(
+          borderRadius: BorderRadius.circular(AppRadius.sheet),
+        ),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
@@ -99,8 +110,10 @@ class AppThemeBuilder {
         ),
       ),
       bottomSheetTheme: BottomSheetThemeData(
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        shape: RoundedSuperellipseBorder(
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(AppRadius.sheet),
+          ),
         ),
         backgroundColor: colorScheme.surfaceContainerLowest,
       ),
@@ -142,7 +155,9 @@ class AppThemeBuilder {
       snackBarTheme: SnackBarThemeData(
         backgroundColor: colorScheme.inverseSurface,
         contentTextStyle: TextStyle(color: colorScheme.onInverseSurface),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedSuperellipseBorder(
+          borderRadius: BorderRadius.circular(14),
+        ),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -259,11 +274,17 @@ class AppThemeBuilder {
       cardTheme: CardThemeData(
         color: surface,
         elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+        shape: RoundedSuperellipseBorder(
+          borderRadius: AppRadius.cardAltBorder,
           side: BorderSide(color: cardBorderColor, width: 0.5),
         ),
         margin: EdgeInsets.zero,
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: surface,
+        shape: RoundedSuperellipseBorder(
+          borderRadius: BorderRadius.circular(AppRadius.sheet),
+        ),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
@@ -313,8 +334,10 @@ class AppThemeBuilder {
         ),
       ),
       bottomSheetTheme: BottomSheetThemeData(
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        shape: RoundedSuperellipseBorder(
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(AppRadius.sheet),
+          ),
         ),
         backgroundColor: surface,
       ),
@@ -356,7 +379,9 @@ class AppThemeBuilder {
       snackBarTheme: SnackBarThemeData(
         backgroundColor: colorScheme.inverseSurface,
         contentTextStyle: TextStyle(color: colorScheme.onInverseSurface),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedSuperellipseBorder(
+          borderRadius: BorderRadius.circular(14),
+        ),
         behavior: SnackBarBehavior.floating,
       ),
     );

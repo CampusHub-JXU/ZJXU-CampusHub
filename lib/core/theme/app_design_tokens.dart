@@ -7,21 +7,20 @@ import 'package:flutter/material.dart';
 /// truth. See `docs/design.md` §5 (P0-1) for the full migration plan.
 ///
 /// Conventions:
-/// * Values are tuned to match the existing visual language (Material 3 seed
-///   theme + standard frosted glass accents) — introducing tokens must NOT
-///   change the current rendered look, only make it auditable.
+/// * Values are tuned to match the current visual language (Material 3 seed
+///   theme + frosted glass accents).
 /// * Tokens are `const` so they can be used in const widget constructors.
 class AppRadius {
   AppRadius._();
 
   /// Primary content card — HomeCardContainer, GPA summary, My status cards.
-  static const double card = 20;
+  static const double card = 22;
 
   /// Brand / alternative card — ShipCard, Grade card, global CardTheme.
-  static const double cardAlt = 16;
+  static const double cardAlt = 18;
 
   /// Service Hub entry tile.
-  static const double tile = 18;
+  static const double tile = 20;
 
   /// Icon badge base radius.
   static const double badge = 12;
@@ -30,10 +29,13 @@ class AppRadius {
   static const double input = 14;
 
   /// Chips.
-  static const double chip = 8;
+  static const double chip = 10;
 
   /// Bottom sheet top.
-  static const double sheet = 20;
+  static const double sheet = 26;
+
+  /// Floating glass surfaces (nav bar, floating panels).
+  static const double floating = 28;
 
   /// Small decorative icon badge (home small cards).
   static const double badgeSmall = 9;
@@ -43,6 +45,31 @@ class AppRadius {
   static BorderRadius get tileBorder => BorderRadius.circular(tile);
   static BorderRadius get inputBorder => BorderRadius.circular(input);
   static BorderRadius get sheetBorder => BorderRadius.circular(sheet);
+}
+
+/// Apple-flavored continuous-corner shapes (squircle).
+///
+/// [RoundedSuperellipseBorder] reproduces the iOS-style "liquid" corner where
+/// the corner curvature eases continuously instead of a circular arc.
+class AppShape {
+  AppShape._();
+
+  static RoundedSuperellipseBorder card({BorderSide side = BorderSide.none}) =>
+      RoundedSuperellipseBorder(borderRadius: AppRadius.cardBorder, side: side);
+
+  static RoundedSuperellipseBorder cardAlt({
+    BorderSide side = BorderSide.none,
+  }) => RoundedSuperellipseBorder(
+    borderRadius: AppRadius.cardAltBorder,
+    side: side,
+  );
+
+  static RoundedSuperellipseBorder sheet() => RoundedSuperellipseBorder(
+    borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.sheet)),
+  );
+
+  static BorderRadius get floatingBorder =>
+      BorderRadius.circular(AppRadius.floating);
 }
 
 class AppSpacing {
