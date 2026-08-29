@@ -114,7 +114,8 @@ if ($runningDevices) {
 
 # 启动模拟器
 Write-Host "启动模拟器: $EmulatorName ..." -ForegroundColor Green
-Start-Process -FilePath $EmulatorPath -ArgumentList "-avd", $EmulatorName, "-timezone", "Asia/Shanghai", "-no-snapshot-load", "-no-snapshot-save", "-gpu", "swiftshader_indirect" -WindowStyle Normal
+# 使用 AVD 配置里的宿主 GPU 渲染与 Quick Boot 快照（首次冷启动后，后续启动走快照秒开）
+Start-Process -FilePath $EmulatorPath -ArgumentList "-avd", $EmulatorName, "-timezone", "Asia/Shanghai", "-no-boot-anim" -WindowStyle Normal
 
 # 等待设备连接
 Write-Host "等待设备启动..." -ForegroundColor Gray
