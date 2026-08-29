@@ -5,6 +5,7 @@ import '../../core/notification/app_notification_service.dart';
 import 'dorm_electricity_service.dart';
 import 'widgets/electricity_battery_header.dart';
 import '../../shared/widgets/app_app_bar.dart';
+import '../../shared/widgets/app_empty_view.dart';
 
 class DormElectricityPage extends StatefulWidget {
   const DormElectricityPage({super.key});
@@ -191,7 +192,7 @@ class _DormElectricityPageState extends State<DormElectricityPage>
       body: _loading
           ? _buildLoadingState(cs)
           : !_hasConfig
-          ? _buildNoConfig(context, cs)
+          ? _buildNoConfig(context)
           : RefreshIndicator(
               onRefresh: () => _load(forceRefresh: true),
               child: _buildContent(context, cs),
@@ -221,48 +222,16 @@ class _DormElectricityPageState extends State<DormElectricityPage>
     );
   }
 
-  Widget _buildNoConfig(BuildContext context, ColorScheme cs) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                color: cs.primary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Icon(Icons.home_outlined, size: 36, color: cs.primary),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              '尚未配置寝室',
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w600,
-                color: cs.onSurface,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '选择寝室后即可查看剩余电量',
-              style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
-            ),
-            const SizedBox(height: 24),
-            FilledButton.icon(
-              onPressed: () async {
-                await context.pushNamed('dorm-electricity-settings');
-                _load(forceRefresh: true);
-              },
-              icon: const Icon(Icons.add_home_outlined, size: 18),
-              label: const Text('去选择寝室'),
-            ),
-          ],
-        ),
-      ),
+  Widget _buildNoConfig(BuildContext context) {
+    return AppEmptyView(
+      title: '尚未配置寝室',
+      message: '选择寝室后即可查看剩余电量',
+      icon: Icons.home_outlined,
+      actionLabel: '去选择寝室',
+      onAction: () async {
+        await context.pushNamed('dorm-electricity-settings');
+        _load(forceRefresh: true);
+      },
     );
   }
 

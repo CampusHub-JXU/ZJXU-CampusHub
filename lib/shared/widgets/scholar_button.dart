@@ -98,9 +98,12 @@ class _ScholarButtonText extends ScholarButton {
          child: Builder(
            builder: (context) => Text(
              text,
-             style: TextStyle(
-               color: Theme.of(context).colorScheme.onPrimary,
-               fontWeight: FontWeight.w600,
+             // merge 环境默认样式：保留主题字体家族，只覆盖颜色与字重。
+             style: DefaultTextStyle.of(context).style.merge(
+               TextStyle(
+                 color: Theme.of(context).colorScheme.onPrimary,
+                 fontWeight: FontWeight.w600,
+               ),
              ),
            ),
          ),
@@ -181,9 +184,12 @@ class _ScholarSecondaryButtonText extends ScholarSecondaryButton {
          child: Builder(
            builder: (context) => Text(
              text,
-             style: TextStyle(
-               color: Theme.of(context).colorScheme.primary,
-               fontWeight: FontWeight.w600,
+             // merge 环境默认样式：保留主题字体家族，只覆盖颜色与字重。
+             style: DefaultTextStyle.of(context).style.merge(
+               TextStyle(
+                 color: Theme.of(context).colorScheme.primary,
+                 fontWeight: FontWeight.w600,
+               ),
              ),
            ),
          ),

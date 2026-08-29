@@ -472,42 +472,10 @@ class _ErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(28),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.cloud_off_outlined,
-              size: 48,
-              color: cs.onSurfaceVariant,
-            ),
-            const SizedBox(height: 14),
-            Text(
-              '第二课堂活动加载失败',
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
-            ),
-            const SizedBox(height: 18),
-            FilledButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('重试'),
-            ),
-          ],
-        ),
-      ),
+    return AppErrorView(
+      title: '第二课堂活动加载失败',
+      message: message,
+      onRetry: onRetry,
     );
   }
 }
@@ -517,21 +485,9 @@ class _EmptyActivityState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 48),
-      child: Column(
-        children: [
-          Icon(Icons.event_busy_outlined, size: 42, color: cs.onSurfaceVariant),
-          const SizedBox(height: 12),
-          Text(
-            '没有匹配的活动',
-            style: Theme.of(
-              context,
-            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-          ),
-        ],
-      ),
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 48),
+      child: AppEmptyView(title: '没有匹配的活动', icon: Icons.event_busy_outlined),
     );
   }
 }

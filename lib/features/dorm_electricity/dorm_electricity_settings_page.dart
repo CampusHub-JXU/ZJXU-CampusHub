@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../core/notification/background_task_service.dart';
 import 'dorm_electricity_service.dart';
 import '../../shared/widgets/app_app_bar.dart';
+import '../../shared/widgets/app_error_view.dart';
 
 class DormElectricitySettingsPage extends StatefulWidget {
   const DormElectricitySettingsPage({super.key});
@@ -575,24 +576,16 @@ class _DormElectricitySettingsPageState
       body: _loadingBuildings
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-          ? Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(_error!, style: TextStyle(color: cs.error)),
-                  const SizedBox(height: 12),
-                  FilledButton(
-                    onPressed: () {
-                      setState(() {
-                        _error = null;
-                        _loadingBuildings = true;
-                      });
-                      _loadBuildings();
-                    },
-                    child: const Text('重试'),
-                  ),
-                ],
-              ),
+          ? AppErrorView(
+              title: '加载失败',
+              message: _error,
+              onRetry: () {
+                setState(() {
+                  _error = null;
+                  _loadingBuildings = true;
+                });
+                _loadBuildings();
+              },
             )
           : Padding(
               padding: const EdgeInsets.all(20),

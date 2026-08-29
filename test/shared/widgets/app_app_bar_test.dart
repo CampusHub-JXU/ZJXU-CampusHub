@@ -42,6 +42,14 @@ void main() {
     expect(find.byType(BackdropFilter), findsNothing);
   });
 
+  testWidgets('模糊强度拉到 0 时不创建 BackdropFilter（滑条 0 = 关模糊）', (tester) async {
+    await GlassStyleController.instance.setBlurSigma(0);
+    await pumpBar(tester);
+
+    expect(find.text('标题'), findsOneWidget);
+    expect(find.byType(BackdropFilter), findsNothing);
+  });
+
   testWidgets('显式 backgroundColor 跳过玻璃层', (tester) async {
     await pumpBar(
       tester,

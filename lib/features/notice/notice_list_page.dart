@@ -5,6 +5,8 @@ import '../../core/logging/app_logger.dart';
 import 'notice_model.dart';
 import 'notice_service.dart';
 import '../../shared/widgets/app_app_bar.dart';
+import '../../shared/widgets/app_empty_view.dart';
+import '../../shared/widgets/app_error_view.dart';
 
 bool shouldOpenNoticeViaUnifiedAuth(String url) {
   final uri = Uri.tryParse(url);
@@ -126,51 +128,9 @@ class _NoticeListPageState extends State<NoticeListPage> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-          ? Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.error_outline,
-                    size: 64,
-                    color: cs.onSurfaceVariant,
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    '加载失败',
-                    style: TextStyle(fontSize: 16, color: cs.onSurfaceVariant),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _error!,
-                    style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
-                  ),
-                  const SizedBox(height: 16),
-                  FilledButton.tonal(
-                    onPressed: _loadNotices,
-                    child: const Text('重试'),
-                  ),
-                ],
-              ),
-            )
+          ? AppErrorView(message: _error, onRetry: _loadNotices)
           : _notices.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.article_outlined,
-                    size: 64,
-                    color: cs.onSurfaceVariant,
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    '暂无通知',
-                    style: TextStyle(fontSize: 16, color: cs.onSurfaceVariant),
-                  ),
-                ],
-              ),
-            )
+          ? const AppEmptyView(title: '暂无通知', icon: Icons.article_outlined)
           : RefreshIndicator(
               onRefresh: _loadNotices,
               child: ListView.separated(

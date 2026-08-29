@@ -3,7 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/auth/zhengfang_auth.dart';
+import '../../core/theme/app_design_tokens.dart';
+import '../../shared/widgets/app_card.dart';
 import '../../shared/widgets/app_dropdown.dart';
+import '../../shared/widgets/app_empty_view.dart';
+import '../../shared/widgets/app_error_view.dart';
 import '../../shared/widgets/app_search_field.dart';
 import '../../shared/widgets/auth_required_view.dart';
 import '../../shared/widgets/login_shell.dart';
@@ -397,16 +401,9 @@ class _GradesPageState extends State<GradesPage>
   /// 紧凑统计行：GPA | 学分 | 课程数 | 均分 四列横排。
   Widget _buildStatsRow() {
     final cs = Theme.of(context).colorScheme;
-    return Container(
+    return AppCard(
+      radius: AppRadius.cardAlt,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: cs.outlineVariant.withValues(alpha: 0.35),
-          width: 0.8,
-        ),
-      ),
       child: Row(
         children: [
           _StatCell(
@@ -459,91 +456,17 @@ class _GradesPageState extends State<GradesPage>
   }
 
   Widget _buildErrorState() {
-    final cs = Theme.of(context).colorScheme;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                color: cs.errorContainer,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Icon(
-                Icons.cloud_off_rounded,
-                color: cs.onErrorContainer,
-                size: 28,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '加载失败',
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              _error!,
-              textAlign: TextAlign.center,
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-            ),
-            const SizedBox(height: 20),
-            FilledButton.tonalIcon(
-              onPressed: () => _fetchGrades(forceRefresh: true),
-              icon: const Icon(Icons.refresh_rounded, size: 18),
-              label: const Text('重试'),
-            ),
-          ],
-        ),
-      ),
+    return AppErrorView(
+      message: _error,
+      onRetry: () => _fetchGrades(forceRefresh: true),
     );
   }
 
   Widget _buildEmptyState() {
-    final cs = Theme.of(context).colorScheme;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                color: cs.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Icon(
-                Icons.school_outlined,
-                color: cs.onSurfaceVariant,
-                size: 28,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '暂无成绩数据',
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '暂未录入成绩',
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-            ),
-          ],
-        ),
-      ),
+    return const AppEmptyView(
+      title: '暂无成绩数据',
+      message: '暂未录入成绩',
+      icon: Icons.school_outlined,
     );
   }
 }

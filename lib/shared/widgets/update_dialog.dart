@@ -2,15 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/update/update_model.dart';
+import 'glass_dialog_route.dart';
 
 Future<void> showUpdateDialog(BuildContext context, AppRelease release) {
   final publishedAt = _formatDate(release.publishedAt);
   final changelog = release.changelog.isEmpty ? '暂无更新说明' : release.changelog;
 
-  return showDialog<void>(
+  // 玻璃化弹层：材质/圆角由 showGlassDialog 提供，AlertDialog 只负责排版；
+  // 玻璃关闭时自动降级为实色表面。
+  return showGlassDialog<void>(
     context: context,
     builder: (dialogContext) {
       return AlertDialog(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        surfaceTintColor: Colors.transparent,
         title: Text('发现新版本 v${release.version}'),
         content: SizedBox(
           width: 420,

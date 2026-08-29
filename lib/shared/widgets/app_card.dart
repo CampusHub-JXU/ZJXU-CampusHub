@@ -8,15 +8,16 @@ import '../../core/theme/glass_style_controller.dart';
 /// 收敛散落在各页面的内联 `Container + BoxDecoration` 卡片，统一圆角/边框/阴影语义。
 /// 圆角默认 [AppRadius.card]；阴影默认 [AppElevation.level1]。
 ///
-/// 毛玻璃开关与材质参数（模糊强度/tint 透明度）统一从 [GlassStyleController]
-/// 读取（`ValueListenableBuilder` 监听 enabled/blurSigma/tintOpacity），本组件
+/// 毛玻璃开关与材质参数（tint 透明度）统一从 [GlassStyleController]
+/// 读取（`ValueListenableBuilder` 监听 enabled/tintOpacity），本组件
 /// 不再持有独立数值参数，保证全局玻璃状态一致；`shared/widgets` → `core/theme`
 /// 仍为 DAG 单向依赖。
 ///
-/// 卡片级玻璃默认不加模糊（blurred=false）：只叠加 tint 渐变 + 高光描边 +
-/// squircle，不产生 BackdropFilter。若未来需要真实模糊，务必让 ClipRRect
-/// 处于 BackdropFilter 的祖先位置（BackdropFilter 作用于整个父层 backdrop，
-/// 不裁剪会糊整屏）。全局玻璃开关关闭时降级为与实色卡片一致的外观。
+/// 卡片是内容面，玻璃路径**保持纯 tint、永不加 BackdropFilter**（内容背后
+/// 没有富媒体，模糊只会白耗 GPU）：只叠加 tint 渐变 + 高光描边 + squircle，
+/// 视觉参数与 GlassContainer card tier 对齐。需要真实模糊的悬浮卡片请改用
+/// GlassContainer（ClipRRect 必须处于 BackdropFilter 的祖先位置，否则会
+/// 糊整屏）。全局玻璃开关关闭时降级为与实色卡片一致的外观。
 ///
 /// 严禁用于底部导航、输入表单主区域、长列表承载层（遵循 design-guidelines 红线）。
 class AppCard extends StatelessWidget {
@@ -56,17 +57,11 @@ class AppCard extends StatelessWidget {
       valueListenable: style.enabled,
       builder: (context, glassOn, _) {
         return ValueListenableBuilder<double>(
-          // 卡片级默认不加模糊；监听 blurSigma 以保持与全局材质参数联动。
-          valueListenable: style.blurSigma,
-          builder: (context, _, _) {
-            return ValueListenableBuilder<double>(
-              valueListenable: style.tintOpacity,
-              builder: (context, tintOpacity, _) {
-                return glassOn
-                    ? _buildGlass(context, tintOpacity)
-                    : _buildSolid(context);
-              },
-            );
+          valueListenable: style.tintOpacity,
+          builder: (context, tintOpacity, _) {
+            return glassOn
+                ? _buildGlass(context, tintOpacity)
+                : _buildSolid(context);
           },
         );
       },
@@ -155,10 +150,12 @@ class AppCard extends StatelessWidget {
             ),
             shape: RoundedSuperellipseBorder(
               borderRadius: borderRadius,
+              // 描边与 GlassContainer 玻璃开启档对齐（深色 white 0.14 /
+              // 浅色 outlineVariant 0.70）。
               side: BorderSide(
                 color: isDark
                     ? Colors.white.withValues(alpha: 0.14)
-                    : cs.outlineVariant.withValues(alpha: 0.55),
+                    : cs.outlineVariant.withValues(alpha: 0.70),
                 width: isDark ? 0.8 : 1.0,
               ),
             ),

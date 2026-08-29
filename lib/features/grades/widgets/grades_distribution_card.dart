@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../../../shared/widgets/app_card.dart';
 import '../grades_model.dart';
+import '../grades_score_palette.dart';
 
 /// 成绩分布卡（PRD FR-6 拆分）。
+///
+/// 柱状图颜色与成绩卡分数数字共用 [gradeBandColor] 分段 token：
+/// 优/良/中/及格为主题色深浅梯度，不及格为 error 语义色。
 class GradesDistributionCard extends StatelessWidget {
   const GradesDistributionCard({super.key, required this.grades});
 
@@ -14,16 +19,8 @@ class GradesDistributionCard extends StatelessWidget {
     final distribution = _buildDistribution();
     final total = grades.length;
 
-    return Container(
+    return AppCard(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: cs.outlineVariant.withValues(alpha: 0.4),
-          width: 0.8,
-        ),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -39,16 +36,16 @@ class GradesDistributionCard extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                for (final entry in distribution.entries) ...[
+                for (final (index, entry) in distribution.indexed) ...[
                   Expanded(
                     child: _DistBar(
-                      label: entry.key,
-                      count: entry.value,
+                      label: entry.label,
+                      count: entry.count,
                       total: total,
-                      color: _barColor(entry.key),
+                      color: gradeBandColor(cs, entry.band),
                     ),
                   ),
-                  if (entry.key != distribution.keys.last)
+                  if (index != distribution.length - 1)
                     const SizedBox(width: 6),
                 ],
               ],
@@ -59,41 +56,41 @@ class GradesDistributionCard extends StatelessWidget {
     );
   }
 
-  Map<String, int> _buildDistribution() {
-    int excellent = 0, good = 0, medium = 0, pass = 0, fail = 0;
+  /// 分段统计（优→不及格 固定顺序）。
+  List<_DistributionEntry> _buildDistribution() {
+    final counts = {for (final band in GradeBand.values) band: 0};
     for (final g in grades) {
-      final score = double.tryParse(g.percentageScore) ?? 0;
-      if (score >= 90) {
-        excellent++;
-      } else if (score >= 80) {
-        good++;
-      } else if (score >= 70) {
-        medium++;
-      } else if (score >= 60) {
-        pass++;
-      } else {
-        fail++;
-      }
+      final band = gradeBandForScore(double.tryParse(g.percentageScore) ?? 0);
+      counts[band] = counts[band]! + 1;
     }
-    return {'优': excellent, '良': good, '中': medium, '及格': pass, '不及格': fail};
+    return [
+      for (final band in GradeBand.values)
+        _DistributionEntry(label: band.label, band: band, count: counts[band]!),
+    ];
   }
+}
 
-  Color _barColor(String label) {
-    switch (label) {
-      case '优':
-        return const Color(0xFF16A34A);
-      case '良':
-        return const Color(0xFF2563EB);
-      case '中':
-        return const Color(0xFFF59E0B);
-      case '及格':
-        return const Color(0xFFF97316);
-      case '不及格':
-        return const Color(0xFFDC2626);
-      default:
-        return const Color(0xFF9CA3AF);
-    }
-  }
+/// 分段统计条目：展示文案 + 分段 token + 数量。
+class _DistributionEntry {
+  const _DistributionEntry({
+    required this.label,
+    required this.band,
+    required this.count,
+  });
+
+  final String label;
+  final GradeBand band;
+  final int count;
+}
+
+extension _GradeBandLabel on GradeBand {
+  String get label => switch (this) {
+    GradeBand.excellent => '优',
+    GradeBand.good => '良',
+    GradeBand.medium => '中',
+    GradeBand.pass => '及格',
+    GradeBand.fail => '不及格',
+  };
 }
 
 class _DistBar extends StatelessWidget {

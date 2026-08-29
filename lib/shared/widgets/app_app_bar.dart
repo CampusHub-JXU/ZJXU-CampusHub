@@ -74,8 +74,9 @@ class AppAppBar extends StatelessWidget implements PreferredSizeWidget {
 /// 注意：裁剪必须放在 BackdropFilter 的祖先位置。BackdropFilter 作用于
 /// 整个父层 backdrop 而非自身 bounds，不先裁剪会把整屏内容糊掉。
 ///
-/// [GlassStyleController.enabled] 关闭时回退为 [fallbackColor]（缺省为
-/// 主题 surfaceContainer）的实色填充。
+/// 模糊强度跟随 [GlassStyleController.sigmaFor]（nav 档），设置页
+/// 「模糊强度」滑条实时生效；[GlassStyleController.enabled] 关闭或滑条
+/// 拉到 0 时回退为 [fallbackColor]（缺省为主题 surfaceContainer）的实色填充。
 class GlassAppBarSpace extends StatelessWidget {
   const GlassAppBarSpace({super.key, this.fallbackColor});
 
@@ -97,23 +98,32 @@ class GlassAppBarSpace extends StatelessWidget {
 
     return ValueListenableBuilder<bool>(
       valueListenable: style.enabled,
-      builder: (context, glassEnabled, _) {
-        final useGlass = glassEnabled && fallbackColor == null;
-        return ClipRect(
-          child: useGlass
-              ? BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-                  child: _AppBarFill(
-                    tintColor: tintColor,
-                    tintAlpha: isDark ? 0.58 : 0.72,
-                    borderColor: borderColor,
-                  ),
-                )
-              : _AppBarFill(
-                  tintColor: tintColor,
-                  tintAlpha: 1.0,
-                  borderColor: Colors.transparent,
-                ),
+      builder: (context, _, _) {
+        return ValueListenableBuilder<double>(
+          valueListenable: style.blurSigma,
+          builder: (context, _, _) {
+            final useGlass = fallbackColor == null && style.shouldBlur();
+            return ClipRect(
+              child: useGlass
+                  ? BackdropFilter(
+                      filter: ImageFilter.blur(
+                        sigmaX: style.sigmaFor(GlassTier.nav),
+                        sigmaY: style.sigmaFor(GlassTier.nav),
+                      ),
+                      child: _AppBarFill(
+                        tintColor: tintColor,
+                        // 磨砂水平：低到能看清模糊，高到标题仍满足 WCAG AA。
+                        tintAlpha: isDark ? 0.44 : 0.50,
+                        borderColor: borderColor,
+                      ),
+                    )
+                  : _AppBarFill(
+                      tintColor: tintColor,
+                      tintAlpha: 1.0,
+                      borderColor: Colors.transparent,
+                    ),
+            );
+          },
         );
       },
     );

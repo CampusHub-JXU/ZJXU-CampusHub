@@ -75,3 +75,6 @@ android/app/google-services.json
 
 # Local MCP server config (machine-specific absolute paths)
 /.mcp.json
+
+# 预览渲染产物（tools/render_previews.ps1 生成）
+preview/render/

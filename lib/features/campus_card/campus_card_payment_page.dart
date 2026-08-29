@@ -11,6 +11,7 @@ import '../../shared/widgets/unified_auth_protected_webview_page.dart';
 import 'campus_card_service.dart';
 import 'ecard_service.dart';
 import '../../shared/widgets/app_app_bar.dart';
+import '../../shared/widgets/app_error_view.dart';
 
 class CampusCardPaymentPage extends StatefulWidget {
   const CampusCardPaymentPage({super.key});
@@ -352,40 +353,22 @@ class _CampusCardFallbackPaymentPageState
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-          ? _buildError(colorScheme)
+          ? _buildError()
           : _buildContent(colorScheme),
     );
   }
 
-  Widget _buildError(ColorScheme colorScheme) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.error_outline, size: 48, color: colorScheme.error),
-            const SizedBox(height: 16),
-            Text(
-              _error!,
-              textAlign: TextAlign.center,
-              style: TextStyle(color: colorScheme.error, fontSize: 16),
-            ),
-            const SizedBox(height: 24),
-            FilledButton.tonal(
-              onPressed: () {
-                setState(() {
-                  _error = null;
-                  _loading = true;
-                });
-                _ecard.clearCache();
-                _initialize();
-              },
-              child: const Text('重试'),
-            ),
-          ],
-        ),
-      ),
+  Widget _buildError() {
+    return AppErrorView(
+      message: _error,
+      onRetry: () {
+        setState(() {
+          _error = null;
+          _loading = true;
+        });
+        _ecard.clearCache();
+        _initialize();
+      },
     );
   }
 

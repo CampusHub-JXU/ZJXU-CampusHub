@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/auth/zhengfang_auth.dart';
+import '../../shared/widgets/app_empty_view.dart';
+import '../../shared/widgets/app_error_view.dart';
 import '../../shared/widgets/auth_required_view.dart';
 import '../../shared/widgets/login_shell.dart';
 import '../../shared/widgets/network_error_toast.dart';
@@ -170,20 +172,10 @@ class _ExamPageState extends State<ExamPage> {
   Widget _buildExamBody() {
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null && _exams.isEmpty) {
-      final cs = Theme.of(context).colorScheme;
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(_error!, style: TextStyle(color: cs.error)),
-            const SizedBox(height: 12),
-            FilledButton(onPressed: _fetchExams, child: const Text('重试')),
-          ],
-        ),
-      );
+      return AppErrorView(message: _error, onRetry: _fetchExams);
     }
     if (_exams.isEmpty) {
-      return const Center(child: Text('暂无考试信息'));
+      return const AppEmptyView(title: '暂无考试信息', icon: Icons.quiz_outlined);
     }
 
     final upcoming = _exams.where((e) => e.hasDate && !e.isPast).toList();

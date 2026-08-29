@@ -9,6 +9,7 @@ import '../../core/theme/app_design_tokens.dart';
 import '../../core/theme/glass_style_controller.dart';
 import '../../shared/widgets/app_icon_badge.dart';
 import '../../shared/widgets/app_search_field.dart';
+import '../../shared/widgets/app_empty_view.dart';
 import 'service_hub_usage_store.dart';
 import 'widgets/service_hub_header.dart';
 import '../../shared/widgets/app_app_bar.dart';
@@ -103,12 +104,7 @@ class _ServiceHubPageState extends State<ServiceHubPage> {
       body: SafeArea(
         top: false,
         child: entries.isEmpty
-            ? Center(
-                child: Text(
-                  '暂无功能入口',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              )
+            ? const AppEmptyView(title: '暂无功能入口', icon: Icons.widgets_outlined)
             : LayoutBuilder(
                 builder: (context, constraints) {
                   final horizontalPadding = constraints.maxWidth >= 900

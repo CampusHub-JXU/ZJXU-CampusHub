@@ -22,8 +22,19 @@ class PersonalizationGlassSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 14, 12, 8),
+            padding: const EdgeInsets.fromLTRB(12, 14, 12, 4),
             child: Text('玻璃材质', style: textTheme.titleSmall),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text(
+              // 与新语义同步：模糊强度滑条是全局唯一输入源，
+              // 同时作用于顶栏/底栏/弹层/玻璃卡片。
+              '全局材质参数：模糊强度与透明度统一作用于顶栏、底部导航、弹层与玻璃卡片',
+              style: textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
           ),
           ValueListenableBuilder<bool>(
             valueListenable: style.enabled,

@@ -5,21 +5,17 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_design_tokens.dart';
 import '../../core/theme/glass_style_controller.dart';
 
-/// 玻璃材质等级。
-///
-/// 同一屏的模糊层数量直接决定 GPU 开销，等级制用于约束用量：
-/// * [GlassTier.card] —— 内容卡片，模糊强度/透明度跟随全局参数
-///   （[GlassStyleController.blurSigma]/[GlassStyleController.tintOpacity]），
-///   只有内容明确悬浮在富媒体/背景之上时才开 [blurred]。
-/// * [GlassTier.nav] —— 底部导航 / 悬浮操作条，整屏至多一个。
-/// * [GlassTier.overlay] —— 弹层、菜单、抽屉头部，转瞬即逝，允许重模糊。
-enum GlassTier { card, nav, overlay }
+/// 玻璃材质等级定义在参数中心（[GlassStyleController]），此处 re-export
+/// 保持既有导入路径 `shared/widgets/glass_container.dart` 向后兼容。
+export '../../core/theme/glass_style_controller.dart' show GlassTier;
 
 /// Apple 质感的毛玻璃容器。
 ///
 /// * 毛玻璃 = BackdropFilter(模糊 + 轻微提饱和) + 半透明 tint + 高光细描边；
 /// * 形状默认使用连续曲率圆角（squircle，见 [AppShape]）；
-/// * [GlassStyleController.enabled] 关闭时整体降级为实色表面，
+/// * 三档模糊强度统一由 [GlassStyleController.sigmaFor] 派生，
+///   设置页「模糊强度」滑条对卡片/底栏/弹层同步生效；
+/// * [GlassStyleController.enabled] 关闭或滑条拉到 0 时整体降级为实色表面，
 ///   不创建 BackdropFilter，保证低端机流畅。
 class GlassContainer extends StatelessWidget {
   const GlassContainer({
@@ -43,23 +39,11 @@ class GlassContainer extends StatelessWidget {
   final double? height;
   final AlignmentGeometry? alignment;
 
-  /// 覆盖该等级的默认模糊策略；仅在 tier == card 时有意义。
+  /// 覆盖默认模糊策略：显式 `false` 关闭真实模糊（密集列表/内容不悬浮时省
+  /// GPU），显式 `true` 强制开启，null 时跟随档位默认（card/nav/overlay
+  /// 均默认真实模糊）。
   final bool? blurred;
   final VoidCallback? onTap;
-
-  double _blurSigmaFor() => switch (tier) {
-    GlassTier.card => GlassStyleController.instance.blurSigma.value,
-    GlassTier.nav => 24,
-    GlassTier.overlay => 30,
-  };
-
-  double _tintAlphaFor(bool isDark) {
-    final cardAlpha = GlassStyleController.instance.tintOpacity.value;
-    if (tier == GlassTier.card) return isDark ? cardAlpha * 0.86 : cardAlpha;
-    return isDark
-        ? (tier == GlassTier.nav ? 0.52 : 0.78)
-        : (tier == GlassTier.nav ? 0.62 : 0.86);
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -71,7 +55,7 @@ class GlassContainer extends StatelessWidget {
 
     return ValueListenableBuilder<bool>(
       valueListenable: style.enabled,
-      builder: (context, glassEnabled, _) {
+      builder: (context, _, _) {
         return ValueListenableBuilder<double>(
           valueListenable: style.blurSigma,
           builder: (context, _, _) {
@@ -80,7 +64,7 @@ class GlassContainer extends StatelessWidget {
               builder: (context, _, _) {
                 return _buildSurface(
                   context,
-                  glassEnabled: glassEnabled,
+                  glassEnabled: style.shouldBlur(),
                   isDark: isDark,
                   cs: cs,
                   radius: radius,
@@ -100,7 +84,7 @@ class GlassContainer extends StatelessWidget {
     required ColorScheme cs,
     required BorderRadius radius,
   }) {
-    final useBlur = glassEnabled && (blurred ?? tier != GlassTier.card);
+    final useBlur = glassEnabled && (blurred ?? true);
     final tintColor = isDark
         ? cs.surfaceContainerLow
         : cs.surfaceContainerLowest;
@@ -176,6 +160,18 @@ class GlassContainer extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(borderRadius: radius, onTap: onTap, child: glassLayer),
     );
+  }
+
+  double _blurSigmaFor() => GlassStyleController.instance.sigmaFor(tier);
+
+  /// tint 不透明度：card 跟随设置页「玻璃透明度」，nav/overlay 为固定档位
+  /// （浅色略高于深色），压低到磨砂水平让模糊可见、文字仍可读。
+  double _tintAlphaFor(bool isDark) {
+    final cardAlpha = GlassStyleController.instance.tintOpacity.value;
+    if (tier == GlassTier.card) return isDark ? cardAlpha * 0.86 : cardAlpha;
+    return isDark
+        ? (tier == GlassTier.nav ? 0.42 : 0.58)
+        : (tier == GlassTier.nav ? 0.52 : 0.66);
   }
 
   List<BoxShadow> _shadows(bool isDark) {

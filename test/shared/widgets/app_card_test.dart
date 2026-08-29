@@ -66,10 +66,10 @@ void main() {
         ],
       ),
     );
-    // 玻璃卡片使用 squircle + 高光描边。
+    // 玻璃卡片使用 squircle + 高光描边（描边与 GlassContainer 玻璃档对齐）。
     final shape = decorationOf().shape as RoundedSuperellipseBorder;
     expect(shape.borderRadius, BorderRadius.circular(22));
-    expect(shape.side.color, cs.outlineVariant.withValues(alpha: 0.55));
+    expect(shape.side.color, cs.outlineVariant.withValues(alpha: 0.70));
     // 卡片级玻璃默认 blurred=false，不产生 BackdropFilter。
     expect(find.byType(BackdropFilter), findsNothing);
 

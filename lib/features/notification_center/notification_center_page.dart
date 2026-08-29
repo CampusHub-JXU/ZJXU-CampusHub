@@ -7,6 +7,8 @@ import '../sjjx_notice/sjjx_notice_model.dart';
 import '../sjjx_notice/sjjx_notice_service.dart';
 import '../../core/logging/app_logger.dart';
 import '../../shared/widgets/app_app_bar.dart';
+import '../../shared/widgets/app_empty_view.dart';
+import '../../shared/widgets/app_error_view.dart';
 
 class NotificationCenterPage extends StatefulWidget {
   const NotificationCenterPage({super.key});
@@ -109,21 +111,10 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
     final cs = Theme.of(context).colorScheme;
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(_error!, style: TextStyle(color: cs.onSurfaceVariant)),
-            const SizedBox(height: 12),
-            FilledButton.tonal(onPressed: _load, child: const Text('重试')),
-          ],
-        ),
-      );
+      return AppErrorView(title: _error!, onRetry: _load);
     }
     if (_notices.isEmpty) {
-      return Center(
-        child: Text('暂无校园公告', style: TextStyle(color: cs.onSurfaceVariant)),
-      );
+      return const AppEmptyView(title: '暂无校园公告', icon: Icons.article_outlined);
     }
     return RefreshIndicator(
       onRefresh: _load,
@@ -210,21 +201,10 @@ class _PracticeNoticeTabState extends State<_PracticeNoticeTab>
     final cs = Theme.of(context).colorScheme;
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(_error!, style: TextStyle(color: cs.onSurfaceVariant)),
-            const SizedBox(height: 12),
-            FilledButton.tonal(onPressed: _load, child: const Text('重试')),
-          ],
-        ),
-      );
+      return AppErrorView(title: _error!, onRetry: _load);
     }
     if (_notices.isEmpty) {
-      return Center(
-        child: Text('暂无实践通知', style: TextStyle(color: cs.onSurfaceVariant)),
-      );
+      return const AppEmptyView(title: '暂无实践通知', icon: Icons.article_outlined);
     }
     return RefreshIndicator(
       onRefresh: _load,

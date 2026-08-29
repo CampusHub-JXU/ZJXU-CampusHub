@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/semester/semester_calendar.dart';
+import '../../shared/widgets/app_empty_view.dart';
+import '../../shared/widgets/app_error_view.dart';
 import '../../shared/widgets/auth_required_view.dart';
 import '../../shared/widgets/login_shell.dart';
 import 'controllers/schedule_page_controller.dart';
@@ -144,35 +146,17 @@ class _SchedulePageState extends State<SchedulePage> {
       return const Center(child: CircularProgressIndicator());
     }
     if (_controller.error != null && _controller.courses.isEmpty) {
-      final cs = Theme.of(context).colorScheme;
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(_controller.error!, style: TextStyle(color: cs.error)),
-            const SizedBox(height: 12),
-            FilledButton(
-              onPressed: _refreshScheduleOrLogin,
-              child: const Text('重试'),
-            ),
-          ],
-        ),
+      return AppErrorView(
+        message: _controller.error,
+        onRetry: _refreshScheduleOrLogin,
       );
     }
     if (_controller.courses.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('暂无课表数据'),
-            const SizedBox(height: 12),
-            if (_controller.loggedIn)
-              FilledButton(
-                onPressed: _refreshScheduleOrLogin,
-                child: const Text('刷新课表'),
-              ),
-          ],
-        ),
+      return AppEmptyView(
+        title: '暂无课表数据',
+        icon: Icons.calendar_month_outlined,
+        actionLabel: _controller.loggedIn ? '刷新课表' : null,
+        onAction: _controller.loggedIn ? _refreshScheduleOrLogin : null,
       );
     }
 
