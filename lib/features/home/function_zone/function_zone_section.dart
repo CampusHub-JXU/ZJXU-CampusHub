@@ -217,10 +217,10 @@ class _BentoGrid extends StatelessWidget {
 
   static const double _gap = AppSpacing.gridGap;
 
-  /// 单个 grid unit 的基础高度：以 wide 瓦片（small 徽标 + 标题 + 一行
-  /// 副文案）的内容高度为下限；文字放大时按线性系数放大（同功能页 tile
-  /// 策略）。
-  static const double _baseUnitHeight = 112;
+  /// 行高按瓦片尺寸分档：半宽 small 保持紧凑 64（单行内容），整行 wide
+  /// 76（双行文案多一档呼吸感）；大字号按线性系数放大并设上限防溢出。
+  static const double _baseSmallHeight = 64;
+  static const double _baseWideHeight = 76;
 
   @override
   Widget build(BuildContext context) {
@@ -230,7 +230,25 @@ class _BentoGrid extends StatelessWidget {
     // 紧凑（宽 <600）= 2 units/行；宽 ≥600 = 4 units/行。
     final unitsPerRow = availableWidth >= 600 ? 4 : 2;
     final unitWidth = (availableWidth - (unitsPerRow - 1) * _gap) / unitsPerRow;
-    final unitHeight = _resolveUnitHeight(context);
+
+    // 行布局下随文字缩放的是标题+统计列（≈34px × scale），系数 30 覆盖
+    // 1.8× 满档不溢出。
+    final textScale = MediaQuery.textScalerOf(context)
+        .scale(1)
+        .clamp(1.0, 1.8)
+        .toDouble();
+    final scaleDelta = (textScale - 1) * 30;
+    final smallHeight = (_baseSmallHeight + scaleDelta).clamp(
+      _baseSmallHeight,
+      96.0,
+    );
+    final wideHeight = (_baseWideHeight + scaleDelta).clamp(
+      _baseWideHeight,
+      104.0,
+    );
+    // large（2×2）跨两行，行高由同行 small/wide 决定，不单独驱动。
+    double heightForSize(BentoTileSize size) =>
+        size == BentoTileSize.wide ? wideHeight : smallHeight;
 
     final tiles = assignBentoTiles(
       [
@@ -249,7 +267,32 @@ class _BentoGrid extends StatelessWidget {
       final bottom = placement.row + placement.rowSpan;
       if (bottom > rowCount) rowCount = bottom;
     }
-    final gridHeight = rowCount * unitHeight + (rowCount - 1) * _gap;
+
+    // 每行行高 = 该行单行瓦片的最高档（large 跨行不参与）。
+    final rowHeights = List<double>.filled(rowCount, smallHeight);
+    for (final placement in placements) {
+      if (placement.rowSpan != 1) continue;
+      final height = heightForSize(placement.tile.size);
+      if (height > rowHeights[placement.row]) {
+        rowHeights[placement.row] = height;
+      }
+    }
+    final rowTops = <double>[];
+    var accumulated = 0.0;
+    for (var row = 0; row < rowCount; row++) {
+      rowTops.add(accumulated);
+      accumulated += rowHeights[row] + _gap;
+    }
+    final gridHeight = accumulated - _gap;
+
+    double placementHeight(BentoPlacement placement) {
+      if (placement.rowSpan == 1) return rowHeights[placement.row];
+      var spanned = 0.0;
+      for (var row = placement.row; row < placement.row + placement.rowSpan; row++) {
+        spanned += rowHeights[row];
+      }
+      return spanned + (placement.rowSpan - 1) * _gap;
+    }
 
     return SizedBox(
       height: gridHeight,
@@ -261,11 +304,10 @@ class _BentoGrid extends StatelessWidget {
             if (entryById[placement.tile.id] case final entry?)
               Positioned(
                 left: placement.col * (unitWidth + _gap),
-                top: placement.row * (unitHeight + _gap),
+                top: rowTops[placement.row],
                 width: placement.colSpan * unitWidth +
                     (placement.colSpan - 1) * _gap,
-                height: placement.rowSpan * unitHeight +
-                    (placement.rowSpan - 1) * _gap,
+                height: placementHeight(placement),
                 child: _FunctionZoneTile(
                   entry: entry,
                   size: placement.tile.size,
@@ -279,23 +321,14 @@ class _BentoGrid extends StatelessWidget {
       ),
     );
   }
-
-  double _resolveUnitHeight(BuildContext context) {
-    final textScale = MediaQuery.textScalerOf(context)
-        .scale(1)
-        .clamp(1.0, 1.8)
-        .toDouble();
-    return (_baseUnitHeight + (textScale - 1) * 40)
-        .clamp(_baseUnitHeight, 156.0)
-        .toDouble();
-  }
 }
 
-/// Bento 瓦片：尺寸越大信息越多（progressive disclosure）。
+/// Bento 瓦片：iOS Settings 式横向行（徽标 + 文字列），尺寸越大信息越多
+/// （progressive disclosure）。
 ///
-/// * small —— 小徽标 + 标题；
-/// * wide  —— 追加一行统计副文案（maxLines 1）；
-/// * large —— 追加两行统计（maxLines 2），文字块沉底撑满大瓦片。
+/// * small —— 徽标 + 标题单行；
+/// * wide  —— 文字列追加一行统计副文案（maxLines 1）；
+/// * large —— 平板 2×2 专属：徽标置顶、文字块沉底，统计最多两行。
 class _FunctionZoneTile extends StatelessWidget {
   const _FunctionZoneTile({
     required this.entry,
@@ -321,7 +354,7 @@ class _FunctionZoneTile extends StatelessWidget {
       hint: entry.subtitle,
       child: AppTileSurface(
         borderRadius: AppRadius.tileBorder,
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 13),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         onTap: onTap,
         onLongPress: onLongPress,
         child: switch (size) {
@@ -333,45 +366,59 @@ class _FunctionZoneTile extends StatelessWidget {
     );
   }
 
-  /// small：小徽标 + 标题。
+  /// small：徽标 + 标题，单行居中。Center(widthFactor: 1) 让 unit 多出的
+  /// 高度上下均分，行内容始终垂直居中。
   Widget _buildSmallBody(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        AppIconBadge(
-          icon: entry.icon,
-          accentColor: entry.accentColor,
-          size: AppIconBadgeSize.small,
-        ),
-        const SizedBox(height: 8),
-        _buildTitleRow(context),
-      ],
+    return Center(
+      widthFactor: 1,
+      child: Row(
+        children: [
+          AppIconBadge(
+            icon: entry.icon,
+            accentColor: entry.accentColor,
+            size: AppIconBadgeSize.small,
+          ),
+          const SizedBox(width: 10),
+          Expanded(child: _buildTitleRow(context)),
+        ],
+      ),
     );
   }
 
-  /// wide：small 的基础上追加一行统计副文案。
+  /// wide：small 的基础上文字列追加一行统计副文案。
   Widget _buildWideBody(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        AppIconBadge(
-          icon: entry.icon,
-          accentColor: entry.accentColor,
-          size: AppIconBadgeSize.small,
-        ),
-        const SizedBox(height: 8),
-        _buildTitleRow(context),
-        const SizedBox(height: 3),
-        // Flexible 防御：大字号下统计行优先被压缩省略，Column 不硬溢出。
-        Flexible(
-          child: Text(
-            statsText,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: _statsStyle(context),
+    return Center(
+      widthFactor: 1,
+      child: Row(
+        children: [
+          AppIconBadge(
+            icon: entry.icon,
+            accentColor: entry.accentColor,
+            size: AppIconBadgeSize.small,
           ),
-        ),
-      ],
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildTitleRow(context),
+                const SizedBox(height: 2),
+                // Flexible 防御：大字号下统计行优先被压缩省略，Column 不硬溢出。
+                Flexible(
+                  child: Text(
+                    statsText,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: _statsStyle(context),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -417,9 +464,10 @@ class _FunctionZoneTile extends StatelessWidget {
             entry.title,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
+            // Apple semibold 字阶：15/w600，正文级别的克制强调。
             style: Theme.of(context).textTheme.titleSmall?.copyWith(
               fontSize: 15,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w600,
               height: 1.2,
             ),
           ),

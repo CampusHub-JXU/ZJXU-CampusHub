@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../app/app_theme_controller.dart';
 import '../models/home_presentation.dart';
 
-/// 无框资产行：校园卡余额 + 宿舍电费，一行两等分、中间发丝线。
+/// 无框资产行：校园卡余额 + 宿舍电费，左对齐并排、无分隔线。
 ///
 /// 直接坐在页面背景上，无卡片底、无边框、无按钮——付款码 / 充值动作
 /// 收敛到功能区瓦片与对应页面。层级靠 typography 建立且刻意低于 Hero：
@@ -30,12 +30,13 @@ class HomeAssetStrip extends StatelessWidget {
     );
     final secondaryTextColor = AppThemeController.instance
         .resolveHomeSecondaryTextColor(context, cs.onSurfaceVariant);
-    final hairlineColor = cs.outlineVariant.withValues(alpha: 0.5);
 
+    // 两区按内容宽度左对齐并排（loose Flexible 防长数值溢出），
+    // 不再等分撑满，也不画中间分隔线。
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Expanded(
+        Flexible(
           child: _buildAssetZone(
             context,
             label: '校园卡',
@@ -52,9 +53,8 @@ class HomeAssetStrip extends StatelessWidget {
             secondaryTextColor: secondaryTextColor,
           ),
         ),
-        // 中间垂直发丝线，随行高垂直居中。
-        Container(width: 1, height: 28, color: hairlineColor),
-        Expanded(
+        const SizedBox(width: 36),
+        Flexible(
           child: _buildAssetZone(
             context,
             label: '宿舍电费',

@@ -198,6 +198,7 @@ class HomePrimaryStatusHero extends StatelessWidget {
 
   /// 课程类 Hero（正在上课 / 下一节课）：
   /// 课程名 30sp 全屏最强视觉 → 时间 → 地点/节次 → 查看课表。
+  /// 课程信息主体整体可点跳转课表（课表双入口：hero 主体 + 功能区瓦片）。
   Widget _buildCourseHero(
     BuildContext context, {
     required Color accentColor,
@@ -210,7 +211,7 @@ class HomePrimaryStatusHero extends StatelessWidget {
         hero.kind == HomeHeroKind.nextCourseToday && hero.headline.isNotEmpty
         ? '${hero.timeText} · ${hero.headline}'
         : hero.timeText;
-    return Column(
+    final courseInfo = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
@@ -277,6 +278,24 @@ class HomePrimaryStatusHero extends StatelessWidget {
             ],
           ),
         ],
+      ],
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (onOpenSchedule != null)
+          Semantics(
+            button: true,
+            label: '查看课表 ${hero.courseName ?? ''}',
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: onOpenSchedule,
+              child: courseInfo,
+            ),
+          )
+        else
+          courseInfo,
         if (onOpenSchedule != null) ...[
           const SizedBox(height: 6),
           Semantics(
