@@ -18,17 +18,41 @@ class AppShellPage extends StatefulWidget {
   State<AppShellPage> createState() => _AppShellPageState();
 }
 
-class _AppShellPageState extends State<AppShellPage> {
+class _AppShellPageState extends State<AppShellPage>
+    with SingleTickerProviderStateMixin {
+  /// 分支切换动效：进入「我的」时内容从右往左划入，返回主页时从左划入。
+  /// 只滑动单实例 navigationShell（复制 shell 会出现双份页面状态）。
+  late final AnimationController _switchController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 280),
+    value: 1,
+  );
+  int _lastIndex = 0;
+  Offset _slideBegin = Offset.zero;
+
   @override
   void initState() {
     super.initState();
+    _lastIndex = widget.navigationShell.currentIndex;
     GlassStyleController.instance.restore();
     // ScrollSpy：首页分区变化时刷新 dock 高亮。
     HomeZoneController.instance.addListener(_onZoneChanged);
   }
 
   @override
+  void didUpdateWidget(covariant AppShellPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final index = widget.navigationShell.currentIndex;
+    if (index == _lastIndex) return;
+    // 进入更高 index 的分支（主页→我的）从右划入；返回则从左划入。
+    _slideBegin = Offset(index > _lastIndex ? 0.06 : -0.06, 0);
+    _lastIndex = index;
+    _switchController.forward(from: 0);
+  }
+
+  @override
   void dispose() {
+    _switchController.dispose();
     HomeZoneController.instance.removeListener(_onZoneChanged);
     super.dispose();
   }
@@ -89,11 +113,25 @@ class _AppShellPageState extends State<AppShellPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       extendBody: true,
-      body: widget.navigationShell,
+      body: SlideTransition(
+        position: Tween<Offset>(
+          begin: _slideBegin,
+          end: Offset.zero,
+        ).animate(
+          CurvedAnimation(parent: _switchController, curve: Curves.easeOutCubic),
+        ),
+        child: FadeTransition(
+          opacity: CurvedAnimation(
+            parent: _switchController,
+            curve: const Interval(0, 0.55),
+          ),
+          child: widget.navigationShell,
+        ),
+      ),
       bottomNavigationBar: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
           child: GlassNavBar(
             currentIndex: _highlightIndex,
             onDestinationSelected: _onDestinationSelected,
