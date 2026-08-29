@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/app_theme_controller.dart';
 import '../../core/config/feature_entry_catalog.dart';
 import '../../core/theme/app_design_tokens.dart';
+import '../../core/theme/glass_style_controller.dart';
 import '../../shared/widgets/app_icon_badge.dart';
 import '../../shared/widgets/app_search_field.dart';
 import 'service_hub_usage_store.dart';
@@ -373,6 +374,93 @@ double _serviceHubTileHeight(BuildContext context) {
   return (136 + (textScale - 1) * 40).clamp(136.0, 168.0).toDouble();
 }
 
+/// 功能页专用纯 tint 玻璃表面：squircle 圆角 + tint 渐变 + 高光描边。
+///
+/// 视觉语义与 `GlassContainer`（GlassTier.card）一致，但不创建
+/// BackdropFilter——本屏顶部 AppAppBar 与底部悬浮条已占用全部模糊预算，
+/// tile / 空态按规范只做 tint。玻璃开关与 tint 参数实时读取
+/// [GlassStyleController]，关闭时降级为实色表面（同 GlassContainer 降级路径）。
+class _ServiceHubGlassSurface extends StatelessWidget {
+  const _ServiceHubGlassSurface({
+    required this.borderRadius,
+    required this.child,
+  });
+
+  final BorderRadius borderRadius;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: GlassStyleController.instance.enabled,
+      builder: (context, glassEnabled, _) {
+        return ValueListenableBuilder<double>(
+          valueListenable: GlassStyleController.instance.tintOpacity,
+          builder: (context, _, _) {
+            return Material(
+              color: Colors.transparent,
+              child: Ink(
+                decoration: _serviceHubGlassShapeDecoration(
+                  context,
+                  borderRadius: borderRadius,
+                  glassEnabled: glassEnabled,
+                ),
+                child: child,
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+/// 与 GlassContainer card tier 相同的 tint 渐变 + 高光描边，纯 tint 无模糊。
+ShapeDecoration _serviceHubGlassShapeDecoration(
+  BuildContext context, {
+  required BorderRadius borderRadius,
+  required bool glassEnabled,
+}) {
+  final theme = Theme.of(context);
+  final cs = theme.colorScheme;
+  final isDark = theme.brightness == Brightness.dark;
+  final baseColor = isDark ? cs.surfaceContainerLow : cs.surfaceContainerLowest;
+  final borderColor = isDark
+      ? Colors.white.withValues(alpha: glassEnabled ? 0.14 : 0.10)
+      : cs.outlineVariant.withValues(alpha: glassEnabled ? 0.70 : 0.55);
+  final shape = RoundedSuperellipseBorder(
+    borderRadius: borderRadius,
+    side: BorderSide(color: borderColor, width: isDark ? 0.8 : 1.0),
+  );
+
+  if (!glassEnabled) {
+    return ShapeDecoration(color: baseColor, shape: shape);
+  }
+
+  // 玻璃 tint 与边缘高光合成为单一渐变：顶部受光面提亮更多，底部回光面
+  // 几乎保持 tint 本色（与 GlassContainer._buildSurface 相同的合成方式）。
+  Color tintWithHighlight(double highlightAlpha) => Color.alphaBlend(
+    Colors.white.withValues(alpha: highlightAlpha),
+    baseColor.withValues(
+      alpha:
+          GlassStyleController.instance.tintOpacity.value *
+          (isDark ? 0.86 : 1.0),
+    ),
+  );
+
+  return ShapeDecoration(
+    gradient: LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [
+        tintWithHighlight(isDark ? 0.10 : 0.34),
+        tintWithHighlight(isDark ? 0.02 : 0.08),
+      ],
+    ),
+    shape: shape,
+  );
+}
+
 class _ServiceHubEntryTile extends StatelessWidget {
   const _ServiceHubEntryTile({
     required this.entry,
@@ -390,13 +478,6 @@ class _ServiceHubEntryTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final borderColor = isDark
-        ? cs.outline.withValues(alpha: 0.22)
-        : cs.outlineVariant.withValues(alpha: 0.38);
-    final shape = RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(AppRadius.tile),
-      side: BorderSide(color: borderColor),
-    );
     final detailColor = cs.onSurfaceVariant.withValues(
       alpha: isDark ? 0.68 : 0.62,
     );
@@ -405,15 +486,14 @@ class _ServiceHubEntryTile extends StatelessWidget {
       button: true,
       label: entry.title,
       hint: entry.subtitle,
-      child: Material(
-        color: cs.surfaceContainerHighest.withValues(
-          alpha: isDark ? 0.22 : 0.3,
-        ),
-        shape: shape,
-        clipBehavior: Clip.antiAlias,
+      child: _ServiceHubGlassSurface(
+        borderRadius: AppRadius.tileBorder,
         child: InkWell(
           onTap: onTap,
           onLongPress: onLongPress,
+          customBorder: RoundedSuperellipseBorder(
+            borderRadius: AppRadius.tileBorder,
+          ),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(14, 14, 14, 13),
             child: Column(
@@ -558,34 +638,38 @@ class _ServiceHubSearchEmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Container(
+    return SizedBox(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 32),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withValues(alpha: 0.45),
-        borderRadius: BorderRadius.circular(AppRadius.tile),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.4)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.search_off_rounded, size: 36, color: cs.onSurfaceVariant),
-          const SizedBox(height: 12),
-          Text(
-            '未找到相关功能',
-            style: Theme.of(
-              context,
-            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+      child: _ServiceHubGlassSurface(
+        borderRadius: AppRadius.tileBorder,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.search_off_rounded,
+                size: 36,
+                color: cs.onSurfaceVariant,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                '未找到相关功能',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '没有匹配"$query"的服务入口',
+                textAlign: TextAlign.center,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+              ),
+            ],
           ),
-          const SizedBox(height: 6),
-          Text(
-            '没有匹配"$query"的服务入口',
-            textAlign: TextAlign.center,
-            style: Theme.of(
-              context,
-            ).textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
-          ),
-        ],
+        ),
       ),
     );
   }

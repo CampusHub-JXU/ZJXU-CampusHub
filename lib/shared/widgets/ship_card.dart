@@ -2,9 +2,8 @@ import 'package:flutter/material.dart';
 
 /// Ship-Card: The signature component of the Academic Voyager design system.
 ///
-/// - Top-left/right radius: 16dp
-/// - Bottom-left/right radius: 8dp
-/// - No border, uses surface tonal differences
+/// - Top-left/right radius: 16dp, bottom-left/right radius: 8dp（squircle 连续曲率）
+/// - Hairline border / shadow semantics aligned with GlassContainer solid tier
 /// - Background: surface-container-lowest
 class ShipCard extends StatelessWidget {
   const ShipCard({
@@ -37,24 +36,48 @@ class ShipCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
     final surfaceColor = color ?? cs.surfaceContainerLowest;
+
+    // 边框语义与 GlassContainer 实色档一致：深色 white 0.10 / 浅色 outlineVariant 0.55。
+    final shape = RoundedSuperellipseBorder(
+      borderRadius: _borderRadius,
+      side: BorderSide(
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.10)
+            : cs.outlineVariant.withValues(alpha: 0.55),
+        width: isDark ? 0.8 : 1.0,
+      ),
+    );
+
+    // 阴影语义与 GlassContainer 一致：elevation > 0 时按深浅主题取固定档位。
+    final shadows = elevation > 0
+        ? isDark
+              ? const [
+                  BoxShadow(
+                    color: Color(0x33000000),
+                    blurRadius: 18,
+                    offset: Offset(0, 6),
+                  ),
+                ]
+              : const [
+                  BoxShadow(
+                    color: Color(0x14000000),
+                    blurRadius: 14,
+                    offset: Offset(0, 4),
+                  ),
+                ]
+        : null;
 
     Widget content = Container(
       padding: padding,
-      decoration: BoxDecoration(
+      decoration: ShapeDecoration(
         color: gradient == null ? surfaceColor : null,
         gradient: gradient,
-        borderRadius: _borderRadius,
-        boxShadow: elevation > 0
-            ? [
-                BoxShadow(
-                  color: cs.shadow.withValues(alpha: 0.08),
-                  blurRadius: elevation * 4,
-                  offset: Offset(0, elevation),
-                ),
-              ]
-            : null,
+        shape: shape,
+        shadows: shadows,
       ),
       child: child,
     );
@@ -62,16 +85,9 @@ class ShipCard extends StatelessWidget {
     if (onTap != null) {
       content = Material(
         color: Colors.transparent,
-        borderRadius: _borderRadius,
-        child: ClipRRect(
-          borderRadius: _borderRadius,
-          clipBehavior: clipBehavior,
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: _borderRadius,
-            child: content,
-          ),
-        ),
+        shape: shape,
+        clipBehavior: clipBehavior,
+        child: InkWell(onTap: onTap, customBorder: shape, child: content),
       );
     }
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/semester/semester_calendar.dart';
+import '../../../core/theme/app_design_tokens.dart';
 import '../schedule_constants.dart';
 
 class ScheduleDayHeaders extends StatelessWidget {
@@ -82,7 +83,7 @@ class ScheduleDayHeaders extends StatelessWidget {
                         ),
                         decoration: BoxDecoration(
                           color: isToday ? cs.primary : Colors.transparent,
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(AppRadius.badge),
                         ),
                         child: Text(
                           '${date.day}',

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/app_design_tokens.dart';
+import '../../../shared/widgets/glass_container.dart';
+
 class ScheduleInfoBanner extends StatelessWidget {
   const ScheduleInfoBanner({
     super.key,
@@ -23,17 +26,19 @@ class ScheduleInfoBanner extends StatelessWidget {
 
     if (parts.isEmpty) return const SizedBox.shrink();
 
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(
-        parts.join(' · '),
-        style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+    // 课表页模糊预算已满（顶栏 + 底栏），信息横幅使用纯 tint 卡（无模糊）。
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+      child: GlassContainer(
+        tier: GlassTier.card,
+        blurred: false,
+        width: double.infinity,
+        borderRadius: BorderRadius.circular(AppRadius.input),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Text(
+          parts.join(' · '),
+          style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+        ),
       ),
     );
   }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/app_design_tokens.dart';
 import '../schedule_constants.dart';
 import '../schedule_model.dart';
 
@@ -19,7 +20,9 @@ class ScheduleCourseCell extends StatelessWidget {
   final double dayColumnWidth;
   final bool isCurrentWeek;
 
-  static const _cellBorderRadius = BorderRadius.all(Radius.circular(8));
+  static const _cellBorderRadius = BorderRadius.all(
+    Radius.circular(AppRadius.chip),
+  );
 
   static Color _blendColor(Color background, Color foreground, double amount) {
     return Color.lerp(background, foreground, amount)!;
@@ -29,7 +32,9 @@ class ScheduleCourseCell extends StatelessWidget {
     showModalBottomSheet<void>(
       context: context,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppRadius.sheet),
+        ),
       ),
       builder: (context) {
         final textTheme = Theme.of(context).textTheme;

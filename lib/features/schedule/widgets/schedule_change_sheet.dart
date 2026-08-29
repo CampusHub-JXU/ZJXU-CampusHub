@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/app_design_tokens.dart';
 import '../schedule_change_rule.dart';
 import '../schedule_constants.dart';
 
@@ -23,7 +24,9 @@ class ScheduleChangeSheet extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: cs.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(AppRadius.sheet),
+        ),
       ),
       child: Column(
         children: [
@@ -135,7 +138,7 @@ class ScheduleChangeSheet extends StatelessWidget {
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: cs.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(AppRadius.chip),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
