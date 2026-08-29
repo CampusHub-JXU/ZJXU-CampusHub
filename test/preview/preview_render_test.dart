@@ -1,11 +1,17 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:jxu_campus_hub/app/app_bootstrap_controller.dart';
+import 'package:jxu_campus_hub/core/semester/semester_calendar.dart';
 import 'package:jxu_campus_hub/core/theme/glass_style_controller.dart';
 import 'package:jxu_campus_hub/features/campus_card/campus_card_page.dart';
+import 'package:jxu_campus_hub/features/campus_card/campus_card_service.dart';
+import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_service.dart';
+import 'package:jxu_campus_hub/features/exam/exam_service.dart';
 
 import 'package:jxu_campus_hub/features/home/home_page.dart';
 import 'package:jxu_campus_hub/features/my/my_page.dart';
@@ -21,6 +27,10 @@ import 'package:jxu_campus_hub/shared/widgets/app_search_field.dart';
 import 'package:jxu_campus_hub/shared/widgets/auth_required_view.dart';
 import 'package:jxu_campus_hub/shared/widgets/glass_container.dart';
 import 'package:jxu_campus_hub/shared/widgets/glass_nav_bar.dart';
+import 'package:jxu_campus_hub/features/schedule/schedule_cache_snapshot.dart';
+import 'package:jxu_campus_hub/features/schedule/schedule_model.dart';
+import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';
+import 'package:jxu_campus_hub/features/schedule/schedule_term_context.dart';
 import 'package:jxu_campus_hub/shared/widgets/ship_card.dart';
 
 import '../helpers/test_setup.dart';
@@ -59,8 +69,14 @@ void main() {
     String name,
     Widget page, {
     Brightness brightness = Brightness.light,
+    Size? logicalSize,
   }) async {
-    await pumpPreviewScene(tester, (_) => page, brightness: brightness);
+    await pumpPreviewScene(
+      tester,
+      (_) => page,
+      brightness: brightness,
+      logicalSize: logicalSize,
+    );
     await expectPreviewGolden(tester, name);
   }
 
@@ -115,6 +131,30 @@ void main() {
     await renderPage(tester, 'page_home_glass_off', const HomePage());
   });
 
+  // 首页富状态：种子课程/考试/余额（超高视口一次性呈现全部信息分区）。
+  previewTest('page_home_rich_light', (tester) async {
+    await GlassStyleController.instance.setEnabled(true);
+    await _seedRichHomeState();
+    await renderPage(
+      tester,
+      'page_home_rich_light',
+      const HomePage(),
+      logicalSize: const Size(412, 1720),
+    );
+  });
+
+  previewTest('page_home_rich_dark', (tester) async {
+    await GlassStyleController.instance.setEnabled(true);
+    await _seedRichHomeState();
+    await renderPage(
+      tester,
+      'page_home_rich_dark',
+      const HomePage(),
+      brightness: Brightness.dark,
+      logicalSize: const Size(412, 1720),
+    );
+  });
+
   previewTest('page_service_hub_light', (tester) async {
     await renderPage(tester, 'page_service_hub_light', const ServiceHubPage());
   });
@@ -159,6 +199,91 @@ void main() {
   previewTest('page_campus_card_light', (tester) async {
     await renderPage(tester, 'page_campus_card_light', const CampusCardPage());
   });
+}
+
+/// 富状态首页种子：今天跨下午/晚间的课程（任意时间渲染都有"正在上课/下一节"）、
+/// 明天上午考试（事件横幅）、校园卡/电费新鲜缓存（缓存命中，离线不触发网络与
+/// 错误 Toast），开学日固定为今天保证恒为第 1 周。
+Future<void> _seedRichHomeState() async {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final tomorrow = today.add(const Duration(days: 1));
+  final examDateText =
+      '${tomorrow.year}-'
+      '${tomorrow.month.toString().padLeft(2, '0')}-'
+      '${tomorrow.day.toString().padLeft(2, '0')}';
+
+  SharedPreferences.setMockInitialValues({
+    'dorm_community_id': 'community',
+    'dorm_building_id': 'building',
+    'dorm_floor_id': 'floor',
+    'dorm_room_id': 'room',
+    'exam_cached_data': jsonEncode([
+      {
+        'kcmc': '微观经济学',
+        'kssj': '($examDateText) 09:00-11:00',
+        'cdmc': '1教302',
+        'cdxqmc': '梁林校区',
+        'zwh': '12',
+        'ksmc': '期末考试',
+        'kkxy': '经济学院',
+        'cxbj': '',
+        'xnmc': '2026-2027',
+        'xqmmc': '1',
+      },
+    ]),
+  });
+  await ExamService.instance.restoreCache();
+
+  CampusCardService.instance.debugSetCachedBalance(38.2, updatedAt: now);
+  DormElectricityService.instance.debugSetCachedElectricity(
+    27.4,
+    updatedAt: now,
+  );
+  await SemesterCalendar.instance.setSemesterStartDate(today);
+
+  CourseEntry course(String name, int weekday, int start, int end, String room) =>
+      CourseEntry(
+        courseName: name,
+        teacherName: '王老师',
+        weekday: weekday,
+        startLesson: start,
+        endLesson: end,
+        weekRange: '1-20周',
+        classroom: room,
+        campus: '梁林校区',
+        typeSymbol: '',
+      );
+
+  ScheduleService.instance.debugSetSnapshot(
+    ScheduleCacheSnapshot(
+      studentId: '2025000001',
+      termContext: ScheduleTermContext.current(now),
+      courses: [
+        // 今天：跨下午与晚间，保证任意时间渲染都有"今天剩余课程"。
+        course('数据结构', today.weekday, 9, 10, '教C-201'),
+        course('大学英语', today.weekday, 11, 12, '外B-305'),
+        course('体育俱乐部', today.weekday, 13, 13, '田径场'),
+        // 明天第一节课（Hero 预告）。
+        course('高等数学 B', tomorrow.weekday, 1, 2, '教B-102'),
+        // 本周工作日摘要：周一 3 / 周二 2 / 周三 1 / 周四 0 / 周五 2。
+        course('线性代数 B', 1, 1, 2, '铭德楼 240'),
+        course('数据结构', 1, 6, 7, '教C-201'),
+        course('大学英语', 1, 11, 12, '外B-305'),
+        course('高等数学 B', 2, 3, 4, '教A-110'),
+        course('毛泽东思想概论', 2, 8, 9, '铭德楼 118'),
+        course('数据结构', 3, 1, 2, '教C-201'),
+        course('大学物理', 5, 3, 4, '物理楼 201'),
+        course('线性代数 B', 5, 6, 7, '铭德楼 240'),
+      ],
+      scheduleUpdatedAt: now,
+      changeRulesUpdatedAt: now,
+    ),
+  );
+
+  AppBootstrapController.instance.debugSetPhase(
+    AppBootstrapPhase.localStateReady,
+  );
 }
 
 // ── 场景实现 ────────────────────────────────────────────────────────────────

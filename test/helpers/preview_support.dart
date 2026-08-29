@@ -134,11 +134,13 @@ Future<void> pumpPreviewScene(
   WidgetTester tester,
   WidgetBuilder builder, {
   Brightness brightness = Brightness.light,
+  Size? logicalSize,
 }) async {
+  final size = logicalSize ?? kPreviewLogicalSize;
   tester.view.devicePixelRatio = kPreviewDpr;
   tester.view.physicalSize = Size(
-    kPreviewLogicalSize.width * kPreviewDpr,
-    kPreviewLogicalSize.height * kPreviewDpr,
+    size.width * kPreviewDpr,
+    size.height * kPreviewDpr,
   );
   addTearDown(tester.view.reset);
 
