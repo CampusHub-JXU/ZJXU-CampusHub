@@ -33,7 +33,10 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
       builder: (context, _) {
         final prefs = _ctrl.state;
         return Scaffold(
-          appBar: AppAppBar(title: const Text('主题'), leading: const BackButton()),
+          appBar: AppAppBar(
+            title: const Text('主题'),
+            leading: const BackButton(),
+          ),
           body: ListView(
             padding: const EdgeInsets.all(20),
             children: [
@@ -188,7 +191,7 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
           subtitle: Text(
             _textScaleEnabled
                 ? '${_formatScale(scaleFactor)} · 默认 ${_formatScale(TextScaleController.defaultScaleFactor)}'
-                : '当前使用默认缩放 ${_formatScale(TextScaleController.defaultScaleFactor)}',
+                : '在系统字体大小基础上叠加调整 · 当前使用默认缩放 ${_formatScale(TextScaleController.defaultScaleFactor)}',
           ),
           value: _textScaleEnabled,
           onChanged: (value) {

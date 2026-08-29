@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -64,5 +64,85 @@ void main() {
     );
 
     expect(scaledFontSize, closeTo(12.0, 0.001));
+  });
+
+  testWidgets(
+    'app text scale scope passes system scaler through at default factor',
+    (tester) async {
+      double? scaledFontSize;
+
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(textScaler: TextScaler.linear(1.5)),
+          child: Directionality(
+            textDirection: TextDirection.ltr,
+            child: AppTextScaleScope(
+              scaleFactor: TextScaleController.defaultScaleFactor,
+              child: Builder(
+                builder: (context) {
+                  scaledFontSize = MediaQuery.textScalerOf(context).scale(10);
+                  return const SizedBox.shrink();
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(scaledFontSize, closeTo(15.0, 0.001));
+    },
+  );
+
+  testWidgets('app text scale scope multiplies system scaler by user factor', (
+    tester,
+  ) async {
+    double? scaledFontSize;
+
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(textScaler: TextScaler.linear(1.3)),
+        child: Directionality(
+          textDirection: TextDirection.ltr,
+          child: AppTextScaleScope(
+            scaleFactor: 1.2,
+            child: Builder(
+              builder: (context) {
+                scaledFontSize = MediaQuery.textScalerOf(context).scale(10);
+                return const SizedBox.shrink();
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(scaledFontSize, closeTo(15.6, 0.001));
+  });
+
+  testWidgets('app text scale scope combines system scale with user factor', (
+    tester,
+  ) async {
+    double? effectiveScaleFactor;
+
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(textScaler: TextScaler.linear(1.5)),
+        child: Directionality(
+          textDirection: TextDirection.ltr,
+          child: AppTextScaleScope(
+            scaleFactor: 0.8,
+            child: Builder(
+              builder: (context) {
+                final scaler = MediaQuery.textScalerOf(context);
+                effectiveScaleFactor = scaler.scale(14) / 14;
+                return const SizedBox.shrink();
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(effectiveScaleFactor, closeTo(1.2, 0.001));
   });
 }

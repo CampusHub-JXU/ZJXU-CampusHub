@@ -156,15 +156,10 @@ class _JXUCampusHubAppState extends State<JXUCampusHubApp> {
       themeAnimationDuration: Duration.zero,
       builder: (context, child) {
         if (child == null) return const SizedBox.shrink();
-        final normalizedScale = TextScaleController.normalizeScaleFactor(
-          prefs.textScale,
-        );
-        return MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(textScaler: TextScaler.linear(normalizedScale)),
-          child: child,
-        );
+        // Relative to the ambient system textScaler: AppTextScaleScope
+        // multiplies the system scale by the user factor and passes the
+        // system scale through untouched at the default factor (0.9).
+        return AppTextScaleScope(scaleFactor: prefs.textScale, child: child);
       },
       routerConfig: widget.routerConfig,
       debugShowCheckedModeBanner: false,
