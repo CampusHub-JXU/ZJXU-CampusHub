@@ -357,7 +357,7 @@ class _ComponentGallery extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'AppCard 默认形态：surface + 发丝描边 + squircle',
+                  'AppCard 默认形态：surface + 受光描边 + squircle',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
