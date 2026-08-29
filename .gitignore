@@ -72,3 +72,6 @@ android/app/google-services.json
 /.playwright-cli/
 /output/
 /tmp/
+
+# Local MCP server config (machine-specific absolute paths)
+/.mcp.json
