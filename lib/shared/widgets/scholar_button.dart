@@ -50,19 +50,27 @@ class ScholarButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(100),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-            child: icon != null
-                ? Row(
-                    mainAxisSize: expanded
-                        ? MainAxisSize.max
-                        : MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(icon, color: cs.onPrimary, size: 18),
-                      const SizedBox(width: 8),
-                      child,
-                    ],
-                  )
-                : child,
+            // 显式 onPrimary：child 直接传 Text 时不能继承 onSurface
+            //（浅色模式会变成深色字压在深色酒红面上）。
+            child: DefaultTextStyle.merge(
+              style: TextStyle(
+                color: cs.onPrimary,
+                fontWeight: FontWeight.w600,
+              ),
+              child: icon != null
+                  ? Row(
+                      mainAxisSize: expanded
+                          ? MainAxisSize.max
+                          : MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(icon, color: cs.onPrimary, size: 18),
+                        const SizedBox(width: 8),
+                        child,
+                      ],
+                    )
+                  : child,
+            ),
           ),
         ),
       ),
@@ -148,19 +156,27 @@ class ScholarSecondaryButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(100),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-            child: icon != null
-                ? Row(
-                    mainAxisSize: expanded
-                        ? MainAxisSize.max
-                        : MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(icon, color: cs.primary, size: 18),
-                      const SizedBox(width: 8),
-                      child,
-                    ],
-                  )
-                : child,
+            // 显式 primary：规范为「surfaceContainerHigh 底 + primary 字」，
+            // child 直接传 Text 时不能继承 onSurface。
+            child: DefaultTextStyle.merge(
+              style: TextStyle(
+                color: cs.primary,
+                fontWeight: FontWeight.w600,
+              ),
+              child: icon != null
+                  ? Row(
+                      mainAxisSize: expanded
+                          ? MainAxisSize.max
+                          : MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(icon, color: cs.primary, size: 18),
+                        const SizedBox(width: 8),
+                        child,
+                      ],
+                    )
+                  : child,
+            ),
           ),
         ),
       ),
