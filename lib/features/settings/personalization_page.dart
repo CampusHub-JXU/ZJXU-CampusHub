@@ -11,6 +11,7 @@ import 'widgets/personalization_background_section.dart';
 import 'widgets/personalization_glass_section.dart';
 import 'widgets/personalization_shader_section.dart';
 import '../../shared/widgets/app_app_bar.dart';
+import '../../shared/widgets/app_card.dart';
 
 class PersonalizationPage extends StatefulWidget {
   const PersonalizationPage({super.key});
@@ -62,13 +63,13 @@ class _PersonalizationPageState extends State<PersonalizationPage> {
       valueListenable: HomeController.instance.backgroundImagePath,
       builder: (context, bgPath, _) {
         if (bgPath == null) {
-          return Card(
-            clipBehavior: Clip.antiAlias,
-            child: Container(
+          return AppCard(
+            padding: EdgeInsets.zero,
+            child: SizedBox(
               height: 120,
-              alignment: Alignment.center,
+              width: double.infinity,
               child: Column(
-                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(
                     Icons.wallpaper_outlined,

@@ -9,11 +9,14 @@ import '../../core/notification/app_notification_service.dart';
 import '../../core/semester/current_term_resolver.dart';
 import '../../core/semester/semester_calendar.dart';
 import '../../core/semester/schedule_term_context.dart';
+import '../../core/theme/app_design_tokens.dart';
 import '../../core/update/update_checker.dart';
 import '../../core/update/update_model.dart';
-import '../../shared/widgets/app_dropdown.dart';
-import '../../shared/widgets/update_dialog.dart';
 import '../../shared/widgets/app_app_bar.dart';
+import '../../shared/widgets/app_card.dart';
+import '../../shared/widgets/app_dropdown.dart';
+import '../../shared/widgets/app_icon_badge.dart';
+import '../../shared/widgets/update_dialog.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -84,87 +87,81 @@ class SettingsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
       appBar: AppAppBar(title: const Text('设置')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
         children: [
-          Text('外观', style: textTheme.titleMedium),
-          const SizedBox(height: 12),
-          Card(
-            clipBehavior: Clip.antiAlias,
-            child: ListTile(
-              leading: const Icon(Icons.palette_outlined),
-              title: const Text('主题与外观'),
-              subtitle: const Text('主题模式、颜色、纯黑模式、文本缩放'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => context.pushNamed('theme-settings'),
-            ),
+          const _SectionHeader('外观'),
+          const SizedBox(height: 8),
+          _GroupCard(
+            children: [
+              _SettingsRow(
+                icon: Icons.palette_outlined,
+                title: '主题与外观',
+                subtitle: '主题模式、颜色、纯黑模式、文本缩放',
+                trailing: _chevron(context),
+                onTap: () => context.pushNamed('theme-settings'),
+              ),
+              const _Hairline(),
+              _SettingsRow(
+                icon: Icons.wallpaper_outlined,
+                title: '首页个性化',
+                subtitle: '背景图片、Shader、毛玻璃效果',
+                trailing: _chevron(context),
+                onTap: () => context.pushNamed('personalization'),
+              ),
+            ],
           ),
-          const SizedBox(height: 12),
-          Card(
-            clipBehavior: Clip.antiAlias,
-            child: ListTile(
-              leading: const Icon(Icons.wallpaper_outlined),
-              title: const Text('首页个性化'),
-              subtitle: const Text('背景图片、Shader、毛玻璃效果'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => context.pushNamed('personalization'),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text('学期', style: textTheme.titleMedium),
-          const SizedBox(height: 12),
+          const SizedBox(height: 24),
+          const _SectionHeader('学期'),
+          const SizedBox(height: 8),
           ValueListenableBuilder<DateTime>(
             valueListenable: SemesterCalendar.instance.semesterStartDate,
             child: const _CurrentTermTile(),
             builder: (context, semesterStartDate, child) {
-              return Card(
-                clipBehavior: Clip.antiAlias,
-                child: Column(
-                  children: [
-                    ?child,
-                    const Divider(height: 1, indent: 16, endIndent: 16),
-                    ListTile(
-                      title: const Text('当前学期开学日'),
-                      subtitle: Text(
-                        '${_formatDate(semesterStartDate)}（用于周次与下一节课计算）',
-                      ),
-                      trailing: const Icon(Icons.edit_calendar_outlined),
-                      onTap: () async {
-                        await _pickSemesterStartDate(
-                          context,
-                          semesterStartDate,
-                        );
-                      },
-                    ),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-                        child: TextButton(
-                          onPressed: () async {
-                            await SemesterCalendar.instance
-                                .resetSemesterStartDate();
-                          },
-                          child: Text(
-                            '恢复默认（${_formatDate(SemesterCalendar.defaultSemesterStartFor(DateTime.now()))}）',
-                          ),
+              return _GroupCard(
+                children: [
+                  ?child,
+                  const _Hairline(),
+                  _SettingsRow(
+                    icon: Icons.edit_calendar_outlined,
+                    title: '当前学期开学日',
+                    subtitle: '${_formatDate(semesterStartDate)}（用于周次与下一节课计算）',
+                    trailing: _chevron(context),
+                    onTap: () async {
+                      await _pickSemesterStartDate(context, semesterStartDate);
+                    },
+                  ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(0, 0, 12, 10),
+                      child: TextButton(
+                        onPressed: () async {
+                          await SemesterCalendar.instance
+                              .resetSemesterStartDate();
+                        },
+                        child: Text(
+                          '恢复默认（${_formatDate(SemesterCalendar.defaultSemesterStartFor(DateTime.now()))}）',
                         ),
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               );
             },
           ),
           const SizedBox(height: 16),
-          Text('设置会立即生效。', style: textTheme.bodySmall),
+          Text(
+            '设置会立即生效。',
+            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+          ),
           const SizedBox(height: 24),
-          Text('版本', style: textTheme.titleMedium),
-          const SizedBox(height: 12),
+          const _SectionHeader('版本'),
+          const SizedBox(height: 8),
           FutureBuilder<PackageInfo>(
             future: PackageInfo.fromPlatform(),
             builder: (context, snapshot) {
@@ -182,31 +179,36 @@ class SettingsPage extends StatelessWidget {
                           : UpdateChecker.instance.isUpdateEnabled
                           ? version
                           : '当前版本暂未开放在线更新';
-                      return Card(
-                        clipBehavior: Clip.antiAlias,
-                        child: ListTile(
-                          leading: const Icon(Icons.system_update_outlined),
-                          title: const Text('检查更新'),
-                          subtitle: Text(subtitle),
-                          trailing: isChecking
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
+                      return _GroupCard(
+                        children: [
+                          _SettingsRow(
+                            icon: Icons.system_update_outlined,
+                            title: '检查更新',
+                            subtitle: subtitle,
+                            trailing: isChecking
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : Icon(
+                                    release != null
+                                        ? Icons.new_releases_outlined
+                                        : Icons.chevron_right,
+                                    size: 20,
+                                    color: release != null
+                                        ? cs.primary
+                                        : cs.onSurfaceVariant,
                                   ),
-                                )
-                              : Icon(
-                                  release != null
-                                      ? Icons.new_releases_outlined
-                                      : Icons.chevron_right,
-                                ),
-                          onTap: isChecking
-                              ? null
-                              : () {
-                                  _checkForUpdate(context);
-                                },
-                        ),
+                            onTap: isChecking
+                                ? null
+                                : () {
+                                    _checkForUpdate(context);
+                                  },
+                          ),
+                        ],
                       );
                     },
                   );
@@ -224,122 +226,122 @@ class SettingsPage extends StatelessWidget {
               return Center(
                 child: Text(
                   '嘉兴大学-智能中台 $version',
-                  style: textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
                 ),
               );
             },
           ),
           if (kDebugMode) ...[
             const SizedBox(height: 16),
-            Text('调试', style: textTheme.titleMedium),
-            const SizedBox(height: 12),
+            const _SectionHeader('调试'),
+            const SizedBox(height: 8),
             ValueListenableBuilder<bool>(
               valueListenable: AppLogger.instance.loggingEnabled,
               builder: (context, loggingEnabled, child) {
                 return ValueListenableBuilder<LogConfig>(
                   valueListenable: AppLogger.instance.config,
                   builder: (context, logConfig, _) {
-                    return Card(
-                      clipBehavior: Clip.antiAlias,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          SwitchListTile.adaptive(
-                            title: const Text('调试日志'),
-                            subtitle: const Text('开启后记录调试期日志和异常'),
-                            value: loggingEnabled,
+                    return _GroupCard(
+                      children: [
+                        _SwitchRow(
+                          icon: Icons.bug_report_outlined,
+                          title: '调试日志',
+                          subtitle: '开启后记录调试期日志和异常',
+                          value: loggingEnabled,
+                          onToggle: (value) {
+                            AppLogger.instance.setEnabled(value);
+                          },
+                        ),
+                        const _Hairline(),
+                        _SettingsRow(
+                          icon: Icons.format_list_bulleted_outlined,
+                          title: '最低日志级别',
+                          subtitle: _formatLogLevel(logConfig.minimumLevel),
+                          trailing: AppDropdown<LogLevel>(
+                            value: logConfig.minimumLevel,
                             onChanged: (value) {
-                              AppLogger.instance.setEnabled(value);
-                            },
-                          ),
-                          ListTile(
-                            title: const Text('最低日志级别'),
-                            subtitle: Text(
-                              _formatLogLevel(logConfig.minimumLevel),
-                            ),
-                            trailing: AppDropdown<LogLevel>(
-                              value: logConfig.minimumLevel,
-                              onChanged: (value) {
-                                if (value == null) return;
-                                AppLogger.instance.updateConfig(
-                                  logConfig.copyWith(minimumLevel: value),
-                                );
-                              },
-                              items: LogLevel.values
-                                  .map(
-                                    (level) => AppDropdownItem(
-                                      value: level,
-                                      label: _formatLogLevel(level),
-                                    ),
-                                  )
-                                  .toList(),
-                            ),
-                          ),
-                          SwitchListTile.adaptive(
-                            title: const Text('WebView 生命周期日志'),
-                            subtitle: const Text('页面加载、跳转和白屏探测细节'),
-                            value: logConfig.webviewLifecycleEnabled,
-                            onChanged: (value) {
+                              if (value == null) return;
                               AppLogger.instance.updateConfig(
-                                logConfig.copyWith(
-                                  webviewLifecycleEnabled: value,
-                                ),
+                                logConfig.copyWith(minimumLevel: value),
                               );
                             },
+                            items: LogLevel.values
+                                .map(
+                                  (level) => AppDropdownItem(
+                                    value: level,
+                                    label: _formatLogLevel(level),
+                                  ),
+                                )
+                                .toList(),
                           ),
-                          SwitchListTile.adaptive(
-                            title: const Text('WebView 控制台日志'),
-                            subtitle: const Text('记录页面 console warning/error'),
-                            value: logConfig.webviewConsoleEnabled,
-                            onChanged: (value) {
-                              AppLogger.instance.updateConfig(
-                                logConfig.copyWith(
-                                  webviewConsoleEnabled: value,
-                                ),
-                              );
-                            },
+                        ),
+                        const _Hairline(),
+                        _SwitchRow(
+                          icon: Icons.public_outlined,
+                          title: 'WebView 生命周期日志',
+                          subtitle: '页面加载、跳转和白屏探测细节',
+                          value: logConfig.webviewLifecycleEnabled,
+                          onToggle: (value) {
+                            AppLogger.instance.updateConfig(
+                              logConfig.copyWith(
+                                webviewLifecycleEnabled: value,
+                              ),
+                            );
+                          },
+                        ),
+                        const _Hairline(),
+                        _SwitchRow(
+                          icon: Icons.code_outlined,
+                          title: 'WebView 控制台日志',
+                          subtitle: '记录页面 console warning/error',
+                          value: logConfig.webviewConsoleEnabled,
+                          onToggle: (value) {
+                            AppLogger.instance.updateConfig(
+                              logConfig.copyWith(webviewConsoleEnabled: value),
+                            );
+                          },
+                        ),
+                        const _Hairline(),
+                        _SwitchRow(
+                          icon: Icons.wifi_outlined,
+                          title: '网络详细日志',
+                          subtitle: '记录请求和响应细节，噪音较大',
+                          value: logConfig.networkVerboseEnabled,
+                          onToggle: (value) {
+                            AppLogger.instance.updateConfig(
+                              logConfig.copyWith(networkVerboseEnabled: value),
+                            );
+                          },
+                        ),
+                        const _Hairline(),
+                        _SettingsRow(
+                          icon: Icons.notifications_outlined,
+                          title: '通知测试',
+                          subtitle: '发送一条本地测试通知',
+                          trailing: Icon(
+                            Icons.send_outlined,
+                            size: 20,
+                            color: cs.onSurfaceVariant,
                           ),
-                          SwitchListTile.adaptive(
-                            title: const Text('网络详细日志'),
-                            subtitle: const Text('记录请求和响应细节，噪音较大'),
-                            value: logConfig.networkVerboseEnabled,
-                            onChanged: (value) {
-                              AppLogger.instance.updateConfig(
-                                logConfig.copyWith(
-                                  networkVerboseEnabled: value,
-                                ),
-                              );
-                            },
-                          ),
-                          const Divider(height: 1),
-                          ListTile(
-                            title: const Text('通知测试'),
-                            subtitle: const Text('发送一条本地测试通知'),
-                            trailing: const Icon(Icons.send_outlined),
-                            onTap: () {
-                              AppNotificationService.instance.showNotification(
-                                id: 999,
-                                title: '测试通知',
-                                body:
-                                    '这是一条来自开发模式的测试通知，${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}',
-                                payload: 'test',
-                              );
-                            },
-                          ),
-                          const Divider(height: 1),
-                          ListTile(
-                            leading: const Icon(
-                              Icons.notifications_active_outlined,
-                            ),
-                            title: const Text('推送令牌'),
-                            subtitle: const Text('查看 FCM 推送注册状态'),
-                            trailing: const Icon(Icons.chevron_right),
-                            onTap: () => context.pushNamed('push-debug'),
-                          ),
-                        ],
-                      ),
+                          onTap: () {
+                            AppNotificationService.instance.showNotification(
+                              id: 999,
+                              title: '测试通知',
+                              body:
+                                  '这是一条来自开发模式的测试通知，${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}',
+                              payload: 'test',
+                            );
+                          },
+                        ),
+                        const _Hairline(),
+                        _SettingsRow(
+                          icon: Icons.notifications_active_outlined,
+                          title: '推送令牌',
+                          subtitle: '查看 FCM 推送注册状态',
+                          trailing: _chevron(context),
+                          onTap: () => context.pushNamed('push-debug'),
+                        ),
+                      ],
                     );
                   },
                 );
@@ -348,6 +350,167 @@ class SettingsPage extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+
+  static Widget _chevron(BuildContext context) {
+    return Icon(
+      Icons.chevron_right,
+      size: 20,
+      color: Theme.of(context).colorScheme.onSurfaceVariant,
+    );
+  }
+}
+
+/// 分组小节标题：13/w600/onSurfaceVariant（Apple Settings 式小节标签）。
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader(this.title);
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Text(
+      title,
+      style: TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+        color: cs.onSurfaceVariant,
+        letterSpacing: 0.2,
+      ),
+    );
+  }
+}
+
+/// 分组卡：AppCard 平色卡面 + 零内边距，内部行由 hairline 分隔。
+class _GroupCard extends StatelessWidget {
+  const _GroupCard({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      padding: EdgeInsets.zero,
+      child: ClipRRect(
+        borderRadius: AppRadius.cardBorder,
+        child: Column(mainAxisSize: MainAxisSize.min, children: children),
+      ),
+    );
+  }
+}
+
+/// 组内 hairline 分隔线：outlineVariant @ 0.35，左缩进与行文字对齐。
+class _Hairline extends StatelessWidget {
+  const _Hairline();
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Divider(
+      height: 1,
+      thickness: 1,
+      // 行内边距 16 + 徽标 36 + 间距 12 = 文字起始位。
+      indent: 64,
+      color: cs.outlineVariant.withValues(alpha: 0.35),
+    );
+  }
+}
+
+/// 设置行：图标徽标 + 标题/副标题 + 右侧控件（chevron / Switch / Dropdown）。
+class _SettingsRow extends StatelessWidget {
+  const _SettingsRow({
+    required this.icon,
+    required this.title,
+    this.subtitle,
+    this.trailing,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  final Widget? trailing;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              AppIconBadge(
+                icon: icon,
+                accentColor: cs.primary,
+                size: AppIconBadgeSize.small,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: cs.onSurface,
+                        height: 1.2,
+                      ),
+                    ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle!,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: cs.onSurfaceVariant,
+                          height: 1.3,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (trailing != null) ...[const SizedBox(width: 12), trailing!],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 开关行：延续 SwitchListTile 的「点行即切换」语义，样式并入平色行。
+class _SwitchRow extends StatelessWidget {
+  const _SwitchRow({
+    required this.icon,
+    required this.title,
+    required this.value,
+    required this.onToggle,
+    this.subtitle,
+  });
+
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  final bool value;
+  final ValueChanged<bool> onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    return _SettingsRow(
+      icon: icon,
+      title: title,
+      subtitle: subtitle,
+      trailing: Switch.adaptive(value: value, onChanged: onToggle),
+      onTap: () => onToggle(!value),
     );
   }
 }
@@ -388,6 +551,7 @@ class _CurrentTermTileState extends State<_CurrentTermTile> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final term = _resolved ?? ScheduleTermContext.current();
     final subtitle = _loading
         ? '正在从教务系统识别…'
@@ -395,17 +559,51 @@ class _CurrentTermTileState extends State<_CurrentTermTile> {
         ? '已从教务系统自动识别'
         : '按日期推算（未登录或教务不可达）';
 
-    return ListTile(
-      leading: const Icon(Icons.school_outlined),
-      title: const Text('当前学年学期'),
-      subtitle: Text('${_termLabel(term)} · $subtitle'),
-      trailing: _loading
-          ? const SizedBox(
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        children: [
+          AppIconBadge(
+            icon: Icons.school_outlined,
+            accentColor: cs.primary,
+            size: AppIconBadgeSize.small,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '当前学年学期',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: cs.onSurface,
+                    height: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${_termLabel(term)} · $subtitle',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: cs.onSurfaceVariant,
+                    height: 1.3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (_loading) ...[
+            const SizedBox(width: 12),
+            const SizedBox(
               width: 16,
               height: 16,
               child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : null,
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

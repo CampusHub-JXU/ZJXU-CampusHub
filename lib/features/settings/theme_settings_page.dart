@@ -38,20 +38,20 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
             leading: const BackButton(),
           ),
           body: ListView(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
             children: [
               // ── 主题模式 ──
               const _SectionTitle(
                 icon: Icons.settings_brightness,
                 title: '主题模式',
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 8),
               _buildModeButtons(prefs),
 
               const SizedBox(height: 32),
               // ── 主题色彩 ──
               const _SectionTitle(icon: Icons.palette_outlined, title: '主题色彩'),
-              const SizedBox(height: 16),
+              const SizedBox(height: 8),
               _buildPaletteGrid(prefs),
 
               const SizedBox(height: 32),
@@ -86,7 +86,7 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
                 icon: Icons.format_color_text_outlined,
                 title: '首页卡片文字',
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               _buildHomeTextColor(prefs),
 
               const SizedBox(height: 40),
@@ -274,19 +274,19 @@ class _SectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Row(
       children: [
-        Icon(
-          icon,
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-          size: 20,
-        ),
-        const SizedBox(width: 10),
+        Icon(icon, color: cs.onSurfaceVariant, size: 16),
+        const SizedBox(width: 6),
         Text(
           title,
-          style: Theme.of(
-            context,
-          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: cs.onSurfaceVariant,
+            letterSpacing: 0.2,
+          ),
         ),
       ],
     );

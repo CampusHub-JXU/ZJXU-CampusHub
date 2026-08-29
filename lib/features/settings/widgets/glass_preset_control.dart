@@ -58,78 +58,96 @@ class _GlassPresetControlState extends State<GlassPresetControl> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final closest = _closestPresetIndex(widget.value);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Divider(
+          height: 1,
+          thickness: 1,
+          indent: 16,
+          color: cs.outlineVariant.withValues(alpha: 0.35),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Text(
-                  '${widget.label}  ${_formatValue(widget.value)}${widget.suffix}',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${widget.label}  ${_formatValue(widget.value)}${widget.suffix}',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 76,
+                    child: TextField(
+                      controller: _controller,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodySmall,
+                      decoration: InputDecoration(
+                        isDense: true,
+                        suffixText: widget.suffix.isEmpty
+                            ? null
+                            : widget.suffix,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 8,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      onSubmitted: _commitText,
+                      onTapOutside: (_) => _commitText(_controller.text),
+                    ),
+                  ),
+                ],
               ),
-              SizedBox(
-                width: 76,
-                child: TextField(
-                  controller: _controller,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodySmall,
-                  decoration: InputDecoration(
-                    isDense: true,
-                    suffixText: widget.suffix.isEmpty ? null : widget.suffix,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 8,
+              Slider.adaptive(
+                value: closest.toDouble(),
+                min: 0,
+                max: (widget.presets.length - 1).toDouble(),
+                divisions: widget.presets.length - 1,
+                label:
+                    '${_formatValue(widget.presets[closest])}${widget.suffix}',
+                onChanged: (index) {
+                  final value = widget.presets[index.round()];
+                  widget.onPreview(value);
+                },
+                onChangeEnd: (index) {
+                  widget.onCommit(widget.presets[index.round()]);
+                },
+              ),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  for (final preset in widget.presets)
+                    ChoiceChip(
+                      label: Text('${_formatValue(preset)}${widget.suffix}'),
+                      selected: (widget.value - preset).abs() < 0.001,
+                      onSelected: (_) {
+                        widget.onPreview(preset);
+                        widget.onCommit(preset);
+                      },
+                      visualDensity: VisualDensity.compact,
                     ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                  onSubmitted: _commitText,
-                  onTapOutside: (_) => _commitText(_controller.text),
-                ),
+                ],
               ),
             ],
           ),
-          Slider.adaptive(
-            value: closest.toDouble(),
-            min: 0,
-            max: (widget.presets.length - 1).toDouble(),
-            divisions: widget.presets.length - 1,
-            label: '${_formatValue(widget.presets[closest])}${widget.suffix}',
-            onChanged: (index) {
-              final value = widget.presets[index.round()];
-              widget.onPreview(value);
-            },
-            onChangeEnd: (index) {
-              widget.onCommit(widget.presets[index.round()]);
-            },
-          ),
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            children: [
-              for (final preset in widget.presets)
-                ChoiceChip(
-                  label: Text('${_formatValue(preset)}${widget.suffix}'),
-                  selected: (widget.value - preset).abs() < 0.001,
-                  onSelected: (_) {
-                    widget.onPreview(preset);
-                    widget.onCommit(preset);
-                  },
-                  visualDensity: VisualDensity.compact,
-                ),
-            ],
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
