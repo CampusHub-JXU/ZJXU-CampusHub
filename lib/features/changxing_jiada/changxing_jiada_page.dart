@@ -6,6 +6,7 @@ import '../../shared/widgets/network_error_toast.dart';
 import 'changxing_jiada_model.dart';
 import 'changxing_jiada_service.dart';
 import 'changxing_jiada_widgets.dart';
+import '../../shared/widgets/app_app_bar.dart';
 
 class ChangxingJiadaPage extends StatefulWidget {
   const ChangxingJiadaPage({super.key});
@@ -158,13 +159,13 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
   Widget build(BuildContext context) {
     if (_initializing) {
       return Scaffold(
-        appBar: AppBar(title: const Text('畅行嘉大')),
+        appBar: AppAppBar(title: const Text('畅行嘉大')),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: AppAppBar(
         title: const Text('畅行嘉大'),
         actions: _loggedIn
             ? [

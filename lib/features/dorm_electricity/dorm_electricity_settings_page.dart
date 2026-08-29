@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/notification/background_task_service.dart';
 import 'dorm_electricity_service.dart';
+import '../../shared/widgets/app_app_bar.dart';
 
 class DormElectricitySettingsPage extends StatefulWidget {
   const DormElectricitySettingsPage({super.key});
@@ -570,7 +571,7 @@ class _DormElectricitySettingsPageState
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('选择寝室')),
+      appBar: AppAppBar(title: const Text('选择寝室')),
       body: _loadingBuildings
           ? const Center(child: CircularProgressIndicator())
           : _error != null

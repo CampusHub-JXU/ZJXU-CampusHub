@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import './app_app_bar.dart';
 
 class QrScannerPage extends StatefulWidget {
   const QrScannerPage({super.key});
@@ -45,7 +46,7 @@ class _QrScannerPageState extends State<QrScannerPage> {
       },
       child: Scaffold(
         backgroundColor: Colors.black,
-        appBar: AppBar(
+        appBar: AppAppBar(
           backgroundColor: Colors.black,
           foregroundColor: Colors.white,
           title: const Text('扫一扫'),

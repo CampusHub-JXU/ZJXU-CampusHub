@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/notification/app_notification_service.dart';
 import 'dorm_electricity_service.dart';
 import 'widgets/electricity_battery_header.dart';
+import '../../shared/widgets/app_app_bar.dart';
 
 class DormElectricityPage extends StatefulWidget {
   const DormElectricityPage({super.key});
@@ -174,7 +175,7 @@ class _DormElectricityPageState extends State<DormElectricityPage>
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(
+      appBar: AppAppBar(
         title: const Text('寝室电费'),
         actions: [
           IconButton(

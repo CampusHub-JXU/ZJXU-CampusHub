@@ -10,6 +10,7 @@ import '../../core/auth/credential_store.dart';
 import '../../core/logging/app_logger.dart';
 import 'external_url_launcher.dart';
 import 'qr_scanner_page.dart';
+import './app_app_bar.dart';
 
 part 'webview_page_helpers.dart';
 part 'webview_page_build.dart';
@@ -431,7 +432,7 @@ class _WebViewPageState extends State<WebViewPage> {
         _handleAppBackPressed();
       },
       child: Scaffold(
-        appBar: AppBar(
+        appBar: AppAppBar(
           automaticallyImplyLeading: !hasCustomLeading,
           leadingWidth: hasCustomLeading ? leadingButtonCount * 48 : null,
           leading: hasCustomLeading

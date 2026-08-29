@@ -4,6 +4,7 @@ import '../../app/app_preferences_controller.dart';
 import '../../app/text_scale_controller.dart';
 import '../../core/theme/app_theme_palette.dart';
 import 'widgets/hsv_color_picker_sheet.dart';
+import '../../shared/widgets/app_app_bar.dart';
 
 class ThemeSettingsPage extends StatefulWidget {
   const ThemeSettingsPage({super.key});
@@ -32,7 +33,7 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
       builder: (context, _) {
         final prefs = _ctrl.state;
         return Scaffold(
-          appBar: AppBar(title: const Text('主题'), leading: const BackButton()),
+          appBar: AppAppBar(title: const Text('主题'), leading: const BackButton()),
           body: ListView(
             padding: const EdgeInsets.all(20),
             children: [

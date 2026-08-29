@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/logging/app_logger.dart';
 import 'notice_model.dart';
 import 'notice_service.dart';
+import '../../shared/widgets/app_app_bar.dart';
 
 bool shouldOpenNoticeViaUnifiedAuth(String url) {
   final uri = Uri.tryParse(url);
@@ -116,7 +117,7 @@ class _NoticeListPageState extends State<NoticeListPage> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(
+      appBar: AppAppBar(
         title: const Text('通知公告'),
         actions: [
           IconButton(icon: const Icon(Icons.refresh), onPressed: _loadNotices),

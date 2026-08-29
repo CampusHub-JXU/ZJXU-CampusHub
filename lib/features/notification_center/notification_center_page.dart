@@ -6,6 +6,7 @@ import '../notice/notice_service.dart';
 import '../sjjx_notice/sjjx_notice_model.dart';
 import '../sjjx_notice/sjjx_notice_service.dart';
 import '../../core/logging/app_logger.dart';
+import '../../shared/widgets/app_app_bar.dart';
 
 class NotificationCenterPage extends StatefulWidget {
   const NotificationCenterPage({super.key});
@@ -33,7 +34,7 @@ class _NotificationCenterPageState extends State<NotificationCenterPage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
+      appBar: AppAppBar(
         title: const Text('通知中心'),
         bottom: TabBar(
           controller: _tabController,

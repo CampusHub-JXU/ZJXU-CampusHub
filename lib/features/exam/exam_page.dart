@@ -8,6 +8,7 @@ import '../../shared/widgets/login_shell.dart';
 import '../../shared/widgets/network_error_toast.dart';
 import 'exam_model.dart';
 import 'exam_service.dart';
+import '../../shared/widgets/app_app_bar.dart';
 
 class ExamPage extends StatefulWidget {
   const ExamPage({super.key});
@@ -139,7 +140,7 @@ class _ExamPageState extends State<ExamPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
+      appBar: AppAppBar(
         title: const Text('考试安排'),
         actions: (_loggedIn || _exams.isNotEmpty)
             ? [

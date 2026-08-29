@@ -13,6 +13,7 @@ import '../../core/update/update_checker.dart';
 import '../../core/update/update_model.dart';
 import '../../shared/widgets/app_dropdown.dart';
 import '../../shared/widgets/update_dialog.dart';
+import '../../shared/widgets/app_app_bar.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -86,7 +87,7 @@ class SettingsPage extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('设置')),
+      appBar: AppAppBar(title: const Text('设置')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

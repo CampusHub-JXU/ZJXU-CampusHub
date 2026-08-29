@@ -13,6 +13,7 @@ import 'grades_service.dart';
 import 'grades_term_resolver.dart';
 import 'widgets/grades_distribution_card.dart';
 import 'widgets/grades_grade_card.dart';
+import '../../shared/widgets/app_app_bar.dart';
 
 class GradesPage extends StatefulWidget {
   const GradesPage({super.key});
@@ -238,7 +239,7 @@ class _GradesPageState extends State<GradesPage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
+      appBar: AppAppBar(
         title: const Text('成绩查询'),
         actions: _loggedIn
             ? [

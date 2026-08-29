@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/app_bootstrap_controller.dart';
 import '../../core/shortcut/app_shortcut_service.dart';
+import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/ship_card.dart';
 import '../../shared/widgets/unified_auth_protected_webview_page.dart';
 import 'campus_card_service.dart';
@@ -76,6 +77,11 @@ class _CampusCardPageState extends State<CampusCardPage> {
         slivers: [
           SliverAppBar(
             pinned: true,
+            backgroundColor: Colors.transparent,
+            surfaceTintColor: Colors.transparent,
+            elevation: 0,
+            scrolledUnderElevation: 0,
+            flexibleSpace: const GlassAppBarSpace(),
             title: const Text('校园卡'),
             actions: [
               if (isAndroid)

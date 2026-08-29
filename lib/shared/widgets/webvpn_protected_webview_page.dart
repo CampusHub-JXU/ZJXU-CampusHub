@@ -9,6 +9,7 @@ import '../../core/logging/app_logger.dart';
 import 'auth_required_view.dart';
 import 'login_shell.dart';
 import 'webview_page.dart';
+import './app_app_bar.dart';
 
 class WebVpnProtectedWebViewPage extends StatefulWidget {
   const WebVpnProtectedWebViewPage({
@@ -227,7 +228,7 @@ class _WebVpnProtectedWebViewPageState
   Widget build(BuildContext context) {
     if (_preparingSession) {
       return Scaffold(
-        appBar: AppBar(
+        appBar: AppAppBar(
           title: Text(widget.title),
           actions: widget.appBarActions,
         ),
@@ -239,7 +240,7 @@ class _WebVpnProtectedWebViewPageState
       _scheduleLoginPrompt();
 
       return Scaffold(
-        appBar: AppBar(
+        appBar: AppAppBar(
           title: Text(widget.title),
           actions: widget.appBarActions,
         ),

@@ -6,6 +6,7 @@ import 'changxing_area_picker_dialog.dart';
 import 'changxing_jiada_form_validator.dart';
 import 'changxing_jiada_model.dart';
 import 'changxing_jiada_service.dart';
+import '../../shared/widgets/app_app_bar.dart';
 
 class ChangxingLeaveFormPage extends StatefulWidget {
   const ChangxingLeaveFormPage({
@@ -338,7 +339,7 @@ class _ChangxingLeaveFormPageState extends State<ChangxingLeaveFormPage> {
     final title = _isLeaveRequest ? '请假申请' : '离校登记';
 
     return Scaffold(
-      appBar: AppBar(title: Text(_isEdit ? '编辑$title' : title)),
+      appBar: AppAppBar(title: Text(_isEdit ? '编辑$title' : title)),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(

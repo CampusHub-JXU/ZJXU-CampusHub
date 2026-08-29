@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../shared/widgets/login_shell.dart';
 import '../../shared/widgets/unified_auth_login_widget.dart';
+import '../../shared/widgets/app_app_bar.dart';
 
 class UnifiedAuthLoginPage extends StatelessWidget {
   const UnifiedAuthLoginPage({super.key});
@@ -9,7 +10,7 @@ class UnifiedAuthLoginPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('统一认证登录')),
+      appBar: AppAppBar(title: const Text('统一认证登录')),
       body: LoginShell(
         title: '登录统一认证',
         description: '登录后可进入一卡通、服务大厅等服务',

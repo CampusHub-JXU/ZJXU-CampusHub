@@ -6,6 +6,7 @@ import 'changxing_area_picker_dialog.dart';
 import 'changxing_jiada_form_validator.dart';
 import 'changxing_jiada_model.dart';
 import 'changxing_jiada_service.dart';
+import '../../shared/widgets/app_app_bar.dart';
 
 class ChangxingBackSchoolFormPage extends StatefulWidget {
   const ChangxingBackSchoolFormPage({super.key, this.applicationId});
@@ -303,7 +304,7 @@ class _ChangxingBackSchoolFormPageState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(_isEdit ? '编辑返校登记' : '返校登记')),
+      appBar: AppAppBar(title: Text(_isEdit ? '编辑返校登记' : '返校登记')),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(

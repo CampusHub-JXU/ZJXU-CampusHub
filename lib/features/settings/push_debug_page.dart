@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/push/push_service.dart';
+import '../../shared/widgets/app_app_bar.dart';
 
 class PushDebugPage extends StatelessWidget {
   const PushDebugPage({super.key});
@@ -12,7 +13,7 @@ class PushDebugPage extends StatelessWidget {
     final token = PushService.instance.fcmToken;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('推送令牌')),
+      appBar: AppAppBar(title: const Text('推送令牌')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

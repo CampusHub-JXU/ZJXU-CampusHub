@@ -12,6 +12,7 @@ import 'schedule_constants.dart';
 import 'widgets/schedule_change_sheet.dart';
 import 'widgets/schedule_grid.dart';
 import 'widgets/schedule_info_banner.dart';
+import '../../shared/widgets/app_app_bar.dart';
 
 class SchedulePage extends StatefulWidget {
   const SchedulePage({super.key});
@@ -235,7 +236,7 @@ class _SchedulePageState extends State<SchedulePage> {
       animation: _controller,
       builder: (context, _) {
         return Scaffold(
-          appBar: AppBar(
+          appBar: AppAppBar(
             title: const Text('课表'),
             actions: (_controller.loggedIn || _controller.courses.isNotEmpty)
                 ? [

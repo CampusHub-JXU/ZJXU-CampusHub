@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import 'changxing_jiada_form_validator.dart';
 import 'changxing_jiada_service.dart';
+import '../../shared/widgets/app_app_bar.dart';
 
 class ChangxingOvertimeFormPage extends StatefulWidget {
   const ChangxingOvertimeFormPage({super.key, this.applicationId});
@@ -98,7 +99,7 @@ class _ChangxingOvertimeFormPageState extends State<ChangxingOvertimeFormPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(_isEdit ? '编辑超时登记' : '超时登记')),
+      appBar: AppAppBar(title: Text(_isEdit ? '编辑超时登记' : '超时登记')),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(

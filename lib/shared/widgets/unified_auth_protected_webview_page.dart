@@ -8,6 +8,7 @@ import '../../core/logging/app_logger.dart';
 import 'auth_required_view.dart';
 import 'login_shell.dart';
 import 'webview_page.dart';
+import './app_app_bar.dart';
 
 class UnifiedAuthProtectedWebViewPage extends StatefulWidget {
   const UnifiedAuthProtectedWebViewPage({
@@ -264,7 +265,7 @@ class _UnifiedAuthProtectedWebViewPageState
   Widget build(BuildContext context) {
     if (!_authResolved) {
       return Scaffold(
-        appBar: AppBar(
+        appBar: AppAppBar(
           automaticallyImplyLeading: widget.onHomePressed == null,
           leadingWidth: _appBarLeadingWidth(context),
           leading: _buildAppBarLeading(context),
@@ -294,7 +295,7 @@ class _UnifiedAuthProtectedWebViewPageState
     }
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: AppAppBar(
         automaticallyImplyLeading: widget.onHomePressed == null,
         leadingWidth: _appBarLeadingWidth(context),
         leading: _buildAppBarLeading(context),

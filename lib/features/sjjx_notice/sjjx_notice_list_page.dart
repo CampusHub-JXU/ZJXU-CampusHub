@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import 'sjjx_notice_model.dart';
 import 'sjjx_notice_service.dart';
+import '../../shared/widgets/app_app_bar.dart';
 
 class SjjxNoticeListPage extends StatefulWidget {
   const SjjxNoticeListPage({super.key});
@@ -120,7 +121,7 @@ class _SjjxNoticeListPageState extends State<SjjxNoticeListPage> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(
+      appBar: AppAppBar(
         title: const Text('实践通知'),
         actions: [
           IconButton(icon: const Icon(Icons.refresh), onPressed: _loadNotices),

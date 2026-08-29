@@ -9,6 +9,7 @@ import 'second_classroom_model.dart';
 import 'second_classroom_service.dart';
 import 'second_classroom_subscription_service.dart';
 import 'second_classroom_wechat_launcher.dart';
+import '../../shared/widgets/app_app_bar.dart';
 
 part 'second_classroom_widgets.dart';
 
@@ -462,7 +463,7 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
     return Theme(
       data: Theme.of(context).copyWith(splashFactory: InkRipple.splashFactory),
       child: Scaffold(
-        appBar: AppBar(
+        appBar: AppAppBar(
           title: const Text('第二课堂'),
           actions: [
             IconButton(

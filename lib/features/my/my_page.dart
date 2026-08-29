@@ -11,6 +11,7 @@ import '../../shared/widgets/app_card.dart';
 import '../../shared/widgets/app_icon_badge.dart';
 import '../../shared/widgets/login_shell.dart';
 import '../schedule/schedule_service.dart';
+import '../../shared/widgets/app_app_bar.dart';
 
 class MyPage extends StatefulWidget {
   const MyPage({super.key});
@@ -183,7 +184,7 @@ class _MyPageState extends State<MyPage> {
       cs.secondary,
     );
     return Scaffold(
-      appBar: AppBar(title: const Text('我的')),
+      appBar: AppAppBar(title: const Text('我的')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
         children: [

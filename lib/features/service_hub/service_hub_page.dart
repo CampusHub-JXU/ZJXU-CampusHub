@@ -10,6 +10,7 @@ import '../../shared/widgets/app_icon_badge.dart';
 import '../../shared/widgets/app_search_field.dart';
 import 'service_hub_usage_store.dart';
 import 'widgets/service_hub_header.dart';
+import '../../shared/widgets/app_app_bar.dart';
 
 class ServiceHubPage extends StatefulWidget {
   const ServiceHubPage({super.key});
@@ -97,7 +98,7 @@ class _ServiceHubPageState extends State<ServiceHubPage> {
         : const <FeatureEntryDefinition>[];
 
     return Scaffold(
-      appBar: AppBar(title: const Text('功能')),
+      appBar: AppAppBar(title: const Text('功能')),
       body: SafeArea(
         top: false,
         child: entries.isEmpty

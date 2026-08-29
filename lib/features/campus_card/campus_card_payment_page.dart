@@ -10,6 +10,7 @@ import '../../core/auth/credential_store.dart';
 import '../../shared/widgets/unified_auth_protected_webview_page.dart';
 import 'campus_card_service.dart';
 import 'ecard_service.dart';
+import '../../shared/widgets/app_app_bar.dart';
 
 class CampusCardPaymentPage extends StatefulWidget {
   const CampusCardPaymentPage({super.key});
@@ -347,7 +348,7 @@ class _CampusCardFallbackPaymentPageState
     final colorScheme = theme.colorScheme;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('备用消费码')),
+      appBar: AppAppBar(title: const Text('备用消费码')),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null

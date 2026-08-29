@@ -8,6 +8,7 @@ import '../../core/logging/app_logger.dart';
 import 'auth_required_view.dart';
 import 'login_shell.dart';
 import 'webview_page.dart';
+import './app_app_bar.dart';
 
 bool isZhengfangLoginUrl(String currentUrl) {
   return isZhengfangLoginEntryUrl(currentUrl);
@@ -209,7 +210,7 @@ class _ZhengfangProtectedWebViewPageState
     if (_authenticated) {
       if (_preparingSession && _initialHeaders.isEmpty) {
         return Scaffold(
-          appBar: AppBar(
+          appBar: AppAppBar(
             automaticallyImplyLeading: widget.onHomePressed == null,
             leadingWidth: _appBarLeadingWidth(context),
             leading: _buildAppBarLeading(context),
@@ -237,7 +238,7 @@ class _ZhengfangProtectedWebViewPageState
     }
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: AppAppBar(
         automaticallyImplyLeading: widget.onHomePressed == null,
         leadingWidth: _appBarLeadingWidth(context),
         leading: _buildAppBarLeading(context),

@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/shortcut/app_shortcut_service.dart';
 import '../../shared/widgets/external_url_launcher.dart';
 import 'shuati_asset_service.dart';
+import '../../shared/widgets/app_app_bar.dart';
 
 class ShuatiWebViewPage extends StatefulWidget {
   const ShuatiWebViewPage({super.key});
@@ -101,7 +102,7 @@ class _ShuatiWebViewPageState extends State<ShuatiWebViewPage> {
         unawaited(_handleBackPressed());
       },
       child: Scaffold(
-        appBar: AppBar(
+        appBar: AppAppBar(
           title: const Text('刷题助手'),
           automaticallyImplyLeading: false,
           leadingWidth: leadingButtonCount * 48,
