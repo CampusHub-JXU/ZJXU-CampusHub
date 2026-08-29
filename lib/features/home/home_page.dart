@@ -6,7 +6,6 @@ import 'package:go_router/go_router.dart';
 import '../../app/app_bootstrap_controller.dart';
 import '../../app/app_theme_controller.dart';
 import '../../core/auth/zhengfang_auth.dart';
-import '../../core/config/feature_entry_catalog.dart';
 import '../../core/semester/semester_calendar.dart';
 import '../../core/theme/app_design_tokens.dart';
 import '../../core/update/update_checker.dart';
@@ -19,22 +18,25 @@ import '../exam/exam_service.dart';
 import '../grades/grades_service.dart';
 import '../schedule/schedule_cache_snapshot.dart';
 import '../schedule/schedule_service.dart';
+import 'function_zone/function_zone_section.dart';
 import 'home_controller.dart';
 import 'home_presentation_resolver.dart';
+import 'home_zone_controller.dart';
 import 'models/home_presentation.dart';
 import 'models/home_snapshot.dart';
+import 'widgets/home_ambient_background.dart';
+import 'widgets/home_asset_strip.dart';
 import 'widgets/home_background_layer.dart';
 import 'widgets/home_event_banner.dart';
 import 'widgets/home_primary_status_hero.dart';
-import 'widgets/home_quick_actions.dart';
-import 'widgets/home_status_strip.dart';
 import 'widgets/home_today_section.dart';
-import 'widgets/home_week_section.dart';
 
-/// 首页：天气 App 式的单一纵向连续滚动流。
+/// 首页：天气 App 式的单一纵向连续滚动页。
 ///
-/// 信息顺序：Primary Status Hero →（可选）事件横幅 → Status Strip
-/// （校园卡 + 电费）→ 今天 → 本周 → 常用入口 → 全部服务。
+/// 第一屏只回答「今天什么状态」：环境行 → 无框 Hero（下一节课/当前
+/// 状态）→（可选）事件横幅 → 资产行（校园卡 + 电费）→ 紧凑「今天」
+/// 列表；继续下滑进入「功能」锚点段落（Bento 网格），底部 dock 通过
+/// [HomeZoneController] 做 ScrollSpy，在 首页/功能 之间自动切换高亮。
 /// 数据获取与刷新行为与旧版一致，展示层由
 /// [resolveHomePresentation]（纯函数）从 [HomeSnapshot] 派生。
 class HomePage extends StatefulWidget {
@@ -46,6 +48,13 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final _bootstrapController = AppBootstrapController.instance;
+  final _scrollController = ScrollController();
+
+  /// 功能区锚点：dock「功能」点击的滚动定位与 ScrollSpy 判定都基于它。
+  final _functionSectionKey = GlobalKey();
+
+  /// 滚动视口：ScrollSpy 用它把功能区顶部的全局坐标换算成视口内坐标。
+  final _scrollViewportKey = GlobalKey();
 
   String _campusCardBalance = '--';
   String _dormElectricity = '--';
@@ -59,6 +68,9 @@ class _HomePageState extends State<HomePage> {
   /// 浮动底栏（约 74 高）+ 12 间距 + 24 呼吸空间；SafeArea(bottom: false)
   /// 之下还需叠加真实底部安全区。
   static const double _bottomNavClearance = 110;
+
+  /// 功能区段落顶部越过视口该比例线时，dock 高亮切到「功能」。
+  static const double _zoneTriggerViewportFraction = 0.45;
 
   bool get _isBootstrapReady =>
       _bootstrapController.phase.value.index >=
@@ -78,6 +90,10 @@ class _HomePageState extends State<HomePage> {
     UpdateChecker.instance.availableRelease.addListener(
       _onAvailableReleaseChanged,
     );
+    _scrollController.addListener(_onScrollChanged);
+    HomeZoneController.instance
+      ..scrollToTop = _scrollToTop
+      ..scrollToFunction = _scrollToFunction;
     _onBootstrapPhaseChanged();
   }
 
@@ -91,6 +107,11 @@ class _HomePageState extends State<HomePage> {
     UpdateChecker.instance.availableRelease.removeListener(
       _onAvailableReleaseChanged,
     );
+    _scrollController.removeListener(_onScrollChanged);
+    HomeZoneController.instance
+      ..scrollToTop = null
+      ..scrollToFunction = null;
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -262,10 +283,6 @@ class _HomePageState extends State<HomePage> {
 
   /// 统一的路由跳转：返回首页后按目的地触发对应的延迟刷新。
   Future<void> _pushFeatureRoute(BuildContext context, String routeName) async {
-    if (routeName == 'service-hub') {
-      context.goNamed('service-hub');
-      return;
-    }
     await context.pushNamed(routeName);
     if (!mounted) return;
     switch (routeName) {
@@ -288,19 +305,56 @@ class _HomePageState extends State<HomePage> {
     showUpdateDialog(context, release);
   }
 
+  // ── dock ScrollSpy 与锚点滚动 ─────────────────────────────────────────────
+
+  Future<void> _scrollToTop() async {
+    if (!_scrollController.hasClients) return;
+    await _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 480),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  Future<void> _scrollToFunction() async {
+    final sectionContext = _functionSectionKey.currentContext;
+    if (sectionContext == null) return;
+    await Scrollable.ensureVisible(
+      sectionContext,
+      duration: const Duration(milliseconds: 520),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  /// ScrollSpy：功能区锚点顶部越过视口 45% 线且页面已发生滚动时，
+  /// 才视为进入功能区。
+  ///
+  /// 锚点顶部坐标相对滚动视口（而非屏幕）计算，保证状态栏/SafeArea
+  /// 差异不影响判定；`offset > 0` 护栏确保空状态（首屏内容很矮、锚点
+  /// 天然高于该线）时刚打开页面 dock 仍高亮「首页」。分区实际变化时
+  /// 才通知（[HomeZoneController] 内部去重），滚动过程中不产生多余重建。
+  void _onScrollChanged() {
+    final viewportBox =
+        _scrollViewportKey.currentContext?.findRenderObject() as RenderBox?;
+    final sectionBox =
+        _functionSectionKey.currentContext?.findRenderObject() as RenderBox?;
+    if (viewportBox == null ||
+        sectionBox == null ||
+        !viewportBox.attached ||
+        !sectionBox.attached ||
+        !_scrollController.hasClients) {
+      return;
+    }
+    final sectionTop =
+        sectionBox.localToGlobal(Offset.zero, ancestor: viewportBox).dy;
+    final trigger = viewportBox.size.height * _zoneTriggerViewportFraction;
+    final inFunctionZone =
+        sectionTop <= trigger && _scrollController.offset > 0;
+    HomeZoneController.instance.updateZone(inFunctionZone ? 1 : 0);
+  }
+
   HomePresentation _resolvePresentation() {
     final now = DateTime.now();
-    final learningEntries = FeatureEntryCatalog.instance
-        .entriesByPlacement(FeatureEntryPlacement.homeLearning)
-        .map(
-          (entry) => HomeQuickActionPresentation(
-            label: entry.title,
-            icon: entry.icon,
-            routeName: entry.routeName,
-            accentColor: entry.accentColor,
-          ),
-        )
-        .toList(growable: false);
     final snapshot = HomeSnapshot(
       now: now,
       courseLoggedIn: _courseLoggedIn,
@@ -316,9 +370,14 @@ class _HomePageState extends State<HomePage> {
       nextExam: _nextExam,
       campusCardBalance: _campusCardBalance,
       dormElectricity: _dormElectricity,
-      learningEntries: learningEntries,
     );
     return resolveHomePresentation(snapshot);
+  }
+
+  /// 环境行日期，如「8月29日 周六」。
+  String _formatEnvDate(DateTime now) {
+    const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+    return '${now.month}月${now.day}日 ${weekdays[now.weekday - 1]}';
   }
 
   @override
@@ -340,20 +399,26 @@ class _HomePageState extends State<HomePage> {
         body: Stack(
           fit: StackFit.expand,
           children: [
-            if (bgImagePath != null) HomeBackgroundLayer(path: bgImagePath),
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              height: topInset,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.surface.withValues(alpha: 0.94),
+            if (bgImagePath != null) ...[
+              HomeBackgroundLayer(path: bgImagePath),
+              // 自定义背景图时在状态栏区域垫一层表面色，保证图标可读；
+              // 默认环境背景自带浅色氛围，不需要这一层。
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                height: topInset,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surface.withValues(alpha: 0.94),
+                  ),
                 ),
               ),
-            ),
+            ]
+          else
+            HomeAmbientBackground(),
             SafeArea(
               bottom: false,
               child: ValueListenableBuilder<HomeTextColorMode>(
@@ -369,74 +434,81 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildScrollBody(BuildContext context) {
     final presentation = _resolvePresentation();
+    final now = DateTime.now();
     final bottomClearance =
         MediaQuery.paddingOf(context).bottom + _bottomNavClearance;
 
-    return CustomScrollView(
-      slivers: [
-        SliverPadding(
-          padding: EdgeInsets.fromLTRB(
-            AppSpacing.pageMargin,
-            AppSpacing.xl,
-            AppSpacing.pageMargin,
-            bottomClearance,
-          ),
-          sliver: SliverList.list(
-            children: [
-              HomePrimaryStatusHero(
-                hero: presentation.hero,
-                weekLabel: presentation.week.weekLabel,
-                canShowUpdateAction: _canShowUpdateAction,
-                onOpenSchedule: () async {
-                  await _pushFeatureRoute(context, 'schedule');
-                },
-                onNotificationTap: () =>
-                    context.pushNamed('notification-center'),
-                onUpdateTap: _handleUpdateTap,
-              ),
-              if (presentation.alert != null) ...[
-                const SizedBox(height: AppSpacing.md),
-                HomeEventBanner(
-                  alert: presentation.alert!,
-                  onTap: () async {
-                    await _pushFeatureRoute(
-                      context,
-                      presentation.alert!.routeName,
-                    );
+    return SingleChildScrollView(
+      key: _scrollViewportKey,
+      controller: _scrollController,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.pageMargin,
+              AppSpacing.xl,
+              AppSpacing.pageMargin,
+              0,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                HomePrimaryStatusHero(
+                  hero: presentation.hero,
+                  envDateText: _formatEnvDate(now),
+                  envStatusText: presentation.weekLabel,
+                  canShowUpdateAction: _canShowUpdateAction,
+                  onOpenSchedule: () async {
+                    await _pushFeatureRoute(context, 'schedule');
                   },
+                  onNotificationTap: () =>
+                      context.pushNamed('notification-center'),
+                  onUpdateTap: _handleUpdateTap,
                 ),
+                if (presentation.alert != null) ...[
+                  const SizedBox(height: AppSpacing.md),
+                  HomeEventBanner(
+                    alert: presentation.alert!,
+                    onTap: () async {
+                      await _pushFeatureRoute(
+                        context,
+                        presentation.alert!.routeName,
+                      );
+                    },
+                  ),
+                ],
+                const SizedBox(height: AppSpacing.lg),
+                HomeAssetStrip(
+                  status: presentation.status,
+                  onCampusCardTap: () =>
+                      _pushFeatureRoute(context, 'campus-card'),
+                  onElectricityTap: () =>
+                      _pushFeatureRoute(context, 'dorm-electricity'),
+                ),
+                const SizedBox(height: AppSpacing.xl),
+                HomeTodaySection(today: presentation.today),
               ],
-              const SizedBox(height: AppSpacing.lg),
-              HomeStatusStrip(
-                status: presentation.status,
-                onCampusCardTap: () =>
-                    _pushFeatureRoute(context, 'campus-card'),
-                onPaymentTap: () =>
-                    _pushFeatureRoute(context, 'campus-card-payment'),
-                onElectricityTap: () =>
-                    _pushFeatureRoute(context, 'dorm-electricity'),
-              ),
-              const SizedBox(height: AppSpacing.xl),
-              HomeTodaySection(today: presentation.today),
-              const SizedBox(height: AppSpacing.xl),
-              HomeWeekSection(
-                week: presentation.week,
-                onOpenSchedule: () async {
-                  await _pushFeatureRoute(context, 'schedule');
-                },
-              ),
-              const SizedBox(height: AppSpacing.xl),
-              HomeQuickActions(
-                actions: presentation.quickActions,
-                onActionTap: (action) async {
-                  await _pushFeatureRoute(context, action.routeName);
-                },
-                onAllServicesTap: () => context.goNamed('service-hub'),
-              ),
-            ],
+            ),
           ),
-        ),
-      ],
+          // 功能区锚点：顶部留出与第一屏的呼吸空间；key 挂在含顶部
+          // 内边距的容器上，ensureVisible 滚动到位后标题不贴视口顶。
+          Container(
+            key: _functionSectionKey,
+            padding: const EdgeInsets.only(top: 48),
+            child: FunctionZoneSection(
+              campusCardBalance: _campusCardBalance,
+              dormElectricity: _dormElectricity,
+              padding: EdgeInsets.fromLTRB(
+                AppSpacing.pageMargin,
+                0,
+                AppSpacing.pageMargin,
+                bottomClearance,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

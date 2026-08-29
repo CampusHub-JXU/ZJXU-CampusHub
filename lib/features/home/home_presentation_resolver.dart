@@ -1,5 +1,3 @@
-import 'package:flutter/material.dart';
-
 import '../exam/exam_model.dart';
 import '../schedule/schedule_model.dart';
 import '../schedule/schedule_service.dart';
@@ -11,26 +9,6 @@ const _lowBalanceThreshold = 20.0;
 const _lowElectricityThreshold = 10.0;
 
 const _weekDayLabels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-
-/// 静态常用入口：付款码 / 课表 / 成绩；图书馆等学习入口由
-/// FeatureEntryCatalog(homeLearning) 追加。
-const _baseQuickActions = [
-  HomeQuickActionPresentation(
-    label: '付款码',
-    icon: Icons.qr_code_2_rounded,
-    routeName: 'campus-card-payment',
-  ),
-  HomeQuickActionPresentation(
-    label: '课表',
-    icon: Icons.calendar_month_outlined,
-    routeName: 'schedule',
-  ),
-  HomeQuickActionPresentation(
-    label: '成绩',
-    icon: Icons.grading_outlined,
-    routeName: 'grades',
-  ),
-];
 
 /// 首页展示层派生：输入 [HomeSnapshot]，输出 [HomePresentation]。
 ///
@@ -77,6 +55,13 @@ HomePresentation resolveHomePresentation(HomeSnapshot snapshot) {
     nextCourseDate: nextCourseState.date,
   );
 
+  // 周次标签：开学前 / 学期结束后 / 教学周内，供首页环境行使用。
+  final weekLabel = snapshot.isBeforeSemesterStart
+      ? '未开学'
+      : snapshot.isAfterSemesterEnd
+      ? '学期已结束'
+      : '第 ${snapshot.currentWeek} 周';
+
   return HomePresentation(
     hero: hero,
     alert: _resolveAlert(
@@ -90,13 +75,7 @@ HomePresentation resolveHomePresentation(HomeSnapshot snapshot) {
       courses: todayState.rows,
       exams: todayState.exams,
     ),
-    week: _resolveWeek(
-      snapshot: snapshot,
-      now: now,
-      weekOneStart: weekOneStart,
-      hasCourseData: hasCourseData,
-    ),
-    quickActions: [..._baseQuickActions, ...snapshot.learningEntries],
+    weekLabel: weekLabel,
   );
 }
 
@@ -402,58 +381,6 @@ HomeStatusPresentation _resolveStatus(HomeSnapshot snapshot) {
         electricityValue != null &&
         electricityValue <= _lowElectricityThreshold,
   );
-}
-
-HomeWeekPresentation _resolveWeek({
-  required HomeSnapshot snapshot,
-  required DateTime now,
-  required DateTime weekOneStart,
-  required bool hasCourseData,
-}) {
-  final inSemester =
-      !snapshot.isBeforeSemesterStart && !snapshot.isAfterSemesterEnd;
-  final courseCounts = List<int>.filled(7, 0);
-  final examCounts = List<int>.filled(7, 0);
-
-  if (inSemester) {
-    if (hasCourseData) {
-      final effectiveCourses = _effectiveWeekCourses(
-        snapshot,
-        snapshot.currentWeek,
-      );
-      for (final course in effectiveCourses) {
-        final weekday = course.weekday;
-        if (weekday >= 1 && weekday <= 7) courseCounts[weekday - 1]++;
-      }
-    }
-    final exam = snapshot.nextExam;
-    if (exam != null && exam.examDate != null && !_isExamPast(exam, now)) {
-      final examDay = _normalizeDate(exam.examDate!);
-      final examWeek = _weekForDate(examDay, weekOneStart);
-      if (examWeek == snapshot.currentWeek &&
-          examDay.weekday >= 1 &&
-          examDay.weekday <= 7) {
-        examCounts[examDay.weekday - 1]++;
-      }
-    }
-  }
-
-  final weekLabel = snapshot.isBeforeSemesterStart
-      ? '未开学'
-      : snapshot.isAfterSemesterEnd
-      ? '学期已结束'
-      : '第 ${snapshot.currentWeek} 周';
-
-  final days = List<HomeWeekDaySummary>.generate(7, (index) {
-    return HomeWeekDaySummary(
-      dayLabel: _weekDayLabels[index],
-      courseCount: courseCounts[index],
-      examCount: examCounts[index],
-      isToday: inSemester && now.weekday == index + 1,
-    );
-  });
-
-  return HomeWeekPresentation(weekLabel: weekLabel, days: days);
 }
 
 // ---------------------------------------------------------------------------

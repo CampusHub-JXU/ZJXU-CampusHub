@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/features/exam/exam_model.dart';
@@ -40,7 +39,6 @@ void main() {
       nextExam: nextExam,
       campusCardBalance: campusCardBalance,
       dormElectricity: dormElectricity,
-      learningEntries: const [],
     );
   }
 
@@ -181,7 +179,7 @@ void main() {
       expect(presentation.hero.kind, HomeHeroKind.beforeSemester);
       expect(presentation.hero.headline, '距离开学还有 9 天');
       expect(presentation.hero.timeText, '9月24日 08:00');
-      expect(presentation.week.weekLabel, '未开学');
+      expect(presentation.weekLabel, '未开学');
     });
 
     test('学期已结束', () {
@@ -191,7 +189,7 @@ void main() {
 
       expect(presentation.hero.kind, HomeHeroKind.semesterOver);
       expect(presentation.hero.headline, '学期已结束');
-      expect(presentation.week.weekLabel, '学期已结束');
+      expect(presentation.weekLabel, '学期已结束');
     });
 
     test('未登录且无缓存：登录后查看课程', () {
@@ -356,7 +354,7 @@ void main() {
     });
   });
 
-  group('Today / Week 派生', () {
+  group('Today / 周次派生', () {
     test('Today 只含今天未结束的课程与今日考试', () {
       final today = DateTime(2026, 9, 15);
       final snapshot = buildSnapshot(
@@ -379,42 +377,15 @@ void main() {
       expect(presentation.today.isEmpty, isFalse);
     });
 
-    test('Week 按教学周统计课程节数与考试场次', () {
-      final today = DateTime(2026, 9, 15); // 周二
-      final tomorrow = DateTime(2026, 9, 16); // 周三
-      final snapshot = buildSnapshot(
-        courses: [
-          courseAt(today, startLesson: 3),
-          courseAt(today, startLesson: 6, courseName: '大学英语'),
-          courseAt(tomorrow, startLesson: 1),
-          // 下周的课程（仅第 3 周起）不计入本周。
-          courseAt(
-            DateTime(2026, 9, 22),
-            startLesson: 1,
-            courseName: '下周的课',
-            weekRange: '3-16周',
-          ),
-        ],
-        nextExam: examAt(tomorrow),
-      );
+    test('教学周内周次标签为「第 N 周」', () {
+      final snapshot = buildSnapshot(currentWeek: 2);
 
       final presentation = resolveHomePresentation(snapshot);
 
-      expect(presentation.week.weekLabel, '第 2 周');
-      expect(presentation.week.days[today.weekday - 1].courseCount, 2);
-      expect(presentation.week.days[today.weekday - 1].isToday, isTrue);
-      expect(presentation.week.days[tomorrow.weekday - 1].courseCount, 1);
-      expect(presentation.week.days[tomorrow.weekday - 1].examCount, 1);
-      // 无课日显示 0（7 天 - 周二 - 周三 = 5 天）。
-      expect(
-        presentation.week.days
-            .where((d) => d.courseCount == 0 && d.examCount == 0)
-            .length,
-        5,
-      );
+      expect(presentation.weekLabel, '第 2 周');
     });
 
-    test('未开学时 Week 无课程统计但仍给出周次标签', () {
+    test('未开学时周次标签为「未开学」', () {
       final semesterStart = DateTime(2026, 9, 24);
       final snapshot = buildSnapshot(
         isBeforeSemesterStart: true,
@@ -425,41 +396,7 @@ void main() {
 
       final presentation = resolveHomePresentation(snapshot);
 
-      expect(presentation.week.weekLabel, '未开学');
-      expect(presentation.week.days.every((d) => d.courseCount == 0), isTrue);
-    });
-
-    test('Quick Actions：静态入口在前，目录学习入口追加其后', () {
-      const learningEntries = [
-        HomeQuickActionPresentation(
-          label: '图书馆',
-          icon: Icons.local_library_outlined,
-          routeName: 'library',
-        ),
-      ];
-      final snapshot = HomeSnapshot(
-        now: baseNow,
-        courseLoggedIn: true,
-        hasScheduleCache: true,
-        courses: const [],
-        changeRules: const [],
-        isBeforeSemesterStart: false,
-        isAfterSemesterEnd: false,
-        currentWeek: 2,
-        semesterStartDate: baseSemesterStart,
-        campusCardBalance: '--',
-        dormElectricity: '--',
-        learningEntries: learningEntries,
-      );
-
-      final presentation = resolveHomePresentation(snapshot);
-
-      expect(presentation.quickActions.map((a) => a.label), [
-        '付款码',
-        '课表',
-        '成绩',
-        '图书馆',
-      ]);
+      expect(presentation.weekLabel, '未开学');
     });
   });
 }

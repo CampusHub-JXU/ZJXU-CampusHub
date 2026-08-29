@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -6,13 +7,13 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:jxu_campus_hub/app/app_bootstrap_controller.dart';
-import 'package:jxu_campus_hub/core/config/feature_entry_catalog.dart';
 import 'package:jxu_campus_hub/core/semester/semester_calendar.dart';
 import 'package:jxu_campus_hub/features/campus_card/campus_card_service.dart';
 import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_service.dart';
 import 'package:jxu_campus_hub/features/exam/exam_service.dart';
 import 'package:jxu_campus_hub/features/grades/grades_service.dart';
 import 'package:jxu_campus_hub/features/home/home_page.dart';
+import 'package:jxu_campus_hub/features/home/home_zone_controller.dart';
 import 'package:jxu_campus_hub/features/home/models/home_presentation.dart';
 import 'package:jxu_campus_hub/features/home/widgets/home_event_banner.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_cache_snapshot.dart';
@@ -27,40 +28,6 @@ void main() {
     final now = DateTime.now();
     SharedPreferences.setMockInitialValues({});
     AppBootstrapController.instance.debugReset();
-    FeatureEntryCatalog.instance.debugSetEntries([
-      _entry(
-        id: 'second-classroom',
-        title: '第二课堂',
-        subtitle: '学分活动',
-        icon: Icons.workspace_premium_outlined,
-        accentColor: const Color(0xFFD4AF37),
-        sortOrder: 20,
-      ),
-      _entry(
-        id: 'library',
-        title: '图书馆',
-        subtitle: '馆藏检索',
-        icon: Icons.local_library_outlined,
-        accentColor: const Color(0xFF1565C0),
-        sortOrder: 30,
-      ),
-      _entry(
-        id: 'changxing-jiada',
-        title: '畅行嘉大',
-        subtitle: '请假与返校',
-        icon: Icons.north_rounded,
-        accentColor: const Color(0xFF2EA567),
-        sortOrder: 40,
-      ),
-      _entry(
-        id: 'sjjx-notice-list',
-        title: '实践通知',
-        subtitle: '实践教学通知',
-        icon: Icons.science_outlined,
-        accentColor: const Color(0xFF1976D2),
-        sortOrder: 50,
-      ),
-    ]);
     CampusCardService.instance.debugSetCachedBalance(null);
     DormElectricityService.instance.debugReset();
     ExamService.instance.debugReset();
@@ -70,17 +37,20 @@ void main() {
       now.month,
       now.day,
     );
+    HomeZoneController.instance.updateZone(0);
     await ScheduleService.instance.debugClearCache();
   });
 
   tearDown(() {
-    FeatureEntryCatalog.instance.debugReset();
+    // 单例注入点在页面 dispose 时置空；这里兜底防止失败用例泄漏。
+    HomeZoneController.instance
+      ..scrollToTop = null
+      ..scrollToFunction = null;
   });
 
-  /// SliverList 懒构建：视口以下的分区不会挂载。
-  /// 需要断言整页信息架构的用例放大测试视口，保证全部分区构建。
-  void useLargeSurface(WidgetTester tester) {
-    tester.view.physicalSize = const Size(1080, 2400);
+  /// 手机尺寸视口：ScrollSpy 判定依赖真实的首屏/视口比例。
+  void usePhoneSurface(WidgetTester tester) {
+    tester.view.physicalSize = const Size(412, 900);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -92,7 +62,7 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
 
     expect(find.text('登录后查看课程'), findsOneWidget);
-    // 校园卡与宿舍电费均为未获取状态，状态条显示占位符。
+    // 校园卡与宿舍电费均为未获取状态，资产行显示占位符。
     expect(find.text('--'), findsNWidgets(2));
   });
 
@@ -174,7 +144,6 @@ void main() {
   testWidgets('low electricity triggers event banner while hero shows course', (
     tester,
   ) async {
-    useLargeSurface(tester);
     final now = DateTime.now();
     final tomorrow = now.add(const Duration(days: 1));
 
@@ -213,7 +182,7 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    // Hero 保留给课表状态，低电量升级为事件横幅；状态条数值同步告警。
+    // Hero 保留给课表状态，低电量升级为事件横幅；资产行数值同步告警。
     expect(find.text('今天没课'), findsOneWidget);
     expect(find.textContaining('电量偏低'), findsOneWidget);
     expect(find.text('3.20 度'), findsOneWidget);
@@ -222,7 +191,6 @@ void main() {
   testWidgets('exam within 24h takes hero when no course remains today', (
     tester,
   ) async {
-    useLargeSurface(tester);
     final now = DateTime.now();
     final tomorrow = now.add(const Duration(days: 1));
     final tomorrowDate = DateTime(tomorrow.year, tomorrow.month, tomorrow.day);
@@ -313,25 +281,71 @@ void main() {
     expect(tapped, 1);
   });
 
-  testWidgets('renders sections and quick actions without fixed-height cards', (
+  testWidgets('renders first screen without legacy sections and bento below', (
     tester,
   ) async {
-    useLargeSurface(tester);
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
     await tester.pump();
 
-    expect(find.text('常用'), findsOneWidget);
-    expect(find.text('全部校园服务'), findsOneWidget);
-    expect(find.text('今天'), findsOneWidget);
-    expect(find.text('本周'), findsOneWidget);
-    // 付款码同时出现在状态条与常用入口。
-    expect(find.text('付款码'), findsNWidgets(2));
-    // 功能目录中的首页学习入口保留。
+    // 旧版首页区块已删除。
+    expect(find.text('本周'), findsNothing);
+    expect(find.text('常用'), findsNothing);
+    expect(find.text('全部校园服务'), findsNothing);
+    // 第一屏资产行 + 底部功能区 Bento 段落
+    // （「宿舍电费」同时出现在资产行 label 与 Bento 瓦片标题）。
+    expect(find.text('校园卡'), findsOneWidget);
+    expect(find.text('宿舍电费'), findsNWidgets(2));
+    expect(find.text('功能'), findsOneWidget);
+    expect(find.text('长按置顶'), findsOneWidget);
+    expect(find.text('课表'), findsOneWidget);
+    expect(find.text('付款码'), findsOneWidget);
     expect(find.text('图书馆'), findsOneWidget);
     expect(find.text('第二课堂'), findsOneWidget);
   });
 
-  testWidgets('hero tap navigates to schedule', (tester) async {
+  testWidgets('dock zone controller scrolls to function anchor', (tester) async {
+    usePhoneSurface(tester);
+    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    await tester.pump();
+
+    expect(HomeZoneController.instance.zoneIndex, 0);
+    expect(_scrollOffset(tester), 0);
+
+    // 滚动动画的 Future 需要 pump 推进时钟才能完成，测试里不能直接
+    // await（会死锁），fire-and-forget 后用 pumpAndSettle 等待落地。
+    unawaited(HomeZoneController.instance.requestFunction());
+    await tester.pumpAndSettle();
+
+    expect(_scrollOffset(tester), greaterThan(0));
+
+    unawaited(HomeZoneController.instance.requestHome());
+    await tester.pumpAndSettle();
+
+    expect(_scrollOffset(tester), 0);
+  });
+
+  testWidgets('scroll spy highlights function zone while scrolled down', (
+    tester,
+  ) async {
+    usePhoneSurface(tester);
+    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(HomeZoneController.instance.zoneIndex, 0);
+
+    await tester.drag(find.byType(SingleChildScrollView), const Offset(0, -600));
+    await tester.pumpAndSettle();
+    expect(HomeZoneController.instance.zoneIndex, 1);
+
+    await tester.drag(find.byType(SingleChildScrollView), const Offset(0, 600));
+    await tester.pumpAndSettle();
+    expect(HomeZoneController.instance.zoneIndex, 0);
+  });
+
+  testWidgets('exam bento tile navigates to dedicated exam entry', (
+    tester,
+  ) async {
     final router = GoRouter(
       routes: [
         GoRoute(
@@ -340,9 +354,9 @@ void main() {
           builder: (context, state) => const HomePage(),
         ),
         GoRoute(
-          path: '/schedule',
-          name: 'schedule',
-          builder: (context, state) => const Scaffold(body: Text('课表页面')),
+          path: '/exam',
+          name: 'exam',
+          builder: (context, state) => const Scaffold(body: Text('考试安排页面')),
         ),
       ],
     );
@@ -350,16 +364,17 @@ void main() {
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
     await tester.pump(const Duration(milliseconds: 200));
 
-    await tester.tap(find.text('查看课表'));
+    await tester.ensureVisible(find.text('考试安排'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('考试安排'));
     await tester.pumpAndSettle();
 
-    expect(find.text('课表页面'), findsOneWidget);
+    expect(find.text('考试安排页面'), findsOneWidget);
   });
 
-  testWidgets('library tile navigates to dedicated library entry', (
+  testWidgets('library bento tile navigates to dedicated library entry', (
     tester,
   ) async {
-    useLargeSurface(tester);
     final router = GoRouter(
       routes: [
         GoRoute(
@@ -386,10 +401,9 @@ void main() {
     expect(find.text('图书馆页面'), findsOneWidget);
   });
 
-  testWidgets('second classroom tile navigates to dedicated entry', (
+  testWidgets('second classroom bento tile navigates to dedicated entry', (
     tester,
   ) async {
-    useLargeSurface(tester);
     final router = GoRouter(
       routes: [
         GoRoute(
@@ -417,26 +431,9 @@ void main() {
   });
 }
 
-FeatureEntryDefinition _entry({
-  required String id,
-  required String title,
-  required String subtitle,
-  required IconData icon,
-  required Color accentColor,
-  required int sortOrder,
-}) {
-  return FeatureEntryDefinition(
-    id: id,
-    title: title,
-    subtitle: subtitle,
-    icon: icon,
-    accentColor: accentColor,
-    routeName: id,
-    spans: const FeatureEntryResponsiveSpan(
-      compact: FeatureEntrySpan(columns: 1, rows: 1),
-      expanded: FeatureEntrySpan(columns: 1, rows: 1),
-    ),
-    placements: const {FeatureEntryPlacement.homeLearning},
-    sortOrder: sortOrder,
+double _scrollOffset(WidgetTester tester) {
+  final scrollable = tester.state<ScrollableState>(
+    find.byType(Scrollable).first,
   );
+  return scrollable.position.pixels;
 }

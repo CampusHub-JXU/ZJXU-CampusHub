@@ -12,11 +12,11 @@ import 'package:jxu_campus_hub/features/campus_card/campus_card_page.dart';
 import 'package:jxu_campus_hub/features/campus_card/campus_card_service.dart';
 import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_service.dart';
 import 'package:jxu_campus_hub/features/exam/exam_service.dart';
+import 'package:jxu_campus_hub/features/grades/grades_service.dart';
 
 import 'package:jxu_campus_hub/features/home/home_page.dart';
 import 'package:jxu_campus_hub/features/my/my_page.dart';
 
-import 'package:jxu_campus_hub/features/service_hub/service_hub_page.dart';
 import 'package:jxu_campus_hub/features/settings/personalization_page.dart';
 import 'package:jxu_campus_hub/features/settings/settings_page.dart';
 import 'package:jxu_campus_hub/features/settings/theme_settings_page.dart';
@@ -155,15 +155,36 @@ void main() {
     );
   });
 
-  previewTest('page_service_hub_light', (tester) async {
-    await renderPage(tester, 'page_service_hub_light', const ServiceHubPage());
+  // 功能区（首页底部 Bento 段落）滚动态：整页内容在 SingleChildScrollView
+  // 中一次性构建，ensureVisible 直接定位到段落头。
+  Future<void> renderHomeFunctionScene(
+    WidgetTester tester,
+    String name, {
+    Brightness brightness = Brightness.light,
+  }) async {
+    await pumpPreviewScene(
+      tester,
+      (_) => const HomePage(),
+      brightness: brightness,
+      logicalSize: const Size(412, 1720),
+    );
+    await tester.ensureVisible(find.text('长按置顶'));
+    await tester.pumpAndSettle();
+    await expectPreviewGolden(tester, name);
+  }
+
+  previewTest('page_home_function_light', (tester) async {
+    await GlassStyleController.instance.setEnabled(true);
+    await _seedRichHomeState();
+    await renderHomeFunctionScene(tester, 'page_home_function_light');
   });
 
-  previewTest('page_service_hub_dark', (tester) async {
-    await renderPage(
+  previewTest('page_home_function_dark', (tester) async {
+    await GlassStyleController.instance.setEnabled(true);
+    await _seedRichHomeState();
+    await renderHomeFunctionScene(
       tester,
-      'page_service_hub_dark',
-      const ServiceHubPage(),
+      'page_home_function_dark',
       brightness: Brightness.dark,
     );
   });
@@ -232,8 +253,22 @@ Future<void> _seedRichHomeState() async {
         'xqmmc': '1',
       },
     ]),
+    'grades_cached_data': jsonEncode([
+      {
+        'kcmc': '高等数学 B',
+        'cj': '92',
+        'bfzcj': '92',
+        'jd': '4.0',
+        'xf': '4.5',
+      },
+      {'kcmc': '数据结构', 'cj': '88', 'bfzcj': '88', 'jd': '3.7', 'xf': '4.0'},
+      {'kcmc': '大学英语', 'cj': '85', 'bfzcj': '85', 'jd': '3.5', 'xf': '3.0'},
+    ]),
+    // restoreCache 要求 json 与时间戳同时存在才恢复。
+    'grades_cached_at': now.millisecondsSinceEpoch,
   });
   await ExamService.instance.restoreCache();
+  await GradesService.instance.restoreCache();
 
   CampusCardService.instance.debugSetCachedBalance(38.2, updatedAt: now);
   DormElectricityService.instance.debugSetCachedElectricity(

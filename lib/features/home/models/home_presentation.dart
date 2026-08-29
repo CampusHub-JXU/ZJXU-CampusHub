@@ -1,5 +1,3 @@
-import 'package:flutter/material.dart';
-
 /// Hero 状态类型，决定 Primary Status Hero 的信息形态与视觉重点。
 enum HomeHeroKind {
   /// 正在上课：显示下课时间。
@@ -144,47 +142,6 @@ class HomeTodayPresentation {
   bool get isEmpty => courses.isEmpty && exams.isEmpty;
 }
 
-/// Week Section 中一天的课程 / 考试摘要。
-class HomeWeekDaySummary {
-  const HomeWeekDaySummary({
-    required this.dayLabel,
-    required this.courseCount,
-    required this.examCount,
-    required this.isToday,
-  });
-
-  final String dayLabel;
-  final int courseCount;
-  final int examCount;
-  final bool isToday;
-}
-
-/// Week Section：教学周标签 + 周一~周日摘要。
-class HomeWeekPresentation {
-  const HomeWeekPresentation({required this.weekLabel, required this.days});
-
-  /// 「第 N 周」/「未开学」/「学期已结束」，同时供 Hero 周次 chip 使用。
-  final String weekLabel;
-  final List<HomeWeekDaySummary> days;
-}
-
-/// Quick Actions 中一个入口。
-class HomeQuickActionPresentation {
-  const HomeQuickActionPresentation({
-    required this.label,
-    required this.icon,
-    required this.routeName,
-    this.accentColor,
-  });
-
-  final String label;
-  final IconData icon;
-  final String routeName;
-
-  /// 入口强调色；为空时跟随主题色。
-  final Color? accentColor;
-}
-
 /// 首页完整展示层模型：由 [HomeSnapshot] 经纯函数 resolver 派生。
 class HomePresentation {
   const HomePresentation({
@@ -192,8 +149,7 @@ class HomePresentation {
     required this.alert,
     required this.status,
     required this.today,
-    required this.week,
-    required this.quickActions,
+    required this.weekLabel,
   });
 
   final HomeHeroPresentation hero;
@@ -202,6 +158,8 @@ class HomePresentation {
   final HomeAlertPresentation? alert;
   final HomeStatusPresentation status;
   final HomeTodayPresentation today;
-  final HomeWeekPresentation week;
-  final List<HomeQuickActionPresentation> quickActions;
+
+  /// 周次标签：「第 N 周」/「未开学」/「学期已结束」，
+  /// 供首页顶部环境行使用。
+  final String weekLabel;
 }

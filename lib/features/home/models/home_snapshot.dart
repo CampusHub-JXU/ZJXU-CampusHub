@@ -1,12 +1,11 @@
 import '../../exam/exam_model.dart';
 import '../../schedule/schedule_change_rule.dart';
 import '../../schedule/schedule_model.dart';
-import 'home_presentation.dart';
 
 /// 首页展示层快照。
 ///
 /// 把 HomePage 持有的业务数据（课表缓存、考试、余额）与日历上下文聚合成
-/// 一个纯数据对象；展示层如何组织（Hero 优先级、事件、Today/Week 摘要）
+/// 一个纯数据对象；展示层如何组织（Hero 优先级、事件、Today 摘要）
 /// 全部交给纯函数 resolver 派生，二者可以分开测试。
 class HomeSnapshot {
   const HomeSnapshot({
@@ -21,7 +20,6 @@ class HomeSnapshot {
     required this.semesterStartDate,
     required this.campusCardBalance,
     required this.dormElectricity,
-    required this.learningEntries,
     this.nextExam,
   });
 
@@ -46,7 +44,4 @@ class HomeSnapshot {
   /// 格式化后的宿舍电费文本（'--' 表示未获取）。
   final String dormElectricity;
   final ExamEntry? nextExam;
-
-  /// 功能入口目录中配置的首页学习入口（第二课堂 / 图书馆等）。
-  final List<HomeQuickActionPresentation> learningEntries;
 }

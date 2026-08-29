@@ -13,7 +13,7 @@ import 'package:flutter/material.dart';
 class AppRadius {
   AppRadius._();
 
-  /// Primary content card — HomeCardContainer, GPA summary, My status cards.
+  /// Primary content card — AppCard, GPA summary, My status cards.
   static const double card = 22;
 
   /// Brand / alternative card — ShipCard, Grade card, global CardTheme.
@@ -107,7 +107,7 @@ class AppElevation {
     offset: Offset(0, 3),
   );
 
-  /// Used by HomeCardContainer with frosted glass enabled.
+  /// Used by AppCard with frosted glass enabled.
   static const BoxShadow level2 = BoxShadow(
     color: Color(0x0F000000),
     blurRadius: 14,
