@@ -1,10 +1,11 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
-import '../../../core/theme/app_design_tokens.dart';
-import '../home_controller.dart';
+import '../../../shared/widgets/glass_container.dart';
 
+/// 首页仪表盘卡片容器。
+///
+/// 玻璃材质与参数统一由 [GlassContainer]（GlassStyleController）提供，
+/// 这里只保留首页卡片的尺寸/内边距约定与点击行为。
 class HomeCardContainer extends StatelessWidget {
   const HomeCardContainer({
     super.key,
@@ -25,93 +26,18 @@ class HomeCardContainer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<bool>(
-      valueListenable: HomeController.instance.frostedGlassEnabled,
-      builder: (context, _, _) {
-        return ValueListenableBuilder<double>(
-          valueListenable: HomeController.instance.glassBlur,
-          builder: (context, _, _) {
-            return ValueListenableBuilder<double>(
-              valueListenable: HomeController.instance.glassOpacity,
-              builder: (context, _, _) => _buildContent(context),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildContent(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final glassEnabled = HomeController.instance.frostedGlassEnabled.value;
-    final glassBlur = HomeController.instance.glassBlur.value;
-    final glassOpacity = HomeController.instance.glassOpacity.value;
-    final radius = AppRadius.cardBorder;
-    final bgColor = glassEnabled
-        ? (isDark
-              ? cs.surfaceContainerLowest.withValues(alpha: glassOpacity * 0.86)
-              : cs.surfaceContainerLowest.withValues(alpha: glassOpacity))
-        : (isDark ? cs.surfaceContainerLowest : cs.surfaceContainerLowest);
-    final borderColor = glassEnabled
-        ? (isDark
-              ? Colors.white.withValues(alpha: 0.12)
-              : cs.outlineVariant.withValues(alpha: 0.32))
-        : (isDark
-              ? cs.outline.withValues(alpha: 0.3)
-              : cs.outlineVariant.withValues(alpha: 0.48));
-    final shadowColor = isDark
-        ? Colors.black.withValues(alpha: glassEnabled ? 0.14 : 0.08)
-        : cs.shadow.withValues(alpha: glassEnabled ? 0.06 : 0.04);
-
-    final content = Container(
+    final content = GlassContainer(
+      tier: GlassTier.card,
       width: width,
       height: height,
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: radius,
-        border: Border.all(color: borderColor, width: 1),
-      ),
       padding: padding,
+      blurred: true,
+      onTap: onTap,
       child: child,
     );
 
-    final clippedContent = ClipRRect(
-      borderRadius: radius,
-      child: glassEnabled
-          ? BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: glassBlur, sigmaY: glassBlur),
-              child: content,
-            )
-          : content,
-    );
+    if (onLongPress == null) return content;
 
-    final decorated = DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: radius,
-        boxShadow: [
-          BoxShadow(
-            color: shadowColor,
-            blurRadius: glassEnabled ? 14 : 8,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: onTap == null && onLongPress == null
-          ? clippedContent
-          : Material(
-              color: Colors.transparent,
-              borderRadius: radius,
-              clipBehavior: Clip.antiAlias,
-              child: InkWell(
-                borderRadius: radius,
-                onTap: onTap,
-                onLongPress: onLongPress,
-                child: clippedContent,
-              ),
-            ),
-    );
-
-    return decorated;
+    return GestureDetector(onLongPress: onLongPress, child: content);
   }
 }

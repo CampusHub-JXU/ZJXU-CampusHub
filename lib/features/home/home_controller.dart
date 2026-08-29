@@ -34,7 +34,6 @@ class HomeController {
   static const _keyShaderEnabled = 'home_shader_enabled';
   static const _keyLegacyColorFilterEnabled = 'home_color_filter_enabled';
   static const _keyShaderMode = 'home_shader_mode';
-  static const _keyFrostedGlass = 'home_frosted_glass_enabled';
   static const _keyShaderStrength = 'home_shader_strength';
   static const _keyShaderOpacity = 'home_shader_opacity';
   static const _keyShaderAnimationSpeed = 'home_shader_animation_speed';
@@ -45,15 +44,12 @@ class HomeController {
   static const _keyBgAlignY = 'home_background_align_y';
   static const _keyBackgroundFit = 'home_background_fit';
   static const _keyBackgroundScale = 'home_background_scale';
-  static const _keyGlassBlur = 'home_glass_blur';
-  static const _keyGlassOpacity = 'home_glass_opacity';
 
   final ValueNotifier<String?> backgroundImagePath = ValueNotifier(null);
   final ValueNotifier<bool> shaderEnabled = ValueNotifier(false);
   final ValueNotifier<HomeShaderMode> shaderMode = ValueNotifier(
     HomeShaderMode.glass,
   );
-  final ValueNotifier<bool> frostedGlassEnabled = ValueNotifier(false);
   final ValueNotifier<bool> headerGlassEnabled = ValueNotifier(false);
   final ValueNotifier<double> shaderStrength = ValueNotifier(0.45);
   final ValueNotifier<double> shaderOpacity = ValueNotifier(1.0);
@@ -66,8 +62,6 @@ class HomeController {
     HomeBackgroundFit.cover,
   );
   final ValueNotifier<double> backgroundScale = ValueNotifier(1.0);
-  final ValueNotifier<double> glassBlur = ValueNotifier(10.0);
-  final ValueNotifier<double> glassOpacity = ValueNotifier(0.84);
 
   final ValueNotifier<List<Color>?> monetColors = ValueNotifier(null);
 
@@ -265,7 +259,6 @@ class HomeController {
       shaderMode.value = HomeShaderMode.values[modeIdx];
     }
 
-    frostedGlassEnabled.value = prefs.getBool(_keyFrostedGlass) ?? false;
     headerGlassEnabled.value = prefs.getBool(_keyHeaderGlass) ?? false;
 
     shaderStrength.value =
@@ -296,11 +289,6 @@ class HomeController {
     backgroundScale.value = (prefs.getDouble(_keyBackgroundScale) ?? 1.0).clamp(
       0.5,
       3.0,
-    );
-    glassBlur.value = (prefs.getDouble(_keyGlassBlur) ?? 10.0).clamp(0.0, 30.0);
-    glassOpacity.value = (prefs.getDouble(_keyGlassOpacity) ?? 0.84).clamp(
-      0.2,
-      1.0,
     );
   }
 
@@ -333,12 +321,6 @@ class HomeController {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_keyShaderMode, mode.index);
     shaderMode.value = mode;
-  }
-
-  Future<void> setFrostedGlassEnabled(bool enabled) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_keyFrostedGlass, enabled);
-    frostedGlassEnabled.value = enabled;
   }
 
   Future<void> setHeaderGlassEnabled(bool enabled) async {
@@ -393,20 +375,6 @@ class HomeController {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_keyBackgroundScale, scale);
     backgroundScale.value = scale;
-  }
-
-  Future<void> setGlassBlur(double value) async {
-    final blur = value.clamp(0.0, 30.0);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(_keyGlassBlur, blur);
-    glassBlur.value = blur;
-  }
-
-  Future<void> setGlassOpacity(double value) async {
-    final opacity = value.clamp(0.2, 1.0);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(_keyGlassOpacity, opacity);
-    glassOpacity.value = opacity;
   }
 
   Future<void> clearBackgroundImage() async {

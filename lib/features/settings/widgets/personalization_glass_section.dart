@@ -1,15 +1,21 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/glass_style_controller.dart';
 import '../../home/home_controller.dart';
 import 'glass_preset_control.dart';
 
-/// 首页个性化 — 毛玻璃 section（PRD FR-4 拆分）。
+/// 首页个性化 — 玻璃材质 section。
+///
+/// 参数（开关/模糊强度/透明度）为全局材质设置，由
+/// [GlassStyleController] 统一存储并被所有玻璃组件消费；
+/// 「课表卡片毛玻璃」是首页头卡的独立布局开关，仍归 HomeController。
 class PersonalizationGlassSection extends StatelessWidget {
   const PersonalizationGlassSection({super.key});
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final style = GlassStyleController.instance;
     return Card(
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -17,17 +23,17 @@ class PersonalizationGlassSection extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 14, 12, 8),
-            child: Text('毛玻璃效果', style: textTheme.titleSmall),
+            child: Text('玻璃材质', style: textTheme.titleSmall),
           ),
           ValueListenableBuilder<bool>(
-            valueListenable: HomeController.instance.frostedGlassEnabled,
+            valueListenable: style.enabled,
             builder: (context, glassEnabled, _) {
               return SwitchListTile.adaptive(
                 secondary: const Icon(Icons.blur_on_outlined),
-                title: const Text('首页卡片毛玻璃'),
-                subtitle: const Text('对仪表盘卡片添加模糊效果'),
+                title: const Text('玻璃材质（全局）'),
+                subtitle: const Text('关闭后所有玻璃表面降级为实色，低端机更流畅'),
                 value: glassEnabled,
-                onChanged: HomeController.instance.setFrostedGlassEnabled,
+                onChanged: (value) => style.setEnabled(value),
               );
             },
           ),
@@ -37,22 +43,22 @@ class PersonalizationGlassSection extends StatelessWidget {
               return SwitchListTile.adaptive(
                 secondary: const Icon(Icons.blur_on_outlined),
                 title: const Text('课表卡片毛玻璃'),
-                subtitle: const Text('对顶部课表卡片添加模糊效果'),
+                subtitle: const Text('背景图之上时对顶部课表卡片添加模糊'),
                 value: headerGlass,
                 onChanged: HomeController.instance.setHeaderGlassEnabled,
               );
             },
           ),
-          _buildGlassBlurSlider(),
-          _buildGlassOpacitySlider(),
+          _buildGlassBlurSlider(style),
+          _buildGlassOpacitySlider(style),
         ],
       ),
     );
   }
 
-  Widget _buildGlassBlurSlider() {
+  Widget _buildGlassBlurSlider(GlassStyleController style) {
     return ValueListenableBuilder<double>(
-      valueListenable: HomeController.instance.glassBlur,
+      valueListenable: style.blurSigma,
       builder: (context, blur, _) {
         return GlassPresetControl(
           label: '模糊强度',
@@ -63,20 +69,20 @@ class PersonalizationGlassSection extends StatelessWidget {
           decimals: 0,
           suffix: '',
           onPreview: (value) {
-            HomeController.instance.glassBlur.value = value;
+            style.blurSigma.value = value;
           },
-          onCommit: HomeController.instance.setGlassBlur,
+          onCommit: style.setBlurSigma,
         );
       },
     );
   }
 
-  Widget _buildGlassOpacitySlider() {
+  Widget _buildGlassOpacitySlider(GlassStyleController style) {
     return ValueListenableBuilder<double>(
-      valueListenable: HomeController.instance.glassOpacity,
+      valueListenable: style.tintOpacity,
       builder: (context, opacity, _) {
         return GlassPresetControl(
-          label: '卡片透明度',
+          label: '玻璃透明度',
           value: opacity,
           min: 0.2,
           max: 1.0,
@@ -85,9 +91,9 @@ class PersonalizationGlassSection extends StatelessWidget {
           suffix: '%',
           displayMultiplier: 100,
           onPreview: (value) {
-            HomeController.instance.glassOpacity.value = value;
+            style.tintOpacity.value = value;
           },
-          onCommit: HomeController.instance.setGlassOpacity,
+          onCommit: style.setTintOpacity,
         );
       },
     );

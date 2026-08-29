@@ -5,6 +5,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../app/app_theme_controller.dart';
 import '../../../core/theme/app_design_tokens.dart';
+import '../../../core/theme/glass_style_controller.dart';
 import '../home_controller.dart';
 
 class HomeHeaderCard extends StatelessWidget {
@@ -37,10 +38,10 @@ class HomeHeaderCard extends StatelessWidget {
             final effectiveGlassEnabled =
                 glassEnabled && backgroundPath != null;
             return ValueListenableBuilder<double>(
-              valueListenable: HomeController.instance.glassBlur,
+              valueListenable: GlassStyleController.instance.blurSigma,
               builder: (context, glassBlur, _) {
                 return ValueListenableBuilder<double>(
-                  valueListenable: HomeController.instance.glassOpacity,
+                  valueListenable: GlassStyleController.instance.tintOpacity,
                   builder: (context, glassOpacity, _) {
                     return ValueListenableBuilder<HomeTextColorMode>(
                       valueListenable:

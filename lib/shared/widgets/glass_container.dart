@@ -8,7 +8,8 @@ import '../../core/theme/glass_style_controller.dart';
 /// 玻璃材质等级。
 ///
 /// 同一屏的模糊层数量直接决定 GPU 开销，等级制用于约束用量：
-/// * [GlassTier.card] —— 内容卡片，默认**不模糊**（半透明 tint + 高光描边），
+/// * [GlassTier.card] —— 内容卡片，模糊强度/透明度跟随全局参数
+///   （[GlassStyleController.blurSigma]/[GlassStyleController.tintOpacity]），
 ///   只有内容明确悬浮在富媒体/背景之上时才开 [blurred]。
 /// * [GlassTier.nav] —— 底部导航 / 悬浮操作条，整屏至多一个。
 /// * [GlassTier.overlay] —— 弹层、菜单、抽屉头部，转瞬即逝，允许重模糊。
@@ -46,23 +47,19 @@ class GlassContainer extends StatelessWidget {
   final bool? blurred;
   final VoidCallback? onTap;
 
-  double get _defaultBlurSigma => switch (tier) {
-    GlassTier.card => 18,
+  double _blurSigmaFor() => switch (tier) {
+    GlassTier.card => GlassStyleController.instance.blurSigma.value,
     GlassTier.nav => 24,
     GlassTier.overlay => 30,
   };
 
-  double get _tintAlpha => switch (tier) {
-    GlassTier.card => 0.72,
-    GlassTier.nav => 0.62,
-    GlassTier.overlay => 0.86,
-  };
-
-  double get _tintAlphaDark => switch (tier) {
-    GlassTier.card => 0.58,
-    GlassTier.nav => 0.52,
-    GlassTier.overlay => 0.78,
-  };
+  double _tintAlphaFor(bool isDark) {
+    final cardAlpha = GlassStyleController.instance.tintOpacity.value;
+    if (tier == GlassTier.card) return isDark ? cardAlpha * 0.86 : cardAlpha;
+    return isDark
+        ? (tier == GlassTier.nav ? 0.52 : 0.78)
+        : (tier == GlassTier.nav ? 0.62 : 0.86);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -70,88 +67,114 @@ class GlassContainer extends StatelessWidget {
     final cs = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
     final radius = borderRadius ?? AppRadius.cardBorder;
+    final style = GlassStyleController.instance;
 
     return ValueListenableBuilder<bool>(
-      valueListenable: GlassStyleController.instance.enabled,
+      valueListenable: style.enabled,
       builder: (context, glassEnabled, _) {
-        final useBlur = glassEnabled && (blurred ?? tier != GlassTier.card);
-        final tintAlpha = isDark ? _tintAlphaDark : _tintAlpha;
-        final tintColor = isDark
-            ? cs.surfaceContainerLow
-            : cs.surfaceContainerLowest;
-        final borderAlpha = glassEnabled
-            ? (isDark ? 0.14 : 0.70)
-            : (isDark ? 0.10 : 0.55);
-        final borderColor = isDark
-            ? Colors.white.withValues(alpha: borderAlpha)
-            : cs.outlineVariant.withValues(alpha: borderAlpha);
-
-        // 玻璃 tint 与边缘高光合成为一个渐变（gradient 会覆盖 color）：
-        // 顶部受光面提亮更多，底部回光面几乎保持 tint 本色。
-        Color tintWithHighlight(double highlightAlpha) => Color.alphaBlend(
-          Colors.white.withValues(alpha: highlightAlpha),
-          tintColor.withValues(alpha: tintAlpha),
-        );
-
-        final content = Container(
-          width: width,
-          height: height,
-          alignment: alignment,
-          padding: padding,
-          decoration: ShapeDecoration(
-            color: useBlur
-                ? null
-                : (isDark ? cs.surfaceContainerLow : cs.surfaceContainerLowest),
-            gradient: useBlur
-                ? LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      tintWithHighlight(isDark ? 0.10 : 0.34),
-                      tintWithHighlight(isDark ? 0.02 : 0.08),
-                    ],
-                  )
-                : null,
-            shadows: useBlur ? _shadows(isDark) : null,
-            shape: RoundedSuperellipseBorder(
-              borderRadius: radius,
-              side: BorderSide(color: borderColor, width: isDark ? 0.8 : 1.0),
-            ),
-          ),
-          child: child,
-        );
-
-        // 关键：裁剪必须放在 BackdropFilter 的祖先位置。
-        // BackdropFilter 会把模糊作用于整个父层 backdrop 而非自身 bounds，
-        // 不先裁剪就会把整屏内容糊掉。
-        final glassLayer = ClipRRect(
-          borderRadius: radius,
-          child: useBlur
-              ? BackdropFilter(
-                  filter: ImageFilter.compose(
-                    outer: ImageFilter.blur(
-                      sigmaX: _defaultBlurSigma,
-                      sigmaY: _defaultBlurSigma,
-                    ),
-                    inner: const ColorFilter.matrix(<double>[
-                      1.06, 0, 0, 0, 0, //
-                      0, 1.06, 0, 0, 0, //
-                      0, 0, 1.06, 0, 0, //
-                      0, 0, 0, 1, 0,
-                    ]),
-                  ),
-                  child: content,
-                )
-              : content,
-        );
-
-        if (onTap == null) return glassLayer;
-
-        return Material(
-          color: Colors.transparent,
-          child: InkWell(borderRadius: radius, onTap: onTap, child: glassLayer),
+        return ValueListenableBuilder<double>(
+          valueListenable: style.blurSigma,
+          builder: (context, _, _) {
+            return ValueListenableBuilder<double>(
+              valueListenable: style.tintOpacity,
+              builder: (context, _, _) {
+                return _buildSurface(
+                  context,
+                  glassEnabled: glassEnabled,
+                  isDark: isDark,
+                  cs: cs,
+                  radius: radius,
+                );
+              },
+            );
+          },
         );
       },
+    );
+  }
+
+  Widget _buildSurface(
+    BuildContext context, {
+    required bool glassEnabled,
+    required bool isDark,
+    required ColorScheme cs,
+    required BorderRadius radius,
+  }) {
+    final useBlur = glassEnabled && (blurred ?? tier != GlassTier.card);
+    final tintColor = isDark
+        ? cs.surfaceContainerLow
+        : cs.surfaceContainerLowest;
+    final borderAlpha = glassEnabled
+        ? (isDark ? 0.14 : 0.70)
+        : (isDark ? 0.10 : 0.55);
+    final borderColor = isDark
+        ? Colors.white.withValues(alpha: borderAlpha)
+        : cs.outlineVariant.withValues(alpha: borderAlpha);
+
+    // 玻璃 tint 与边缘高光合成为一个渐变（gradient 会覆盖 color）：
+    // 顶部受光面提亮更多，底部回光面几乎保持 tint 本色。
+    Color tintWithHighlight(double highlightAlpha) => Color.alphaBlend(
+      Colors.white.withValues(alpha: highlightAlpha),
+      tintColor.withValues(alpha: _tintAlphaFor(isDark)),
+    );
+
+    final content = Container(
+      width: width,
+      height: height,
+      alignment: alignment,
+      padding: padding,
+      decoration: ShapeDecoration(
+        color: useBlur
+            ? null
+            : (isDark ? cs.surfaceContainerLow : cs.surfaceContainerLowest),
+        gradient: useBlur
+            ? LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  tintWithHighlight(isDark ? 0.10 : 0.34),
+                  tintWithHighlight(isDark ? 0.02 : 0.08),
+                ],
+              )
+            : null,
+        shadows: useBlur ? _shadows(isDark) : null,
+        shape: RoundedSuperellipseBorder(
+          borderRadius: radius,
+          side: BorderSide(color: borderColor, width: isDark ? 0.8 : 1.0),
+        ),
+      ),
+      child: child,
+    );
+
+    // 关键：裁剪必须放在 BackdropFilter 的祖先位置。
+    // BackdropFilter 会把模糊作用于整个父层 backdrop 而非自身 bounds，
+    // 不先裁剪就会把整屏内容糊掉。
+    final glassLayer = ClipRRect(
+      borderRadius: radius,
+      child: useBlur
+          ? BackdropFilter(
+              filter: ImageFilter.compose(
+                outer: ImageFilter.blur(
+                  sigmaX: _blurSigmaFor(),
+                  sigmaY: _blurSigmaFor(),
+                ),
+                inner: const ColorFilter.matrix(<double>[
+                  1.06, 0, 0, 0, 0, //
+                  0, 1.06, 0, 0, 0, //
+                  0, 0, 1.06, 0, 0, //
+                  0, 0, 0, 1, 0,
+                ]),
+              ),
+              child: content,
+            )
+          : content,
+    );
+
+    if (onTap == null) return glassLayer;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(borderRadius: radius, onTap: onTap, child: glassLayer),
     );
   }
 

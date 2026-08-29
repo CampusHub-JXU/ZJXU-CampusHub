@@ -4,11 +4,13 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_design_tokens.dart';
+import '../../core/theme/glass_style_controller.dart';
 import '../home/home_controller.dart';
 import '../home/widgets/home_background_layer.dart';
 import 'widgets/personalization_background_section.dart';
 import 'widgets/personalization_glass_section.dart';
 import 'widgets/personalization_shader_section.dart';
+import '../../shared/widgets/app_app_bar.dart';
 
 class PersonalizationPage extends StatefulWidget {
   const PersonalizationPage({super.key});
@@ -26,7 +28,7 @@ class _PersonalizationPageState extends State<PersonalizationPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('首页个性化')),
+      appBar: AppAppBar(title: const Text('首页个性化')),
       body: Column(
         children: [
           Padding(
@@ -233,13 +235,13 @@ class _PersonalizationPageState extends State<PersonalizationPage> {
       valueListenable: HomeController.instance.headerGlassEnabled,
       builder: (context, headerGlassEnabled, _) {
         return ValueListenableBuilder<bool>(
-          valueListenable: HomeController.instance.frostedGlassEnabled,
+          valueListenable: GlassStyleController.instance.enabled,
           builder: (context, cardGlassEnabled, _) {
             return ValueListenableBuilder<double>(
-              valueListenable: HomeController.instance.glassBlur,
+              valueListenable: GlassStyleController.instance.blurSigma,
               builder: (context, glassBlur, _) {
                 return ValueListenableBuilder<double>(
-                  valueListenable: HomeController.instance.glassOpacity,
+                  valueListenable: GlassStyleController.instance.tintOpacity,
                   builder: (context, glassOpacity, _) {
                     return _buildHomeWidgetPreviewBoxes(
                       context,

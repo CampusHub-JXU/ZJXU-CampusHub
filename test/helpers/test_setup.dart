@@ -11,6 +11,7 @@ import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/core/network/dio_client.dart';
 import 'package:jxu_campus_hub/core/logging/app_logger.dart';
+import 'package:jxu_campus_hub/core/theme/glass_style_controller.dart';
 import 'package:jxu_campus_hub/core/network/network_settings.dart';
 import 'package:jxu_campus_hub/core/push/push_service.dart';
 import 'package:jxu_campus_hub/core/shortcut/app_shortcut_service.dart';
@@ -37,6 +38,7 @@ Future<void> resetTestEnvironment() async {
   );
 
   TextScaleController.instance.debugReset();
+  GlassStyleController.instance.debugReset();
   AppPreferencesController.instance.debugReset();
   ThemeModeController.instance.debugReset();
   UnifiedAuthService.instance.debugReset();
