@@ -37,7 +37,12 @@ void main() {
 
       expect(find.text('统一认证（含一卡通）'), findsOneWidget);
       expect(find.text('已登录'), findsNothing);
-      expect(find.text('未登录'), findsOneWidget);
+      // 新版行瓦片：副标题与行尾状态徽标都会出现「未登录」。
+      expect(find.text('未登录'), findsWidgets);
+      expect(
+        tester.widget<Text>(find.byKey(const Key('my_campus_status'))).data,
+        '未登录',
+      );
     },
   );
 
@@ -55,6 +60,11 @@ void main() {
     await tester.pump();
 
     expect(find.text('统一认证（含一卡通）'), findsOneWidget);
-    expect(find.text('已登录'), findsOneWidget);
+    // 副标题与行尾状态徽标均为「已登录」。
+    expect(find.text('已登录'), findsWidgets);
+    expect(
+      tester.widget<Text>(find.byKey(const Key('my_campus_status'))).data,
+      '已登录',
+    );
   });
 }

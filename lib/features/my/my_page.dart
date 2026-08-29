@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/app_theme_controller.dart';
+import '../../app/theme.dart';
 import '../../core/auth/unified_auth.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/theme/app_design_tokens.dart';
@@ -184,209 +185,258 @@ class _MyPageState extends State<MyPage> {
       cs.secondary,
     );
     return Scaffold(
-      appBar: AppAppBar(title: const Text('我的')),
+      // 无标题细顶栏：标题语义由正文 large title「我的」承担，
+      // 与主页/功能的单滚动观感保持一致。
+      appBar: AppAppBar(toolbarHeight: 44),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-            child: Row(
-              children: [
-                AppIconBadge(
-                  icon: Icons.account_circle_outlined,
-                  accentColor: accountIconColor,
-                  size: AppIconBadgeSize.large,
+          // Apple large-title 头部：无卡容器，纯文字块与卡片左缘对齐。
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '我的',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w700,
+                  height: 1.2,
+                  color: cs.onSurface,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '账户中心',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: cs.onSurface,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '管理统一认证（含一卡通）、教务登录状态',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: cs.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '管理统一认证（含一卡通）、教务登录状态',
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.25,
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          AppCard(
+            padding: EdgeInsets.zero,
+            child: Column(
+              children: [
+                _GroupRowTile(
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(AppRadius.card),
                   ),
+                  icon: Icons.account_balance_wallet_outlined,
+                  iconColor: accountIconColor,
+                  title: '统一认证（含一卡通）',
+                  subtitle: _campusSubtitle(),
+                  status: _buildStatusIndicator(
+                    checking: _campusStatusChecking,
+                    loggedIn: _campusLoggedIn,
+                    label: _campusLoggedIn ? '已登录' : '未登录',
+                    statusKey: const Key('my_campus_status'),
+                  ),
+                  onTap: () {
+                    if (_campusLoggedIn) {
+                      unawaited(_reloginCampus());
+                    } else {
+                      unawaited(_openCampusCardAction());
+                    }
+                  },
+                ),
+                _buildHairlineDivider(context),
+                _GroupRowTile(
+                  borderRadius: const BorderRadius.vertical(
+                    bottom: Radius.circular(AppRadius.card),
+                  ),
+                  icon: Icons.school_outlined,
+                  iconColor: academicIconColor,
+                  title: '教务系统',
+                  subtitle: _academicSubtitle(),
+                  status: _buildStatusIndicator(
+                    checking: _academicStatusChecking,
+                    loggedIn: _academicLoggedIn,
+                    label: _academicLoggedIn ? '已登录' : '未登录',
+                    statusKey: const Key('my_academic_status'),
+                  ),
+                  trailing: _academicLoggedIn
+                      ? _buildAcademicEnterButton(context)
+                      : null,
+                  onTap: () => unawaited(_loginAcademic()),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 14),
-          _AccountStatusCard(
-            icon: Icons.account_balance_wallet_outlined,
-            iconColor: accountIconColor,
-            title: '统一认证（含一卡通）',
-            subtitle: _campusSubtitle(),
-            primaryActionLabel: '登录',
-            onPrimaryAction: _campusLoggedIn
-                ? _reloginCampus
-                : _openCampusCardAction,
-            secondaryActionLabel: null,
-            onSecondaryAction: null,
-          ),
           const SizedBox(height: 12),
-          _AccountStatusCard(
-            icon: Icons.school_outlined,
-            iconColor: academicIconColor,
-            title: '教务系统',
-            subtitle: _academicSubtitle(),
-            primaryActionLabel: '登录',
-            onPrimaryAction: _loginAcademic,
-            secondaryActionLabel: '进入教务系统',
-            onSecondaryAction: _openAcademicH5,
-          ),
-          const SizedBox(height: 18),
-          GestureDetector(
-            onTap: () async {
-              await context.pushNamed('settings');
-              if (!mounted) return;
-              await _refreshStatus();
-            },
-            child: AppCard(
-              padding: const EdgeInsets.all(20),
-              elevation: AppElevation.level3,
-              child: Row(
-                children: [
-                  AppIconBadge(
-                    icon: Icons.settings_outlined,
-                    accentColor: cs.primary,
-                    size: AppIconBadgeSize.large,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '设置',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: cs.onSurface,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '主题、学期、网络与调试选项',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: cs.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(
-                    Icons.chevron_right,
-                    size: 20,
-                    color: cs.onSurfaceVariant,
-                  ),
-                ],
-              ),
+          AppCard(
+            padding: EdgeInsets.zero,
+            child: _GroupRowTile(
+              borderRadius: BorderRadius.circular(AppRadius.card),
+              icon: Icons.settings_outlined,
+              iconColor: cs.primary,
+              title: '设置',
+              subtitle: '主题、学期、网络与调试选项',
+              onTap: () async {
+                await context.pushNamed('settings');
+                if (!mounted) return;
+                await _refreshStatus();
+              },
             ),
           ),
         ],
       ),
     );
   }
+
+  /// 组内行间发丝分隔线：左缩进对齐文本起始列（行 padding 16 + 徽标 + 间距 10）。
+  Widget _buildHairlineDivider(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      height: 1,
+      margin: const EdgeInsets.only(left: 16 + AppBadgeSize.smallBox + 10),
+      color: cs.outlineVariant.withValues(alpha: 0.35),
+    );
+  }
+
+  /// 行尾状态指示：校验中为小号加载圈，稳定后是「圆点 + 文字」。
+  ///
+  /// 已登录用品牌绿点，未登录退回中性灰，与首页状态语义一致。
+  Widget _buildStatusIndicator({
+    required bool checking,
+    required bool loggedIn,
+    required String label,
+    required Key statusKey,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    if (checking) {
+      return const SizedBox.square(
+        dimension: 14,
+        child: CircularProgressIndicator(strokeWidth: 2.0),
+      );
+    }
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 7,
+          height: 7,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: loggedIn ? AppColors.success : cs.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(width: 5),
+        Text(
+          label,
+          key: statusKey,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+            color: cs.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 「进入」紧凑文字按钮：直达教务系统 H5 门户（不丢可达性）。
+  Widget _buildAcademicEnterButton(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return TextButton(
+      onPressed: () => unawaited(_openAcademicH5()),
+      style: TextButton.styleFrom(
+        foregroundColor: cs.primary,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: VisualDensity.compact,
+        textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+      ),
+      child: const Text('进入'),
+    );
+  }
 }
 
-class _AccountStatusCard extends StatelessWidget {
-  const _AccountStatusCard({
+/// 分组卡内的 iOS Settings 式横排行：徽标 + 文字列 + 行尾状态与箭头。
+///
+/// 文字规格与首页功能瓦片一致（标题 15/w600、副标题 13），内容垂直居中；
+/// 涟漪经 [RoundedSuperellipseBorder] 裁剪，组内首末行只圆外侧角，
+/// 让按压高光贴住卡面轮廓。
+class _GroupRowTile extends StatelessWidget {
+  const _GroupRowTile({
+    required this.borderRadius,
     required this.icon,
     required this.iconColor,
     required this.title,
     required this.subtitle,
-    required this.primaryActionLabel,
-    required this.onPrimaryAction,
-    this.secondaryActionLabel,
-    this.onSecondaryAction,
+    required this.onTap,
+    this.status,
+    this.trailing,
   });
 
+  /// 涟漪裁剪形状：组内首行只圆上角、末行只圆下角，单行组取整卡圆角。
+  final BorderRadius borderRadius;
   final IconData icon;
   final Color iconColor;
   final String title;
   final String subtitle;
-  final String primaryActionLabel;
-  final VoidCallback onPrimaryAction;
-  final String? secondaryActionLabel;
-  final VoidCallback? onSecondaryAction;
+  final VoidCallback onTap;
+  final Widget? status;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return AppCard(
-      padding: const EdgeInsets.all(20),
-      elevation: AppElevation.level3,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    return Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        onTap: onTap,
+        customBorder: RoundedSuperellipseBorder(borderRadius: borderRadius),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
             children: [
               AppIconBadge(
                 icon: icon,
                 accentColor: iconColor,
-                size: AppIconBadgeSize.large,
+                size: AppIconBadgeSize.small,
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
                       title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 16,
+                        fontSize: 15,
                         fontWeight: FontWeight.w600,
+                        height: 1.2,
                         color: cs.onSurface,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 13,
+                        height: 1.25,
                         color: cs.onSurfaceVariant,
                       ),
                     ),
                   ],
                 ),
               ),
+              if (status != null) ...[const SizedBox(width: 8), status!],
+              if (trailing != null) ...[const SizedBox(width: 4), trailing!],
+              const SizedBox(width: 2),
+              Icon(Icons.chevron_right, size: 20, color: cs.onSurfaceVariant),
             ],
           ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              FilledButton.icon(
-                onPressed: onPrimaryAction,
-                icon: const Icon(Icons.login_rounded, size: 18),
-                label: Text(primaryActionLabel),
-              ),
-              if (secondaryActionLabel != null &&
-                  onSecondaryAction != null) ...[
-                const SizedBox(width: 10),
-                OutlinedButton.icon(
-                  onPressed: onSecondaryAction,
-                  icon: const Icon(Icons.refresh_rounded, size: 18),
-                  label: Text(secondaryActionLabel!),
-                ),
-              ],
-            ],
-          ),
-        ],
+        ),
       ),
     );
   }
