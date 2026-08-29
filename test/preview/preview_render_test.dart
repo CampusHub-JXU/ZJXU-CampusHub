@@ -22,11 +22,17 @@ import 'package:jxu_campus_hub/features/settings/settings_page.dart';
 import 'package:jxu_campus_hub/features/settings/theme_settings_page.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_app_bar.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_card.dart';
+import 'package:jxu_campus_hub/shared/widgets/app_dropdown.dart';
+import 'package:jxu_campus_hub/shared/widgets/app_empty_view.dart';
+import 'package:jxu_campus_hub/shared/widgets/app_error_view.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_icon_badge.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_search_field.dart';
+import 'package:jxu_campus_hub/shared/widgets/app_tile_surface.dart';
 import 'package:jxu_campus_hub/shared/widgets/auth_required_view.dart';
+import 'package:jxu_campus_hub/shared/widgets/balance_card.dart';
 import 'package:jxu_campus_hub/shared/widgets/glass_container.dart';
 import 'package:jxu_campus_hub/shared/widgets/glass_nav_bar.dart';
+import 'package:jxu_campus_hub/shared/widgets/scholar_button.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_cache_snapshot.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_model.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';
@@ -83,7 +89,11 @@ void main() {
   // ── 组件画廊 ────────────────────────────────────────────────────────────
 
   previewTest('gallery_light', (tester) async {
-    await pumpPreviewScene(tester, (_) => _ComponentGallery());
+    await pumpPreviewScene(
+      tester,
+      (_) => _ComponentGallery(),
+      logicalSize: const Size(412, 3140),
+    );
     await expectPreviewGolden(tester, 'gallery_light');
   });
 
@@ -92,6 +102,7 @@ void main() {
       tester,
       (_) => _ComponentGallery(),
       brightness: Brightness.dark,
+      logicalSize: const Size(412, 3140),
     );
     await expectPreviewGolden(tester, 'gallery_dark');
   });
@@ -368,6 +379,96 @@ class _ComponentGallery extends StatelessWidget {
             glassEnabled: true,
             child: Text('玻璃 tint 卡片（无 BackdropFilter）'),
           ),
+          _sectionLabel('AppTileSurface · 质感瓦片（功能区同款）'),
+          AppTileSurface(
+            onTap: () {},
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 13),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const AppIconBadge(
+                  icon: Icons.calendar_month_rounded,
+                  accentColor: Color(0xFF8B1A2D),
+                  size: AppIconBadgeSize.small,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '整行瓦片 · rank0',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '受光描边 + 高光 + 投影，统计行只读缓存',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: AppTileSurface(
+                  onTap: () {},
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 11),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const AppIconBadge(
+                        icon: Icons.school_outlined,
+                        accentColor: Color(0xFFD4AF37),
+                        size: AppIconBadgeSize.small,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '半宽小瓦片',
+                        style: Theme.of(context).textTheme.titleSmall
+                            ?.copyWith(fontSize: 15),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: AppTileSurface(
+                  onTap: () {},
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 11),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const AppIconBadge(
+                        icon: Icons.account_balance_wallet_outlined,
+                        accentColor: Color(0xFF1565C0),
+                        size: AppIconBadgeSize.small,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '半宽小瓦片',
+                        style: Theme.of(context).textTheme.titleSmall
+                            ?.copyWith(fontSize: 15),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          _sectionLabel('质感对比 · 旧配方 vs 新配方'),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: _OldSurfaceSample(isDark: Theme.of(context).brightness == Brightness.dark),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(child: _NewSurfaceSample()),
+            ],
+          ),
           _sectionLabel('GlassContainer · 三级材质'),
           GlassContainer(
             tier: GlassTier.card,
@@ -410,6 +511,15 @@ class _ComponentGallery extends StatelessWidget {
               ],
             ),
           ),
+          _sectionLabel('BalanceCard · 一卡通余额卡'),
+          BalanceCard(
+            balance: 38.20,
+            yesterdaySpent: 12.50,
+            onTap: () {},
+            onPaymentTap: () {},
+            onRechargeTap: () {},
+            onBillTap: () {},
+          ),
           _sectionLabel('AppIconBadge · 三档尺寸'),
           const Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -438,6 +548,31 @@ class _ComponentGallery extends StatelessWidget {
             onChanged: (_) {},
             onClear: () {},
           ),
+          _sectionLabel('AppDropdown'),
+          AppDropdown<String>(
+            value: '2025-2026-1',
+            items: const [
+              AppDropdownItem(value: '2025-2026-1', label: '2025-2026 学年 第一学期'),
+              AppDropdownItem(value: '2024-2025-2', label: '2024-2025 学年 第二学期'),
+            ],
+            onChanged: (_) {},
+            expanded: true,
+            prefixIcon: Icons.event_note_outlined,
+          ),
+          _sectionLabel('ScholarButton · 品牌按钮'),
+          Row(
+            children: [
+              ScholarButton(
+                onPressed: () {},
+                child: const Text('主操作'),
+              ),
+              const SizedBox(width: 10),
+              ScholarSecondaryButton(
+                onPressed: () {},
+                child: const Text('次操作'),
+              ),
+            ],
+          ),
           _sectionLabel('按钮与选择控件'),
           Wrap(
             spacing: 10,
@@ -462,8 +597,122 @@ class _ComponentGallery extends StatelessWidget {
             buttonLabel: '去登录',
             onAction: () {},
           ),
+          _sectionLabel('AppEmptyView · 空状态'),
+          const AppEmptyView(
+            title: '今天没有课程',
+            message: '休息一下，或去课表看看本周安排。',
+          ),
+          _sectionLabel('AppErrorView · 错误状态'),
+          AppErrorView(
+            message: '网络连接超时，请检查网络后重试。',
+            onRetry: () {},
+          ),
+          _sectionLabel('GlassNavBar · 浮动 dock'),
+          GlassNavBar(
+            destinations: const [
+              GlassNavBarDestination(
+                icon: Icons.home_outlined,
+                selectedIcon: Icons.home_rounded,
+                label: '首页',
+              ),
+              GlassNavBarDestination(
+                icon: Icons.widgets_outlined,
+                selectedIcon: Icons.widgets_rounded,
+                label: '功能',
+              ),
+              GlassNavBarDestination(
+                icon: Icons.person_outline,
+                selectedIcon: Icons.person_rounded,
+                label: '我的',
+              ),
+            ],
+            currentIndex: 0,
+            onDestinationSelected: (_) {},
+          ),
         ],
       ),
+    );
+  }
+}
+
+/// 旧卡面配方样张：平色填充 + 均匀细描边，无高光无投影（用于质感对比）。
+class _OldSurfaceSample extends StatelessWidget {
+  const _OldSurfaceSample({required this.isDark});
+
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          height: 120,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: isDark ? cs.surfaceContainerLow : cs.surfaceContainerLowest,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.14)
+                  : cs.outlineVariant.withValues(alpha: 0.55),
+            ),
+          ),
+          child: const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              AppIconBadge(
+                icon: Icons.calendar_month_rounded,
+                accentColor: Color(0xFF8B1A2D),
+                size: AppIconBadgeSize.small,
+              ),
+              Spacer(),
+              Text('旧 · 平色 + 均匀描边'),
+            ],
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text('改前', style: Theme.of(context).textTheme.bodySmall),
+      ],
+    );
+  }
+}
+
+/// 新卡面配方样张：AppTileSurface（受光描边 + 高光 + 投影）。
+class _NewSurfaceSample extends StatelessWidget {
+  const _NewSurfaceSample();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          height: 120,
+          child: AppTileSurface(
+            borderRadius: BorderRadius.circular(20),
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const AppIconBadge(
+                  icon: Icons.calendar_month_rounded,
+                  accentColor: Color(0xFF8B1A2D),
+                  size: AppIconBadgeSize.small,
+                ),
+                const Spacer(),
+                Text(
+                  '新 · 受光边 + 高光 + 投影',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text('改后', style: Theme.of(context).textTheme.bodySmall),
+      ],
     );
   }
 }
