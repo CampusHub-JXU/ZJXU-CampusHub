@@ -27,10 +27,15 @@ class AppIconBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final iconColor = AppThemeController.instance.resolveIconColor(
+    var iconColor = AppThemeController.instance.resolveIconColor(
       context,
       accentColor,
     );
+    // 深色模式把饱和 accent 提亮一档：暗底上原色（如酒红）会沉成泥色，
+    // 徽标几乎读不出图形。
+    if (Theme.of(context).brightness == Brightness.dark) {
+      iconColor = Color.lerp(iconColor, Colors.white, 0.15)!;
+    }
     final spec = _specFor(size);
     return Container(
       width: spec.box,

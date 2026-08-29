@@ -2,22 +2,27 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_design_tokens.dart';
 import '../../core/theme/glass_style_controller.dart';
+import 'app_surface_style.dart';
 
 /// 统一的内容卡片容器。
 ///
 /// 收敛散落在各页面的内联 `Container + BoxDecoration` 卡片，统一圆角/边框/阴影语义。
-/// 圆角默认 [AppRadius.card]；阴影默认 [AppElevation.level1]。
+/// 圆角默认 [AppRadius.card]。
 ///
-/// 毛玻璃开关与材质参数（tint 透明度）统一从 [GlassStyleController]
-/// 读取（`ValueListenableBuilder` 监听 enabled/tintOpacity），本组件
-/// 不再持有独立数值参数，保证全局玻璃状态一致；`shared/widgets` → `core/theme`
-/// 仍为 DAG 单向依赖。
+/// 卡面质感由 [appSurfaceRingDecoration] / [appSurfaceFillDecoration] /
+/// [appSurfaceShadows] 三件套提供：定向受光描边 + 受光高光 + 落底投影，
+/// 浅/深双模式独立调参（见 app_surface_style.dart）。玻璃参数全部来自
+/// [GlassStyleController]（`ValueListenableBuilder` 监听 enabled/tintOpacity），
+/// 本组件不持有独立数值参数；`glassEnabled = false` 时直接走实色形态。
 ///
-/// 卡片是内容面，玻璃路径**保持纯 tint、永不加 BackdropFilter**（内容背后
-/// 没有富媒体，模糊只会白耗 GPU）：只叠加 tint 渐变 + 高光描边 + squircle，
-/// 视觉参数与 GlassContainer card tier 对齐。需要真实模糊的悬浮卡片请改用
-/// GlassContainer（ClipRRect 必须处于 BackdropFilter 的祖先位置，否则会
-/// 糊整屏）。全局玻璃开关关闭时降级为与实色卡片一致的外观。
+/// 卡片是内容面，**永不创建 BackdropFilter**（内容背后没有富媒体，模糊只会
+/// 白耗 GPU）：玻璃形态只是 tint + sheen 渐变。需要真实模糊的悬浮卡片请改用
+/// GlassContainer（ClipRRect 必须处于 BackdropFilter 的祖先位置，否则会糊
+/// 整屏）。全局玻璃开关关闭时自动降级为实色形态。
+///
+/// [backgroundBuilder] 提供自定义背景（品牌渐变卡等）时整幅铺满、不参与
+/// ring/fill 配方，此时投影回退为 [elevation] 令牌语义；标准卡面的投影固定
+/// 使用配方双层影，[elevation] 不生效。
 ///
 /// 严禁用于底部导航、输入表单主区域、长列表承载层（遵循 design-guidelines 红线）。
 class AppCard extends StatelessWidget {
@@ -39,6 +44,9 @@ class AppCard extends StatelessWidget {
   final EdgeInsetsGeometry padding;
   final double radius;
   final bool glassEnabled;
+
+  /// 仅自定义背景（[backgroundBuilder]）卡片使用：以令牌几何 + 主题影色
+  /// 构建投影；标准卡面使用 [appSurfaceShadows] 配方，此参数被忽略。
   final BoxShadow elevation;
 
   /// 可选背景装饰（如渐变品牌卡），覆盖默认 Surface 填色。
@@ -50,7 +58,7 @@ class AppCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!glassEnabled) return _buildSolid(context);
+    if (!glassEnabled) return _buildSurface(context, glassEnabled: false);
 
     final style = GlassStyleController.instance;
     return ValueListenableBuilder<bool>(
@@ -59,127 +67,93 @@ class AppCard extends StatelessWidget {
         return ValueListenableBuilder<double>(
           valueListenable: style.tintOpacity,
           builder: (context, tintOpacity, _) {
-            return glassOn
-                ? _buildGlass(context, tintOpacity)
-                : _buildSolid(context);
+            return _buildSurface(context, glassEnabled: glassOn, tintOpacity: tintOpacity);
           },
         );
       },
     );
   }
 
-  /// 实色外观（glassEnabled=false 或全局玻璃开关关闭时的降级形态）。
-  Widget _buildSolid(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+  Widget _buildSurface(
+    BuildContext context, {
+    required bool glassEnabled,
+    double tintOpacity = 0,
+  }) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
     final borderRadius = BorderRadius.circular(radius);
-
-    final bgColor = cs.surfaceContainerLowest;
-    final borderColor = isDark
-        ? cs.outline.withValues(alpha: 0.3)
-        : cs.outlineVariant.withValues(alpha: 0.48);
-
     final customBackground = backgroundBuilder?.call(context, borderRadius);
-    final content = Container(
-      decoration:
-          customBackground ??
-          BoxDecoration(
-            color: bgColor,
-            borderRadius: borderRadius,
-            border: Border.all(color: borderColor, width: 1),
-          ),
-      padding: padding,
-      child: child,
-    );
 
-    final clippedContent = ClipRRect(
-      borderRadius: borderRadius,
-      child: content,
-    );
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
+    // 自定义背景（品牌渐变卡等）：整幅铺满 + elevation 令牌投影，不走配方。
+    if (customBackground != null) {
+      return _withTap(
+        context,
         borderRadius: borderRadius,
-        boxShadow: [
+        shadows: [
           AppElevation.withColor(elevation, isDark ? Colors.black : cs.shadow),
         ],
+        child: ClipRRect(
+          borderRadius: borderRadius,
+          child: Container(
+            decoration: customBackground,
+            padding: padding,
+            child: child,
+          ),
+        ),
+      );
+    }
+
+    // 标准卡面：ring 层整幅渐变，fill 层内缩 1px 盖上，露出一圈受光描边。
+    final surface = Container(
+      decoration: appSurfaceRingDecoration(
+        cs: cs,
+        isDark: isDark,
+        glassEnabled: glassEnabled,
+        borderRadius: borderRadius,
       ),
-      child: onTap == null && onLongPress == null
-          ? clippedContent
-          : Material(
-              color: Colors.transparent,
-              borderRadius: borderRadius,
-              clipBehavior: Clip.antiAlias,
-              child: InkWell(
-                borderRadius: borderRadius,
-                onTap: onTap,
-                onLongPress: onLongPress,
-                child: clippedContent,
-              ),
-            ),
+      padding: const EdgeInsets.all(1),
+      child: Container(
+        decoration: appSurfaceFillDecoration(
+          cs: cs,
+          isDark: isDark,
+          glassEnabled: glassEnabled,
+          borderRadius: appSurfaceInnerRadius(borderRadius),
+          tintAlpha: isDark ? tintOpacity * 0.86 : tintOpacity,
+        ),
+        padding: padding,
+        child: child,
+      ),
+    );
+
+    return _withTap(
+      context,
+      borderRadius: borderRadius,
+      shadows: appSurfaceShadows(isDark: isDark),
+      child: surface,
     );
   }
 
-  /// 玻璃外观：材质参数全部来自 [GlassStyleController]，视觉语义对齐
-  /// GlassContainer card tier（tint 渐变 + 高光描边 + squircle，无 BackdropFilter）。
-  Widget _buildGlass(BuildContext context, double tintOpacity) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final borderRadius = BorderRadius.circular(radius);
-
-    // 玻璃 tint 与高光合成为渐变：顶部受光面提亮更多，底部几乎保持 tint 本色。
-    Color tintWithHighlight(double highlightAlpha) => Color.alphaBlend(
-      Colors.white.withValues(alpha: highlightAlpha),
-      (isDark ? cs.surfaceContainerLow : cs.surfaceContainerLowest).withValues(
-        alpha: isDark ? tintOpacity * 0.86 : tintOpacity,
-      ),
-    );
-
-    final customBackground = backgroundBuilder?.call(context, borderRadius);
-    final content = Container(
-      decoration:
-          customBackground ??
-          ShapeDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                tintWithHighlight(isDark ? 0.10 : 0.34),
-                tintWithHighlight(isDark ? 0.02 : 0.08),
-              ],
-            ),
-            shape: RoundedSuperellipseBorder(
-              borderRadius: borderRadius,
-              // 描边与 GlassContainer 玻璃开启档对齐（深色 white 0.14 /
-              // 浅色 outlineVariant 0.70）。
-              side: BorderSide(
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.14)
-                    : cs.outlineVariant.withValues(alpha: 0.70),
-                width: isDark ? 0.8 : 1.0,
-              ),
-            ),
-          ),
-      padding: padding,
-      child: child,
-    );
-
+  /// 投影 + 可点包装：涟漪由 InkWell 的 customBorder 裁成 squircle。
+  Widget _withTap(
+    BuildContext context, {
+    required BorderRadius borderRadius,
+    required List<BoxShadow> shadows,
+    required Widget child,
+  }) {
     return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: borderRadius,
-        boxShadow: [
-          AppElevation.withColor(elevation, isDark ? Colors.black : cs.shadow),
-        ],
-      ),
+      decoration: BoxDecoration(borderRadius: borderRadius, boxShadow: shadows),
       child: onTap == null && onLongPress == null
-          ? content
+          ? child
           : Material(
               color: Colors.transparent,
               child: InkWell(
-                borderRadius: borderRadius,
                 onTap: onTap,
                 onLongPress: onLongPress,
-                child: content,
+                customBorder: RoundedSuperellipseBorder(
+                  borderRadius: borderRadius,
+                ),
+                child: child,
               ),
             ),
     );

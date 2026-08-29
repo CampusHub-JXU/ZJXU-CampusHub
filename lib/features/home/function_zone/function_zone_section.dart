@@ -5,11 +5,11 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/config/feature_entry_catalog.dart';
 import '../../../core/theme/app_design_tokens.dart';
-import '../../../core/theme/glass_style_controller.dart';
 import '../../../features/exam/exam_service.dart';
 import '../../../features/grades/grades_service.dart';
 import '../../../features/service_hub/service_hub_usage_store.dart';
 import '../../../shared/widgets/app_icon_badge.dart';
+import '../../../shared/widgets/app_tile_surface.dart';
 import 'function_zone_bento.dart';
 
 /// 首页单滚动页底部的「功能」锚点段落：离散尺寸 Bento 网格。
@@ -319,23 +319,16 @@ class _FunctionZoneTile extends StatelessWidget {
       button: true,
       label: entry.title,
       hint: entry.subtitle,
-      child: _BentoGlassSurface(
+      child: AppTileSurface(
         borderRadius: AppRadius.tileBorder,
-        child: InkWell(
-          onTap: onTap,
-          onLongPress: onLongPress,
-          customBorder: RoundedSuperellipseBorder(
-            borderRadius: AppRadius.tileBorder,
-          ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 13),
-            child: switch (size) {
-              BentoTileSize.large => _buildLargeBody(context),
-              BentoTileSize.wide => _buildWideBody(context),
-              BentoTileSize.small => _buildSmallBody(context),
-            },
-          ),
-        ),
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 13),
+        onTap: onTap,
+        onLongPress: onLongPress,
+        child: switch (size) {
+          BentoTileSize.large => _buildLargeBody(context),
+          BentoTileSize.wide => _buildWideBody(context),
+          BentoTileSize.small => _buildSmallBody(context),
+        },
       ),
     );
   }
@@ -445,87 +438,3 @@ class _FunctionZoneTile extends StatelessWidget {
   }
 }
 
-/// Bento 瓦片专用纯 tint 玻璃表面（实现思路复制自功能页
-/// _ServiceHubGlassSurface）：squircle 圆角 + tint 渐变 + 高光描边，
-/// 不创建 BackdropFilter。玻璃开关与 tint 参数实时读取
-/// [GlassStyleController]，关闭时降级为实色表面（同 GlassContainer 降级路径）。
-class _BentoGlassSurface extends StatelessWidget {
-  const _BentoGlassSurface({
-    required this.borderRadius,
-    required this.child,
-  });
-
-  final BorderRadius borderRadius;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<bool>(
-      valueListenable: GlassStyleController.instance.enabled,
-      builder: (context, glassEnabled, _) {
-        return ValueListenableBuilder<double>(
-          valueListenable: GlassStyleController.instance.tintOpacity,
-          builder: (context, _, _) {
-            return Material(
-              color: Colors.transparent,
-              child: Ink(
-                decoration: _bentoGlassShapeDecoration(
-                  context,
-                  borderRadius: borderRadius,
-                  glassEnabled: glassEnabled,
-                ),
-                child: child,
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-}
-
-/// 与 GlassContainer card tier 相同的 tint 渐变 + 高光描边，纯 tint 无模糊。
-ShapeDecoration _bentoGlassShapeDecoration(
-  BuildContext context, {
-  required BorderRadius borderRadius,
-  required bool glassEnabled,
-}) {
-  final theme = Theme.of(context);
-  final cs = theme.colorScheme;
-  final isDark = theme.brightness == Brightness.dark;
-  final baseColor = isDark ? cs.surfaceContainerLow : cs.surfaceContainerLowest;
-  final borderColor = isDark
-      ? Colors.white.withValues(alpha: glassEnabled ? 0.14 : 0.10)
-      : cs.outlineVariant.withValues(alpha: glassEnabled ? 0.70 : 0.55);
-  final shape = RoundedSuperellipseBorder(
-    borderRadius: borderRadius,
-    side: BorderSide(color: borderColor, width: isDark ? 0.8 : 1.0),
-  );
-
-  if (!glassEnabled) {
-    return ShapeDecoration(color: baseColor, shape: shape);
-  }
-
-  // 玻璃 tint 与边缘高光合成为单一渐变：顶部受光面提亮更多，底部回光面
-  // 几乎保持 tint 本色（与 GlassContainer._buildSurface 相同的合成方式）。
-  Color tintWithHighlight(double highlightAlpha) => Color.alphaBlend(
-    Colors.white.withValues(alpha: highlightAlpha),
-    baseColor.withValues(
-      alpha:
-          GlassStyleController.instance.tintOpacity.value *
-          (isDark ? 0.86 : 1.0),
-    ),
-  );
-
-  return ShapeDecoration(
-    gradient: LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: [
-        tintWithHighlight(isDark ? 0.10 : 0.34),
-        tintWithHighlight(isDark ? 0.02 : 0.08),
-      ],
-    ),
-    shape: shape,
-  );
-}
