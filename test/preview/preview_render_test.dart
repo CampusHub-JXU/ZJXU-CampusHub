@@ -31,6 +31,7 @@ import 'package:jxu_campus_hub/shared/widgets/app_tile_surface.dart';
 import 'package:jxu_campus_hub/shared/widgets/auth_required_view.dart';
 import 'package:jxu_campus_hub/shared/widgets/balance_card.dart';
 import 'package:jxu_campus_hub/shared/widgets/glass_container.dart';
+import 'package:jxu_campus_hub/shared/widgets/glass_button.dart';
 import 'package:jxu_campus_hub/shared/widgets/glass_nav_bar.dart';
 import 'package:jxu_campus_hub/shared/widgets/scholar_button.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_cache_snapshot.dart';
@@ -368,7 +369,7 @@ class _ComponentGallery extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'AppCard 默认形态：surface + 受光描边 + squircle',
+                  'AppCard 默认形态：surface + 细描边 + squircle',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
@@ -380,31 +381,48 @@ class _ComponentGallery extends StatelessWidget {
             child: Text('玻璃 tint 卡片（无 BackdropFilter）'),
           ),
           _sectionLabel('AppTileSurface · 质感瓦片（功能区同款）'),
-          AppTileSurface(
-            onTap: () {},
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 13),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const AppIconBadge(
-                  icon: Icons.calendar_month_rounded,
-                  accentColor: Color(0xFF8B1A2D),
-                  size: AppIconBadgeSize.small,
+          SizedBox(
+            height: 76,
+            child: AppTileSurface(
+              onTap: () {},
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              child: Center(
+                widthFactor: 1,
+                child: Row(
+                  children: [
+                    const AppIconBadge(
+                      icon: Icons.calendar_month_rounded,
+                      accentColor: Color(0xFF8B1A2D),
+                      size: AppIconBadgeSize.small,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '整行瓦片 · rank0',
+                            style: Theme.of(context).textTheme.titleSmall
+                                ?.copyWith(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  height: 1.2,
+                                ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '平色卡面 + 细描边 + 柔影，统计行只读缓存',
+                            style: Theme.of(context).textTheme.bodySmall,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  '整行瓦片 · rank0',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  '受光描边 + 高光 + 投影，统计行只读缓存',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ],
+              ),
             ),
           ),
           const SizedBox(height: 10),
@@ -414,20 +432,26 @@ class _ComponentGallery extends StatelessWidget {
               Expanded(
                 child: AppTileSurface(
                   onTap: () {},
-                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 11),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  child: Row(
                     children: [
                       const AppIconBadge(
                         icon: Icons.school_outlined,
                         accentColor: Color(0xFFD4AF37),
                         size: AppIconBadgeSize.small,
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '半宽小瓦片',
-                        style: Theme.of(context).textTheme.titleSmall
-                            ?.copyWith(fontSize: 15),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          '半宽小瓦片',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(fontSize: 15),
+                        ),
                       ),
                     ],
                   ),
@@ -437,36 +461,31 @@ class _ComponentGallery extends StatelessWidget {
               Expanded(
                 child: AppTileSurface(
                   onTap: () {},
-                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 11),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  child: Row(
                     children: [
                       const AppIconBadge(
                         icon: Icons.account_balance_wallet_outlined,
                         accentColor: Color(0xFF1565C0),
                         size: AppIconBadgeSize.small,
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '半宽小瓦片',
-                        style: Theme.of(context).textTheme.titleSmall
-                            ?.copyWith(fontSize: 15),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          '半宽小瓦片',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(fontSize: 15),
+                        ),
                       ),
                     ],
                   ),
                 ),
               ),
-            ],
-          ),
-          _sectionLabel('质感对比 · 旧配方 vs 新配方'),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: _OldSurfaceSample(isDark: Theme.of(context).brightness == Brightness.dark),
-              ),
-              const SizedBox(width: 12),
-              const Expanded(child: _NewSurfaceSample()),
             ],
           ),
           _sectionLabel('GlassContainer · 三级材质'),
@@ -573,6 +592,14 @@ class _ComponentGallery extends StatelessWidget {
               ),
             ],
           ),
+          _sectionLabel('GlassButton · 毛玻璃次操作'),
+          Row(
+            children: [
+              GlassButton.text(onPressed: () {}, text: '次操作'),
+              const SizedBox(width: 10),
+              GlassButton.text(onPressed: null, text: '禁用态'),
+            ],
+          ),
           _sectionLabel('按钮与选择控件'),
           Wrap(
             spacing: 10,
@@ -631,88 +658,6 @@ class _ComponentGallery extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-/// 旧卡面配方样张：平色填充 + 均匀细描边，无高光无投影（用于质感对比）。
-class _OldSurfaceSample extends StatelessWidget {
-  const _OldSurfaceSample({required this.isDark});
-
-  final bool isDark;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          height: 120,
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: isDark ? cs.surfaceContainerLow : cs.surfaceContainerLowest,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.14)
-                  : cs.outlineVariant.withValues(alpha: 0.55),
-            ),
-          ),
-          child: const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              AppIconBadge(
-                icon: Icons.calendar_month_rounded,
-                accentColor: Color(0xFF8B1A2D),
-                size: AppIconBadgeSize.small,
-              ),
-              Spacer(),
-              Text('旧 · 平色 + 均匀描边'),
-            ],
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text('改前', style: Theme.of(context).textTheme.bodySmall),
-      ],
-    );
-  }
-}
-
-/// 新卡面配方样张：AppTileSurface（受光描边 + 高光 + 投影）。
-class _NewSurfaceSample extends StatelessWidget {
-  const _NewSurfaceSample();
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          height: 120,
-          child: AppTileSurface(
-            borderRadius: BorderRadius.circular(20),
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const AppIconBadge(
-                  icon: Icons.calendar_month_rounded,
-                  accentColor: Color(0xFF8B1A2D),
-                  size: AppIconBadgeSize.small,
-                ),
-                const Spacer(),
-                Text(
-                  '新 · 受光边 + 高光 + 投影',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text('改后', style: Theme.of(context).textTheme.bodySmall),
-      ],
     );
   }
 }
