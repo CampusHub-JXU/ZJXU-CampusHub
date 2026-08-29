@@ -15,10 +15,55 @@ class AppThemeBuilder {
   static const Color _graphiteSeed = Color(0xFF455A64);
   static const Color _brandRedSeed = Color(0xFF8B1A2D);
 
-  /// 深色模式下使用中性石墨/黑灰背景的种子色集合。
-  /// 品牌红（嘉大红）保留为 primary 用于强调色，但 surface/scaffold
-  /// 不再掺入酒红，避免深色模式出现"血色/阴间"观感。
-  static bool _isNeutralDarkSeed(Color seedColor) =>
+  /// Apple 风格字阶（Inter 与 SF Pro 同骨架）：
+  ///
+  /// * 展示档（headline/titleLarge）用重字重 + 收紧字距，贴近 SF Pro
+  ///   Display 的排版密度；正文/标签档只调行高与字重，保持中文可读性；
+  /// * 颜色不在此指定，由 ThemeData 统一套 colorScheme 的 onSurface /
+  ///   onSurfaceVariant。
+  static const TextTheme _appleTextTheme = TextTheme(
+    headlineLarge: TextStyle(
+      fontSize: 32,
+      fontWeight: FontWeight.w700,
+      height: 1.2,
+      letterSpacing: -0.5,
+    ),
+    headlineMedium: TextStyle(
+      fontSize: 28,
+      fontWeight: FontWeight.w700,
+      height: 1.2,
+      letterSpacing: -0.4,
+    ),
+    headlineSmall: TextStyle(
+      fontSize: 22,
+      fontWeight: FontWeight.w700,
+      height: 1.25,
+      letterSpacing: -0.3,
+    ),
+    titleLarge: TextStyle(
+      fontSize: 20,
+      fontWeight: FontWeight.w600,
+      height: 1.3,
+      letterSpacing: -0.3,
+    ),
+    titleMedium: TextStyle(
+      fontSize: 16,
+      fontWeight: FontWeight.w600,
+      height: 1.3,
+      letterSpacing: -0.2,
+    ),
+    titleSmall: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, height: 1.3),
+    bodyLarge: TextStyle(fontSize: 16, fontWeight: FontWeight.w400, height: 1.45),
+    bodyMedium: TextStyle(fontSize: 14, fontWeight: FontWeight.w400, height: 1.4),
+    bodySmall: TextStyle(fontSize: 12, fontWeight: FontWeight.w400, height: 1.35),
+    labelLarge: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, height: 1.2),
+    labelMedium: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, height: 1.2),
+    labelSmall: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, height: 1.2),
+  );
+
+  /// 中性种子（石墨/品牌红）：深浅两种模式下 surface 阶梯都不掺种子色，
+  /// 品牌色只保留在 primary/强调场景，避免深色"血色"或浅色粉调背景。
+  static bool _isNeutralSeed(Color seedColor) =>
       seedColor == _graphiteSeed || seedColor == _brandRedSeed;
 
   // ── Light ──────────────────────────────────────────────────────────────
@@ -27,15 +72,31 @@ class AppThemeBuilder {
     Color seedColor, {
     bool filledButtonSoftStyle = false,
   }) {
-    final colorScheme = ColorScheme.fromSeed(
+    var colorScheme = ColorScheme.fromSeed(
       seedColor: seedColor,
       brightness: Brightness.light,
     ).copyWith(primary: seedColor);
+
+    // 中性种子：浅色模式走中性冷灰表面阶梯，阻断种子色粉调渗入
+    // （背景 #FEF8F7、描边 #E2DDDC 之类的粉白观感），卡面纯白、
+    // 描边中性灰，与深色模式的表面策略对偶。
+    if (_isNeutralSeed(seedColor)) {
+      colorScheme = colorScheme.copyWith(
+        surface: const Color(0xFFF4F5F7),
+        surfaceContainerLowest: Colors.white,
+        surfaceContainerLow: const Color(0xFFF8F9FA),
+        surfaceContainer: const Color(0xFFF2F3F6),
+        surfaceContainerHigh: const Color(0xFFEAECF0),
+        surfaceContainerHighest: const Color(0xFFE3E6EA),
+        outlineVariant: const Color(0xFFE1E4E9),
+      );
+    }
 
     return ThemeData(
       useMaterial3: true,
       colorScheme: colorScheme,
       fontFamily: 'Inter',
+      textTheme: _appleTextTheme,
       scaffoldBackgroundColor: colorScheme.surface,
       appBarTheme: AppBarTheme(
         centerTitle: true,
@@ -183,7 +244,7 @@ class AppThemeBuilder {
     bool pureBlack = false,
     bool filledButtonSoftStyle = false,
   }) {
-    final isNeutralDark = _isNeutralDarkSeed(seedColor);
+    final isNeutralDark = _isNeutralSeed(seedColor);
     final baseScheme = ColorScheme.fromSeed(
       seedColor: seedColor,
       brightness: Brightness.dark,
@@ -257,6 +318,7 @@ class AppThemeBuilder {
       useMaterial3: true,
       colorScheme: colorScheme,
       fontFamily: 'Inter',
+      textTheme: _appleTextTheme,
       scaffoldBackgroundColor: background,
       appBarTheme: AppBarTheme(
         centerTitle: true,

@@ -19,8 +19,8 @@ class AppRadius {
   /// Brand / alternative card — ShipCard, Grade card, global CardTheme.
   static const double cardAlt = 18;
 
-  /// Service Hub entry tile.
-  static const double tile = 20;
+  /// Service Hub entry tile / home function-zone tile.
+  static const double tile = 16;
 
   /// Icon badge base radius.
   static const double badge = 12;
@@ -34,7 +34,11 @@ class AppRadius {
   /// Bottom sheet top.
   static const double sheet = 26;
 
-  /// Floating glass surfaces (nav bar, floating panels).
+  /// Floating glass dock (bottom nav bar) — rectangle-leaning radius,
+  /// tighter than sheet/dialog corners but softer than tiles.
+  static const double dock = 20;
+
+  /// Dialog / floating panels (matches M3 dialog corners).
   static const double floating = 28;
 
   /// Small decorative icon badge (home small cards).

@@ -9,14 +9,14 @@ import 'app_surface_style.dart';
 /// 收敛散落在各页面的内联 `Container + BoxDecoration` 卡片，统一圆角/边框/阴影语义。
 /// 圆角默认 [AppRadius.card]。
 ///
-/// 卡面质感由 [appSurfaceRingDecoration] / [appSurfaceFillDecoration] /
-/// [appSurfaceShadows] 三件套提供：定向受光描边 + 受光高光 + 落底投影，
-/// 浅/深双模式独立调参（见 app_surface_style.dart）。玻璃参数全部来自
-/// [GlassStyleController]（`ValueListenableBuilder` 监听 enabled/tintOpacity），
-/// 本组件不持有独立数值参数；`glassEnabled = false` 时直接走实色形态。
+/// 卡面质感由 [appSurfaceDecoration] / [appSurfaceShadows] 提供：平色填充 +
+/// 均匀 hairline 描边 + 落底投影，浅/深双模式独立调参（见
+/// app_surface_style.dart）。玻璃参数全部来自 [GlassStyleController]
+/// （`ValueListenableBuilder` 监听 enabled/tintOpacity），本组件不持有独立
+/// 数值参数；`glassEnabled = false` 时直接走实色形态。
 ///
 /// 卡片是内容面，**永不创建 BackdropFilter**（内容背后没有富媒体，模糊只会
-/// 白耗 GPU）：玻璃形态只是 tint + sheen 渐变。需要真实模糊的悬浮卡片请改用
+/// 白耗 GPU）：玻璃形态只是半透明 tint。需要真实模糊的悬浮卡片请改用
 /// GlassContainer（ClipRRect 必须处于 BackdropFilter 的祖先位置，否则会糊
 /// 整屏）。全局玻璃开关关闭时自动降级为实色形态。
 ///
@@ -104,26 +104,17 @@ class AppCard extends StatelessWidget {
       );
     }
 
-    // 标准卡面：ring 层整幅渐变，fill 层内缩 1px 盖上，露出一圈受光描边。
+    // 标准卡面：平色填充 + 均匀 hairline 描边，装饰直接作用于卡面。
     final surface = Container(
-      decoration: appSurfaceRingDecoration(
+      decoration: appSurfaceDecoration(
         cs: cs,
         isDark: isDark,
         glassEnabled: glassEnabled,
         borderRadius: borderRadius,
+        tintAlpha: isDark ? tintOpacity * 0.86 : tintOpacity,
       ),
-      padding: const EdgeInsets.all(1),
-      child: Container(
-        decoration: appSurfaceFillDecoration(
-          cs: cs,
-          isDark: isDark,
-          glassEnabled: glassEnabled,
-          borderRadius: appSurfaceInnerRadius(borderRadius),
-          tintAlpha: isDark ? tintOpacity * 0.86 : tintOpacity,
-        ),
-        padding: padding,
-        child: child,
-      ),
+      padding: padding,
+      child: child,
     );
 
     return _withTap(

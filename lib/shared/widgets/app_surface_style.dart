@@ -1,60 +1,23 @@
 import 'package:flutter/material.dart';
 
-/// Apple 质感卡面配方（浅 / 深双模式，纯 tint、零 BackdropFilter）。
+/// Apple 风格平色卡面配方（浅 / 深双模式，零高光、零 BackdropFilter）。
 ///
-/// 把「一块平色 + 一圈均匀细线」换成三条可感知的深度线索：
+/// 卡面深度感全部来自「平色 + 细线 + 柔影」的组合，不做任何方向性受光
+/// 渐变（sheen / 受光描边环已移除——纯色背景下高光只能读出塑料感）：
 ///
-/// 1. **定向受光描边（ring）**——1px 渐变环，顶部亮、底部收：深色模式下是
-///    顶缘吃光的暗面浮起，浅色模式下是底缘压线；替代均匀 BorderSide 的
-///    「铁丝框」感。
-/// 2. **受光高光（sheen）**——左上 → 右下的白光衰减渐变，玻璃开启时叠加在
-///    tint 之上；关闭时整层退化为实色。
-/// 3. **落底投影（shadows）**——接触影 + 环境影双层（深色单环境影），把卡片
-///    从环境背景上「托」起来；深浅两模式独立调参。
+/// 1. **平色填充**——深色 `surfaceContainerLow`、浅色
+///    `surfaceContainerLowest`；玻璃开启时替换为同色半透明 tint，
+///    透明度由调用方按档位换算后经 `tintAlpha` 传入。
+/// 2. **均匀 hairline 描边**——1px 统一细线，参数与 GlassContainer 边框
+///    完全一致，保证卡面与玻璃容器材质同族。
+/// 3. **落底投影（[appSurfaceShadows]）**——浅色接触影 + 环境影双层、
+///    深色单环境影，把卡片从背景上「托」起来。
 ///
-/// 使用方式：ring 层整幅渐变填充，fill 层内缩 1px 盖在上面，露出的一圈即为
-/// 描边（见 `AppTileSurface` 与 `AppCard`）。玻璃参数语义与 GlassContainer
-/// card tier 一致：[GlassStyleController.enabled] 关闭时走实色降级，
-/// tint 不透明度由调用方按档位换算后经 `tintAlpha` 传入。
-/// 描边环圆角使用外层 [AppRadius] 令牌，填充层圆角 = 外层 - 1（见
-/// [appSurfaceInnerRadius]）。
+/// 使用方式：装饰直接作用在卡面 Container 上（描边走 shape 的 side，
+/// 无需 ring/fill 双层内缩，见 `AppCard` 与 `AppTileSurface`）。
 
-/// 描边环装饰：整幅渐变填充，可见部分仅为被 fill 层覆盖后露出的一圈。
-ShapeDecoration appSurfaceRingDecoration({
-  required ColorScheme cs,
-  required bool isDark,
-  required bool glassEnabled,
-  required BorderRadius borderRadius,
-}) {
-  final List<Color> colors;
-  if (isDark) {
-    // 深色：顶缘吃光（亮），向底部收束到几乎融入填充。
-    colors = glassEnabled
-        ? const [Color(0x33FFFFFF), Color(0x0DFFFFFF)]
-        : const [Color(0x24FFFFFF), Color(0x0FFFFFFF)];
-  } else {
-    // 浅色：顶缘几乎融入填充，底缘压出一条明确的收边线。
-    colors = [
-      cs.outlineVariant.withValues(alpha: glassEnabled ? 0.30 : 0.28),
-      cs.outlineVariant.withValues(alpha: glassEnabled ? 0.80 : 0.70),
-    ];
-  }
-  return ShapeDecoration(
-    gradient: LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: colors,
-    ),
-    shape: RoundedSuperellipseBorder(borderRadius: borderRadius),
-  );
-}
-
-/// 填充层装饰：玻璃开启时为「tint + 顶部受光高光」渐变，关闭时为实色。
-///
-/// [tintAlpha] 为玻璃开启时的基础 tint 不透明度（card tier 浅色原值、深色
-/// ×0.86，与 GlassContainer 口径一致）。深色模式先把填充整体抬亮一档
-/// （+3.5% 白），再叠 sheen——保证 sheen 收敛到 0 的底部仍有分离度。
-ShapeDecoration appSurfaceFillDecoration({
+/// 平色卡面装饰：flat 填充 + 均匀 hairline 描边，玻璃开启时为半透明 tint。
+ShapeDecoration appSurfaceDecoration({
   required ColorScheme cs,
   required bool isDark,
   required bool glassEnabled,
@@ -62,45 +25,41 @@ ShapeDecoration appSurfaceFillDecoration({
   required double tintAlpha,
 }) {
   final base = isDark ? cs.surfaceContainerLow : cs.surfaceContainerLowest;
-  final liftedBase = isDark
-      ? Color.alphaBlend(Colors.white.withValues(alpha: 0.035), base)
-      : base;
-
-  if (!glassEnabled) {
-    return ShapeDecoration(
-      color: liftedBase,
-      shape: RoundedSuperellipseBorder(borderRadius: borderRadius),
-    );
-  }
-
-  Color sheenAt(double highlightAlpha) => Color.alphaBlend(
-    Colors.white.withValues(alpha: highlightAlpha),
-    liftedBase.withValues(alpha: tintAlpha),
-  );
-
   return ShapeDecoration(
-    gradient: LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: [sheenAt(isDark ? 0.09 : 0.32), sheenAt(isDark ? 0.015 : 0.06)],
+    color: glassEnabled ? base.withValues(alpha: tintAlpha) : base,
+    shape: RoundedSuperellipseBorder(
+      borderRadius: borderRadius,
+      side: appSurfaceBorder(isDark: isDark, glassEnabled: glassEnabled, cs: cs),
     ),
-    shape: RoundedSuperellipseBorder(borderRadius: borderRadius),
   );
 }
 
-/// 落底投影：浅色为「接触影 + 环境影」双层，深色为单层环境影。
+/// 卡面 hairline 描边：与 GlassContainer 的边框同参数（深色 white 低透明、
+/// 浅色 outlineVariant），玻璃开启略提亮一档。
+BorderSide appSurfaceBorder({
+  required bool isDark,
+  required bool glassEnabled,
+  required ColorScheme cs,
+}) {
+  final borderAlpha = glassEnabled
+      ? (isDark ? 0.14 : 0.70)
+      : (isDark ? 0.10 : 0.55);
+  return BorderSide(
+    color: isDark
+        ? Colors.white.withValues(alpha: borderAlpha)
+        : cs.outlineVariant.withValues(alpha: borderAlpha),
+    width: isDark ? 0.8 : 1.0,
+  );
+}
+
+/// 落底投影：仅深色模式保留单层环境影；浅色模式零投影——白卡与中性灰
+/// scaffold 的色调对比 + hairline 描边已经完成分层，弱投影只会渲染成
+/// 一圈脏灰雾（Apple 分组列表同款做法）。
 List<BoxShadow> appSurfaceShadows({required bool isDark}) {
   if (isDark) {
     return const [
       BoxShadow(color: Color(0x47000000), blurRadius: 16, offset: Offset(0, 6)),
     ];
   }
-  return const [
-    BoxShadow(color: Color(0x0F000000), blurRadius: 2, offset: Offset(0, 1)),
-    BoxShadow(color: Color(0x14000000), blurRadius: 20, offset: Offset(0, 8)),
-  ];
+  return const [];
 }
-
-/// 填充层圆角：外层描边环半径 - 1px（描边厚度）。
-BorderRadius appSurfaceInnerRadius(BorderRadius outer) =>
-    BorderRadius.circular(outer.topLeft.x - 1);
