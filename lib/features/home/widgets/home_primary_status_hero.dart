@@ -7,25 +7,33 @@ import '../../../app/app_theme_controller.dart';
 import '../../../core/theme/app_design_tokens.dart';
 import '../../../core/theme/glass_style_controller.dart';
 import '../home_controller.dart';
+import '../models/home_presentation.dart';
 
-class HomeHeaderCard extends StatelessWidget {
-  const HomeHeaderCard({
+/// Primary Status Hero：首页唯一的最强视觉焦点。
+///
+/// 顶部行为「嘉兴大学 + 周次 chip + 更新角标 + 通知铃铛」，
+/// 主体为状态大字 + 时间 + 课程名 + 地点元信息 + 「查看课表」入口；
+/// 整卡可点开课表。背景图 + 头卡玻璃开关开启时保留玻璃效果
+/// （ClipRRect 必须位于 BackdropFilter 祖先位置）。
+class HomePrimaryStatusHero extends StatelessWidget {
+  const HomePrimaryStatusHero({
     super.key,
-    required this.weekLabelText,
+    required this.hero,
+    required this.weekLabel,
     required this.canShowUpdateAction,
-    required this.onTap,
-    required this.onNoticeTap,
-    required this.courseContent,
-    this.updateAction,
+    required this.onOpenSchedule,
+    required this.onNotificationTap,
+    this.onUpdateTap,
   });
 
-  /// 周次文案：教学周内为"第 N 周"，未开学/学期结束后显示对应状态。
-  final String weekLabelText;
+  final HomeHeroPresentation hero;
+
+  /// 周次文案：「第 N 周」/「未开学」/「学期已结束」。
+  final String weekLabel;
   final bool canShowUpdateAction;
-  final VoidCallback onTap;
-  final VoidCallback onNoticeTap;
-  final Widget courseContent;
-  final Widget? updateAction;
+  final VoidCallback onOpenSchedule;
+  final VoidCallback onNotificationTap;
+  final VoidCallback? onUpdateTap;
 
   @override
   Widget build(BuildContext context) {
@@ -43,17 +51,11 @@ class HomeHeaderCard extends StatelessWidget {
                 return ValueListenableBuilder<double>(
                   valueListenable: GlassStyleController.instance.tintOpacity,
                   builder: (context, glassOpacity, _) {
-                    return ValueListenableBuilder<HomeTextColorMode>(
-                      valueListenable:
-                          AppThemeController.instance.homeTextColorMode,
-                      builder: (context, _, _) {
-                        return _buildWrapper(
-                          context,
-                          effectiveGlassEnabled,
-                          glassBlur,
-                          glassOpacity,
-                        );
-                      },
+                    return _buildHero(
+                      context,
+                      glassEnabled: effectiveGlassEnabled,
+                      glassBlur: glassBlur,
+                      glassOpacity: glassOpacity,
                     );
                   },
                 );
@@ -65,19 +67,21 @@ class HomeHeaderCard extends StatelessWidget {
     );
   }
 
-  Widget _buildWrapper(
-    BuildContext context,
-    bool glassEnabled,
-    double glassBlur,
-    double glassOpacity,
-  ) {
-    final radius = BorderRadius.circular(glassEnabled ? AppRadius.card : 12);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+  Widget _buildHero(
+    BuildContext context, {
+    required bool glassEnabled,
+    required double glassBlur,
+    required double glassOpacity,
+  }) {
+    final radius = AppRadius.cardBorder;
+    return Semantics(
+      button: true,
+      label: '${hero.headline} ${hero.courseName ?? ''}，查看课表',
       child: GestureDetector(
-        onTap: onTap,
+        onTap: onOpenSchedule,
         child: ClipRRect(
           borderRadius: radius,
+          // 铁律：裁剪必须在 BackdropFilter 的祖先位置。
           child: glassEnabled
               ? BackdropFilter(
                   filter: ImageFilter.blur(
@@ -174,9 +178,6 @@ class HomeHeaderCard extends StatelessWidget {
         .resolveHomeTextColorForBackground(context, headerBaseColor);
     final secondaryTextColor = AppThemeController.instance
         .resolveHomeSecondaryTextColorForBackground(context, headerBaseColor);
-    final tertiaryTextColor = AppThemeController.instance
-        .resolveHomeSecondaryTextColorForBackground(context, headerBaseColor)
-        .withValues(alpha: 0.78);
     final iconColor = AppThemeController.instance
         .resolveHomeTextColorForBackground(context, headerBaseColor);
     final decoration = glassEnabled
@@ -269,60 +270,102 @@ class HomeHeaderCard extends StatelessWidget {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(AppSpacing.cardPadding),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            weekLabelText,
-                            style: TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w700,
-                              color: primaryTextColor,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            '下节课',
-                            style: TextStyle(
-                              fontSize: 14,
+                _buildTitleRow(context, iconColor),
+                const SizedBox(height: AppSpacing.lg),
+                Text(
+                  hero.headline,
+                  style: TextStyle(
+                    fontSize: 26,
+                    height: 1.2,
+                    fontWeight: FontWeight.w700,
+                    color: primaryTextColor,
+                  ),
+                ),
+                if (hero.timeText != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    hero.timeText!,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: secondaryTextColor,
+                    ),
+                  ),
+                ],
+                if (hero.courseName != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    hero.courseName!,
+                    style: TextStyle(
+                      fontSize: 30,
+                      height: 1.15,
+                      fontWeight: FontWeight.w800,
+                      color: primaryTextColor,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+                if (hero.locationText != null || hero.lessonText != null) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.location_on_outlined,
+                              size: 14,
                               color: secondaryTextColor,
                             ),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                hero.locationText ?? '',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: secondaryTextColor,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (hero.lessonText != null) ...[
+                        const SizedBox(width: 6),
+                        Text(
+                          hero.lessonText!,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: secondaryTextColor.withValues(alpha: 0.78),
                           ),
-                        ],
-                      ),
-                    ),
-                    if (canShowUpdateAction && updateAction != null) ...[
-                      updateAction!,
-                      const SizedBox(width: 12),
+                        ),
+                      ],
                     ],
-                    IconButton(
-                      icon: Icon(
-                        Icons.notifications_outlined,
-                        color: iconColor,
-                        size: 22,
-                      ),
-                      onPressed: onNoticeTap,
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
+                  ),
+                ],
+                const SizedBox(height: 14),
                 Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Expanded(child: courseContent),
-                    const SizedBox(width: 8),
                     Text(
-                      '查看课表 →',
-                      style: TextStyle(fontSize: 12, color: tertiaryTextColor),
+                      '查看课表',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: secondaryTextColor,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      Icons.arrow_forward_ios,
+                      size: 12,
+                      color: secondaryTextColor,
                     ),
                   ],
                 ),
@@ -331,6 +374,83 @@ class HomeHeaderCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildTitleRow(BuildContext context, Color iconColor) {
+    final cs = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Text(
+          '嘉兴大学',
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            color: iconColor,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: iconColor.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: iconColor.withValues(alpha: 0.18)),
+            ),
+            child: Text(
+              weekLabel,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: iconColor.withValues(alpha: 0.96),
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ),
+        const Spacer(),
+        if (canShowUpdateAction && onUpdateTap != null) ...[
+          _buildUpdateAction(cs, iconColor),
+          const SizedBox(width: 12),
+        ],
+        IconButton(
+          icon: Icon(Icons.notifications_outlined, color: iconColor, size: 22),
+          onPressed: onNotificationTap,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(),
+          tooltip: '通知中心',
+        ),
+      ],
+    );
+  }
+
+  Widget _buildUpdateAction(ColorScheme cs, Color iconColor) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        IconButton(
+          icon: Icon(Icons.system_update_outlined, color: iconColor, size: 22),
+          onPressed: onUpdateTap,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(),
+          tooltip: '发现新版本',
+        ),
+        Positioned(
+          right: -1,
+          top: -1,
+          child: Container(
+            width: 9,
+            height: 9,
+            decoration: BoxDecoration(
+              color: cs.error,
+              shape: BoxShape.circle,
+              border: Border.all(color: cs.onError, width: 1.2),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

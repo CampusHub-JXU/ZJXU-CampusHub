@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 
 import '../../../shared/widgets/glass_container.dart';
 
-/// 首页仪表盘卡片容器。
+/// 首页内容卡容器。
 ///
 /// 玻璃材质与参数统一由 [GlassContainer]（GlassStyleController）提供，
 /// 这里只保留首页卡片的尺寸/内边距约定与点击行为。
+///
+/// 内容层默认关闭真实模糊（Apple 原则：玻璃只留给导航与浮层，
+/// 见 docs/handoff-glass-migration.md），避免同屏多个 BackdropFilter。
 class HomeCardContainer extends StatelessWidget {
   const HomeCardContainer({
     super.key,
@@ -31,7 +34,7 @@ class HomeCardContainer extends StatelessWidget {
       width: width,
       height: height,
       padding: padding,
-      blurred: true,
+      blurred: false,
       onTap: onTap,
       child: child,
     );
