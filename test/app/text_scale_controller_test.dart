@@ -67,7 +67,7 @@ void main() {
   });
 
   testWidgets(
-    'app text scale scope passes system scaler through at default factor',
+    'default factor 0.9 no longer passes system scaler through（bug 修复）',
     (tester) async {
       double? scaledFontSize;
 
@@ -89,7 +89,8 @@ void main() {
         ),
       );
 
-      expect(scaledFontSize, closeTo(15.0, 0.001));
+      // 1.5（系统）× 0.9（默认因子）= 1.35，不再透传 1.5。
+      expect(scaledFontSize, closeTo(13.5, 0.001));
     },
   );
 

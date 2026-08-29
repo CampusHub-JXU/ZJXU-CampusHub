@@ -9,7 +9,12 @@ class TextScaleController {
   static const _prefKey = 'text_scale_factor';
   static const double minScaleFactor = 0.7;
   static const double maxScaleFactor = 1.2;
-  static const double scaleStep = 0.05;
+
+  /// 步进 0.01：85% 与 90% 之间可选 86/87/88/89% 等细档。
+  static const double scaleStep = 0.01;
+
+  /// 默认 0.9：在 MIUI 默认字号下整体收一档；**真实生效**（相对系统
+  /// 缩放 ×0.9），不存在「默认值直接透传系统」的特例。
   static const double defaultScaleFactor = 0.9;
 
   static int get sliderDivisions =>
@@ -60,16 +65,12 @@ class AppTextScaleScope extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
-    final normalizedScaleFactor = TextScaleController.normalizeScaleFactor(
-      scaleFactor,
+    // 始终相对系统 textScaler 叠乘用户因子（包括默认值 0.9）——跟随
+    // MIUI/系统字体大小，再整体乘缩放；任何因子都不透传系统原始值。
+    final textScaler = _RelativeTextScaler(
+      base: mediaQuery.textScaler,
+      factor: TextScaleController.normalizeScaleFactor(scaleFactor),
     );
-    final textScaler =
-        normalizedScaleFactor == TextScaleController.defaultScaleFactor
-        ? mediaQuery.textScaler
-        : _RelativeTextScaler(
-            base: mediaQuery.textScaler,
-            factor: normalizedScaleFactor,
-          );
 
     return MediaQuery(
       data: mediaQuery.copyWith(textScaler: textScaler),
