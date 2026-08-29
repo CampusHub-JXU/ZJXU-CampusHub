@@ -201,6 +201,22 @@ class AppFeaturesConfig {
       keywords: ['余额', '充值', '校园卡', '小付宝'],
     ),
     FeatureEntryDefinition(
+      id: 'campus-card-payment',
+      title: '付款码',
+      subtitle: '扫码支付',
+      icon: Icons.qr_code_2_rounded,
+      accentColor: Color(0xFF1E88E5),
+      routeName: 'campus-card-payment',
+      spans: FeatureEntryResponsiveSpan(
+        compact: FeatureEntrySpan(columns: 1, rows: 1),
+        expanded: FeatureEntrySpan(columns: 1, rows: 1),
+      ),
+      placements: {FeatureEntryPlacement.serviceHub},
+      sortOrder: 42,
+      category: FeatureEntryCategory.campusLife,
+      keywords: ['付款', '支付', '二维码', '扫码'],
+    ),
+    FeatureEntryDefinition(
       id: 'dorm-electricity',
       title: '宿舍电费',
       subtitle: '查询寝室剩余电量与低电量提醒',
