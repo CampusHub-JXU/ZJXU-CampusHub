@@ -3,7 +3,6 @@ import 'package:go_router/go_router.dart';
 import 'app_route_observer.dart';
 import 'app_shell_page.dart';
 import '../features/home/home_page.dart';
-import '../features/service_hub/service_hub_page.dart';
 import '../features/my/my_page.dart';
 import '../features/my/academic_service_page.dart';
 import '../features/my/unified_auth_login_page.dart';
@@ -55,15 +54,6 @@ final GoRouter appRouter = GoRouter(
               path: '/',
               name: 'home',
               builder: (context, state) => const HomePage(),
-            ),
-          ],
-        ),
-        StatefulShellBranch(
-          routes: [
-            GoRoute(
-              path: '/services',
-              name: 'service-hub',
-              builder: (context, state) => const ServiceHubPage(),
             ),
           ],
         ),

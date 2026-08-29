@@ -1,17 +1,41 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
-import 'package:jxu_campus_hub/app/app_shell_page.dart';
-import 'package:jxu_campus_hub/features/home/home_page.dart';
-import 'package:jxu_campus_hub/features/my/my_page.dart';
-import 'package:jxu_campus_hub/features/service_hub/service_hub_page.dart';
 
+import 'package:jxu_campus_hub/app/app_shell_page.dart';
+import 'package:jxu_campus_hub/features/home/home_zone_controller.dart';
+
+/// AppShellPage dock 状态机测试（branch0=首页单滚动页 / branch1=我的）。
+///
+/// dock 三项：主页(branch0, zone0) / 功能(branch0, zone1) / 我的(branch1)。
+/// 高亮跟随 branch + HomeZoneController 的 ScrollSpy 分区。
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('shows service hub destination in bottom navigation', (
-    tester,
-  ) async {
+  var homeScrollCalls = 0;
+  var functionScrollCalls = 0;
+
+  setUp(() {
+    homeScrollCalls = 0;
+    functionScrollCalls = 0;
+    HomeZoneController.instance
+      ..scrollToTop = () async {
+        homeScrollCalls++;
+      }
+      ..scrollToFunction = () async {
+        functionScrollCalls++;
+      }
+      ..updateZone(0);
+  });
+
+  tearDown(() {
+    HomeZoneController.instance
+      ..scrollToTop = null
+      ..scrollToFunction = null
+      ..updateZone(0);
+  });
+
+  Future<void> pumpShell(WidgetTester tester) async {
     final router = GoRouter(
       initialLocation: '/',
       routes: [
@@ -24,15 +48,9 @@ void main() {
               routes: [
                 GoRoute(
                   path: '/',
-                  builder: (context, state) => const HomePage(),
-                ),
-              ],
-            ),
-            StatefulShellBranch(
-              routes: [
-                GoRoute(
-                  path: '/services',
-                  builder: (context, state) => const ServiceHubPage(),
+                  name: 'home',
+                  builder: (context, state) =>
+                      const Scaffold(body: Text('首页页面')),
                 ),
               ],
             ),
@@ -40,7 +58,9 @@ void main() {
               routes: [
                 GoRoute(
                   path: '/my',
-                  builder: (context, state) => const MyPage(),
+                  name: 'my',
+                  builder: (context, state) =>
+                      const Scaffold(body: Text('我的页面')),
                 ),
               ],
             ),
@@ -51,9 +71,86 @@ void main() {
 
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
     await tester.pumpAndSettle();
+  }
+
+  /// 当前选中（显示 selectedIcon）的 dock 项对应的 icon 集合。
+  Set<String> selectedDockItems(WidgetTester tester) {
+    final selected = <String>{};
+    void check(String label, IconData selectedIcon) {
+      final icon = find.descendant(
+        of: find.ancestor(of: find.text(label), matching: find.byType(Column)),
+        matching: find.byIcon(selectedIcon),
+      );
+      if (icon.evaluate().isNotEmpty) selected.add(label);
+    }
+
+    check('主页', Icons.home);
+    check('功能', Icons.widgets);
+    check('我的', Icons.person);
+    return selected;
+  }
+
+  testWidgets('dock 显示三项：主页 / 功能 / 我的', (tester) async {
+    await pumpShell(tester);
 
     expect(find.text('主页'), findsOneWidget);
     expect(find.text('功能'), findsOneWidget);
     expect(find.text('我的'), findsOneWidget);
+  });
+
+  testWidgets('branch0 初始高亮主页，ScrollSpy 切到 zone1 后高亮功能', (tester) async {
+    await pumpShell(tester);
+
+    expect(selectedDockItems(tester), {'主页'});
+
+    // 模拟 HomePage 滚动监听上报：功能区段落越过判定线。
+    HomeZoneController.instance.updateZone(1);
+    await tester.pumpAndSettle();
+    expect(selectedDockItems(tester), {'功能'});
+
+    // 滚回首屏区恢复高亮主页。
+    HomeZoneController.instance.updateZone(0);
+    await tester.pumpAndSettle();
+    expect(selectedDockItems(tester), {'主页'});
+  });
+
+  testWidgets('branch0 内点功能/主页直接触发对应滚动', (tester) async {
+    await pumpShell(tester);
+
+    await tester.tap(find.text('功能'));
+    await tester.pumpAndSettle();
+    expect(functionScrollCalls, 1);
+    expect(homeScrollCalls, 0);
+
+    await tester.tap(find.text('主页'));
+    await tester.pumpAndSettle();
+    expect(homeScrollCalls, 1);
+    expect(functionScrollCalls, 1);
+  });
+
+  testWidgets('点我的切到 branch1 并高亮我的', (tester) async {
+    await pumpShell(tester);
+
+    await tester.tap(find.text('我的'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('我的页面'), findsOneWidget);
+    expect(selectedDockItems(tester), {'我的'});
+  });
+
+  testWidgets('在 branch1 点功能：先回 branch0 再触发功能区滚动', (tester) async {
+    await pumpShell(tester);
+
+    await tester.tap(find.text('我的'));
+    await tester.pumpAndSettle();
+    expect(find.text('我的页面'), findsOneWidget);
+
+    await tester.tap(find.text('功能'));
+    await tester.pumpAndSettle();
+
+    // 回到 branch0 并调用了功能区滚动实现。
+    expect(find.text('首页页面'), findsOneWidget);
+    expect(functionScrollCalls, 1);
+    expect(homeScrollCalls, 0);
   });
 }
