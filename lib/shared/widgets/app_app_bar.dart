@@ -8,7 +8,7 @@ import '../../core/theme/glass_style_controller.dart';
 ///
 /// 毛玻璃层放在 flexibleSpace 内，材质细节见 [GlassAppBarSpace]。
 ///
-/// * 玻璃开启：模糊 + 半透明 tint 渐变 + 底部发丝线，悬浮于滚动内容之上；
+/// * 玻璃开启：模糊 + 半透明平色 tint + 底部发丝线，悬浮于滚动内容之上；
 /// * 玻璃关闭（[GlassStyleController.enabled]）或显式传入
 ///   [backgroundColor]：回退为实色表面，不创建 BackdropFilter，
 ///   保证低端机流畅。
@@ -113,7 +113,7 @@ class GlassAppBarSpace extends StatelessWidget {
                       child: _AppBarFill(
                         tintColor: tintColor,
                         // 磨砂水平：低到能看清模糊，高到标题仍满足 WCAG AA。
-                        tintAlpha: isDark ? 0.44 : 0.50,
+                        tintAlpha: isDark ? 0.34 : 0.42,
                         borderColor: borderColor,
                       ),
                     )
@@ -130,7 +130,7 @@ class GlassAppBarSpace extends StatelessWidget {
   }
 }
 
-/// 顶部受光、底部回光的 tint 渐变 + 底部发丝线。
+/// 平色 tint 填充 + 底部发丝线（无受光渐变，深色模式不出现顶缘亮带）。
 class _AppBarFill extends StatelessWidget {
   const _AppBarFill({
     required this.tintColor,
@@ -146,17 +146,7 @@ class _AppBarFill extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Color.alphaBlend(
-              Colors.white.withValues(alpha: 0.14),
-              tintColor.withValues(alpha: tintAlpha),
-            ),
-            tintColor.withValues(alpha: tintAlpha),
-          ],
-        ),
+        color: tintColor.withValues(alpha: tintAlpha),
         border: Border(bottom: BorderSide(color: borderColor, width: 0.8)),
       ),
       child: const SizedBox.expand(),

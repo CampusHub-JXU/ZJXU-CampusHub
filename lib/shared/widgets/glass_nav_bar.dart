@@ -3,10 +3,11 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_design_tokens.dart';
 import 'glass_container.dart';
 
-/// 悬浮胶囊玻璃底栏。
+/// 悬浮矩形玻璃底栏（dock）。
 ///
-/// Apple 风格的 floating nav bar：整宽毛玻璃胶囊悬浮于内容之上，
-/// 选中项为实心色胶囊指示器。整屏仅此一个 BackdropFilter 层。
+/// Apple 风格的 floating dock：整宽毛玻璃圆角矩形悬浮于内容之上，圆角
+/// 刻意收紧（[AppRadius.dock]）保持矩形倾向；选中项为圆角矩形指示器。
+/// 整屏仅此一个 BackdropFilter 层。
 class GlassNavBar extends StatelessWidget {
   const GlassNavBar({
     super.key,
@@ -25,9 +26,9 @@ class GlassNavBar extends StatelessWidget {
 
     return GlassContainer(
       tier: GlassTier.nav,
-      borderRadius: BorderRadius.circular(AppRadius.floating),
+      borderRadius: BorderRadius.circular(AppRadius.dock),
       child: SizedBox(
-        height: 74,
+        height: 68,
         child: Row(
           children: [
             for (var i = 0; i < destinations.length; i++)
@@ -83,10 +84,12 @@ class _NavDestination extends StatelessWidget {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 240),
           curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
           decoration: ShapeDecoration(
             color: selected ? accent.withValues(alpha: 0.16) : null,
-            shape: const StadiumBorder(),
+            shape: RoundedSuperellipseBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -100,7 +103,7 @@ class _NavDestination extends StatelessWidget {
                   color: color,
                 ),
               ),
-              const SizedBox(height: 3),
+              const SizedBox(height: 4),
               Text(
                 destination.label,
                 style: TextStyle(

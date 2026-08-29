@@ -11,7 +11,8 @@ export '../../core/theme/glass_style_controller.dart' show GlassTier;
 
 /// Apple 质感的毛玻璃容器。
 ///
-/// * 毛玻璃 = BackdropFilter(模糊 + 轻微提饱和) + 半透明 tint + 高光细描边；
+/// * 毛玻璃 = BackdropFilter(模糊 + 轻微提饱和) + 半透明平色 tint +
+///   hairline 细描边（无方向性高光渐变）；
 /// * 形状默认使用连续曲率圆角（squircle，见 [AppShape]）；
 /// * 三档模糊强度统一由 [GlassStyleController.sigmaFor] 派生，
 ///   设置页「模糊强度」滑条对卡片/底栏/弹层同步生效；
@@ -95,13 +96,6 @@ class GlassContainer extends StatelessWidget {
         ? Colors.white.withValues(alpha: borderAlpha)
         : cs.outlineVariant.withValues(alpha: borderAlpha);
 
-    // 玻璃 tint 与边缘高光合成为一个渐变（gradient 会覆盖 color）：
-    // 顶部受光面提亮更多，底部回光面几乎保持 tint 本色。
-    Color tintWithHighlight(double highlightAlpha) => Color.alphaBlend(
-      Colors.white.withValues(alpha: highlightAlpha),
-      tintColor.withValues(alpha: _tintAlphaFor(isDark)),
-    );
-
     final content = Container(
       width: width,
       height: height,
@@ -109,18 +103,8 @@ class GlassContainer extends StatelessWidget {
       padding: padding,
       decoration: ShapeDecoration(
         color: useBlur
-            ? null
+            ? tintColor.withValues(alpha: _tintAlphaFor(isDark))
             : (isDark ? cs.surfaceContainerLow : cs.surfaceContainerLowest),
-        gradient: useBlur
-            ? LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  tintWithHighlight(isDark ? 0.10 : 0.34),
-                  tintWithHighlight(isDark ? 0.02 : 0.08),
-                ],
-              )
-            : null,
         shadows: useBlur ? _shadows(isDark) : null,
         shape: RoundedSuperellipseBorder(
           borderRadius: radius,
@@ -165,13 +149,14 @@ class GlassContainer extends StatelessWidget {
   double _blurSigmaFor() => GlassStyleController.instance.sigmaFor(tier);
 
   /// tint 不透明度：card 跟随设置页「玻璃透明度」，nav/overlay 为固定档位
-  /// （浅色略高于深色），压低到磨砂水平让模糊可见、文字仍可读。
+  /// （压低到磨砂水平让模糊可见、文字仍可读）。nav 档刻意偏低——dock 的
+  /// 毛玻璃质感主要靠内容透出，tint 过高会退化成实色板。
   double _tintAlphaFor(bool isDark) {
     final cardAlpha = GlassStyleController.instance.tintOpacity.value;
     if (tier == GlassTier.card) return isDark ? cardAlpha * 0.86 : cardAlpha;
     return isDark
-        ? (tier == GlassTier.nav ? 0.42 : 0.58)
-        : (tier == GlassTier.nav ? 0.52 : 0.66);
+        ? (tier == GlassTier.nav ? 0.30 : 0.58)
+        : (tier == GlassTier.nav ? 0.38 : 0.66);
   }
 
   List<BoxShadow> _shadows(bool isDark) {
@@ -184,8 +169,8 @@ class GlassContainer extends StatelessWidget {
         ),
       ];
     }
-    return const [
-      BoxShadow(color: Color(0x14000000), blurRadius: 14, offset: Offset(0, 4)),
-    ];
+    // 浅色模式零投影：磨砂面靠 tint 差异 + hairline 分层，
+    // 弱影只会糊成灰雾。
+    return const [];
   }
 }
