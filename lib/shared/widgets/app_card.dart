@@ -67,7 +67,11 @@ class AppCard extends StatelessWidget {
         return ValueListenableBuilder<double>(
           valueListenable: style.tintOpacity,
           builder: (context, tintOpacity, _) {
-            return _buildSurface(context, glassEnabled: glassOn, tintOpacity: tintOpacity);
+            return _buildSurface(
+              context,
+              glassEnabled: glassOn,
+              tintOpacity: tintOpacity,
+            );
           },
         );
       },

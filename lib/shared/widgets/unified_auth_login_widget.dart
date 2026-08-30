@@ -10,12 +10,17 @@ import '../../core/auth/unified_auth.dart';
 enum UnifiedAuthMode { direct }
 
 typedef LoginCredentialLoader = Future<(String, String)?> Function();
-typedef LoginCredentialSaver =
-    Future<void> Function(String username, String password);
+typedef LoginCredentialSaver = Future<void> Function(
+  String username,
+  String password,
+);
 typedef LoginSessionPreflight = Future<bool> Function();
 typedef LoginCaptchaLoader = Future<Uint8List> Function();
-typedef LoginSubmitHandler =
-    Future<String?> Function(String username, String password, String captcha);
+typedef LoginSubmitHandler = Future<String?> Function(
+  String username,
+  String password,
+  String captcha,
+);
 
 class UnifiedAuthLoginWidget extends StatefulWidget {
   const UnifiedAuthLoginWidget({
@@ -290,9 +295,8 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
             Text(
               widget.description,
               textAlign: TextAlign.center,
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+              style: Theme.of(context).textTheme.bodyMedium
+                  ?.copyWith(color: cs.onSurfaceVariant),
             ),
             const SizedBox(height: 32),
           ],

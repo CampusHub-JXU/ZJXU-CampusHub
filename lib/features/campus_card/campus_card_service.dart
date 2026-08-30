@@ -83,9 +83,8 @@ class CampusCardService {
 
     double? parseAmount(String value) {
       final cleaned = value.replaceAll(',', '');
-      final match = RegExp(
-        r'[¥￥]?\s*([0-9]+(?:\.[0-9]+)?)\s*元?',
-      ).firstMatch(cleaned);
+      final match = RegExp(r'[¥￥]?\s*([0-9]+(?:\.[0-9]+)?)\s*元?')
+          .firstMatch(cleaned);
       if (match == null) return null;
       return double.tryParse(match.group(1)!);
     }
@@ -119,9 +118,8 @@ class CampusCardService {
     }
 
     final compact = normalize(text).replaceAll(',', '');
-    final inlineMatch = RegExp(
-      r'卡内余额[^0-9¥￥]{0,12}[¥￥]?([0-9]+(?:\.[0-9]+)?)',
-    ).firstMatch(compact);
+    final inlineMatch = RegExp(r'卡内余额[^0-9¥￥]{0,12}[¥￥]?([0-9]+(?:\.[0-9]+)?)')
+        .firstMatch(compact);
     if (inlineMatch != null) {
       return double.tryParse(inlineMatch.group(1)!);
     }

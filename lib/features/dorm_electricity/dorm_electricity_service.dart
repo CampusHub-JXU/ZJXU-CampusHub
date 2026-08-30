@@ -379,9 +379,9 @@ class DormElectricityService {
         options: Options(contentType: 'application/x-www-form-urlencoded'),
       ),
     );
-    final json =
-        jsonDecode(utf8.decode(resp.data!, allowMalformed: true))
-            as Map<String, dynamic>;
+    final json = jsonDecode(
+      utf8.decode(resp.data!, allowMalformed: true),
+    ) as Map<String, dynamic>;
     final data = json['data'] as List<dynamic>;
     final result = <DormBuilding>[];
     for (final community in data) {
@@ -411,9 +411,9 @@ class DormElectricityService {
         options: Options(contentType: 'application/x-www-form-urlencoded'),
       ),
     );
-    final json =
-        jsonDecode(utf8.decode(resp.data!, allowMalformed: true))
-            as Map<String, dynamic>;
+    final json = jsonDecode(
+      utf8.decode(resp.data!, allowMalformed: true),
+    ) as Map<String, dynamic>;
     final data = json['data'] as List<dynamic>;
     final result = <DormRoom>[];
     for (final floor in data) {

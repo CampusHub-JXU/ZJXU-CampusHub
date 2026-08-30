@@ -52,13 +52,41 @@ class AppThemeBuilder {
       height: 1.3,
       letterSpacing: -0.2,
     ),
-    titleSmall: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, height: 1.3),
-    bodyLarge: TextStyle(fontSize: 16, fontWeight: FontWeight.w400, height: 1.45),
-    bodyMedium: TextStyle(fontSize: 14, fontWeight: FontWeight.w400, height: 1.4),
-    bodySmall: TextStyle(fontSize: 12, fontWeight: FontWeight.w400, height: 1.35),
-    labelLarge: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, height: 1.2),
-    labelMedium: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, height: 1.2),
-    labelSmall: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, height: 1.2),
+    titleSmall: TextStyle(
+      fontSize: 14,
+      fontWeight: FontWeight.w600,
+      height: 1.3,
+    ),
+    bodyLarge: TextStyle(
+      fontSize: 16,
+      fontWeight: FontWeight.w400,
+      height: 1.45,
+    ),
+    bodyMedium: TextStyle(
+      fontSize: 14,
+      fontWeight: FontWeight.w400,
+      height: 1.4,
+    ),
+    bodySmall: TextStyle(
+      fontSize: 12,
+      fontWeight: FontWeight.w400,
+      height: 1.35,
+    ),
+    labelLarge: TextStyle(
+      fontSize: 14,
+      fontWeight: FontWeight.w600,
+      height: 1.2,
+    ),
+    labelMedium: TextStyle(
+      fontSize: 12,
+      fontWeight: FontWeight.w500,
+      height: 1.2,
+    ),
+    labelSmall: TextStyle(
+      fontSize: 11,
+      fontWeight: FontWeight.w500,
+      height: 1.2,
+    ),
   );
 
   /// 中性种子（石墨/品牌红）：深浅两种模式下 surface 阶梯都不掺种子色，

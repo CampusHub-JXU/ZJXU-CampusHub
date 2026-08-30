@@ -303,7 +303,9 @@ void main() {
     expect(find.text('第二课堂'), findsOneWidget);
   });
 
-  testWidgets('dock zone controller scrolls to function anchor', (tester) async {
+  testWidgets('dock zone controller scrolls to function anchor', (
+    tester,
+  ) async {
     usePhoneSurface(tester);
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
     await tester.pump();
@@ -334,7 +336,10 @@ void main() {
 
     expect(HomeZoneController.instance.zoneIndex, 0);
 
-    await tester.drag(find.byType(SingleChildScrollView), const Offset(0, -600));
+    await tester.drag(
+      find.byType(SingleChildScrollView),
+      const Offset(0, -600),
+    );
     await tester.pumpAndSettle();
     expect(HomeZoneController.instance.zoneIndex, 1);
 

@@ -1,4 +1,3 @@
-import '../schedule/schedule_term_context.dart';
 import 'grades_model.dart';
 
 /// 成绩页学期切换的纯逻辑层，便于单元测试且复用 [ScheduleTermContext]。
@@ -14,13 +13,6 @@ class GradesTermResolver {
   /// 展示用的学期标签：`"$academicYear $semester"`（不再拼接"第…学期"后缀）。
   static String labelOf(String academicYear, String semester) =>
       '$academicYear $semester';
-
-  /// 根据 [ScheduleTermContext.current] 推导当前学期 key。
-  static String currentTermKey([DateTime? now]) {
-    final ctx = ScheduleTermContext.current(now);
-    final yearStr = '${ctx.academicYear}-${ctx.academicYear + 1}';
-    return '$yearStr|${ctx.termLabel}';
-  }
 
   /// 从成绩列表中提取去重、排序后的学期组合，最新学期排在最前。
   static List<({String academicYear, String semester})> availableTerms(

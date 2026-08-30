@@ -212,12 +212,6 @@ class SecondClassroomActivity {
 
   bool get isFull => capacity > 0 && enrolledCount >= capacity;
 
-  bool get hasFutureReminderTarget {
-    final now = DateTime.now();
-    return (registrationEndAt?.isAfter(now) ?? false) ||
-        (activityStartAt?.isAfter(now) ?? false);
-  }
-
   bool isRecruitingAt(DateTime now) {
     final start = registrationStartAt;
     final end = registrationEndAt;

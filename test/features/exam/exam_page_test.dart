@@ -36,10 +36,6 @@ void main() {
         },
       ]),
     );
-    await prefs.setInt(
-      'exam_cached_at',
-      DateTime.now().subtract(const Duration(days: 30)).millisecondsSinceEpoch,
-    );
     await ExamService.instance.restoreCache();
 
     await tester.pumpWidget(const MaterialApp(home: ExamPage()));

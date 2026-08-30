@@ -31,24 +31,21 @@ void main() {
     NetworkSettings.instance.debugReset();
   });
 
-  test(
-    'ensureWebVpnGatewaySession returns true and stays direct when direct reachable',
-    () async {
-      await DioClient.instance.ensureInitialized();
-      ZhengfangAuth.instance.setMode(ZhengfangMode.webVpn);
-      final resolver = ConnectModeResolver.instance;
-      resolver.invalidate();
-      resolver.directReachabilityChecker = () async => true;
-      resolver.webVpnReachabilityChecker = () async => false;
+  test('ensureWebVpnGatewaySession returns true and stays direct when direct reachable', () async {
+    await DioClient.instance.ensureInitialized();
+    ZhengfangAuth.instance.setMode(ZhengfangMode.webVpn);
+    final resolver = ConnectModeResolver.instance;
+    resolver.invalidate();
+    resolver.directReachabilityChecker = () async => true;
+    resolver.webVpnReachabilityChecker = () async => false;
 
-      final result = await ZhengfangAuth.instance.ensureWebVpnGatewaySession(
-        syncWebViewCookies: false,
-      );
+    final result = await ZhengfangAuth.instance.ensureWebVpnGatewaySession(
+      syncWebViewCookies: false,
+    );
 
-      expect(result, true);
-      expect(ZhengfangAuth.instance.mode, ZhengfangMode.direct);
-    },
-  );
+    expect(result, true);
+    expect(ZhengfangAuth.instance.mode, ZhengfangMode.direct);
+  });
 
   test(
     'ensureWebVpnGatewaySession returns false when both unreachable',

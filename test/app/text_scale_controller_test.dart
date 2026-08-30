@@ -1,41 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
 import 'package:jxu_campus_hub/app/text_scale_controller.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  setUp(() {
-    SharedPreferences.setMockInitialValues({});
-    TextScaleController.instance.debugReset();
-  });
-
-  testWidgets('loads stored text scale factor during init', (tester) async {
-    SharedPreferences.setMockInitialValues({'text_scale_factor': 0.85});
-
-    await TextScaleController.instance.init();
-
-    expect(TextScaleController.instance.textScaleFactor.value, 0.85);
-  });
-
-  testWidgets('persists selected text scale factor', (tester) async {
-    await TextScaleController.instance.setTextScaleFactor(0.95);
-
-    TextScaleController.instance.debugReset();
-    await TextScaleController.instance.init();
-
-    expect(TextScaleController.instance.textScaleFactor.value, 0.95);
-  });
-
-  testWidgets('caps oversized text scale factor at max threshold', (
-    tester,
-  ) async {
-    await TextScaleController.instance.setTextScaleFactor(1.5);
-
+  test('caps oversized text scale factor at max threshold', () {
     expect(
-      TextScaleController.instance.textScaleFactor.value,
+      TextScaleController.normalizeScaleFactor(1.5),
       TextScaleController.maxScaleFactor,
     );
   });

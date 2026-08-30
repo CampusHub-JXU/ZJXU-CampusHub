@@ -12,9 +12,8 @@ import '../schedule_week_view_model.dart';
 import '../widgets/schedule_grid.dart';
 
 class SchedulePageController extends ChangeNotifier {
-  SchedulePageController({required bool loggedIn})
-    : _loggedIn = loggedIn,
-      _termContext = ScheduleService.instance.getCurrentTermContext(),
+  SchedulePageController({required this._loggedIn})
+    : _termContext = ScheduleService.instance.getCurrentTermContext(),
       _displayWeek = ScheduleService.instance.getCurrentWeek() {
     _term = _termContext.term;
   }

@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../app/app_preferences_controller.dart';
 import '../../app/app_theme_controller.dart';
+import '../theme/app_theme_palette.dart';
 
 class AppPreferencesStore {
   AppPreferencesStore._();
@@ -31,7 +32,7 @@ class AppPreferencesStore {
     // paletteIndex — map from existing presetSeedIndex
     final paletteIndex = (prefs.getInt(_presetSeedIndexKey) ?? 0).clamp(
       0,
-      AppThemeController.presetSeedColors.length - 1,
+      themePalettes.length - 1,
     );
 
     // colorSource

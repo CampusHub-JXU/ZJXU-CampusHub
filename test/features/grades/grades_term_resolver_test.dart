@@ -32,29 +32,6 @@ void main() {
     });
   });
 
-  group('GradesTermResolver.currentTermKey', () {
-    test('maps June 2026 to 2025-2026 第二学期', () {
-      expect(
-        GradesTermResolver.currentTermKey(DateTime(2026, 6, 28)),
-        '2025-2026|第二学期',
-      );
-    });
-
-    test('maps October 2025 to 2025-2026 第一学期', () {
-      expect(
-        GradesTermResolver.currentTermKey(DateTime(2025, 10, 1)),
-        '2025-2026|第一学期',
-      );
-    });
-
-    test('maps March 2025 to 2024-2025 第二学期', () {
-      expect(
-        GradesTermResolver.currentTermKey(DateTime(2025, 3, 1)),
-        '2024-2025|第二学期',
-      );
-    });
-  });
-
   group('GradesTermResolver.availableTerms', () {
     test('dedupes and sorts newest first, 第二学期 before 第一学期', () {
       final terms = GradesTermResolver.availableTerms([

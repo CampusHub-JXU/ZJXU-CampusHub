@@ -4,9 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:jxu_campus_hub/app/app_preferences_controller.dart';
 import 'package:jxu_campus_hub/app/app_theme_controller.dart';
-import 'package:jxu_campus_hub/app/text_scale_controller.dart';
-import 'package:jxu_campus_hub/app/theme_mode_controller.dart';
 import 'package:jxu_campus_hub/core/storage/app_preferences_store.dart';
+import 'package:jxu_campus_hub/core/theme/app_theme_palette.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -16,9 +15,7 @@ void main() {
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
     AppPreferencesController.instance.debugReset();
-    ThemeModeController.instance.debugReset();
     AppThemeController.instance.debugReset();
-    TextScaleController.instance.debugReset();
   });
 
   group('AppPreferencesStore', () {
@@ -121,7 +118,7 @@ void main() {
       expect(AppPreferencesController.instance.state.paletteIndex, 3);
       expect(
         AppPreferencesController.instance.state.seedColor,
-        AppThemeController.presetSeedColors[3],
+        themePalettes[3].primary,
       );
       expect(
         AppPreferencesController.instance.state.colorSource,
@@ -141,7 +138,6 @@ void main() {
         customColor,
       );
       expect(AppPreferencesController.instance.state.seedColor, customColor);
-      expect(AppThemeController.instance.seedColor.value, customColor);
     });
 
     test('setPureBlack 应更新 state', () async {
@@ -184,15 +180,13 @@ void main() {
     test('materialThemeMode 应正确映射', () {
       expect(const AppPreferences().materialThemeMode, ThemeMode.system);
       expect(
-        const AppPreferences(
-          themeMode: AppThemePreference.light,
-        ).materialThemeMode,
+        const AppPreferences(themeMode: AppThemePreference.light)
+            .materialThemeMode,
         ThemeMode.light,
       );
       expect(
-        const AppPreferences(
-          themeMode: AppThemePreference.dark,
-        ).materialThemeMode,
+        const AppPreferences(themeMode: AppThemePreference.dark)
+            .materialThemeMode,
         ThemeMode.dark,
       );
     });

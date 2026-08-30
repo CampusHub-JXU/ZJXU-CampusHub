@@ -53,11 +53,6 @@ void main() {
     test('restores exams from preferences', () async {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('exam_cached_data', jsonEncode(sampleItems));
-      await prefs.setInt(
-        'exam_cached_at',
-        DateTime.now().millisecondsSinceEpoch,
-      );
-
       final restored = await ExamService.instance.restoreCache();
 
       expect(restored, isTrue);
@@ -82,49 +77,9 @@ void main() {
           sampleItems[0], // June
         ]),
       );
-      await prefs.setInt(
-        'exam_cached_at',
-        DateTime.now().millisecondsSinceEpoch,
-      );
-
       await ExamService.instance.restoreCache();
 
       expect(ExamService.instance.cachedExams!.first.courseName, '高等数学');
-    });
-  });
-
-  group('ExamService.hasCache', () {
-    test('returns false when no cache time is recorded', () {
-      expect(ExamService.instance.hasCache, isFalse);
-    });
-
-    test('returns true when cache is restored', () async {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('exam_cached_data', jsonEncode(sampleItems));
-      await prefs.setInt(
-        'exam_cached_at',
-        DateTime.now().millisecondsSinceEpoch,
-      );
-
-      await ExamService.instance.restoreCache();
-
-      expect(ExamService.instance.hasCache, isTrue);
-    });
-
-    test('keeps old cache available until replaced', () async {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('exam_cached_data', jsonEncode(sampleItems));
-      await prefs.setInt(
-        'exam_cached_at',
-        DateTime.now()
-            .subtract(const Duration(days: 30))
-            .millisecondsSinceEpoch,
-      );
-
-      await ExamService.instance.restoreCache();
-
-      expect(ExamService.instance.hasCache, isTrue);
-      expect(ExamService.instance.cachedExams, hasLength(2));
     });
   });
 
@@ -132,11 +87,6 @@ void main() {
     test('nextExam returns first upcoming exam', () async {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('exam_cached_data', jsonEncode(sampleItems));
-      await prefs.setInt(
-        'exam_cached_at',
-        DateTime.now().millisecondsSinceEpoch,
-      );
-
       await ExamService.instance.restoreCache();
 
       final next = ExamService.instance.nextExam;
@@ -144,25 +94,8 @@ void main() {
       expect(next!.courseName, '高等数学');
     });
 
-    test('upcomingExams returns non-past exams with dates', () async {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('exam_cached_data', jsonEncode(sampleItems));
-      await prefs.setInt(
-        'exam_cached_at',
-        DateTime.now().millisecondsSinceEpoch,
-      );
-
-      await ExamService.instance.restoreCache();
-
-      expect(ExamService.instance.upcomingExams, hasLength(2));
-    });
-
     test('nextExam returns null when no cache', () {
       expect(ExamService.instance.nextExam, isNull);
-    });
-
-    test('upcomingExams returns empty when no cache', () {
-      expect(ExamService.instance.upcomingExams, isEmpty);
     });
   });
 }

@@ -4,8 +4,6 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:jxu_campus_hub/app/app_preferences_controller.dart';
-import 'package:jxu_campus_hub/app/text_scale_controller.dart';
-import 'package:jxu_campus_hub/app/theme_mode_controller.dart';
 import 'package:jxu_campus_hub/core/auth/connect_mode_resolver.dart';
 import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
@@ -37,10 +35,8 @@ Future<void> resetTestEnvironment() async {
     buildSignature: 'test',
   );
 
-  TextScaleController.instance.debugReset();
   GlassStyleController.instance.debugReset();
   AppPreferencesController.instance.debugReset();
-  ThemeModeController.instance.debugReset();
   UnifiedAuthService.instance.debugReset();
   ZhengfangAuth.instance.debugReset();
   ConnectModeResolver.instance.debugReset();

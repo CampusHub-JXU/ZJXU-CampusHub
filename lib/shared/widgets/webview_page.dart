@@ -15,8 +15,10 @@ import './app_app_bar.dart';
 part 'webview_page_helpers.dart';
 part 'webview_page_build.dart';
 
-typedef WebViewLoadStopCallback =
-    Future<void> Function(InAppWebViewController controller, String currentUrl);
+typedef WebViewLoadStopCallback = Future<void> Function(
+  InAppWebViewController controller,
+  String currentUrl,
+);
 typedef WebViewNavigationRequestCallback =
     Future<NavigationActionPolicy?> Function(
       InAppWebViewController controller,
@@ -166,9 +168,8 @@ class _WebViewPageState extends State<WebViewPage> {
 
   void _showHint(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _setQuickFillBusy(bool value) {

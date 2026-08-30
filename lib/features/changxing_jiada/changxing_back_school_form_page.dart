@@ -289,9 +289,8 @@ class _ChangxingBackSchoolFormPageState
 
   void _showSnackBar(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   String _fmtDate(DateTime? value) {
@@ -409,9 +408,9 @@ class _ChangxingBackSchoolFormPageState
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     initialValue: _trafficTool,
-                    dropdownColor: Theme.of(
-                      context,
-                    ).colorScheme.surfaceContainerHigh,
+                    dropdownColor: Theme.of(context)
+                        .colorScheme
+                        .surfaceContainerHigh,
                     items: _trafficOptions
                         .map(
                           (it) => DropdownMenuItem<String>(

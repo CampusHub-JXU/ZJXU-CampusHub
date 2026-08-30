@@ -331,30 +331,22 @@ class HomeController {
 
   Future<void> setShaderStrength(double value) async {
     final strength = value.clamp(0.0, 1.0);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(_keyShaderStrength, strength);
-    shaderStrength.value = strength;
+    await _persistDouble(_keyShaderStrength, strength, shaderStrength);
   }
 
   Future<void> setShaderOpacity(double value) async {
     final opacity = value.clamp(0.0, 1.0);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(_keyShaderOpacity, opacity);
-    shaderOpacity.value = opacity;
+    await _persistDouble(_keyShaderOpacity, opacity, shaderOpacity);
   }
 
   Future<void> setShaderAnimationSpeed(double value) async {
     final speed = value.clamp(0.0, 2.0);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(_keyShaderAnimationSpeed, speed);
-    shaderAnimationSpeed.value = speed;
+    await _persistDouble(_keyShaderAnimationSpeed, speed, shaderAnimationSpeed);
   }
 
   Future<void> setBackgroundOpacity(double value) async {
     final opacity = value.clamp(0.0, 1.0);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(_keyBackgroundOpacity, opacity);
-    backgroundOpacity.value = opacity;
+    await _persistDouble(_keyBackgroundOpacity, opacity, backgroundOpacity);
   }
 
   Future<void> setBackgroundAlignment(Alignment alignment) async {
@@ -372,12 +364,16 @@ class HomeController {
 
   Future<void> setBackgroundScale(double value) async {
     final scale = value.clamp(0.5, 3.0);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(_keyBackgroundScale, scale);
-    backgroundScale.value = scale;
+    await _persistDouble(_keyBackgroundScale, scale, backgroundScale);
   }
 
-  Future<void> clearBackgroundImage() async {
-    await setBackgroundImagePath(null);
+  Future<void> _persistDouble(
+    String key,
+    double value,
+    ValueNotifier<double> notifier,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(key, value);
+    notifier.value = value;
   }
 }

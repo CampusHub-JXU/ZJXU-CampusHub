@@ -4,8 +4,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:jxu_campus_hub/app/app_preferences_controller.dart';
 import 'package:jxu_campus_hub/app/app_theme_controller.dart';
-import 'package:jxu_campus_hub/app/text_scale_controller.dart';
-import 'package:jxu_campus_hub/app/theme_mode_controller.dart';
 import 'package:jxu_campus_hub/features/settings/theme_settings_page.dart';
 
 import '../../helpers/pump_app.dart';
@@ -19,8 +17,6 @@ void main() {
     await prefs.clear();
     AppPreferencesController.instance.debugReset();
     AppThemeController.instance.debugReset();
-    TextScaleController.instance.debugReset();
-    ThemeModeController.instance.debugReset();
   });
 
   testWidgets('自定义主题色弹层保存后应切换到 custom 色源', (tester) async {

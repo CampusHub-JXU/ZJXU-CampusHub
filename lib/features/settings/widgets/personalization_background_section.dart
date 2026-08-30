@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
-import '../../../app/app_theme_controller.dart';
 import '../../../core/theme/app_design_tokens.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_dropdown.dart';
@@ -53,9 +52,10 @@ class PersonalizationBackgroundSection extends StatelessWidget {
                         icon: Icons.delete_outline,
                         title: '移除背景图片',
                         onTap: () async {
-                          await HomeController.instance.clearBackgroundImage();
+                          await HomeController.instance.setBackgroundImagePath(
+                            null,
+                          );
                           await HomeController.instance.setShaderEnabled(false);
-                          await AppThemeController.instance.refreshMonetSeed();
                           if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(content: Text('已移除首页背景')),
@@ -185,18 +185,15 @@ class PersonalizationBackgroundSection extends StatelessWidget {
 
       await File(picked.path).copy(destPath);
       await HomeController.instance.setBackgroundImagePath(destPath);
-      await AppThemeController.instance.refreshMonetSeed();
 
       if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('已设置首页背景')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('已设置首页背景')));
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('选择图片失败，请稍后重试')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('选择图片失败，请稍后重试')));
       }
     }
   }

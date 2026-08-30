@@ -187,9 +187,8 @@ class _DormElectricitySettingsPageState
       ),
     );
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('寝室配置成功')));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('寝室配置成功')));
     Navigator.of(context).pop();
   }
 

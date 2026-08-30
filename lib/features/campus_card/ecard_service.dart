@@ -14,10 +14,8 @@ class EcardService {
   static const _baseUrl = 'http://ecard.zjxu.edu.cn:8012';
   static const _secretKey = 'ok15we1@oid8x5afd@';
 
-  String? _cachedAccNum;
   String? _cachedAccName;
 
-  String? get cachedAccNum => _cachedAccNum;
   String? get cachedAccName => _cachedAccName;
 
   @visibleForTesting
@@ -177,8 +175,6 @@ class EcardService {
 
   Future<QRCodeInitResult> initializeAndCreateQRCode(String studentId) async {
     final accNum = studentIdToAccNum(studentId);
-    _cachedAccNum = accNum;
-
     final authOk = await queryAccAuth(accNum);
     if (!authOk) {
       return QRCodeInitResult(error: '校园卡认证失败');
@@ -199,7 +195,6 @@ class EcardService {
   }
 
   void clearCache() {
-    _cachedAccNum = null;
     _cachedAccName = null;
   }
 

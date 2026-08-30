@@ -53,9 +53,7 @@ class AppTileSurface extends StatelessWidget {
                 child: InkWell(
                   onTap: onTap,
                   onLongPress: onLongPress,
-                  customBorder: RoundedSuperellipseBorder(
-                    borderRadius: radius,
-                  ),
+                  customBorder: RoundedSuperellipseBorder(borderRadius: radius),
                   child: Padding(
                     padding: padding ?? EdgeInsets.zero,
                     child: child,

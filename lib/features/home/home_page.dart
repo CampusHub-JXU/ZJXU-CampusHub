@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -345,8 +346,9 @@ class _HomePageState extends State<HomePage> {
         !_scrollController.hasClients) {
       return;
     }
-    final sectionTop =
-        sectionBox.localToGlobal(Offset.zero, ancestor: viewportBox).dy;
+    final sectionTop = sectionBox
+        .localToGlobal(Offset.zero, ancestor: viewportBox)
+        .dy;
     final trigger = viewportBox.size.height * _zoneTriggerViewportFraction;
     final inFunctionZone =
         sectionTop <= trigger && _scrollController.offset > 0;
@@ -410,15 +412,13 @@ class _HomePageState extends State<HomePage> {
                 height: topInset,
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.surface.withValues(alpha: 0.94),
+                    color: Theme.of(context).colorScheme.surface
+                        .withValues(alpha: 0.94),
                   ),
                 ),
               ),
-            ]
-          else
-            HomeAmbientBackground(),
+            ] else
+              HomeAmbientBackground(),
             SafeArea(
               bottom: false,
               child: ValueListenableBuilder<HomeTextColorMode>(

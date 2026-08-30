@@ -213,9 +213,8 @@ class _DormElectricityPageState extends State<DormElectricityPage>
           const SizedBox(height: 16),
           Text(
             '正在获取电量…',
-            style: Theme.of(
-              context,
-            ).textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+            style: Theme.of(context).textTheme.bodyMedium
+                ?.copyWith(color: cs.onSurfaceVariant),
           ),
         ],
       ),

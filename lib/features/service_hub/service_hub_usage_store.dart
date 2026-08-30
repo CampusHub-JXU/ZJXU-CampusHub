@@ -55,8 +55,6 @@ class ServiceHubUsageSnapshot {
   final List<String> pinnedIds;
   final Map<String, ServiceHubUsageEntry> usageById;
 
-  bool get isEmpty => pinnedIds.isEmpty && usageById.isEmpty;
-
   bool isPinned(String id) => pinnedIds.contains(id);
 }
 

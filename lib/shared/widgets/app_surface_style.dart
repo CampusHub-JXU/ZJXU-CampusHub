@@ -29,7 +29,11 @@ ShapeDecoration appSurfaceDecoration({
     color: glassEnabled ? base.withValues(alpha: tintAlpha) : base,
     shape: RoundedSuperellipseBorder(
       borderRadius: borderRadius,
-      side: appSurfaceBorder(isDark: isDark, glassEnabled: glassEnabled, cs: cs),
+      side: appSurfaceBorder(
+        isDark: isDark,
+        glassEnabled: glassEnabled,
+        cs: cs,
+      ),
     ),
   );
 }

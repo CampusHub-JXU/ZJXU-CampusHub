@@ -439,9 +439,8 @@ class _CampusCardPageState extends State<CampusCardPage> {
 
   Future<void> _openRechargePage() async {
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('请到微信「嘉兴大学校园卡」服务号完成充值')));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('请到微信「嘉兴大学校园卡」服务号完成充值')));
   }
 
   Future<void> _requestPaymentShortcut() async {

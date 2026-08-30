@@ -26,9 +26,8 @@ class GradesDistributionCard extends StatelessWidget {
         children: [
           Text(
             '成绩分布',
-            style: Theme.of(
-              context,
-            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+            style: Theme.of(context).textTheme.titleSmall
+                ?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 10),
           SizedBox(

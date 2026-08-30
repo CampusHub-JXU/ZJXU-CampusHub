@@ -332,7 +332,7 @@ class ScheduleService {
     }
 
     messages.addAll(_extractAreaThreeMessages(html));
-    return parseCourseChangeMessages(messages);
+    return parseScheduleChangeMessages(messages);
   }
 
   Future<List<String>> _fetchInboxChangeMessages() async {
@@ -380,9 +380,6 @@ class ScheduleService {
         .where((message) => message.isNotEmpty)
         .toList();
   }
-
-  List<CourseChangeRule> parseCourseChangeMessages(Iterable<String> messages) =>
-      parseScheduleChangeMessages(messages);
 
   List<String> _extractAreaThreeMessages(String html) {
     final messages = <String>[];

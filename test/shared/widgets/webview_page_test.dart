@@ -1,4 +1,4 @@
-﻿import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:jxu_campus_hub/shared/widgets/webview_page.dart';
 
 void main() {
@@ -67,12 +67,9 @@ void main() {
     test('prefers controller url over reported url', () {
       expect(
         selectLoadedWebViewUrl(
-          fallbackUrl:
-              'https://mobilehall.zjxu.edu.cn/mportal/start/index.html#/business/ydd/portal/home',
-          reportedUrl:
-              'https://newca.zjxu.edu.cn/cas/login?service=https%3A%2F%2Flibapp.zjxu.edu.cn%2FInfo%2FThirdparty%2FssoFromDingDing',
-          controllerUrl:
-              'https://libapp.zjxu.edu.cn/Info/Thirdparty/ssoFromDingDing?ticket=ST-1',
+          fallbackUrl: 'https://mobilehall.zjxu.edu.cn/mportal/start/index.html#/business/ydd/portal/home',
+          reportedUrl: 'https://newca.zjxu.edu.cn/cas/login?service=https%3A%2F%2Flibapp.zjxu.edu.cn%2FInfo%2FThirdparty%2FssoFromDingDing',
+          controllerUrl: 'https://libapp.zjxu.edu.cn/Info/Thirdparty/ssoFromDingDing?ticket=ST-1',
         ),
         'https://libapp.zjxu.edu.cn/Info/Thirdparty/ssoFromDingDing?ticket=ST-1',
       );
@@ -81,10 +78,8 @@ void main() {
     test('falls back when controller url is unavailable', () {
       expect(
         selectLoadedWebViewUrl(
-          fallbackUrl:
-              'https://mobilehall.zjxu.edu.cn/mportal/start/index.html#/business/ydd/portal/home',
-          reportedUrl:
-              'https://newca.zjxu.edu.cn/cas/login?service=https%3A%2F%2Flibapp.zjxu.edu.cn%2FInfo%2FThirdparty%2FssoFromDingDing',
+          fallbackUrl: 'https://mobilehall.zjxu.edu.cn/mportal/start/index.html#/business/ydd/portal/home',
+          reportedUrl: 'https://newca.zjxu.edu.cn/cas/login?service=https%3A%2F%2Flibapp.zjxu.edu.cn%2FInfo%2FThirdparty%2FssoFromDingDing',
         ),
         'https://newca.zjxu.edu.cn/cas/login?service=https%3A%2F%2Flibapp.zjxu.edu.cn%2FInfo%2FThirdparty%2FssoFromDingDing',
       );

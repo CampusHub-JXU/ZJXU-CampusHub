@@ -175,9 +175,8 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
 
     await _ctrl.setCustomSeedColor(selected);
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('自定义主题色已保存')));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('自定义主题色已保存')));
   }
 
   Widget _buildTextScale(AppPreferences prefs) {

@@ -16,12 +16,9 @@ class ExamService {
   static final ExamService instance = ExamService._();
 
   static const _cacheKey = 'exam_cached_data';
-  static const _cacheTimeKey = 'exam_cached_at';
-
   List<ExamEntry>? _cachedExams;
 
   List<ExamEntry>? get cachedExams => _cachedExams;
-  DateTime? get lastSavedAt => _lastSavedAt;
 
   ExamEntry? get nextExam {
     if (_cachedExams == null) return null;
@@ -31,15 +28,9 @@ class ExamService {
     return null;
   }
 
-  List<ExamEntry> get upcomingExams {
-    if (_cachedExams == null) return [];
-    return _cachedExams!.where((e) => e.hasDate && !e.isPast).toList();
-  }
-
   @visibleForTesting
   void debugReset() {
     _cachedExams = null;
-    _lastSavedAt = null;
   }
 
   /// Restore exam cache from disk. Returns true if data was restored.
@@ -60,20 +51,11 @@ class ExamService {
               return a.examDate!.compareTo(b.examDate!);
             });
       _cachedExams = list;
-      final savedAt = prefs.getInt(_cacheTimeKey);
-      if (savedAt != null) {
-        _lastSavedAt = DateTime.fromMillisecondsSinceEpoch(savedAt);
-      }
       return true;
     } catch (_) {
       return false;
     }
   }
-
-  /// Exam cache is kept until a successful refresh replaces it.
-  bool get hasCache => _cachedExams != null;
-
-  DateTime? _lastSavedAt;
 
   Future<void> _persistCache(List<ExamEntry> exams) async {
     try {
@@ -82,8 +64,6 @@ class ExamService {
         _cacheKey,
         jsonEncode(exams.map((e) => e.toJson()).toList()),
       );
-      _lastSavedAt = DateTime.now();
-      await prefs.setInt(_cacheTimeKey, _lastSavedAt!.millisecondsSinceEpoch);
     } catch (_) {}
   }
 

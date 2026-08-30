@@ -148,9 +148,8 @@ class _HomeGlassBackgroundFilterState extends State<HomeGlassBackgroundFilter>
     }
 
     _fragmentShader?.dispose();
-    _fragmentShader = _HomeBackgroundShaderCache.program(
-      widget.mode,
-    )!.fragmentShader();
+    _fragmentShader = _HomeBackgroundShaderCache.program(widget.mode)!
+        .fragmentShader();
     switch (widget.mode) {
       case HomeShaderMode.glass:
         _fragmentShader!

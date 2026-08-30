@@ -321,9 +321,8 @@ class _ChangxingLeaveFormPageState extends State<ChangxingLeaveFormPage> {
 
   void _showSnackBar(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   String _fmtDateTime(DateTime? value) {

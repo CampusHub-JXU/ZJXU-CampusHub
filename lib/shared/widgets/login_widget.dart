@@ -11,18 +11,21 @@ import 'unified_auth_login_widget.dart';
 typedef AcademicReachabilityChecker = Future<bool> Function();
 typedef AcademicGatewaySessionEnsurer = Future<bool?> Function();
 typedef AcademicCaptchaLoader = Future<Uint8List> Function();
-typedef AcademicLoginHandler =
-    Future<LoginResult> Function(
-      String username,
-      String password,
-      String captcha,
-    );
+typedef AcademicLoginHandler = Future<LoginResult> Function(
+  String username,
+  String password,
+  String captcha,
+);
 typedef AcademicCredentialLoader = Future<(String, String)?> Function();
-typedef AcademicCredentialSaver =
-    Future<void> Function(String username, String password);
+typedef AcademicCredentialSaver = Future<void> Function(
+  String username,
+  String password,
+);
 typedef AcademicModeSetter = void Function(ZhengfangMode mode);
-typedef UnifiedAuthStageBuilder =
-    Widget Function(BuildContext context, VoidCallback onLoginSuccess);
+typedef UnifiedAuthStageBuilder = Widget Function(
+  BuildContext context,
+  VoidCallback onLoginSuccess,
+);
 
 class LoginWidget extends StatefulWidget {
   const LoginWidget({
@@ -382,9 +385,8 @@ class _LoginWidgetState extends State<LoginWidget> {
           const SizedBox(height: 16),
           Text(
             preparingAcademic ? '正在建立 WebVPN 会话...' : '正在检测网络环境...',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
+            style: Theme.of(context).textTheme.bodyMedium
+                ?.copyWith(color: colorScheme.onSurfaceVariant),
           ),
         ],
       ),

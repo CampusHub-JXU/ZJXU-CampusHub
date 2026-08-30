@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../home/home_controller.dart';
@@ -9,42 +10,18 @@ class ShaderAnimationSpeedSlider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return ValueListenableBuilder<HomeShaderMode>(
       valueListenable: HomeController.instance.shaderMode,
       builder: (context, shaderMode, _) {
         if (shaderMode == HomeShaderMode.glass) {
           return const SizedBox.shrink();
         }
-        return ValueListenableBuilder<double>(
+        return _ShaderSlider(
           valueListenable: HomeController.instance.shaderAnimationSpeed,
-          builder: (context, speed, _) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Divider(
-                  height: 1,
-                  thickness: 1,
-                  indent: 16,
-                  color: cs.outlineVariant.withValues(alpha: 0.35),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                  child: Text(
-                    '动画速度  ${speed.toStringAsFixed(1)}x',
-                    style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
-                  ),
-                ),
-                Slider.adaptive(
-                  value: speed,
-                  min: 0.0,
-                  max: 2.0,
-                  divisions: 20,
-                  onChanged: HomeController.instance.setShaderAnimationSpeed,
-                ),
-              ],
-            );
-          },
+          label: (speed) => '动画速度  ${speed.toStringAsFixed(1)}x',
+          max: 2,
+          divisions: 20,
+          onChanged: HomeController.instance.setShaderAnimationSpeed,
         );
       },
     );
@@ -56,36 +33,11 @@ class ShaderStrengthSlider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return ValueListenableBuilder<double>(
+    return _ShaderSlider(
       valueListenable: HomeController.instance.shaderStrength,
-      builder: (context, strength, _) {
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Divider(
-              height: 1,
-              thickness: 1,
-              indent: 16,
-              color: cs.outlineVariant.withValues(alpha: 0.35),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-              child: Text(
-                'Shader 强度  ${(strength * 100).round()}%',
-                style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
-              ),
-            ),
-            Slider.adaptive(
-              value: strength,
-              min: 0.0,
-              max: 1.0,
-              divisions: 10,
-              onChanged: HomeController.instance.setShaderStrength,
-            ),
-          ],
-        );
-      },
+      label: (strength) => 'Shader 强度  ${(strength * 100).round()}%',
+      divisions: 10,
+      onChanged: HomeController.instance.setShaderStrength,
     );
   }
 }
@@ -95,10 +47,36 @@ class ShaderOpacitySlider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return _ShaderSlider(
+      valueListenable: HomeController.instance.shaderOpacity,
+      label: (opacity) => 'Shader 透明度  ${(opacity * 100).round()}%',
+      divisions: 20,
+      onChanged: HomeController.instance.setShaderOpacity,
+    );
+  }
+}
+
+class _ShaderSlider extends StatelessWidget {
+  const _ShaderSlider({
+    required this.valueListenable,
+    required this.label,
+    required this.divisions,
+    required this.onChanged,
+    this.max = 1,
+  });
+
+  final ValueListenable<double> valueListenable;
+  final String Function(double value) label;
+  final int divisions;
+  final ValueChanged<double> onChanged;
+  final double max;
+
+  @override
+  Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return ValueListenableBuilder<double>(
-      valueListenable: HomeController.instance.shaderOpacity,
-      builder: (context, opacity, _) {
+      valueListenable: valueListenable,
+      builder: (context, value, _) {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -111,16 +89,16 @@ class ShaderOpacitySlider extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
               child: Text(
-                'Shader 透明度  ${(opacity * 100).round()}%',
+                label(value),
                 style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
               ),
             ),
             Slider.adaptive(
-              value: opacity,
-              min: 0.0,
-              max: 1.0,
-              divisions: 20,
-              onChanged: HomeController.instance.setShaderOpacity,
+              value: value,
+              min: 0,
+              max: max,
+              divisions: divisions,
+              onChanged: onChanged,
             ),
           ],
         );

@@ -114,11 +114,11 @@ class _AppShellPageState extends State<AppShellPage>
     return Scaffold(
       extendBody: true,
       body: SlideTransition(
-        position: Tween<Offset>(
-          begin: _slideBegin,
-          end: Offset.zero,
-        ).animate(
-          CurvedAnimation(parent: _switchController, curve: Curves.easeOutCubic),
+        position: Tween<Offset>(begin: _slideBegin, end: Offset.zero).animate(
+          CurvedAnimation(
+            parent: _switchController,
+            curve: Curves.easeOutCubic,
+          ),
         ),
         child: FadeTransition(
           opacity: CurvedAnimation(

@@ -154,11 +154,7 @@ void main() {
 
     test('空列表返回空', () {
       expect(
-        assignBentoTiles(
-          const [],
-          const BentoUsageInput(),
-          unitsPerRow: 2,
-        ),
+        assignBentoTiles(const [], const BentoUsageInput(), unitsPerRow: 2),
         isEmpty,
       );
     });
@@ -178,12 +174,16 @@ void main() {
           lessThanOrEqualTo(unitsPerRow),
           reason: '${placement.tile.id} 越出网格右边界',
         );
-        for (var row = placement.row;
-            row < placement.row + placement.rowSpan;
-            row++) {
-          for (var col = placement.col;
-              col < placement.col + placement.colSpan;
-              col++) {
+        for (
+          var row = placement.row;
+          row < placement.row + placement.rowSpan;
+          row++
+        ) {
+          for (
+            var col = placement.col;
+            col < placement.col + placement.colSpan;
+            col++
+          ) {
             final key = '$row:$col';
             expect(
               cells.contains(key),

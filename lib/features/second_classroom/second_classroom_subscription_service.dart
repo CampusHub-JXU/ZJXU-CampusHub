@@ -8,13 +8,12 @@ import '../../core/notification/app_notification_service.dart';
 import 'second_classroom_model.dart';
 import 'second_classroom_service.dart';
 
-typedef SecondClassroomRecruitingNotifier =
-    Future<void> Function({
-      required int id,
-      required String title,
-      required String body,
-      required String payload,
-    });
+typedef SecondClassroomRecruitingNotifier = Future<void> Function({
+  required int id,
+  required String title,
+  required String body,
+  required String payload,
+});
 
 const _subscriptionsKey = 'second_classroom_subscriptions_v2';
 const _legacySubscriptionsKey = 'second_classroom_subscriptions_v1';

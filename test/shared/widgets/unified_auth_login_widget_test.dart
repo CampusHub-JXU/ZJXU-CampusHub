@@ -233,36 +233,36 @@ void main() {
     expect(find.text('账号为校园一卡通号'), findsNothing);
   });
 
-  testWidgets('shows friendly error when bootstrap throws handshake exception', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: UnifiedAuthLoginWidget(
-            onLoginSuccess: () {},
-            loadSavedCredentials: () async => ('', ''),
-            sessionPreflight: () async {
-              throw DioException(
-                requestOptions: RequestOptions(path: '/cas/login'),
-                type: DioExceptionType.unknown,
-                error: HandshakeException(
-                  'Connection terminated during handshake',
-                ),
-                message:
-                    'HandshakeException: Connection terminated during handshake',
-              );
-            },
+  testWidgets(
+    'shows friendly error when bootstrap throws handshake exception',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: UnifiedAuthLoginWidget(
+              onLoginSuccess: () {},
+              loadSavedCredentials: () async => ('', ''),
+              sessionPreflight: () async {
+                throw DioException(
+                  requestOptions: RequestOptions(path: '/cas/login'),
+                  type: DioExceptionType.unknown,
+                  error: HandshakeException(
+                    'Connection terminated during handshake',
+                  ),
+                  message: 'HandshakeException: Connection terminated during handshake',
+                );
+              },
+            ),
           ),
         ),
-      ),
-    );
+      );
 
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
 
-    expect(find.text('无法连接统一认证，请检查系统代理、VPN 或网络证书环境后重试'), findsOneWidget);
-  });
+      expect(find.text('无法连接统一认证，请检查系统代理、VPN 或网络证书环境后重试'), findsOneWidget);
+    },
+  );
 
   testWidgets('toggles password visibility from suffix icon', (tester) async {
     await tester.pumpWidget(

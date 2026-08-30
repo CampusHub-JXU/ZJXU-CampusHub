@@ -91,10 +91,7 @@ void main() {
 
     final decorBox = tester.widget<DecoratedBox>(
       find
-          .ancestor(
-            of: find.text('卡片'),
-            matching: find.byType(DecoratedBox),
-          )
+          .ancestor(of: find.text('卡片'), matching: find.byType(DecoratedBox))
           .last,
     );
     final boxDecoration = decorBox.decoration as BoxDecoration;

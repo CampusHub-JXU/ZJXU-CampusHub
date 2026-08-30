@@ -29,11 +29,8 @@ import 'package:jxu_campus_hub/shared/widgets/app_icon_badge.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_search_field.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_tile_surface.dart';
 import 'package:jxu_campus_hub/shared/widgets/auth_required_view.dart';
-import 'package:jxu_campus_hub/shared/widgets/balance_card.dart';
 import 'package:jxu_campus_hub/shared/widgets/glass_container.dart';
-import 'package:jxu_campus_hub/shared/widgets/glass_button.dart';
 import 'package:jxu_campus_hub/shared/widgets/glass_nav_bar.dart';
-import 'package:jxu_campus_hub/shared/widgets/scholar_button.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_cache_snapshot.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_model.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';
@@ -266,13 +263,7 @@ Future<void> _seedRichHomeState() async {
       },
     ]),
     'grades_cached_data': jsonEncode([
-      {
-        'kcmc': '高等数学 B',
-        'cj': '92',
-        'bfzcj': '92',
-        'jd': '4.0',
-        'xf': '4.5',
-      },
+      {'kcmc': '高等数学 B', 'cj': '92', 'bfzcj': '92', 'jd': '4.0', 'xf': '4.5'},
       {'kcmc': '数据结构', 'cj': '88', 'bfzcj': '88', 'jd': '3.7', 'xf': '4.0'},
       {'kcmc': '大学英语', 'cj': '85', 'bfzcj': '85', 'jd': '3.5', 'xf': '3.0'},
     ]),
@@ -289,18 +280,23 @@ Future<void> _seedRichHomeState() async {
   );
   await SemesterCalendar.instance.setSemesterStartDate(today);
 
-  CourseEntry course(String name, int weekday, int start, int end, String room) =>
-      CourseEntry(
-        courseName: name,
-        teacherName: '王老师',
-        weekday: weekday,
-        startLesson: start,
-        endLesson: end,
-        weekRange: '1-20周',
-        classroom: room,
-        campus: '梁林校区',
-        typeSymbol: '',
-      );
+  CourseEntry course(
+    String name,
+    int weekday,
+    int start,
+    int end,
+    String room,
+  ) => CourseEntry(
+    courseName: name,
+    teacherName: '王老师',
+    weekday: weekday,
+    startLesson: start,
+    endLesson: end,
+    weekRange: '1-20周',
+    classroom: room,
+    campus: '梁林校区',
+    typeSymbol: '',
+  );
 
   ScheduleService.instance.debugSetSnapshot(
     ScheduleCacheSnapshot(
@@ -530,15 +526,6 @@ class _ComponentGallery extends StatelessWidget {
               ],
             ),
           ),
-          _sectionLabel('BalanceCard · 一卡通余额卡'),
-          BalanceCard(
-            balance: 38.20,
-            yesterdaySpent: 12.50,
-            onTap: () {},
-            onPaymentTap: () {},
-            onRechargeTap: () {},
-            onBillTap: () {},
-          ),
           _sectionLabel('AppIconBadge · 三档尺寸'),
           const Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -578,28 +565,6 @@ class _ComponentGallery extends StatelessWidget {
             expanded: true,
             prefixIcon: Icons.event_note_outlined,
           ),
-          _sectionLabel('ScholarButton · 品牌按钮'),
-          Row(
-            children: [
-              ScholarButton(
-                onPressed: () {},
-                child: const Text('主操作'),
-              ),
-              const SizedBox(width: 10),
-              ScholarSecondaryButton(
-                onPressed: () {},
-                child: const Text('次操作'),
-              ),
-            ],
-          ),
-          _sectionLabel('GlassButton · 毛玻璃次操作'),
-          Row(
-            children: [
-              GlassButton.text(onPressed: () {}, text: '次操作'),
-              const SizedBox(width: 10),
-              GlassButton.text(onPressed: null, text: '禁用态'),
-            ],
-          ),
           _sectionLabel('按钮与选择控件'),
           Wrap(
             spacing: 10,
@@ -625,15 +590,9 @@ class _ComponentGallery extends StatelessWidget {
             onAction: () {},
           ),
           _sectionLabel('AppEmptyView · 空状态'),
-          const AppEmptyView(
-            title: '今天没有课程',
-            message: '休息一下，或去课表看看本周安排。',
-          ),
+          const AppEmptyView(title: '今天没有课程', message: '休息一下，或去课表看看本周安排。'),
           _sectionLabel('AppErrorView · 错误状态'),
-          AppErrorView(
-            message: '网络连接超时，请检查网络后重试。',
-            onRetry: () {},
-          ),
+          AppErrorView(message: '网络连接超时，请检查网络后重试。', onRetry: () {}),
           _sectionLabel('GlassNavBar · 浮动 dock'),
           GlassNavBar(
             destinations: const [

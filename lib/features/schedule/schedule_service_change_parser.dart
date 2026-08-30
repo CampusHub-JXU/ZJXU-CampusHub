@@ -121,9 +121,8 @@ String? _extractCourseName(String message) {
 }
 
 String? _extractTeacherName(String message) {
-  final match = RegExp(
-    r'(?:调课提醒|补课提醒|停课提醒)[:：]?\s*(?:原定)?(.+?)老师',
-  ).firstMatch(message);
+  final match = RegExp(r'(?:调课提醒|补课提醒|停课提醒)[:：]?\s*(?:原定)?(.+?)老师')
+      .firstMatch(message);
   final name = match?.group(1)?.trim() ?? '';
   return name.isEmpty ? null : name;
 }

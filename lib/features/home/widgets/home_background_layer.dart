@@ -83,9 +83,8 @@ class HomeBackgroundLayer extends StatelessWidget {
                                               themeColor: themeColor,
                                               monetColors: monetColors,
                                               isDarkMode:
-                                                  Theme.of(
-                                                    context,
-                                                  ).brightness ==
+                                                  Theme.of(context)
+                                                      .brightness ==
                                                   Brightness.dark,
                                               opacity: shaderOpacity,
                                               animationSpeed: animationSpeed,

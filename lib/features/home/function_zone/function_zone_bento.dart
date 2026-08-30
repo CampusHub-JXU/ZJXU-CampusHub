@@ -146,11 +146,12 @@ List<BentoTile> assignBentoTiles(
     return staticScore + visitScore + pinnedScore;
   }
 
-  final ranked = [...entries]..sort((left, right) {
-    final byScore = scoreOf(right).compareTo(scoreOf(left));
-    if (byScore != 0) return byScore;
-    return left.sortOrder.compareTo(right.sortOrder);
-  });
+  final ranked = [...entries]
+    ..sort((left, right) {
+      final byScore = scoreOf(right).compareTo(scoreOf(left));
+      if (byScore != 0) return byScore;
+      return left.sortOrder.compareTo(right.sortOrder);
+    });
 
   if (unitsPerRow < 4) {
     return [

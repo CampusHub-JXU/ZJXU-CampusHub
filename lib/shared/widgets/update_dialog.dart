@@ -48,9 +48,8 @@ Future<void> showUpdateDialog(BuildContext context, AppRelease release) {
               if (!context.mounted) return;
               final uri = Uri.tryParse(release.launchUrl);
               if (uri == null) {
-                ScaffoldMessenger.maybeOf(
-                  context,
-                )?.showSnackBar(const SnackBar(content: Text('更新链接无效')));
+                ScaffoldMessenger.maybeOf(context)
+                    ?.showSnackBar(const SnackBar(content: Text('更新链接无效')));
                 return;
               }
               final launched = await launchUrl(
@@ -58,9 +57,8 @@ Future<void> showUpdateDialog(BuildContext context, AppRelease release) {
                 mode: LaunchMode.externalApplication,
               );
               if (!launched && context.mounted) {
-                ScaffoldMessenger.maybeOf(
-                  context,
-                )?.showSnackBar(const SnackBar(content: Text('无法打开更新链接')));
+                ScaffoldMessenger.maybeOf(context)
+                    ?.showSnackBar(const SnackBar(content: Text('无法打开更新链接')));
               }
             },
             child: Text(release.hasDownloadUrl ? '下载 APK' : '查看版本'),

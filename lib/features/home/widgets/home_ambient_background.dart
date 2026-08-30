@@ -68,9 +68,8 @@ class _AmbientPainter extends CustomPainter {
     final glow = HomeAmbientBackground._brandRed.withValues(alpha: alpha);
     final rect = Rect.fromCircle(center: center, radius: radius);
     final paint = Paint()
-      ..shader = RadialGradient(
-        colors: [glow, glow.withValues(alpha: 0)],
-      ).createShader(rect);
+      ..shader = RadialGradient(colors: [glow, glow.withValues(alpha: 0)])
+          .createShader(rect);
     canvas.drawRect(rect, paint);
   }
 

@@ -163,13 +163,12 @@ void main() {
 
 SecondClassroomSubscriptionService _testSubscriptionService() {
   return SecondClassroomSubscriptionService(
-    notifyRecruitingActivity:
-        ({
-          required id,
-          required title,
-          required body,
-          required payload,
-        }) async {},
+    notifyRecruitingActivity: ({
+      required id,
+      required title,
+      required body,
+      required payload,
+    }) async {},
   );
 }
 

@@ -12,13 +12,12 @@ void main() {
   test('stores subscription by normalized activity title', () async {
     final service = SecondClassroomSubscriptionService(
       nowProvider: () => DateTime(2026, 6, 9, 12),
-      notifyRecruitingActivity:
-          ({
-            required id,
-            required title,
-            required body,
-            required payload,
-          }) async {},
+      notifyRecruitingActivity: ({
+        required id,
+        required title,
+        required body,
+        required payload,
+      }) async {},
     );
 
     final count = await service.subscribe(_activity);
@@ -118,13 +117,12 @@ void main() {
   test('unsubscribe removes stored activity name', () async {
     final service = SecondClassroomSubscriptionService(
       nowProvider: () => DateTime(2026, 6, 9, 12),
-      notifyRecruitingActivity:
-          ({
-            required id,
-            required title,
-            required body,
-            required payload,
-          }) async {},
+      notifyRecruitingActivity: ({
+        required id,
+        required title,
+        required body,
+        required payload,
+      }) async {},
     );
 
     await service.subscribe(_activity);

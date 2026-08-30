@@ -74,9 +74,8 @@ class PushDebugPage extends StatelessWidget {
           const SizedBox(height: 24),
           Text(
             '在 Firebase Console 中使用此令牌可向本设备发送测试推送。',
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+            style: Theme.of(context).textTheme.bodySmall
+                ?.copyWith(color: cs.onSurfaceVariant),
           ),
         ],
       ),

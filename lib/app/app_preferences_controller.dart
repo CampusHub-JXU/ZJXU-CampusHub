@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../core/theme/app_theme_palette.dart';
+import '../core/storage/app_preferences_store.dart';
 import 'app_theme_controller.dart';
 import 'text_scale_controller.dart';
-import 'theme_mode_controller.dart';
-import '../core/storage/app_preferences_store.dart';
 
 enum AppThemePreference { system, light, dark }
 
@@ -63,9 +63,8 @@ class AppPreferences {
 
   Color get seedColor => switch (colorSource) {
     AppColorPreference.preset =>
-      AppThemeController.presetSeedColors[paletteIndex
-          .clamp(0, AppThemeController.presetSeedColors.length - 1)
-          .toInt()],
+      themePalettes[paletteIndex.clamp(0, themePalettes.length - 1).toInt()]
+          .primary,
     AppColorPreference.custom => customSeedColor,
   };
 }
@@ -83,9 +82,8 @@ class AppPreferencesController extends ChangeNotifier {
   Future<void> restore() async {
     _state = await AppPreferencesStore.instance.load();
 
-    // Sync state to legacy singletons for backward compat
-    await _syncToLegacySingletons();
-
+    _syncSeedColorNotifier();
+    _syncHomeTextColorNotifier();
     notifyListeners();
   }
 
@@ -96,16 +94,13 @@ class AppPreferencesController extends ChangeNotifier {
     _state = _state.copyWith(themeMode: value);
     notifyListeners();
 
-    // Delegate to legacy singleton
-    await ThemeModeController.instance.setThemeMode(value.materialThemeMode);
-    // Persist
     await AppPreferencesStore.instance.saveThemeMode(value);
   }
 
   // ── Palette ────────────────────────────────────────────────────────────
 
   Future<void> setPaletteIndex(int value) async {
-    final safe = value.clamp(0, AppThemeController.presetSeedColors.length - 1);
+    final safe = value.clamp(0, themePalettes.length - 1);
     if (_state.paletteIndex == safe &&
         _state.colorSource == AppColorPreference.preset) {
       return;
@@ -114,12 +109,9 @@ class AppPreferencesController extends ChangeNotifier {
       colorSource: AppColorPreference.preset,
       paletteIndex: safe,
     );
+    _syncSeedColorNotifier();
     notifyListeners();
 
-    // Delegate to legacy singletons
-    await AppThemeController.instance.setSeedMode(AppThemeSeedMode.preset);
-    await AppThemeController.instance.setPresetSeedIndex(safe);
-    // Persist
     await AppPreferencesStore.instance.savePaletteIndex(safe);
   }
 
@@ -133,9 +125,9 @@ class AppPreferencesController extends ChangeNotifier {
       colorSource: AppColorPreference.custom,
       customSeedColor: safeColor,
     );
+    _syncSeedColorNotifier();
     notifyListeners();
 
-    await AppThemeController.instance.setCustomSeedColor(safeColor);
     await AppPreferencesStore.instance.saveCustomSeedColor(safeColor);
   }
 
@@ -146,7 +138,6 @@ class AppPreferencesController extends ChangeNotifier {
     _state = _state.copyWith(pureBlack: value);
     notifyListeners();
 
-    await AppThemeController.instance.setPureBlackMode(value);
     await AppPreferencesStore.instance.savePureBlack(value);
   }
 
@@ -158,7 +149,6 @@ class AppPreferencesController extends ChangeNotifier {
     _state = _state.copyWith(textScale: normalized);
     notifyListeners();
 
-    await TextScaleController.instance.setTextScaleFactor(normalized);
     await AppPreferencesStore.instance.saveTextScale(normalized);
   }
 
@@ -169,13 +159,7 @@ class AppPreferencesController extends ChangeNotifier {
     _state = _state.copyWith(homeTextColor: value);
     notifyListeners();
 
-    // Map to legacy enum
-    final legacyMode = switch (value) {
-      HomeTextColorPreference.system => HomeTextColorMode.system,
-      HomeTextColorPreference.dark => HomeTextColorMode.dark,
-      HomeTextColorPreference.light => HomeTextColorMode.light,
-    };
-    await AppThemeController.instance.setHomeTextColorMode(legacyMode);
+    _syncHomeTextColorNotifier();
     await AppPreferencesStore.instance.saveHomeTextColor(value);
   }
 
@@ -189,42 +173,24 @@ class AppPreferencesController extends ChangeNotifier {
     await AppPreferencesStore.instance.saveFilledButtonSoftStyle(value);
   }
 
-  // ── Legacy sync ────────────────────────────────────────────────────────
-
-  /// Sync restored preferences to legacy singletons so existing
-  /// ValueListenableBuilder widgets stay in sync.
-  Future<void> _syncToLegacySingletons() async {
-    // Use public setters so existing ValueListenableBuilder widgets stay in sync.
-    await ThemeModeController.instance.setThemeMode(_state.materialThemeMode);
-    await TextScaleController.instance.setTextScaleFactor(_state.textScale);
-    await AppThemeController.instance.setPureBlackMode(_state.pureBlack);
-    if (_state.colorSource == AppColorPreference.custom) {
-      await AppThemeController.instance.setCustomSeedColor(
-        _state.customSeedColor,
-      );
-    } else {
-      await AppThemeController.instance.setSeedMode(AppThemeSeedMode.preset);
-      await AppThemeController.instance.setPresetSeedIndex(_state.paletteIndex);
-    }
-    final legacyHomeTextColor = switch (_state.homeTextColor) {
+  void _syncHomeTextColorNotifier() {
+    final mode = switch (_state.homeTextColor) {
       HomeTextColorPreference.system => HomeTextColorMode.system,
       HomeTextColorPreference.dark => HomeTextColorMode.dark,
       HomeTextColorPreference.light => HomeTextColorMode.light,
     };
-    await AppThemeController.instance.setHomeTextColorMode(legacyHomeTextColor);
+    AppThemeController.instance.updateHomeTextColorMode(mode);
+  }
+
+  void _syncSeedColorNotifier() {
+    AppThemeController.instance.updateSeedColor(_state.seedColor);
   }
 
   @visibleForTesting
   void debugReset() {
     _state = const AppPreferences();
+    _syncSeedColorNotifier();
+    _syncHomeTextColorNotifier();
     notifyListeners();
   }
-}
-
-extension on AppThemePreference {
-  ThemeMode get materialThemeMode => switch (this) {
-    AppThemePreference.system => ThemeMode.system,
-    AppThemePreference.light => ThemeMode.light,
-    AppThemePreference.dark => ThemeMode.dark,
-  };
 }

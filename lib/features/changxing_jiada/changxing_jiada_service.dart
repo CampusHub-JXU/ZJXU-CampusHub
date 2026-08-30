@@ -701,9 +701,9 @@ class ChangxingJiadaService {
     final service = uri.queryParameters['service']?.trim() ?? '';
     if (service.isEmpty) return null;
 
-    return Uri.parse(
-      _unifiedAuthLoginUrl,
-    ).replace(queryParameters: uri.queryParameters).toString();
+    return Uri.parse(_unifiedAuthLoginUrl)
+        .replace(queryParameters: uri.queryParameters)
+        .toString();
   }
 
   @visibleForTesting

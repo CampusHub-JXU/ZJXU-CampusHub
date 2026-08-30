@@ -113,9 +113,9 @@ class _PersonalizationPageState extends State<PersonalizationPage> {
                           borderRadius: AppRadius.tileBorder,
                           child: DecoratedBox(
                             decoration: BoxDecoration(
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.surfaceContainerHigh,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .surfaceContainerHigh,
                               border: Border.all(
                                 color: Theme.of(context)
                                     .colorScheme
@@ -157,9 +157,9 @@ class _PersonalizationPageState extends State<PersonalizationPage> {
                                     path: bgPath,
                                     errorBuilder: (context) {
                                       return Container(
-                                        color: Theme.of(
-                                          context,
-                                        ).colorScheme.surfaceContainerHigh,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .surfaceContainerHigh,
                                         child: const Center(
                                           child: Icon(
                                             Icons.broken_image_outlined,

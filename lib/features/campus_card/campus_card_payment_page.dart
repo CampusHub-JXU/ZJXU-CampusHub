@@ -305,9 +305,8 @@ class _CampusCardFallbackPaymentPageState
       _pollingStopped = true;
     });
 
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('状态轮询已暂停，请手动刷新消费码')));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('状态轮询已暂停，请手动刷新消费码')));
   }
 
   Future<void> _refreshQRCode() async {

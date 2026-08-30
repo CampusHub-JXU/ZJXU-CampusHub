@@ -102,99 +102,104 @@ void main() {
     );
   });
 
-  test('parses github release and mirrors release urls through edgeone', () async {
-    final dio = Dio();
-    final adapter = MockHttpClientAdapter();
-    dio.httpClientAdapter = adapter;
-    adapter.registerJson('GET', '/repos/FHfanshu/ZJXU-CampusHub/releases/latest', {
-      'tag_name': 'v0.2.5',
-      'body': '更新内容',
-      'html_url':
-          'https://github.com/FHfanshu/ZJXU-CampusHub/releases/tag/v0.2.5',
-      'published_at': '2026-05-14T10:00:00Z',
-      'assets': [
+  test(
+    'parses github release and mirrors release urls through edgeone',
+    () async {
+      final dio = Dio();
+      final adapter = MockHttpClientAdapter();
+      dio.httpClientAdapter = adapter;
+      adapter.registerJson(
+        'GET',
+        '/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
         {
-          'name': 'notes.txt',
-          'browser_download_url':
-              'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/v0.2.5/notes.txt',
+          'tag_name': 'v0.2.5',
+          'body': '更新内容',
+          'html_url':
+              'https://github.com/FHfanshu/ZJXU-CampusHub/releases/tag/v0.2.5',
+          'published_at': '2026-05-14T10:00:00Z',
+          'assets': [
+            {
+              'name': 'notes.txt',
+              'browser_download_url': 'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/v0.2.5/notes.txt',
+            },
+            {
+              'name': 'JXU-CampusHub-v0.2.5.apk',
+              'browser_download_url': 'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/v0.2.5/JXU-CampusHub-v0.2.5.apk',
+            },
+          ],
         },
+      );
+
+      final source = GitHubReleaseUpdateSource(
+        dio: dio,
+        latestReleaseApiUrl: 'https://api.github.com/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
+        releaseMirrorPrefix: 'https://edgeone.gh-proxy.org/',
+      );
+
+      final release = await source.fetchLatestRelease();
+
+      expect(release.version, '0.2.5');
+      expect(release.changelog, '更新内容');
+      expect(
+        release.releaseUrl,
+        'https://edgeone.gh-proxy.org/https://github.com/FHfanshu/ZJXU-CampusHub/releases/tag/v0.2.5',
+      );
+      expect(
+        release.downloadUrl,
+        'https://edgeone.gh-proxy.org/https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/v0.2.5/JXU-CampusHub-v0.2.5.apk',
+      );
+    },
+  );
+
+  test(
+    'falls back to secondary github release api when primary fails',
+    () async {
+      final dio = Dio();
+      final adapter = MockHttpClientAdapter();
+      dio.httpClientAdapter = adapter;
+      adapter.registerJson(
+        'GET',
+        '/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
+        {'message': 'rate limited'},
+        statusCode: 403,
+      );
+      adapter.registerJson(
+        'GET',
+        '/https://api.github.com/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
         {
-          'name': 'JXU-CampusHub-v0.2.5.apk',
-          'browser_download_url':
-              'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/v0.2.5/JXU-CampusHub-v0.2.5.apk',
+          'tag_name': 'v0.2.6',
+          'body': 'fallback ok',
+          'html_url':
+              'https://github.com/FHfanshu/ZJXU-CampusHub/releases/tag/v0.2.6',
+          'published_at': '2026-05-14T11:00:00Z',
+          'assets': [
+            {
+              'name': 'JXU-CampusHub-v0.2.6.apk',
+              'browser_download_url': 'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/v0.2.6/JXU-CampusHub-v0.2.6.apk',
+            },
+          ],
         },
-      ],
-    });
+      );
 
-    final source = GitHubReleaseUpdateSource(
-      dio: dio,
-      latestReleaseApiUrl:
-          'https://api.github.com/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
-      releaseMirrorPrefix: 'https://edgeone.gh-proxy.org/',
-    );
-
-    final release = await source.fetchLatestRelease();
-
-    expect(release.version, '0.2.5');
-    expect(release.changelog, '更新内容');
-    expect(
-      release.releaseUrl,
-      'https://edgeone.gh-proxy.org/https://github.com/FHfanshu/ZJXU-CampusHub/releases/tag/v0.2.5',
-    );
-    expect(
-      release.downloadUrl,
-      'https://edgeone.gh-proxy.org/https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/v0.2.5/JXU-CampusHub-v0.2.5.apk',
-    );
-  });
-
-  test('falls back to secondary github release api when primary fails', () async {
-    final dio = Dio();
-    final adapter = MockHttpClientAdapter();
-    dio.httpClientAdapter = adapter;
-    adapter.registerJson(
-      'GET',
-      '/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
-      {'message': 'rate limited'},
-      statusCode: 403,
-    );
-    adapter.registerJson(
-      'GET',
-      '/https://api.github.com/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
-      {
-        'tag_name': 'v0.2.6',
-        'body': 'fallback ok',
-        'html_url':
-            'https://github.com/FHfanshu/ZJXU-CampusHub/releases/tag/v0.2.6',
-        'published_at': '2026-05-14T11:00:00Z',
-        'assets': [
-          {
-            'name': 'JXU-CampusHub-v0.2.6.apk',
-            'browser_download_url':
-                'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/v0.2.6/JXU-CampusHub-v0.2.6.apk',
-          },
+      final source = GitHubReleaseUpdateSource(
+        dio: dio,
+        latestReleaseApiUrl: 'https://api.github.com/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
+        latestReleaseFallbackApiUrls: const [
+          'https://edgeone.gh-proxy.org/https://api.github.com/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
         ],
-      },
-    );
+        releaseMirrorPrefix: 'https://edgeone.gh-proxy.org/',
+      );
 
-    final source = GitHubReleaseUpdateSource(
-      dio: dio,
-      latestReleaseApiUrl:
-          'https://api.github.com/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
-      latestReleaseFallbackApiUrls: const [
-        'https://edgeone.gh-proxy.org/https://api.github.com/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
-      ],
-      releaseMirrorPrefix: 'https://edgeone.gh-proxy.org/',
-    );
+      final release = await source.fetchLatestRelease();
 
-    final release = await source.fetchLatestRelease();
-
-    expect(release.version, '0.2.6');
-    expect(release.changelog, 'fallback ok');
-    expect(adapter.requestLog, [
-      'GET /repos/FHfanshu/ZJXU-CampusHub/releases/latest',
-      'GET /https://api.github.com/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
-    ]);
-  });
+      expect(release.version, '0.2.6');
+      expect(release.changelog, 'fallback ok');
+      expect(adapter.requestLog, [
+        'GET /repos/FHfanshu/ZJXU-CampusHub/releases/latest',
+        'GET /https://api.github.com/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
+      ]);
+    },
+  );
 
   test(
     'throws source unavailable when all github release api candidates fail',
@@ -211,8 +216,7 @@ void main() {
 
       final source = GitHubReleaseUpdateSource(
         dio: dio,
-        latestReleaseApiUrl:
-            'https://api.github.com/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
+        latestReleaseApiUrl: 'https://api.github.com/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
         releaseMirrorPrefix: 'https://edgeone.gh-proxy.org/',
       );
 

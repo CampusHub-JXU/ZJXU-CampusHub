@@ -108,9 +108,8 @@ List<SjjxNotice> parseSjjxNoticeListHtml(String html) {
     final category = catMatch?.group(1) ?? '其他';
 
     final dateText = dateEl?.text.trim() ?? '';
-    final dateMatch = RegExp(
-      r'20\d{2}[-/]\d{1,2}[-/]\d{1,2}',
-    ).firstMatch(dateText);
+    final dateMatch = RegExp(r'20\d{2}[-/]\d{1,2}[-/]\d{1,2}')
+        .firstMatch(dateText);
     final date = dateMatch?.group(0)?.replaceAll('/', '-');
 
     notices.add(
@@ -131,8 +130,6 @@ class SjjxNoticeService {
   static final SjjxNoticeService instance = SjjxNoticeService._();
 
   List<SjjxNotice>? _cachedNotices;
-
-  List<SjjxNotice>? get cachedNotices => _cachedNotices;
 
   Future<List<SjjxNotice>> fetchAllNotices() async {
     try {

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/logging/app_logger.dart';
+import '../../core/wechat/wechat_launcher.dart';
 import '../../shared/widgets/app_dropdown.dart';
 import '../../shared/widgets/app_empty_view.dart';
 import '../../shared/widgets/app_error_view.dart';
@@ -10,7 +11,6 @@ import 'second_classroom_cache_store.dart';
 import 'second_classroom_model.dart';
 import 'second_classroom_service.dart';
 import 'second_classroom_subscription_service.dart';
-import 'second_classroom_wechat_launcher.dart';
 import '../../shared/widgets/app_app_bar.dart';
 
 part 'second_classroom_widgets.dart';
@@ -239,7 +239,7 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
     _openingInWeChat = true;
     AppLogger.instance.webview(LogLevel.info, '第二课堂打开微信授权页: $url');
     try {
-      final opened = await SecondClassroomWechatLauncher.instance.openUrl(url);
+      final opened = await WechatLauncher.instance.openUrl(url);
       if (!mounted) return;
 
       _showSnackBar(opened ? successMessage : '未能打开微信，请确认已安装微信后重试');
@@ -336,9 +336,8 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
       showDragHandle: true,
       builder: (sheetContext) {
         return Theme(
-          data: Theme.of(
-            sheetContext,
-          ).copyWith(splashFactory: InkRipple.splashFactory),
+          data: Theme.of(sheetContext)
+              .copyWith(splashFactory: InkRipple.splashFactory),
           child: StatefulBuilder(
             builder: (context, setSheetState) {
               return _ActivityDetailSheet(
@@ -410,9 +409,8 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
       builder: (sheetContext) {
         var activities = subscriptions;
         return Theme(
-          data: Theme.of(
-            sheetContext,
-          ).copyWith(splashFactory: InkRipple.splashFactory),
+          data: Theme.of(sheetContext)
+              .copyWith(splashFactory: InkRipple.splashFactory),
           child: StatefulBuilder(
             builder: (context, setSheetState) {
               return _SubscriptionSheet(
@@ -771,9 +769,8 @@ class _SubscriptionSummary extends StatelessWidget {
               Expanded(
                 child: Text(
                   count == 0 ? '还没有订阅活动名' : '已订阅 $count 个活动名',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                  style: Theme.of(context).textTheme.bodyMedium
+                      ?.copyWith(fontWeight: FontWeight.w600),
                 ),
               ),
               Icon(Icons.chevron_right_rounded, color: cs.onSurfaceVariant),

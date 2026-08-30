@@ -133,9 +133,7 @@ class _FunctionZoneSectionState extends State<FunctionZoneSection> {
 
   @override
   Widget build(BuildContext context) {
-    final entries = FeatureEntryCatalog.instance.entriesByPlacement(
-      FeatureEntryPlacement.serviceHub,
-    );
+    final entries = AppFeaturesConfig.entries;
     if (entries.isEmpty) return const SizedBox.shrink();
 
     return Padding(
@@ -183,10 +181,8 @@ class _FunctionZoneHeader extends StatelessWidget {
         const Spacer(),
         Text(
           '长按置顶',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            fontSize: 12,
-            color: cs.onSurfaceVariant,
-          ),
+          style: Theme.of(context).textTheme.bodySmall
+              ?.copyWith(fontSize: 12, color: cs.onSurfaceVariant),
         ),
       ],
     );
@@ -288,7 +284,11 @@ class _BentoGrid extends StatelessWidget {
     double placementHeight(BentoPlacement placement) {
       if (placement.rowSpan == 1) return rowHeights[placement.row];
       var spanned = 0.0;
-      for (var row = placement.row; row < placement.row + placement.rowSpan; row++) {
+      for (
+        var row = placement.row;
+        row < placement.row + placement.rowSpan;
+        row++
+      ) {
         spanned += rowHeights[row];
       }
       return spanned + (placement.rowSpan - 1) * _gap;
@@ -305,7 +305,8 @@ class _BentoGrid extends StatelessWidget {
               Positioned(
                 left: placement.col * (unitWidth + _gap),
                 top: rowTops[placement.row],
-                width: placement.colSpan * unitWidth +
+                width:
+                    placement.colSpan * unitWidth +
                     (placement.colSpan - 1) * _gap,
                 height: placementHeight(placement),
                 child: _FunctionZoneTile(
@@ -478,11 +479,7 @@ class _FunctionZoneTile extends StatelessWidget {
 
   TextStyle? _statsStyle(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Theme.of(context).textTheme.bodySmall?.copyWith(
-      fontSize: 13,
-      color: cs.onSurfaceVariant,
-      height: 1.25,
-    );
+    return Theme.of(context).textTheme.bodySmall
+        ?.copyWith(fontSize: 13, color: cs.onSurfaceVariant, height: 1.25);
   }
 }
-

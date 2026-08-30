@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -71,14 +72,12 @@ class SettingsPage extends StatelessWidget {
         }
         break;
       case UpdateCheckStatus.upToDate:
-        ScaffoldMessenger.maybeOf(
-          context,
-        )?.showSnackBar(const SnackBar(content: Text('当前已是最新版本')));
+        ScaffoldMessenger.maybeOf(context)
+            ?.showSnackBar(const SnackBar(content: Text('当前已是最新版本')));
         break;
       case UpdateCheckStatus.error:
-        ScaffoldMessenger.maybeOf(
-          context,
-        )?.showSnackBar(const SnackBar(content: Text('检查更新失败，请稍后重试')));
+        ScaffoldMessenger.maybeOf(context)
+            ?.showSnackBar(const SnackBar(content: Text('检查更新失败，请稍后重试')));
         break;
       case UpdateCheckStatus.checking:
         break;

@@ -643,9 +643,8 @@ class UnifiedAuthService extends ChangeNotifier {
   }
 
   Uri _buildLoginUri(String serviceUrl) {
-    return Uri.parse(
-      '$_newcaOrigin/cas/login',
-    ).replace(queryParameters: {'service': serviceUrl});
+    return Uri.parse('$_newcaOrigin/cas/login')
+        .replace(queryParameters: {'service': serviceUrl});
   }
 
   Uri _resolveUri(Uri baseUri, String location) {

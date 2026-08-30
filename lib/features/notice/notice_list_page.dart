@@ -109,9 +109,8 @@ class _NoticeListPageState extends State<NoticeListPage> {
       if (!mounted) return;
       _currentPage--;
       setState(() => _loadingMore = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('加载更多失败，请稍后重试')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('加载更多失败，请稍后重试')));
     }
   }
 

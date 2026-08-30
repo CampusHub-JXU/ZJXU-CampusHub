@@ -446,9 +446,8 @@ class _GradesPageState extends State<GradesPage>
           const SizedBox(height: 16),
           Text(
             '正在获取成绩…',
-            style: Theme.of(
-              context,
-            ).textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+            style: Theme.of(context).textTheme.bodyMedium
+                ?.copyWith(color: cs.onSurfaceVariant),
           ),
         ],
       ),
@@ -524,9 +523,8 @@ class _Divider extends StatelessWidget {
       width: 0.8,
       height: 28,
       margin: const EdgeInsets.symmetric(horizontal: 2),
-      color: Theme.of(
-        context,
-      ).colorScheme.outlineVariant.withValues(alpha: 0.3),
+      color: Theme.of(context).colorScheme.outlineVariant
+          .withValues(alpha: 0.3),
     );
   }
 }

@@ -10,17 +10,14 @@ void main() {
   group('Changxing unified auth response detection', () {
     test('treats CAS login form html as expired unified auth session', () {
       expect(
-        ChangxingJiadaService.isUnifiedAuthLoginFormResponse(
-          'https://newca.zjxu.edu.cn/cas/login?service=http%3A%2F%2Fzhx.zjxu.edu.cn%3A8443%2Fapi%2Fwap%2Fcas_login_back',
-          '''
+        ChangxingJiadaService.isUnifiedAuthLoginFormResponse('https://newca.zjxu.edu.cn/cas/login?service=http%3A%2F%2Fzhx.zjxu.edu.cn%3A8443%2Fapi%2Fwap%2Fcas_login_back', '''
           <html>
             <form id="fm1">
               <input type="hidden" name="lt" value="LT-1" />
               <input type="hidden" name="execution" value="e1s1" />
             </form>
           </html>
-          ''',
-        ),
+          '''),
         isTrue,
       );
     });
@@ -49,17 +46,14 @@ void main() {
       'treats proxied CAS login form html as expired unified auth session',
       () {
         expect(
-          ChangxingJiadaService.isUnifiedAuthLoginFormResponse(
-            'https://webvpn.zjxu.edu.cn/https/77726476706e69737468656265737421fef2569f267e725a661dc7a99c406d362a/cas/login?service=http%3A%2F%2Fzhx.zjxu.edu.cn%3A8443%2Fapi%2Fwap%2Fcas_login_back',
-            '''
+          ChangxingJiadaService.isUnifiedAuthLoginFormResponse('https://webvpn.zjxu.edu.cn/https/77726476706e69737468656265737421fef2569f267e725a661dc7a99c406d362a/cas/login?service=http%3A%2F%2Fzhx.zjxu.edu.cn%3A8443%2Fapi%2Fwap%2Fcas_login_back', '''
           <html>
             <form id="fm1">
               <input type="hidden" name="lt" value="LT-1" />
               <input type="hidden" name="execution" value="e1s1" />
             </form>
           </html>
-          ''',
-          ),
+          '''),
           isTrue,
         );
       },
@@ -90,8 +84,9 @@ void main() {
   group('Changxing CAS login flow', () {
     setUp(() async {
       await resetTestEnvironment();
-      DioClient.instance.debugCookieDirectoryPathProvider =
-          (folderName) async => 'test/$folderName';
+      DioClient.instance.debugCookieDirectoryPathProvider = (
+        folderName,
+      ) async => 'test/$folderName';
       await DioClient.instance.ensureInitialized();
     });
 

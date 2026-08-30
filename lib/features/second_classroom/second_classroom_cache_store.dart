@@ -18,8 +18,6 @@ class SecondClassroomActivityCacheSnapshot {
 
   final List<SecondClassroomActivity> activities;
   final DateTime updatedAt;
-
-  bool get isEmpty => activities.isEmpty;
 }
 
 class SecondClassroomCacheStore {

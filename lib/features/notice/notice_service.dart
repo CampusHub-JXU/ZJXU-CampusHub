@@ -56,9 +56,8 @@ List<Notice> parseJwcNoticeListHtml(String html) {
     if (title.isEmpty || href.isEmpty) continue;
 
     final dateText = item.querySelector('span.fr')?.text.trim() ?? item.text;
-    final dateMatch = RegExp(
-      r'20\d{2}[-./]\d{1,2}[-./]\d{1,2}',
-    ).firstMatch(dateText);
+    final dateMatch = RegExp(r'20\d{2}[-./]\d{1,2}[-./]\d{1,2}')
+        .firstMatch(dateText);
     final date = dateMatch?.group(0)?.replaceAll('/', '-').replaceAll('.', '-');
 
     notices.add(
@@ -95,8 +94,6 @@ class NoticeService {
   int? _cachedTotalPages;
 
   Dio? _noticeDio;
-
-  List<Notice>? get cachedNotices => _cachedNotices;
 
   Future<List<Notice>> fetchNotices() async {
     try {
@@ -182,9 +179,9 @@ class NoticeService {
       queryParameters['PAGENUM'] = '$page';
     }
 
-    return Uri.parse(
-      _jwcNoticeListUrl,
-    ).replace(queryParameters: queryParameters).toString();
+    return Uri.parse(_jwcNoticeListUrl)
+        .replace(queryParameters: queryParameters)
+        .toString();
   }
 
   Dio _createNoticeDio() {
@@ -203,17 +200,9 @@ class NoticeService {
 
   Future<Response<List<int>>> _getWithUnifiedAuthFallback(String url) async {
     final directDio = await _ensureNoticeDio();
+    final Response<List<int>> directResponse;
     try {
-      final directResponse = await directDio.get<List<int>>(url);
-      if (!looksLikeNoticeResponseNeedsUnifiedAuth(directResponse)) {
-        return directResponse;
-      }
-
-      AppLogger.instance.network(
-        LogLevel.warn,
-        '通知公告直连命中统一认证登录页，尝试恢复统一认证会话: $url',
-      );
-      return _getThroughUnifiedAuth(url);
+      directResponse = await directDio.get<List<int>>(url);
     } on DioException catch (error, stackTrace) {
       AppLogger.instance.network(
         LogLevel.warn,
@@ -231,6 +220,17 @@ class NoticeService {
       );
       rethrow;
     }
+
+    if (!looksLikeNoticeResponseNeedsUnifiedAuth(directResponse)) {
+      return directResponse;
+    }
+
+    AppLogger.instance.network(
+      LogLevel.warn,
+      '通知公告直连命中统一认证登录页，尝试恢复统一认证会话: $url',
+    );
+    // 统一认证路径的错误直接抛给调用方，不并入直连的 catch，避免重复回退。
+    return _getThroughUnifiedAuth(url);
   }
 
   Future<Response<List<int>>> _getThroughUnifiedAuth(
