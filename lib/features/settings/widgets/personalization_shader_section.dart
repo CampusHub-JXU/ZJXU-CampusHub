@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_design_tokens.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_icon_badge.dart';
-import '../../home/home_controller.dart';
+import '../../../core/theme/personalization_controller.dart';
 import 'shader_tuning_controls.dart';
 
 /// 首页个性化 — Shader section（PRD FR-4 拆分）。
@@ -38,7 +38,7 @@ class PersonalizationShaderSection extends StatelessWidget {
           child: ClipRRect(
             borderRadius: AppRadius.cardBorder,
             child: ValueListenableBuilder<bool>(
-              valueListenable: HomeController.instance.shaderEnabled,
+              valueListenable: PersonalizationController.instance.shaderEnabled,
               builder: (context, shaderEnabled, _) {
                 return Column(
                   children: [
@@ -47,7 +47,8 @@ class PersonalizationShaderSection extends StatelessWidget {
                       title: '启用背景 Shader',
                       subtitle: '对背景图进行 GPU 纹理重采样与风格化渲染',
                       value: shaderEnabled,
-                      onChanged: HomeController.instance.setShaderEnabled,
+                      onChanged:
+                          PersonalizationController.instance.setShaderEnabled,
                     ),
                     if (shaderEnabled) ...[
                       const _Hairline(),
@@ -68,7 +69,7 @@ class PersonalizationShaderSection extends StatelessWidget {
 
   Widget _buildShaderModePicker(BuildContext context) {
     return ValueListenableBuilder<HomeShaderMode>(
-      valueListenable: HomeController.instance.shaderMode,
+      valueListenable: PersonalizationController.instance.shaderMode,
       builder: (context, shaderMode, _) {
         final cs = Theme.of(context).colorScheme;
         return Column(
@@ -107,7 +108,9 @@ class PersonalizationShaderSection extends StatelessWidget {
                 ],
                 selected: {shaderMode},
                 onSelectionChanged: (selection) {
-                  HomeController.instance.setShaderMode(selection.first);
+                  PersonalizationController.instance.setShaderMode(
+                    selection.first,
+                  );
                 },
               ),
             ),

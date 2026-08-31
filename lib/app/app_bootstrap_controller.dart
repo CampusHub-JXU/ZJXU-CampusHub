@@ -8,6 +8,8 @@ import '../core/logging/app_logger.dart';
 import '../core/network/dio_client.dart';
 import '../core/network/network_settings.dart';
 import '../core/semester/semester_calendar.dart';
+import '../core/theme/app_preferences_controller.dart';
+import '../core/theme/personalization_controller.dart';
 import '../core/update/update_checker.dart';
 import '../features/campus_card/campus_card_service.dart';
 import '../features/changxing_jiada/changxing_jiada_service.dart';
@@ -15,8 +17,6 @@ import '../features/dorm_electricity/dorm_electricity_service.dart';
 import '../features/exam/exam_service.dart';
 import '../features/grades/grades_service.dart';
 import '../features/schedule/schedule_service.dart';
-import '../features/home/home_controller.dart';
-import 'app_preferences_controller.dart';
 
 enum AppBootstrapPhase { idle, warming, localStateReady, completed }
 
@@ -28,6 +28,18 @@ class AppBootstrapController {
   final ValueNotifier<AppBootstrapPhase> phase = ValueNotifier(
     AppBootstrapPhase.idle,
   );
+
+  /// 导航就绪派生信号：phase 进入 localStateReady / completed 即为 true。
+  /// 供 core 层（如 AppShortcutService）注入消费，避免其反向依赖 app 层。
+  final ValueNotifier<bool> navigationReady = ValueNotifier(false);
+
+  /// phase 的统一写入点，同步派生的 navigationReady。
+  void _setPhase(AppBootstrapPhase value) {
+    phase.value = value;
+    navigationReady.value =
+        value == AppBootstrapPhase.localStateReady ||
+        value == AppBootstrapPhase.completed;
+  }
 
   Future<void>? _prepareFuture;
   Future<void>? _warmUpFuture;
@@ -47,7 +59,7 @@ class AppBootstrapController {
 
     await Future.wait<void>([
       SemesterCalendar.instance.init(),
-      HomeController.instance.init(),
+      PersonalizationController.instance.init(),
     ]);
   }
 
@@ -76,7 +88,7 @@ class AppBootstrapController {
   }
 
   Future<void> _runWarmUp() async {
-    phase.value = AppBootstrapPhase.warming;
+    _setPhase(AppBootstrapPhase.warming);
 
     await AppLogger.instance.init();
     await NetworkSettings.instance.ensureInitialized();
@@ -93,9 +105,9 @@ class AppBootstrapController {
       GradesService.instance.restoreCache(),
     ]);
 
-    phase.value = AppBootstrapPhase.localStateReady;
+    _setPhase(AppBootstrapPhase.localStateReady);
     await Future<void>.delayed(Duration.zero);
-    phase.value = AppBootstrapPhase.completed;
+    _setPhase(AppBootstrapPhase.completed);
     if (UpdateChecker.instance.isUpdateEnabled) {
       unawaited(UpdateChecker.instance.check(silent: true));
     }
@@ -106,11 +118,11 @@ class AppBootstrapController {
     _prepareFuture = null;
     _warmUpFuture = null;
     _warmUpScheduled = false;
-    phase.value = phaseValue;
+    _setPhase(phaseValue);
   }
 
   @visibleForTesting
   void debugSetPhase(AppBootstrapPhase phaseValue) {
-    phase.value = phaseValue;
+    _setPhase(phaseValue);
   }
 }

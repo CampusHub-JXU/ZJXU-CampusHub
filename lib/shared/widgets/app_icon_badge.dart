@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../app/app_theme_controller.dart';
+import '../../core/theme/app_theme_controller.dart';
 import '../../core/theme/app_design_tokens.dart';
 
 enum AppIconBadgeSize { small, medium, large }

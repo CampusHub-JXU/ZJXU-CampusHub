@@ -5,9 +5,9 @@ import 'package:flutter/material.dart';
 
 import '../core/logging/app_logger.dart';
 import '../core/network/proxy_mode.dart';
-import 'app_preferences_controller.dart';
+import '../core/theme/app_preferences_controller.dart';
 import 'routes.dart';
-import 'text_scale_controller.dart';
+import '../core/theme/text_scale_controller.dart';
 import 'theme.dart';
 
 typedef SystemProxyDetector = Future<String?> Function({String testUrl});

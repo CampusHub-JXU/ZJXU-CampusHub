@@ -1,9 +1,9 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
-import '../../app/app_bootstrap_controller.dart';
 import '../logging/app_logger.dart';
 
 class AppShortcutService {
@@ -17,21 +17,32 @@ class AppShortcutService {
   static const _channel = MethodChannel('edu.zjxu.jxucampushub/shortcut');
 
   bool _initialized = false;
-  bool _phaseListenerRegistered = false;
+  bool _readyListenerRegistered = false;
   String? _pendingAction;
+  ValueListenable<bool>? _navigationReady;
   Future<void> Function(String routeName)? _navigateToNamedRoute;
 
+  /// 注入导航就绪信号与路由跳转回调。
+  ///
+  /// 就绪前收到的快捷方式动作会挂起，[navigationReady] 变为 true 时自动补发。
+  /// 就绪信号由 app 层（bootstrap 控制器）注入，本服务不再反向依赖 app 层。
   Future<void> initialize({
+    required ValueListenable<bool> navigationReady,
     Future<void> Function(String routeName)? navigateToNamedRoute,
   }) async {
+    _navigationReady = navigationReady;
     _navigateToNamedRoute = navigateToNamedRoute ?? _navigateToNamedRoute;
+    await _ensureInitialized();
+  }
+
+  Future<void> _ensureInitialized() async {
     if (_initialized) return;
     _initialized = true;
 
     _channel.setMethodCallHandler(_handleMethodCall);
-    if (!_phaseListenerRegistered) {
-      AppBootstrapController.instance.phase.addListener(_flushPendingAction);
-      _phaseListenerRegistered = true;
+    if (!_readyListenerRegistered && _navigationReady != null) {
+      _navigationReady!.addListener(_flushPendingAction);
+      _readyListenerRegistered = true;
     }
 
     try {
@@ -78,7 +89,7 @@ class AppShortcutService {
   }
 
   Future<bool> openShortcutPermissionSettings() async {
-    await initialize();
+    await _ensureInitialized();
 
     try {
       final opened = await _channel.invokeMethod<bool>(
@@ -104,7 +115,7 @@ class AppShortcutService {
     required String platformErrorMessage,
     required String unknownErrorMessage,
   }) async {
-    await initialize();
+    await _ensureInitialized();
 
     try {
       final result = await _channel.invokeMethod<Object>(method);
@@ -160,21 +171,18 @@ class AppShortcutService {
     WidgetsBinding.instance.scheduleFrame();
   }
 
-  bool get _isNavigationReady {
-    final phase = AppBootstrapController.instance.phase.value;
-    return phase == AppBootstrapPhase.localStateReady ||
-        phase == AppBootstrapPhase.completed;
-  }
+  bool get _isNavigationReady => _navigationReady?.value ?? false;
 
   @visibleForTesting
   void debugReset() {
-    if (_phaseListenerRegistered) {
-      AppBootstrapController.instance.phase.removeListener(_flushPendingAction);
+    if (_readyListenerRegistered && _navigationReady != null) {
+      _navigationReady!.removeListener(_flushPendingAction);
     }
     _channel.setMethodCallHandler(null);
     _initialized = false;
-    _phaseListenerRegistered = false;
+    _readyListenerRegistered = false;
     _pendingAction = null;
+    _navigationReady = null;
     _navigateToNamedRoute = null;
   }
 }

@@ -5,8 +5,8 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_design_tokens.dart';
 import '../../core/theme/glass_style_controller.dart';
-import '../home/home_controller.dart';
-import '../home/widgets/home_background_layer.dart';
+import '../../core/theme/personalization_controller.dart';
+import '../../core/theme/widgets/home_background_layer.dart';
 import 'widgets/personalization_background_section.dart';
 import 'widgets/personalization_glass_section.dart';
 import 'widgets/personalization_shader_section.dart';
@@ -60,7 +60,7 @@ class _PersonalizationPageState extends State<PersonalizationPage> {
 
   Widget _buildPreviewSection(BuildContext context, {double maxHeight = 520}) {
     return ValueListenableBuilder<String?>(
-      valueListenable: HomeController.instance.backgroundImagePath,
+      valueListenable: PersonalizationController.instance.backgroundImagePath,
       builder: (context, bgPath, _) {
         if (bgPath == null) {
           return AppCard(
@@ -91,10 +91,12 @@ class _PersonalizationPageState extends State<PersonalizationPage> {
         }
 
         return ValueListenableBuilder<Alignment>(
-          valueListenable: HomeController.instance.backgroundAlignment,
+          valueListenable:
+              PersonalizationController.instance.backgroundAlignment,
           builder: (context, alignment, _) {
             return ValueListenableBuilder<double>(
-              valueListenable: HomeController.instance.backgroundScale,
+              valueListenable:
+                  PersonalizationController.instance.backgroundScale,
               builder: (context, scale, _) {
                 return LayoutBuilder(
                   builder: (context, constraints) {
@@ -140,15 +142,20 @@ class _PersonalizationPageState extends State<PersonalizationPage> {
                               },
                               onScaleEnd: (_) {
                                 setState(() => _previewDragging = false);
-                                HomeController.instance.setBackgroundAlignment(
-                                  HomeController
-                                      .instance
-                                      .backgroundAlignment
-                                      .value,
-                                );
-                                HomeController.instance.setBackgroundScale(
-                                  HomeController.instance.backgroundScale.value,
-                                );
+                                PersonalizationController.instance
+                                    .setBackgroundAlignment(
+                                      PersonalizationController
+                                          .instance
+                                          .backgroundAlignment
+                                          .value,
+                                    );
+                                PersonalizationController.instance
+                                    .setBackgroundScale(
+                                      PersonalizationController
+                                          .instance
+                                          .backgroundScale
+                                          .value,
+                                    );
                               },
                               child: Stack(
                                 fit: StackFit.expand,
@@ -233,7 +240,7 @@ class _PersonalizationPageState extends State<PersonalizationPage> {
 
   Widget _buildHomeWidgetPreviewOverlay(BuildContext context) {
     return ValueListenableBuilder<bool>(
-      valueListenable: HomeController.instance.headerGlassEnabled,
+      valueListenable: PersonalizationController.instance.headerGlassEnabled,
       builder: (context, headerGlassEnabled, _) {
         return ValueListenableBuilder<bool>(
           valueListenable: GlassStyleController.instance.enabled,
@@ -366,7 +373,7 @@ class _PersonalizationPageState extends State<PersonalizationPage> {
     required double scale,
   }) {
     final delta = focalPoint - _gestureStartFocalPoint;
-    HomeController.instance.backgroundAlignment.value = Alignment(
+    PersonalizationController.instance.backgroundAlignment.value = Alignment(
       (_gestureStartAlignment.x + delta.dx / frameSize.width * 2).clamp(
         -2.0,
         2.0,
@@ -376,7 +383,7 @@ class _PersonalizationPageState extends State<PersonalizationPage> {
         2.0,
       ),
     );
-    HomeController.instance.backgroundScale.value = (_gestureStartScale * scale)
-        .clamp(0.5, 3.0);
+    PersonalizationController.instance.backgroundScale.value =
+        (_gestureStartScale * scale).clamp(0.5, 3.0);
   }
 }

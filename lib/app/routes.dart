@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'app_route_observer.dart';
@@ -39,6 +40,30 @@ int? _parseOptionalId(GoRouterState state) {
   return int.tryParse(text);
 }
 
+/// go_router 18 在 MaterialApp.router 下探测不到 Material app 类型
+/// （material_ui 的 exact-type 匹配失败），会把 `builder:` 路由包进
+/// [NoTransitionPage]——零时长、不读主题的 pageTransitionsTheme，
+/// 页面切换表现为硬切。这里显式包 [MaterialPage]，让
+/// MaterialRouteTransitionMixin 接回全局统一转场（app_theme_builder）。
+///
+/// 所有被 push 的顶层路由必须走本构造器；shell 分支根路由（tab 根）
+/// 保持 `builder:` 即可——它们不参与 push 转场。
+GoRoute _appRoute({
+  required String path,
+  required String name,
+  required Widget Function(BuildContext context, GoRouterState state) builder,
+}) {
+  return GoRoute(
+    path: path,
+    name: name,
+    pageBuilder: (context, state) => MaterialPage(
+      key: state.pageKey,
+      name: name,
+      child: builder(context, state),
+    ),
+  );
+}
+
 final GoRouter appRouter = GoRouter(
   initialLocation: '/',
   observers: [appRouteObserver],
@@ -68,58 +93,58 @@ final GoRouter appRouter = GoRouter(
         ),
       ],
     ),
-    GoRoute(
+    _appRoute(
       path: '/schedule',
       name: 'schedule',
       builder: (context, state) => const SchedulePage(),
     ),
-    GoRoute(
+    _appRoute(
       path: '/grades',
       name: 'grades',
       builder: (context, state) => const GradesPage(),
     ),
-    GoRoute(
+    _appRoute(
       path: '/exam',
       name: 'exam',
       builder: (context, state) => const ExamPage(),
     ),
-    GoRoute(
+    _appRoute(
       path: '/shuati-practice',
       name: 'shuati-practice',
       builder: (context, state) => const ShuatiWebViewPage(),
     ),
-    GoRoute(
+    _appRoute(
       path: '/campus-card',
       name: 'campus-card',
       builder: (context, state) => const CampusCardPage(),
     ),
-    GoRoute(
+    _appRoute(
       path: '/campus-card-payment',
       name: 'campus-card-payment',
       builder: (context, state) => const CampusCardPaymentPage(),
     ),
-    GoRoute(
+    _appRoute(
       path: '/service-hall',
       name: 'service-hall',
       builder: (context, state) => const ServiceHallPage(),
     ),
-    GoRoute(
+    _appRoute(
       path: '/library',
       name: 'library',
       builder: (context, state) => const LibraryPage(),
     ),
-    GoRoute(
+    _appRoute(
       path: '/second-classroom',
       name: 'second-classroom',
       builder: (context, state) =>
           SecondClassroomPage(initialActivityId: _parseOptionalId(state)),
     ),
-    GoRoute(
+    _appRoute(
       path: '/settings',
       name: 'settings',
       builder: (context, state) => const SettingsPage(),
     ),
-    GoRoute(
+    _appRoute(
       path: '/personalization',
       name: 'personalization',
       builder: (context, state) => const PersonalizationPage(),
@@ -129,47 +154,47 @@ final GoRouter appRouter = GoRouter(
       name: 'theme',
       redirect: (context, state) => '/theme-settings',
     ),
-    GoRoute(
+    _appRoute(
       path: '/theme-settings',
       name: 'theme-settings',
       builder: (context, state) => const ThemeSettingsPage(),
     ),
-    GoRoute(
+    _appRoute(
       path: '/push-debug',
       name: 'push-debug',
       builder: (context, state) => const PushDebugPage(),
     ),
-    GoRoute(
+    _appRoute(
       path: '/notification-center',
       name: 'notification-center',
       builder: (context, state) => const NotificationCenterPage(),
     ),
-    GoRoute(
+    _appRoute(
       path: '/unified-auth-login',
       name: 'unified-auth-login',
       builder: (context, state) => const UnifiedAuthLoginPage(),
     ),
-    GoRoute(
+    _appRoute(
       path: '/academic-system-login',
       name: 'academic-system-login',
       builder: (context, state) => const AcademicSystemLoginPage(),
     ),
-    GoRoute(
+    _appRoute(
       path: '/academic-service',
       name: 'academic-service',
       builder: (context, state) => const AcademicServicePage(),
     ),
-    GoRoute(
+    _appRoute(
       path: '/notice-list',
       name: 'notice-list',
       builder: (context, state) => const NoticeListPage(),
     ),
-    GoRoute(
+    _appRoute(
       path: '/sjjx-notice-list',
       name: 'sjjx-notice-list',
       builder: (context, state) => const SjjxNoticeListPage(),
     ),
-    GoRoute(
+    _appRoute(
       path: '/news-detail',
       name: 'news-detail',
       builder: (context, state) {
@@ -183,17 +208,17 @@ final GoRouter appRouter = GoRouter(
         );
       },
     ),
-    GoRoute(
+    _appRoute(
       path: '/dorm-electricity',
       name: 'dorm-electricity',
       builder: (context, state) => const DormElectricityPage(),
     ),
-    GoRoute(
+    _appRoute(
       path: '/dorm-electricity-settings',
       name: 'dorm-electricity-settings',
       builder: (context, state) => const DormElectricitySettingsPage(),
     ),
-    GoRoute(
+    _appRoute(
       path: '/external-webview',
       name: 'external-webview',
       builder: (context, state) {
@@ -228,12 +253,12 @@ final GoRouter appRouter = GoRouter(
         );
       },
     ),
-    GoRoute(
+    _appRoute(
       path: '/changxing-jiada',
       name: 'changxing-jiada',
       builder: (context, state) => const ChangxingJiadaPage(),
     ),
-    GoRoute(
+    _appRoute(
       path: '/changxing-jiada/leave-request',
       name: ChangxingFormType.leaveRequest.routeName,
       builder: (context, state) => ChangxingLeaveFormPage(
@@ -241,7 +266,7 @@ final GoRouter appRouter = GoRouter(
         applicationId: _parseOptionalId(state),
       ),
     ),
-    GoRoute(
+    _appRoute(
       path: '/changxing-jiada/leave-school',
       name: ChangxingFormType.leaveSchool.routeName,
       builder: (context, state) => ChangxingLeaveFormPage(
@@ -249,13 +274,13 @@ final GoRouter appRouter = GoRouter(
         applicationId: _parseOptionalId(state),
       ),
     ),
-    GoRoute(
+    _appRoute(
       path: '/changxing-jiada/back-school',
       name: ChangxingFormType.backSchool.routeName,
       builder: (context, state) =>
           ChangxingBackSchoolFormPage(applicationId: _parseOptionalId(state)),
     ),
-    GoRoute(
+    _appRoute(
       path: '/changxing-jiada/overtime',
       name: ChangxingFormType.overtime.routeName,
       builder: (context, state) =>

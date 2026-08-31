@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:jxu_campus_hub/app/app_preferences_controller.dart';
+import 'package:jxu_campus_hub/core/theme/app_preferences_controller.dart';
 import 'package:jxu_campus_hub/core/auth/connect_mode_resolver.dart';
 import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';

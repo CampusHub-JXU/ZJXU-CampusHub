@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 
 import '../../../core/semester/semester_calendar.dart';
 import '../schedule_cache_snapshot.dart';
@@ -33,6 +33,13 @@ class SchedulePageController extends ChangeNotifier {
   bool _termOverridden = false;
 
   final Map<int, ScheduleWeekViewModel> _weekViewModels = {};
+  bool _disposed = false;
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
 
   bool get loggedIn => _loggedIn;
   bool get loading => _loading;
@@ -91,8 +98,19 @@ class SchedulePageController extends ChangeNotifier {
   void setDisplayWeek(int week) {
     if (week == _displayWeek) return;
     _displayWeek = week;
-    _primeNearbyWeekViewModels(week);
-    notifyListeners();
+    // 周数变化不驱动任何可见 UI（每页网格的角标取自各自的 view model），
+    // 因此不 notifyListeners，避免在拖拽/settle 动画帧内触发全页重建。
+    _scheduleNearbyWeekPrime(week);
+  }
+
+  /// 帧末预热邻周 view model：把同步构建挪出滑动动画帧，
+  /// 供下一次滑动直接命中缓存（weekViewModelFor 本身可惰性兜底）。
+  void _scheduleNearbyWeekPrime(int centerWeek) {
+    if (_disposed) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_disposed) return;
+      _primeNearbyWeekViewModels(centerWeek);
+    });
   }
 
   void switchTerm(int term) {

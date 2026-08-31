@@ -1,7 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:jxu_campus_hub/app/app_bootstrap_controller.dart';
 import 'package:jxu_campus_hub/core/shortcut/app_shortcut_service.dart';
 
 void main() {
@@ -9,10 +9,12 @@ void main() {
 
   const shortcutChannel = MethodChannel('edu.zjxu.jxucampushub/shortcut');
 
+  // 导航就绪信号改为注入式：由测试构造并模拟 bootstrap 派生状态，
+  // 服务本身不再读取 AppBootstrapController.phase。
+  final navigationReady = ValueNotifier<bool>(false);
+
   setUp(() {
-    AppBootstrapController.instance.debugReset(
-      phaseValue: AppBootstrapPhase.localStateReady,
-    );
+    navigationReady.value = true;
     AppShortcutService.instance.debugReset();
   });
 
@@ -98,10 +100,40 @@ void main() {
         });
 
     await AppShortcutService.instance.initialize(
+      navigationReady: navigationReady,
       navigateToNamedRoute: (routeName) async {
         routes.add(routeName);
       },
     );
+    await tester.pump();
+
+    expect(routes, ['shuati-practice']);
+  });
+
+  testWidgets('pending shortcut action flushes once navigation becomes ready', (
+    tester,
+  ) async {
+    final routes = <String>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(shortcutChannel, (call) async {
+          if (call.method == 'consumeInitialShortcutAction') {
+            return AppShortcutService.shuatiAction;
+          }
+          return null;
+        });
+
+    navigationReady.value = false;
+    await AppShortcutService.instance.initialize(
+      navigationReady: navigationReady,
+      navigateToNamedRoute: (routeName) async {
+        routes.add(routeName);
+      },
+    );
+    await tester.pump();
+    expect(routes, isEmpty);
+
+    // 就绪信号翻转后，挂起动作应自动补发。
+    navigationReady.value = true;
     await tester.pump();
 
     expect(routes, ['shuati-practice']);

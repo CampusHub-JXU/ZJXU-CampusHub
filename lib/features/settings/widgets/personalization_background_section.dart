@@ -9,7 +9,7 @@ import '../../../core/theme/app_design_tokens.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_dropdown.dart';
 import '../../../shared/widgets/app_icon_badge.dart';
-import '../../home/home_controller.dart';
+import '../../../core/theme/personalization_controller.dart';
 
 /// 首页个性化 — 背景图片 section（PRD FR-4 拆分）。
 ///
@@ -31,7 +31,8 @@ class PersonalizationBackgroundSection extends StatelessWidget {
           child: ClipRRect(
             borderRadius: AppRadius.cardBorder,
             child: ValueListenableBuilder<String?>(
-              valueListenable: HomeController.instance.backgroundImagePath,
+              valueListenable:
+                  PersonalizationController.instance.backgroundImagePath,
               builder: (context, bgPath, _) {
                 return Column(
                   children: [
@@ -52,10 +53,10 @@ class PersonalizationBackgroundSection extends StatelessWidget {
                         icon: Icons.delete_outline,
                         title: '移除背景图片',
                         onTap: () async {
-                          await HomeController.instance.setBackgroundImagePath(
-                            null,
-                          );
-                          await HomeController.instance.setShaderEnabled(false);
+                          await PersonalizationController.instance
+                              .setBackgroundImagePath(null);
+                          await PersonalizationController.instance
+                              .setShaderEnabled(false);
                           if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(content: Text('已移除首页背景')),
@@ -83,7 +84,7 @@ class PersonalizationBackgroundSection extends StatelessWidget {
   Widget _buildBackgroundOpacitySlider(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return ValueListenableBuilder<double>(
-      valueListenable: HomeController.instance.backgroundOpacity,
+      valueListenable: PersonalizationController.instance.backgroundOpacity,
       builder: (context, opacity, _) {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -100,7 +101,8 @@ class PersonalizationBackgroundSection extends StatelessWidget {
               min: 0.0,
               max: 1.0,
               divisions: 20,
-              onChanged: HomeController.instance.setBackgroundOpacity,
+              onChanged:
+                  PersonalizationController.instance.setBackgroundOpacity,
             ),
           ],
         );
@@ -110,7 +112,7 @@ class PersonalizationBackgroundSection extends StatelessWidget {
 
   Widget _buildBackgroundFitPicker(BuildContext context) {
     return ValueListenableBuilder<HomeBackgroundFit>(
-      valueListenable: HomeController.instance.backgroundFit,
+      valueListenable: PersonalizationController.instance.backgroundFit,
       builder: (context, fit, _) {
         return _PrefRow(
           icon: Icons.fit_screen_outlined,
@@ -123,7 +125,7 @@ class PersonalizationBackgroundSection extends StatelessWidget {
                 .toList(),
             onChanged: (value) {
               if (value == null) return;
-              HomeController.instance.setBackgroundFit(value);
+              PersonalizationController.instance.setBackgroundFit(value);
             },
           ),
         );
@@ -144,9 +146,8 @@ class PersonalizationBackgroundSection extends StatelessWidget {
             ),
           ),
           TextButton.icon(
-            onPressed: () => HomeController.instance.setBackgroundAlignment(
-              Alignment.center,
-            ),
+            onPressed: () => PersonalizationController.instance
+                .setBackgroundAlignment(Alignment.center),
             icon: const Icon(Icons.center_focus_strong_outlined, size: 18),
             label: const Text('居中'),
           ),
@@ -184,7 +185,7 @@ class PersonalizationBackgroundSection extends StatelessWidget {
           '${destDir.path}/bg_${DateTime.now().millisecondsSinceEpoch}$ext';
 
       await File(picked.path).copy(destPath);
-      await HomeController.instance.setBackgroundImagePath(destPath);
+      await PersonalizationController.instance.setBackgroundImagePath(destPath);
 
       if (context.mounted) {
         ScaffoldMessenger.of(context)

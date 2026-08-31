@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../../home/home_controller.dart';
+import '../../../core/theme/personalization_controller.dart';
 
 /// Shader 参数滑条组：与平面化分组卡同族——顶部 hairline 分隔 +
 /// 13/onSurfaceVariant 标签，回调与数值域保持不变。
@@ -11,17 +11,18 @@ class ShaderAnimationSpeedSlider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<HomeShaderMode>(
-      valueListenable: HomeController.instance.shaderMode,
+      valueListenable: PersonalizationController.instance.shaderMode,
       builder: (context, shaderMode, _) {
         if (shaderMode == HomeShaderMode.glass) {
           return const SizedBox.shrink();
         }
         return _ShaderSlider(
-          valueListenable: HomeController.instance.shaderAnimationSpeed,
+          valueListenable:
+              PersonalizationController.instance.shaderAnimationSpeed,
           label: (speed) => '动画速度  ${speed.toStringAsFixed(1)}x',
           max: 2,
           divisions: 20,
-          onChanged: HomeController.instance.setShaderAnimationSpeed,
+          onChanged: PersonalizationController.instance.setShaderAnimationSpeed,
         );
       },
     );
@@ -34,10 +35,10 @@ class ShaderStrengthSlider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _ShaderSlider(
-      valueListenable: HomeController.instance.shaderStrength,
+      valueListenable: PersonalizationController.instance.shaderStrength,
       label: (strength) => 'Shader 强度  ${(strength * 100).round()}%',
       divisions: 10,
-      onChanged: HomeController.instance.setShaderStrength,
+      onChanged: PersonalizationController.instance.setShaderStrength,
     );
   }
 }
@@ -48,10 +49,10 @@ class ShaderOpacitySlider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _ShaderSlider(
-      valueListenable: HomeController.instance.shaderOpacity,
+      valueListenable: PersonalizationController.instance.shaderOpacity,
       label: (opacity) => 'Shader 透明度  ${(opacity * 100).round()}%',
       divisions: 20,
-      onChanged: HomeController.instance.setShaderOpacity,
+      onChanged: PersonalizationController.instance.setShaderOpacity,
     );
   }
 }

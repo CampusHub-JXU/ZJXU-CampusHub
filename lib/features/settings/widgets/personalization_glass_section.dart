@@ -4,14 +4,14 @@ import '../../../core/theme/app_design_tokens.dart';
 import '../../../core/theme/glass_style_controller.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_icon_badge.dart';
-import '../../home/home_controller.dart';
+import '../../../core/theme/personalization_controller.dart';
 import 'glass_preset_control.dart';
 
 /// 首页个性化 — 玻璃材质 section。
 ///
 /// 参数（开关/模糊强度/透明度）为全局材质设置，由
 /// [GlassStyleController] 统一存储并被所有玻璃组件消费；
-/// 「课表卡片毛玻璃」是首页头卡的独立布局开关，仍归 HomeController。
+/// 「课表卡片毛玻璃」是首页头卡的独立布局开关，仍归 PersonalizationController。
 ///
 /// 平面化卡面：小节标题在卡外（13/w600/onSurfaceVariant），组内行由
 /// hairline 分隔（outlineVariant @ 0.35，与行文字左对齐）。
@@ -47,14 +47,17 @@ class PersonalizationGlassSection extends StatelessWidget {
                 ),
                 const _Hairline(),
                 ValueListenableBuilder<bool>(
-                  valueListenable: HomeController.instance.headerGlassEnabled,
+                  valueListenable:
+                      PersonalizationController.instance.headerGlassEnabled,
                   builder: (context, headerGlass, _) {
                     return _SwitchRow(
                       icon: Icons.blur_on_outlined,
                       title: '课表卡片毛玻璃',
                       subtitle: '背景图之上时对顶部课表卡片添加模糊',
                       value: headerGlass,
-                      onChanged: HomeController.instance.setHeaderGlassEnabled,
+                      onChanged: PersonalizationController
+                          .instance
+                          .setHeaderGlassEnabled,
                     );
                   },
                 ),

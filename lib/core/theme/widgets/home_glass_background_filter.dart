@@ -3,7 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
-import '../home_controller.dart';
+import '../personalization_controller.dart';
 
 class HomeGlassBackgroundFilter extends StatefulWidget {
   const HomeGlassBackgroundFilter({

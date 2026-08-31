@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:jxu_campus_hub/app/app_preferences_controller.dart';
-import 'package:jxu_campus_hub/app/app_theme_controller.dart';
+import 'package:jxu_campus_hub/core/theme/app_preferences_controller.dart';
+import 'package:jxu_campus_hub/core/theme/app_theme_controller.dart';
 import 'package:jxu_campus_hub/features/settings/theme_settings_page.dart';
 
 import '../../helpers/pump_app.dart';

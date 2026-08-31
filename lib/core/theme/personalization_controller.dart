@@ -5,6 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// 主屏个性化状态控制器（背景图/着色器/毛玻璃/Monet 色板）。
+///
+/// 原为 features/home 下的主屏控制器；因被 settings 个性化页共享而下沉至
+/// core/theme，prefs key 保持不变。
+
 enum HomeShaderMode {
   glass('玻璃背景'),
   ribbon('流光丝带'),
@@ -26,9 +31,10 @@ enum HomeBackgroundFit {
   final BoxFit boxFit;
 }
 
-class HomeController {
-  HomeController._();
-  static final HomeController instance = HomeController._();
+class PersonalizationController {
+  PersonalizationController._();
+  static final PersonalizationController instance =
+      PersonalizationController._();
 
   static const _keyBackgroundPath = 'home_background_image_path';
   static const _keyShaderEnabled = 'home_shader_enabled';

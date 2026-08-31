@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../core/theme/app_theme_palette.dart';
+import 'app_theme_palette.dart';
 
 enum HomeTextColorMode { system, dark, light }
 

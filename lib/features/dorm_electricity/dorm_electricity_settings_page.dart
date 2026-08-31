@@ -4,7 +4,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/logging/app_logger.dart';
-import '../../core/notification/background_task_service.dart';
+import 'dorm_electricity_background.dart';
 import 'dorm_electricity_service.dart';
 import 'epay_electricity_gateway.dart';
 import '../../shared/widgets/app_app_bar.dart';
@@ -276,7 +276,7 @@ class _DormElectricitySettingsPageState
       await _service.setAlertThreshold(threshold);
     }
     try {
-      await BackgroundTaskService.instance.reRegisterIfNeeded();
+      await DormElectricityBackground.instance.reRegisterIfNeeded();
     } catch (error) {
       // 后台任务重注册失败不应让设置静默回滚或抛未处理异常，记录即可，
       // 下次切换开关或冷启动仍会重试。

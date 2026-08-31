@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import 'app/app.dart';
 import 'app/app_bootstrap_controller.dart';
+import 'app/background_task_dispatcher.dart';
 import 'app/routes.dart';
 import 'core/auth/connect_mode_resolver.dart';
 import 'core/logging/app_logger.dart';
@@ -67,6 +68,7 @@ Future<void> main() async {
       runApp(JXUCampusHubApp());
       unawaited(
         AppShortcutService.instance.initialize(
+          navigationReady: AppBootstrapController.instance.navigationReady,
           navigateToNamedRoute: appRouter.pushNamed,
         ),
       );
@@ -85,15 +87,17 @@ Future<void> main() async {
         _handleNotificationPayload(pending);
       }
       AppBootstrapController.instance.scheduleWarmUpAfterFirstFrame();
-      await BackgroundTaskService.instance.initialize();
+      await BackgroundTaskService.instance.initialize(
+        callbackDispatcher: appBackgroundTaskDispatcher,
+      );
+      // 注册各 feature 的周期性后台任务（原 initialize 内置的 dorm/二课注册）。
+      await scheduleFeatureBackgroundTasks();
 
       // Check electricity on app resume (foreground) for timely notifications.
       final lifecycleListener = AppLifecycleListener(
         onStateChange: (state) {
           if (state == AppLifecycleState.resumed) {
-            unawaited(
-              BackgroundTaskService.instance.foregroundCheckAndNotify(),
-            );
+            unawaited(runForegroundBackgroundChecks());
           }
         },
       );

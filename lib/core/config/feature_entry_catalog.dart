@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../app/theme.dart';
+import '../theme/app_colors.dart';
 
 class FeatureEntryDefinition {
   const FeatureEntryDefinition({

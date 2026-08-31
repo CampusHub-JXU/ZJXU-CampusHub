@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_design_tokens.dart';
 
-import '../../app/app_preferences_controller.dart';
-import '../../app/text_scale_controller.dart';
+import '../../core/theme/app_preferences_controller.dart';
+import '../../core/theme/text_scale_controller.dart';
 import '../../core/theme/app_theme_palette.dart';
 import 'widgets/hsv_color_picker_sheet.dart';
 import '../../shared/widgets/app_app_bar.dart';

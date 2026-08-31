@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../app/app_theme_controller.dart';
+import '../../../core/theme/app_theme_controller.dart';
 import '../models/home_presentation.dart';
 
 /// 无框资产行：校园卡余额 + 宿舍电费，左对齐并排、无分隔线。

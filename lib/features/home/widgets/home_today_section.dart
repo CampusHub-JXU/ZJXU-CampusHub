@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../app/app_theme_controller.dart';
+import '../../../core/theme/app_theme_controller.dart';
 import '../models/home_presentation.dart';
 
 /// Today Section：当天剩余课程 + 今日考试的紧凑纯文字列表；今天没有

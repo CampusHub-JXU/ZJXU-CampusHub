@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:jxu_campus_hub/app/app_preferences_controller.dart';
-import 'package:jxu_campus_hub/app/app_theme_controller.dart';
+import 'package:jxu_campus_hub/core/theme/app_preferences_controller.dart';
+import 'package:jxu_campus_hub/core/theme/app_theme_controller.dart';
 import 'package:jxu_campus_hub/core/storage/app_preferences_store.dart';
 import 'package:jxu_campus_hub/core/theme/app_theme_palette.dart';
 

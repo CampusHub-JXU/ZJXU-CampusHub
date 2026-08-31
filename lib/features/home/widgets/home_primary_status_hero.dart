@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../app/app_theme_controller.dart';
+import '../../../core/theme/app_theme_controller.dart';
 import '../models/home_presentation.dart';
 
 /// Primary Status Hero：首页唯一的最强视觉焦点（无框纯排版）。

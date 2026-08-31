@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../core/theme/app_theme_palette.dart';
-import '../core/storage/app_preferences_store.dart';
+import '../storage/app_preferences_store.dart';
 import 'app_theme_controller.dart';
+import 'app_theme_palette.dart';
 import 'text_scale_controller.dart';
 
 enum AppThemePreference { system, light, dark }

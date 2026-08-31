@@ -2,8 +2,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
-import '../../../app/app_theme_controller.dart';
-import '../home_controller.dart';
+import '../app_theme_controller.dart';
+import '../personalization_controller.dart';
 import 'home_glass_background_filter.dart';
 
 class HomeBackgroundLayer extends StatelessWidget {
@@ -21,19 +21,22 @@ class HomeBackgroundLayer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<bool>(
-      valueListenable: HomeController.instance.shaderEnabled,
+      valueListenable: PersonalizationController.instance.shaderEnabled,
       builder: (context, shaderEnabled, _) {
         return ValueListenableBuilder<double>(
-          valueListenable: HomeController.instance.backgroundOpacity,
+          valueListenable: PersonalizationController.instance.backgroundOpacity,
           builder: (context, opacity, _) {
             return ValueListenableBuilder<Alignment>(
-              valueListenable: HomeController.instance.backgroundAlignment,
+              valueListenable:
+                  PersonalizationController.instance.backgroundAlignment,
               builder: (context, alignment, _) {
                 return ValueListenableBuilder<HomeBackgroundFit>(
-                  valueListenable: HomeController.instance.backgroundFit,
+                  valueListenable:
+                      PersonalizationController.instance.backgroundFit,
                   builder: (context, fit, _) {
                     return ValueListenableBuilder<double>(
-                      valueListenable: HomeController.instance.backgroundScale,
+                      valueListenable:
+                          PersonalizationController.instance.backgroundScale,
                       builder: (context, scale, _) {
                         final image = _buildImage(
                           context,
@@ -46,27 +49,30 @@ class HomeBackgroundLayer extends StatelessWidget {
                         }
                         return ValueListenableBuilder<double>(
                           valueListenable:
-                              HomeController.instance.shaderStrength,
+                              PersonalizationController.instance.shaderStrength,
                           builder: (context, strength, _) {
                             return ValueListenableBuilder<List<Color>?>(
-                              valueListenable:
-                                  HomeController.instance.monetColors,
+                              valueListenable: PersonalizationController
+                                  .instance
+                                  .monetColors,
                               builder: (context, monetColors, _) {
                                 return ValueListenableBuilder<double>(
-                                  valueListenable:
-                                      HomeController.instance.shaderOpacity,
+                                  valueListenable: PersonalizationController
+                                      .instance
+                                      .shaderOpacity,
                                   builder: (context, shaderOpacity, _) {
                                     return ValueListenableBuilder<double>(
-                                      valueListenable: HomeController
+                                      valueListenable: PersonalizationController
                                           .instance
                                           .shaderAnimationSpeed,
                                       builder: (context, animationSpeed, _) {
                                         return ValueListenableBuilder<
                                           HomeShaderMode
                                         >(
-                                          valueListenable: HomeController
-                                              .instance
-                                              .shaderMode,
+                                          valueListenable:
+                                              PersonalizationController
+                                                  .instance
+                                                  .shaderMode,
                                           builder: (context, mode, _) {
                                             final themeColor =
                                                 AppThemeController

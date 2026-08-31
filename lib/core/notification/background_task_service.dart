@@ -1,314 +1,47 @@
-import 'dart:ui';
-
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:workmanager/workmanager.dart';
 
-import '../../features/dorm_electricity/dorm_electricity_service.dart';
-import '../../features/second_classroom/second_classroom_subscription_service.dart';
-import '../logging/app_logger.dart';
-
-const _dormElectricityCheckTask = 'dormElectricityCheck';
-const _secondClassroomMonitorTask = 'secondClassroomRecruitingMonitor';
-const _scheduledNotificationId = 200;
-const _immediateNotificationId = 100;
-const _channelId = 'dorm_electricity_alert';
-const _channelName = '寝室电费提醒';
-
-// SharedPreferences keys
-const _keyAlertEnabled = 'dorm_alert_enabled';
-const _keyAlertThreshold = 'dorm_alert_threshold';
-const _keyLastNotifiedDate = 'dorm_alert_last_notified_date';
-const _keyCachedElectricity = 'dorm_cached_electricity';
-const _keyCachedElectricityUpdatedAt = 'dorm_cached_electricity_updated_at';
-const _keyAreaId = 'dorm_epay_area_id';
-const _keyBuildingId = 'dorm_epay_building_id';
-const _keyFloorId = 'dorm_epay_floor_id';
-const _keyRoomId = 'dorm_epay_room_id';
-const _backgroundCacheMaxAge = Duration(hours: 24);
-
-// ── WorkManager callback (secondary fallback) ──────────────────────────
-
-@pragma('vm:entry-point')
-void callbackDispatcher() {
-  Workmanager().executeTask((task, inputData) async {
-    DartPluginRegistrant.ensureInitialized();
-    if (task == _dormElectricityCheckTask) {
-      return await _executeBackgroundElectricityCheck();
-    }
-    if (task == _secondClassroomMonitorTask) {
-      return await _executeBackgroundSecondClassroomMonitor();
-    }
-    return true;
-  });
-}
-
-String _todayString() {
-  final now = DateTime.now();
-  return '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-}
-
-String _formatElectricity(double value) {
-  if (value == value.truncateToDouble()) return value.toInt().toString();
-  return value.toStringAsFixed(2);
-}
-
-double? _readFreshConfiguredElectricity(SharedPreferences prefs) {
-  if (prefs.getString(_keyAreaId) == null ||
-      prefs.getString(_keyBuildingId) == null ||
-      prefs.getString(_keyFloorId) == null ||
-      prefs.getString(_keyRoomId) == null) {
-    return null;
-  }
-  final updatedAtMillis = prefs.getInt(_keyCachedElectricityUpdatedAt);
-  if (updatedAtMillis == null) return null;
-  final age = DateTime.now().difference(
-    DateTime.fromMillisecondsSinceEpoch(updatedAtMillis),
-  );
-  if (age.isNegative || age > _backgroundCacheMaxAge) return null;
-  return prefs.getDouble(_keyCachedElectricity);
-}
-
-/// Self-contained background check — no WebView or app service singletons.
+/// 通用后台任务调度服务（WorkManager 薄封装）。
 ///
-/// epay100 查询依赖前台 WebView 会话，WorkManager 后台 isolate 仅使用
-/// 最近一次前台刷新写入的缓存值判断低电量。
-Future<bool> _executeBackgroundElectricityCheck() async {
-  try {
-    final prefs = await SharedPreferences.getInstance();
-
-    final alertEnabled = prefs.getBool(_keyAlertEnabled) ?? false;
-    if (!alertEnabled) return true;
-
-    final threshold = prefs.getDouble(_keyAlertThreshold) ?? 20.0;
-    final lastNotified = prefs.getString(_keyLastNotifiedDate);
-    final today = _todayString();
-    if (lastNotified == today) return true;
-
-    final value = _readFreshConfiguredElectricity(prefs);
-    if (value == null) return true;
-
-    if (value < threshold) {
-      await _showNotification(
-        id: _immediateNotificationId,
-        value: value,
-        threshold: threshold,
-      );
-      await prefs.setString(_keyLastNotifiedDate, today);
-    } else {
-      await prefs.remove(_keyLastNotifiedDate);
-    }
-
-    return true;
-  } catch (_) {
-    return false;
-  }
-}
-
-Future<bool> _executeBackgroundSecondClassroomMonitor() async {
-  try {
-    final result = await SecondClassroomSubscriptionService.instance
-        .checkRecruitingMatches();
-    if (result.notificationCount > 0) {
-      AppLogger.instance.storage(
-        LogLevel.info,
-        '第二课堂后台监控发现 ${result.notificationCount} 个同名招募活动',
-      );
-    }
-    return true;
-  } catch (error, stackTrace) {
-    AppLogger.instance.storage(
-      LogLevel.warn,
-      '第二课堂后台监控失败',
-      error: error,
-      stackTrace: stackTrace,
-    );
-    return false;
-  }
-}
-
-Future<void> _showNotification({
-  required int id,
-  required double value,
-  required double threshold,
-}) async {
-  final plugin = FlutterLocalNotificationsPlugin();
-  await plugin.initialize(
-    const InitializationSettings(
-      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-    ),
-  );
-
-  await plugin.show(
-    id,
-    '寝室电费不足',
-    '剩余电量 ${_formatElectricity(value)} 度，低于 ${threshold.toInt()} 度阈值，请及时充值',
-    const NotificationDetails(
-      android: AndroidNotificationDetails(
-        _channelId,
-        _channelName,
-        channelDescription: '当寝室剩余电量低于设定阈值时发送提醒',
-        importance: Importance.high,
-        priority: Priority.high,
-        icon: '@mipmap/ic_launcher',
-      ),
-    ),
-    payload: 'dorm-electricity',
-  );
-}
-
-/// Schedule a daily alarm-clock notification for 8:00 AM tomorrow.
-/// Uses `setAlarmClock` mode — fires reliably even when the app is killed
-/// or the device is in Doze mode.
-Future<void> _scheduleDailyAlarmNotification() async {
-  try {
-    final prefs = await SharedPreferences.getInstance();
-    final alertEnabled = prefs.getBool(_keyAlertEnabled) ?? false;
-    if (!alertEnabled) return;
-
-    // 这是系统层重复闹钟，文案会在注册时固化，无法在每天投递前重新校验
-    // 房间和缓存时效。因此这里只发通用提醒；带具体电量的低电通知只由
-    // 通过配置与 24 小时时效校验的前台/WorkManager 即时检查发送。
-    const body = '每日电量检查 — 打开 App 查看最新电量';
-
-    final plugin = FlutterLocalNotificationsPlugin();
-    await plugin.initialize(
-      const InitializationSettings(
-        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-      ),
-    );
-
-    // Calculate next 8:00 AM.
-    final now = tz.TZDateTime.now(tz.local);
-    var scheduled = tz.TZDateTime(tz.local, now.year, now.month, now.day, 8);
-    if (scheduled.isBefore(now)) {
-      scheduled = scheduled.add(const Duration(days: 1));
-    }
-
-    await plugin.zonedSchedule(
-      _scheduledNotificationId,
-      '寝室电费提醒',
-      body,
-      scheduled,
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
-          _channelId,
-          _channelName,
-          channelDescription: '当寝室剩余电量低于设定阈值时发送提醒',
-          importance: Importance.high,
-          priority: Priority.high,
-          icon: '@mipmap/ic_launcher',
-        ),
-      ),
-      androidScheduleMode: AndroidScheduleMode.alarmClock,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
-      payload: 'dorm-electricity',
-      matchDateTimeComponents: DateTimeComponents.time,
-    );
-
-    AppLogger.instance.storage(LogLevel.debug, '已安排寝室电费每日提醒: $scheduled');
-  } catch (e) {
-    AppLogger.instance.storage(LogLevel.warn, '安排寝室电费每日提醒失败: $e');
-  }
-}
-
-// ── Public service ─────────────────────────────────────────────────────
-
+/// core 层只保留与业务无关的调度能力：初始化时区与 WorkManager、
+/// 注册/取消周期任务。具体业务任务（电费检查、第二课堂监控等）
+/// 由各 feature 承载，回调 dispatcher 与任务注册统一在 app 组合层接线。
 class BackgroundTaskService {
   BackgroundTaskService._();
   static final instance = BackgroundTaskService._();
 
   bool _initialized = false;
 
-  Future<void> initialize() async {
+  /// 初始化时区数据与 WorkManager。
+  ///
+  /// [callbackDispatcher] 由外部注入（app 层组合），core 不感知具体业务。
+  Future<void> initialize({required void Function() callbackDispatcher}) async {
     if (_initialized) return;
 
     tz_data.initializeTimeZones();
 
-    // Primary: schedule daily alarm-clock notification.
-    await _scheduleDailyAlarmNotification();
-
-    // Secondary: WorkManager periodic task as fallback.
     await Workmanager().initialize(callbackDispatcher);
-    await _registerWorkManagerTask();
-    await _registerSecondClassroomMonitorTask();
 
     _initialized = true;
   }
 
-  Future<void> _registerWorkManagerTask() async {
+  /// 注册周期性后台任务（同名任务已存在时保持原配置不变）。
+  Future<void> registerPeriodicTask({
+    required String uniqueName,
+    required Duration frequency,
+    Constraints? constraints,
+  }) async {
     await Workmanager().registerPeriodicTask(
-      _dormElectricityCheckTask,
-      _dormElectricityCheckTask,
-      frequency: const Duration(hours: 8),
+      uniqueName,
+      uniqueName,
+      frequency: frequency,
+      constraints: constraints,
       existingWorkPolicy: ExistingPeriodicWorkPolicy.keep,
     );
   }
 
-  Future<void> _registerSecondClassroomMonitorTask() async {
-    await Workmanager().registerPeriodicTask(
-      _secondClassroomMonitorTask,
-      _secondClassroomMonitorTask,
-      frequency: const Duration(hours: 1),
-      constraints: Constraints(networkType: NetworkType.connected),
-      existingWorkPolicy: ExistingPeriodicWorkPolicy.keep,
-    );
-  }
-
-  /// Called when user toggles alert settings.
-  Future<void> reRegisterIfNeeded() async {
-    final prefs = await SharedPreferences.getInstance();
-    final enabled = prefs.getBool(_keyAlertEnabled) ?? false;
-    if (enabled) {
-      await _scheduleDailyAlarmNotification();
-      await _registerWorkManagerTask();
-    } else {
-      final plugin = FlutterLocalNotificationsPlugin();
-      await plugin.cancel(_scheduledNotificationId);
-      await Workmanager().cancelByUniqueName(_dormElectricityCheckTask);
-    }
-  }
-
-  /// Foreground check — called on app resume. Refreshes electricity through
-  /// the epay100 WebView-backed service, shows a low-value notification when
-  /// needed, then reschedules the daily alarm with the latest cache.
-  Future<void> foregroundCheckAndNotify() async {
-    await _executeBackgroundSecondClassroomMonitor();
-
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final alertEnabled = prefs.getBool(_keyAlertEnabled) ?? false;
-      if (!alertEnabled) return;
-
-      final threshold = prefs.getDouble(_keyAlertThreshold) ?? 20.0;
-      final lastNotified = prefs.getString(_keyLastNotifiedDate);
-      final today = _todayString();
-
-      final value = await DormElectricityService.instance.fetchElectricity(
-        forceRefresh: true,
-      );
-      if (value == null || DormElectricityService.instance.lastError != null) {
-        return;
-      }
-
-      if (value < threshold && lastNotified != today) {
-        await _showNotification(
-          id: _immediateNotificationId,
-          value: value,
-          threshold: threshold,
-        );
-        await prefs.setString(_keyLastNotifiedDate, today);
-      } else if (value >= threshold) {
-        await prefs.remove(_keyLastNotifiedDate);
-      }
-
-      // 重排只含通用文案的每日提醒；具体电量不会固化进重复闹钟。
-      await _scheduleDailyAlarmNotification();
-    } catch (e) {
-      AppLogger.instance.storage(LogLevel.warn, '前台电费检查失败: $e');
-    }
+  /// 按唯一名取消已注册的后台任务。
+  Future<void> cancelTask(String uniqueName) async {
+    await Workmanager().cancelByUniqueName(uniqueName);
   }
 }

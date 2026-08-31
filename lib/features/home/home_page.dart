@@ -5,10 +5,12 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/app_bootstrap_controller.dart';
-import '../../app/app_theme_controller.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/semester/semester_calendar.dart';
 import '../../core/theme/app_design_tokens.dart';
+import '../../core/theme/app_theme_controller.dart';
+import '../../core/theme/personalization_controller.dart';
+import '../../core/theme/widgets/home_background_layer.dart';
 import '../../core/update/update_checker.dart';
 import '../../shared/widgets/network_error_toast.dart';
 import '../../shared/widgets/update_dialog.dart';
@@ -20,14 +22,12 @@ import '../grades/grades_service.dart';
 import '../schedule/schedule_cache_snapshot.dart';
 import '../schedule/schedule_service.dart';
 import 'function_zone/function_zone_section.dart';
-import 'home_controller.dart';
 import 'home_presentation_resolver.dart';
 import 'home_zone_controller.dart';
 import 'models/home_presentation.dart';
 import 'models/home_snapshot.dart';
 import 'widgets/home_ambient_background.dart';
 import 'widgets/home_asset_strip.dart';
-import 'widgets/home_background_layer.dart';
 import 'widgets/home_event_banner.dart';
 import 'widgets/home_primary_status_hero.dart';
 import 'widgets/home_today_section.dart';
@@ -385,7 +385,8 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgImagePath = HomeController.instance.backgroundImagePath.value;
+    final bgImagePath =
+        PersonalizationController.instance.backgroundImagePath.value;
     final topInset = MediaQuery.paddingOf(context).top;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: (isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark)
