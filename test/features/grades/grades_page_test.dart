@@ -43,13 +43,25 @@ void main() {
     DioClient.instance.dio.httpClientAdapter = adapter;
 
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: GradesPage())));
-    // The page deliberately owns a 420ms stagger controller plus AnimatedSize.
-    // Waiting for the entire binding to report no scheduled frames is flaky on
-    // slower Linux coverage runners, even though the data request has already
-    // completed. Drive the known async/animation phases with bounded pumps.
-    await tester.pump();
+    // Do not use pumpAndSettle: the page owns stagger/size animations and the
+    // Linux coverage runner may keep scheduling frames. Also do not assume the
+    // mocked Dio request finishes within a fixed number of pumps. Wait for the
+    // first data-backed widget with a hard fake-time bound, then finish the
+    // known 420ms entrance animation.
+    for (
+      var elapsed = Duration.zero;
+      elapsed < const Duration(seconds: 5) &&
+          find.byType(AppDropdown<String>).evaluate().isEmpty;
+      elapsed += const Duration(milliseconds: 50)
+    ) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(
+      find.byType(AppDropdown<String>),
+      findsOneWidget,
+      reason: '成绩请求应在 5 秒测试时间内完成并渲染学期下拉框',
+    );
     await tester.pump(const Duration(milliseconds: 500));
-    await tester.pump();
   }
 
   Map<String, dynamic> grade(
