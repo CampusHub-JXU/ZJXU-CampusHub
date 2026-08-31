@@ -19,8 +19,15 @@ import 'widgets/grades_distribution_card.dart';
 import 'widgets/grades_grade_card.dart';
 import '../../shared/widgets/app_app_bar.dart';
 
+typedef GradesFetcher = Future<List<GradeEntry>> Function(
+  String studentId, {
+  bool forceRefresh,
+});
+
 class GradesPage extends StatefulWidget {
-  const GradesPage({super.key});
+  const GradesPage({super.key, this.fetchGrades});
+
+  final GradesFetcher? fetchGrades;
 
   @override
   State<GradesPage> createState() => _GradesPageState();
@@ -106,10 +113,9 @@ class _GradesPageState extends State<GradesPage>
       _error = null;
     });
     try {
-      final grades = await GradesService.instance.fetchGrades(
-        studentId,
-        forceRefresh: forceRefresh,
-      );
+      final fetchGrades =
+          widget.fetchGrades ?? GradesService.instance.fetchGrades;
+      final grades = await fetchGrades(studentId, forceRefresh: forceRefresh);
       if (mounted) {
         setState(() => _grades = grades);
         _ensureSelectedTerm();

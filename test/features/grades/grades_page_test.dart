@@ -1,16 +1,12 @@
-import 'dart:convert';
-
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
-import 'package:jxu_campus_hub/core/network/dio_client.dart';
+import 'package:jxu_campus_hub/features/grades/grades_model.dart';
 import 'package:jxu_campus_hub/features/grades/grades_page.dart';
 import 'package:jxu_campus_hub/features/grades/grades_term_resolver.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_dropdown.dart';
 
-import '../../helpers/mock_http_client_adapter.dart';
 import '../../helpers/test_setup.dart';
 
 void main() {
@@ -18,9 +14,6 @@ void main() {
 
   setUp(() async {
     await resetTestEnvironment();
-    DioClient.instance.debugCookieDirectoryPathProvider = (folderName) async =>
-        'test/$folderName';
-    await DioClient.instance.ensureInitialized();
     ZhengfangAuth.instance.debugSetSession(active: true, studentId: '20250001');
   });
 
@@ -28,21 +21,16 @@ void main() {
     WidgetTester tester, {
     required List<Map<String, dynamic>> items,
   }) async {
-    final adapter = MockHttpClientAdapter();
-    adapter.register('POST', '/jwglxt/cjcx/cjcx_cxDgXscj.html', (
-      options,
-    ) async {
-      return ResponseBody.fromString(
-        jsonEncode({'items': items}),
-        200,
-        headers: <String, List<String>>{
-          Headers.contentTypeHeader: <String>['application/json'],
-        },
-      );
-    });
-    DioClient.instance.dio.httpClientAdapter = adapter;
-
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: GradesPage())));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GradesPage(
+            fetchGrades: (_, {bool forceRefresh = false}) async =>
+                items.map(GradeEntry.fromJson).toList(),
+          ),
+        ),
+      ),
+    );
     // Do not use pumpAndSettle: the page owns stagger/size animations and the
     // Linux coverage runner may keep scheduling frames. Also do not assume the
     // mocked Dio request finishes within a fixed number of pumps. Wait for the
