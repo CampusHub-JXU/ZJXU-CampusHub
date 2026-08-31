@@ -15,8 +15,13 @@ enum HomeHeroKind {
   /// 本学期教学周已全部结束。
   semesterOver,
 
-  /// 今天没有剩余安排（可能展示下一节课预告）。
+  /// 今天没有剩余安排且近期无课（「近期无课」纯文字态；近期有课时
+  /// 由 [nextCourseUpcoming] 以课程大字承接下一节课）。
   noCourseToday,
+
+  /// 今天没有剩余安排但近期有课：下一节课升级为课程大字主体，
+  /// 「今天没课」并入 kicker，日期标签（如「明天 08:00」）并入时间行。
+  nextCourseUpcoming,
 
   /// 未登录且无本地课表缓存。
   loggedOut,
@@ -132,9 +137,30 @@ class HomeTodayExamRow {
   final String locationText;
 }
 
-/// Today Section：当天剩余课程 + 今日考试。
+/// Today Section：当天剩余课程 + 今日考试；今天没有剩余安排时降级为
+/// 「次日预览」形态（开学前 = 开学首日课表，学期中 = 明天/下一个有课日），
+/// 标题由 [title] 区分，避免假期/晚间首页上半屏空置。
 class HomeTodayPresentation {
-  const HomeTodayPresentation({required this.courses, required this.exams});
+  const HomeTodayPresentation({
+    required this.courses,
+    required this.exams,
+    this.title = '今天',
+    this.isPreview = false,
+    this.isCollapsed = false,
+  });
+
+  /// 段落标题：'今天'，或预览形态如 '开学首日' / '明天'；折叠形态不渲染标题。
+  final String title;
+
+  /// 是否为次日预览形态：预览是未来安排的轻量提示，渲染上比实时的
+  /// 「今天」列表低一档（字号更小、更收敛）。
+  final bool isPreview;
+
+  /// 折叠形态：Hero 已用课程大字展示命中日首课，本段降为单行
+  /// 「之后还有 N 门」摘要，避免次日列表与 Hero 抢视觉权重。
+  /// [courses] 为剔除首课后的余下课程（供摘要取「下一门」与总数），
+  /// 不渲染标题与课程行；余下为空时整段不出现。
+  final bool isCollapsed;
 
   final List<HomeTodayCourseRow> courses;
   final List<HomeTodayExamRow> exams;
@@ -159,7 +185,7 @@ class HomePresentation {
   final HomeStatusPresentation status;
   final HomeTodayPresentation today;
 
-  /// 周次标签：「第 N 周」/「未开学」/「学期已结束」，
-  /// 供首页顶部环境行使用。
+  /// 周次标签：「第 N 周」/「学期已结束」；未开学时为空串
+  /// （环境行省略状态段，避免与 Hero 开学倒计时重复）。
   final String weekLabel;
 }

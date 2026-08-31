@@ -136,7 +136,7 @@ void main() {
       expect(presentation.hero.headline, '2 小时 45 分钟后上课');
     });
 
-    test('今天没课：显示明天第一节课预告', () {
+    test('今天没课：下一节课升级为课程大字形态', () {
       final tomorrow = DateTime(2026, 9, 16);
       final snapshot = buildSnapshot(
         courses: [courseAt(tomorrow, startLesson: 1, courseName: '高等数学')],
@@ -144,9 +144,9 @@ void main() {
 
       final presentation = resolveHomePresentation(snapshot);
 
-      expect(presentation.hero.kind, HomeHeroKind.noCourseToday);
+      expect(presentation.hero.kind, HomeHeroKind.nextCourseUpcoming);
       expect(presentation.hero.headline, '今天没课');
-      expect(presentation.hero.timeText, '下一节：明天 08:00');
+      expect(presentation.hero.timeText, '明天 08:00');
       expect(presentation.hero.courseName, '高等数学');
     });
 
@@ -160,12 +160,12 @@ void main() {
 
       final presentation = resolveHomePresentation(snapshot);
 
-      expect(presentation.hero.kind, HomeHeroKind.noCourseToday);
+      expect(presentation.hero.kind, HomeHeroKind.nextCourseUpcoming);
       expect(presentation.hero.headline, '今天没课');
       expect(presentation.hero.timeText, isNot(contains('即将上课')));
     });
 
-    test('未开学：距离开学倒计时 + 开学首课信息', () {
+    test('未开学：倒计时 + 开学日期，文案去重不携带首课信息', () {
       final semesterStart = DateTime(2026, 9, 24); // 距 baseNow 9 天
       final snapshot = buildSnapshot(
         isBeforeSemesterStart: true,
@@ -178,8 +178,9 @@ void main() {
 
       expect(presentation.hero.kind, HomeHeroKind.beforeSemester);
       expect(presentation.hero.headline, '距离开学还有 9 天');
-      expect(presentation.hero.timeText, '9月24日 08:00');
-      expect(presentation.weekLabel, '未开学');
+      expect(presentation.hero.timeText, '9月24日');
+      expect(presentation.hero.courseName, isNull);
+      expect(presentation.weekLabel, isEmpty);
     });
 
     test('学期已结束', () {
@@ -377,6 +378,62 @@ void main() {
       expect(presentation.today.isEmpty, isFalse);
     });
 
+    test('今天没课且命中日多门课：Hero 大字首课，Today 整段隐藏让位 Hero', () {
+      final tomorrow = DateTime(2026, 9, 16);
+      final snapshot = buildSnapshot(
+        courses: [
+          courseAt(tomorrow, startLesson: 1, courseName: '高等数学'),
+          courseAt(tomorrow, startLesson: 3, courseName: '大学英语'),
+          courseAt(tomorrow, startLesson: 6, courseName: '数据结构'),
+        ],
+      );
+
+      final presentation = resolveHomePresentation(snapshot);
+
+      expect(presentation.hero.kind, HomeHeroKind.nextCourseUpcoming);
+      expect(presentation.hero.courseName, '高等数学');
+      expect(presentation.hero.timeText, '明天 08:00');
+      // 折叠摘要不再作为次级信息占用视觉空间,首课由 Hero 课程大字
+      // 单独承接,后续课程直接进课表查看 — Today 整段隐藏。
+      expect(presentation.today.isEmpty, isTrue);
+      expect(presentation.today.courses, isEmpty);
+    });
+
+    test('今天没课且命中日仅一门课：Today 段落整段消失', () {
+      final tomorrow = DateTime(2026, 9, 16);
+      final snapshot = buildSnapshot(
+        courses: [courseAt(tomorrow, startLesson: 1, courseName: '高等数学')],
+      );
+
+      final presentation = resolveHomePresentation(snapshot);
+
+      expect(presentation.hero.kind, HomeHeroKind.nextCourseUpcoming);
+      expect(presentation.today.isEmpty, isTrue);
+    });
+
+    test('未开学的开学首日预览不折叠（Hero 为倒计时）', () {
+      final semesterStart = DateTime(2026, 9, 24);
+      final snapshot = buildSnapshot(
+        isBeforeSemesterStart: true,
+        currentWeek: 1,
+        semesterStartDate: semesterStart,
+        courses: [
+          courseAt(semesterStart, startLesson: 1, courseName: '高等数学'),
+          courseAt(semesterStart, startLesson: 3, courseName: '大学英语'),
+        ],
+      );
+
+      final presentation = resolveHomePresentation(snapshot);
+
+      expect(presentation.hero.kind, HomeHeroKind.beforeSemester);
+      expect(presentation.today.title, '开学首日');
+      expect(presentation.today.isCollapsed, isFalse);
+      expect(presentation.today.courses.map((c) => c.courseName), [
+        '高等数学',
+        '大学英语',
+      ]);
+    });
+
     test('教学周内周次标签为「第 N 周」', () {
       final snapshot = buildSnapshot(currentWeek: 2);
 
@@ -385,7 +442,7 @@ void main() {
       expect(presentation.weekLabel, '第 2 周');
     });
 
-    test('未开学时周次标签为「未开学」', () {
+    test('未开学时周次标签为空（环境行省略状态段）', () {
       final semesterStart = DateTime(2026, 9, 24);
       final snapshot = buildSnapshot(
         isBeforeSemesterStart: true,
@@ -396,7 +453,7 @@ void main() {
 
       final presentation = resolveHomePresentation(snapshot);
 
-      expect(presentation.weekLabel, '未开学');
+      expect(presentation.weekLabel, isEmpty);
     });
   });
 }

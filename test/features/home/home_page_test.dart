@@ -89,10 +89,10 @@ void main() {
     final termContext = ScheduleTermContext.current(now);
 
     SharedPreferences.setMockInitialValues({
-      'dorm_community_id': 'community',
-      'dorm_building_id': 'building',
-      'dorm_floor_id': 'floor',
-      'dorm_room_id': 'room',
+      'dorm_epay_area_id': 'area',
+      'dorm_epay_building_id': 'building',
+      'dorm_epay_floor_id': 'floor',
+      'dorm_epay_room_id': 'room',
     });
 
     CampusCardService.instance.debugSetCachedBalance(23.5, updatedAt: now);
@@ -135,10 +135,81 @@ void main() {
 
     expect(find.text('¥23.5'), findsOneWidget);
     expect(find.text('42 度'), findsOneWidget);
-    // 今天无课：Hero 展示"今天没课 + 明天第一节课预告"。
-    expect(find.text('今天没课'), findsOneWidget);
-    expect(find.text('下一节：明天 08:00'), findsOneWidget);
+    // 今天无课：Hero 以课程大字承接明天第一节课（kicker「今天没课 · 下一节」，
+    // 日期并入时间行）；明天仅此一门，Today 段落整段消失、不重复 Hero 信息。
+    expect(find.text('今天没课 · 下一节'), findsOneWidget);
+    expect(find.text('明天 08:00'), findsOneWidget);
     expect(find.text('线性代数'), findsOneWidget);
+    expect(find.text('明天'), findsNothing);
+  });
+
+  testWidgets('before semester start previews first-day courses', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    // 开学日固定取下一个周一：isBeforeSemesterStart 判定「今天早于开学
+    // 日所在周的第 1 周周一」，写死「今天 + 2 天」在周一~周三运行时会
+    // 落进同一周而不再属于未开学；倒计时天数按运行日动态计算。
+    final semesterStart = _nextMonday(today);
+    final countdownDays = semesterStart.difference(today).inDays;
+
+    await SemesterCalendar.instance.setSemesterStartDate(semesterStart);
+    ScheduleService.instance.debugSetSnapshot(
+      ScheduleCacheSnapshot(
+        studentId: '2025000001',
+        termContext: ScheduleTermContext.current(now),
+        courses: [
+          CourseEntry(
+            courseName: '高等数学 B',
+            teacherName: '张老师',
+            weekday: semesterStart.weekday,
+            startLesson: 1,
+            endLesson: 2,
+            weekRange: '1-2周',
+            classroom: '教B-102',
+            campus: '梁林校区',
+            typeSymbol: '',
+          ),
+          CourseEntry(
+            courseName: '大学英语',
+            teacherName: '李老师',
+            weekday: semesterStart.weekday,
+            startLesson: 3,
+            endLesson: 4,
+            weekRange: '1-2周',
+            classroom: '外B-305',
+            campus: '梁林校区',
+            typeSymbol: '',
+          ),
+        ],
+        scheduleUpdatedAt: now,
+        changeRulesUpdatedAt: now,
+      ),
+    );
+
+    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+
+    AppBootstrapController.instance.debugSetPhase(
+      AppBootstrapPhase.localStateReady,
+    );
+    await tester.pump();
+    await tester.pump();
+
+    // Hero 未开学倒计时：环境行省略状态段、kicker「未开学」不再渲染，
+    // 全屏「开学」语义只出现在倒计时大字与「开学首日」标题两处；
+    // 课程详情只出现在「开学首日」预览段落。
+    expect(find.text('距离开学还有 $countdownDays 天'), findsOneWidget);
+    expect(find.text('未开学'), findsNothing);
+    expect(
+      find.text('${semesterStart.month}月${semesterStart.day}日'),
+      findsOneWidget,
+    );
+    expect(find.text('开学首日'), findsOneWidget);
+    expect(find.text('高等数学 B'), findsOneWidget);
+    expect(find.text('大学英语'), findsOneWidget);
+    // 未超过 3 条：不渲染「查看全部」截断尾行。
+    expect(find.text('查看全部'), findsNothing);
   });
 
   testWidgets('low electricity triggers event banner while hero shows course', (
@@ -182,8 +253,9 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    // Hero 保留给课表状态，低电量升级为事件横幅；资产行数值同步告警。
-    expect(find.text('今天没课'), findsOneWidget);
+    // Hero 保留给课表状态（今天没课时下一节课仍以课程大字展示），
+    // 低电量升级为事件横幅；资产行数值同步告警。
+    expect(find.text('今天没课 · 下一节'), findsOneWidget);
     expect(find.textContaining('电量偏低'), findsOneWidget);
     expect(find.text('3.20 度'), findsOneWidget);
   });
@@ -441,4 +513,11 @@ double _scrollOffset(WidgetTester tester) {
     find.byType(Scrollable).first,
   );
   return scrollable.position.pixels;
+}
+
+/// 下一个周一（今天恰为周一则取下周一），保证严格晚于今天。
+DateTime _nextMonday(DateTime today) {
+  final delta = (DateTime.monday - today.weekday) % 7;
+  final next = today.add(Duration(days: delta == 0 ? 7 : delta));
+  return DateTime(next.year, next.month, next.day);
 }

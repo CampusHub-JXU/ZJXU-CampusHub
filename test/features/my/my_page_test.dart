@@ -67,4 +67,27 @@ void main() {
       '已登录',
     );
   });
+
+  testWidgets(
+    'shows unknown state when liveness check fails with network error',
+    (tester) async {
+      UnifiedAuthService.instance.debugSetSession(
+        active: true,
+        account: '2025001',
+      );
+      // 校验请求本身失败（返回 null = 网络异常）：不能沿用「已登录」。
+      UnifiedAuthService.instance.debugSessionValidator = (_) async => null;
+
+      await tester.pumpWidget(const MaterialApp(home: MyPage()));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('已登录'), findsNothing);
+      expect(
+        tester.widget<Text>(find.byKey(const Key('my_campus_status'))).data,
+        '未知',
+      );
+      expect(find.textContaining('登录状态未知'), findsWidgets);
+    },
+  );
 }

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/app_design_tokens.dart';
+
 Future<Color?> showHsvColorPickerSheet(
   BuildContext context, {
   required Color initialColor,
@@ -206,7 +208,7 @@ class _HsvPlanePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
-    final radius = Radius.circular(18);
+    final radius = Radius.circular(AppRadius.card);
     final rrect = RRect.fromRectAndRadius(rect, radius);
 
     final hueColors = List<Color>.generate(

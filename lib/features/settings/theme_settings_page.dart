@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme/app_design_tokens.dart';
+
 import '../../app/app_preferences_controller.dart';
 import '../../app/text_scale_controller.dart';
 import '../../core/theme/app_theme_palette.dart';
@@ -320,7 +322,7 @@ class _ModeButton extends StatelessWidget {
           color: selected
               ? colors.primaryContainer.withValues(alpha: 0.5)
               : colors.surfaceContainerHighest.withValues(alpha: 0.35),
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: AppRadius.cardBorder,
           border: Border.all(
             color: selected ? colors.primary : colors.outlineVariant,
             width: selected ? 1.5 : 1,
@@ -374,7 +376,7 @@ class _PaletteCard extends StatelessWidget {
         duration: const Duration(milliseconds: 180),
         decoration: BoxDecoration(
           color: colors.surfaceContainerHighest.withValues(alpha: 0.35),
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: AppRadius.cardBorder,
           border: Border.all(
             color: selected ? colors.primary : colors.outlineVariant,
             width: selected ? 1.5 : 1,
@@ -436,7 +438,7 @@ class _CustomPaletteButton extends StatelessWidget {
         duration: const Duration(milliseconds: 180),
         decoration: BoxDecoration(
           color: colors.surfaceContainerHighest.withValues(alpha: 0.35),
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: AppRadius.cardBorder,
           border: Border.all(
             color: selected ? colors.primary : colors.outlineVariant,
             width: selected ? 1.5 : 1,

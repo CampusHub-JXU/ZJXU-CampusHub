@@ -4,10 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/config/feature_entry_catalog.dart';
-import '../../../core/theme/app_design_tokens.dart';
 import '../../../features/exam/exam_service.dart';
 import '../../../features/grades/grades_service.dart';
 import '../../../features/service_hub/service_hub_usage_store.dart';
+import '../../../core/theme/app_design_tokens.dart';
 import '../../../shared/widgets/app_icon_badge.dart';
 import '../../../shared/widgets/app_tile_surface.dart';
 import 'function_zone_bento.dart';
@@ -213,9 +213,10 @@ class _BentoGrid extends StatelessWidget {
 
   static const double _gap = AppSpacing.gridGap;
 
-  /// 行高按瓦片尺寸分档：半宽 small 保持紧凑 64（单行内容），整行 wide
-  /// 76（双行文案多一档呼吸感）；大字号按线性系数放大并设上限防溢出。
-  static const double _baseSmallHeight = 64;
+  /// 行高按瓦片尺寸分档：行式布局下徽标是高度驱动项——半宽 small 60
+  /// （36px 徽标 + 单行标题），整行 wide 76（40px 徽标 + 标题 + 统计两行
+  /// 的 hero 档）；大字号按线性系数放大并设上限防溢出。
+  static const double _baseSmallHeight = 60;
   static const double _baseWideHeight = 76;
 
   @override
@@ -227,7 +228,7 @@ class _BentoGrid extends StatelessWidget {
     final unitsPerRow = availableWidth >= 600 ? 4 : 2;
     final unitWidth = (availableWidth - (unitsPerRow - 1) * _gap) / unitsPerRow;
 
-    // 行布局下随文字缩放的是标题+统计列（≈34px × scale），系数 30 覆盖
+    // 行布局下随文字缩放的是标题+统计列（≈38px × scale），系数 30 覆盖
     // 1.8× 满档不溢出。
     final textScale = MediaQuery.textScalerOf(context)
         .scale(1)
@@ -236,7 +237,7 @@ class _BentoGrid extends StatelessWidget {
     final scaleDelta = (textScale - 1) * 30;
     final smallHeight = (_baseSmallHeight + scaleDelta).clamp(
       _baseSmallHeight,
-      96.0,
+      92.0,
     );
     final wideHeight = (_baseWideHeight + scaleDelta).clamp(
       _baseWideHeight,
@@ -258,6 +259,10 @@ class _BentoGrid extends StatelessWidget {
     if (placements.isEmpty) return const SizedBox.shrink();
 
     final entryById = {for (final entry in entries) entry.id: entry};
+    // 实时统计一次性解析：null 表示该入口无可用数据，瓦片回退静态描述。
+    final liveStatsById = {
+      for (final entry in entries) entry.id: resolveStats(entry),
+    };
     var rowCount = 0;
     for (final placement in placements) {
       final bottom = placement.row + placement.rowSpan;
@@ -313,7 +318,8 @@ class _BentoGrid extends StatelessWidget {
                   entry: entry,
                   size: placement.tile.size,
                   pinned: usage.pinnedIds.contains(placement.tile.id),
-                  statsText: resolveStats(entry) ?? entry.subtitle,
+                  statsText: liveStatsById[entry.id] ?? entry.subtitle,
+                  liveStats: liveStatsById[entry.id] != null,
                   onTap: () => unawaited(onTap(entry)),
                   onLongPress: () => unawaited(onLongPress(entry)),
                 ),
@@ -324,18 +330,21 @@ class _BentoGrid extends StatelessWidget {
   }
 }
 
-/// Bento 瓦片：iOS Settings 式横向行（徽标 + 文字列），尺寸越大信息越多
-/// （progressive disclosure）。
+/// Bento 瓦片：AppTileSurface 平色卡面 + AppIconBadge 徽标的行式布局。
 ///
-/// * small —— 徽标 + 标题单行；
-/// * wide  —— 文字列追加一行统计副文案（maxLines 1）；
+/// * small —— 36px 徽标 + 标题单行，垂直居中；
+/// * wide  —— hero 档：40px 徽标 + 标题/统计两行 + 尾部 chevron，构成
+///   段落锚点（手机上整行 rank0 与末行补丁瓦片）；
 /// * large —— 平板 2×2 专属：徽标置顶、文字块沉底，统计最多两行。
+/// 统计行分级强调：实时数据（绩点/倒计时/余额/电费）用 onSurface w600，
+/// 无数据回退的静态描述保持 onSurfaceVariant 常规灰。
 class _FunctionZoneTile extends StatelessWidget {
   const _FunctionZoneTile({
     required this.entry,
     required this.size,
     required this.pinned,
     required this.statsText,
+    required this.liveStats,
     required this.onTap,
     required this.onLongPress,
   });
@@ -344,6 +353,9 @@ class _FunctionZoneTile extends StatelessWidget {
   final BentoTileSize size;
   final bool pinned;
   final String statsText;
+
+  /// [statsText] 是否为实时统计；false 表示回退的描述文案，弱化显示。
+  final bool liveStats;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
 
@@ -355,7 +367,8 @@ class _FunctionZoneTile extends StatelessWidget {
       hint: entry.subtitle,
       child: AppTileSurface(
         borderRadius: AppRadius.tileBorder,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        // 垂直居中交给各档 body 的 Center 处理，这里只约束水平内边距。
+        padding: const EdgeInsets.symmetric(horizontal: 14),
         onTap: onTap,
         onLongPress: onLongPress,
         child: switch (size) {
@@ -380,14 +393,15 @@ class _FunctionZoneTile extends StatelessWidget {
             size: AppIconBadgeSize.small,
           ),
           const SizedBox(width: 10),
-          Expanded(child: _buildTitleRow(context)),
+          Expanded(child: _buildTitleRow(context, fontSize: 15)),
         ],
       ),
     );
   }
 
-  /// wide：small 的基础上文字列追加一行统计副文案。
+  /// wide：hero 档 —— 40px 徽标 + 标题/统计两行 + 尾部 chevron。
   Widget _buildWideBody(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Center(
       widthFactor: 1,
       child: Row(
@@ -395,28 +409,26 @@ class _FunctionZoneTile extends StatelessWidget {
           AppIconBadge(
             icon: entry.icon,
             accentColor: entry.accentColor,
-            size: AppIconBadgeSize.small,
+            size: AppIconBadgeSize.medium,
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildTitleRow(context),
-                const SizedBox(height: 2),
+                _buildTitleRow(context, fontSize: 16),
+                const SizedBox(height: 3),
                 // Flexible 防御：大字号下统计行优先被压缩省略，Column 不硬溢出。
-                Flexible(
-                  child: Text(
-                    statsText,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: _statsStyle(context),
-                  ),
-                ),
+                Flexible(child: _buildStatsText(context)),
               ],
             ),
+          ),
+          const SizedBox(width: 8),
+          Icon(
+            Icons.chevron_right_rounded,
+            size: 18,
+            color: cs.onSurfaceVariant.withValues(alpha: 0.45),
           ),
         ],
       ),
@@ -434,22 +446,15 @@ class _FunctionZoneTile extends StatelessWidget {
           size: AppIconBadgeSize.medium,
         ),
         const Spacer(),
-        _buildTitleRow(context),
+        _buildTitleRow(context, fontSize: 16),
         const SizedBox(height: 4),
-        Flexible(
-          child: Text(
-            statsText,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: _statsStyle(context),
-          ),
-        ),
+        Flexible(child: _buildStatsText(context, maxLines: 2)),
       ],
     );
   }
 
   /// 标题行：置顶瓦片标题前加 12px 图钉（primary 色）。
-  Widget _buildTitleRow(BuildContext context) {
+  Widget _buildTitleRow(BuildContext context, {required double fontSize}) {
     return Row(
       children: [
         if (pinned) ...[
@@ -465,9 +470,9 @@ class _FunctionZoneTile extends StatelessWidget {
             entry.title,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            // Apple semibold 字阶：15/w600，正文级别的克制强调。
+            // Apple semibold 字阶：正文级别的克制强调。
             style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              fontSize: 15,
+              fontSize: fontSize,
               fontWeight: FontWeight.w600,
               height: 1.2,
             ),
@@ -477,9 +482,23 @@ class _FunctionZoneTile extends StatelessWidget {
     );
   }
 
-  TextStyle? _statsStyle(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Theme.of(context).textTheme.bodySmall
-        ?.copyWith(fontSize: 13, color: cs.onSurfaceVariant, height: 1.25);
+  /// 统计行：实时数据用 onSurface w600 强调（本段落的「活数据」价值点），
+  /// 描述回退用 onSurfaceVariant 常规灰。
+  Widget _buildStatsText(BuildContext context, {int maxLines = 1}) {
+    final theme = Theme.of(context);
+    final base = theme.textTheme.bodySmall ?? const TextStyle();
+    return Text(
+      statsText,
+      maxLines: maxLines,
+      overflow: TextOverflow.ellipsis,
+      style: base.copyWith(
+        fontSize: 13,
+        height: 1.25,
+        fontWeight: liveStats ? FontWeight.w600 : FontWeight.w400,
+        color: liveStats
+            ? theme.colorScheme.onSurface
+            : theme.colorScheme.onSurfaceVariant,
+      ),
+    );
   }
 }

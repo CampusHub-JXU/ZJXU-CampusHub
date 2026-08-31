@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:jxu_campus_hub/core/theme/app_design_tokens.dart';
 import 'package:jxu_campus_hub/core/theme/glass_style_controller.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_card.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_surface_style.dart';
@@ -38,7 +39,7 @@ void main() {
     expect(side.width, 1.0);
     expect(
       (surface.shape as RoundedSuperellipseBorder).borderRadius,
-      BorderRadius.circular(22),
+      AppRadius.cardBorder,
     );
     expect(find.byType(BackdropFilter), findsNothing);
   });
@@ -95,7 +96,7 @@ void main() {
           .last,
     );
     final boxDecoration = decorBox.decoration as BoxDecoration;
-    expect(boxDecoration.borderRadius, BorderRadius.circular(22));
+    expect(boxDecoration.borderRadius, AppRadius.cardBorder);
     expect(boxDecoration.boxShadow, appSurfaceShadows(isDark: false));
     expect(boxDecoration.boxShadow, isEmpty);
   });

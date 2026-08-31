@@ -13,22 +13,25 @@ import 'package:flutter/material.dart';
 class AppRadius {
   AppRadius._();
 
-  /// Primary content card — AppCard, GPA summary, My status cards.
-  static const double card = 22;
+  /// 内容面唯一圆角：AppCard、品牌卡（cardAlt）、功能区/服务瓦片、
+  /// 输入框、事件横幅共用一档，保证跨页面圆角观感一致。
+  /// （历史上 card=22 / cardAlt=18 / tile=16 / input=14 四档并存，
+  /// 已按设计规范收敛为单档 16。）
+  static const double card = 16;
 
-  /// Brand / alternative card — ShipCard, Grade card, global CardTheme.
-  static const double cardAlt = 18;
+  /// 品牌卡历史别名，现与 [card] 同值；仅保留 API 兼容。
+  static const double cardAlt = card;
 
-  /// Service Hub entry tile / home function-zone tile.
-  static const double tile = 16;
+  /// 功能瓦片，与 [card] 同档。
+  static const double tile = card;
 
-  /// Icon badge base radius.
+  /// Icon badge base radius（图标底座，独立小元素档）。
   static const double badge = 12;
 
-  /// Search fields & form inputs.
-  static const double input = 14;
+  /// 输入框/表单字段圆角，与内容面同档。
+  static const double input = card;
 
-  /// Chips.
+  /// Chips。
   static const double chip = 10;
 
   /// Bottom sheet top.
@@ -48,6 +51,7 @@ class AppRadius {
   static BorderRadius get cardAltBorder => BorderRadius.circular(cardAlt);
   static BorderRadius get tileBorder => BorderRadius.circular(tile);
   static BorderRadius get inputBorder => BorderRadius.circular(input);
+  static BorderRadius get chipBorder => BorderRadius.circular(chip);
   static BorderRadius get sheetBorder => BorderRadius.circular(sheet);
 }
 

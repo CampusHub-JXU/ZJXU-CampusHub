@@ -164,6 +164,31 @@ void main() {
     );
   });
 
+  // 假期首页（未开学 + 有课表缓存）：Hero 开学倒计时 + 「开学首日」
+  // 次日预览列表把功能区压到视口外，覆盖"无课时上半屏空置"的形态。
+  previewTest('page_home_break_light', (tester) async {
+    await GlassStyleController.instance.setEnabled(true);
+    await _seedBreakHomeState();
+    await renderPage(
+      tester,
+      'page_home_break_light',
+      const HomePage(),
+      logicalSize: const Size(412, 1720),
+    );
+  });
+
+  previewTest('page_home_break_dark', (tester) async {
+    await GlassStyleController.instance.setEnabled(true);
+    await _seedBreakHomeState();
+    await renderPage(
+      tester,
+      'page_home_break_dark',
+      const HomePage(),
+      brightness: Brightness.dark,
+      logicalSize: const Size(412, 1720),
+    );
+  });
+
   // 功能区（首页底部 Bento 段落）滚动态：整页内容在 SingleChildScrollView
   // 中一次性构建，ensureVisible 直接定位到段落头。
   Future<void> renderHomeFunctionScene(
@@ -244,10 +269,10 @@ Future<void> _seedRichHomeState() async {
       '${tomorrow.day.toString().padLeft(2, '0')}';
 
   SharedPreferences.setMockInitialValues({
-    'dorm_community_id': 'community',
-    'dorm_building_id': 'building',
-    'dorm_floor_id': 'floor',
-    'dorm_room_id': 'room',
+    'dorm_epay_area_id': 'area',
+    'dorm_epay_building_id': 'building',
+    'dorm_epay_floor_id': 'floor',
+    'dorm_epay_room_id': 'room',
     'exam_cached_data': jsonEncode([
       {
         'kcmc': '微观经济学',
@@ -318,6 +343,62 @@ Future<void> _seedRichHomeState() async {
         course('数据结构', 3, 1, 2, '教C-201'),
         course('大学物理', 5, 3, 4, '物理楼 201'),
         course('线性代数 B', 5, 6, 7, '铭德楼 240'),
+      ],
+      scheduleUpdatedAt: now,
+      changeRulesUpdatedAt: now,
+    ),
+  );
+
+  AppBootstrapController.instance.debugSetPhase(
+    AppBootstrapPhase.localStateReady,
+  );
+}
+
+/// 假期首页种子：开学日 = 今天 + 2 天（Hero「距离开学还有 2 天」），
+/// 开学首日排 4 节课——预览截断为 3 条 + 「查看全部」；余额/电费新鲜
+/// 缓存保证资产行有数值。
+Future<void> _seedBreakHomeState() async {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final semesterStart = today.add(const Duration(days: 2));
+
+  SharedPreferences.setMockInitialValues({
+    'dorm_epay_area_id': 'area',
+    'dorm_epay_building_id': 'building',
+    'dorm_epay_floor_id': 'floor',
+    'dorm_epay_room_id': 'room',
+  });
+
+  CampusCardService.instance.debugSetCachedBalance(38.2, updatedAt: now);
+  DormElectricityService.instance.debugSetCachedElectricity(
+    27.4,
+    updatedAt: now,
+  );
+  await SemesterCalendar.instance.setSemesterStartDate(semesterStart);
+
+  CourseEntry course(String name, int start, int end, String room) =>
+      CourseEntry(
+        courseName: name,
+        teacherName: '王老师',
+        weekday: semesterStart.weekday,
+        startLesson: start,
+        endLesson: end,
+        // 开学日落在第 1 教学周，覆盖第 1-2 周即可。
+        weekRange: '1-2周',
+        classroom: room,
+        campus: '梁林校区',
+        typeSymbol: '',
+      );
+
+  ScheduleService.instance.debugSetSnapshot(
+    ScheduleCacheSnapshot(
+      studentId: '2025000001',
+      termContext: ScheduleTermContext.current(now),
+      courses: [
+        course('高等数学 B', 1, 2, '教B-102'),
+        course('大学英语', 3, 4, '外B-305'),
+        course('数据结构', 6, 7, '教C-201'),
+        course('大学物理', 8, 9, '物理楼 201'),
       ],
       scheduleUpdatedAt: now,
       changeRulesUpdatedAt: now,

@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 
 import 'app_design_tokens.dart';
@@ -126,6 +127,7 @@ class AppThemeBuilder {
       fontFamily: 'Inter',
       textTheme: _appleTextTheme,
       scaffoldBackgroundColor: colorScheme.surface,
+      pageTransitionsTheme: _appPageTransitionsTheme,
       appBarTheme: AppBarTheme(
         centerTitle: true,
         elevation: 0,
@@ -182,15 +184,15 @@ class AppThemeBuilder {
         filled: true,
         fillColor: colorScheme.surfaceContainerHighest,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: AppRadius.inputBorder,
           borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: AppRadius.inputBorder,
           borderSide: BorderSide.none,
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: AppRadius.inputBorder,
           borderSide: BorderSide(color: colorScheme.primary, width: 2),
         ),
         contentPadding: const EdgeInsets.symmetric(
@@ -235,7 +237,7 @@ class AppThemeBuilder {
         backgroundColor: colorScheme.surfaceContainerHighest,
         selectedColor: colorScheme.primary.withValues(alpha: 0.12),
         labelStyle: TextStyle(fontSize: 13, color: colorScheme.onSurface),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        shape: RoundedRectangleBorder(borderRadius: AppRadius.chipBorder),
         side: BorderSide.none,
       ),
       progressIndicatorTheme: ProgressIndicatorThemeData(
@@ -244,9 +246,7 @@ class AppThemeBuilder {
       snackBarTheme: SnackBarThemeData(
         backgroundColor: colorScheme.inverseSurface,
         contentTextStyle: TextStyle(color: colorScheme.onInverseSurface),
-        shape: RoundedSuperellipseBorder(
-          borderRadius: BorderRadius.circular(14),
-        ),
+        shape: RoundedSuperellipseBorder(borderRadius: AppRadius.cardBorder),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -348,6 +348,7 @@ class AppThemeBuilder {
       fontFamily: 'Inter',
       textTheme: _appleTextTheme,
       scaffoldBackgroundColor: background,
+      pageTransitionsTheme: _appPageTransitionsTheme,
       appBarTheme: AppBarTheme(
         centerTitle: true,
         elevation: 0,
@@ -407,15 +408,15 @@ class AppThemeBuilder {
         filled: true,
         fillColor: colorScheme.surfaceContainerHigh,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: AppRadius.inputBorder,
           borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: AppRadius.inputBorder,
           borderSide: BorderSide.none,
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: AppRadius.inputBorder,
           borderSide: BorderSide(color: colorScheme.primary, width: 2),
         ),
         contentPadding: const EdgeInsets.symmetric(
@@ -460,7 +461,7 @@ class AppThemeBuilder {
         backgroundColor: colorScheme.surfaceContainerHigh,
         selectedColor: colorScheme.primary.withValues(alpha: 0.2),
         labelStyle: TextStyle(fontSize: 13, color: colorScheme.onSurface),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        shape: RoundedRectangleBorder(borderRadius: AppRadius.chipBorder),
         side: BorderSide.none,
       ),
       progressIndicatorTheme: ProgressIndicatorThemeData(
@@ -469,10 +470,100 @@ class AppThemeBuilder {
       snackBarTheme: SnackBarThemeData(
         backgroundColor: colorScheme.inverseSurface,
         contentTextStyle: TextStyle(color: colorScheme.onInverseSurface),
-        shape: RoundedSuperellipseBorder(
-          borderRadius: BorderRadius.circular(14),
-        ),
+        shape: RoundedSuperellipseBorder(borderRadius: AppRadius.cardBorder),
         behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+}
+
+/// 应用统一的页面转场：新页从右侧滑入 8% 并淡入，旧页淡出并微缩到 0.98。
+///
+/// Flutter 3.29 起 Android 的默认转场改为 PredictiveBackPageTransitionsBuilder，
+/// 非手势导航（点击按钮 push）时退化成 FadeForwardsPageTransitionsBuilder
+/// （predictive_back_page_transitions_builder.dart:95）——新页仅位移 30px、
+/// 旧页纯淡出且不位移，在深色背景下几乎等同于瞬切。这里显式覆盖，换回
+/// 明确的方向感，与 app_shell_page 底部 tab 切换的语言保持一致。
+///
+/// 各平台必须列全：builders 未命中的平台会退回 ZoomPageTransitionsBuilder，
+/// 只写 Android 会让 iOS/macOS 丢掉 Cupertino 侧滑。
+const PageTransitionsTheme _appPageTransitionsTheme = PageTransitionsTheme(
+  builders: <TargetPlatform, PageTransitionsBuilder>{
+    TargetPlatform.android: _SlideFadePageTransitionsBuilder(),
+    TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+    TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+    TargetPlatform.windows: ZoomPageTransitionsBuilder(),
+    TargetPlatform.linux: ZoomPageTransitionsBuilder(),
+  },
+);
+
+class _SlideFadePageTransitionsBuilder extends PageTransitionsBuilder {
+  const _SlideFadePageTransitionsBuilder();
+
+  static const Duration _duration = Duration(milliseconds: 300);
+
+  @override
+  Duration get transitionDuration => _duration;
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    return _SlideFadePageTransition(
+      animation: animation,
+      secondaryAnimation: secondaryAnimation,
+      child: child,
+    );
+  }
+}
+
+class _SlideFadePageTransition extends StatelessWidget {
+  const _SlideFadePageTransition({
+    required this.animation,
+    required this.secondaryAnimation,
+    required this.child,
+  });
+
+  final Animation<double> animation;
+  final Animation<double> secondaryAnimation;
+  final Widget child;
+
+  static const Curve _curve = Curves.easeOutCubic;
+
+  /// 新页的起点位移（相对自身宽度）。
+  static const double _enterOffset = 0.08;
+
+  /// 旧页退出的终点缩放。
+  static const double _exitScale = 0.98;
+
+  /// 旧页退出的终点不透明度。
+  ///
+  /// 刻意不淡到 0：新页滑入的过程中会短暂露出下方页面，旧页若完全消失
+  /// 就会透出窗口背景（深色主题下尤其明显）。留 0.55 保证底层始终有内容。
+  static const double _exitOpacity = 0.55;
+
+  @override
+  Widget build(BuildContext context) {
+    final entering = CurvedAnimation(parent: animation, curve: _curve);
+    final leaving = CurvedAnimation(parent: secondaryAnimation, curve: _curve);
+    return FadeTransition(
+      opacity: entering,
+      child: SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(_enterOffset, 0),
+          end: Offset.zero,
+        ).animate(entering),
+        child: FadeTransition(
+          opacity: Tween<double>(begin: 1, end: _exitOpacity).animate(leaving),
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 1, end: _exitScale).animate(leaving),
+            child: child,
+          ),
+        ),
       ),
     );
   }

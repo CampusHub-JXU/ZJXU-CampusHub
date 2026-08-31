@@ -478,7 +478,17 @@ class _HomePageState extends State<HomePage> {
                     },
                   ),
                 ],
-                const SizedBox(height: AppSpacing.lg),
+                // 今天列表（含次日预览与「Hero 大字首课 + 单行折叠摘要」
+                // 形态）优先于资产行：课程安排是第一屏价值最高的状态信息,
+                // 余额/电费次之。
+                const SizedBox(height: AppSpacing.md),
+                HomeTodaySection(
+                  today: presentation.today,
+                  onOpenSchedule: () async {
+                    await _pushFeatureRoute(context, 'schedule');
+                  },
+                ),
+                const SizedBox(height: AppSpacing.xl),
                 HomeAssetStrip(
                   status: presentation.status,
                   onCampusCardTap: () =>
@@ -486,16 +496,15 @@ class _HomePageState extends State<HomePage> {
                   onElectricityTap: () =>
                       _pushFeatureRoute(context, 'dorm-electricity'),
                 ),
-                const SizedBox(height: AppSpacing.xl),
-                HomeTodaySection(today: presentation.today),
               ],
             ),
           ),
-          // 功能区锚点：顶部留出与第一屏的呼吸空间；key 挂在含顶部
+          // 功能区锚点：顶部留出与第一屏的呼吸空间（未开学等首屏内容
+          // 稀疏时，这里就是天气 App 式的大留白）；key 挂在含顶部
           // 内边距的容器上，ensureVisible 滚动到位后标题不贴视口顶。
           Container(
             key: _functionSectionKey,
-            padding: const EdgeInsets.only(top: 48),
+            padding: const EdgeInsets.only(top: 72),
             child: FunctionZoneSection(
               campusCardBalance: _campusCardBalance,
               dormElectricity: _dormElectricity,

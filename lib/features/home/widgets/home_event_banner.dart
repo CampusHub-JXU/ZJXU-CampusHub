@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/app_design_tokens.dart';
 import '../models/home_presentation.dart';
 
 /// 高优先级事件横幅：无框 tinted 轻量行（圆点 + 文案 + 尾部 chevron）。
@@ -13,9 +14,6 @@ class HomeEventBanner extends StatelessWidget {
   final HomeAlertPresentation alert;
   final VoidCallback? onTap;
 
-  /// 横幅圆角（无框 tinted 行专属，介于 input 与 cardAlt 之间）。
-  static const double _bannerRadius = 16;
-
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -28,8 +26,9 @@ class HomeEventBanner extends StatelessWidget {
             cs.surfaceContainerLow,
           )
         : cs.errorContainer.withValues(alpha: 0.45);
+    // 圆角与内容面同档（AppRadius.card），跟随全局统一半径。
     final bannerShape = RoundedSuperellipseBorder(
-      borderRadius: BorderRadius.circular(_bannerRadius),
+      borderRadius: AppRadius.cardBorder,
     );
     final content = Container(
       constraints: const BoxConstraints(minHeight: 44),

@@ -5,7 +5,7 @@ import '../models/home_presentation.dart';
 
 /// Primary Status Hero：首页唯一的最强视觉焦点（无框纯排版）。
 ///
-/// 顶部环境行「日期 · 嘉兴大学 · 周次」+ 通知铃 / 更新入口；
+/// 顶部环境行「日期 · 周次」+ 通知铃 / 更新入口；
 /// 主体按 kicker → 大字 → 时间 → 地点元信息 → 「查看课表」的
 /// 纯文字层级直接坐在页面背景上，靠 typography + spacing 建立层级，
 /// 不使用任何卡片容器 / 玻璃 / 底纹。文字颜色统一走
@@ -27,7 +27,8 @@ class HomePrimaryStatusHero extends StatelessWidget {
   /// 环境行日期文案，如「8月29日 周六」。
   final String envDateText;
 
-  /// 环境行状态文案，如「第 3 周」/「未开学」/「假期中」。
+  /// 环境行状态文案，如「第 3 周」/「学期已结束」；为空时省略该段
+  /// （未开学时为空，「开学」语义由 Hero 倒计时唯一承担）。
   final String envStatusText;
   final bool canShowUpdateAction;
 
@@ -37,10 +38,16 @@ class HomePrimaryStatusHero extends StatelessWidget {
   final VoidCallback onNotificationTap;
   final VoidCallback? onUpdateTap;
 
-  /// 仅这两类 Hero 展示课程大字与「查看课表」入口。
+  /// 课程大字形态的 Hero：正在上课 / 下一节课(今天) / 下一节课(今天没课)。
   bool get _isCourseKind =>
       hero.kind == HomeHeroKind.currentCourse ||
-      hero.kind == HomeHeroKind.nextCourseToday;
+      hero.kind == HomeHeroKind.nextCourseToday ||
+      hero.kind == HomeHeroKind.nextCourseUpcoming;
+
+  /// 未开学倒计时 Hero 也可整体点进课表（下方「开学首日」预览同源），
+  /// 但不渲染「查看课表」文字入口——入口由预览段落承担。
+  bool get _isStatusHeroTappable =>
+      onOpenSchedule != null && hero.kind == HomeHeroKind.beforeSemester;
 
   @override
   Widget build(BuildContext context) {
@@ -69,8 +76,13 @@ class HomePrimaryStatusHero extends StatelessWidget {
       HomeHeroKind.beforeSemester => '未开学',
       HomeHeroKind.semesterOver => '本学期已结束',
       HomeHeroKind.noCourseToday => '今天',
+      HomeHeroKind.nextCourseUpcoming => '今天没课 · 下一节',
       HomeHeroKind.loggedOut => '未登录',
     };
+    // kicker 去重：与环境行状态相同（如「学期已结束」）时不再重复；
+    // 未开学态的「开学」语义由倒计时大字唯一承担，同样不出 kicker。
+    final showKicker =
+        kickerText != envStatusText && hero.kind != HomeHeroKind.beforeSemester;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -78,15 +90,17 @@ class HomePrimaryStatusHero extends StatelessWidget {
         _buildEnvRow(context, primaryTextColor, secondaryTextColor),
         // 环境行到 kicker 之间的呼吸空间。
         const SizedBox(height: 56),
-        Text(
-          kickerText,
-          style: textTheme.labelMedium!.copyWith(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: kickerColor,
+        if (showKicker) ...[
+          Text(
+            kickerText,
+            style: textTheme.labelMedium!.copyWith(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: kickerColor,
+            ),
           ),
-        ),
-        const SizedBox(height: 8),
+          const SizedBox(height: 8),
+        ],
         if (_isCourseKind)
           _buildCourseHero(
             context,
@@ -105,6 +119,7 @@ class HomePrimaryStatusHero extends StatelessWidget {
   }
 
   /// 顶部环境行：左「日期 · 嘉兴大学 · 周次」，右更新角标 + 通知铃。
+  /// 周次状态为空（未开学，语义由 Hero 倒计时承担）时省略该段。
   Widget _buildEnvRow(
     BuildContext context,
     Color primaryTextColor,
@@ -112,6 +127,7 @@ class HomePrimaryStatusHero extends StatelessWidget {
   ) {
     final cs = Theme.of(context).colorScheme;
     final envStyle = Theme.of(context).textTheme.titleSmall!;
+    final hasStatus = envStatusText.isNotEmpty;
     return Row(
       children: [
         Expanded(
@@ -127,21 +143,22 @@ class HomePrimaryStatusHero extends StatelessWidget {
                   ),
                 ),
                 TextSpan(
-                  text: ' · 嘉兴大学 · ',
+                  text: hasStatus ? ' · ' : '',
                   style: envStyle.copyWith(
                     fontSize: 15,
                     fontWeight: FontWeight.w500,
                     color: secondaryTextColor,
                   ),
                 ),
-                TextSpan(
-                  text: envStatusText,
-                  style: envStyle.copyWith(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                    color: secondaryTextColor,
+                if (hasStatus)
+                  TextSpan(
+                    text: envStatusText,
+                    style: envStyle.copyWith(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                      color: secondaryTextColor,
+                    ),
                   ),
-                ),
               ],
             ),
             maxLines: 1,
@@ -196,7 +213,7 @@ class HomePrimaryStatusHero extends StatelessWidget {
     );
   }
 
-  /// 课程类 Hero（正在上课 / 下一节课）：
+  /// 课程类 Hero（正在上课 / 下一节课今天 / 下一节课今天没课）：
   /// 课程名 30sp 全屏最强视觉 → 时间 → 地点/节次 → 查看课表。
   /// 课程信息主体整体可点跳转课表（课表双入口：hero 主体 + 功能区瓦片）。
   Widget _buildCourseHero(
@@ -206,7 +223,8 @@ class HomePrimaryStatusHero extends StatelessWidget {
     required Color secondaryTextColor,
   }) {
     final textTheme = Theme.of(context).textTheme;
-    // 「下一节课」的倒计时大字（如「42 分钟后上课」）并入时间行，避免信息丢失。
+    // 「下一节课(今天)」的倒计时大字（如「42 分钟后上课」）并入时间行；
+    // 「下一节课(今天没课)」的时间行自带日期标签（如「明天 08:00」），原样展示。
     final timeLine =
         hero.kind == HomeHeroKind.nextCourseToday && hero.headline.isNotEmpty
         ? '${hero.timeText} · ${hero.headline}'
@@ -331,13 +349,16 @@ class HomePrimaryStatusHero extends StatelessWidget {
 
   /// 非课程类 Hero：headline 作大字，时间 / 课程名 / 地点作为副文案，
   /// 确保原有信息一项不丢。
+  ///
+  /// 未开学倒计时态整块可点进课表（与下方「开学首日」预览同一动作），
+  /// 其余状态不承担跳转。
   Widget _buildStatusHero(
     BuildContext context, {
     required Color primaryTextColor,
     required Color secondaryTextColor,
   }) {
     final textTheme = Theme.of(context).textTheme;
-    return Column(
+    final body = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
@@ -418,6 +439,17 @@ class HomePrimaryStatusHero extends StatelessWidget {
           ),
         ],
       ],
+    );
+
+    if (!_isStatusHeroTappable) return body;
+    return Semantics(
+      button: true,
+      label: '查看课表',
+      child: InkWell(
+        onTap: onOpenSchedule,
+        borderRadius: BorderRadius.circular(12),
+        child: body,
+      ),
     );
   }
 }

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'app_state_view_transition.dart';
+
 /// 统一的错误态视图：图标 + 标题 + 描述 + 重试按钮。
 ///
 /// 收敛各页面散落的「裸 Text + FilledButton 重试」错误分支（如宿舍楼栋/寝室
@@ -30,48 +32,51 @@ class AppErrorView extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final hasMessage = message != null && message!.isNotEmpty;
 
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  color: cs.errorContainer,
-                  borderRadius: BorderRadius.circular(16),
+    // 整块内容走统一的淡入 + 轻微上浮，避免内容 → 错误态瞬切。
+    return AppStateViewTransition(
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: cs.errorContainer,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Icon(icon, color: cs.onErrorContainer, size: 28),
                 ),
-                child: Icon(icon, color: cs.onErrorContainer, size: 28),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w700),
-              ),
-              if (hasMessage) ...[
-                const SizedBox(height: 6),
+                const SizedBox(height: 16),
                 Text(
-                  message!,
+                  title,
                   textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodySmall
-                      ?.copyWith(color: cs.onSurfaceVariant),
+                  style: Theme.of(context).textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w700),
                 ),
+                if (hasMessage) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    message!,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodySmall
+                        ?.copyWith(color: cs.onSurfaceVariant),
+                  ),
+                ],
+                if (onRetry != null) ...[
+                  const SizedBox(height: 20),
+                  FilledButton.tonalIcon(
+                    onPressed: onRetry,
+                    icon: const Icon(Icons.refresh_rounded, size: 18),
+                    label: Text(retryLabel),
+                  ),
+                ],
               ],
-              if (onRetry != null) ...[
-                const SizedBox(height: 20),
-                FilledButton.tonalIcon(
-                  onPressed: onRetry,
-                  icon: const Icon(Icons.refresh_rounded, size: 18),
-                  label: Text(retryLabel),
-                ),
-              ],
-            ],
+            ),
           ),
         ),
       ),

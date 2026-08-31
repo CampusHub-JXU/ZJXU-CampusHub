@@ -12,7 +12,6 @@ import '../../shared/widgets/app_card.dart';
 import '../../shared/widgets/app_icon_badge.dart';
 import '../../shared/widgets/login_shell.dart';
 import '../schedule/schedule_service.dart';
-import '../../shared/widgets/app_app_bar.dart';
 
 class MyPage extends StatefulWidget {
   const MyPage({super.key});
@@ -24,6 +23,11 @@ class MyPage extends StatefulWidget {
 class _MyPageState extends State<MyPage> {
   bool _campusLoggedIn = false;
   bool _academicLoggedIn = false;
+
+  /// 测活请求本身失败（网络异常）：无法下结论，不能沿用「已登录」。
+  /// 之前这里回退到缓存的登录态，导致显示已登录但实际会话已失效。
+  bool _campusStatusUnknown = false;
+  bool _academicStatusUnknown = false;
   bool _campusStatusChecking = false;
   bool _academicStatusChecking = false;
   bool _hasScheduleCache = false;
@@ -64,16 +68,22 @@ class _MyPageState extends State<MyPage> {
       _academicLoggedIn = academicLoggedIn;
       _campusStatusChecking = campusLoggedIn;
       _academicStatusChecking = academicLoggedIn;
+      _campusStatusUnknown = false;
+      _academicStatusUnknown = false;
       _hasScheduleCache = snapshot?.hasData ?? false;
       _scheduleUpdatedAt = snapshot?.lastUpdatedAt;
     });
 
-    final campusValidationFuture = campusLoggedIn
-        ? UnifiedAuthService.instance.validateSession()
-        : Future<bool?>.value(false);
-    final academicValidationFuture = academicLoggedIn
-        ? ZhengfangAuth.instance.validateSession()
-        : Future<bool?>.value(false);
+    final campusValidationFuture = _validateSafely(
+      campusLoggedIn
+          ? UnifiedAuthService.instance.validateSession()
+          : Future<bool?>.value(false),
+    );
+    final academicValidationFuture = _validateSafely(
+      academicLoggedIn
+          ? ZhengfangAuth.instance.validateSession()
+          : Future<bool?>.value(false),
+    );
 
     final campusValidation = await campusValidationFuture;
     final academicValidation = await academicValidationFuture;
@@ -81,6 +91,9 @@ class _MyPageState extends State<MyPage> {
     if (!mounted || refreshVersion != _statusRefreshVersion) return;
 
     setState(() {
+      // null = 测活请求网络异常，登录态未知；不再回退到缓存的「已登录」。
+      _campusStatusUnknown = campusValidation == null;
+      _academicStatusUnknown = academicValidation == null;
       _campusLoggedIn =
           campusValidation ?? UnifiedAuthService.instance.isLoggedIn;
       _academicLoggedIn =
@@ -90,6 +103,17 @@ class _MyPageState extends State<MyPage> {
       _hasScheduleCache = snapshot?.hasData ?? false;
       _scheduleUpdatedAt = snapshot?.lastUpdatedAt;
     });
+  }
+
+  /// 测活兜底：validateSession 理论上内部吞网络异常返回 null，但部分路径
+  /// （如 DioClient 未初始化）仍可能抛出；这里统一归入 null = 状态未知，
+  /// 避免 _refreshStatus 中断导致 UI 永久停留在「正在校验」。
+  Future<bool?> _validateSafely(Future<bool?> validation) async {
+    try {
+      return await validation;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> _openCampusCardAction() async {
@@ -154,6 +178,9 @@ class _MyPageState extends State<MyPage> {
       }
       return '正在校验教务状态 · 课表未缓存';
     }
+    if (_academicStatusUnknown) {
+      return '登录状态未知 · 网络异常，点按重新校验';
+    }
     if (_academicLoggedIn) {
       if (_hasScheduleCache) {
         return '已登录 · 课表更新 ${_formatTime(_scheduleUpdatedAt)}';
@@ -170,6 +197,9 @@ class _MyPageState extends State<MyPage> {
     if (_campusStatusChecking) {
       return '正在校验统一认证状态';
     }
+    if (_campusStatusUnknown) {
+      return '登录状态未知 · 网络异常，点按重新校验';
+    }
     return _campusLoggedIn ? '已登录' : '未登录';
   }
 
@@ -185,103 +215,114 @@ class _MyPageState extends State<MyPage> {
       cs.secondary,
     );
     return Scaffold(
-      // 无标题细顶栏：标题语义由正文 large title「我的」承担，
-      // 与主页/功能的单滚动观感保持一致。
-      appBar: AppAppBar(toolbarHeight: 44),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
-        children: [
-          // Apple large-title 头部：无卡容器，纯文字块与卡片左缘对齐。
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '我的',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
-                  height: 1.2,
-                  color: cs.onSurface,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                '管理统一认证（含一卡通）、教务登录状态',
-                style: TextStyle(
-                  fontSize: 13,
-                  height: 1.25,
-                  color: cs.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          AppCard(
-            padding: EdgeInsets.zero,
-            child: Column(
+      // 不再挂空顶栏：标题语义由正文 large title「我的」承担，
+      // 状态栏留白交给 [SafeArea] 处理。
+      body: SafeArea(
+        bottom: false,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
+          children: [
+            // Apple large-title 头部：无卡容器，纯文字块与卡片左缘对齐。
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _GroupRowTile(
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(AppRadius.card),
+                Text(
+                  '我的',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w700,
+                    height: 1.2,
+                    color: cs.onSurface,
                   ),
-                  icon: Icons.account_balance_wallet_outlined,
-                  iconColor: accountIconColor,
-                  title: '统一认证（含一卡通）',
-                  subtitle: _campusSubtitle(),
-                  status: _buildStatusIndicator(
-                    checking: _campusStatusChecking,
-                    loggedIn: _campusLoggedIn,
-                    label: _campusLoggedIn ? '已登录' : '未登录',
-                    statusKey: const Key('my_campus_status'),
-                  ),
-                  onTap: () {
-                    if (_campusLoggedIn) {
-                      unawaited(_reloginCampus());
-                    } else {
-                      unawaited(_openCampusCardAction());
-                    }
-                  },
                 ),
-                _buildHairlineDivider(context),
-                _GroupRowTile(
-                  borderRadius: const BorderRadius.vertical(
-                    bottom: Radius.circular(AppRadius.card),
+                const SizedBox(height: 4),
+                Text(
+                  '管理统一认证（含一卡通）、教务登录状态',
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.25,
+                    color: cs.onSurfaceVariant,
                   ),
-                  icon: Icons.school_outlined,
-                  iconColor: academicIconColor,
-                  title: '教务系统',
-                  subtitle: _academicSubtitle(),
-                  status: _buildStatusIndicator(
-                    checking: _academicStatusChecking,
-                    loggedIn: _academicLoggedIn,
-                    label: _academicLoggedIn ? '已登录' : '未登录',
-                    statusKey: const Key('my_academic_status'),
-                  ),
-                  trailing: _academicLoggedIn
-                      ? _buildAcademicEnterButton(context)
-                      : null,
-                  onTap: () => unawaited(_loginAcademic()),
                 ),
               ],
             ),
-          ),
-          const SizedBox(height: 12),
-          AppCard(
-            padding: EdgeInsets.zero,
-            child: _GroupRowTile(
-              borderRadius: BorderRadius.circular(AppRadius.card),
-              icon: Icons.settings_outlined,
-              iconColor: cs.primary,
-              title: '设置',
-              subtitle: '主题、学期、网络与调试选项',
-              onTap: () async {
-                await context.pushNamed('settings');
-                if (!mounted) return;
-                await _refreshStatus();
-              },
+            const SizedBox(height: 16),
+            AppCard(
+              padding: EdgeInsets.zero,
+              child: Column(
+                children: [
+                  _GroupRowTile(
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(AppRadius.card),
+                    ),
+                    icon: Icons.account_balance_wallet_outlined,
+                    iconColor: accountIconColor,
+                    title: '统一认证（含一卡通）',
+                    subtitle: _campusSubtitle(),
+                    status: _buildStatusIndicator(
+                      checking: _campusStatusChecking,
+                      loggedIn: _campusLoggedIn,
+                      unknown: _campusStatusUnknown,
+                      label: _campusLoggedIn ? '已登录' : '未登录',
+                      statusKey: const Key('my_campus_status'),
+                    ),
+                    onTap: () {
+                      if (_campusStatusUnknown) {
+                        // 状态未知时点按 = 重新测活，而不是直接弹登录框。
+                        unawaited(_refreshStatus());
+                      } else if (_campusLoggedIn) {
+                        unawaited(_reloginCampus());
+                      } else {
+                        unawaited(_openCampusCardAction());
+                      }
+                    },
+                  ),
+                  _buildHairlineDivider(context),
+                  _GroupRowTile(
+                    borderRadius: const BorderRadius.vertical(
+                      bottom: Radius.circular(AppRadius.card),
+                    ),
+                    icon: Icons.school_outlined,
+                    iconColor: academicIconColor,
+                    title: '教务系统',
+                    subtitle: _academicSubtitle(),
+                    status: _buildStatusIndicator(
+                      checking: _academicStatusChecking,
+                      loggedIn: _academicLoggedIn,
+                      unknown: _academicStatusUnknown,
+                      label: _academicLoggedIn ? '已登录' : '未登录',
+                      statusKey: const Key('my_academic_status'),
+                    ),
+                    trailing: _academicLoggedIn
+                        ? _buildAcademicEnterButton(context)
+                        : null,
+                    onTap: () => unawaited(
+                      _academicStatusUnknown
+                          ? _refreshStatus()
+                          : _loginAcademic(),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+            const SizedBox(height: 12),
+            AppCard(
+              padding: EdgeInsets.zero,
+              child: _GroupRowTile(
+                borderRadius: BorderRadius.circular(AppRadius.card),
+                icon: Icons.settings_outlined,
+                iconColor: cs.primary,
+                title: '设置',
+                subtitle: '主题、学期、网络与调试选项',
+                onTap: () async {
+                  await context.pushNamed('settings');
+                  if (!mounted) return;
+                  await _refreshStatus();
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -298,12 +339,14 @@ class _MyPageState extends State<MyPage> {
 
   /// 行尾状态指示：校验中为小号加载圈，稳定后是「圆点 + 文字」。
   ///
-  /// 已登录用品牌绿点，未登录退回中性灰，与首页状态语义一致。
+  /// 已登录用品牌绿点，未登录退回中性灰，测活失败（网络异常）用警示橙，
+  /// 与首页状态语义一致。
   Widget _buildStatusIndicator({
     required bool checking,
     required bool loggedIn,
     required String label,
     required Key statusKey,
+    bool unknown = false,
   }) {
     final cs = Theme.of(context).colorScheme;
     if (checking) {
@@ -312,20 +355,20 @@ class _MyPageState extends State<MyPage> {
         child: CircularProgressIndicator(strokeWidth: 2.0),
       );
     }
+    final dotColor = unknown
+        ? AppColors.warning
+        : (loggedIn ? AppColors.success : cs.onSurfaceVariant);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
           width: 7,
           height: 7,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: loggedIn ? AppColors.success : cs.onSurfaceVariant,
-          ),
+          decoration: BoxDecoration(shape: BoxShape.circle, color: dotColor),
         ),
         const SizedBox(width: 5),
         Text(
-          label,
+          unknown ? '未知' : label,
           key: statusKey,
           style: TextStyle(
             fontSize: 12,

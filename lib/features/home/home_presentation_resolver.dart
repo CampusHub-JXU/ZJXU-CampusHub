@@ -8,6 +8,9 @@ import 'models/home_snapshot.dart';
 const _lowBalanceThreshold = 20.0;
 const _lowElectricityThreshold = 10.0;
 
+/// 次日预览（开学首日/明天）最多展示的课程条数。
+const _previewRowLimit = 3;
+
 const _weekDayLabels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
 /// 首页展示层派生：输入 [HomeSnapshot]，输出 [HomePresentation]。
@@ -55,9 +58,10 @@ HomePresentation resolveHomePresentation(HomeSnapshot snapshot) {
     nextCourseDate: nextCourseState.date,
   );
 
-  // 周次标签：开学前 / 学期结束后 / 教学周内，供首页环境行使用。
+  // 周次标签：开学前为空（环境行省略状态段，「开学」语义由 Hero
+  // 倒计时唯一承担，避免一屏四处开学文案）；学期结束后 / 教学周内照常。
   final weekLabel = snapshot.isBeforeSemesterStart
-      ? '未开学'
+      ? ''
       : snapshot.isAfterSemesterEnd
       ? '学期已结束'
       : '第 ${snapshot.currentWeek} 周';
@@ -71,11 +75,87 @@ HomePresentation resolveHomePresentation(HomeSnapshot snapshot) {
       heroKind: hero.kind,
     ),
     status: _resolveStatus(snapshot),
-    today: HomeTodayPresentation(
-      courses: todayState.rows,
-      exams: todayState.exams,
+    today: _resolveTodayPresentation(
+      snapshot: snapshot,
+      todayState: todayState,
+      nextCourseState: nextCourseState,
+      hasCourseData: hasCourseData,
+      today: today,
+      heroKind: hero.kind,
     ),
     weekLabel: weekLabel,
+  );
+}
+
+/// Today 段落展示：正常输出今天剩余课程；今天没有剩余安排且能扫到
+/// 之后某天的课时，降级为「次日预览」——开学前显示开学首日的前几节课，
+/// 学期中（晚间/无课日）显示明天或下一个有课日，避免首页上半屏空置、
+/// 功能区过早进入视口。
+///
+/// 预览段与 Hero 的分工：Hero 已用课程大字展示命中日首课（今天没课态）
+/// 时，预览折叠为单行「之后还有 N 门」摘要并剔除首课，命中日仅此一门
+/// 时整段消失——次日列表不得与 Hero 抢视觉权重；开学前 Hero 是倒计时，
+/// 预览仍完整展示前 [_previewRowLimit] 条。
+HomeTodayPresentation _resolveTodayPresentation({
+  required HomeSnapshot snapshot,
+  required _TodayState todayState,
+  required _NextCourseState nextCourseState,
+  required bool hasCourseData,
+  required DateTime today,
+  required HomeHeroKind heroKind,
+}) {
+  if (todayState.rows.isNotEmpty || todayState.exams.isNotEmpty) {
+    return HomeTodayPresentation(
+      courses: todayState.rows,
+      exams: todayState.exams,
+    );
+  }
+
+  final previewDate = nextCourseState.date;
+  if (!hasCourseData ||
+      previewDate == null ||
+      !_normalizeDate(previewDate).isAfter(today)) {
+    return HomeTodayPresentation(
+      courses: todayState.rows,
+      exams: todayState.exams,
+    );
+  }
+
+  // Hero 已把「下一节课是什么」以课程大字完整呈现(今天没课态):
+  // 折叠摘要行「之后还有 N 门课 · 下一门 ...」与 hero 抢视觉权重,
+  // 直接让出首页空间 — 用户想看后续其他课程直接进课表。
+  if (heroKind == HomeHeroKind.nextCourseUpcoming) {
+    return const HomeTodayPresentation(courses: [], exams: []);
+  }
+
+  // 其他情况(开学前倒计时 / 学期中次日预览)正常呈现前几条预览。
+  final previewCourses = nextCourseState.dayCourses
+      .take(_previewRowLimit)
+      .toList();
+  if (previewCourses.isEmpty) {
+    return HomeTodayPresentation(courses: const [], exams: const []);
+  }
+
+  final title = snapshot.isBeforeSemesterStart
+      ? '开学首日'
+      : _labelForDate(previewDate, today);
+  return HomeTodayPresentation(
+    title: title,
+    isPreview: true,
+    courses: [
+      for (final course in previewCourses)
+        HomeTodayCourseRow(
+          timeText: ScheduleSlotTimes.startTime(course.startLesson),
+          lessonText: _lessonText(course.startLesson, course.endLesson),
+          courseName: course.courseName,
+          locationText: _locationText(
+            campus: course.campus,
+            classroom: course.classroom,
+          ),
+          isOngoing: false,
+        ),
+    ],
+    exams: const [],
   );
 }
 
@@ -153,11 +233,19 @@ _TodayState _resolveTodayState({
 }
 
 class _NextCourseState {
-  const _NextCourseState({this.course, this.label = '', this.date});
+  const _NextCourseState({
+    this.course,
+    this.label = '',
+    this.date,
+    this.dayCourses = const [],
+  });
 
   final CourseEntry? course;
   final String label;
   final DateTime? date;
+
+  /// 命中日当天的全部课程（按节次升序），供 Today 段落的次日预览使用。
+  final List<CourseEntry> dayCourses;
 }
 
 /// 下一节课扫描（移植自 home_page._buildNextCourseState）：
@@ -194,6 +282,7 @@ _NextCourseState _resolveNextCourseState({
         course: dayCourses.first,
         label: _labelForDate(date, today),
         date: date,
+        dayCourses: dayCourses,
       );
     }
   }
@@ -202,7 +291,7 @@ _NextCourseState _resolveNextCourseState({
 
 /// Hero 优先级：
 /// 正在上课 > 下一节课(今天) > 24h 内考试 > 未开学倒计时 >
-/// 学期已结束 > 今天没课(近期无课) > 未登录。
+/// 学期已结束 > 今天没课(下一节大字/近期无课) > 未登录。
 HomeHeroPresentation _resolveHero({
   required HomeSnapshot snapshot,
   required DateTime now,
@@ -266,24 +355,16 @@ HomeHeroPresentation _resolveHero({
     );
   }
 
-  // P2：未开学倒计时（不依赖登录态）。
+  // P2：未开学倒计时（不依赖登录态）。只保留「还有几天 + 开学日期」
+  // 两个信息，且都不再重复「开学」字样以外的语义——首日课程详情全部
+  // 交给下方「开学首日」预览段落，全屏「开学」文案不超过两处。
   if (snapshot.isBeforeSemesterStart) {
     final days = normalizedSemesterStart.difference(today).inDays;
-    final course = nextCourse;
     return HomeHeroPresentation(
       kind: HomeHeroKind.beforeSemester,
       headline: days <= 0 ? '即将开学' : '距离开学还有 $days 天',
-      timeText: course == null || nextCourseDate == null
-          ? '${normalizedSemesterStart.month}月${normalizedSemesterStart.day}日'
-          : '${nextCourseDate.month}月${nextCourseDate.day}日 '
-                '${ScheduleSlotTimes.startTime(course.startLesson)}',
-      courseName: course?.courseName,
-      locationText: course == null
-          ? null
-          : _locationText(campus: course.campus, classroom: course.classroom),
-      lessonText: course == null
-          ? null
-          : _lessonText(course.startLesson, course.endLesson),
+      timeText:
+          '${normalizedSemesterStart.month}月${normalizedSemesterStart.day}日',
     );
   }
 
@@ -295,14 +376,16 @@ HomeHeroPresentation _resolveHero({
     );
   }
 
-  // P3：今天没课 / 近期无课。
+  // P3：今天没课。近期有课时「下一节课」仍是第一屏最重要的信息——
+  // 升级为课程大字形态（kicker「今天没课 · 下一节」，日期标签并入
+  // 时间行），当天剩余课程由 Today 段落折叠承接；近期无课才回落纯文字。
   if (snapshot.courseLoggedIn) {
     if (nextCourse != null) {
       return HomeHeroPresentation(
-        kind: HomeHeroKind.noCourseToday,
+        kind: HomeHeroKind.nextCourseUpcoming,
         headline: '今天没课',
         timeText:
-            '下一节：$nextCourseLabel '
+            '$nextCourseLabel '
             '${ScheduleSlotTimes.startTime(nextCourse.startLesson)}',
         courseName: nextCourse.courseName,
         locationText: _locationText(
