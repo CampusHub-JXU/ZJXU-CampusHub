@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/cache/cache_policy.dart';
+import '../../core/cache/cached_resource.dart';
 import '../../core/logging/app_logger.dart';
 import 'epay_electricity_gateway.dart';
 
@@ -113,6 +115,7 @@ class DormElectricityService {
   static const _keyAlertThreshold = 'dorm_alert_threshold';
   static const _keyAlertLastNotifiedDate = 'dorm_alert_last_notified_date';
   static const refreshWindow = Duration(minutes: 30);
+  static const _catalogCacheBucket = 'dorm_electricity_catalog';
 
   /// 电控适配器（麦狐统一前置 API）。网关会话里也可动态读取，
   /// 这里作为缺省值兜底。
@@ -138,6 +141,8 @@ class DormElectricityService {
   SharedPreferences? _prefs;
   bool _cacheRestored = false;
   Future<double?>? _fetchElectricityFuture;
+  final Map<String, CachedResource<String>> _catalogResources =
+      <String, CachedResource<String>>{};
 
   double? _cachedElectricity;
   DateTime? _lastUpdated;
@@ -298,7 +303,7 @@ class DormElectricityService {
 
   /// 园区（校区）列表。
   Future<List<DormArea>> fetchAreas() async {
-    final body = await _call('app.electric.getAreaList', {
+    final body = await _callCatalog('app.electric.getAreaList', {
       'adapter_id': defaultAdapterId,
     });
     final data = _decodeDataMap(body, '园区');
@@ -316,7 +321,7 @@ class DormElectricityService {
 
   /// 指定园区下的楼幢列表。
   Future<List<DormBuilding>> fetchBuildings(DormArea area) async {
-    final body = await _call('app.electric.getBuildingList', {
+    final body = await _callCatalog('app.electric.getBuildingList', {
       'adapter_id': defaultAdapterId,
       'L1_area_id': area.id,
     });
@@ -337,7 +342,7 @@ class DormElectricityService {
     required String areaId,
     required String buildingId,
   }) async {
-    final floorsBody = await _call('app.electric.getFloorList', {
+    final floorsBody = await _callCatalog('app.electric.getFloorList', {
       'adapter_id': defaultAdapterId,
       'L1_area_id': areaId,
       'L2_building_id': buildingId,
@@ -357,7 +362,7 @@ class DormElectricityService {
 
     final rooms = <DormRoom>[];
     for (final floor in floors) {
-      final roomsBody = await _call('app.electric.getRoomList', {
+      final roomsBody = await _callCatalog('app.electric.getRoomList', {
         'adapter_id': defaultAdapterId,
         'L1_area_id': areaId,
         'L2_building_id': buildingId,
@@ -478,6 +483,38 @@ class DormElectricityService {
     return gateway.call(method, data);
   }
 
+  /// 目录 RPC 走通用读穿缓存。余额等动态数据仍使用 [_call]，避免把实时值
+  /// 按目录 TTL 缓存。key 包含排序后的全部参数，同一方法不同园区/楼幢不会
+  /// 串数据。
+  Future<String> _callCatalog(String method, Map<String, String> data) async {
+    final sortedEntries = data.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    final cacheKey = jsonEncode(<String, Object?>{
+      'method': method,
+      'params': <String, String>{
+        for (final entry in sortedEntries) entry.key: entry.value,
+      },
+    });
+    final requestData = Map<String, String>.unmodifiable(data);
+    final resource = _catalogResources.putIfAbsent(
+      cacheKey,
+      () => CachedResource<String>(
+        bucket: _catalogCacheBucket,
+        key: cacheKey,
+        policy: CachePolicy.catalog,
+        decode: (payload) => payload is String ? payload : null,
+        encode: (value) => value,
+        fetch: () => _call(method, requestData),
+      ),
+    );
+    final result = await resource.get();
+    final value = result.value;
+    if (value != null) return value;
+    final error = result.error;
+    if (error != null) throw error;
+    throw const DormServiceException('电费目录数据不可用');
+  }
+
   /// 解析 RPC 响应信封 `{"code":"200","msg":"SUC0000","data":{...}}`。
   Map<String, dynamic> _decodeDataMap(String body, String label) {
     Object? json;
@@ -539,5 +576,6 @@ class DormElectricityService {
     _lastError = null;
     _requiresAuthentication = false;
     _fetchElectricityFuture = null;
+    _catalogResources.clear();
   }
 }

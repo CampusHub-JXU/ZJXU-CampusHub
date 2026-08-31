@@ -1,7 +1,9 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:jxu_campus_hub/core/cache/json_cache_store.dart';
 import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_service.dart';
 import 'package:jxu_campus_hub/features/dorm_electricity/epay_electricity_gateway.dart';
 
@@ -50,9 +52,23 @@ String _success(Map<String, Object?> data) {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  Directory? cacheDirectory;
 
   setUp(() async {
     await resetTestEnvironment();
+    JsonCacheStore.instance.debugReset();
+    cacheDirectory = await Directory.systemTemp.createTemp(
+      'dorm_catalog_cache_test',
+    );
+    JsonCacheStore.instance.debugDirectoryProvider = () async =>
+        cacheDirectory!;
+  });
+
+  tearDown(() async {
+    await JsonCacheStore.instance.debugClear();
+    JsonCacheStore.instance.debugReset();
+    cacheDirectory?.deleteSync(recursive: true);
+    cacheDirectory = null;
   });
 
   test('fetchAreas maps epay100 area payload and sends adapter id', () async {
@@ -81,6 +97,26 @@ void main() {
     });
   });
 
+  test('fetchAreas reuses the persisted catalog response', () async {
+    final gateway = _FakeEpayElectricityGateway()
+      ..enqueue(
+        'app.electric.getAreaList',
+        _success({
+          'area_list': [
+            {'id': '3', 'name': '梁林校区'},
+          ],
+        }),
+      );
+    DormElectricityService.instance.debugSetGateway(gateway);
+
+    final first = await DormElectricityService.instance.fetchAreas();
+    final second = await DormElectricityService.instance.fetchAreas();
+
+    expect(first.single.name, '梁林校区');
+    expect(second.single.name, '梁林校区');
+    expect(gateway.calls, hasLength(1));
+  });
+
   test('fetchBuildings maps buildings for the selected area', () async {
     final gateway = _FakeEpayElectricityGateway()
       ..enqueue(
@@ -105,6 +141,44 @@ void main() {
     expect(buildings.single.buildingName, '和兴苑4号楼');
     expect(gateway.calls.single.data['L1_area_id'], '3');
   });
+
+  test(
+    'fetchBuildings keeps different area parameters in separate caches',
+    () async {
+      final gateway = _FakeEpayElectricityGateway()
+        ..enqueue(
+          'app.electric.getBuildingList',
+          _success({
+            'building_list': [
+              {'id': '114', 'name': '和兴苑4号楼'},
+            ],
+          }),
+        )
+        ..enqueue(
+          'app.electric.getBuildingList',
+          _success({
+            'building_list': [
+              {'id': '201', 'name': '平湖1号楼'},
+            ],
+          }),
+        );
+      DormElectricityService.instance.debugSetGateway(gateway);
+
+      final lianglin = await DormElectricityService.instance.fetchBuildings(
+        const DormArea(id: '3', name: '梁林校区'),
+      );
+      final pinghu = await DormElectricityService.instance.fetchBuildings(
+        const DormArea(id: '5', name: '平湖校区'),
+      );
+      final lianglinAgain = await DormElectricityService.instance
+          .fetchBuildings(const DormArea(id: '3', name: '梁林校区'));
+
+      expect(lianglin.single.buildingId, '114');
+      expect(pinghu.single.buildingId, '201');
+      expect(lianglinAgain.single.buildingId, '114');
+      expect(gateway.calls, hasLength(2));
+    },
+  );
 
   test('fetchRooms expands floors and preserves hierarchy ids', () async {
     final gateway = _FakeEpayElectricityGateway()
