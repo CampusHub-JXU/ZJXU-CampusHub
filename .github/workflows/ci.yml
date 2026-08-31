@@ -88,7 +88,9 @@ jobs:
           flutter test test/shared/widgets/protected_webview_auth_test.dart --plain-name "shows login guidance"
 
       - name: Run full test suite
-        run: flutter test --coverage
+        # Several suites exercise process-wide auth/network singletons and
+        # filesystem-backed cookie jars. Keep the release gate deterministic.
+        run: flutter test --coverage --concurrency=1
 
       - name: Summarize test diagnostics
         if: always()

@@ -102,9 +102,9 @@ try {
   if (-not $SkipFullTest) {
     Invoke-CiStep "Full Flutter test suite" {
       if ($WithCoverage) {
-        Invoke-Native flutter test --coverage
+        Invoke-Native flutter test --coverage --concurrency=1
       } else {
-        Invoke-Native flutter test
+        Invoke-Native flutter test --concurrency=1
       }
     }
   }
