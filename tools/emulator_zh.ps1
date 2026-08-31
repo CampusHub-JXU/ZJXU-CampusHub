@@ -13,7 +13,7 @@
 
 .EXAMPLE
     .\emulator_zh.ps1
-    启动默认模拟器并设置时区
+    有真机在线时跳过；模拟器在线时唤醒后跳过；否则启动默认模拟器并设置时区
 
 .EXAMPLE
     .\emulator_zh.ps1 -EmulatorName "Pixel_8_API_37"
@@ -93,23 +93,23 @@ Write-Host "模拟器: $EmulatorName" -ForegroundColor White
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host ""
 
-# 检查模拟器是否已在运行
-Write-Host "检查是否有运行中的模拟器..." -ForegroundColor Gray
-$runningDevices = & $AdbPath devices | Select-String "emulator-"
-if ($runningDevices) {
-    Write-Host "检测到已运行的模拟器: $runningDevices" -ForegroundColor Yellow
-    $restart = Read-Host "是否重启模拟器? (y/N)"
-    if ($restart -eq 'y' -or $restart -eq 'Y') {
-        Write-Host "正在关闭现有模拟器..." -ForegroundColor Gray
-        & $AdbPath emu kill 2>$null
-        Start-Sleep -Seconds 3
-    } else {
-        Write-Host "跳过启动，直接配置时区..." -ForegroundColor Gray
-        Set-ChinaTimezone -AdbExe $AdbPath
-        Write-Host ""
-        Write-Host "模拟器已就绪，可以开始 Flutter 开发了!" -ForegroundColor Cyan
-        exit 0
-    }
+# 设备守卫（非交互，供手动运行与 .vscode preLaunchTask 复用）：
+# 1. 有真机在线 -> 跳过，调试直接用真机；
+# 2. 有任意模拟器在线 -> 唤醒屏幕（避免熄屏黑屏假死）后跳过，避免重复拉起。
+# adb 在 Windows 输出带 \r，需 Trim 后再匹配。
+$deviceLines = & $AdbPath devices |
+    ForEach-Object { $_.Trim() } |
+    Where-Object { $_ -match '\t\w+$' }
+
+if ($deviceLines | Where-Object { $_ -notmatch '^emulator-' }) {
+    Write-Host "检测到真机，跳过模拟器启动。" -ForegroundColor Yellow
+    exit 0
+}
+
+if ($deviceLines | Where-Object { $_ -match '^emulator-' }) {
+    Write-Host "检测到模拟器已在线，唤醒屏幕并跳过启动。" -ForegroundColor Yellow
+    & $AdbPath shell input keyevent KEYCODE_WAKEUP 2>$null
+    exit 0
 }
 
 # 启动模拟器

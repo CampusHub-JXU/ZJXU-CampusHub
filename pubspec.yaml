@@ -1,7 +1,7 @@
 name: jxu_campus_hub
 description: "嘉兴大学-智能中台 App"
 publish_to: 'none'
-version: 0.5.4+13
+version: 0.5.4+14
 
 environment:
   sdk: ^3.13.0
@@ -9,7 +9,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  go_router: ^14.0.0
+  go_router: ^18.0.0
   dio: ^5.7.0
   cookie_jar: ^4.0.8
   dio_cookie_manager: ^3.1.1
@@ -40,6 +40,15 @@ dev_dependencies:
   integration_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+
+# 应用图标生成：母版与自适应前景由 tools/brand/make_icons.py 产出，
+# 修改设计后先跑该脚本，再执行 `dart run flutter_launcher_icons`。
+flutter_launcher_icons:
+  image_path: "tools/brand/app_icon_master.png"
+  android: true
+  adaptive_icon_background: "#8B1A2D"
+  adaptive_icon_foreground: "tools/brand/app_icon_foreground.png"
 
 flutter:
   uses-material-design: true
