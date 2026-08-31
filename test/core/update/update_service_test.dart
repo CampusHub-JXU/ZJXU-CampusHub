@@ -201,6 +201,42 @@ void main() {
     },
   );
 
+  test('selects the APK matching the Android runtime ABI', () async {
+    final dio = Dio();
+    final adapter = MockHttpClientAdapter();
+    dio.httpClientAdapter = adapter;
+    adapter.registerJson(
+      'GET',
+      '/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
+      {
+        'tag_name': 'v0.2.7',
+        'html_url':
+            'https://github.com/FHfanshu/ZJXU-CampusHub/releases/tag/v0.2.7',
+        'published_at': '2026-05-14T12:00:00Z',
+        'assets': [
+          {
+            'name': 'JXU-CampusHub-v0.2.7-arm64-v8a.apk',
+            'browser_download_url': 'https://example.com/arm64.apk',
+          },
+          {
+            'name': 'JXU-CampusHub-v0.2.7-armeabi-v7a.apk',
+            'browser_download_url': 'https://example.com/arm32.apk',
+          },
+        ],
+      },
+    );
+    final source = GitHubReleaseUpdateSource(
+      dio: dio,
+      latestReleaseApiUrl: 'https://api.github.com/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
+      releaseMirrorPrefix: '',
+      deviceAbiProvider: () => 'armeabi-v7a',
+    );
+
+    final release = await source.fetchLatestRelease();
+
+    expect(release.downloadUrl, 'https://example.com/arm32.apk');
+  });
+
   test(
     'throws source unavailable when all github release api candidates fail',
     () async {

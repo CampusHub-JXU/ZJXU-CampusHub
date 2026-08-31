@@ -1,4 +1,4 @@
-import 'dart:io' show Platform;
+import 'dart:ffi' show Abi;
 
 import 'package:dio/dio.dart';
 
@@ -52,12 +52,14 @@ class GitHubReleaseUpdateSource implements UpdateSource {
     required this.latestReleaseApiUrl,
     this.latestReleaseFallbackApiUrls = const <String>[],
     required this.releaseMirrorPrefix,
+    this.deviceAbiProvider = _deviceAbiSuffix,
   });
 
   final Dio dio;
   final String latestReleaseApiUrl;
   final List<String> latestReleaseFallbackApiUrls;
   final String releaseMirrorPrefix;
+  final String? Function() deviceAbiProvider;
 
   @override
   Future<AppRelease> fetchLatestRelease() async {
@@ -137,7 +139,7 @@ class GitHubReleaseUpdateSource implements UpdateSource {
     final apks = assets.where(_isApkAsset).toList();
     if (apks.isEmpty) return null;
 
-    final deviceAbi = _deviceAbiSuffix();
+    final deviceAbi = deviceAbiProvider();
 
     // 1. Try arch-specific match first.
     if (deviceAbi != null) {
@@ -152,19 +154,6 @@ class GitHubReleaseUpdateSource implements UpdateSource {
   }
 
   /// Returns the ABI suffix used in our APK filenames, or null if unknown.
-  static String? _deviceAbiSuffix() {
-    if (!Platform.isAndroid) return null;
-    // On Android, Platform.version gives the primary ABI via Dart's runtime.
-    final arch = Platform.version.toLowerCase();
-    if (arch.contains('arm64') || arch.contains('aarch64')) {
-      return 'arm64-v8a';
-    }
-    if (arch.contains('arm')) {
-      return 'armeabi-v7a';
-    }
-    return null;
-  }
-
   String _mirrorUrl(String rawUrl) {
     if (rawUrl.isEmpty) return '';
     if (releaseMirrorPrefix.isEmpty || rawUrl.startsWith(releaseMirrorPrefix)) {
@@ -177,4 +166,11 @@ class GitHubReleaseUpdateSource implements UpdateSource {
     final iterator = values.iterator;
     return iterator.moveNext() ? iterator.current : null;
   }
+}
+
+String? _deviceAbiSuffix() {
+  final abi = Abi.current();
+  if (abi == Abi.androidArm64) return 'arm64-v8a';
+  if (abi == Abi.androidArm) return 'armeabi-v7a';
+  return null;
 }

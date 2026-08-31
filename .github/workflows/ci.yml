@@ -172,6 +172,15 @@ jobs:
           grep -q 'PUBLIC_GH_REPO: ZJXU-CampusHub' "${workflow}"
           grep -q 'PUBLIC_TARGET_BRANCH: main' "${workflow}"
           grep -q 'gh release upload' "${workflow}"
+          grep -q 'Release tag must match vX.Y.Z' "${workflow}"
+          grep -q 'EXPECTED_RELEASE_CERT_SHA256:' "${workflow}"
+          grep -q 'apksigner.*verify --print-certs' "${workflow}"
+          grep -q 'Missing required release secrets' "${workflow}"
+          grep -q 'Release signing is required' android/app/build.gradle.kts
+          if grep -q 'using debug signing\|请先卸载旧版本' "${workflow}"; then
+            echo "Release workflow still allows a destructive or incompatible upgrade path" >&2
+            exit 1
+          fi
           if grep -q 'GITEE_TOKEN\|GITEE_REPO\|gitee.com' "${workflow}"; then
             echo "Release workflow still contains Gitee publishing references" >&2
             exit 1
@@ -185,5 +194,6 @@ jobs:
             echo
             echo "- CI workflow parsed successfully"
             echo "- Release workflow targets FHfanshu/ZJXU-CampusHub main"
+            echo "- Release identity and production signing guards are present"
             echo "- Gitee publishing references are absent"
           } >> "${GITHUB_STEP_SUMMARY}"

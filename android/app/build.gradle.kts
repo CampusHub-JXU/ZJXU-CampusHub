@@ -18,6 +18,14 @@ fun envOrProp(envKey: String, propKey: String): String {
         ?: keystoreProps.getProperty(propKey, "")
 }
 
+val releaseKeystorePath = envOrProp("KEYSTORE_FILE", "storeFile")
+val releaseSigningInputs = mapOf(
+    "KEYSTORE_FILE/storeFile" to releaseKeystorePath,
+    "KEYSTORE_PASSWORD/storePassword" to envOrProp("KEYSTORE_PASSWORD", "storePassword"),
+    "KEY_ALIAS/keyAlias" to envOrProp("KEY_ALIAS", "keyAlias"),
+    "KEY_PASSWORD/keyPassword" to envOrProp("KEY_PASSWORD", "keyPassword"),
+)
+
 android {
     namespace = "edu.zjxu.jxucampushub"
     compileSdk = flutter.compileSdkVersion
@@ -43,12 +51,11 @@ android {
 
     signingConfigs {
         create("release") {
-            val ksFilePath = envOrProp("KEYSTORE_FILE", "storeFile")
-            if (ksFilePath.isNotEmpty()) {
-                storeFile = file(ksFilePath)
-                storePassword = envOrProp("KEYSTORE_PASSWORD", "storePassword")
-                keyAlias = envOrProp("KEY_ALIAS", "keyAlias")
-                keyPassword = envOrProp("KEY_PASSWORD", "keyPassword")
+            if (releaseKeystorePath.isNotEmpty()) {
+                storeFile = file(releaseKeystorePath)
+                storePassword = releaseSigningInputs.getValue("KEYSTORE_PASSWORD/storePassword")
+                keyAlias = releaseSigningInputs.getValue("KEY_ALIAS/keyAlias")
+                keyPassword = releaseSigningInputs.getValue("KEY_PASSWORD/keyPassword")
             }
         }
     }
@@ -62,12 +69,33 @@ android {
         }
 
         release {
-            val ksFilePath = envOrProp("KEYSTORE_FILE", "storeFile")
-            if (ksFilePath.isNotEmpty()) {
+            if (releaseKeystorePath.isNotEmpty()) {
                 signingConfig = signingConfigs.getByName("release")
-            } else {
-                signingConfig = signingConfigs.getByName("debug")
             }
+        }
+    }
+}
+
+// Keep debug builds usable without private signing material, but fail closed as
+// soon as a release task is actually requested. An unsigned or debug-signed APK
+// cannot replace an installed production build and must never be published.
+gradle.taskGraph.whenReady {
+    val requestsReleaseBuild = allTasks.any { task ->
+        task.project == project && task.name.contains("Release", ignoreCase = true)
+    }
+    if (requestsReleaseBuild) {
+        val missingInputs = releaseSigningInputs
+            .filterValues { it.isBlank() }
+            .keys
+            .sorted()
+        if (missingInputs.isNotEmpty()) {
+            throw GradleException(
+                "Release signing is required; missing: ${missingInputs.joinToString()}",
+            )
+        }
+        val keystoreFile = file(releaseKeystorePath)
+        if (!keystoreFile.isFile) {
+            throw GradleException("Release signing keystore does not exist: ${keystoreFile.path}")
         }
     }
 }

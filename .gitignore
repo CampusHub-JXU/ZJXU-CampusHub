@@ -78,3 +78,10 @@ android/app/google-services.json
 
 # 预览渲染产物（tools/render_previews.ps1 生成）
 preview/render/
+
+# 会话数据库快照（含 API Key / Token 等敏感凭据）
+docs/agents/session-databases.md
+
+# Local agent session state and browser/debug captures
+/.workbuddy/
+/captcha.png
