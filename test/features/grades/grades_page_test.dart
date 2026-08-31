@@ -43,7 +43,13 @@ void main() {
     DioClient.instance.dio.httpClientAdapter = adapter;
 
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: GradesPage())));
-    await tester.pumpAndSettle();
+    // The page deliberately owns a 420ms stagger controller plus AnimatedSize.
+    // Waiting for the entire binding to report no scheduled frames is flaky on
+    // slower Linux coverage runners, even though the data request has already
+    // completed. Drive the known async/animation phases with bounded pumps.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump();
   }
 
   Map<String, dynamic> grade(
