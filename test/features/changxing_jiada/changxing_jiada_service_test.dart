@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jxu_campus_hub/core/network/dio_client.dart';
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
@@ -127,6 +128,93 @@ void main() {
       expect(adapter.requestLog, [
         'GET /api/cas_wap_login',
         'GET /cas/login',
+        'GET /api/getToken',
+      ]);
+    });
+
+    test('resumes SSO chain after webvpn gateway session bootstrap', () async {
+      const proxyTarget = 'http://zhx.zjxu.edu.cn:8443/api/wap/cas_login_back';
+      final proxyPath = Uri.parse(
+        ZhengfangAuth.instance.buildWebVpnProxyUrl(proxyTarget),
+      ).path;
+
+      var proxyCallbackHits = 0;
+      final adapter = MockHttpClientAdapter()
+        ..registerText(
+          'GET',
+          '/api/cas_wap_login',
+          '',
+          statusCode: 302,
+          headers: {
+            'location': [
+              'https://newca.zjxu.edu.cn/cas/login?service=http%3A%2F%2Fzhx.zjxu.edu.cn%3A8443%2Fapi%2Fwap%2Fcas_login_back',
+            ],
+          },
+        )
+        ..registerText(
+          'GET',
+          '/cas/login',
+          '',
+          statusCode: 302,
+          headers: {
+            'location': ['$proxyTarget?ticket=ST-1'],
+          },
+        )
+        ..register('GET', proxyPath, (_) async {
+          proxyCallbackHits += 1;
+          if (proxyCallbackHits == 1) {
+            // 网关会话未建立：代理请求被劫持到网关登录页。
+            return ResponseBody.fromString(
+              '',
+              302,
+              headers: {
+                'location': ['https://webvpn.zjxu.edu.cn/login'],
+              },
+            );
+          }
+          // 会话建立后续走：回调签发 tokenId。
+          return ResponseBody.fromString(
+            '',
+            302,
+            headers: {
+              'location': [
+                'https://webvpn.zjxu.edu.cn/https/ENCRYPTED/wap?type=jxxy_tysfrz&to_tysfrz=1&tokenId=T-9',
+              ],
+            },
+          );
+        })
+        ..registerText(
+          'GET',
+          '/login',
+          '',
+          statusCode: 302,
+          headers: {
+            'location': [
+              'https://webvpn.zjxu.edu.cn/wengine-vpn-token-login?token=tok-1',
+            ],
+          },
+        )
+        ..registerText(
+          'GET',
+          '/wengine-vpn-token-login',
+          '<html><body>wengine token login</body></html>',
+        )
+        ..registerJson('GET', '/api/getToken', {
+          'data': {'code': '20000', 'token': 'jwt-token'},
+        });
+
+      DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
+
+      await ChangxingJiadaService.instance.loginViaCas();
+
+      expect(ChangxingJiadaService.instance.hasToken, isTrue);
+      expect(adapter.requestLog, [
+        'GET /api/cas_wap_login',
+        'GET /cas/login',
+        'GET $proxyPath',
+        'GET /login',
+        'GET /wengine-vpn-token-login',
+        'GET $proxyPath',
         'GET /api/getToken',
       ]);
     });

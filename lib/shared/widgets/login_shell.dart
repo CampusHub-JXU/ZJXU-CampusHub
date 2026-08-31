@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../../core/auth/unified_auth.dart';
+import '../../core/theme/app_design_tokens.dart';
 import 'login_widget.dart';
 import 'unified_auth_login_widget.dart';
 
-const _kInputRadius = BorderRadius.all(Radius.circular(18));
+// 输入框与登录按钮与全局内容面同档圆角（16，AppRadius.input）。
+final BorderRadius _kInputRadius = AppRadius.inputBorder;
 const double _kHorizontalMargin = 16;
 const double _kFormCardRadius = 28;
 
@@ -100,7 +102,7 @@ class LoginShell extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 15),
                 elevation: 0,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: AppRadius.cardBorder,
                 ),
                 textStyle: const TextStyle(
                   fontSize: 17,

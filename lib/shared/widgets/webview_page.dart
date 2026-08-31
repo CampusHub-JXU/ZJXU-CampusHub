@@ -650,7 +650,18 @@ class _WebViewPageState extends State<WebViewPage> {
 
                         final callback = widget.onLoadStop;
                         if (callback != null) {
-                          await callback(controller, _currentUrl);
+                          try {
+                            await callback(controller, _currentUrl);
+                          } on MissingPluginException {
+                            // WebView 平台通道尚未就绪，跳过回调。
+                          } catch (error, stackTrace) {
+                            AppLogger.instance.webview(
+                              LogLevel.warn,
+                              'WebView load-stop 回调失败：$_currentUrl',
+                              error: error,
+                              stackTrace: stackTrace,
+                            );
+                          }
                         }
                       },
                       onUpdateVisitedHistory: (controller, url, _) {

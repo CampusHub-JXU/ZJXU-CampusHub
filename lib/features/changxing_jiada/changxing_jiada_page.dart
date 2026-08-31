@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/theme/app_design_tokens.dart';
+import '../../shared/widgets/app_app_bar.dart';
+import '../../shared/widgets/app_card.dart';
+import '../../shared/widgets/app_icon_badge.dart';
+import '../../shared/widgets/app_tile_surface.dart';
 import '../../shared/widgets/login_shell.dart';
 import '../../shared/widgets/network_error_toast.dart';
 import 'changxing_jiada_model.dart';
 import 'changxing_jiada_service.dart';
 import 'changxing_jiada_widgets.dart';
-import '../../shared/widgets/app_app_bar.dart';
 
 class ChangxingJiadaPage extends StatefulWidget {
   const ChangxingJiadaPage({super.key});
@@ -205,16 +209,16 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 64,
-                height: 64,
+                width: 56,
+                height: 56,
                 decoration: BoxDecoration(
                   color: cs.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                 ),
                 child: Icon(
                   Icons.directions_walk_outlined,
                   color: cs.onSurfaceVariant,
-                  size: 32,
+                  size: 28,
                 ),
               ),
               const SizedBox(height: 18),
@@ -231,7 +235,7 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
                     ?.copyWith(color: cs.onSurfaceVariant),
               ),
               const SizedBox(height: 20),
-              FilledButton.tonalIcon(
+              FilledButton.icon(
                 onPressed: _loggingIn
                     ? null
                     : () => _loginViaCas(allowUnifiedAuthPrompt: true),
@@ -265,7 +269,10 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
           const SizedBox(height: 12),
           _buildStatsRow(),
           const SizedBox(height: 16),
-          _buildSectionHeader('快速办理', trailing: '4 项'),
+          _buildSectionHeader(
+            '快速办理',
+            trailing: '${ChangxingFormType.values.length} 项',
+          ),
           const SizedBox(height: 10),
           _buildQuickActions(),
           const SizedBox(height: 20),
@@ -297,26 +304,17 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
         ? '暂无最近申请'
         : '${latest.typeLabel} · ${latest.statusLabel}';
 
-    return Container(
+    return AppCard(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        color: cs.surfaceContainerLowest,
-        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.55)),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: cs.surfaceContainerHigh,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Icon(Icons.badge_outlined, color: cs.primary),
+              AppIconBadge(
+                icon: Icons.badge_outlined,
+                accentColor: cs.primary,
+                size: AppIconBadgeSize.large,
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -376,7 +374,7 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
             decoration: BoxDecoration(
               color: cs.surfaceContainerHigh,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(AppRadius.badge),
             ),
             child: Row(
               children: [
@@ -450,40 +448,37 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
   }) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
-    return Container(
+    return SizedBox(
       height: 94,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.48)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 19, color: color),
-          const Spacer(),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(
-              value,
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w800,
-                height: 1,
+      child: AppCard(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 19, color: color),
+            const Spacer(),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                value,
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  height: 1,
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: cs.onSurfaceVariant,
+            const SizedBox(height: 3),
+            Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: cs.onSurfaceVariant,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -549,7 +544,8 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
             crossAxisCount: crossAxisCount,
             mainAxisSpacing: 10,
             crossAxisSpacing: 10,
-            mainAxisExtent: 96,
+            // 与首页功能区 wide 瓦片同档行高，单行内容不显肥厚。
+            mainAxisExtent: 76,
           ),
           itemBuilder: (context, index) {
             final action = ChangxingFormType.values[index];
@@ -575,62 +571,44 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
     required VoidCallback onTap,
   }) {
     final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-    return Material(
-      color: cs.surfaceContainerLowest,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.all(13),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: cs.outlineVariant.withValues(alpha: 0.45),
+    return AppTileSurface(
+      onTap: onTap,
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
+      child: Row(
+        children: [
+          AppIconBadge(
+            icon: icon,
+            accentColor: color,
+            size: AppIconBadgeSize.large,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  hint,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
             ),
           ),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(icon, color: color, size: 22),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      hint,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: cs.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(Icons.chevron_right, size: 20),
-            ],
-          ),
-        ),
+          const Icon(Icons.chevron_right, size: 20),
+        ],
       ),
     );
   }
@@ -657,115 +635,108 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
     final color = _statusColor(cs, item.status);
     final typeIcon = _typeIcon(item.type);
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.46)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: AppCard(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                AppIconBadge(
+                  icon: typeIcon,
+                  accentColor: color,
+                  size: AppIconBadgeSize.large,
                 ),
-                child: Icon(typeIcon, size: 21, color: color),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.typeLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        item.userName.isEmpty ? '未知用户' : item.userName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                ChangxingStatusBadge(label: item.statusLabel, color: color),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                if (item.departmentName.isNotEmpty)
+                  ChangxingDetailChip(label: '班级', value: item.departmentName),
+                if (item.userJobNo.isNotEmpty)
+                  ChangxingDetailChip(label: '学号', value: item.userJobNo),
+                if (item.userPhone.isNotEmpty)
+                  ChangxingDetailChip(label: '电话', value: item.userPhone),
+                if (item.startTime != null)
+                  ChangxingDetailChip(label: '开始', value: _fmt(item.startTime)),
+                if (item.endTime != null)
+                  ChangxingDetailChip(label: '结束', value: _fmt(item.endTime)),
+                if (item.trafficTool.isNotEmpty)
+                  ChangxingDetailChip(label: '交通', value: item.trafficTool),
+                if (item.shouldShowRemark)
+                  ChangxingDetailChip(label: '审批', value: item.remark),
+                if (item.upTime != null)
+                  ChangxingDetailChip(label: '更新', value: _fmt(item.upTime)),
+              ],
+            ),
+            if (item.descr.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                item.descr,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyMedium?.copyWith(height: 1.45),
               ),
-              const SizedBox(width: 11),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      item.typeLabel,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      item.userName.isEmpty ? '未知用户' : item.userName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: cs.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
+            ],
+            if (item.type == 3) ...[
+              if (item.backStatus != 0) ...[
+                if (item.emergencyContact.isNotEmpty)
+                  _buildDetailLine('紧急联系人', item.emergencyContact),
+                if (item.emergencyPhone.isNotEmpty)
+                  _buildDetailLine('联系人电话', item.emergencyPhone),
+                if (item.notBackReason.isNotEmpty)
+                  _buildDetailLine('不返校原因', item.notBackReason),
+              ],
+            ],
+            if (item.canEdit) ...[
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerRight,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    final type = item.formType;
+                    if (type == null) return;
+                    _openForm(type, applicationId: item.id);
+                  },
+                  icon: const Icon(Icons.edit_outlined, size: 16),
+                  label: const Text('编辑申请'),
                 ),
               ),
-              ChangxingStatusBadge(label: item.statusLabel, color: color),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              if (item.departmentName.isNotEmpty)
-                ChangxingDetailChip(label: '班级', value: item.departmentName),
-              if (item.userJobNo.isNotEmpty)
-                ChangxingDetailChip(label: '学号', value: item.userJobNo),
-              if (item.userPhone.isNotEmpty)
-                ChangxingDetailChip(label: '电话', value: item.userPhone),
-              if (item.startTime != null)
-                ChangxingDetailChip(label: '开始', value: _fmt(item.startTime)),
-              if (item.endTime != null)
-                ChangxingDetailChip(label: '结束', value: _fmt(item.endTime)),
-              if (item.trafficTool.isNotEmpty)
-                ChangxingDetailChip(label: '交通', value: item.trafficTool),
-              if (item.shouldShowRemark)
-                ChangxingDetailChip(label: '审批', value: item.remark),
-              if (item.upTime != null)
-                ChangxingDetailChip(label: '更新', value: _fmt(item.upTime)),
-            ],
-          ),
-          if (item.descr.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Text(
-              item.descr,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodyMedium?.copyWith(height: 1.45),
-            ),
-          ],
-          if (item.type == 3) ...[
-            if (item.backStatus != 0) ...[
-              if (item.emergencyContact.isNotEmpty)
-                _buildDetailLine('紧急联系人', item.emergencyContact),
-              if (item.emergencyPhone.isNotEmpty)
-                _buildDetailLine('联系人电话', item.emergencyPhone),
-              if (item.notBackReason.isNotEmpty)
-                _buildDetailLine('不返校原因', item.notBackReason),
             ],
           ],
-          if (item.canEdit) ...[
-            const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerRight,
-              child: OutlinedButton.icon(
-                onPressed: () {
-                  final type = item.formType;
-                  if (type == null) return;
-                  _openForm(type, applicationId: item.id);
-                },
-                icon: const Icon(Icons.edit_outlined, size: 16),
-                label: const Text('编辑申请'),
-              ),
-            ),
-          ],
-        ],
+        ),
       ),
     );
   }

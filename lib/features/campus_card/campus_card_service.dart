@@ -5,7 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:html/parser.dart' as html_parser;
 
-import '../../core/auth/unified_auth.dart';
+import '../../core/auth/cas_auth_broker.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/network/dio_client.dart';
@@ -32,9 +32,9 @@ class CampusCardService {
       'https://mobilehall.zjxu.edu.cn/webroot/decision/view/form?op=h5&viewlet=xxkj%252Fmobile%252Fykt.frm#/form';
 
   /// CAS service URL — fragment (#/form) 不能包含在 service 参数里，
-  /// 否则 ticket 验证时 service 不匹配导致认证失败
-  static const statusPageCasServiceUrl =
-      'https://mobilehall.zjxu.edu.cn/webroot/decision/view/form?op=h5&viewlet=xxkj%252Fmobile%252Fykt.frm';
+  /// 否则 ticket 验证时 service 不匹配导致认证失败。
+  /// URL 注册表统一收敛在 [CasService]。
+  static final statusPageCasServiceUrl = CasService.campusCardStatus.serviceUrl;
 
   static const paymentCodeEntryUrl =
       'https://app.xiaoyuan.ccb.com/EMTSTATIC/DZK2026032101/index2026032101.html#/cardmentkey';
@@ -42,8 +42,8 @@ class CampusCardService {
   static const paymentCodeServiceHallUrl =
       'https://mobilehall.zjxu.edu.cn/mportal/start/index.html#/business/ydd/wfw/id=ED8D7B51A2422411E0532602010A9D8D';
 
-  static const serviceHallCasServiceUrl =
-      'https://newca.zjxu.edu.cn/casClient/login/ydd?services=business%2Fydd%2Fwfw';
+  static final serviceHallCasServiceUrl =
+      CasService.campusCardPayment.serviceUrl;
 
   void updateCachedBalance(double? balance) {
     if (balance == null) return;
@@ -176,13 +176,15 @@ class CampusCardService {
       return clearCachedBalance();
     }
 
-    final sessionReady = await UnifiedAuthService.instance.validateSession(
-      serviceUrl: statusPageCasServiceUrl,
+    final sessionStatus = await CasSession.ensure(
+      CasService.campusCardStatus.serviceUrl,
       syncWebViewCookies: true,
     );
-    if (sessionReady != true) {
+    if (sessionStatus != CasSessionStatus.active) {
       AppLogger.instance.auth(
-        sessionReady == false ? LogLevel.warn : LogLevel.debug,
+        sessionStatus == CasSessionStatus.inactive
+            ? LogLevel.warn
+            : LogLevel.debug,
         '校园卡余额查询跳过：统一认证会话不可用',
       );
       return clearCachedBalance();

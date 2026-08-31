@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/auth/cas_auth_broker.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/wechat/wechat_launcher.dart';
 import '../../shared/widgets/unified_auth_protected_webview_page.dart';
@@ -13,7 +14,9 @@ class ServiceHallPage extends StatefulWidget {
   static const titleText = '服务大厅';
   static const homeUrl =
       'https://mobilehall.zjxu.edu.cn/mportal/start/index.html#/business/ydd/portal/home';
-  static const authServiceUrl = 'https://newca.zjxu.edu.cn/casClient/login/ydd';
+
+  /// service URL 统一由 [CasService] 注册表提供，不再本地硬编码。
+  static final authServiceUrl = CasService.ydd.serviceUrl;
   static const authLoginDescription = '服务大厅仅支持校园网内直连访问，请连接校园网后登录统一认证';
 
   @override

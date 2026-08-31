@@ -1,51 +1,71 @@
-import 'dart:async';
 import 'dart:convert';
 
-import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
-import 'package:html/parser.dart' as html_parser;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/logging/app_logger.dart';
-import '../../core/network/legacy_dio_factory.dart';
-import '../../core/network/network_settings.dart';
-import '../../core/network/proxy_mode.dart';
+import 'epay_electricity_gateway.dart';
 
-class DormRoomConfig {
-  final String communityId;
-  final String buildingId;
-  final String floorId;
-  final String roomId;
+/// 宿舍电费服务异常：携带可直接展示给用户的 [message]。
+class DormServiceException implements Exception {
+  final String message;
 
-  const DormRoomConfig({
-    required this.communityId,
-    required this.buildingId,
-    required this.floorId,
-    required this.roomId,
-  });
+  const DormServiceException(this.message);
+
+  @override
+  String toString() => message;
 }
 
+/// 园区（校区）——epay100 电控体系第一级。
+class DormArea {
+  final String id;
+  final String name;
+
+  const DormArea({required this.id, required this.name});
+}
+
+/// 楼幢——第二级，隶属园区。
 class DormBuilding {
-  final String communityId;
+  final String areaId;
+  final String areaName;
   final String buildingId;
-  final String communityName;
   final String buildingName;
 
   const DormBuilding({
-    required this.communityId,
+    required this.areaId,
+    required this.areaName,
     required this.buildingId,
-    required this.communityName,
     required this.buildingName,
   });
 }
 
+/// 楼层——第三级（多数楼幢只有一个「默认楼层」）。
+class DormFloor {
+  final String areaId;
+  final String buildingId;
+  final String floorId;
+  final String floorName;
+
+  const DormFloor({
+    required this.areaId,
+    required this.buildingId,
+    required this.floorId,
+    required this.floorName,
+  });
+}
+
+/// 房间——第四级。
 class DormRoom {
+  final String areaId;
+  final String buildingId;
   final String floorId;
   final String roomId;
   final String floorName;
   final String roomName;
 
   const DormRoom({
+    required this.areaId,
+    required this.buildingId,
     required this.floorId,
     required this.roomId,
     required this.floorName,
@@ -53,25 +73,71 @@ class DormRoom {
   });
 }
 
+/// 已保存的寝室配置（epay100 电控四级 id）。
+class DormRoomConfig {
+  final String areaId;
+  final String buildingId;
+  final String floorId;
+  final String roomId;
+
+  const DormRoomConfig({
+    required this.areaId,
+    required this.buildingId,
+    required this.floorId,
+    required this.roomId,
+  });
+}
+
+/// 宿舍电费服务：数据源为 epay100 新版电控（老 jdhq.wap 系统已于 2026-08
+/// 下线）。RPC 经 [EpayElectricityGateway] 在隐藏 WebView 页面上下文发出，
+/// 会话不可用时抛 [EpaySessionUnavailableException]，由本层转译为
+/// [_lastError] 并回退缓存。
 class DormElectricityService {
   DormElectricityService._();
   static final DormElectricityService instance = DormElectricityService._();
 
-  static const _keyCommunityId = 'dorm_community_id';
-  static const _keyBuildingId = 'dorm_building_id';
-  static const _keyFloorId = 'dorm_floor_id';
-  static const _keyRoomId = 'dorm_room_id';
+  static const _keyAreaId = 'dorm_epay_area_id';
+  static const _keyBuildingId = 'dorm_epay_building_id';
+  static const _keyFloorId = 'dorm_epay_floor_id';
+  static const _keyRoomId = 'dorm_epay_room_id';
+  // 老系统（jdhq.wap）遗留键，迁移时清除。
+  static const _legacyKeys = [
+    'dorm_community_id',
+    'dorm_building_id',
+    'dorm_floor_id',
+    'dorm_room_id',
+  ];
   static const _keyElectricity = 'dorm_cached_electricity';
   static const _keyElectricityUpdatedAt = 'dorm_cached_electricity_updated_at';
   static const _keyAlertEnabled = 'dorm_alert_enabled';
   static const _keyAlertThreshold = 'dorm_alert_threshold';
   static const _keyAlertLastNotifiedDate = 'dorm_alert_last_notified_date';
   static const refreshWindow = Duration(minutes: 30);
-  static const _requestTimeout = Duration(seconds: 12);
 
-  Dio? _dio;
+  /// 电控适配器（麦狐统一前置 API）。网关会话里也可动态读取，
+  /// 这里作为缺省值兜底。
+  static const defaultAdapterId = '6279260700100006';
+
+  /// 从房间名解析楼层标签：`HX4-105` → `1楼`，`HX4-1005` → `10楼`。
+  ///
+  /// 约定 `-` 后数字串的末两位为房间序号、其余为楼层号；解析不出
+  ///（无数字段 / 序号不足两位）返回 null，该房间不参与楼层筛选分组。
+  static String? parseFloorLabel(String roomName) {
+    final match = RegExp(r'-(\d{3,})号?$').firstMatch(roomName.trim());
+    final digits = match?.group(1);
+    if (digits == null || digits.length < 3) return null;
+    final floor = int.tryParse(digits.substring(0, digits.length - 2));
+    final seq = int.tryParse(digits.substring(digits.length - 2));
+    if (floor == null || seq == null) return null;
+    return '$floor楼';
+  }
+
+  @visibleForTesting
+  EpayElectricityGateway gateway = EpayElectricityGateway.instance;
+
   SharedPreferences? _prefs;
   bool _cacheRestored = false;
+  Future<double?>? _fetchElectricityFuture;
 
   double? _cachedElectricity;
   DateTime? _lastUpdated;
@@ -85,66 +151,30 @@ class DormElectricityService {
 
   String? _lastError;
   String? get lastError => _lastError;
+  bool _requiresAuthentication = false;
+  bool get requiresAuthentication => _requiresAuthentication;
 
-  Dio _createProxyFallbackDio() {
-    return createCampusBytesDioFromOptions(
-      _dio?.options,
-      fallbackHeaders: const {'X-Requested-With': 'XMLHttpRequest'},
-      ignoreSystemProxy: false,
-    );
-  }
+  @visibleForTesting
+  void debugSetGateway(EpayElectricityGateway value) => gateway = value;
 
-  bool _shouldRetryWithSystemProxyForAny(Object error) {
-    return shouldRetryWithSystemProxyForError(
-      error,
-      ignoreSystemProxy: NetworkSettings.instance.ignoreSystemProxy.value,
-    );
-  }
-
-  bool _isHostLookupFailure(DioException error) {
-    final message = (error.message ?? '').toLowerCase();
-    return message.contains('failed host lookup') ||
-        message.contains('no address associated with hostname');
-  }
-
-  Future<Response<T>> _sendWithProxyFallback<T>({
-    required String label,
-    required Future<Response<T>> Function(Dio dio) request,
-  }) async {
-    final dio = await _ensureDio();
-    try {
-      return await request(dio).timeout(_requestTimeout);
-    } catch (error) {
-      if (!_shouldRetryWithSystemProxyForAny(error)) rethrow;
-      final reason = describeSystemProxyRetryReason(error);
-      AppLogger.instance.network(
-        LogLevel.warn,
-        '$label 直连失败（$reason），尝试通过系统代理重试',
-      );
-      final fallbackDio = _createProxyFallbackDio();
-      try {
-        return await request(fallbackDio).timeout(_requestTimeout);
-      } finally {
-        fallbackDio.close(force: true);
-      }
-    }
-  }
-
-  void applyProxyMode() {
-    final client = _dio;
-    if (client == null) return;
-    applyProxyModeToDio(
-      client,
-      ignoreSystemProxy: NetworkSettings.instance.ignoreSystemProxy.value,
-    );
-  }
+  Future<void> invalidateGatewaySession() => gateway.invalidate();
 
   Future<void> restoreCache({bool force = false}) async {
     if (_cacheRestored && !force) return;
-    if (force) {
-      _prefs = await SharedPreferences.getInstance();
-    }
     final prefs = await _ensurePrefs();
+    // 老系统 id 空间与 epay100 不兼容，一次性清除遗留配置。
+    var removedLegacyConfig = false;
+    for (final key in _legacyKeys) {
+      if (prefs.containsKey(key)) {
+        await prefs.remove(key);
+        removedLegacyConfig = true;
+      }
+    }
+    if (removedLegacyConfig) {
+      await prefs.remove(_keyElectricity);
+      await prefs.remove(_keyElectricityUpdatedAt);
+      await prefs.remove(_keyAlertLastNotifiedDate);
+    }
     _cachedElectricity = prefs.getDouble(_keyElectricity);
     final updatedAtMillis = prefs.getInt(_keyElectricityUpdatedAt);
     if (updatedAtMillis != null) {
@@ -154,27 +184,24 @@ class DormElectricityService {
   }
 
   Future<bool> hasRoomConfig() async {
-    final prefs = await _ensurePrefs();
-    return prefs.containsKey(_keyCommunityId) &&
-        prefs.containsKey(_keyBuildingId) &&
-        prefs.containsKey(_keyFloorId) &&
-        prefs.containsKey(_keyRoomId);
+    final config = await loadRoomConfig();
+    return config != null;
   }
 
   Future<DormRoomConfig?> loadRoomConfig() async {
     final prefs = await _ensurePrefs();
-    final communityId = prefs.getString(_keyCommunityId);
+    final areaId = prefs.getString(_keyAreaId);
     final buildingId = prefs.getString(_keyBuildingId);
     final floorId = prefs.getString(_keyFloorId);
     final roomId = prefs.getString(_keyRoomId);
-    if (communityId == null ||
+    if (areaId == null ||
         buildingId == null ||
         floorId == null ||
         roomId == null) {
       return null;
     }
     return DormRoomConfig(
-      communityId: communityId,
+      areaId: areaId,
       buildingId: buildingId,
       floorId: floorId,
       roomId: roomId,
@@ -183,22 +210,30 @@ class DormElectricityService {
 
   Future<void> saveRoomConfig(DormRoomConfig config) async {
     final prefs = await _ensurePrefs();
-    await prefs.setString(_keyCommunityId, config.communityId);
+    await prefs.setString(_keyAreaId, config.areaId);
     await prefs.setString(_keyBuildingId, config.buildingId);
     await prefs.setString(_keyFloorId, config.floorId);
     await prefs.setString(_keyRoomId, config.roomId);
+    // 余额必须和房间配置绑定；保存后强制下一次查询新房间，绝不能回退到
+    // 上一个寝室的缓存值。
+    await prefs.remove(_keyElectricity);
+    await prefs.remove(_keyElectricityUpdatedAt);
+    await prefs.remove(_keyAlertLastNotifiedDate);
+    _cachedElectricity = null;
+    _lastUpdated = null;
+    _lastError = null;
   }
 
   Future<void> clearRoomConfig() async {
     final prefs = await _ensurePrefs();
-    await prefs.remove(_keyCommunityId);
-    await prefs.remove(_keyBuildingId);
-    await prefs.remove(_keyFloorId);
-    await prefs.remove(_keyRoomId);
+    for (final key in [_keyAreaId, _keyBuildingId, _keyFloorId, _keyRoomId]) {
+      await prefs.remove(key);
+    }
     await prefs.remove(_keyElectricity);
     await prefs.remove(_keyElectricityUpdatedAt);
     _cachedElectricity = null;
     _lastUpdated = null;
+    _lastError = null;
   }
 
   // ── 低电量预警 ──
@@ -259,105 +294,172 @@ class DormElectricityService {
     await prefs.setString(_keyAlertLastNotifiedDate, today);
   }
 
-  String _buildQueryUrl(DormRoomConfig config) {
-    return 'http://jdhq.wap.zjxu.edu.cn/DormCharge/BaseElect/queryResult'
-        '/ele_id/1'
-        '/community_id/${config.communityId}'
-        '/building_id/${config.buildingId}'
-        '/floor_id/${config.floorId}'
-        '/room_id/${config.roomId}';
+  // ── RPC：四级目录 + 余额 ─────────────────────────────────────────────────
+
+  /// 园区（校区）列表。
+  Future<List<DormArea>> fetchAreas() async {
+    final body = await _call('app.electric.getAreaList', {
+      'adapter_id': defaultAdapterId,
+    });
+    final data = _decodeDataMap(body, '园区');
+    final list = (data['area_list'] as List<dynamic>? ?? const []);
+    return list
+        .whereType<Map<String, dynamic>>()
+        .map(
+          (a) => DormArea(
+            id: a['id'].toString(),
+            name: a['value'] as String? ?? a['name'] as String? ?? '',
+          ),
+        )
+        .toList();
   }
 
+  /// 指定园区下的楼幢列表。
+  Future<List<DormBuilding>> fetchBuildings(DormArea area) async {
+    final body = await _call('app.electric.getBuildingList', {
+      'adapter_id': defaultAdapterId,
+      'L1_area_id': area.id,
+    });
+    final data = _decodeDataMap(body, '楼幢');
+    final list = (data['building_list'] as List<dynamic>? ?? const []);
+    return list.whereType<Map<String, dynamic>>().map((b) {
+      return DormBuilding(
+        areaId: area.id,
+        areaName: area.name,
+        buildingId: b['id'].toString(),
+        buildingName: b['name'] as String? ?? '',
+      );
+    }).toList();
+  }
+
+  /// 指定楼幢下的全部房间（逐楼层展开；多数楼幢只有「默认楼层」）。
+  Future<List<DormRoom>> fetchRooms({
+    required String areaId,
+    required String buildingId,
+  }) async {
+    final floorsBody = await _call('app.electric.getFloorList', {
+      'adapter_id': defaultAdapterId,
+      'L1_area_id': areaId,
+      'L2_building_id': buildingId,
+    });
+    final floorsData = _decodeDataMap(floorsBody, '楼层');
+    final floors = (floorsData['floor_list'] as List<dynamic>? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map(
+          (f) => DormFloor(
+            areaId: areaId,
+            buildingId: buildingId,
+            floorId: f['id'].toString(),
+            floorName: f['name'] as String? ?? '',
+          ),
+        )
+        .toList();
+
+    final rooms = <DormRoom>[];
+    for (final floor in floors) {
+      final roomsBody = await _call('app.electric.getRoomList', {
+        'adapter_id': defaultAdapterId,
+        'L1_area_id': areaId,
+        'L2_building_id': buildingId,
+        'L3_floor_id': floor.floorId,
+      });
+      final roomsData = _decodeDataMap(roomsBody, '房间');
+      final list = (roomsData['room_list'] as List<dynamic>? ?? const []);
+      rooms.addAll(
+        list.whereType<Map<String, dynamic>>().map(
+          (r) => DormRoom(
+            areaId: areaId,
+            buildingId: buildingId,
+            floorId: floor.floorId,
+            roomId: r['id'].toString(),
+            floorName: floor.floorName,
+            roomName: r['name'] as String? ?? '',
+          ),
+        ),
+      );
+    }
+    return rooms;
+  }
+
+  /// 查询剩余电量（度）。失败时回退缓存并设置 [_lastError]。
   Future<double?> fetchElectricity({bool forceRefresh = false}) async {
+    if (!forceRefresh && hasFreshCache) {
+      _lastError = null;
+      _requiresAuthentication = false;
+      return _cachedElectricity;
+    }
+
+    final existing = _fetchElectricityFuture;
+    if (existing != null) return existing;
+
+    final future = _fetchElectricityInner(forceRefresh: forceRefresh);
+    _fetchElectricityFuture = future;
+    try {
+      return await future;
+    } finally {
+      if (identical(_fetchElectricityFuture, future)) {
+        _fetchElectricityFuture = null;
+      }
+    }
+  }
+
+  Future<double?> _fetchElectricityInner({bool forceRefresh = false}) async {
     try {
       await restoreCache();
 
-      if (!forceRefresh && hasFreshCache) {
-        _lastError = null;
-        return _cachedElectricity;
-      }
-
       final config = await loadRoomConfig();
-      if (config == null) return null;
-
-      final url = _buildQueryUrl(config);
-      if (AppLogger.instance.config.value.networkVerboseEnabled) {
-        AppLogger.instance.network(LogLevel.debug, '电费查询 → $url');
-      }
-      final resp = await _sendWithProxyFallback<List<int>>(
-        label: '宿舍电费查询',
-        request: (dio) => dio.get<List<int>>(url),
-      );
-      if (AppLogger.instance.config.value.networkVerboseEnabled) {
-        AppLogger.instance.network(
-          LogLevel.debug,
-          '电费响应 status=${resp.statusCode} bytes=${resp.data?.length}',
-        );
-      }
-      if (resp.data == null) return _cachedElectricity;
-
-      final html = utf8.decode(resp.data!, allowMalformed: true);
-      final doc = html_parser.parse(html);
-      final text = doc.body?.text ?? '';
-      if (AppLogger.instance.config.value.networkVerboseEnabled) {
-        AppLogger.instance.network(
-          LogLevel.debug,
-          '电费页面文本(前200): ${text.length > 200 ? text.substring(0, 200) : text}',
-        );
+      if (config == null) {
+        _lastError = null;
+        _requiresAuthentication = false;
+        return null;
       }
 
-      final match = RegExp(
-        r'实际剩余电量\s*[（(]度[)）]\s*(?:[:：]\s*)?([0-9]+(?:\.[0-9]+)?)',
-        dotAll: true,
-      ).firstMatch(text);
-
-      if (match != null) {
-        final value = double.tryParse(match.group(1)!);
-        if (value != null) {
-          _cachedElectricity = value;
-          _lastUpdated = DateTime.now();
-          await _persistCache();
-          _lastError = null;
-          AppLogger.instance.network(LogLevel.info, '电费解析成功: $value 度');
-          return value;
+      final body = await _call('app.electric.getRoomBalance', {
+        'adapter_id': defaultAdapterId,
+        'L1_area_id': config.areaId,
+        'L2_building_id': config.buildingId,
+        'L3_floor_id': config.floorId,
+        'L4_room_id': config.roomId,
+      });
+      final data = _decodeDataMap(body, '余额');
+      final list = (data['balance_list'] as List<dynamic>? ?? const []);
+      String? balanceText;
+      for (final b in list.whereType<Map<String, dynamic>>()) {
+        if (b['id'].toString() == config.roomId) {
+          balanceText = b['balance']?.toString();
+          break;
         }
       }
-      if (AppLogger.instance.config.value.networkVerboseEnabled) {
-        AppLogger.instance.network(
-          LogLevel.debug,
-          '电费正则未匹配，文本长度=${text.length}',
-        );
-      }
-      _lastError = '数据解析失败';
-      return _cachedElectricity;
-    } on DioException catch (e) {
-      AppLogger.instance.network(
-        LogLevel.error,
-        '电费网络错误: ${e.type} ${e.message}',
-      );
-      if (e.type == DioExceptionType.connectionTimeout ||
-          e.type == DioExceptionType.receiveTimeout) {
-        _lastError = '网络超时';
+      final value = balanceText == null ? null : double.tryParse(balanceText);
+      if (value == null) {
+        _lastError = '数据解析失败';
         return _cachedElectricity;
       }
-      if (e.type == DioExceptionType.connectionError) {
-        _lastError = _isHostLookupFailure(e)
-            ? '域名解析失败，请关闭“忽略系统代理”或连接校园网'
-            : '网络不可达';
-        return _cachedElectricity;
-      }
-      _lastError = '未知错误';
+      _cachedElectricity = value;
+      _lastUpdated = DateTime.now();
+      await _persistCache();
+      _lastError = null;
+      _requiresAuthentication = false;
+      AppLogger.instance.network(LogLevel.info, '电费解析成功: $value 度');
+      return value;
+    } on EpaySessionUnavailableException catch (e) {
+      AppLogger.instance.network(LogLevel.warn, '电费会话不可用: ${e.message}');
+      _lastError = e.message;
+      _requiresAuthentication = true;
       return _cachedElectricity;
-    } on TimeoutException {
-      AppLogger.instance.network(
-        LogLevel.error,
-        '电费查询超时: 超过 ${_requestTimeout.inSeconds} 秒',
-      );
-      _lastError = '网络超时';
+    } on EpayGatewayException catch (e) {
+      AppLogger.instance.network(LogLevel.warn, '电费网关请求失败: ${e.message}');
+      _lastError = e.message;
+      _requiresAuthentication = false;
+      return _cachedElectricity;
+    } on DormServiceException catch (e) {
+      _lastError = e.message;
+      _requiresAuthentication = false;
       return _cachedElectricity;
     } catch (e) {
       AppLogger.instance.network(LogLevel.error, '电费查询异常: $e');
       _lastError = '未知错误';
+      _requiresAuthentication = false;
       return _cachedElectricity;
     }
   }
@@ -370,83 +472,34 @@ class DormElectricityService {
     return value.toStringAsFixed(2);
   }
 
-  /// 获取园区+楼幢列表（两级嵌套，无需认证）
-  Future<List<DormBuilding>> fetchBuildings() async {
-    final resp = await _sendWithProxyFallback<List<int>>(
-      label: '宿舍楼栋列表',
-      request: (dio) => dio.post<List<int>>(
-        'http://jdhq.wap.zjxu.edu.cn/dormcharge/base_elect/getParkBuild/ele_id/1',
-        options: Options(contentType: 'application/x-www-form-urlencoded'),
-      ),
-    );
-    final json = jsonDecode(
-      utf8.decode(resp.data!, allowMalformed: true),
-    ) as Map<String, dynamic>;
-    final data = json['data'] as List<dynamic>;
-    final result = <DormBuilding>[];
-    for (final community in data) {
-      final communityId = community['id'].toString();
-      final communityName = community['value'] as String;
-      for (final building in community['childs'] as List<dynamic>) {
-        result.add(
-          DormBuilding(
-            communityId: communityId,
-            buildingId: building['id'].toString(),
-            communityName: communityName,
-            buildingName: building['value'] as String,
-          ),
-        );
-      }
+  // ── 内部 ────────────────────────────────────────────────────────────────
+
+  Future<String> _call(String method, Map<String, String> data) {
+    return gateway.call(method, data);
+  }
+
+  /// 解析 RPC 响应信封 `{"code":"200","msg":"SUC0000","data":{...}}`。
+  Map<String, dynamic> _decodeDataMap(String body, String label) {
+    Object? json;
+    try {
+      json = jsonDecode(body);
+    } on FormatException {
+      throw DormServiceException('电费$label数据无法识别');
     }
-    return result;
-  }
-
-  /// 获取楼层+房间列表（两级嵌套，无需认证）
-  Future<List<DormRoom>> fetchRooms(String buildingId) async {
-    final resp = await _sendWithProxyFallback<List<int>>(
-      label: '宿舍房间列表',
-      request: (dio) => dio.post<List<int>>(
-        'http://jdhq.wap.zjxu.edu.cn/dormcharge/base_elect/getFloorRoom/ele_id/1',
-        data: 'building_id=$buildingId',
-        options: Options(contentType: 'application/x-www-form-urlencoded'),
-      ),
-    );
-    final json = jsonDecode(
-      utf8.decode(resp.data!, allowMalformed: true),
-    ) as Map<String, dynamic>;
-    final data = json['data'] as List<dynamic>;
-    final result = <DormRoom>[];
-    for (final floor in data) {
-      final floorId = floor['id'].toString();
-      final floorName = floor['value'] as String;
-      for (final room in floor['childs'] as List<dynamic>) {
-        result.add(
-          DormRoom(
-            floorId: floorId,
-            roomId: room['id'].toString(),
-            floorName: floorName,
-            roomName: room['value'] as String,
-          ),
-        );
-      }
+    if (json is! Map<String, dynamic>) {
+      throw DormServiceException('电费$label数据格式异常');
     }
-    return result;
-  }
-
-  Dio _createDio() {
-    return createCampusBytesDio(
-      headers: const {'X-Requested-With': 'XMLHttpRequest'},
-    );
-  }
-
-  Future<Dio> _ensureDio() async {
-    final existing = _dio;
-    if (existing != null) return existing;
-
-    await NetworkSettings.instance.ensureInitialized();
-    final created = _createDio();
-    _dio = created;
-    return created;
+    if (json['code']?.toString() != '200') {
+      final message = json['msg']?.toString();
+      throw DormServiceException(
+        message == null || message.isEmpty ? '电费$label请求失败' : message,
+      );
+    }
+    final data = json['data'];
+    if (data is! Map<String, dynamic>) {
+      throw DormServiceException('电费$label数据为空');
+    }
+    return data;
   }
 
   Future<SharedPreferences> _ensurePrefs() async {
@@ -477,18 +530,14 @@ class DormElectricityService {
   }
 
   @visibleForTesting
-  void debugSetDio(Dio? dio) {
-    _dio = dio;
-  }
-
-  @visibleForTesting
   void debugReset() {
-    _dio?.close(force: true);
-    _dio = null;
+    gateway = EpayElectricityGateway.instance;
     _prefs = null;
     _cacheRestored = false;
     _cachedElectricity = null;
     _lastUpdated = null;
     _lastError = null;
+    _requiresAuthentication = false;
+    _fetchElectricityFuture = null;
   }
 }

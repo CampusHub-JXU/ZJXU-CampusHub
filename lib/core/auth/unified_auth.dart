@@ -658,6 +658,17 @@ class UnifiedAuthService extends ChangeNotifier {
   Future<void> _followRedirectChain(Uri baseUri, String location) async {
     var nextUri = _resolveUri(baseUri, location);
     for (var i = 0; i < 8; i++) {
+      // CAS 完成认证后会把 service ticket 挂到下游 URL 上；这个
+      // URL 必须真正 GET 一次，目标服务才能兑换 ticket 并建立自己的
+      // 会话 Cookie。不能按 host 截断，因为 WebVPN 与 casClient 本身就是
+      // 合法的下游目标。只有重定向链确实回到了不带有效 ticket 的
+      // CAS 登录入口时才停止，避免登录页循环；for 上限继续防护其他循环。
+      final nextUrl = nextUri.toString();
+      if (isUnifiedAuthLoginEntryUrl(nextUrl) && !urlHasCasTicket(nextUrl)) {
+        AppLogger.instance.auth(LogLevel.debug, '统一认证重定向链: 回到 CAS 登录入口，停止跟随');
+        return;
+      }
+
       final response = await _sendWithProxyFallback<String>(
         label: '统一认证重定向链',
         request: (dio) => dio.getUri<String>(

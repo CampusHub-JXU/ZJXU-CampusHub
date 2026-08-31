@@ -1,8 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
+import '../../core/auth/cas_auth_broker.dart';
 import '../../core/auth/unified_auth.dart';
 import '../../core/logging/app_logger.dart';
 import 'auth_required_view.dart';
@@ -109,36 +111,12 @@ class _UnifiedAuthProtectedWebViewPageState
 
   Future<void> _resolveInitialAuthentication() async {
     try {
-      // 受保护页面可能早于启动 warm-up 打开，先主动恢复本地会话。
-      await UnifiedAuthService.instance.restoreSession(
-        syncWebViewCookies: false,
-      );
-
+      // CasSession.ensure 内部依次完成：恢复本地会话 → 无会话直接判未登录
+      // → 有会话则对目标 service 做服务端校验。
+      final status = await CasSession.ensure(widget.serviceUrl);
       if (!mounted) return;
 
-      _authenticated = UnifiedAuthService.instance.isLoggedIn;
-
-      // 首先检查是否有保存的会话
-      final hasStoredSession = UnifiedAuthService.instance.isLoggedIn;
-      if (!hasStoredSession) {
-        // 没有保存的会话，显示登录弹窗
-        if (!mounted) return;
-        setState(() {
-          _authenticated = false;
-          _authResolved = true;
-        });
-        return;
-      }
-
-      // 有保存的会话，尝试验证但不清除会话
-      final validated = await UnifiedAuthService.instance.validateSession(
-        serviceUrl: widget.serviceUrl,
-      );
-      if (!mounted) return;
-
-      // 验证结果为 null 表示网络错误，不清除会话
-      if (validated == null) {
-        // 网络错误时，信任保存的会话，让用户继续使用
+      if (status == CasSessionStatus.active) {
         setState(() {
           _authenticated = true;
           _authResolved = true;
@@ -146,13 +124,12 @@ class _UnifiedAuthProtectedWebViewPageState
         return;
       }
 
-      setState(() {
-        _authenticated = validated;
-        _authResolved = true;
-      });
-
-      // 只有在明确验证失败时才清除会话
-      if (!validated) {
+      if (status == CasSessionStatus.inactive) {
+        setState(() {
+          _authenticated = false;
+          _authResolved = true;
+        });
+        // 明确失效时清除会话（validateSession 内部已标记，这里兜底清理）。
         try {
           await UnifiedAuthService.instance.markLoggedOut();
         } catch (logoutError, logoutStackTrace) {
@@ -163,7 +140,14 @@ class _UnifiedAuthProtectedWebViewPageState
             stackTrace: logoutStackTrace,
           );
         }
+        return;
       }
+
+      // unknown：网络异常，无法下结论时信任本地会话，让用户继续使用。
+      setState(() {
+        _authenticated = true;
+        _authResolved = true;
+      });
     } catch (error, stackTrace) {
       AppLogger.instance.auth(
         LogLevel.warn,
@@ -231,7 +215,18 @@ class _UnifiedAuthProtectedWebViewPageState
     _resyncing = false;
     final callback = widget.onLoadStop;
     if (callback != null) {
-      await callback(controller, currentUrl);
+      try {
+        await callback(controller, currentUrl);
+      } on MissingPluginException {
+        // WebView 平台通道尚未就绪，跳过回调。
+      } catch (error, stackTrace) {
+        AppLogger.instance.webview(
+          LogLevel.warn,
+          'WebView load-stop 回调失败：$currentUrl',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
     }
   }
 

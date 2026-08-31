@@ -86,7 +86,14 @@ class ChangxingJiadaService {
       var nextUrl = _casLoginUrl;
       String? tokenId;
 
-      for (var i = 0; i < 10; i++) {
+      // WebVPN 网关会话未建立时，代理请求会被 302 到网关登录页，并一路走到
+      // wengine-vpn-token-login；该页以 200 HTML 返回（浏览器里靠页面 JS 跳回
+      // 原地址，dio 不会执行 JS），链路会在此断掉。记录被劫持前的地址，待
+      // token 登录响应种下网关会话 cookie 后从原地址续走，否则首次进入必然
+      // 拿不到 tokenId、第二次点击才能成功。
+      String? hijackedUrl;
+
+      for (var i = 0; i < 16; i++) {
         final response = await dio.get<String>(
           nextUrl,
           options: Options(
@@ -110,6 +117,11 @@ class ChangxingJiadaService {
             tokenId = tid;
             break;
           }
+          if (hijackedUrl == null &&
+              (isWebVpnGatewayLoginPage(resolvedLocation) ||
+                  isWebVpnTokenLoginUrl(resolvedLocation))) {
+            hijackedUrl = nextUrl;
+          }
           nextUrl = resolvedLocation;
           continue;
         }
@@ -119,8 +131,17 @@ class ChangxingJiadaService {
         final tid = _extractTokenId(finalUrl);
         if (tid != null) {
           tokenId = tid;
+          break;
         }
-        if (tokenId == null && isUnifiedAuthLoginFormResponse(finalUrl, body)) {
+
+        if (hijackedUrl != null && isWebVpnTokenLoginUrl(finalUrl)) {
+          // 网关会话已随 200 响应建立，回到被劫持前的地址继续走链路。
+          nextUrl = hijackedUrl;
+          hijackedUrl = null;
+          continue;
+        }
+
+        if (isUnifiedAuthLoginFormResponse(finalUrl, body)) {
           AppLogger.instance.auth(LogLevel.warn, '畅行嘉大：统一认证会话已失效，需要重新登录一卡通');
           throw ChangxingNeedUnifiedAuthException();
         }
@@ -667,6 +688,27 @@ class ChangxingJiadaService {
     final uri = Uri.tryParse(url);
     final tokenId = uri?.queryParameters['tokenId']?.trim() ?? '';
     return tokenId.isEmpty ? null : tokenId;
+  }
+
+  /// WebVPN 网关登录页：代理请求在网关会话缺失时会被 302 到这里。
+  /// 网关自身 CAS 回跳（?cas_login=true&ticket=...）属于正常链路，不算劫持点。
+  @visibleForTesting
+  static bool isWebVpnGatewayLoginPage(String url) {
+    final uri = Uri.tryParse(url);
+    return uri != null &&
+        uri.host.toLowerCase() == 'webvpn.zjxu.edu.cn' &&
+        uri.path == '/login' &&
+        uri.queryParameters.isEmpty;
+  }
+
+  /// WebVPN 网关会话引导页（wengine-vpn-token-login）：以 200 HTML 返回，
+  /// 浏览器里靠页面 JS 跳回原地址；响应已种下网关会话 cookie。
+  @visibleForTesting
+  static bool isWebVpnTokenLoginUrl(String url) {
+    final uri = Uri.tryParse(url);
+    return uri != null &&
+        uri.host.toLowerCase() == 'webvpn.zjxu.edu.cn' &&
+        uri.path.toLowerCase().contains('wengine-vpn-token-login');
   }
 
   @visibleForTesting

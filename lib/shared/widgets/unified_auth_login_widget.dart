@@ -4,6 +4,8 @@ import 'dart:ui' as ui;
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/theme/app_design_tokens.dart';
+
 import '../../core/auth/credential_store.dart';
 import '../../core/auth/unified_auth.dart';
 
@@ -398,7 +400,7 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
             height: 72,
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: AppRadius.inputBorder,
               border: Border.all(
                 color: cs.outlineVariant.withValues(alpha: 0.5),
                 width: 0.8,

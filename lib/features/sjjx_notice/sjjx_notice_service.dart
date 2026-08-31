@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:html/parser.dart' as html_parser;
 
+import '../../core/auth/cas_auth_broker.dart';
 import '../../core/auth/unified_auth.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/network/dio_client.dart';
@@ -16,20 +17,14 @@ const _sjjxNoticeListUrl =
 
 @visibleForTesting
 bool looksLikeSjjxResponseNeedsUnifiedAuth(Response<List<int>> response) {
-  final realUrl = response.realUri.toString();
-  if (isUnifiedAuthLoginEntryUrl(realUrl)) {
+  final exchangeHit = CasAuthBroker.isCasLoginExchange(
+    realUrl: response.realUri.toString(),
+    statusCode: response.statusCode,
+    location: response.headers.value('location'),
+    requestUri: response.requestOptions.uri,
+  );
+  if (exchangeHit) {
     return true;
-  }
-
-  final statusCode = response.statusCode ?? 0;
-  if (statusCode == 302 || statusCode == 303) {
-    final location = response.headers.value('location') ?? '';
-    if (location.isNotEmpty) {
-      final resolved = response.requestOptions.uri.resolve(location).toString();
-      if (isUnifiedAuthLoginEntryUrl(resolved)) {
-        return true;
-      }
-    }
   }
 
   final body = response.data;

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../../core/auth/zhengfang_auth.dart';
@@ -143,7 +144,11 @@ class _ZhengfangProtectedWebViewPageState
     _recoveryAttempted = false;
     final callback = widget.onLoadStop;
     if (callback != null) {
-      await callback(controller, currentUrl);
+      try {
+        await callback(controller, currentUrl);
+      } on MissingPluginException {
+        // WebView 平台通道尚未就绪，跳过回调。
+      }
     }
   }
 

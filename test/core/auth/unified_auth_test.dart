@@ -1,5 +1,15 @@
-﻿import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import 'dart:io';
+
+import 'package:dio/dio.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
+import 'package:jxu_campus_hub/core/network/dio_client.dart';
+import 'package:jxu_campus_hub/core/network/network_settings.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../helpers/mock_http_client_adapter.dart';
 
 void main() {
   group('Unified auth url classifiers', () {
@@ -198,6 +208,86 @@ void main() {
 
       expect(UnifiedAuthService.instance.isLoggedIn, isFalse);
       expect(UnifiedAuthService.instance.currentAccount, isNull);
+    });
+  });
+
+  group('UnifiedAuthService redirect chain', () {
+    late Directory cookieDirectory;
+
+    setUp(() async {
+      SharedPreferences.setMockInitialValues({});
+      FlutterSecureStorage.setMockInitialValues({});
+      UnifiedAuthService.instance.debugReset();
+      NetworkSettings.instance.debugReset();
+      DioClient.instance.debugReset();
+      cookieDirectory = await Directory.systemTemp.createTemp(
+        'unified_auth_redirect_test_',
+      );
+      DioClient.instance.debugCookieDirectoryPathProvider = (folderName) async {
+        return '${cookieDirectory.path}/$folderName/';
+      };
+      await DioClient.instance.ensureInitialized();
+    });
+
+    tearDown(() async {
+      UnifiedAuthService.instance.debugReset();
+      DioClient.instance.debugReset();
+      NetworkSettings.instance.debugReset();
+      if (await cookieDirectory.exists()) {
+        await cookieDirectory.delete(recursive: true);
+      }
+    });
+
+    test('requests downstream ticket URL before confirming session', () async {
+      const serviceUrl = 'https://webvpn.zjxu.edu.cn/login?cas_login=true';
+      const ticketUrl =
+          'https://webvpn.zjxu.edu.cn/login?cas_login=true&ticket=ST-1-test';
+      final requestedUris = <Uri>[];
+      final adapter = MockHttpClientAdapter()
+        ..register('GET', '/cas/login', (options) async {
+          requestedUris.add(options.uri);
+          return ResponseBody.fromString(
+            '',
+            302,
+            headers: {
+              'location': [ticketUrl],
+            },
+          );
+        })
+        ..register('GET', '/login', (options) async {
+          requestedUris.add(options.uri);
+          return ResponseBody.fromString(
+            '<html><body>WebVPN session ready</body></html>',
+            200,
+          );
+        });
+      DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
+      UnifiedAuthService.instance.debugSetSession(
+        active: true,
+        account: 'test-account',
+      );
+
+      final result = await UnifiedAuthService.instance.validateSession(
+        serviceUrl: serviceUrl,
+        syncWebViewCookies: false,
+      );
+
+      expect(result, isTrue);
+      expect(UnifiedAuthService.instance.isLoggedIn, isTrue);
+      expect(
+        requestedUris,
+        contains(
+          isA<Uri>()
+              .having((uri) => uri.host, 'host', 'webvpn.zjxu.edu.cn')
+              .having((uri) => uri.path, 'path', '/login')
+              .having(
+                (uri) => uri.queryParameters['ticket'],
+                'ticket',
+                'ST-1-test',
+              ),
+        ),
+      );
+      expect(adapter.requestLog, ['GET /cas/login', 'GET /login']);
     });
   });
 }

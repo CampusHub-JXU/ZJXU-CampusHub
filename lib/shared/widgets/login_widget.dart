@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/auth/credential_store.dart';
 import '../../core/auth/zhengfang_auth.dart';
+import '../../core/theme/app_design_tokens.dart';
 import 'unified_auth_login_widget.dart';
 
 typedef AcademicReachabilityChecker = Future<bool> Function();
@@ -546,7 +547,7 @@ class _LoginWidgetState extends State<LoginWidget> {
             height: 72,
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: AppRadius.inputBorder,
               border: Border.all(
                 color: colorScheme.outlineVariant.withValues(alpha: 0.5),
                 width: 0.8,

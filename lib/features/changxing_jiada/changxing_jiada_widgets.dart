@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme/app_design_tokens.dart';
+import '../../shared/widgets/app_card.dart';
+
 class ChangxingLoginPill extends StatelessWidget {
   const ChangxingLoginPill({
     super.key,
@@ -94,7 +97,7 @@ class ChangxingDetailChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
       decoration: BoxDecoration(
         color: cs.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: AppRadius.chipBorder,
       ),
       child: RichText(
         maxLines: 1,
@@ -157,7 +160,7 @@ class ChangxingErrorBanner extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
       decoration: BoxDecoration(
         color: cs.errorContainer,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: AppRadius.cardBorder,
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -183,13 +186,8 @@ class ChangxingEmptyApplications extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
-    return Container(
+    return AppCard(
       padding: const EdgeInsets.fromLTRB(18, 22, 18, 22),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.46)),
-      ),
       child: Column(
         children: [
           Icon(Icons.inbox_outlined, size: 38, color: cs.onSurfaceVariant),

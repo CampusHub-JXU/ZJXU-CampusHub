@@ -1,10 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/logging/app_logger.dart';
 import '../../core/notification/background_task_service.dart';
 import 'dorm_electricity_service.dart';
+import 'epay_electricity_gateway.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_error_view.dart';
+import '../../shared/widgets/login_shell.dart';
 
 class DormElectricitySettingsPage extends StatefulWidget {
   const DormElectricitySettingsPage({super.key});
@@ -14,15 +19,13 @@ class DormElectricitySettingsPage extends StatefulWidget {
       _DormElectricitySettingsPageState();
 }
 
-class _CommunityGroup {
-  final String label;
-  final String communityId;
+class _AreaGroup {
+  final DormArea area;
   final List<DormBuilding> buildings;
-  const _CommunityGroup({
-    required this.label,
-    required this.communityId,
-    required this.buildings,
-  });
+  const _AreaGroup({required this.area, required this.buildings});
+
+  String get label => area.name;
+  String get areaId => area.id;
 }
 
 class _DormElectricitySettingsPageState
@@ -32,7 +35,7 @@ class _DormElectricitySettingsPageState
   List<DormBuilding> _allBuildings = [];
   List<DormRoom> _rooms = [];
 
-  List<_CommunityGroup> _communityGroups = [];
+  List<_AreaGroup> _areaGroups = [];
 
   // floorName → [DormRoom, ...]
   Map<String, List<DormRoom>> _floorMap = {};
@@ -45,6 +48,7 @@ class _DormElectricitySettingsPageState
   bool _loadingRooms = false;
   bool _saving = false;
   String? _error;
+  bool _requiresUnifiedAuth = false;
 
   bool _alertEnabled = false;
   double _alertThreshold = DormElectricityService.defaultAlertThreshold;
@@ -78,16 +82,44 @@ class _DormElectricitySettingsPageState
 
   Future<void> _loadBuildings() async {
     try {
-      final buildings = await _service.fetchBuildings();
+      final areas = await _service.fetchAreas();
       if (!mounted) return;
-      _allBuildings = buildings;
-      _buildCommunityGroups();
+      if (areas.isEmpty) {
+        setState(() {
+          _error = '未获取到园区列表';
+          _requiresUnifiedAuth = false;
+          _loadingBuildings = false;
+        });
+        return;
+      }
+
+      // 园区数量少（≤2），整表预取让滚轮切换零等待。
+      final groups = <_AreaGroup>[];
+      final allBuildings = <DormBuilding>[];
+      for (final area in areas) {
+        final buildings = await _service.fetchBuildings(area);
+        if (buildings.isEmpty) continue;
+        groups.add(_AreaGroup(area: area, buildings: buildings));
+        allBuildings.addAll(buildings);
+      }
+      if (!mounted) return;
+      if (groups.isEmpty) {
+        setState(() {
+          _error = '未获取到楼幢列表';
+          _requiresUnifiedAuth = false;
+          _loadingBuildings = false;
+        });
+        return;
+      }
+      _areaGroups = groups;
+      _allBuildings = allBuildings;
 
       // Restore previously saved config
       final savedConfig = await _service.loadRoomConfig();
+      if (!mounted) return;
       if (savedConfig != null) {
         for (final b in _allBuildings) {
-          if (b.communityId == savedConfig.communityId &&
+          if (b.areaId == savedConfig.areaId &&
               b.buildingId == savedConfig.buildingId) {
             _selectedBuilding = b;
             break;
@@ -95,11 +127,17 @@ class _DormElectricitySettingsPageState
         }
       }
 
-      setState(() => _loadingBuildings = false);
+      if (!mounted) return;
+      setState(() {
+        _error = null;
+        _requiresUnifiedAuth = false;
+        _loadingBuildings = false;
+      });
 
       if (_selectedBuilding != null) {
         _loadRooms(
-          _selectedBuilding!.buildingId,
+          areaId: _selectedBuilding!.areaId,
+          buildingId: _selectedBuilding!.buildingId,
           savedRoomId: savedConfig?.roomId,
           savedFloorId: savedConfig?.floorId,
         );
@@ -107,24 +145,18 @@ class _DormElectricitySettingsPageState
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = '加载楼幢列表失败';
+        // DormServiceException / EpaySessionUnavailableException 均携带
+        // 可直接展示的原因（维护中 / 需登录 / 网络错误等）。
+        _error =
+            e is DormServiceException ||
+                e is EpaySessionUnavailableException ||
+                e is EpayGatewayException
+            ? e.toString()
+            : '加载楼幢列表失败';
+        _requiresUnifiedAuth = e is EpaySessionUnavailableException;
         _loadingBuildings = false;
       });
     }
-  }
-
-  void _buildCommunityGroups() {
-    final temp = <String, List<DormBuilding>>{};
-    for (final b in _allBuildings) {
-      temp.putIfAbsent(b.communityId, () => []).add(b);
-    }
-    _communityGroups = temp.values.map((buildings) {
-      return _CommunityGroup(
-        label: buildings.first.communityName,
-        communityId: buildings.first.communityId,
-        buildings: buildings,
-      );
-    }).toList();
   }
 
   void _buildFloorMap() {
@@ -132,23 +164,53 @@ class _DormElectricitySettingsPageState
     for (final r in _rooms) {
       _floorMap.putIfAbsent(r.floorName, () => []).add(r);
     }
+    // API 只回一个「默认楼层」时，几百个房间号只能从头滚：按房间名解析
+    // 楼层（HX4-105 → 1楼）追加筛选分组，解析不出的房间只留在默认楼层。
+    if (_floorMap.length <= 1) {
+      final parsed = <String, List<DormRoom>>{};
+      for (final r in _rooms) {
+        final label = DormElectricityService.parseFloorLabel(r.roomName);
+        if (label == null) continue;
+        parsed.putIfAbsent(label, () => []).add(r);
+      }
+      if (parsed.length > 1) {
+        final floorKeys = parsed.keys.toList()..sort(_compareFloorLabel);
+        _floorMap = {_allRoomsFloorKey: List.of(_rooms), ...parsed};
+        _floorList = [_allRoomsFloorKey, ...floorKeys];
+        return;
+      }
+    }
     _floorList = _floorMap.keys.toList();
   }
 
-  Future<void> _loadRooms(
-    String buildingId, {
+  static const _allRoomsFloorKey = '默认楼层';
+
+  int _compareFloorLabel(String a, String b) {
+    final na = int.tryParse(a.replaceAll(RegExp(r'\D'), '')) ?? 0;
+    final nb = int.tryParse(b.replaceAll(RegExp(r'\D'), '')) ?? 0;
+    return na.compareTo(nb);
+  }
+
+  Future<void> _loadRooms({
+    required String areaId,
+    required String buildingId,
     String? savedRoomId,
     String? savedFloorId,
   }) async {
+    if (!mounted) return;
     setState(() {
       _loadingRooms = true;
       _rooms = [];
       _floorMap = {};
       _floorList = [];
       _selectedRoom = null;
+      _error = null;
     });
     try {
-      final rooms = await _service.fetchRooms(buildingId);
+      final rooms = await _service.fetchRooms(
+        areaId: areaId,
+        buildingId: buildingId,
+      );
       if (!mounted) return;
       _rooms = rooms;
       _buildFloorMap();
@@ -166,7 +228,13 @@ class _DormElectricitySettingsPageState
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = '加载房间列表失败';
+        _error =
+            e is DormServiceException ||
+                e is EpaySessionUnavailableException ||
+                e is EpayGatewayException
+            ? e.toString()
+            : '加载房间列表失败';
+        _requiresUnifiedAuth = e is EpaySessionUnavailableException;
         _loadingRooms = false;
       });
     }
@@ -178,14 +246,22 @@ class _DormElectricitySettingsPageState
     if (building == null || room == null) return;
 
     setState(() => _saving = true);
-    await _service.saveRoomConfig(
-      DormRoomConfig(
-        communityId: building.communityId,
-        buildingId: building.buildingId,
-        floorId: room.floorId,
-        roomId: room.roomId,
-      ),
-    );
+    try {
+      await _service.saveRoomConfig(
+        DormRoomConfig(
+          areaId: building.areaId,
+          buildingId: building.buildingId,
+          floorId: room.floorId,
+          roomId: room.roomId,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('保存寝室配置失败：$error')));
+      return;
+    }
     if (!mounted) return;
     ScaffoldMessenger.of(context)
         .showSnackBar(const SnackBar(content: Text('寝室配置成功')));
@@ -199,7 +275,13 @@ class _DormElectricitySettingsPageState
     if (threshold != null) {
       await _service.setAlertThreshold(threshold);
     }
-    await BackgroundTaskService.instance.reRegisterIfNeeded();
+    try {
+      await BackgroundTaskService.instance.reRegisterIfNeeded();
+    } catch (error) {
+      // 后台任务重注册失败不应让设置静默回滚或抛未处理异常，记录即可，
+      // 下次切换开关或冷启动仍会重试。
+      AppLogger.instance.storage(LogLevel.warn, '电费预警后台任务重注册失败', error: error);
+    }
   }
 
   void _showThresholdPicker() {
@@ -209,7 +291,7 @@ class _DormElectricitySettingsPageState
     var tempThreshold = _thresholdOptions[selectedIdx];
     final scrollCtrl = FixedExtentScrollController(initialItem: selectedIdx);
 
-    showModalBottomSheet(
+    final dismissed = showModalBottomSheet(
       context: context,
       builder: (ctx) {
         return SafeArea(
@@ -251,35 +333,36 @@ class _DormElectricitySettingsPageState
         );
       },
     );
+    unawaited(dismissed.whenComplete(scrollCtrl.dispose));
   }
 
   // ── 两列波轮：校区区期 / 楼幢 ──
 
   void _showBuildingPicker() {
-    if (_communityGroups.isEmpty) return;
+    if (_areaGroups.isEmpty) return;
 
     int groupIdx = 0;
     int buildingIdx = 0;
 
     if (_selectedBuilding != null) {
-      groupIdx = _communityGroups.indexWhere(
-        (g) => g.communityId == _selectedBuilding!.communityId,
+      groupIdx = _areaGroups.indexWhere(
+        (g) => g.areaId == _selectedBuilding!.areaId,
       );
       if (groupIdx < 0) groupIdx = 0;
-      buildingIdx = _communityGroups[groupIdx].buildings.indexWhere(
+      buildingIdx = _areaGroups[groupIdx].buildings.indexWhere(
         (b) => b.buildingId == _selectedBuilding!.buildingId,
       );
       if (buildingIdx < 0) buildingIdx = 0;
     }
 
-    var currentGroup = _communityGroups[groupIdx];
+    var currentGroup = _areaGroups[groupIdx];
     var currentBuildings = currentGroup.buildings;
     var tempBuildingIdx = buildingIdx;
 
     final groupCtrl = FixedExtentScrollController(initialItem: groupIdx);
     final buildingCtrl = FixedExtentScrollController(initialItem: buildingIdx);
 
-    showModalBottomSheet(
+    final buildingDismissed = showModalBottomSheet(
       context: context,
       builder: (ctx) {
         return SafeArea(
@@ -305,7 +388,10 @@ class _DormElectricitySettingsPageState
                                 _selectedBuilding = b;
                                 _selectedRoom = null;
                               });
-                              _loadRooms(b.buildingId);
+                              _loadRooms(
+                                areaId: b.areaId,
+                                buildingId: b.buildingId,
+                              );
                             },
                     ),
                     Expanded(
@@ -319,7 +405,7 @@ class _DormElectricitySettingsPageState
                               itemExtent: 36,
                               onSelectedItemChanged: (i) {
                                 setModalState(() {
-                                  currentGroup = _communityGroups[i];
+                                  currentGroup = _areaGroups[i];
                                   currentBuildings = currentGroup.buildings;
                                   tempBuildingIdx = 0;
                                 });
@@ -329,7 +415,7 @@ class _DormElectricitySettingsPageState
                                   buildingCtrl.jumpToItem(0);
                                 });
                               },
-                              children: _communityGroups
+                              children: _areaGroups
                                   .map(
                                     (g) => Center(
                                       child: Text(
@@ -377,6 +463,12 @@ class _DormElectricitySettingsPageState
         );
       },
     );
+    unawaited(
+      buildingDismissed.whenComplete(() {
+        groupCtrl.dispose();
+        buildingCtrl.dispose();
+      }),
+    );
   }
 
   // ── 两列波轮：楼层 / 房间号 ──
@@ -386,7 +478,14 @@ class _DormElectricitySettingsPageState
 
     int floorIdx = 0;
     if (_selectedRoom != null) {
-      floorIdx = _floorList.indexOf(_selectedRoom!.floorName);
+      // 优先跳到房间名解析出的楼层分组，找不到再回退 API 楼层名。
+      final label =
+          DormElectricityService.parseFloorLabel(_selectedRoom!.roomName) ??
+          _selectedRoom!.floorName;
+      floorIdx = _floorList.indexOf(label);
+      if (floorIdx < 0) {
+        floorIdx = _floorList.indexOf(_selectedRoom!.floorName);
+      }
       if (floorIdx < 0) floorIdx = 0;
     }
 
@@ -394,7 +493,7 @@ class _DormElectricitySettingsPageState
     var currentRooms = _floorMap[currentFloor]!;
     var tempRoomIdx = 0;
 
-    if (_selectedRoom != null && currentFloor == _selectedRoom!.floorName) {
+    if (_selectedRoom != null) {
       final ri = currentRooms.indexWhere(
         (r) => r.roomId == _selectedRoom!.roomId,
       );
@@ -404,7 +503,7 @@ class _DormElectricitySettingsPageState
     final floorCtrl = FixedExtentScrollController(initialItem: floorIdx);
     final roomCtrl = FixedExtentScrollController(initialItem: tempRoomIdx);
 
-    showModalBottomSheet(
+    final roomDismissed = showModalBottomSheet(
       context: context,
       builder: (ctx) {
         return SafeArea(
@@ -493,6 +592,12 @@ class _DormElectricitySettingsPageState
         );
       },
     );
+    unawaited(
+      roomDismissed.whenComplete(() {
+        floorCtrl.dispose();
+        roomCtrl.dispose();
+      }),
+    );
   }
 
   // ── 公共 UI ──
@@ -558,7 +663,7 @@ class _DormElectricitySettingsPageState
   String get _buildingDisplayText {
     final b = _selectedBuilding;
     if (b == null) return '请选择';
-    return '${b.communityName}  ${b.buildingName}';
+    return '${b.areaName}  ${b.buildingName}';
   }
 
   String get _roomDisplayText {
@@ -575,18 +680,33 @@ class _DormElectricitySettingsPageState
       body: _loadingBuildings
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-          ? AppErrorView(
-              title: '加载失败',
-              message: _error,
-              onRetry: () {
-                setState(() {
-                  _error = null;
-                  _loadingBuildings = true;
-                });
-                _loadBuildings();
-              },
+          ? Column(
+              children: [
+                Expanded(
+                  child: AppErrorView(
+                    title: '加载失败',
+                    message: _error,
+                    onRetry: () {
+                      setState(() {
+                        _error = null;
+                        _loadingBuildings = true;
+                      });
+                      _loadBuildings();
+                    },
+                  ),
+                ),
+                if (_requiresUnifiedAuth)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                    child: FilledButton.icon(
+                      onPressed: _loginAndRetry,
+                      icon: const Icon(Icons.login_rounded),
+                      label: const Text('登录统一认证后重试'),
+                    ),
+                  ),
+              ],
             )
-          : Padding(
+          : SingleChildScrollView(
               padding: const EdgeInsets.all(20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -673,5 +793,24 @@ class _DormElectricitySettingsPageState
               ),
             ),
     );
+  }
+
+  Future<void> _loginAndRetry() async {
+    final loggedIn = await showUnifiedAuthLoginModal(
+      context,
+      title: '登录统一认证',
+      description: '登录后在后台完成电费认证，当前页面仍保持原生界面',
+      barrierDismissible: true,
+    );
+    if (!mounted || !loggedIn) return;
+
+    await _service.invalidateGatewaySession();
+    if (!mounted) return;
+    setState(() {
+      _error = null;
+      _requiresUnifiedAuth = false;
+      _loadingBuildings = true;
+    });
+    await _loadBuildings();
   }
 }

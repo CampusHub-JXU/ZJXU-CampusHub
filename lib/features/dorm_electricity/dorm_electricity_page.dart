@@ -1,11 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/logging/app_logger.dart';
 import '../../core/notification/app_notification_service.dart';
 import 'dorm_electricity_service.dart';
 import 'widgets/electricity_battery_header.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_empty_view.dart';
+import '../../shared/widgets/login_shell.dart';
 
 class DormElectricityPage extends StatefulWidget {
   const DormElectricityPage({super.key});
@@ -20,6 +24,9 @@ class _DormElectricityPageState extends State<DormElectricityPage>
   double? _electricity;
   bool _loading = true;
   bool _hasConfig = false;
+  bool _requiresUnifiedAuth = false;
+  bool _alertEnabled = false;
+  double _alertThreshold = DormElectricityService.defaultAlertThreshold;
   String? _error;
   AnimationController? _matrixFillController;
   Animation<double>? _matrixFillAnim;
@@ -64,25 +71,30 @@ class _DormElectricityPageState extends State<DormElectricityPage>
   }
 
   Future<void> _load({bool forceRefresh = false}) async {
+    if (!mounted) return;
     setState(() => _loading = true);
     _hasConfig = await _service.hasRoomConfig();
+    _alertEnabled = await _service.getAlertEnabled();
+    _alertThreshold = await _service.getAlertThreshold();
+    if (!mounted) return;
     if (_hasConfig) {
       final oldValue = _electricity;
       _electricity = await _service.fetchElectricity(
         forceRefresh: forceRefresh,
       );
       _error = _service.lastError;
+      _requiresUnifiedAuth = _service.requiresAuthentication;
 
-      if (forceRefresh) {
+      // 查询失败（网关不健康）时跳过低电量预警，避免紧跟着再发一整轮
+      // RPC，把失败面翻倍。
+      if (forceRefresh && _error == null) {
         await _service.checkAndAlert(
           onAlert: ({required value, required threshold}) {
-            AppNotificationService.instance.showNotification(
-              id: 100,
-              title: '寝室电费不足',
-              body:
-                  '剩余电量 ${_service.formatElectricity(value)} 度，'
-                  '低于 ${threshold.toInt()} 度阈值，请及时充值',
-              payload: 'dorm-electricity',
+            unawaited(
+              _showLowElectricityNotification(
+                value: value,
+                threshold: threshold,
+              ),
             );
           },
         );
@@ -98,8 +110,35 @@ class _DormElectricityPageState extends State<DormElectricityPage>
         }
       }
     }
+    if (!_hasConfig) {
+      _requiresUnifiedAuth = false;
+      _error = null;
+    }
     if (!mounted) return;
     setState(() => _loading = false);
+  }
+
+  Future<void> _showLowElectricityNotification({
+    required double value,
+    required double threshold,
+  }) async {
+    try {
+      await AppNotificationService.instance.showNotification(
+        id: 100,
+        title: '寝室电费不足',
+        body:
+            '剩余电量 ${_service.formatElectricity(value)} 度，'
+            '低于 ${threshold.toInt()} 度阈值，请及时充值',
+        payload: 'dorm-electricity',
+      );
+    } catch (error, stackTrace) {
+      AppLogger.instance.storage(
+        LogLevel.warn,
+        '寝室电费低电量通知发送失败',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
   }
 
   _ElectricityColors _resolveColors(BuildContext context) {
@@ -184,7 +223,7 @@ class _DormElectricityPageState extends State<DormElectricityPage>
             tooltip: '选择寝室',
             onPressed: () async {
               await context.pushNamed('dorm-electricity-settings');
-              _load(forceRefresh: true);
+              if (mounted) _load(forceRefresh: true);
             },
           ),
         ],
@@ -229,7 +268,7 @@ class _DormElectricityPageState extends State<DormElectricityPage>
       actionLabel: '去选择寝室',
       onAction: () async {
         await context.pushNamed('dorm-electricity-settings');
-        _load(forceRefresh: true);
+        if (mounted) _load(forceRefresh: true);
       },
     );
   }
@@ -249,7 +288,7 @@ class _DormElectricityPageState extends State<DormElectricityPage>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (_error != null) ...[
-            _buildErrorBanner(cs),
+            _buildErrorBanner(context, cs),
             const SizedBox(height: 12),
           ],
           _buildDetailCard(context, cs, colors, value, updatedAtText),
@@ -344,8 +383,7 @@ class _DormElectricityPageState extends State<DormElectricityPage>
                 child: _InfoRow(
                   icon: Icons.bolt_outlined,
                   label: '预警阈值',
-                  value:
-                      '${DormElectricityService.defaultAlertThreshold.toInt()} 度',
+                  value: _alertEnabled ? '${_alertThreshold.toInt()} 度' : '未开启',
                   accent: accent,
                 ),
               ),
@@ -383,7 +421,9 @@ class _DormElectricityPageState extends State<DormElectricityPage>
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          '低于阈值时推送提醒',
+                          _alertEnabled
+                              ? '低于 ${_alertThreshold.toInt()} 度时推送提醒'
+                              : '未开启，点击前往设置',
                           style: TextStyle(fontSize: 11, color: dim),
                         ),
                       ],
@@ -407,7 +447,7 @@ class _DormElectricityPageState extends State<DormElectricityPage>
 
   // ── Error Banner ───────────────────────────────────────────────────────────
 
-  Widget _buildErrorBanner(ColorScheme cs) {
+  Widget _buildErrorBanner(BuildContext context, ColorScheme cs) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
@@ -419,15 +459,40 @@ class _DormElectricityPageState extends State<DormElectricityPage>
           Icon(Icons.wifi_off_outlined, size: 18, color: cs.onErrorContainer),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(switch (_error) {
-              '数据解析失败' => '数据解析失败，请刷新重试',
-              final message? => message,
-              _ => '请确认已连接校园网络',
-            }, style: TextStyle(fontSize: 13, color: cs.onErrorContainer)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(switch (_error) {
+                  '数据解析失败' => '数据解析失败，请刷新重试',
+                  final message? => message,
+                  _ => '请确认已连接校园网络',
+                }, style: TextStyle(fontSize: 13, color: cs.onErrorContainer)),
+                if (_requiresUnifiedAuth) ...[
+                  const SizedBox(height: 8),
+                  FilledButton.tonal(
+                    onPressed: _loginAndRetry,
+                    child: const Text('登录统一认证后重试'),
+                  ),
+                ],
+              ],
+            ),
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _loginAndRetry() async {
+    final loggedIn = await showUnifiedAuthLoginModal(
+      context,
+      title: '登录统一认证',
+      description: '登录后在后台完成电费认证，当前页面仍保持原生界面',
+    );
+    if (!mounted || !loggedIn) return;
+
+    await _service.invalidateGatewaySession();
+    if (!mounted) return;
+    await _load(forceRefresh: true);
   }
 }
 

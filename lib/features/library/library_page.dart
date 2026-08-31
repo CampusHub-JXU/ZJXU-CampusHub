@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/auth/cas_auth_broker.dart';
 import '../../shared/widgets/unified_auth_protected_webview_page.dart';
 
 class LibraryPage extends StatefulWidget {
@@ -11,8 +12,8 @@ class LibraryPage extends StatefulWidget {
 }
 
 class _LibraryPageState extends State<LibraryPage> {
-  static const _libraryUrl =
-      'https://libapp.zjxu.edu.cn/Info/Thirdparty/ssoFromDingDing';
+  /// 目标 URL 与 CAS service 是同一个地址，统一由 [CasService] 注册表提供。
+  static final _libraryUrl = CasService.librarySso.serviceUrl;
 
   @override
   Widget build(BuildContext context) {

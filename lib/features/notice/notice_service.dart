@@ -4,7 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:html/parser.dart' as html_parser;
 
-import '../../core/auth/unified_auth.dart';
+import '../../core/auth/cas_auth_broker.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/network/dio_client.dart';
 import '../../core/network/legacy_dio_factory.dart';
@@ -14,31 +14,20 @@ import 'notice_model.dart';
 const _jwcNoticeBaseUrl = 'https://jwc.zjxu.edu.cn/';
 const _jwcNoticeListUrl = 'https://jwc.zjxu.edu.cn/list.jsp';
 
+String? _decodeBodyAsUtf8(List<int>? body) {
+  if (body == null || body.isEmpty) return null;
+  return utf8.decode(body, allowMalformed: true);
+}
+
 @visibleForTesting
 bool looksLikeNoticeResponseNeedsUnifiedAuth(Response<List<int>> response) {
-  final realUrl = response.realUri.toString();
-  if (isUnifiedAuthLoginEntryUrl(realUrl)) {
-    return true;
-  }
-
-  final statusCode = response.statusCode ?? 0;
-  if (statusCode == 302 || statusCode == 303) {
-    final location = response.headers.value('location') ?? '';
-    if (location.isNotEmpty) {
-      final resolved = response.requestOptions.uri.resolve(location).toString();
-      if (isUnifiedAuthLoginEntryUrl(resolved)) {
-        return true;
-      }
-    }
-  }
-
-  final body = response.data;
-  if (body == null || body.isEmpty) {
-    return false;
-  }
-
-  final html = utf8.decode(body, allowMalformed: true);
-  return looksLikeUnifiedAuthLoginHtml(html);
+  return CasAuthBroker.isCasLoginExchange(
+    realUrl: response.realUri.toString(),
+    statusCode: response.statusCode,
+    location: response.headers.value('location'),
+    requestUri: response.requestOptions.uri,
+    html: _decodeBodyAsUtf8(response.data),
+  );
 }
 
 @visibleForTesting
@@ -238,11 +227,11 @@ class NoticeService {
     Object? error,
     StackTrace? stackTrace,
   }) async {
-    final unifiedAuthReady = await UnifiedAuthService.instance.validateSession(
-      serviceUrl: url,
+    final sessionStatus = await CasSession.ensure(
+      url,
       syncWebViewCookies: false,
     );
-    if (unifiedAuthReady != true) {
+    if (sessionStatus != CasSessionStatus.active) {
       AppLogger.instance.network(
         LogLevel.warn,
         '通知公告统一认证会话不可用，无法继续访问: $url',
@@ -266,7 +255,7 @@ class NoticeService {
       );
       if (looksLikeNoticeResponseNeedsUnifiedAuth(response)) {
         AppLogger.instance.network(LogLevel.warn, '通知公告统一认证回退后仍返回登录页: $url');
-        throw StateError('通知公告统一认证会话已失效');
+        throw const CasAuthExpiredException('通知公告统一认证会话已失效，请重新登录');
       }
       AppLogger.instance.network(LogLevel.info, '通知公告已通过统一认证直连加载');
       return response;
