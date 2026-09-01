@@ -78,6 +78,43 @@ void main() {
     expect(tapped, isTrue);
   });
 
+  testWidgets('full-day form renders done rows and raises cap to 6', (
+    tester,
+  ) async {
+    HomeTodayCourseRow namedRow(String name, {bool done = false}) =>
+        HomeTodayCourseRow(
+          timeText: '08:00',
+          lessonText: '第 1-2 节',
+          courseName: name,
+          locationText: '梁林校区 教B-102',
+          isOngoing: false,
+          isDone: done,
+        );
+    await pumpSection(
+      tester,
+      today: HomeTodayPresentation(
+        isFullDay: true,
+        courses: [
+          namedRow('课程一', done: true),
+          namedRow('课程二', done: true),
+          namedRow('课程三', done: true),
+          namedRow('课程四', done: true),
+          namedRow('课程五'),
+          namedRow('课程六'),
+          namedRow('课程七'),
+        ],
+        exams: const [],
+      ),
+      onOpenSchedule: () {},
+    );
+
+    expect(find.text('今天'), findsOneWidget);
+    // 全天上限 6 行：前 6 门可见，第 7 门折叠进「查看全部」。
+    expect(find.text('课程六'), findsOneWidget);
+    expect(find.text('课程七'), findsNothing);
+    expect(find.text('查看全部'), findsOneWidget);
+  });
+
   testWidgets('renders ongoing badge and exam rows first', (tester) async {
     await pumpSection(
       tester,

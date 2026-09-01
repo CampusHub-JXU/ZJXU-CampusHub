@@ -434,6 +434,77 @@ void main() {
       ]);
     });
 
+    test('全天模式：已结束课程保留并标记 isDone，非全天模式仍过滤', () {
+      final today = DateTime(2026, 9, 15);
+      final snapshot = buildSnapshot(
+        courses: [
+          courseAt(today, startLesson: 2, courseName: '已结束的课'),
+          courseAt(today, startLesson: 6, endLesson: 6, courseName: '下午的课'),
+        ],
+      );
+
+      final fullDay = resolveHomePresentation(snapshot, fullDayCourses: true);
+      expect(fullDay.today.isFullDay, isTrue);
+      expect(fullDay.today.isCollapsed, isFalse);
+      expect(fullDay.today.courses.map((c) => c.courseName).toList(), [
+        '已结束的课',
+        '下午的课',
+      ]);
+      expect(fullDay.today.courses.first.isDone, isTrue);
+      expect(fullDay.today.courses.first.isOngoing, isFalse);
+      expect(fullDay.today.courses.last.isDone, isFalse);
+
+      // 关闭开关：保持原有「仅剩余课程」行为。
+      final remaining = resolveHomePresentation(snapshot);
+      expect(remaining.today.isFullDay, isFalse);
+      expect(remaining.today.courses.map((c) => c.courseName), ['下午的课']);
+    });
+
+    test('全天模式：进行中的课不带 isDone，整段不折叠', () {
+      final today = DateTime(2026, 9, 15);
+      // now=10:00：第 2 节 08:45-09:25 已结束，第 3-4 节 09:45-11:10 正在上。
+      final snapshot = buildSnapshot(
+        courses: [
+          courseAt(today, startLesson: 2, courseName: '已结束的课'),
+          courseAt(today, startLesson: 3, endLesson: 4, courseName: '正在上的课'),
+        ],
+      );
+
+      final presentation = resolveHomePresentation(
+        snapshot,
+        fullDayCourses: true,
+      );
+
+      expect(presentation.hero.kind, HomeHeroKind.currentCourse);
+      expect(presentation.today.isFullDay, isTrue);
+      expect(presentation.today.isCollapsed, isFalse);
+      expect(presentation.today.courses.map((c) => c.isDone), [
+        isTrue,
+        isFalse,
+      ]);
+      expect(presentation.today.courses.last.isOngoing, isTrue);
+    });
+
+    test('全天模式：今天完全没课时仍回落次日预览（含折叠规则）', () {
+      final tomorrow = DateTime(2026, 9, 16);
+      final snapshot = buildSnapshot(
+        courses: [
+          courseAt(tomorrow, startLesson: 1, courseName: '高等数学'),
+          courseAt(tomorrow, startLesson: 3, courseName: '大学英语'),
+        ],
+      );
+
+      final presentation = resolveHomePresentation(
+        snapshot,
+        fullDayCourses: true,
+      );
+
+      expect(presentation.hero.kind, HomeHeroKind.nextCourseUpcoming);
+      // 今天零课程：全天形态无内容，回落次日预览并按原规则折叠让位 Hero。
+      expect(presentation.today.isFullDay, isFalse);
+      expect(presentation.today.isEmpty, isTrue);
+    });
+
     test('教学周内周次标签为「第 N 周」', () {
       final snapshot = buildSnapshot(currentWeek: 2);
 

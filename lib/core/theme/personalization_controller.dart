@@ -50,6 +50,8 @@ class PersonalizationController {
   static const _keyBgAlignY = 'home_background_align_y';
   static const _keyBackgroundFit = 'home_background_fit';
   static const _keyBackgroundScale = 'home_background_scale';
+  static const _keyEmblemWatermark = 'home_emblem_watermark_enabled';
+  static const _keyFullDayCourses = 'home_full_day_courses_enabled';
 
   final ValueNotifier<String?> backgroundImagePath = ValueNotifier(null);
   final ValueNotifier<bool> shaderEnabled = ValueNotifier(false);
@@ -68,6 +70,13 @@ class PersonalizationController {
     HomeBackgroundFit.cover,
   );
   final ValueNotifier<double> backgroundScale = ValueNotifier(1.0);
+
+  /// 首页 Hero 区右下的嘉兴大学校徽水印；默认开。
+  final ValueNotifier<bool> emblemWatermarkEnabled = ValueNotifier(true);
+
+  /// 首页「今天」段落展示全天课程（含已结束灰显）；关闭时仅显示
+  /// 剩余课程。默认开（班级同学反馈想看一整天的课）。
+  final ValueNotifier<bool> fullDayCoursesEnabled = ValueNotifier(true);
 
   final ValueNotifier<List<Color>?> monetColors = ValueNotifier(null);
 
@@ -296,6 +305,8 @@ class PersonalizationController {
       0.5,
       3.0,
     );
+    emblemWatermarkEnabled.value = prefs.getBool(_keyEmblemWatermark) ?? true;
+    fullDayCoursesEnabled.value = prefs.getBool(_keyFullDayCourses) ?? true;
   }
 
   Future<void> setBackgroundImagePath(String? path) async {
@@ -373,6 +384,18 @@ class PersonalizationController {
     await _persistDouble(_keyBackgroundScale, scale, backgroundScale);
   }
 
+  Future<void> setEmblemWatermarkEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyEmblemWatermark, enabled);
+    emblemWatermarkEnabled.value = enabled;
+  }
+
+  Future<void> setFullDayCoursesEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyFullDayCourses, enabled);
+    fullDayCoursesEnabled.value = enabled;
+  }
+
   Future<void> _persistDouble(
     String key,
     double value,
@@ -381,5 +404,25 @@ class PersonalizationController {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(key, value);
     notifier.value = value;
+  }
+
+  @visibleForTesting
+  void debugReset() {
+    backgroundImagePath.value = null;
+    shaderEnabled.value = false;
+    shaderMode.value = HomeShaderMode.glass;
+    headerGlassEnabled.value = false;
+    shaderStrength.value = 0.45;
+    shaderOpacity.value = 1.0;
+    shaderAnimationSpeed.value = 1.0;
+    backgroundOpacity.value = 1.0;
+    backgroundAlignment.value = Alignment.center;
+    backgroundFit.value = HomeBackgroundFit.cover;
+    backgroundScale.value = 1.0;
+    emblemWatermarkEnabled.value = true;
+    fullDayCoursesEnabled.value = true;
+    _monetColors = null;
+    _monetSourcePath = null;
+    monetColors.value = null;
   }
 }

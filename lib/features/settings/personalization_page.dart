@@ -9,6 +9,7 @@ import '../../core/theme/personalization_controller.dart';
 import '../../core/theme/widgets/home_background_layer.dart';
 import 'widgets/personalization_background_section.dart';
 import 'widgets/personalization_glass_section.dart';
+import 'widgets/personalization_home_section.dart';
 import 'widgets/personalization_shader_section.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_card.dart';
@@ -43,6 +44,8 @@ class _PersonalizationPageState extends State<PersonalizationPage> {
                   : const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
               children: const [
+                PersonalizationHomeSection(),
+                SizedBox(height: 16),
                 PersonalizationBackgroundSection(),
                 SizedBox(height: 16),
                 PersonalizationShaderSection(),

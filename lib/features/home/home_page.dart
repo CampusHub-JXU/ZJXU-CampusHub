@@ -373,7 +373,11 @@ class _HomePageState extends State<HomePage> {
       campusCardBalance: _campusCardBalance,
       dormElectricity: _dormElectricity,
     );
-    return resolveHomePresentation(snapshot);
+    return resolveHomePresentation(
+      snapshot,
+      fullDayCourses:
+          PersonalizationController.instance.fullDayCoursesEnabled.value,
+    );
   }
 
   /// 环境行日期，如「8月29日 周六」。
@@ -424,7 +428,15 @@ class _HomePageState extends State<HomePage> {
               bottom: false,
               child: ValueListenableBuilder<HomeTextColorMode>(
                 valueListenable: AppThemeController.instance.homeTextColorMode,
-                builder: (context, _, _) => _buildScrollBody(context),
+                builder: (context, _, _) =>
+                    // 「今日全部课程」开关变化时重建滚动内容，Today 段落
+                    // 在剩余/全天形态间即时切换。
+                    ValueListenableBuilder<bool>(
+                      valueListenable: PersonalizationController
+                          .instance
+                          .fullDayCoursesEnabled,
+                      builder: (context, _, _) => _buildScrollBody(context),
+                    ),
               ),
             ),
           ],

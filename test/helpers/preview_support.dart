@@ -157,6 +157,12 @@ Future<void> pumpPreviewScene(
   );
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 350));
+  // Image.asset 等真实异步解码在 FakeAsync 区内不会完成，需在
+  // runAsync 里让引擎回调跑一拍，再泵一帧把已解码的位图画进 golden。
+  await tester.runAsync(() async {
+    await Future<void>.delayed(const Duration(milliseconds: 60));
+  });
+  await tester.pump();
 }
 
 /// 将当前画面写出为 preview/render 下的 PNG（配合 --update-goldens）。

@@ -5,10 +5,12 @@ import '../models/home_presentation.dart';
 
 /// Today Section：当天剩余课程 + 今日考试的紧凑纯文字列表；今天没有
 /// 剩余安排时由 resolver 降级为次日预览形态（标题变为「开学首日 · …」
-/// 或「明天」）。
+/// 或「明天」）。首页个性化「今日全部课程」开启时为全天形态
+///（[HomeTodayPresentation.isFullDay]）：列出今天一整天的课程，
+/// 已结束的行灰显、进行中带胶囊，行数上限放宽到 6。
 ///
 /// 标题 + 约 44 行高的单行条目（时间 / 课程名 / 地点），行间发丝分隔线，
-/// 无卡片容器；无内容时整块不渲染。总行数超过 [_maxRows] 时截断并在
+/// 无卡片容器；无内容时整块不渲染。总行数超限时截断并在
 /// 尾部展示「查看全部」（跳课表）。
 ///
 /// 折叠形态（[HomeTodayPresentation.isCollapsed]）：Hero 已用课程大字
@@ -27,7 +29,9 @@ class HomeTodaySection extends StatelessWidget {
   static const double _rowGap = 12;
 
   /// 最多展示的行数（考试 + 课程合计），超出部分折叠进「查看全部」。
+  /// 全天模式行数上限放宽——同学要的就是一整天的安排。
   static const int _maxRows = 3;
+  static const int _maxRowsFullDay = 6;
 
   @override
   Widget build(BuildContext context) {
@@ -118,10 +122,11 @@ class HomeTodaySection extends StatelessWidget {
     required Color primaryTextColor,
     required Color secondaryTextColor,
   }) {
-    // 考试行在前、课程行在后（模型即分开存储）；合计超过 _maxRows 截断。
-    final visibleExams = today.exams.take(_maxRows).toList();
+    // 考试行在前、课程行在后（模型即分开存储）；合计超过上限截断。
+    final maxRows = today.isFullDay ? _maxRowsFullDay : _maxRows;
+    final visibleExams = today.exams.take(maxRows).toList();
     final visibleCourses = today.courses
-        .take(_maxRows - visibleExams.length)
+        .take(maxRows - visibleExams.length)
         .toList();
     final hiddenCount =
         today.exams.length +
@@ -206,7 +211,8 @@ class HomeTodaySection extends StatelessWidget {
     );
   }
 
-  /// 课程行：时间 + 课程名（进行中加圆点与胶囊）+ 右对齐地点。
+  /// 课程行：时间 + 课程名（进行中加圆点与胶囊，全天模式已结束灰显）
+  /// + 右对齐地点。
   Widget _buildCourseRow(
     BuildContext context,
     HomeTodayCourseRow course, {
@@ -218,6 +224,12 @@ class HomeTodaySection extends StatelessWidget {
     // 次日预览形态整体降一档（14/12 字号 + 更紧行距），与实时的
     // 「今天」列表拉开层级——它是未来安排的轻量提示。
     final compact = today.isPreview;
+    // 全天模式已结束的课：整行降为次要色，不与剩余课程抢视觉。
+    final done = course.isDone;
+    final nameColor = done ? secondaryTextColor : primaryTextColor;
+    final timeColor = done
+        ? secondaryTextColor.withValues(alpha: 0.6)
+        : secondaryTextColor;
     return Padding(
       // 竖向 padding 撑起约 44 行高（预览 38），随 textScaler 自然缩放。
       padding: EdgeInsets.symmetric(vertical: compact ? 9 : 11),
@@ -231,7 +243,7 @@ class HomeTodaySection extends StatelessWidget {
               style: textTheme.labelSmall!.copyWith(
                 fontSize: compact ? 12 : 13,
                 fontWeight: FontWeight.w500,
-                color: secondaryTextColor,
+                color: timeColor,
                 fontFeatures: const [FontFeature.tabularFigures()],
               ),
             ),
@@ -257,8 +269,10 @@ class HomeTodaySection extends StatelessWidget {
                     course.courseName,
                     style: textTheme.titleSmall!.copyWith(
                       fontSize: compact ? 14 : 15,
-                      fontWeight: compact ? FontWeight.w500 : FontWeight.w600,
-                      color: primaryTextColor,
+                      fontWeight: done || compact
+                          ? FontWeight.w500
+                          : FontWeight.w600,
+                      color: nameColor,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -295,7 +309,9 @@ class HomeTodaySection extends StatelessWidget {
               course.locationText,
               style: textTheme.labelSmall!.copyWith(
                 fontSize: compact ? 12 : 13,
-                color: secondaryTextColor,
+                color: done
+                    ? secondaryTextColor.withValues(alpha: 0.6)
+                    : secondaryTextColor,
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,

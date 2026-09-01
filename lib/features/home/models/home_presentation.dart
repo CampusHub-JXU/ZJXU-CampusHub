@@ -109,6 +109,7 @@ class HomeTodayCourseRow {
     required this.courseName,
     required this.locationText,
     required this.isOngoing,
+    this.isDone = false,
   });
 
   /// 上课开始时间，如「09:45」。
@@ -121,6 +122,9 @@ class HomeTodayCourseRow {
 
   /// 当前正在上的课，行尾追加「进行中」标记。
   final bool isOngoing;
+
+  /// 已结束的课程（仅全天模式出现），整行灰显。
+  final bool isDone;
 }
 
 /// Today Section 中的一行考试。
@@ -147,6 +151,7 @@ class HomeTodayPresentation {
     this.title = '今天',
     this.isPreview = false,
     this.isCollapsed = false,
+    this.isFullDay = false,
   });
 
   /// 段落标题：'今天'，或预览形态如 '开学首日' / '明天'；折叠形态不渲染标题。
@@ -161,6 +166,10 @@ class HomeTodayPresentation {
   /// [courses] 为剔除首课后的余下课程（供摘要取「下一门」与总数），
   /// 不渲染标题与课程行；余下为空时整段不出现。
   final bool isCollapsed;
+
+  /// 全天形态（首页个性化开关）：列出今天一整天的课程，已结束的行
+  /// 由 [HomeTodayCourseRow.isDone] 标记灰显；行数上限比剩余模式宽。
+  final bool isFullDay;
 
   final List<HomeTodayCourseRow> courses;
   final List<HomeTodayExamRow> exams;

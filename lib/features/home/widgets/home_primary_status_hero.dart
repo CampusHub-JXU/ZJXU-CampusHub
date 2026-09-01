@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme_controller.dart';
+import '../../../core/theme/personalization_controller.dart';
 import '../models/home_presentation.dart';
 
 /// Primary Status Hero：首页唯一的最强视觉焦点（无框纯排版）。
@@ -21,6 +22,9 @@ class HomePrimaryStatusHero extends StatelessWidget {
     required this.onNotificationTap,
     required this.onUpdateTap,
   });
+
+  /// 官方校徽水印资源（矢量源件在 tools/brand/jxu_emblem.svg）。
+  static const String _emblemAsset = 'assets/brand/jxu_emblem.png';
 
   final HomeHeroPresentation hero;
 
@@ -88,33 +92,101 @@ class HomePrimaryStatusHero extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildEnvRow(context, primaryTextColor, secondaryTextColor),
-        // 环境行到 kicker 之间的呼吸空间。
-        const SizedBox(height: 56),
-        if (showKicker) ...[
-          Text(
-            kickerText,
-            style: textTheme.labelMedium!.copyWith(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: kickerColor,
-            ),
+        // 环境行以下整体垫一层校徽水印（在文字下层，不拦截点击），
+        // 填补 Hero 文字右侧留白。Stack 必须撑满可用宽度，否则
+        // 水印的 right:0 锚在文字列右缘而不是页面右缘。
+        SizedBox(
+          width: double.infinity,
+          child: Stack(
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 环境行到 kicker 之间的呼吸空间。
+                  const SizedBox(height: 56),
+                  if (showKicker) ...[
+                    Text(
+                      kickerText,
+                      style: textTheme.labelMedium!.copyWith(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: kickerColor,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  if (_isCourseKind)
+                    _buildCourseHero(
+                      context,
+                      accentColor: accentColor,
+                      primaryTextColor: primaryTextColor,
+                      secondaryTextColor: secondaryTextColor,
+                    )
+                  else
+                    _buildStatusHero(
+                      context,
+                      primaryTextColor: primaryTextColor,
+                      secondaryTextColor: secondaryTextColor,
+                    ),
+                ],
+              ),
+              _buildEmblemWatermarkSlot(accentColor),
+            ],
           ),
-          const SizedBox(height: 8),
-        ],
-        if (_isCourseKind)
-          _buildCourseHero(
-            context,
-            accentColor: accentColor,
-            primaryTextColor: primaryTextColor,
-            secondaryTextColor: secondaryTextColor,
-          )
-        else
-          _buildStatusHero(
-            context,
-            primaryTextColor: primaryTextColor,
-            secondaryTextColor: secondaryTextColor,
-          ),
+        ),
       ],
+    );
+  }
+
+  /// 校徽水印插槽：按首页个性化开关启停（关闭时整块不渲染）。
+  Widget _buildEmblemWatermarkSlot(Color tintColor) {
+    return ValueListenableBuilder<bool>(
+      valueListenable:
+          PersonalizationController.instance.emblemWatermarkEnabled,
+      builder: (context, enabled, _) {
+        if (!enabled) return const SizedBox.shrink();
+        return _buildEmblemWatermark(tintColor);
+      },
+    );
+  }
+
+  /// 品牌校徽水印：贴 Hero 右下角，纯装饰（指针穿透 + 无语义）。
+  /// 用 srcIn 把校徽着色到 accentColor——system 模式即主题酒红，
+  /// 自定义背景图强制文字色模式下跟随可读文字色；边长随 Hero 块高
+  /// 自适应，上限 170。Image 必须给显式宽高，交给约束自然缩放时
+  /// 测试渲染会出现原尺寸溢出绘制。
+  Widget _buildEmblemWatermark(Color tintColor) {
+    return Positioned(
+      right: 0,
+      top: 0,
+      bottom: 0,
+      child: IgnorePointer(
+        child: ExcludeSemantics(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final double side = constraints.maxHeight.clamp(0.0, 170.0);
+              // y=0.7：整体偏右下角，与 Hero 右下留白对齐；x=1 贴页面右缘。
+              return Align(
+                alignment: const Alignment(1, 0.7),
+                child: Opacity(
+                  // 0.12：保证环形英文与嘉字细节可辨，同时不与正文抢视觉。
+                  opacity: 0.12,
+                  child: ColorFiltered(
+                    colorFilter: ColorFilter.mode(tintColor, BlendMode.srcIn),
+                    child: Image.asset(
+                      _emblemAsset,
+                      width: side,
+                      height: side,
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.medium,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
     );
   }
 
