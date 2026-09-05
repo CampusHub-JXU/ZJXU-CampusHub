@@ -7,6 +7,8 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:jxu_campus_hub/app/app_bootstrap_controller.dart';
+import 'package:jxu_campus_hub/core/notice/notice_model.dart';
+import 'package:jxu_campus_hub/core/notice/notice_sync_store.dart';
 import 'package:jxu_campus_hub/core/semester/semester_calendar.dart';
 import 'package:jxu_campus_hub/features/campus_card/campus_card_service.dart';
 import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_service.dart';
@@ -420,6 +422,52 @@ void main() {
     expect(HomeZoneController.instance.zoneIndex, 0);
   });
 
+  testWidgets('campus notice second row is cut in half by the first screen', (
+    tester,
+  ) async {
+    usePhoneSurface(tester);
+    addTearDown(NoticeSyncStore.instance.debugReset);
+    NoticeSyncStore.instance.debugReset();
+    // 直接注入收件箱头（纯内存）：commitSync 涉及真实文件锁，在
+    // testWidgets 的假异步区里无法完成；本测试只关心布局结果。
+    NoticeSyncStore.instance.inboxHead.value = NoticeInboxHead(
+      latest: [
+        _notice('1', date: '2026-09-04'),
+        _notice('2', date: '2026-08-30'),
+        _notice('3', date: '2026-07-13'),
+      ],
+      unreadIds: {'1', '2', '3'},
+      unreadCount: 3,
+    );
+
+    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    final viewportBottom = tester
+        .getBottomRight(find.byType(SingleChildScrollView).first)
+        .dy;
+    // 开屏形态：第一条完整；第二条被视口底缘截断在半行；第三条在首屏
+    // 之外；功能段落整体在首屏之下（下滑可达）。
+    expect(tester.getRect(find.text('通知1')).bottom, lessThan(viewportBottom));
+    expect(tester.getRect(find.text('通知2')).top, lessThan(viewportBottom));
+    expect(
+      tester.getRect(find.text('通知2')).bottom,
+      greaterThan(viewportBottom),
+    );
+    expect(tester.getRect(find.text('通知3')).top, greaterThan(viewportBottom));
+    expect(tester.getTopLeft(find.text('功能')).dy, greaterThan(viewportBottom));
+
+    // 下滑后公告块完整可见——截断只存在于开屏形态。
+    await tester.drag(
+      find.byType(SingleChildScrollView),
+      const Offset(0, -260),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.getRect(find.text('通知2')).bottom, lessThan(viewportBottom));
+    expect(tester.getRect(find.text('通知3')).bottom, lessThan(viewportBottom));
+  });
+
   testWidgets('exam bento tile navigates to dedicated exam entry', (
     tester,
   ) async {
@@ -514,6 +562,13 @@ double _scrollOffset(WidgetTester tester) {
   );
   return scrollable.position.pixels;
 }
+
+Notice _notice(String id, {String? date}) => Notice(
+  title: '通知$id',
+  url: 'https://jwc.zjxu.edu.cn/content.jsp?wbnewsid=$id',
+  category: '通知公告',
+  date: date ?? '2026-09-01',
+);
 
 /// 下一个周一（今天恰为周一则取下周一），保证严格晚于今天。
 DateTime _nextMonday(DateTime today) {

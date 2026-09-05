@@ -5,27 +5,30 @@ import '../../../core/notice/notice_relevance.dart';
 import '../../../core/notice/notice_sync_store.dart';
 import '../../../core/profile/user_profile_controller.dart';
 
-/// 首页底部「校园公告」区块：功能区之后的页面最末。
+/// 首页「校园公告」区块：开屏视口底缘、功能区之前（首屏大留白的落点）。
 ///
-/// 收起形态：最新一条完整展示，第二条只露出约半行即被截断——预览
-/// 「下面还有」的信号，完整列表经「查看全部」进通知中心。数据源为
-/// 磁盘收件箱（首页零触网），排序为日期倒序 + 明确不相关条目沉底；
-/// 未读信号并入块内：行首圆点标记未读、标题行徽标显示未读数——与
-/// Hero 通知铃的角标同源同一份状态。视觉权重低于资产行，禁止卡片底。
+/// 预览条目（收件箱最新几条）**完整渲染，块内不截断**：开屏时视口
+/// 底缘恰好把第二条截断在半行——截断位由 [HomePage] 实测弹性留白
+/// 保证——下滑即可看完这些条目，完整列表经「查看全部」进通知中心。
+/// 数据源为磁盘收件箱（首页零触网），排序为日期倒序 + 明确不相关
+/// 条目沉底；未读信号并入块内：行首圆点标记未读、标题行显示未读数
+/// ——与 Hero 通知铃的角标同源同一份状态。视觉权重低于资产行，禁止
+/// 卡片底。
 class HomeCampusNoticeSection extends StatelessWidget {
   const HomeCampusNoticeSection({
     super.key,
     required this.head,
     required this.onTapNotice,
     required this.onTapAll,
+    this.firstRowKey,
   });
 
   final NoticeInboxHead head;
   final ValueChanged<Notice> onTapNotice;
   final VoidCallback onTapAll;
 
-  /// 收起态预览的条目数：最新 1 条完整 + 第 2 条露半行。
-  static const _peekCount = 2;
+  /// 首条公告行锚点：[HomePage] 实测「标题行 + 1.5 行」截断位时用。
+  final Key? firstRowKey;
 
   @override
   Widget build(BuildContext context) {
@@ -33,7 +36,7 @@ class HomeCampusNoticeSection extends StatelessWidget {
     final notices = NoticeRelevance.orderByRelevanceThenDate(
       head.latest,
       UserProfileController.instance.effectiveEnrollmentYear,
-    ).take(_peekCount).toList(growable: false);
+    ).toList(growable: false);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -61,43 +64,23 @@ class HomeCampusNoticeSection extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 10),
-        // 收起预览：只有一条时不截断；两条及以上把第二行裁掉约一半，
-        // 传递「下面还有内容」的视觉暗示。
-        if (notices.isNotEmpty)
-          ClipRect(
-            child: SizedBox(
-              height: notices.length >= _peekCount
-                  ? _peekHeight(context)
-                  : null,
-              child: Column(
-                children: [
-                  for (final notice in notices)
-                    _NoticeRow(
-                      notice: notice,
-                      unread: head.unreadIds.contains(notice.id),
-                      onTap: () => onTapNotice(notice),
-                    ),
-                ],
-              ),
-            ),
+        for (final (index, notice) in notices.indexed)
+          _NoticeRow(
+            key: index == 0 ? firstRowKey : null,
+            notice: notice,
+            unread: head.unreadIds.contains(notice.id),
+            onTap: () => onTapNotice(notice),
           ),
         const SizedBox(height: 4),
         _ViewAllRow(onTap: onTapAll),
       ],
     );
   }
-
-  /// 第一行完整高度 + 第二行约半行（行高随字号缩放，避免大字号下
-  /// 第一行本身被裁）。
-  static double _peekHeight(BuildContext context) {
-    final lineExtent = MediaQuery.textScalerOf(context).scale(14) * 1.4;
-    final rowExtent = lineExtent + 22; // 行内上下 padding 各 11
-    return rowExtent + rowExtent / 2;
-  }
 }
 
 class _NoticeRow extends StatelessWidget {
   const _NoticeRow({
+    super.key,
     required this.notice,
     required this.unread,
     required this.onTap,

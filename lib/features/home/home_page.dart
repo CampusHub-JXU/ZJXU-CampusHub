@@ -39,8 +39,10 @@ import 'widgets/home_today_section.dart';
 ///
 /// 第一屏只回答「今天什么状态」：环境行 → 无框 Hero（下一节课/当前
 /// 状态）→（可选）事件横幅 → 资产行（校园卡 + 电费）→ 紧凑「今天」
-/// 列表；继续下滑进入「功能」锚点段落（Bento 网格），底部 dock 通过
-/// [HomeZoneController] 做 ScrollSpy，在 首页/功能 之间自动切换高亮。
+/// 列表；弹性大留白把「校园公告」预览（最新一条完整 + 第二条露半行）
+/// 压到开屏视口底缘，继续下滑看完公告进入「功能」锚点段落（Bento
+/// 网格），底部 dock 通过 [HomeZoneController] 做 ScrollSpy，在
+/// 首页/功能 之间自动切换高亮。
 /// 数据获取与刷新行为与旧版一致，展示层由
 /// [resolveHomePresentation]（纯函数）从 [HomeSnapshot] 派生。
 class HomePage extends StatefulWidget {
@@ -59,6 +61,15 @@ class _HomePageState extends State<HomePage> {
 
   /// 滚动视口：ScrollSpy 用它把功能区顶部的全局坐标换算成视口内坐标。
   final _scrollViewportKey = GlobalKey();
+
+  /// 顶部内容（Hero/今天/资产行）整体锚点：首屏留白测量用它取高度。
+  final _topContentKey = GlobalKey();
+
+  /// 校园公告区块锚点：首屏留白测量以它定位截断基准。
+  final _noticeSectionKey = GlobalKey();
+
+  /// 公告首行锚点：截断位 = 标题行 + 首行高 × 1.5（第二条露半行）。
+  final _noticeFirstRowKey = GlobalKey();
 
   String _campusCardBalance = '--';
   String _dormElectricity = '--';
@@ -79,6 +90,19 @@ class _HomePageState extends State<HomePage> {
 
   /// 功能区段落顶部越过视口该比例线时，dock 高亮切到「功能」。
   static const double _zoneTriggerViewportFraction = 0.45;
+
+  /// 公告关闭（或收件箱为空）时，顶部内容与功能区之间的固定呼吸间距。
+  static const double _hiddenNoticeGap = 120;
+
+  /// 弹性留白下限：首屏内容超高（大字号/长课程列表）导致算出负留白时，
+  /// 公告与顶部内容之间仍保留最小呼吸空间。
+  static const double _minFirstScreenGap = 24;
+
+  /// 顶部内容与公告区之间的弹性留白：首帧后按「视口高 − 顶部内容高 −
+  /// 截断位（标题行 + 1.5 行公告）」实测回填，让公告第二条被开屏视口
+  /// 底缘截断在半行处。测量值不依赖滚动位置，滚动过程中不抖动。
+  double _firstScreenGap = _hiddenNoticeGap;
+  bool _gapMeasureScheduled = false;
 
   bool get _isBootstrapReady =>
       _bootstrapController.phase.value.index >=
@@ -490,6 +514,7 @@ class _HomePageState extends State<HomePage> {
     final now = DateTime.now();
     final bottomClearance =
         MediaQuery.paddingOf(context).bottom + _bottomNavClearance;
+    _scheduleFirstScreenGapMeasure();
 
     return SingleChildScrollView(
       key: _scrollViewportKey,
@@ -498,6 +523,7 @@ class _HomePageState extends State<HomePage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
+            key: _topContentKey,
             padding: const EdgeInsets.fromLTRB(
               AppSpacing.pageMargin,
               AppSpacing.xl,
@@ -553,50 +579,119 @@ class _HomePageState extends State<HomePage> {
               ],
             ),
           ),
-          // 功能区锚点：顶部留出与第一屏的大留白（公告内容块下沉到页面
-          // 最末，首屏只保留课表与资产状态；未开学等首屏内容稀疏时，
-          // 这里就是天气 App 式的大留白）；key 挂在含顶部内边距的容器
-          // 上，ensureVisible 滚动到位后标题不贴视口顶。
-          Container(
-            key: _functionSectionKey,
-            padding: const EdgeInsets.only(top: 120),
-            child: FunctionZoneSection(
-              campusCardBalance: _campusCardBalance,
-              dormElectricity: _dormElectricity,
-              padding: EdgeInsets.fromLTRB(
-                AppSpacing.pageMargin,
-                0,
-                AppSpacing.pageMargin,
-                0,
-              ),
-            ),
-          ),
-          // 校园公告区块：页面最末（功能区之后），收起形态——最新一条
-          // 完整、第二条露半行截断（预览暗示），完整列表经「查看全部」
-          // 进通知中心。数据为磁盘收件箱前几条（零触网）；收件箱为空
-          // 或用户在个性化设置关闭时整块消失，底部让出 dock 净空。
-          Padding(
-            padding: const EdgeInsets.only(top: AppSpacing.sectionBreak),
-            child: ValueListenableBuilder<bool>(
-              valueListenable:
-                  PersonalizationController.instance.homeCampusNoticeEnabled,
-              builder: (context, noticeEnabled, _) {
-                if (!noticeEnabled || _noticeHead.isEmpty) {
-                  return SizedBox(height: bottomClearance);
-                }
-                return Padding(
-                  padding: EdgeInsets.only(bottom: bottomClearance),
-                  child: HomeCampusNoticeSection(
-                    head: _noticeHead,
-                    onTapNotice: _openCampusNotice,
-                    onTapAll: () => context.pushNamed('notification-center'),
+          // 公告 + 功能区尾段：公告开关变化时整段重建（弹性留白按公告
+          // 可见与否走不同分支）。公告在功能之前——开屏视口底缘瞥见
+          // 最新一条，其余内容（含功能）下滑再看，公告不再整块抢视线。
+          ValueListenableBuilder<bool>(
+            valueListenable:
+                PersonalizationController.instance.homeCampusNoticeEnabled,
+            builder: (context, noticeEnabled, _) {
+              final noticeVisible = noticeEnabled && !_noticeHead.isEmpty;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // 开屏大留白：把「校园公告」的第二条截断在第一屏视口
+                  // 底缘的半行处（高度首帧后实测回填，见
+                  // [_scheduleFirstScreenGapMeasure]）；未开学等首屏内容
+                  // 稀疏时，这里就是天气 App 式的大留白。
+                  SizedBox(height: _firstScreenGap),
+                  if (noticeVisible)
+                    Padding(
+                      padding: const EdgeInsets.only(
+                        bottom: AppSpacing.sectionBreak,
+                      ),
+                      child: HomeCampusNoticeSection(
+                        key: _noticeSectionKey,
+                        firstRowKey: _noticeFirstRowKey,
+                        head: _noticeHead,
+                        onTapNotice: _openCampusNotice,
+                        onTapAll: () =>
+                            context.pushNamed('notification-center'),
+                      ),
+                    ),
+                  // 功能区锚点：key 挂在容器上，ensureVisible 滚动到位后
+                  // 标题不贴视口顶；页面真正的底部净空由它承担。
+                  Container(
+                    key: _functionSectionKey,
+                    padding: EdgeInsets.only(bottom: bottomClearance),
+                    child: FunctionZoneSection(
+                      campusCardBalance: _campusCardBalance,
+                      dormElectricity: _dormElectricity,
+                      padding: EdgeInsets.fromLTRB(
+                        AppSpacing.pageMargin,
+                        0,
+                        AppSpacing.pageMargin,
+                        0,
+                      ),
+                    ),
                   ),
-                );
-              },
-            ),
+                ],
+              );
+            },
           ),
         ],
       ),
     );
+  }
+
+  /// 首屏留白补偿：让开屏视口底缘恰好把公告第二条截断在半行。
+  ///
+  /// 顶部内容（Hero/今天/资产行）高度随机型、字号与数据形态浮动，
+  /// 固定间距无法保证截断位稳定；首帧后实测「顶部内容高 + 公告块内
+  /// 露出部分（标题行 + 1.5 行公告）」，反推留白 = 视口高 − 两者之和
+  /// （夹在安全区间内）。公告块本身完整渲染、块内不截断，所以下滑后
+  /// 第二条与「查看全部」完整可见；只有 1 条公告时整块落在视口内。
+  /// 公告关闭或收件箱为空时退回固定呼吸间距。测量值与滚动位置无关，
+  /// 收敛后不再触发重建。
+  void _scheduleFirstScreenGapMeasure() {
+    if (_gapMeasureScheduled) return;
+    _gapMeasureScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _gapMeasureScheduled = false;
+      if (!mounted) return;
+      final viewportBox =
+          _scrollViewportKey.currentContext?.findRenderObject() as RenderBox?;
+      final topBox =
+          _topContentKey.currentContext?.findRenderObject() as RenderBox?;
+      final noticeBox =
+          _noticeSectionKey.currentContext?.findRenderObject() as RenderBox?;
+      final firstRowBox =
+          _noticeFirstRowKey.currentContext?.findRenderObject() as RenderBox?;
+      if (viewportBox == null ||
+          !viewportBox.attached ||
+          topBox == null ||
+          !topBox.attached) {
+        return;
+      }
+      double gap;
+      if (noticeBox != null &&
+          noticeBox.attached &&
+          firstRowBox != null &&
+          firstRowBox.attached &&
+          _noticeHead.latest.length >= 2) {
+        // 公告块内露出部分：区块顶 → 首行顶（标题行 + 间距）+ 1.5 行。
+        // 各行等高，首行高即行高；top 差值与滚动位置无关。
+        final headerExtent =
+            firstRowBox.localToGlobal(Offset.zero).dy -
+            noticeBox.localToGlobal(Offset.zero).dy;
+        final cutExtent = headerExtent + firstRowBox.size.height * 1.5;
+        gap = (viewportBox.size.height - topBox.size.height - cutExtent).clamp(
+          _minFirstScreenGap,
+          viewportBox.size.height,
+        );
+      } else if (noticeBox != null && noticeBox.attached) {
+        // 单条公告：整块（含查看全部）完整落在视口内。
+        gap =
+            (viewportBox.size.height -
+                    topBox.size.height -
+                    noticeBox.size.height)
+                .clamp(_minFirstScreenGap, viewportBox.size.height);
+      } else {
+        gap = _hiddenNoticeGap;
+      }
+      if ((gap - _firstScreenGap).abs() > 0.5) {
+        setState(() => _firstScreenGap = gap);
+      }
+    });
   }
 }
