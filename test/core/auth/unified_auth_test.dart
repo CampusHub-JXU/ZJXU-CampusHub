@@ -1,9 +1,9 @@
-import 'package:flutter_test/flutter_test.dart';
-
+import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/core/network/dio_client.dart';
 import 'package:jxu_campus_hub/core/network/network_settings.dart';
@@ -209,6 +209,40 @@ void main() {
       expect(UnifiedAuthService.instance.isLoggedIn, isFalse);
       expect(UnifiedAuthService.instance.currentAccount, isNull);
     });
+
+    test(
+      'coalesces concurrent validation independently for each service',
+      () async {
+        final pending = <String, Completer<bool?>>{};
+        final calls = <String, int>{};
+        UnifiedAuthService.instance.debugSetSession(active: true);
+        UnifiedAuthService.instance.debugSessionValidator = (serviceUrl) {
+          calls[serviceUrl] = (calls[serviceUrl] ?? 0) + 1;
+          return (pending[serviceUrl] ??= Completer<bool?>()).future;
+        };
+
+        final a1 = UnifiedAuthService.instance.validateSession(serviceUrl: 'A');
+        final b = UnifiedAuthService.instance.validateSession(serviceUrl: 'B');
+        final a2 = UnifiedAuthService.instance.validateSession(serviceUrl: 'A');
+
+        expect(calls, {'A': 1, 'B': 1});
+        pending['A']!.complete(true);
+        pending['B']!.complete(true);
+        expect(await Future.wait([a1, a2, b]), [true, true, true]);
+      },
+    );
+
+    test('validator exceptions become unknown instead of escaping', () async {
+      UnifiedAuthService.instance.debugSetSession(active: true);
+      UnifiedAuthService.instance.debugSessionValidator = (_) async {
+        throw StateError('initialization failed');
+      };
+
+      final result = await UnifiedAuthService.instance.validateSession();
+
+      expect(result, isNull);
+      expect(UnifiedAuthService.instance.isLoggedIn, isTrue);
+    });
   });
 
   group('UnifiedAuthService redirect chain', () {
@@ -288,6 +322,25 @@ void main() {
         ),
       );
       expect(adapter.requestLog, ['GET /cas/login', 'GET /login']);
+    });
+
+    test('does not treat HTTP 500 as an active session', () async {
+      final adapter = MockHttpClientAdapter()
+        ..register('GET', '/cas/login', (options) async {
+          return ResponseBody.fromString('server error', 500);
+        });
+      DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
+      UnifiedAuthService.instance.debugSetSession(
+        active: true,
+        account: 'test-account',
+      );
+
+      final result = await UnifiedAuthService.instance.validateSession(
+        syncWebViewCookies: false,
+      );
+
+      expect(result, isFalse);
+      expect(UnifiedAuthService.instance.isLoggedIn, isFalse);
     });
   });
 }

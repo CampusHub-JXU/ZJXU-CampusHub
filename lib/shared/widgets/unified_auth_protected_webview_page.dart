@@ -26,6 +26,7 @@ class UnifiedAuthProtectedWebViewPage extends StatefulWidget {
     this.onHomePressed,
     this.appBarActions = const [],
     this.autoPromptLogin = true,
+    this.warmUpAsResource = false,
   });
 
   final String title;
@@ -39,6 +40,12 @@ class UnifiedAuthProtectedWebViewPage extends StatefulWidget {
   final VoidCallback? onHomePressed;
   final List<Widget> appBarActions;
   final bool autoPromptLogin;
+
+  /// 目标 URL 本身就是资源而非注册的 CAS 回调（博达 CMS 详情页等）。
+  /// 为 true 时认证预热走 [CasAuthBroker.getResource] 逐跳建立业务
+  /// Cookie，而不是把资源 URL 当 service 校验——CAS 对任意 URL 都可能
+  /// 签发 ticket，但那不代表目标业务的 Cookie 已建立。
+  final bool warmUpAsResource;
 
   @override
   State<UnifiedAuthProtectedWebViewPage> createState() =>
@@ -75,6 +82,12 @@ class _UnifiedAuthProtectedWebViewPageState
 
   void _onLoginSuccess() {
     if (!mounted) return;
+    if (widget.warmUpAsResource) {
+      // 登录只恢复了 CAS 主会话；业务 Cookie 仍需逐跳预热后才能开门。
+      setState(() => _authResolved = false);
+      unawaited(_resolveByResourceWarmUp());
+      return;
+    }
     setState(() {
       _authenticated = true;
       _authResolved = true;
@@ -110,6 +123,10 @@ class _UnifiedAuthProtectedWebViewPageState
   }
 
   Future<void> _resolveInitialAuthentication() async {
+    if (widget.warmUpAsResource) {
+      await _resolveByResourceWarmUp();
+      return;
+    }
     try {
       // CasSession.ensure 内部依次完成：恢复本地会话 → 无会话直接判未登录
       // → 有会话则对目标 service 做服务端校验。
@@ -158,6 +175,50 @@ class _UnifiedAuthProtectedWebViewPageState
       if (!mounted) return;
 
       // 其他错误时，信任保存的会话
+      setState(() {
+        _authenticated = UnifiedAuthService.instance.isLoggedIn;
+        _authResolved = true;
+      });
+    }
+  }
+
+  /// 资源型目标的认证预热：逐跳跟随重定向建立业务 Cookie，收到登录
+  /// 表单才判定失效。Cookie 同步失败不推翻认证结论——业务 Cookie 已在
+  /// 共享 jar 中，WebView 侧缺失时由 onLoadStop 的重同步兜底。
+  Future<void> _resolveByResourceWarmUp() async {
+    try {
+      await CasAuthBroker.getResource(widget.url);
+      if (!mounted) return;
+      try {
+        await UnifiedAuthService.instance.syncCookiesToWebViewForUrl(
+          widget.url,
+        );
+      } catch (syncError, syncStack) {
+        AppLogger.instance.webview(
+          LogLevel.warn,
+          '目标 URL Cookie 同步失败，交由 WebView 重同步兜底',
+          error: syncError,
+          stackTrace: syncStack,
+        );
+      }
+      setState(() {
+        _authenticated = true;
+        _authResolved = true;
+      });
+    } on CasAuthExpiredException {
+      if (!mounted) return;
+      setState(() {
+        _authenticated = false;
+        _authResolved = true;
+      });
+    } catch (error, stackTrace) {
+      AppLogger.instance.webview(
+        LogLevel.warn,
+        '资源预热失败，信任本地会话继续',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      if (!mounted) return;
       setState(() {
         _authenticated = UnifiedAuthService.instance.isLoggedIn;
         _authResolved = true;

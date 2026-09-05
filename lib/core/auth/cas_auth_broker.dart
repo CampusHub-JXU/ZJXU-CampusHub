@@ -1,5 +1,10 @@
-import '../../core/auth/unified_auth.dart';
-import '../../core/auth/zhengfang_auth.dart';
+import 'dart:convert';
+
+import 'package:dio/dio.dart';
+
+import '../network/dio_client.dart';
+import 'unified_auth.dart';
+import 'zhengfang_auth.dart';
 
 /// 统一认证（newca CAS）业务接入注册表。
 ///
@@ -7,8 +12,8 @@ import '../../core/auth/zhengfang_auth.dart';
 /// 再散落 service URL 常量或手写 CAS 登录页判定（此前默认 URL 曾在
 /// service_hall_page 重复硬编码、失效判定在 notice/epay 等处各写一份）。
 ///
-/// 逐业务动态 service（如通知公告以文章 URL 作为 service）无法穷举进枚举，
-/// 直接把 URL 传给 [CasSession.ensure] 即可，但不要另建常量。
+/// service 是服务端注册的 ticket 回调，不一定是业务资源 URL。
+/// 通知等资源应使用 [CasAuthBroker.getResource]，跟随站点提供的真实回调。
 enum CasService {
   /// 一卡通移动端默认服务：服务大厅 ydd 通道（电费、「我的」等复用）。
   ydd(UnifiedAuthService.defaultServiceUrl),
@@ -95,6 +100,75 @@ class CasSession {
 /// 统一认证 CAS 接入的共享判定与异常。
 class CasAuthBroker {
   CasAuthBroker._();
+
+  /// 用统一认证 CookieJar 获取资源，逐跳兑换 ticket 并保存业务 Cookie。
+  /// 不提交凭据、不调用 WebView，也不因单个业务失败清除全局 CAS 状态。
+  /// [dio] 仅用于注入测试传输；生产调用使用共享 unifiedAuthDio。
+  static Future<Response<List<int>>> getResource(
+    String resourceUrl, {
+    Dio? dio,
+    bool Function(Response<List<int>>)? needsLogin,
+  }) async {
+    if (dio == null) await DioClient.instance.ensureInitialized();
+    final client = dio ?? DioClient.instance.unifiedAuthDio;
+    final resource = Uri.parse(resourceUrl);
+    var current = resource;
+    var completedCasExchange = false;
+    var retriedResource = false;
+    for (var hop = 0; hop < 16; hop++) {
+      // WebVPN 的 CAS 代理域没有 newca 的 SSO Cookie；回到真实 CAS 域，
+      // 保留网关提供的 service 参数，再由其回调建立 WebVPN 会话。
+      final proxiedCas = Uri.parse(
+        ZhengfangAuth.instance.buildWebVpnProxyUrl(
+          'http://newca.zjxu.edu.cn/cas/login',
+        ),
+      );
+      if (current.host == proxiedCas.host && current.path == proxiedCas.path) {
+        current = Uri.https(
+          'newca.zjxu.edu.cn',
+          '/cas/login',
+        ).replace(query: current.query);
+      }
+      final response = await client.getUri<List<int>>(
+        current,
+        options: Options(
+          responseType: ResponseType.bytes,
+          followRedirects: false,
+          validateStatus: (status) =>
+              status != null && status >= 200 && status < 400,
+        ),
+      );
+      final status = response.statusCode ?? 0;
+      final location = response.headers.value('location');
+      if ([301, 302, 303, 307, 308].contains(status)) {
+        if (location == null || location.isEmpty) {
+          throw StateError('认证重定向缺少目标地址');
+        }
+        // 必须访问 CAS 登录入口：已有 SSO Cookie 时它会直接签发 ticket。
+        // 不能仅凭 URL 含 /cas/login 就判定会话已失效。
+        completedCasExchange |= isUnifiedAuthLoginEntryUrl(current.toString());
+        current = current.resolve(location);
+        if (current.scheme != 'http' && current.scheme != 'https') {
+          throw StateError('认证重定向协议不受支持');
+        }
+        continue;
+      }
+      final html = utf8.decode(response.data ?? const [], allowMalformed: true);
+      final loginRequired =
+          needsLogin?.call(response) ??
+          isCasLoginExchange(realUrl: current.toString(), html: html);
+      if (loginRequired) throw const CasAuthExpiredException();
+      // CMS 回调可能返回 200 + JS location.href。HTTP 层不执行脚本：
+      // Cookie 已落盘后重取原资源，业务解析器不会收到回调占位页面。
+      if (completedCasExchange && current != resource && !retriedResource) {
+        retriedResource = true;
+        current = resource;
+        continue;
+      }
+      return response;
+    }
+    throw StateError('认证重定向次数超限');
+  }
 
   /// 判定一次 HTTP 交换是否命中统一认证登录页/登录跳转。
   ///

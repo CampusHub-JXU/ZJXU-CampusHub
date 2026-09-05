@@ -170,9 +170,8 @@ class UnifiedAuthService extends ChangeNotifier {
   bool _sessionActive = false;
   String? currentAccount;
   Future<void>? _cookieSyncFuture;
-  Future<bool?>? _sessionValidationFuture;
-  String? _sessionValidationServiceUrl;
-  bool _sessionValidationSyncWebViewCookies = false;
+  final Map<String, Future<bool?>> _sessionValidationFutures = {};
+  final Map<String, bool> _sessionValidationSyncWebViewCookies = {};
 
   bool get isLoggedIn => _sessionActive;
 
@@ -188,39 +187,53 @@ class UnifiedAuthService extends ChangeNotifier {
   }) {
     if (!_sessionActive) return Future.value(false);
 
-    final existing = _sessionValidationFuture;
-    if (existing != null && _sessionValidationServiceUrl == serviceUrl) {
-      _sessionValidationSyncWebViewCookies |= syncWebViewCookies;
+    final existing = _sessionValidationFutures[serviceUrl];
+    if (existing != null) {
+      _sessionValidationSyncWebViewCookies[serviceUrl] =
+          (_sessionValidationSyncWebViewCookies[serviceUrl] ?? false) |
+          syncWebViewCookies;
       return existing;
     }
 
-    _sessionValidationServiceUrl = serviceUrl;
-    _sessionValidationSyncWebViewCookies = syncWebViewCookies;
+    _sessionValidationSyncWebViewCookies[serviceUrl] = syncWebViewCookies;
     final future = _validateSessionInner(serviceUrl: serviceUrl);
-    _sessionValidationFuture = future;
+    _sessionValidationFutures[serviceUrl] = future;
     return future.whenComplete(() {
-      if (identical(_sessionValidationFuture, future)) {
-        _sessionValidationFuture = null;
-        _sessionValidationServiceUrl = null;
-        _sessionValidationSyncWebViewCookies = false;
+      if (identical(_sessionValidationFutures[serviceUrl], future)) {
+        _sessionValidationFutures.remove(serviceUrl);
+        _sessionValidationSyncWebViewCookies.remove(serviceUrl);
       }
     });
   }
 
-  Future<bool?> _validateSessionInner({required String serviceUrl}) async {
-    final validator = debugSessionValidator;
-    if (validator != null) {
-      final result = await validator(serviceUrl);
-      if (result == false) {
-        markLoggedOut();
-      }
-      return result;
-    }
-
-    await DioClient.instance.ensureInitialized();
-    final loginUri = _buildLoginUri(serviceUrl);
-
+  /// 登出清理：凭据存储失败不应改变调用方的失效结论（测试环境无 secure
+  /// storage mock、真实环境存储异常都会在这里抛出）。
+  Future<void> _markLoggedOutBestEffort() async {
     try {
+      await markLoggedOut();
+    } catch (error, stackTrace) {
+      AppLogger.instance.auth(
+        LogLevel.warn,
+        '统一认证登出清理失败（不影响失效判定）',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+  }
+
+  Future<bool?> _validateSessionInner({required String serviceUrl}) async {
+    try {
+      final validator = debugSessionValidator;
+      if (validator != null) {
+        final result = await validator(serviceUrl);
+        if (result == false) {
+          await _markLoggedOutBestEffort();
+        }
+        return result;
+      }
+
+      await DioClient.instance.ensureInitialized();
+      final loginUri = _buildLoginUri(serviceUrl);
       final response = await _sendWithProxyFallback<String>(
         label: '统一认证会话校验',
         request: (dio) => dio.getUri<String>(
@@ -242,11 +255,13 @@ class UnifiedAuthService extends ChangeNotifier {
                   _resolveUri(loginUri, location).toString(),
                 ) ||
                 urlHasCasTicket(location)
-          : !looksLikeUnifiedAuthLoginHtml(html);
+          : statusCode >= 200 &&
+                statusCode < 300 &&
+                !looksLikeUnifiedAuthLoginHtml(html);
 
       if (!hasActiveSession) {
         AppLogger.instance.auth(LogLevel.warn, '统一认证会话已失效，标记登出');
-        markLoggedOut();
+        await _markLoggedOutBestEffort();
         return false;
       }
 
@@ -261,7 +276,7 @@ class UnifiedAuthService extends ChangeNotifier {
       if (currentAccount != null) {
         await CredentialStore.instance.saveUnifiedAuthSession(currentAccount!);
       }
-      if (_sessionValidationSyncWebViewCookies) {
+      if (_sessionValidationSyncWebViewCookies[serviceUrl] == true) {
         unawaited(_syncCookiesToWebViewSafely());
       }
       if (!wasSessionActive) {
@@ -471,6 +486,22 @@ class UnifiedAuthService extends ChangeNotifier {
     }
   }
 
+  /// Synchronizes the shared session cookies needed by [targetUrl].
+  ///
+  /// The fixed origins above cover the common CAS destinations. A business
+  /// flow may instead redirect to a service-specific host (for example JWC or
+  /// WebVPN), so load that exact URI from the same cookie jar as well. Errors
+  /// while writing target cookies deliberately propagate to the caller.
+  Future<void> syncCookiesToWebViewForUrl(String targetUrl) async {
+    await syncCookiesToWebView();
+
+    final uri = Uri.parse(targetUrl);
+    final cookies = await _cookieJar.loadForRequest(uri);
+    for (final cookie in cookies) {
+      await _setWebViewCookie(uri, cookie);
+    }
+  }
+
   Future<void> _syncCookiesToWebViewInternal() async {
     await DioClient.instance.ensureInitialized();
     // loadForRequest 需要带 path 的完整 URI 才能匹配到子路径 cookie
@@ -497,11 +528,22 @@ class UnifiedAuthService extends ChangeNotifier {
   }
 
   Future<void> markLoggedOut() async {
+    // 内存状态与通知必须先行：持久化清理失败（存储层异常）不能阻断
+    // notifyListeners，否则 UI 会停留在「已登录」而会话实际已失效。
     _sessionActive = false;
     currentAccount = null;
     _cachedContext = null;
-    await CredentialStore.instance.clearUnifiedAuthSession();
     notifyListeners();
+    try {
+      await CredentialStore.instance.clearUnifiedAuthSession();
+    } catch (error, stackTrace) {
+      AppLogger.instance.auth(
+        LogLevel.warn,
+        '统一认证会话清理失败（不影响登出状态）',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
   }
 
   Future<void> restoreSession({bool syncWebViewCookies = true}) async {
@@ -784,6 +826,8 @@ class UnifiedAuthService extends ChangeNotifier {
     currentAccount = null;
     _cookieManager = null;
     _cookieSyncFuture = null;
+    _sessionValidationFutures.clear();
+    _sessionValidationSyncWebViewCookies.clear();
     debugSessionValidator = null;
   }
 }
