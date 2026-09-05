@@ -6,6 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:jxu_campus_hub/app/app_bootstrap_controller.dart';
+import 'package:jxu_campus_hub/core/notice/notice_model.dart';
+import 'package:jxu_campus_hub/core/notice/notice_sync_store.dart';
 import 'package:jxu_campus_hub/core/semester/semester_calendar.dart';
 import 'package:jxu_campus_hub/core/theme/glass_style_controller.dart';
 import 'package:jxu_campus_hub/features/campus_card/campus_card_page.dart';
@@ -223,6 +225,27 @@ void main() {
     );
   });
 
+  // 首页公告开屏形态：富状态 + 注入收件箱头 + 悬浮 dock 外壳——
+  // 验收点：第二条公告被 dock 顶缘截断在半行，公告块不压到 dock 之下；
+  // 「校园公告」标题行与最新一条完整可见。
+  previewTest('page_home_notice_light', (tester) async {
+    await GlassStyleController.instance.setEnabled(true);
+    await _seedRichHomeState();
+    addTearDown(NoticeSyncStore.instance.debugReset);
+    NoticeSyncStore.instance.debugReset();
+    NoticeSyncStore.instance.inboxHead.value = NoticeInboxHead(
+      latest: [
+        _previewNotice('n1', '关于开展2026年秋季学期教材征订工作的通知', '2026-09-04'),
+        _previewNotice('n2', '2025、2026级学生2026-2027学年第一学期备考提醒', '2026-08-30'),
+        _previewNotice('n3', '关于图书馆调整暑期开放时间的通知', '2026-07-13'),
+      ],
+      unreadIds: const {'n1', 'n2'},
+      unreadCount: 2,
+    );
+    await pumpPreviewScene(tester, (_) => const _HomeDockScene());
+    await expectPreviewGolden(tester, 'page_home_notice_light');
+  });
+
   previewTest('page_my_light', (tester) async {
     await renderPage(tester, 'page_my_light', const MyPage());
   });
@@ -255,6 +278,14 @@ void main() {
     await renderPage(tester, 'page_campus_card_light', const CampusCardPage());
   });
 }
+
+/// 预览公告条目：id 取 wbnewsid（与线上解析规则一致，未读集合靠它对上）。
+Notice _previewNotice(String newsId, String title, String date) => Notice(
+  title: title,
+  url: 'https://jwc.zjxu.edu.cn/content.jsp?wbnewsid=$newsId',
+  category: '通知公告',
+  date: date,
+);
 
 /// 富状态首页种子：今天跨下午/晚间的课程（任意时间渲染都有"正在上课/下一节"）、
 /// 明天上午考试（事件横幅）、校园卡/电费新鲜缓存（缓存命中，离线不触发网络与
@@ -876,6 +907,47 @@ class _NavShellScene extends StatelessWidget {
           ],
           currentIndex: 0,
           onDestinationSelected: (_) {},
+        ),
+      ),
+    );
+  }
+}
+
+/// 复刻 AppShell 的悬浮 dock 外壳（extendBody + SafeArea 底距 14），
+/// 让首页公告开屏形态的 dock 遮挡关系在预览里如实可见。
+class _HomeDockScene extends StatelessWidget {
+  const _HomeDockScene();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      extendBody: true,
+      body: const HomePage(),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+          child: GlassNavBar(
+            destinations: const [
+              GlassNavBarDestination(
+                icon: Icons.home_outlined,
+                selectedIcon: Icons.home,
+                label: '主页',
+              ),
+              GlassNavBarDestination(
+                icon: Icons.widgets_outlined,
+                selectedIcon: Icons.widgets,
+                label: '功能',
+              ),
+              GlassNavBarDestination(
+                icon: Icons.person_outline,
+                selectedIcon: Icons.person,
+                label: '我的',
+              ),
+            ],
+            currentIndex: 0,
+            onDestinationSelected: (_) {},
+          ),
         ),
       ),
     );

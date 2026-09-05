@@ -365,14 +365,17 @@ void main() {
     expect(find.text('本周'), findsNothing);
     expect(find.text('常用'), findsNothing);
     expect(find.text('全部校园服务'), findsNothing);
-    // 第一屏资产行 + 底部功能区 Bento 段落
-    // （「宿舍电费」同时出现在资产行 label 与 Bento 瓦片标题）。
+    // 第一屏资产行 + 快捷入口行 + 功能区 Bento 段落（「宿舍电费」同时
+    // 出现在资产行 label 与 Bento 瓦片标题；「课表」「付款码」同时出现
+    // 在快捷入口行与 Bento 瓦片）。
     expect(find.text('校园卡'), findsOneWidget);
     expect(find.text('宿舍电费'), findsNWidgets(2));
     expect(find.text('功能'), findsOneWidget);
     expect(find.text('长按置顶'), findsOneWidget);
-    expect(find.text('课表'), findsOneWidget);
-    expect(find.text('付款码'), findsOneWidget);
+    expect(find.text('课表'), findsNWidgets(2));
+    expect(find.text('成绩'), findsOneWidget);
+    expect(find.text('考试'), findsOneWidget);
+    expect(find.text('付款码'), findsNWidgets(2));
     expect(find.text('图书馆'), findsOneWidget);
     expect(find.text('第二课堂'), findsOneWidget);
   });
@@ -447,16 +450,15 @@ void main() {
     final viewportBottom = tester
         .getBottomRight(find.byType(SingleChildScrollView).first)
         .dy;
-    // 开屏形态：第一条完整；第二条被视口底缘截断在半行；第三条在首屏
-    // 之外；功能段落整体在首屏之下（下滑可达）。
-    expect(tester.getRect(find.text('通知1')).bottom, lessThan(viewportBottom));
-    expect(tester.getRect(find.text('通知2')).top, lessThan(viewportBottom));
-    expect(
-      tester.getRect(find.text('通知2')).bottom,
-      greaterThan(viewportBottom),
-    );
-    expect(tester.getRect(find.text('通知3')).top, greaterThan(viewportBottom));
-    expect(tester.getTopLeft(find.text('功能')).dy, greaterThan(viewportBottom));
+    // 浮动 dock 顶缘 = 视口底 −（dock 68 + 底距 14；测试无底部安全区）。
+    // 开屏形态：第一条完整在 dock 之上；第二条被 dock 顶缘截断在半行；
+    // 第三条被 dock 遮住；功能段落整体在首屏之下（下滑可达）。
+    final dockTop = viewportBottom - 82;
+    expect(tester.getRect(find.text('通知1')).bottom, lessThan(dockTop));
+    expect(tester.getRect(find.text('通知2')).top, lessThan(dockTop));
+    expect(tester.getRect(find.text('通知2')).bottom, greaterThan(dockTop));
+    expect(tester.getRect(find.text('通知3')).top, greaterThan(dockTop));
+    expect(tester.getTopLeft(find.text('功能')).dy, greaterThan(dockTop));
 
     // 下滑后公告块完整可见——截断只存在于开屏形态。
     await tester.drag(
@@ -464,8 +466,8 @@ void main() {
       const Offset(0, -260),
     );
     await tester.pumpAndSettle();
-    expect(tester.getRect(find.text('通知2')).bottom, lessThan(viewportBottom));
-    expect(tester.getRect(find.text('通知3')).bottom, lessThan(viewportBottom));
+    expect(tester.getRect(find.text('通知2')).bottom, lessThan(dockTop));
+    expect(tester.getRect(find.text('通知3')).bottom, lessThan(dockTop));
   });
 
   testWidgets('exam bento tile navigates to dedicated exam entry', (
