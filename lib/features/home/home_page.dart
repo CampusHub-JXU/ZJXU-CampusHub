@@ -550,39 +550,16 @@ class _HomePageState extends State<HomePage> {
                   onElectricityTap: () =>
                       _pushFeatureRoute(context, 'dorm-electricity'),
                 ),
-                // 校园公告区块：常驻内容（磁盘收件箱前 3 条，零触网），
-                // 收件箱为空或用户在个性化设置关闭时整块消失；未读信号
-                // 并入块内（行首圆点 + 标题行未读数）。
-                ValueListenableBuilder<bool>(
-                  valueListenable: PersonalizationController
-                      .instance
-                      .homeCampusNoticeEnabled,
-                  builder: (context, noticeEnabled, _) {
-                    if (!noticeEnabled || _noticeHead.isEmpty) {
-                      return const SizedBox.shrink();
-                    }
-                    return Padding(
-                      padding: const EdgeInsets.only(
-                        top: AppSpacing.sectionBreak,
-                      ),
-                      child: HomeCampusNoticeSection(
-                        head: _noticeHead,
-                        onTapNotice: _openCampusNotice,
-                        onTapAll: () =>
-                            context.pushNamed('notification-center'),
-                      ),
-                    );
-                  },
-                ),
               ],
             ),
           ),
-          // 功能区锚点：顶部留出与第一屏的呼吸空间（未开学等首屏内容
-          // 稀疏时，这里就是天气 App 式的大留白）；key 挂在含顶部
-          // 内边距的容器上，ensureVisible 滚动到位后标题不贴视口顶。
+          // 功能区锚点：顶部留出与第一屏的大留白（公告内容块下沉到页面
+          // 最末，首屏只保留课表与资产状态；未开学等首屏内容稀疏时，
+          // 这里就是天气 App 式的大留白）；key 挂在含顶部内边距的容器
+          // 上，ensureVisible 滚动到位后标题不贴视口顶。
           Container(
             key: _functionSectionKey,
-            padding: const EdgeInsets.only(top: 72),
+            padding: const EdgeInsets.only(top: 120),
             child: FunctionZoneSection(
               campusCardBalance: _campusCardBalance,
               dormElectricity: _dormElectricity,
@@ -590,8 +567,32 @@ class _HomePageState extends State<HomePage> {
                 AppSpacing.pageMargin,
                 0,
                 AppSpacing.pageMargin,
-                bottomClearance,
+                0,
               ),
+            ),
+          ),
+          // 校园公告区块：页面最末（功能区之后），收起形态——最新一条
+          // 完整、第二条露半行截断（预览暗示），完整列表经「查看全部」
+          // 进通知中心。数据为磁盘收件箱前几条（零触网）；收件箱为空
+          // 或用户在个性化设置关闭时整块消失，底部让出 dock 净空。
+          Padding(
+            padding: const EdgeInsets.only(top: AppSpacing.sectionBreak),
+            child: ValueListenableBuilder<bool>(
+              valueListenable:
+                  PersonalizationController.instance.homeCampusNoticeEnabled,
+              builder: (context, noticeEnabled, _) {
+                if (!noticeEnabled || _noticeHead.isEmpty) {
+                  return SizedBox(height: bottomClearance);
+                }
+                return Padding(
+                  padding: EdgeInsets.only(bottom: bottomClearance),
+                  child: HomeCampusNoticeSection(
+                    head: _noticeHead,
+                    onTapNotice: _openCampusNotice,
+                    onTapAll: () => context.pushNamed('notification-center'),
+                  ),
+                );
+              },
             ),
           ),
         ],
