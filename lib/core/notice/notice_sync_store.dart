@@ -328,6 +328,9 @@ class NoticeSyncStore {
         ...acceptedBaseline,
         ...state.inbox.where((n) => !inboxHeadIds.contains(n.id)),
       ];
+      // 教务处列表页顺序不等于时间序（置顶/补录混排），收件箱统一按
+      // 发布日期倒序持久化，首页与通知中心的「最新」才可靠。
+      inbox = Notice.sortByDateDescStable(inbox);
       final evicted = <String>{};
       if (inbox.length > _inboxCap) {
         for (final notice in inbox.skip(_inboxCap)) {

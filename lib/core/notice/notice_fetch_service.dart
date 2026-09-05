@@ -120,7 +120,9 @@ List<Notice> parseNoticeListDocument(Document doc) {
     );
   }
 
-  return notices;
+  // 教务处列表页本身不严格按日期排（置顶/补录混排），按发布日期
+  // 倒序重排后再交给展示与同步。
+  return Notice.sortByDateDescStable(notices);
 }
 
 int? _extractJwcNoticeTotalPages(String html) {

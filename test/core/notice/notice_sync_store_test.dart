@@ -5,11 +5,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jxu_campus_hub/core/notice/notice_model.dart';
 import 'package:jxu_campus_hub/core/notice/notice_sync_store.dart';
 
-Notice _notice(String id) => Notice(
+Notice _notice(String id, {String? date}) => Notice(
   title: '通知$id',
   url: 'https://jwc.zjxu.edu.cn/content.jsp?wbnewsid=$id',
   category: '通知公告',
-  date: '2026-09-01',
+  date: date ?? '2026-09-01',
 );
 
 NoticeSyncCommit _commitFresh(List<Notice> notices, {DateTime? now}) =>
@@ -73,6 +73,25 @@ void main() {
       expect(state.unreadIds, isEmpty);
       expect(state.pendingNotifyIds, isEmpty);
     });
+
+    test(
+      'inbox persists in date-descending order regardless of commit order',
+      () async {
+        // 教务处列表页存在置顶/补录混排：新条目出现在旧条目之后也要按
+        // 日期归位，首页与通知中心的「最新」才可靠。
+        await storeA.commitSync(
+          _commitFresh([
+            _notice('2', date: '2026-08-30'),
+            _notice('3', date: '2026-07-13'),
+            _notice('1', date: '2026-09-04'),
+          ]),
+        );
+        final state = await storeA.reload();
+        expect(state.inbox.map((n) => n.id), ['1', '2', '3']);
+        // 首页区块载荷同源。
+        expect(storeA.inboxHead.value.latest.map((n) => n.id), ['1', '2', '3']);
+      },
+    );
 
     test('baseline entries enter inbox but not unread/pending', () async {
       await storeA.commitSync(

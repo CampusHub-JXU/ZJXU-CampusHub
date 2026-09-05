@@ -79,6 +79,25 @@ void main() {
       expect(notices.last.date, '2026-03-30');
     });
 
+    test(
+      'parses list page into date-descending order regardless of page order',
+      () {
+        // 教务处列表页存在置顶/补录混排（页面顺序 ≠ 时间序），解析层
+        // 必须按发布日期倒序归位。
+        const unorderedHtml = '''
+<ul id="ul1">
+  <li><a class="a1" href="content.jsp?urltype=news.NewsContentUrl&wbnewsid=1">旧通知</a><span class="fr">2026-03-01</span></li>
+  <li><a class="a1" href="content.jsp?urltype=news.NewsContentUrl&wbnewsid=2">置顶旧通知</a><span class="fr">2026-01-15</span></li>
+  <li><a class="a1" href="content.jsp?urltype=news.NewsContentUrl&wbnewsid=3">最新通知</a><span class="fr">2026-09-04</span></li>
+  <li><a class="a1" href="content.jsp?urltype=news.NewsContentUrl&wbnewsid=4">无日期通知</a></li>
+</ul>
+''';
+        final notices = parseJwcNoticeListHtml(unorderedHtml);
+
+        expect(notices.map((n) => n.id), ['3', '1', '2', '4']);
+      },
+    );
+
     test('detects unified auth login html response', () {
       final response = Response<List<int>>(
         data: utf8.encode(_loginHtml),
