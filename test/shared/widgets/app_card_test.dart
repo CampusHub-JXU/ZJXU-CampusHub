@@ -33,14 +33,10 @@ void main() {
     final surface = surfaceOf(tester);
     expect(surface.color, cs.surfaceContainerLowest);
     expect(surface.gradient, isNull);
-    // 均匀 hairline 描边（浅色：outlineVariant 0.55，1px）。
-    final side = (surface.shape as RoundedSuperellipseBorder).side;
-    expect(side.color, cs.outlineVariant.withValues(alpha: 0.55));
-    expect(side.width, 1.0);
-    expect(
-      (surface.shape as RoundedSuperellipseBorder).borderRadius,
-      AppRadius.cardBorder,
-    );
+    // 视觉做减法：卡面无描边，仅剩平色填充。
+    final shape = surface.shape as RoundedSuperellipseBorder;
+    expect(shape.side, BorderSide.none);
+    expect(shape.borderRadius, AppRadius.cardBorder);
     expect(find.byType(BackdropFilter), findsNothing);
   });
 
@@ -59,9 +55,11 @@ void main() {
       ),
     );
     expect(surfaceOf(tester).gradient, isNull);
-    // 玻璃开启时描边提亮一档（outlineVariant 0.70）。
-    final side = (surfaceOf(tester).shape as RoundedSuperellipseBorder).side;
-    expect(side.color, cs.outlineVariant.withValues(alpha: 0.70));
+    // 无描边：分层交给色调对比与柔影。
+    expect(
+      (surfaceOf(tester).shape as RoundedSuperellipseBorder).side,
+      BorderSide.none,
+    );
     // 卡片级玻璃永不产生 BackdropFilter。
     expect(find.byType(BackdropFilter), findsNothing);
 
@@ -87,7 +85,7 @@ void main() {
     expect(find.byType(BackdropFilter), findsNothing);
   });
 
-  testWidgets('浅色卡面零投影（分层靠色调对比 + hairline）', (tester) async {
+  testWidgets('浅色卡面零投影（分层靠色调对比）', (tester) async {
     await pumpApp(tester, const AppCard(child: Text('卡片')));
 
     final decorBox = tester.widget<DecoratedBox>(

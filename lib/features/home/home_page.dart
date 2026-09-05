@@ -101,9 +101,11 @@ class _HomePageState extends State<HomePage> {
   /// 公告开屏截断线 = dock 顶缘——第二条公告的下半行被 dock 遮住。
   static const double _dockTopExtent = 82;
 
-  /// 弹性留白下限：首屏内容超高（大字号/长课程列表）导致算出负留白时，
-  /// 公告与顶部内容之间仍保留最小呼吸空间。
+  /// 弹性留白边界：下限兜底首屏内容超高的场景；上限防止内容丰富的
+  /// 首屏被撑出大片空白——留白触顶时公告落在 Dock 上方稍高处，功能
+  /// 区磁贴在 Dock 后自然探出补位，整屏不空。
   static const double _minFirstScreenGap = 24;
+  static const double _maxFirstScreenGap = 80;
 
   /// 顶部内容与公告区之间的弹性留白：首帧后按「视口可用底高 − 顶部内
   /// 容高 − 截断位（标题行 + 1.5 行公告）」实测回填，让公告第二条被
@@ -606,8 +608,11 @@ class _HomePageState extends State<HomePage> {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  SizedBox(height: _firstScreenGap),
-                  if (noticeVisible)
+                  // 弹性留白只服务公告（把公告压到首屏底部）；公告不可见
+                  // 时不能留着 120 的隐藏值——否则未登录/关开关时凭空
+                  // 多一大块空白，功能区的 sectionBreak 顶距足够分段。
+                  if (noticeVisible) ...[
+                    SizedBox(height: _firstScreenGap),
                     Padding(
                       padding: const EdgeInsets.fromLTRB(
                         AppSpacing.pageMargin,
@@ -624,6 +629,7 @@ class _HomePageState extends State<HomePage> {
                             context.pushNamed('notification-center'),
                       ),
                     ),
+                  ],
                   // 功能区锚点：key 挂在容器上，ensureVisible 滚动到位后
                   // 标题不贴视口顶；公告关闭时顶距退回普通段落间距。
                   Container(
@@ -705,12 +711,12 @@ class _HomePageState extends State<HomePage> {
         final cutExtent = headerExtent + firstRowBox.size.height * 1.5;
         gap = (availableHeight - topBox.size.height - cutExtent).clamp(
           _minFirstScreenGap,
-          availableHeight,
+          _maxFirstScreenGap,
         );
       } else if (noticeBox != null && noticeBox.attached) {
         // 单条公告：整块（含查看全部）完整落在 dock 之上。
         gap = (availableHeight - topBox.size.height - noticeBox.size.height)
-            .clamp(_minFirstScreenGap, availableHeight);
+            .clamp(_minFirstScreenGap, _maxFirstScreenGap);
       } else {
         gap = _hiddenNoticeGap;
       }

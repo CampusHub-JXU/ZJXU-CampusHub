@@ -133,7 +133,11 @@ class _FunctionZoneSectionState extends State<FunctionZoneSection> {
 
   @override
   Widget build(BuildContext context) {
-    final entries = AppFeaturesConfig.entries;
+    // 主页专属裁剪：课表在 Hero（查看课表）和快捷行已有两个入口，功能
+    // 区第三个入口纯冗余——这里滤掉（功能页不受影响，仍保留完整目录）。
+    final entries = AppFeaturesConfig.entries
+        .where((entry) => entry.id != 'schedule')
+        .toList();
     if (entries.isEmpty) return const SizedBox.shrink();
 
     return Padding(

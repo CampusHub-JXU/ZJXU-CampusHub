@@ -233,17 +233,23 @@ void main() {
     await _seedRichHomeState();
     addTearDown(NoticeSyncStore.instance.debugReset);
     NoticeSyncStore.instance.debugReset();
-    NoticeSyncStore.instance.inboxHead.value = NoticeInboxHead(
-      latest: [
-        _previewNotice('n1', '关于开展2026年秋季学期教材征订工作的通知', '2026-09-04'),
-        _previewNotice('n2', '2025、2026级学生2026-2027学年第一学期备考提醒', '2026-08-30'),
-        _previewNotice('n3', '关于图书馆调整暑期开放时间的通知', '2026-07-13'),
-      ],
-      unreadIds: const {'n1', 'n2'},
-      unreadCount: 2,
-    );
+    NoticeSyncStore.instance.inboxHead.value = _previewNoticeHead();
     await pumpPreviewScene(tester, (_) => const _HomeDockScene());
     await expectPreviewGolden(tester, 'page_home_notice_light');
+  });
+
+  previewTest('page_home_notice_dark', (tester) async {
+    await GlassStyleController.instance.setEnabled(true);
+    await _seedRichHomeState();
+    addTearDown(NoticeSyncStore.instance.debugReset);
+    NoticeSyncStore.instance.debugReset();
+    NoticeSyncStore.instance.inboxHead.value = _previewNoticeHead();
+    await pumpPreviewScene(
+      tester,
+      (_) => const _HomeDockScene(),
+      brightness: Brightness.dark,
+    );
+    await expectPreviewGolden(tester, 'page_home_notice_dark');
   });
 
   previewTest('page_my_light', (tester) async {
@@ -285,6 +291,17 @@ Notice _previewNotice(String newsId, String title, String date) => Notice(
   url: 'https://jwc.zjxu.edu.cn/content.jsp?wbnewsid=$newsId',
   category: '通知公告',
   date: date,
+);
+
+/// 预览收件箱头：3 条公告（前两条未读），与线上解析的 id 规则一致。
+NoticeInboxHead _previewNoticeHead() => NoticeInboxHead(
+  latest: [
+    _previewNotice('n1', '关于开展2026年秋季学期教材征订工作的通知', '2026-09-04'),
+    _previewNotice('n2', '2025、2026级学生2026-2027学年第一学期备考提醒', '2026-08-30'),
+    _previewNotice('n3', '关于图书馆调整暑期开放时间的通知', '2026-07-13'),
+  ],
+  unreadIds: const {'n1', 'n2'},
+  unreadCount: 2,
 );
 
 /// 富状态首页种子：今天跨下午/晚间的课程（任意时间渲染都有"正在上课/下一节"）、
