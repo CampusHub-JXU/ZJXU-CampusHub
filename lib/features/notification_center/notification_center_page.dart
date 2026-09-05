@@ -6,8 +6,10 @@ import 'package:go_router/go_router.dart';
 import '../../core/auth/cas_auth_broker.dart';
 import '../../core/notice/notice_fetch_service.dart';
 import '../../core/notice/notice_model.dart';
+import '../../core/notice/notice_relevance.dart';
 import '../../core/notice/notice_sync_service.dart';
 import '../../core/notice/notice_sync_store.dart';
+import '../../core/profile/user_profile_controller.dart';
 import '../sjjx_notice/sjjx_notice_model.dart';
 import '../sjjx_notice/sjjx_notice_service.dart';
 import '../../shared/widgets/app_app_bar.dart';
@@ -110,7 +112,11 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
   void _applySnapshot() {
     final snapshot = NoticeSyncStore.instance.state;
     setState(() {
-      _notices = snapshot.inbox;
+      // 收件箱本身已按日期倒序；再按用户年级把明确不相关的沉底。
+      _notices = NoticeRelevance.orderByRelevanceThenDate(
+        snapshot.inbox,
+        UserProfileController.instance.effectiveEnrollmentYear,
+      );
       _unreadIds = Set<String>.of(snapshot.unreadIds);
     });
   }

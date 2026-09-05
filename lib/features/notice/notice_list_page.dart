@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/notice/notice_fetch_service.dart';
 import '../../core/notice/notice_model.dart';
+import '../../core/notice/notice_relevance.dart';
+import '../../core/profile/user_profile_controller.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_empty_view.dart';
 import '../../shared/widgets/app_error_view.dart';
@@ -76,11 +78,19 @@ class _NoticeListPageState extends State<NoticeListPage> {
       return;
     }
     setState(() {
-      _notices = result.notices;
+      _notices = _relevanceOrdered(result.notices);
       _loading = false;
       _hasMore = true;
       _authRequired = result.authRequired;
     });
+  }
+
+  /// 年级相关性排序：明确指向其他年级的通知沉底，组内日期倒序。
+  List<Notice> _relevanceOrdered(List<Notice> notices) {
+    return NoticeRelevance.orderByRelevanceThenDate(
+      notices,
+      UserProfileController.instance.effectiveEnrollmentYear,
+    );
   }
 
   Future<void> _presentLoginPrompt() async {
@@ -105,7 +115,7 @@ class _NoticeListPageState extends State<NoticeListPage> {
         if (more.isEmpty) {
           _hasMore = false;
         } else {
-          _notices.addAll(more);
+          _notices = _relevanceOrdered([..._notices, ...more]);
         }
         _loadingMore = false;
       });

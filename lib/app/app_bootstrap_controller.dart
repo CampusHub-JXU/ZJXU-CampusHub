@@ -7,6 +7,7 @@ import '../core/auth/zhengfang_auth.dart';
 import '../core/logging/app_logger.dart';
 import '../core/network/dio_client.dart';
 import '../core/network/network_settings.dart';
+import '../core/profile/user_profile_controller.dart';
 import '../core/semester/semester_calendar.dart';
 import '../core/theme/app_preferences_controller.dart';
 import '../core/theme/personalization_controller.dart';
@@ -60,7 +61,10 @@ class AppBootstrapController {
     await Future.wait<void>([
       SemesterCalendar.instance.init(),
       PersonalizationController.instance.init(),
+      UserProfileController.instance.init(),
     ]);
+    // 学号→入学年级识别依赖加密凭据读取，放暖启动阶段，失败不影响首帧。
+    unawaited(UserProfileController.instance.refreshAutoEnrollmentYear());
   }
 
   void scheduleWarmUpAfterFirstFrame() {

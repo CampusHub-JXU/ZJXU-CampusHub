@@ -8,6 +8,7 @@ import '../../core/theme/app_theme_controller.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/auth/unified_auth.dart';
 import '../../core/auth/zhengfang_auth.dart';
+import '../../core/profile/user_profile_controller.dart';
 import '../../core/theme/app_design_tokens.dart';
 import '../../shared/widgets/app_card.dart';
 import '../../shared/widgets/app_icon_badge.dart';
@@ -300,9 +301,7 @@ class _MyPageState extends State<MyPage> {
                                 ),
                                 _buildHairlineDivider(context),
                                 _GroupRowTile(
-                                  borderRadius: const BorderRadius.vertical(
-                                    bottom: Radius.circular(AppRadius.card),
-                                  ),
+                                  borderRadius: BorderRadius.zero,
                                   icon: Icons.school_outlined,
                                   iconColor: academicIconColor,
                                   title: '教务系统',
@@ -322,6 +321,26 @@ class _MyPageState extends State<MyPage> {
                                         ? _refreshStatus()
                                         : _loginAcademic(),
                                   ),
+                                ),
+                                _buildHairlineDivider(context),
+                                _GroupRowTile(
+                                  borderRadius: const BorderRadius.vertical(
+                                    bottom: Radius.circular(AppRadius.card),
+                                  ),
+                                  icon: Icons.badge_outlined,
+                                  iconColor: academicIconColor,
+                                  title: '我的年级',
+                                  subtitle: '用于沉底与我无关的校园公告',
+                                  trailing: Text(
+                                    _enrollmentYearLabel(),
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant,
+                                    ),
+                                  ),
+                                  onTap: () => unawaited(_pickEnrollmentYear()),
                                 ),
                               ],
                             ),
@@ -456,6 +475,95 @@ class _MyPageState extends State<MyPage> {
       ),
       child: const Text('进入'),
     );
+  }
+
+  String _enrollmentYearLabel() {
+    final controller = UserProfileController.instance;
+    final manual = controller.manualEnrollmentYear.value;
+    if (manual != null) return '$manual级';
+    final auto = controller.autoEnrollmentYear.value;
+    return auto == null ? '未设置' : '$auto级';
+  }
+
+  /// 年级选择弹层：默认「跟随学号自动识别」，可手动指定覆盖。
+  /// pop 哨兵：-1 = 恢复自动识别（null 与「未选择关闭」无法区分）。
+  static const _enrollmentYearAutoSentinel = -1;
+
+  Future<void> _pickEnrollmentYear() async {
+    final controller = UserProfileController.instance;
+    await controller.refreshAutoEnrollmentYear();
+    if (!mounted) return;
+    setState(() {});
+    final thisYear = DateTime.now().year;
+    final auto = controller.autoEnrollmentYear.value;
+    final autoLabel = auto == null ? '自动（跟随学号，未识别到年级）' : '自动（跟随学号：$auto级）';
+    final options = <(int, String)>[
+      (_enrollmentYearAutoSentinel, autoLabel),
+      for (var year = thisYear + 1; year >= 2016; year--) (year, '$year级'),
+    ];
+    final current = controller.manualEnrollmentYear.value;
+    if (!mounted) return;
+    final picked = await showModalBottomSheet<int>(
+      context: context,
+      builder: (sheetContext) {
+        final cs = Theme.of(sheetContext).colorScheme;
+        return SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 18, 20, 4),
+                child: Text(
+                  '我的年级',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                child: Text(
+                  '按年级排序校园公告：明确面向其他年级的通知会沉底，不会丢失。',
+                  style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+                ),
+              ),
+              for (final (value, label) in options)
+                ListTile(
+                  title: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight:
+                          (value == current ||
+                              (current == null &&
+                                  value == _enrollmentYearAutoSentinel))
+                          ? FontWeight.w600
+                          : FontWeight.w400,
+                      color:
+                          value == current ||
+                              (current == null &&
+                                  value == _enrollmentYearAutoSentinel)
+                          ? cs.primary
+                          : cs.onSurface,
+                    ),
+                  ),
+                  trailing:
+                      value == current ||
+                          (current == null &&
+                              value == _enrollmentYearAutoSentinel)
+                      ? Icon(Icons.check, size: 18, color: cs.primary)
+                      : null,
+                  onTap: () => Navigator.of(sheetContext).pop(value),
+                ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+    if (picked == null || !mounted) return;
+    await controller.setManualEnrollmentYear(
+      picked == _enrollmentYearAutoSentinel ? null : picked,
+    );
+    setState(() {});
   }
 }
 
