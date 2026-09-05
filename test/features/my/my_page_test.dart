@@ -99,8 +99,8 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    // 默认「自动（跟随学号）」，未识别到年级时如实标注；说明文案常驻行内。
-    expect(find.text('自动（跟随学号，未识别到年级）'), findsOneWidget);
+    // 默认「自动」紧凑档（行尾小矩形）；说明文案常驻行下。
+    expect(find.text('自动'), findsOneWidget);
     expect(find.text('默认跟随学号自动识别，仅用于过滤与你无关的教务处公告，可能误判。'), findsOneWidget);
 
     // 选择手动年级：写入持久化，按钮文案随选中项切换。
@@ -112,13 +112,20 @@ void main() {
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getInt('profile_enrollment_year'), 2024);
 
-    // 恢复「自动（跟随学号）」：手动值清除。
+    // 恢复「自动」：手动值清除。菜单项用弹出层 key 定位，与按钮上的
+    // 同名回显文案区分开。
     await tester.tap(find.byType(AppDropdown<int>));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('自动（跟随学号，未识别到年级）'));
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const ValueKey('app-dropdown-menu')),
+        matching: find.text('自动'),
+      ),
+    );
     await tester.pumpAndSettle();
 
     final prefsAfter = await SharedPreferences.getInstance();
     expect(prefsAfter.getInt('profile_enrollment_year'), isNull);
+    expect(find.text('自动'), findsOneWidget);
   });
 }

@@ -326,9 +326,9 @@ class _MyPageState extends State<MyPage> {
                                   ),
                                 ),
                                 _buildHairlineDivider(context),
-                                // 我的年级：下拉选择（与第二课堂筛选同
-                                // 一组件），默认「自动（跟随学号）」；说明
-                                // 常驻行内——这个身份只用于过滤教务处公告，
+                                // 我的年级：行尾紧凑下拉（与第二课堂筛选
+                                // 同一组件），默认「自动（跟随学号）」；说明
+                                // 常驻行下——这个身份只用于过滤教务处公告，
                                 // 可能误判，不参与任何登录/身份逻辑。
                                 Padding(
                                   padding: const EdgeInsets.fromLTRB(
@@ -349,46 +349,46 @@ class _MyPageState extends State<MyPage> {
                                             size: AppIconBadgeSize.small,
                                           ),
                                           const SizedBox(width: 10),
-                                          Text(
-                                            '我的年级',
-                                            style: TextStyle(
-                                              fontSize: 15,
-                                              fontWeight: FontWeight.w600,
-                                              height: 1.2,
-                                              color: cs.onSurface,
+                                          Expanded(
+                                            child: Text(
+                                              '我的年级',
+                                              style: TextStyle(
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.w600,
+                                                height: 1.2,
+                                                color: cs.onSurface,
+                                              ),
                                             ),
+                                          ),
+                                          AppDropdown<int>(
+                                            value:
+                                                UserProfileController
+                                                    .instance
+                                                    .manualEnrollmentYear
+                                                    .value ??
+                                                _enrollmentYearAutoSentinel,
+                                            items: _enrollmentYearItems(),
+                                            onChanged: (value) {
+                                              if (value == null) return;
+                                              unawaited(
+                                                UserProfileController.instance
+                                                    .setManualEnrollmentYear(
+                                                      value ==
+                                                              _enrollmentYearAutoSentinel
+                                                          ? null
+                                                          : value,
+                                                    )
+                                                    .then((_) {
+                                                      if (mounted) {
+                                                        setState(() {});
+                                                      }
+                                                    }),
+                                              );
+                                            },
                                           ),
                                         ],
                                       ),
-                                      const SizedBox(height: 10),
-                                      AppDropdown<int>(
-                                        expanded: true,
-                                        value:
-                                            UserProfileController
-                                                .instance
-                                                .manualEnrollmentYear
-                                                .value ??
-                                            _enrollmentYearAutoSentinel,
-                                        items: _enrollmentYearItems(),
-                                        onChanged: (value) {
-                                          if (value == null) return;
-                                          unawaited(
-                                            UserProfileController.instance
-                                                .setManualEnrollmentYear(
-                                                  value ==
-                                                          _enrollmentYearAutoSentinel
-                                                      ? null
-                                                      : value,
-                                                )
-                                                .then((_) {
-                                                  if (mounted) {
-                                                    setState(() {});
-                                                  }
-                                                }),
-                                          );
-                                        },
-                                      ),
-                                      const SizedBox(height: 8),
+                                      const SizedBox(height: 6),
                                       Text(
                                         '默认跟随学号自动识别，仅用于过滤与你无关的教务处公告，可能误判。',
                                         style: TextStyle(
@@ -539,15 +539,16 @@ class _MyPageState extends State<MyPage> {
   /// 语义相同，但菜单里需要一个可点选的选项值。
   static const _enrollmentYearAutoSentinel = -1;
 
-  /// 年级下拉选项：「自动（跟随学号）」置顶并标注当前识别结果，其后
-  /// 可选年份从明年倒排到 2016 级。
+  /// 年级下拉选项：「自动」置顶并标注当前识别结果，其后可选年份从
+  /// 明年倒排到 2016 级。标签刻意保持短小——按钮是行尾紧凑矩形，
+  /// 「跟随学号」的语义由行下说明文案承载。
   List<AppDropdownItem<int>> _enrollmentYearItems() {
     final auto = UserProfileController.instance.autoEnrollmentYear.value;
     final thisYear = DateTime.now().year;
     return [
       AppDropdownItem(
         value: _enrollmentYearAutoSentinel,
-        label: auto == null ? '自动（跟随学号，未识别到年级）' : '自动（跟随学号：$auto级）',
+        label: auto == null ? '自动' : '自动（$auto级）',
       ),
       for (var year = thisYear + 1; year >= 2016; year--)
         AppDropdownItem(value: year, label: '$year级'),
