@@ -1,14 +1,20 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../notice/notice_model.dart';
-import '../notice/notice_service.dart';
+import '../../core/auth/cas_auth_broker.dart';
+import '../../core/notice/notice_fetch_service.dart';
+import '../../core/notice/notice_model.dart';
+import '../../core/notice/notice_sync_service.dart';
+import '../../core/notice/notice_sync_store.dart';
 import '../sjjx_notice/sjjx_notice_model.dart';
 import '../sjjx_notice/sjjx_notice_service.dart';
-import '../../core/logging/app_logger.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_empty_view.dart';
 import '../../shared/widgets/app_error_view.dart';
+import '../../shared/widgets/auth_required_view.dart';
+import '../../shared/widgets/login_shell.dart';
 
 class NotificationCenterPage extends StatefulWidget {
   const NotificationCenterPage({super.key});
@@ -65,9 +71,10 @@ class _CampusNoticeTab extends StatefulWidget {
 
 class _CampusNoticeTabState extends State<_CampusNoticeTab>
     with AutomaticKeepAliveClientMixin {
-  List<Notice> _notices = [];
+  List<Notice> _notices = const [];
+  Set<String> _unreadIds = const {};
   bool _loading = true;
-  String? _error;
+  bool _authRequired = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -75,34 +82,98 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
   @override
   void initState() {
     super.initState();
-    _load();
+    NoticeSyncStore.instance.unreadSummary.addListener(_onStoreChanged);
+    _reloadFromDisk();
   }
 
-  Future<void> _load() async {
+  @override
+  void dispose() {
+    NoticeSyncStore.instance.unreadSummary.removeListener(_onStoreChanged);
+    super.dispose();
+  }
+
+  /// 收件箱数据源是磁盘状态：进页面先无条件重载（后台 isolate 可能刚
+  /// 写入过新通知，且 reload 不受网络节流影响），此后的写操作经
+  /// unreadSummary 通知回流刷新。
+  Future<void> _reloadFromDisk() async {
+    await NoticeSyncStore.instance.reload();
+    if (!mounted) return;
+    _applySnapshot();
+    setState(() => _loading = false);
+  }
+
+  void _onStoreChanged() {
+    if (!mounted) return;
+    _applySnapshot();
+  }
+
+  void _applySnapshot() {
+    final snapshot = NoticeSyncStore.instance.state;
     setState(() {
-      _loading = true;
-      _error = null;
+      _notices = snapshot.inbox;
+      _unreadIds = Set<String>.of(snapshot.unreadIds);
     });
+  }
+
+  /// 手动刷新：force 同步（绕过时间节流、不弹系统通知）后重载收件箱。
+  /// 同步结果中的认证失效要显式呈现——收件箱有历史数据时不能只表现为
+  /// 「刷新没反应」。
+  Future<void> _refresh() async {
     try {
-      final notices = await NoticeService.instance.fetchNotices();
-      if (!mounted) return;
-      setState(() {
-        _notices = notices;
-        _loading = false;
-      });
-    } catch (e, st) {
-      AppLogger.instance.ui(
-        LogLevel.error,
-        '通知中心-校园公告加载失败',
-        error: e,
-        stackTrace: st,
+      final outcome = await NoticeSyncService.instance.sync(
+        trigger: NoticeSyncTrigger.manualRefresh,
       );
       if (!mounted) return;
       setState(() {
-        _error = '加载失败';
-        _loading = false;
+        _authRequired =
+            !outcome.skipped &&
+            outcome.fetchStatus == NoticeFetchStatus.authRequired;
       });
+    } finally {
+      await NoticeSyncStore.instance.reload();
     }
+  }
+
+  Future<void> _presentLoginPrompt() async {
+    final ok = await showUnifiedAuthLoginModal(
+      context,
+      title: '登录统一认证',
+      description: '登录后可同步教务处通知公告',
+    );
+    if (!ok || !mounted) return;
+    final outcome = await NoticeSyncService.instance.sync(
+      trigger: NoticeSyncTrigger.afterLogin,
+    );
+    if (!mounted) return;
+    setState(() {
+      _authRequired =
+          !outcome.skipped &&
+          outcome.fetchStatus == NoticeFetchStatus.authRequired;
+    });
+    await NoticeSyncStore.instance.reload();
+  }
+
+  Future<void> _markAllRead() => NoticeSyncStore.instance.markAllRead();
+
+  void _openNotice(Notice notice) {
+    if (_unreadIds.contains(notice.id)) {
+      unawaited(NoticeSyncStore.instance.markRead([notice.id]));
+    }
+    context.pushNamed(
+      'external-webview',
+      extra: {
+        'title': notice.title,
+        'url': notice.url,
+        'emulateDingTalkEnvironment': false,
+        'requireUnifiedAuthProtection': shouldOpenCampusNoticeViaUnifiedAuth(
+          notice.url,
+        ),
+        'serviceUrl': notice.url,
+        'loginDescription': '通知公告可直连访问，但需先完成统一认证',
+        'showWebViewBottomBackButton': true,
+        'warmUpAsResource': true,
+      },
+    );
   }
 
   @override
@@ -110,39 +181,48 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
     super.build(context);
     final cs = Theme.of(context).colorScheme;
     if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_error != null) {
-      return AppErrorView(title: _error!, onRetry: _load);
-    }
     if (_notices.isEmpty) {
-      return const AppEmptyView(title: '暂无校园公告', icon: Icons.article_outlined);
+      return RefreshIndicator(
+        onRefresh: _refresh,
+        child: ListView(
+          children: const [
+            SizedBox(height: 120),
+            AppEmptyView(title: '暂无校园公告\n下拉刷新拉取', icon: Icons.article_outlined),
+          ],
+        ),
+      );
     }
+    final unreadCount = _unreadIds.length;
+    final showAuthBanner = _authRequired;
     return RefreshIndicator(
-      onRefresh: _load,
+      onRefresh: _refresh,
       child: ListView.separated(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        itemCount: _notices.length,
+        itemCount: _notices.length + 1 + (showAuthBanner ? 1 : 0),
         separatorBuilder: (_, _) => const SizedBox(height: 10),
         itemBuilder: (context, index) {
-          final notice = _notices[index];
+          if (showAuthBanner && index == 0) {
+            return _AuthStaleBanner(onLoginTap: _presentLoginPrompt);
+          }
+          final headerIndex = showAuthBanner ? index - 1 : index;
+          if (headerIndex == 0) {
+            return Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: unreadCount == 0 ? null : _markAllRead,
+                child: Text(unreadCount > 0 ? '全部已读（$unreadCount）' : '全部已读'),
+              ),
+            );
+          }
+          final notice = _notices[headerIndex - 1];
           return _buildNoticeTile(
             context,
             tag: notice.category,
             tagColor: notice.category == '通知公告' ? cs.primary : cs.error,
             title: notice.title,
             date: notice.date,
-            onTap: () => context.pushNamed(
-              'external-webview',
-              extra: {
-                'title': notice.title,
-                'url': notice.url,
-                'emulateDingTalkEnvironment': false,
-                'requireUnifiedAuthProtection':
-                    shouldOpenCampusNoticeViaUnifiedAuth(notice.url),
-                'serviceUrl': notice.url,
-                'loginDescription': '通知公告可直连访问，但需先完成统一认证',
-                'showWebViewBottomBackButton': true,
-              },
-            ),
+            unread: _unreadIds.contains(notice.id),
+            onTap: () => _openNotice(notice),
           );
         },
       ),
@@ -163,6 +243,7 @@ class _PracticeNoticeTabState extends State<_PracticeNoticeTab>
     with AutomaticKeepAliveClientMixin {
   List<SjjxNotice> _notices = [];
   bool _loading = true;
+  bool _authRequired = false;
   String? _error;
 
   @override
@@ -178,12 +259,19 @@ class _PracticeNoticeTabState extends State<_PracticeNoticeTab>
     setState(() {
       _loading = true;
       _error = null;
+      _authRequired = false;
     });
     try {
       final notices = await SjjxNoticeService.instance.fetchAllNotices();
       if (!mounted) return;
       setState(() {
         _notices = notices;
+        _loading = false;
+      });
+    } on CasAuthExpiredException {
+      if (!mounted) return;
+      setState(() {
+        _authRequired = true;
         _loading = false;
       });
     } catch (e) {
@@ -195,11 +283,31 @@ class _PracticeNoticeTabState extends State<_PracticeNoticeTab>
     }
   }
 
+  Future<void> _presentLoginPrompt() async {
+    final ok = await showUnifiedAuthLoginModal(
+      context,
+      title: '登录统一认证',
+      description: '登录后可查看实践通知',
+    );
+    if (ok && mounted) {
+      await _load();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
     final cs = Theme.of(context).colorScheme;
     if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_authRequired) {
+      return AuthRequiredView(
+        title: '登录后查看实践通知',
+        message: '实践通知需要统一认证会话（校外经 WebVPN 访问），登录后即可刷新。',
+        buttonLabel: '登录统一认证',
+        onAction: _presentLoginPrompt,
+        icon: Icons.sports_kabaddi_outlined,
+      );
+    }
     if (_error != null) {
       return AppErrorView(title: _error!, onRetry: _load);
     }
@@ -244,6 +352,7 @@ Widget _buildNoticeTile(
   required String title,
   required String? date,
   required VoidCallback onTap,
+  bool unread = false,
 }) {
   final cs = Theme.of(context).colorScheme;
   final publishDate = (date ?? '').trim();
@@ -260,6 +369,17 @@ Widget _buildNoticeTile(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Row(
           children: [
+            if (unread) ...[
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: cs.primary,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 10),
+            ],
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
@@ -312,6 +432,44 @@ bool shouldOpenCampusNoticeViaUnifiedAuth(String url) {
   final uri = Uri.tryParse(url);
   if (uri == null) return false;
   return uri.host.toLowerCase() == 'jwc.zjxu.edu.cn';
+}
+
+/// 收件箱有历史数据但刷新时认证失效：列表照常展示，顶部提示登录恢复。
+class _AuthStaleBanner extends StatelessWidget {
+  const _AuthStaleBanner({required this.onLoginTap});
+
+  final VoidCallback onLoginTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: cs.errorContainer.withValues(alpha: 0.45),
+      borderRadius: BorderRadius.circular(12),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        child: Row(
+          children: [
+            Icon(Icons.lock_outline, size: 16, color: cs.onErrorContainer),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                '统一认证已失效，以下为缓存内容，登录后恢复同步',
+                style: TextStyle(fontSize: 13, color: cs.onErrorContainer),
+              ),
+            ),
+            const SizedBox(width: 8),
+            TextButton(
+              onPressed: onLoginTap,
+              style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+              child: const Text('登录'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 Color _sjjxCategoryColor(String category, ColorScheme cs) {

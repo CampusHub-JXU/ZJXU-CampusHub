@@ -9,6 +9,8 @@ import 'app/background_task_dispatcher.dart';
 import 'app/routes.dart';
 import 'core/auth/connect_mode_resolver.dart';
 import 'core/logging/app_logger.dart';
+import 'core/notice/notice_sync_service.dart';
+import 'core/notice/notice_sync_store.dart';
 import 'core/notification/app_notification_service.dart';
 import 'core/notification/background_task_service.dart';
 import 'core/push/push_service.dart';
@@ -18,6 +20,10 @@ import 'features/second_classroom/second_classroom_subscription_service.dart';
 void _handleNotificationPayload(String payload) {
   if (payload == 'dorm-electricity') {
     appRouter.goNamed('dorm-electricity');
+    return;
+  }
+  if (payload == NoticeSyncService.aggregatePayload) {
+    appRouter.goNamed('notification-center');
     return;
   }
 
@@ -77,6 +83,14 @@ Future<void> main() async {
         SecondClassroomSubscriptionService.instance.checkRecruitingMatches(),
       );
       unawaited(PushService.instance.initialize());
+      // 教务处通知：冷启动无条件重载磁盘状态（后台 isolate 写盘后的红点
+      // 正确性不依赖后续 resumed 事件），并发起一次自动补查（claim 防抖）。
+      unawaited(NoticeSyncStore.instance.reload());
+      unawaited(
+        NoticeSyncService.instance.sync(
+          trigger: NoticeSyncTrigger.foregroundAuto,
+        ),
+      );
       AppNotificationService.instance.onTap = (payload) {
         _handleNotificationPayload(payload);
       };

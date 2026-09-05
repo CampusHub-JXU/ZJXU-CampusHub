@@ -13,6 +13,9 @@ class AppNotificationService {
   static const _secondClassroomChannelId = 'second_classroom_activity_reminder';
   static const _secondClassroomChannelName = '第二课堂活动提醒';
   static const _secondClassroomChannelDescription = '订阅活动名后，同名活动开始招募时提醒';
+  static const _noticeUpdateChannelId = 'jwc_notice';
+  static const _noticeUpdateChannelName = '教务处通知';
+  static const _noticeUpdateChannelDescription = '教务处通知公告有新增时提醒';
 
   bool _initialized = false;
   Future<void>? _initializing;
@@ -74,6 +77,46 @@ class AppNotificationService {
         >();
     if (android == null) return false;
     return await android.requestNotificationsPermission() ?? false;
+  }
+
+  /// 系统通知权限是否开启（播报前置条件；被拒时同步仍更新数据与未读，
+  /// 只跳过弹窗，恢复后由待播报队列补发）。
+  Future<bool> areNotificationsEnabled() async {
+    final android = _plugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+    if (android == null) return false;
+    return await android.areNotificationsEnabled() ?? false;
+  }
+
+  /// 教务处通知聚合提醒。同一 [id] 覆盖旧聚合，不在通知栏堆积。
+  Future<void> showNoticeUpdateNotification({
+    required int id,
+    required String title,
+    required String body,
+    required String payload,
+  }) async {
+    if (!_initialized) {
+      await initialize(requestNotificationPermission: false);
+    }
+
+    await _plugin.show(
+      id,
+      title,
+      body,
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          _noticeUpdateChannelId,
+          _noticeUpdateChannelName,
+          channelDescription: _noticeUpdateChannelDescription,
+          importance: Importance.high,
+          priority: Priority.high,
+          icon: '@mipmap/ic_launcher',
+        ),
+      ),
+      payload: payload,
+    );
   }
 
   Future<void> showNotification({
@@ -155,6 +198,14 @@ class AppNotificationService {
         _secondClassroomChannelId,
         _secondClassroomChannelName,
         description: _secondClassroomChannelDescription,
+        importance: Importance.high,
+      ),
+    );
+    await android.createNotificationChannel(
+      const AndroidNotificationChannel(
+        _noticeUpdateChannelId,
+        _noticeUpdateChannelName,
+        description: _noticeUpdateChannelDescription,
         importance: Importance.high,
       ),
     );

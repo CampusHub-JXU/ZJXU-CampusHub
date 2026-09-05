@@ -83,9 +83,8 @@ const _allowedLegacyEdges = <String>{
   'features/home/models/home_snapshot.dart -> features/schedule/schedule_model.dart',
   // my 页快捷入口
   'features/my/my_page.dart -> features/schedule/schedule_service.dart',
-  // 通知中心聚合页
-  'features/notification_center/notification_center_page.dart -> features/notice/notice_model.dart',
-  'features/notification_center/notification_center_page.dart -> features/notice/notice_service.dart',
+  // 通知中心聚合页（notice 核心 2026-09 下沉 core/notice 后，原
+  // notification_center -> features/notice 例外随 edge 消失一并移除）
   'features/notification_center/notification_center_page.dart -> features/sjjx_notice/sjjx_notice_model.dart',
   'features/notification_center/notification_center_page.dart -> features/sjjx_notice/sjjx_notice_service.dart',
 };

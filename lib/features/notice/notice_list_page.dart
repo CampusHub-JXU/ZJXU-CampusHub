@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/logging/app_logger.dart';
-import 'notice_model.dart';
-import 'notice_service.dart';
+import '../../core/notice/notice_fetch_service.dart';
+import '../../core/notice/notice_model.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_empty_view.dart';
 import '../../shared/widgets/app_error_view.dart';
+import '../../shared/widgets/auth_required_view.dart';
+import '../../shared/widgets/login_shell.dart';
 
 bool shouldOpenNoticeViaUnifiedAuth(String url) {
   final uri = Uri.tryParse(url);
@@ -27,6 +29,7 @@ class _NoticeListPageState extends State<NoticeListPage> {
   bool _loading = true;
   bool _loadingMore = false;
   bool _hasMore = true;
+  bool _authRequired = false;
   int _currentPage = 1;
   String? _error;
   final _scrollController = ScrollController();
@@ -57,30 +60,37 @@ class _NoticeListPageState extends State<NoticeListPage> {
     setState(() {
       _loading = true;
       _error = null;
+      _authRequired = false;
     });
     _currentPage = 1;
-    try {
-      final notices = await NoticeService.instance.fetchNotices();
-      if (!mounted) return;
-      setState(() {
-        _notices = notices;
-        _loading = false;
-        _hasMore = true;
-      });
-    } catch (error, stackTrace) {
-      AppLogger.instance.ui(
-        LogLevel.error,
-        '通知公告页首屏加载失败',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      if (!mounted) return;
+    final result = await NoticeService.instance.fetchNotices();
+    if (!mounted) return;
+    if (result.failed) {
+      AppLogger.instance.ui(LogLevel.error, '通知公告页首屏加载失败');
       setState(() {
         _notices = [];
         _loading = false;
         _hasMore = false;
         _error = '无法连接教务处通知公告';
       });
+      return;
+    }
+    setState(() {
+      _notices = result.notices;
+      _loading = false;
+      _hasMore = true;
+      _authRequired = result.authRequired;
+    });
+  }
+
+  Future<void> _presentLoginPrompt() async {
+    final ok = await showUnifiedAuthLoginModal(
+      context,
+      title: '登录统一认证',
+      description: '登录后可查看通知公告与校园公告',
+    );
+    if (ok && mounted) {
+      await _loadNotices();
     }
   }
 
@@ -117,6 +127,7 @@ class _NoticeListPageState extends State<NoticeListPage> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final showAuthBanner = _authRequired && _notices.isNotEmpty;
     return Scaffold(
       appBar: AppAppBar(
         title: const Text('通知公告'),
@@ -128,6 +139,14 @@ class _NoticeListPageState extends State<NoticeListPage> {
           ? const Center(child: CircularProgressIndicator())
           : _error != null
           ? AppErrorView(message: _error, onRetry: _loadNotices)
+          : _authRequired && _notices.isEmpty
+          ? AuthRequiredView(
+              title: '登录后查看通知公告',
+              message: '校外访问通知公告需要统一认证会话，登录后即可同步最新通知。',
+              buttonLabel: '登录统一认证',
+              onAction: _presentLoginPrompt,
+              icon: Icons.campaign_outlined,
+            )
           : _notices.isEmpty
           ? const AppEmptyView(title: '暂无通知', icon: Icons.article_outlined)
           : RefreshIndicator(
@@ -138,10 +157,21 @@ class _NoticeListPageState extends State<NoticeListPage> {
                   horizontal: 16,
                   vertical: 12,
                 ),
-                itemCount: _notices.length + (_hasMore ? 1 : 0),
+                itemCount:
+                    _notices.length +
+                    (_hasMore ? 1 : 0) +
+                    (showAuthBanner ? 1 : 0),
                 separatorBuilder: (_, _) => const SizedBox(height: 10),
                 itemBuilder: (context, index) {
-                  if (index >= _notices.length) {
+                  var offset = 0;
+                  if (showAuthBanner) {
+                    if (index == 0) {
+                      return _AuthStaleBanner(onLoginTap: _presentLoginPrompt);
+                    }
+                    offset = 1;
+                  }
+                  final noticeIndex = index - offset;
+                  if (noticeIndex >= _notices.length) {
                     return const Padding(
                       padding: EdgeInsets.symmetric(vertical: 16),
                       child: Center(
@@ -153,7 +183,7 @@ class _NoticeListPageState extends State<NoticeListPage> {
                       ),
                     );
                   }
-                  final notice = _notices[index];
+                  final notice = _notices[noticeIndex];
                   return _NoticeCard(
                     notice: notice,
                     colorScheme: cs,
@@ -169,6 +199,7 @@ class _NoticeListPageState extends State<NoticeListPage> {
                           'serviceUrl': notice.url,
                           'loginDescription': '通知公告可直连访问，但需先完成统一认证',
                           'showWebViewBottomBackButton': true,
+                          'warmUpAsResource': true,
                         },
                       );
                     },
@@ -176,6 +207,44 @@ class _NoticeListPageState extends State<NoticeListPage> {
                 },
               ),
             ),
+    );
+  }
+}
+
+/// 有缓存可看但刷新时认证失效：列表照常展示，顶部提示登录以恢复同步。
+class _AuthStaleBanner extends StatelessWidget {
+  const _AuthStaleBanner({required this.onLoginTap});
+
+  final VoidCallback onLoginTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: cs.errorContainer.withValues(alpha: 0.45),
+      borderRadius: BorderRadius.circular(12),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        child: Row(
+          children: [
+            Icon(Icons.lock_outline, size: 16, color: cs.onErrorContainer),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                '统一认证已失效，以下为缓存内容，登录后恢复同步',
+                style: TextStyle(fontSize: 13, color: cs.onErrorContainer),
+              ),
+            ),
+            const SizedBox(width: 8),
+            TextButton(
+              onPressed: onLoginTap,
+              style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+              child: const Text('登录'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
