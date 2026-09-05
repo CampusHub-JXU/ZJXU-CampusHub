@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:jxu_campus_hub/features/campus_card/campus_card_service.dart';
 
 void main() {
@@ -8,7 +9,10 @@ void main() {
 
   final service = CampusCardService.instance;
 
-  setUp(service.debugReset);
+  setUp(() {
+    FlutterSecureStorage.setMockInitialValues({});
+    service.debugReset();
+  });
 
   group('CampusCardService.parseBalanceFromPageText', () {
     test('parses amount from same line with currency sign', () {
@@ -73,5 +77,24 @@ void main() {
       expect(service.cachedBalance, isNull);
       expect(service.lastUpdated, isNull);
     });
+
+    test(
+      'stops quietly when the rendered page is released during polling',
+      () async {
+        var finishCalls = 0;
+        var cancelled = false;
+
+        await service.debugPollRenderedBalance(
+          evaluate: () {
+            cancelled = true;
+            return Future<String?>.error(StateError('webview disposed'));
+          },
+          finish: (_) async => finishCalls++,
+          isCancelled: () => cancelled,
+        );
+
+        expect(finishCalls, 0);
+      },
+    );
   });
 }

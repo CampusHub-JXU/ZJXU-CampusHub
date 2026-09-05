@@ -45,6 +45,24 @@ class CampusCardService {
   static final serviceHallCasServiceUrl =
       CasService.campusCardPayment.serviceUrl;
 
+  static const _renderedBalanceScript = r'''
+(function() {
+  var chunks = [];
+  if (document.body && document.body.innerText) {
+    chunks.push(document.body.innerText);
+  }
+  var nodes = document.querySelectorAll('[title],[aria-label],input,textarea');
+  for (var i = 0; i < nodes.length; i++) {
+    var node = nodes[i];
+    chunks.push(node.getAttribute('title') || '');
+    chunks.push(node.getAttribute('aria-label') || '');
+    chunks.push(node.value || '');
+    chunks.push(node.textContent || '');
+  }
+  return chunks.join('\n');
+})()
+''';
+
   void updateCachedBalance(double? balance) {
     if (balance == null) return;
     _cachedBalance = balance;
@@ -196,6 +214,8 @@ class CampusCardService {
   Future<double?> _fetchBalanceFromRenderedPage() async {
     final completer = Completer<double?>();
     HeadlessInAppWebView? webView;
+    var pollingStarted = false;
+    var cancelled = false;
 
     Future<void> finish(double? balance) async {
       if (!completer.isCompleted) {
@@ -222,7 +242,15 @@ class CampusCardService {
               'DingTalk/7.0.0',
         ),
         onLoadStop: (controller, url) {
-          unawaited(_pollRenderedBalance(controller, finish));
+          if (pollingStarted || cancelled) return;
+          pollingStarted = true;
+          unawaited(
+            _pollRenderedBalance(
+              controller,
+              finish,
+              isCancelled: () => cancelled || completer.isCompleted,
+            ),
+          );
         },
         onReceivedError: (controller, request, error) {
           if (request.isForMainFrame ?? false) {
@@ -247,7 +275,10 @@ class CampusCardService {
 
       final balance = await completer.future.timeout(
         const Duration(seconds: 12),
-        onTimeout: () => null,
+        onTimeout: () {
+          cancelled = true;
+          return null;
+        },
       );
       if (balance == null) {
         AppLogger.instance.network(LogLevel.warn, '校园卡余额渲染后仍未找到余额字段');
@@ -266,34 +297,54 @@ class CampusCardService {
       );
       return clearCachedBalance();
     } finally {
+      cancelled = true;
       await webView?.dispose();
     }
   }
 
+  /// 轮询 WebView 渲染出的余额文本。
+  ///
+  /// [isCancelled] 以外层 completer 完成为准（命中余额 / 加载失败 / 超时
+  /// 都会完成它）。外层超时后 `finally` 会 dispose WebView，而轮询总时长
+  /// 与超时上限几乎相等——每次取消信号通过后到 [InAppWebViewController
+  /// .evaluateJavascript] 实际执行之间仍有微小竞态窗口，因此 evaluate
+  /// 还需捕获「controller 已释放」类异常兜底，绝不让它外抛。
   Future<void> _pollRenderedBalance(
     InAppWebViewController controller,
+    Future<void> Function(double? balance) finish, {
+    required bool Function() isCancelled,
+  }) async {
+    return _pollRenderedBalanceWithEvaluator(
+      () async =>
+          (await controller.evaluateJavascript(source: _renderedBalanceScript))
+              ?.toString(),
+      finish,
+      isCancelled,
+    );
+  }
+
+  Future<void> _pollRenderedBalanceWithEvaluator(
+    Future<String?> Function() evaluate,
     Future<void> Function(double? balance) finish,
+    bool Function() isCancelled,
   ) async {
     for (var attempt = 0; attempt < 24; attempt++) {
-      final rawText = await controller.evaluateJavascript(
-        source: r'''
-(function() {
-  var chunks = [];
-  if (document.body && document.body.innerText) {
-    chunks.push(document.body.innerText);
-  }
-  var nodes = document.querySelectorAll('[title],[aria-label],input,textarea');
-  for (var i = 0; i < nodes.length; i++) {
-    var node = nodes[i];
-    chunks.push(node.getAttribute('title') || '');
-    chunks.push(node.getAttribute('aria-label') || '');
-    chunks.push(node.value || '');
-    chunks.push(node.textContent || '');
-  }
-  return chunks.join('\n');
-})()
-''',
-      );
+      if (isCancelled()) return;
+
+      final String? rawText;
+      try {
+        rawText = await evaluate();
+      } catch (error, stackTrace) {
+        if (isCancelled()) return;
+        AppLogger.instance.webview(
+          LogLevel.warn,
+          '校园卡余额轮询中断（WebView 已释放或通道异常）',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        return;
+      }
+
       final balance = parseBalanceFromPageText(rawText?.toString() ?? '');
       if (balance != null) {
         await finish(balance);
@@ -304,6 +355,15 @@ class CampusCardService {
     }
 
     await finish(null);
+  }
+
+  @visibleForTesting
+  Future<void> debugPollRenderedBalance({
+    required Future<String?> Function() evaluate,
+    required Future<void> Function(double? balance) finish,
+    required bool Function() isCancelled,
+  }) {
+    return _pollRenderedBalanceWithEvaluator(evaluate, finish, isCancelled);
   }
 
   String formatBalance(double? balance) {
