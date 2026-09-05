@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../core/theme/app_theme_controller.dart';
 import '../../core/theme/app_colors.dart';
@@ -33,6 +34,10 @@ class _MyPageState extends State<MyPage> {
   bool _hasScheduleCache = false;
   DateTime? _scheduleUpdatedAt;
   int _statusRefreshVersion = 0;
+
+  /// 底部签名行版本号，仅取一次。
+  late final Future<PackageInfo> _packageInfoFuture =
+      PackageInfo.fromPlatform();
 
   @override
   void initState() {
@@ -219,109 +224,165 @@ class _MyPageState extends State<MyPage> {
       // 状态栏留白交给 [SafeArea] 处理。
       body: SafeArea(
         bottom: false,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
-          children: [
-            // Apple large-title 头部：无卡容器，纯文字块与卡片左缘对齐。
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '我的',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w700,
-                    height: 1.2,
-                    color: cs.onSurface,
-                  ),
+        child: LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            // 内容不满一屏时撑到视口高度，让 [Spacer] 把底部签名锚到
+            // 页面底缘（大字号/内容超屏时自然回退为普通滚动）。
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: IntrinsicHeight(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.pageMargin,
+                        AppSpacing.xl,
+                        AppSpacing.pageMargin,
+                        0,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Apple large-title 头部：无卡容器，纯文字块与卡片
+                          // 左缘对齐；字号与首页 Hero 大字（30）同档，
+                          // 给整页建立和主页一致的排版重心。
+                          Text(
+                            '我的',
+                            style: TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w700,
+                              height: 1.2,
+                              color: cs.onSurface,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            '管理统一认证（含一卡通）、教务登录状态',
+                            style: TextStyle(
+                              fontSize: 14,
+                              height: 1.25,
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
+                          // 头部到卡片群的呼吸空间，与首页环境行 → Hero
+                          // 的大留白同一意图（按本页体量收窄为 24）。
+                          const SizedBox(height: AppSpacing.xl),
+                          AppCard(
+                            padding: EdgeInsets.zero,
+                            child: Column(
+                              children: [
+                                _GroupRowTile(
+                                  borderRadius: const BorderRadius.vertical(
+                                    top: Radius.circular(AppRadius.card),
+                                  ),
+                                  icon: Icons.account_balance_wallet_outlined,
+                                  iconColor: accountIconColor,
+                                  title: '统一认证（含一卡通）',
+                                  subtitle: _campusSubtitle(),
+                                  status: _buildStatusIndicator(
+                                    checking: _campusStatusChecking,
+                                    loggedIn: _campusLoggedIn,
+                                    unknown: _campusStatusUnknown,
+                                    label: _campusLoggedIn ? '已登录' : '未登录',
+                                    statusKey: const Key('my_campus_status'),
+                                  ),
+                                  onTap: () {
+                                    if (_campusStatusUnknown) {
+                                      // 状态未知时点按 = 重新测活，而不是直接弹登录框。
+                                      unawaited(_refreshStatus());
+                                    } else if (_campusLoggedIn) {
+                                      unawaited(_reloginCampus());
+                                    } else {
+                                      unawaited(_openCampusCardAction());
+                                    }
+                                  },
+                                ),
+                                _buildHairlineDivider(context),
+                                _GroupRowTile(
+                                  borderRadius: const BorderRadius.vertical(
+                                    bottom: Radius.circular(AppRadius.card),
+                                  ),
+                                  icon: Icons.school_outlined,
+                                  iconColor: academicIconColor,
+                                  title: '教务系统',
+                                  subtitle: _academicSubtitle(),
+                                  status: _buildStatusIndicator(
+                                    checking: _academicStatusChecking,
+                                    loggedIn: _academicLoggedIn,
+                                    unknown: _academicStatusUnknown,
+                                    label: _academicLoggedIn ? '已登录' : '未登录',
+                                    statusKey: const Key('my_academic_status'),
+                                  ),
+                                  trailing: _academicLoggedIn
+                                      ? _buildAcademicEnterButton(context)
+                                      : null,
+                                  onTap: () => unawaited(
+                                    _academicStatusUnknown
+                                        ? _refreshStatus()
+                                        : _loginAcademic(),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: AppSpacing.gridGap),
+                          AppCard(
+                            padding: EdgeInsets.zero,
+                            child: _GroupRowTile(
+                              borderRadius: BorderRadius.circular(
+                                AppRadius.card,
+                              ),
+                              icon: Icons.settings_outlined,
+                              iconColor: cs.primary,
+                              title: '设置',
+                              subtitle: '主题、学期、网络与调试选项',
+                              onTap: () async {
+                                await context.pushNamed('settings');
+                                if (!mounted) return;
+                                await _refreshStatus();
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Spacer(),
+                    _buildFooter(context),
+                  ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  '管理统一认证（含一卡通）、教务登录状态',
-                  style: TextStyle(
-                    fontSize: 13,
-                    height: 1.25,
-                    color: cs.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            AppCard(
-              padding: EdgeInsets.zero,
-              child: Column(
-                children: [
-                  _GroupRowTile(
-                    borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(AppRadius.card),
-                    ),
-                    icon: Icons.account_balance_wallet_outlined,
-                    iconColor: accountIconColor,
-                    title: '统一认证（含一卡通）',
-                    subtitle: _campusSubtitle(),
-                    status: _buildStatusIndicator(
-                      checking: _campusStatusChecking,
-                      loggedIn: _campusLoggedIn,
-                      unknown: _campusStatusUnknown,
-                      label: _campusLoggedIn ? '已登录' : '未登录',
-                      statusKey: const Key('my_campus_status'),
-                    ),
-                    onTap: () {
-                      if (_campusStatusUnknown) {
-                        // 状态未知时点按 = 重新测活，而不是直接弹登录框。
-                        unawaited(_refreshStatus());
-                      } else if (_campusLoggedIn) {
-                        unawaited(_reloginCampus());
-                      } else {
-                        unawaited(_openCampusCardAction());
-                      }
-                    },
-                  ),
-                  _buildHairlineDivider(context),
-                  _GroupRowTile(
-                    borderRadius: const BorderRadius.vertical(
-                      bottom: Radius.circular(AppRadius.card),
-                    ),
-                    icon: Icons.school_outlined,
-                    iconColor: academicIconColor,
-                    title: '教务系统',
-                    subtitle: _academicSubtitle(),
-                    status: _buildStatusIndicator(
-                      checking: _academicStatusChecking,
-                      loggedIn: _academicLoggedIn,
-                      unknown: _academicStatusUnknown,
-                      label: _academicLoggedIn ? '已登录' : '未登录',
-                      statusKey: const Key('my_academic_status'),
-                    ),
-                    trailing: _academicLoggedIn
-                        ? _buildAcademicEnterButton(context)
-                        : null,
-                    onTap: () => unawaited(
-                      _academicStatusUnknown
-                          ? _refreshStatus()
-                          : _loginAcademic(),
-                    ),
-                  ),
-                ],
               ),
             ),
-            const SizedBox(height: 12),
-            AppCard(
-              padding: EdgeInsets.zero,
-              child: _GroupRowTile(
-                borderRadius: BorderRadius.circular(AppRadius.card),
-                icon: Icons.settings_outlined,
-                iconColor: cs.primary,
-                title: '设置',
-                subtitle: '主题、学期、网络与调试选项',
-                onTap: () async {
-                  await context.pushNamed('settings');
-                  if (!mounted) return;
-                  await _refreshStatus();
-                },
-              ),
-            ),
-          ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 底部签名行：锚在视口底缘（dock 上方），让首屏留白成为刻意构图；
+  /// 版本号规格与设置页「关于」一致。
+  Widget _buildFooter(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        AppSpacing.pageMargin,
+        AppSpacing.xl,
+        AppSpacing.pageMargin,
+        // SafeArea(bottom: false) 之下自行叠加底部安全区 + dock 高度。
+        MediaQuery.paddingOf(context).bottom + 110,
+      ),
+      child: Center(
+        child: FutureBuilder<PackageInfo>(
+          future: _packageInfoFuture,
+          builder: (context, snapshot) {
+            final version = snapshot.hasData
+                ? 'v${snapshot.data!.version}+${snapshot.data!.buildNumber}'
+                : '';
+            return Text(
+              '嘉兴大学-智能中台 $version',
+              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+            );
+          },
         ),
       ),
     );
