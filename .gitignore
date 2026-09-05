@@ -85,3 +85,4 @@ docs/agents/session-databases.md
 # Local agent session state and browser/debug captures
 /.workbuddy/
 /captcha.png
+.gradle/

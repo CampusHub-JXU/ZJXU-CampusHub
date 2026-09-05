@@ -11,15 +11,17 @@ pluginManagement {
     includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
 
     repositories {
-        google()
-        mavenCentral()
-        gradlePluginPortal()
-        // Aliyun mirrors for China — skipped in CI (set CI=true in workflow).
+        // Aliyun mirrors for China — FIRST so google()/mavenCentral() are only
+        // fallbacks; skipped in CI (set CI=true in workflow).
         if (System.getenv("CI") != "true") {
             maven(url = "https://maven.aliyun.com/repository/google")
             maven(url = "https://maven.aliyun.com/repository/public")
             maven(url = "https://maven.aliyun.com/repository/jcenter")
+            maven(url = "https://maven.aliyun.com/repository/gradle-plugin")
         }
+        google()
+        mavenCentral()
+        gradlePluginPortal()
     }
 }
 
