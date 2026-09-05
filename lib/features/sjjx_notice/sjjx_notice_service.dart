@@ -8,7 +8,7 @@ import 'package:html/parser.dart' as html_parser;
 import '../../core/auth/cas_auth_broker.dart';
 import '../../core/auth/unified_auth.dart';
 import '../../core/logging/app_logger.dart';
-import '../../core/network/dio_client.dart';
+import '../../core/auth/zhengfang_auth.dart';
 import 'sjjx_notice_model.dart';
 
 const _sjjxNoticeBaseUrl = 'http://sjjx.zjxu.edu.cn/sjjx/';
@@ -136,7 +136,23 @@ class SjjxNoticeService {
       }
 
       final html = decodeSjjxNoticeHtml(resp);
-      final notices = parseSjjxNoticeListHtml(html);
+      if (!looksLikeSjjxNoticeListHtml(html)) {
+        throw StateError('实践通知响应缺少列表结构');
+      }
+      final parsed = parseSjjxNoticeListHtml(html);
+      final viaWebVpn = resp.realUri.host == 'webvpn.zjxu.edu.cn';
+      final notices = viaWebVpn
+          ? parsed
+                .map(
+                  (notice) => SjjxNotice(
+                    title: notice.title,
+                    url: ZhengfangAuth.instance.buildWebVpnProxyUrl(notice.url),
+                    category: notice.category,
+                    date: notice.date,
+                  ),
+                )
+                .toList()
+          : parsed;
       if (notices.isEmpty) {
         final doc = html_parser.parse(html);
         final title = doc.querySelector('title')?.text.trim() ?? '';
@@ -153,6 +169,8 @@ class SjjxNoticeService {
 
       _cachedNotices = notices;
       return notices;
+    } on CasAuthExpiredException {
+      rethrow;
     } catch (error, stackTrace) {
       final cachedNotices = _cachedNotices;
       if (cachedNotices != null) {
@@ -174,14 +192,34 @@ class SjjxNoticeService {
     }
   }
 
-  Future<Response<List<int>>> _getDirect(String url) {
-    return DioClient.instance.dio.get<List<int>>(
+  Dio? _testDio;
+
+  Future<Response<List<int>>> _getDirect(String url) async {
+    final response = await CasAuthBroker.getResource(
       url,
-      options: Options(
-        responseType: ResponseType.bytes,
-        followRedirects: true,
-        validateStatus: (status) => status != null && status < 1000,
-      ),
+      dio: _testDio,
+      needsLogin: looksLikeSjjxResponseNeedsUnifiedAuth,
     );
+    if (looksLikeSjjxNoticeListHtml(decodeSjjxNoticeHtml(response))) {
+      return response;
+    }
+    // 校外直连可能只落到网关首页，使用已登记并经浏览器验证的代理路径。
+    if (response.realUri.host == 'webvpn.zjxu.edu.cn') {
+      return CasAuthBroker.getResource(
+        ZhengfangAuth.instance.buildWebVpnProxyUrl(url),
+        dio: _testDio,
+        needsLogin: looksLikeSjjxResponseNeedsUnifiedAuth,
+      );
+    }
+    return response;
+  }
+
+  @visibleForTesting
+  void debugSetDio(Dio? dio) => _testDio = dio;
+
+  @visibleForTesting
+  void debugReset() {
+    _testDio = null;
+    _cachedNotices = null;
   }
 }

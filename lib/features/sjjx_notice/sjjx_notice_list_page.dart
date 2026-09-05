@@ -3,9 +3,12 @@ import 'package:go_router/go_router.dart';
 
 import 'sjjx_notice_model.dart';
 import 'sjjx_notice_service.dart';
+import '../../core/auth/cas_auth_broker.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_empty_view.dart';
 import '../../shared/widgets/app_error_view.dart';
+import '../../shared/widgets/auth_required_view.dart';
+import '../../shared/widgets/login_shell.dart';
 
 class SjjxNoticeListPage extends StatefulWidget {
   const SjjxNoticeListPage({super.key});
@@ -25,6 +28,7 @@ class _SjjxNoticeListPageState extends State<SjjxNoticeListPage> {
   String? _selectedCategory;
   bool _loading = true;
   bool _loadingMore = false;
+  bool _authRequired = false;
   String? _error;
 
   @override
@@ -44,6 +48,7 @@ class _SjjxNoticeListPageState extends State<SjjxNoticeListPage> {
     setState(() {
       _loading = true;
       _error = null;
+      _authRequired = false;
     });
     try {
       final notices = await SjjxNoticeService.instance.fetchAllNotices();
@@ -59,12 +64,29 @@ class _SjjxNoticeListPageState extends State<SjjxNoticeListPage> {
         _loadingMore = false;
         _loading = false;
       });
+    } on CasAuthExpiredException {
+      if (!mounted) return;
+      setState(() {
+        _authRequired = true;
+        _loading = false;
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _error = e.toString();
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _presentLoginPrompt() async {
+    final ok = await showUnifiedAuthLoginModal(
+      context,
+      title: '登录统一认证',
+      description: '登录后可查看实践通知',
+    );
+    if (ok && mounted) {
+      await _loadNotices();
     }
   }
 
@@ -131,6 +153,14 @@ class _SjjxNoticeListPageState extends State<SjjxNoticeListPage> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
+          : _authRequired
+          ? AuthRequiredView(
+              title: '登录后查看实践通知',
+              message: '实践通知需要统一认证会话（校外经 WebVPN 访问），登录后即可刷新。',
+              buttonLabel: '登录统一认证',
+              onAction: _presentLoginPrompt,
+              icon: Icons.sports_kabaddi_outlined,
+            )
           : _error != null
           ? AppErrorView(message: '无法连接实践教学管理平台', onRetry: _loadNotices)
           : _allNotices.isEmpty
