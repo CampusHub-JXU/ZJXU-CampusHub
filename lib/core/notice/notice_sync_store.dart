@@ -169,8 +169,10 @@ enum NoticeSyncClaim { granted, blocked }
 /// 主 isolate 与后台 isolate 恰好同进程，故弃用。）
 /// 锁内只做内存与文件操作（毫秒级）；网络、platform 通道、通知发送
 /// 一律在锁外。锁挂在独立 `.lock` 文件而非状态文件本身：状态文件会被
-/// rename 替换，对它持有的锁在替换后失效。残留锁（旧版本遗留的空锁
-/// 文件、持有者崩溃）由陈旧回收兜底，不会永久阻塞。
+/// rename 替换，对它持有的锁在替换后失效。残留锁（持有者崩溃、旧版
+/// 本遗留的空锁文件）由回收兜底，不会永久阻塞；create 与 token 写入
+/// 之间的毫秒级空窗借空锁宽限期与旧版残留区分，防止并发写者互抢新锁
+/// （见 [_emptyLockGraceAge]）。
 ///
 /// 调用约束：公开 API 之间不得嵌套调用（同 isolate 内第二次取锁会等待
 /// 外层释放 → 死锁）。内部组合只调用 `*_locked` 私有实现。
@@ -195,9 +197,16 @@ class NoticeSyncStore {
   static const String stateFileName = 'notice_sync_state.json';
   static const String lockFileName = 'notice_sync_state.lock';
 
-  /// 残留锁回收阈值。锁内只有毫秒级本地 IO（网络在锁外），超龄即视为
-  /// 持有者已死；旧版本实现从不写 token，空锁文件视为即时残留。
+  /// 残留锁回收阈值（有 token 的锁）。锁内只有毫秒级本地 IO（网络在
+  /// 锁外），超龄即视为持有者已死。
   static const Duration _staleLockAge = Duration(seconds: 60);
+
+  /// 空锁文件宽限期。create 与 token 写入是两步异步操作，中间存在合法
+  /// 的「已创建、尚为空」窗口（毫秒级）；旧版本遗留的空锁文件则永不
+  /// 增重。宽限期内视空锁为活跃写者的取锁中态，照常轮询等待——否则
+  /// 并发写者会把新锁当旧版残留删掉，双方同时进入临界区（CI 并发用例
+  /// 实证：claim 与 notify 各放行两方）。
+  static const Duration _emptyLockGraceAge = Duration(milliseconds: 250);
   static const Duration _lockPollMaxDelay = Duration(milliseconds: 50);
 
   NoticeSyncSnapshot _state = NoticeSyncSnapshot.empty;
@@ -496,13 +505,26 @@ class NoticeSyncStore {
         } finally {
           await raf.close();
         }
-        return token;
+        // 校验锁文件内容仍是自己的 token：token 写入期间锁可能被他人
+        // 回收重取（读到别人的 token，或路径已消失）。此时绝不能带着
+        // 「假锁」进临界区，回到竞争循环重新取锁即可。追加模式保证误写
+        // 只会拼在他人 token 之后，真正的持有者以 startsWith 识别并
+        // 正常释放。
+        if (await _readTokenSafe(lockFile) == token) return token;
       } on FileSystemException catch (error) {
         if (!_isPathExistsError(error)) rethrow;
         if (await _tryRecoverStaleLock(lockFile)) continue;
-        await Future<void>.delayed(delay);
-        if (delay < _lockPollMaxDelay) delay *= 2;
       }
+      await Future<void>.delayed(delay);
+      if (delay < _lockPollMaxDelay) delay *= 2;
+    }
+  }
+
+  Future<String?> _readTokenSafe(File lockFile) async {
+    try {
+      return await lockFile.readAsString();
+    } on FileSystemException {
+      return null;
     }
   }
 
@@ -513,14 +535,17 @@ class NoticeSyncStore {
     return code == 17 || code == 183;
   }
 
-  /// 残留锁回收：空文件（旧版本实现从不写 token）或超龄（持有者已死，
-  /// 如后台任务被系统杀死）。删除成功返回 true，调用方立即重试创建。
+  /// 残留锁回收：有 token 的锁超龄（持有者已死，如后台任务被系统杀死）
+  /// 或空文件超宽限期（旧版本从不写 token，其空锁永不增重）时删除，
+  /// 返回 true 供调用方立即重试创建。空文件在宽限期内视为活跃写者的
+  /// 取锁中态，不可回收（见 [_emptyLockGraceAge]）。
   Future<bool> _tryRecoverStaleLock(File lockFile) async {
     try {
       final stat = await lockFile.stat();
-      final isEmpty = stat.size == 0;
-      final isAged = DateTime.now().difference(stat.modified) >= _staleLockAge;
-      if (!isEmpty && !isAged) return false;
+      final age = DateTime.now().difference(stat.modified);
+      final isAged = age >= _staleLockAge;
+      final isEmptyAged = stat.size == 0 && age >= _emptyLockGraceAge;
+      if (!isAged && !isEmptyAged) return false;
       await lockFile.delete();
       return true;
     } on FileSystemException {
@@ -531,8 +556,11 @@ class NoticeSyncStore {
   Future<void> _releaseFileLock(File lockFile, String token) async {
     try {
       // 仅当锁内仍是自己的 token 才删除：超龄锁被回收、他人已接手时，
-      // 绝不能误删新持有者的锁。
-      if (await lockFile.readAsString() == token) {
+      // 绝不能误删新持有者的锁。startsWith 兼容后来者在我方 token 之后
+      // 的误追加（见 [_acquireFileLock] 读校验注释）：文件头是我即仍是
+      // 我的锁，正常删除，避免残留到陈旧回收。
+      final content = await _readTokenSafe(lockFile);
+      if (content != null && content.startsWith(token)) {
         await lockFile.delete();
       }
     } on FileSystemException {

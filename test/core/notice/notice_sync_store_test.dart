@@ -216,8 +216,9 @@ void main() {
         File('${tempDir.path}${Platform.pathSeparator}notice_sync_state.lock');
 
     test('legacy empty lock file is recovered instead of blocking', () async {
-      // 旧版本 fcntl 实现遗留的空锁文件：必须即时回收，否则升级后首次
-      // 取锁要等满陈旧阈值。
+      // 旧版本 fcntl 实现遗留的空锁文件：必须在空锁宽限期内回收（而非
+      // 等满 60s 陈旧阈值），升级后首次取锁不应被旧版残留卡住。宽限期
+      // 只为活跃写者的毫秒级 token 写入窗口留余量。
       await lockFile().create();
       await storeA.reload();
       expect(lockFile().existsSync(), isFalse);
