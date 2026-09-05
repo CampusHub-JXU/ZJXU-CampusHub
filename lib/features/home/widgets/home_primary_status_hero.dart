@@ -20,6 +20,7 @@ class HomePrimaryStatusHero extends StatelessWidget {
     this.canShowUpdateAction = false,
     required this.onOpenSchedule,
     required this.onNotificationTap,
+    this.unreadNoticeCount = 0,
     required this.onUpdateTap,
   });
 
@@ -40,6 +41,9 @@ class HomePrimaryStatusHero extends StatelessWidget {
   /// 其余 kind 传 null 且不渲染该入口。
   final VoidCallback? onOpenSchedule;
   final VoidCallback onNotificationTap;
+
+  /// 教务处通知未读数（角标；0 时隐藏）。
+  final int unreadNoticeCount;
   final VoidCallback? onUpdateTap;
 
   /// 课程大字形态的 Hero：正在上课 / 下一节课(今天) / 下一节课(今天没课)。
@@ -243,10 +247,14 @@ class HomePrimaryStatusHero extends StatelessWidget {
         ],
         const SizedBox(width: 12),
         IconButton(
-          icon: Icon(
-            Icons.notifications_outlined,
-            color: primaryTextColor,
-            size: 22,
+          icon: Badge(
+            isLabelVisible: unreadNoticeCount > 0,
+            label: Text('$unreadNoticeCount'),
+            child: Icon(
+              Icons.notifications_outlined,
+              color: primaryTextColor,
+              size: 22,
+            ),
           ),
           onPressed: onNotificationTap,
           padding: EdgeInsets.zero,

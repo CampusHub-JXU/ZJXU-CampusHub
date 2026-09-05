@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/app_bootstrap_controller.dart';
 import '../../core/auth/zhengfang_auth.dart';
+import '../../core/notice/notice_model.dart';
+import '../../core/notice/notice_sync_store.dart';
 import '../../core/semester/semester_calendar.dart';
 import '../../core/theme/app_design_tokens.dart';
 import '../../core/theme/app_theme_controller.dart';
@@ -29,6 +31,7 @@ import 'models/home_snapshot.dart';
 import 'widgets/home_ambient_background.dart';
 import 'widgets/home_asset_strip.dart';
 import 'widgets/home_event_banner.dart';
+import 'widgets/home_campus_notice_section.dart';
 import 'widgets/home_primary_status_hero.dart';
 import 'widgets/home_today_section.dart';
 
@@ -66,6 +69,10 @@ class _HomePageState extends State<HomePage> {
   bool _hasAvailableUpdate = false;
   bool _hasHydratedBootstrapState = false;
 
+  /// 教务处通知载荷：Hero 角标、校园公告区块共用（后台 isolate 写盘后
+  /// 由 store.reload 经此 ValueNotifier 回流刷新）。
+  NoticeInboxHead _noticeHead = NoticeInboxHead.empty;
+
   /// 浮动底栏（约 74 高）+ 12 间距 + 24 呼吸空间；SafeArea(bottom: false)
   /// 之下还需叠加真实底部安全区。
   static const double _bottomNavClearance = 110;
@@ -91,6 +98,8 @@ class _HomePageState extends State<HomePage> {
     UpdateChecker.instance.availableRelease.addListener(
       _onAvailableReleaseChanged,
     );
+    NoticeSyncStore.instance.inboxHead.addListener(_onNoticeHeadChanged);
+    _noticeHead = NoticeSyncStore.instance.inboxHead.value;
     _scrollController.addListener(_onScrollChanged);
     HomeZoneController.instance
       ..scrollToTop = _scrollToTop
@@ -108,6 +117,7 @@ class _HomePageState extends State<HomePage> {
     UpdateChecker.instance.availableRelease.removeListener(
       _onAvailableReleaseChanged,
     );
+    NoticeSyncStore.instance.inboxHead.removeListener(_onNoticeHeadChanged);
     _scrollController.removeListener(_onScrollChanged);
     HomeZoneController.instance
       ..scrollToTop = null
@@ -122,6 +132,36 @@ class _HomePageState extends State<HomePage> {
       _hasAvailableUpdate =
           UpdateChecker.instance.availableRelease.value != null;
     });
+  }
+
+  void _onNoticeHeadChanged() {
+    if (!mounted) return;
+    setState(() {
+      _noticeHead = NoticeSyncStore.instance.inboxHead.value;
+    });
+  }
+
+  /// 公告行点击：标已读（红点经 inboxHead 回流消失）并打开详情 WebView。
+  /// jwc 详情属资源型目标：预热逐跳建立业务 Cookie（warmUpAsResource）。
+  void _openCampusNotice(Notice notice) {
+    unawaited(NoticeSyncStore.instance.markRead([notice.id]));
+    final uri = Uri.tryParse(notice.url);
+    final isJwc = uri?.host.toLowerCase() == 'jwc.zjxu.edu.cn';
+    context.pushNamed(
+      'external-webview',
+      extra: {
+        'title': notice.title,
+        'url': notice.url,
+        'emulateDingTalkEnvironment': false,
+        if (isJwc) ...{
+          'requireUnifiedAuthProtection': true,
+          'serviceUrl': notice.url,
+          'loginDescription': '通知公告可直连访问，但需先完成统一认证',
+          'warmUpAsResource': true,
+        },
+        'showWebViewBottomBackButton': true,
+      },
+    );
   }
 
   void _onAcademicAuthChanged() {
@@ -472,6 +512,7 @@ class _HomePageState extends State<HomePage> {
                   envDateText: _formatEnvDate(now),
                   envStatusText: presentation.weekLabel,
                   canShowUpdateAction: _canShowUpdateAction,
+                  unreadNoticeCount: _noticeHead.unreadCount,
                   onOpenSchedule: () async {
                     await _pushFeatureRoute(context, 'schedule');
                   },
@@ -508,6 +549,30 @@ class _HomePageState extends State<HomePage> {
                       _pushFeatureRoute(context, 'campus-card'),
                   onElectricityTap: () =>
                       _pushFeatureRoute(context, 'dorm-electricity'),
+                ),
+                // 校园公告区块：常驻内容（磁盘收件箱前 3 条，零触网），
+                // 收件箱为空或用户在个性化设置关闭时整块消失；未读信号
+                // 并入块内（行首圆点 + 标题行未读数）。
+                ValueListenableBuilder<bool>(
+                  valueListenable: PersonalizationController
+                      .instance
+                      .homeCampusNoticeEnabled,
+                  builder: (context, noticeEnabled, _) {
+                    if (!noticeEnabled || _noticeHead.isEmpty) {
+                      return const SizedBox.shrink();
+                    }
+                    return Padding(
+                      padding: const EdgeInsets.only(
+                        top: AppSpacing.sectionBreak,
+                      ),
+                      child: HomeCampusNoticeSection(
+                        head: _noticeHead,
+                        onTapNotice: _openCampusNotice,
+                        onTapAll: () =>
+                            context.pushNamed('notification-center'),
+                      ),
+                    );
+                  },
                 ),
               ],
             ),

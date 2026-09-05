@@ -90,6 +90,10 @@ class AppSpacing {
   static const double xl = 24;
   static const double xxl = 30;
 
+  /// 首页大区块分隔（资产行 → 校园公告这类「内容板块」切换点），
+  /// 高于普通模块间距、远低于功能区锚点的 72 呼吸留白。
+  static const double sectionBreak = 40;
+
   /// Home page outer horizontal margin.
   static const double pageMargin = 16;
 

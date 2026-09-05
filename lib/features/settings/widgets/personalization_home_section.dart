@@ -55,6 +55,19 @@ class PersonalizationHomeSection extends StatelessWidget {
                     );
                   },
                 ),
+                const _Hairline(),
+                ValueListenableBuilder<bool>(
+                  valueListenable: controller.homeCampusNoticeEnabled,
+                  builder: (context, enabled, _) {
+                    return _SwitchRow(
+                      icon: Icons.campaign_outlined,
+                      title: '首页校园公告',
+                      subtitle: '在资产行下方展示最新教务处通知；关闭不影响通知中心与提醒',
+                      value: enabled,
+                      onChanged: controller.setHomeCampusNoticeEnabled,
+                    );
+                  },
+                ),
               ],
             ),
           ),

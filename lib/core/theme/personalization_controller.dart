@@ -52,6 +52,7 @@ class PersonalizationController {
   static const _keyBackgroundScale = 'home_background_scale';
   static const _keyEmblemWatermark = 'home_emblem_watermark_enabled';
   static const _keyFullDayCourses = 'home_full_day_courses_enabled';
+  static const _keyHomeCampusNotice = 'home_campus_notice_enabled';
 
   final ValueNotifier<String?> backgroundImagePath = ValueNotifier(null);
   final ValueNotifier<bool> shaderEnabled = ValueNotifier(false);
@@ -77,6 +78,10 @@ class PersonalizationController {
   /// 首页「今天」段落展示全天课程（含已结束灰显）；关闭时仅显示
   /// 剩余课程。默认开（班级同学反馈想看一整天的课）。
   final ValueNotifier<bool> fullDayCoursesEnabled = ValueNotifier(true);
+
+  /// 首页「校园公告」区块（资产行下方的教务处通知内容块）；默认开，
+  /// 关闭后首页不再展示该区块（通知中心与后台提醒不受影响）。
+  final ValueNotifier<bool> homeCampusNoticeEnabled = ValueNotifier(true);
 
   final ValueNotifier<List<Color>?> monetColors = ValueNotifier(null);
 
@@ -307,6 +312,7 @@ class PersonalizationController {
     );
     emblemWatermarkEnabled.value = prefs.getBool(_keyEmblemWatermark) ?? true;
     fullDayCoursesEnabled.value = prefs.getBool(_keyFullDayCourses) ?? true;
+    homeCampusNoticeEnabled.value = prefs.getBool(_keyHomeCampusNotice) ?? true;
   }
 
   Future<void> setBackgroundImagePath(String? path) async {
@@ -396,6 +402,12 @@ class PersonalizationController {
     fullDayCoursesEnabled.value = enabled;
   }
 
+  Future<void> setHomeCampusNoticeEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyHomeCampusNotice, enabled);
+    homeCampusNoticeEnabled.value = enabled;
+  }
+
   Future<void> _persistDouble(
     String key,
     double value,
@@ -421,6 +433,7 @@ class PersonalizationController {
     backgroundScale.value = 1.0;
     emblemWatermarkEnabled.value = true;
     fullDayCoursesEnabled.value = true;
+    homeCampusNoticeEnabled.value = true;
     _monetColors = null;
     _monetSourcePath = null;
     monetColors.value = null;

@@ -16,28 +16,33 @@ void main() {
 
     expect(controller.emblemWatermarkEnabled.value, isTrue);
     expect(controller.fullDayCoursesEnabled.value, isTrue);
+    expect(controller.homeCampusNoticeEnabled.value, isTrue);
   });
 
   test('init restores disabled home presentation preferences', () async {
     SharedPreferences.setMockInitialValues({
       'home_emblem_watermark_enabled': false,
       'home_full_day_courses_enabled': false,
+      'home_campus_notice_enabled': false,
     });
 
     await controller.init();
 
     expect(controller.emblemWatermarkEnabled.value, isFalse);
     expect(controller.fullDayCoursesEnabled.value, isFalse);
+    expect(controller.homeCampusNoticeEnabled.value, isFalse);
   });
 
   test('home presentation preference setters persist values', () async {
     await controller.setEmblemWatermarkEnabled(false);
     await controller.setFullDayCoursesEnabled(false);
+    await controller.setHomeCampusNoticeEnabled(false);
 
     controller.debugReset();
     await controller.init();
 
     expect(controller.emblemWatermarkEnabled.value, isFalse);
     expect(controller.fullDayCoursesEnabled.value, isFalse);
+    expect(controller.homeCampusNoticeEnabled.value, isFalse);
   });
 }
