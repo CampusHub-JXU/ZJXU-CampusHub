@@ -211,6 +211,47 @@ void main() {
     });
   });
 
+  group('file lock', () {
+    File lockFile() =>
+        File('${tempDir.path}${Platform.pathSeparator}notice_sync_state.lock');
+
+    test('legacy empty lock file is recovered instead of blocking', () async {
+      // 旧版本 fcntl 实现遗留的空锁文件：必须即时回收，否则升级后首次
+      // 取锁要等满陈旧阈值。
+      await lockFile().create();
+      await storeA.reload();
+      expect(lockFile().existsSync(), isFalse);
+    });
+
+    test('live foreign lock blocks until released', () async {
+      final lock = lockFile();
+      await lock.create();
+      await lock.writeAsString('foreign-holder', flush: true);
+      // 手动刷新 mtime，确保被视为活跃持有者（而非陈旧残留）。
+      await lock.setLastModified(DateTime.now());
+
+      var completed = false;
+      final reloading = storeA.reload().then((_) => completed = true);
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      expect(completed, isFalse, reason: '活跃锁必须阻塞其他写者');
+      await lock.delete();
+      await reloading;
+      expect(completed, isTrue);
+    });
+
+    test('aged foreign lock is recovered', () async {
+      final lock = lockFile();
+      await lock.create();
+      await lock.writeAsString('dead-holder', flush: true);
+      await lock.setLastModified(
+        DateTime.now().subtract(const Duration(seconds: 61)),
+      );
+
+      await storeA.reload();
+      expect(lock.existsSync(), isFalse);
+    });
+  });
+
   group('notify queue linkage', () {
     test('markRead removes entry from pending queue', () async {
       await storeA.commitSync(_commitFresh([_notice('1'), _notice('2')]));

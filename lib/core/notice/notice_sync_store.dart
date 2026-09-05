@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
@@ -158,13 +159,18 @@ enum NoticeSyncClaim { granted, blocked }
 
 /// 同步状态存储。
 ///
-/// 并发模型（评审 P1 修订）：主 isolate 与 WorkManager isolate 无共享内存，
-/// 所有状态读改写通过独立锁文件上的排他文件锁串行化——
+/// 并发模型：主 isolate 与 WorkManager isolate 无共享内存（同进程不同
+/// isolate 或跨进程皆然），所有状态读改写通过独立锁文件串行化——
 /// 「原子替换」只保护单次写入的完整性，不保护 RMW 过程，因此锁内必须
 /// 先重读磁盘（不信任本 isolate 内存镜像），改完临时文件 + rename 写回。
-/// 锁内只做内存与文件操作（毫秒级）；网络、platform 通道、通知发送一律在
-/// 锁外。锁挂在独立 `.lock` 文件而非状态文件本身：状态文件会被 rename
-/// 替换，对它持有的锁在替换后失效。
+/// 锁实现为 O_EXCL 排他创建 + 持有者 token：按 inode 判冲突，跨进程与
+/// 同进程多 isolate 都正确串行化。（fcntl 句柄锁在 Linux 按 process 判
+/// 冲突，同进程第二个加锁方不被阻塞——Linux CI 并发用例实证，生产里
+/// 主 isolate 与后台 isolate 恰好同进程，故弃用。）
+/// 锁内只做内存与文件操作（毫秒级）；网络、platform 通道、通知发送
+/// 一律在锁外。锁挂在独立 `.lock` 文件而非状态文件本身：状态文件会被
+/// rename 替换，对它持有的锁在替换后失效。残留锁（旧版本遗留的空锁
+/// 文件、持有者崩溃）由陈旧回收兜底，不会永久阻塞。
 ///
 /// 调用约束：公开 API 之间不得嵌套调用（同 isolate 内第二次取锁会等待
 /// 外层释放 → 死锁）。内部组合只调用 `*_locked` 私有实现。
@@ -189,7 +195,14 @@ class NoticeSyncStore {
   static const String stateFileName = 'notice_sync_state.json';
   static const String lockFileName = 'notice_sync_state.lock';
 
+  /// 残留锁回收阈值。锁内只有毫秒级本地 IO（网络在锁外），超龄即视为
+  /// 持有者已死；旧版本实现从不写 token，空锁文件视为即时残留。
+  static const Duration _staleLockAge = Duration(seconds: 60);
+  static const Duration _lockPollMaxDelay = Duration(milliseconds: 50);
+
   NoticeSyncSnapshot _state = NoticeSyncSnapshot.empty;
+
+  final Random _random = Random();
 
   final ValueNotifier<NoticeUnreadSummary> unreadSummary =
       ValueNotifier<NoticeUnreadSummary>(NoticeUnreadSummary.empty);
@@ -455,20 +468,75 @@ class NoticeSyncStore {
 
   // ── 内部 ────────────────────────────────────────────────────────────
 
+  /// O_EXCL 排他创建文件锁：`create(exclusive: true)` 按 inode 原子判
+  /// 冲突，跨进程与同进程多 isolate 都正确（fcntl 句柄锁在 Linux 按
+  /// process 判冲突，同进程第二加锁方不被阻塞，见类注释）。
   Future<T> _withLock<T>(Future<T> Function() action) async {
     final lockFile = await _lockFile();
-    final raf = await lockFile.open(mode: FileMode.append);
+    final token = await _acquireFileLock(lockFile);
     try {
-      await raf.lock(FileLock.blockingExclusive);
-      try {
-        return await action();
-      } finally {
-        try {
-          await raf.unlock();
-        } catch (_) {}
-      }
+      return await action();
     } finally {
-      await raf.close();
+      await _releaseFileLock(lockFile, token);
+    }
+  }
+
+  Future<String> _acquireFileLock(File lockFile) async {
+    final token =
+        'pid-$pid-${DateTime.now().microsecondsSinceEpoch}-'
+        '${identityHashCode(this)}-${_random.nextInt(0x7fffffff)}';
+    var delay = const Duration(milliseconds: 1);
+    while (true) {
+      try {
+        await lockFile.create(exclusive: true);
+        final raf = await lockFile.open(mode: FileMode.append);
+        try {
+          await raf.writeString(token);
+          await raf.flush();
+        } finally {
+          await raf.close();
+        }
+        return token;
+      } on FileSystemException catch (error) {
+        if (!_isPathExistsError(error)) rethrow;
+        if (await _tryRecoverStaleLock(lockFile)) continue;
+        await Future<void>.delayed(delay);
+        if (delay < _lockPollMaxDelay) delay *= 2;
+      }
+    }
+  }
+
+  bool _isPathExistsError(FileSystemException error) {
+    if (error is PathExistsException) return true;
+    final code = error.osError?.errorCode;
+    // EEXIST (POSIX) / ERROR_ALREADY_EXISTS (Windows)。
+    return code == 17 || code == 183;
+  }
+
+  /// 残留锁回收：空文件（旧版本实现从不写 token）或超龄（持有者已死，
+  /// 如后台任务被系统杀死）。删除成功返回 true，调用方立即重试创建。
+  Future<bool> _tryRecoverStaleLock(File lockFile) async {
+    try {
+      final stat = await lockFile.stat();
+      final isEmpty = stat.size == 0;
+      final isAged = DateTime.now().difference(stat.modified) >= _staleLockAge;
+      if (!isEmpty && !isAged) return false;
+      await lockFile.delete();
+      return true;
+    } on FileSystemException {
+      return false;
+    }
+  }
+
+  Future<void> _releaseFileLock(File lockFile, String token) async {
+    try {
+      // 仅当锁内仍是自己的 token 才删除：超龄锁被回收、他人已接手时，
+      // 绝不能误删新持有者的锁。
+      if (await lockFile.readAsString() == token) {
+        await lockFile.delete();
+      }
+    } on FileSystemException {
+      // 锁已被回收或读取失败：无需处理。
     }
   }
 
@@ -534,11 +602,8 @@ class NoticeSyncStore {
 
   Future<File> _lockFile() async {
     final dir = await _resolveDir();
-    final file = File('${dir.path}${Platform.pathSeparator}$lockFileName');
-    if (!await file.exists()) {
-      await file.create(recursive: true);
-    }
-    return file;
+    // 不预创建：O_EXCL 创建本身是取锁的原子操作。
+    return File('${dir.path}${Platform.pathSeparator}$lockFileName');
   }
 
   Future<NoticeSyncSnapshot> _readStateLocked(File file) async {
@@ -616,9 +681,20 @@ class NoticeSyncStore {
       'lastAttemptAt': state.lastAttemptAt?.toIso8601String(),
       'lastSuccessfulSyncAt': state.lastSuccessfulSyncAt?.toIso8601String(),
     });
-    final tmp = File('${file.path}.tmp');
+    // 每次写入使用独立临时文件名：POSIX rename 语义下，共享临时名会让
+    // 并发写者互相搬走对方的文件（ENOENT，Linux CI 实证）；独立命名后
+    // rename 仍是对状态文件的原子替换，后写者整体生效。
+    final tmp = File(
+      '${file.path}.${DateTime.now().microsecondsSinceEpoch}'
+      '-${_random.nextInt(0x7fffffff)}.tmp',
+    );
     await tmp.writeAsString(encoded, flush: true);
-    await tmp.rename(file.path);
+    try {
+      await tmp.rename(file.path);
+    } on FileSystemException {
+      await _safeDelete(tmp);
+      rethrow;
+    }
   }
 
   static Future<void> _safeDelete(File file) async {
