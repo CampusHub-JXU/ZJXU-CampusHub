@@ -227,12 +227,25 @@ class NoticeSyncStore {
   @visibleForTesting
   Future<Directory> Function()? debugDirectoryProvider;
 
+  /// 测试替身：直接注入内存态并走 [unreadSummary] / [inboxHead] 的同一
+  /// 提交点。真实文件锁与磁盘 I/O 在 flutter_test 的假异步区永远不会
+  /// 完成（页面 initState 里的 reload 会挂到测试超时），预览/组件测试
+  /// 用它替代落盘种子。
+  @visibleForTesting
+  void debugInjectState(NoticeSyncSnapshot snapshot) =>
+      _applyStateLocked(snapshot);
+
+  /// 测试替身：置 true 后 [reload] 直接返回当前内存态，跳过锁与磁盘。
+  @visibleForTesting
+  bool debugReloadNoop = false;
+
   @visibleForTesting
   void debugReset() {
     _state = NoticeSyncSnapshot.empty;
     unreadSummary.value = NoticeUnreadSummary.empty;
     inboxHead.value = NoticeInboxHead.empty;
     debugDirectoryProvider = null;
+    debugReloadNoop = false;
   }
 
   // ── 读路径 ──────────────────────────────────────────────────────────
@@ -240,6 +253,7 @@ class NoticeSyncStore {
   /// 从磁盘无条件重载状态并刷新未读摘要。纯本地操作，不受任何网络节流
   /// 影响——后台 isolate 写盘后主 isolate 靠它获得最新状态。
   Future<NoticeSyncSnapshot> reload() async {
+    if (debugReloadNoop) return _state;
     return _withLock(() async {
       final file = await _stateFile();
       final loaded = await _readStateLocked(file);

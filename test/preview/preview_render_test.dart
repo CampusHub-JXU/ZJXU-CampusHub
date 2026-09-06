@@ -362,16 +362,13 @@ NoticeInboxHead _previewNoticeHead() => NoticeInboxHead(
   unreadCount: 2,
 );
 
-/// 通知中心收件箱种子：把磁盘状态文件写进临时目录并挂到 store 的
-/// debugDirectoryProvider 上，页面 initState 的 reload() 即读到真实收件箱。
-/// 标题覆盖两种类型与可搜索关键词（「竞赛」）。
+/// 通知中心收件箱种子：直接注入内存态并短路 reload（真实文件锁与磁盘
+/// I/O 在测试的假异步区永远不会完成，页面 initState 的 reload 会挂到
+/// 超时）。标题覆盖两种类型与可搜索关键词（「竞赛」）。
 Future<void> _seedNotificationCenterInbox() async {
-  final dir = await Directory.systemTemp.createTemp('jxu_preview_notice_center');
-  addTearDown(() async {
-    NoticeSyncStore.instance.debugReset();
-    NoticeSyncStore.instance.debugDirectoryProvider = null;
-    if (await dir.exists()) await dir.delete(recursive: true);
-  });
+  addTearDown(NoticeSyncStore.instance.debugReset);
+  NoticeSyncStore.instance.debugReset();
+  const unreadIds = {'21001', '21003', '21005'};
   final notices = [
     const Notice(
       title: '关于举办2026年大学生程序设计竞赛校内选拔的通知',
@@ -410,25 +407,22 @@ Future<void> _seedNotificationCenterInbox() async {
       date: '2026-08-21',
     ),
   ];
-  const unreadIds = {'21001', '21003', '21005'};
-  final file = File(
-    '${dir.path}${Platform.pathSeparator}${NoticeSyncStore.stateFileName}',
+  NoticeSyncStore.instance.debugInjectState(
+    NoticeSyncSnapshot(
+      snapshotIds: {
+        for (final n in notices) n.id: DateTime(2026, 9, 5),
+      },
+      inbox: notices,
+      unreadIds: unreadIds,
+      pendingNotifyIds: const <String>{},
+      notifiedIds: unreadIds,
+      pendingBackfillPage: null,
+      baselineBuilt: true,
+      lastAttemptAt: DateTime(2026, 9, 5, 8),
+      lastSuccessfulSyncAt: DateTime(2026, 9, 5, 8),
+    ),
   );
-  await file.writeAsString(jsonEncode(<String, dynamic>{
-    'v': 2,
-    'snapshotIds': {
-      for (final n in notices) n.id: DateTime(2026, 9, 5).toIso8601String(),
-    },
-    'inbox': notices.map((n) => n.toJson()).toList(),
-    'unreadIds': unreadIds.toList(),
-    'pendingNotifyIds': const <String>[],
-    'notifiedIds': unreadIds.toList(),
-    'pendingBackfillPage': null,
-    'baselineBuilt': true,
-    'lastAttemptAt': DateTime(2026, 9, 5, 8).toIso8601String(),
-    'lastSuccessfulSyncAt': DateTime(2026, 9, 5, 8).toIso8601String(),
-  }));
-  NoticeSyncStore.instance.debugDirectoryProvider = () async => dir;
+  NoticeSyncStore.instance.debugReloadNoop = true;
 }
 
 /// 富状态首页种子：今天跨下午/晚间的课程（任意时间渲染都有"正在上课/下一节"）、
