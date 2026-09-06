@@ -64,9 +64,6 @@ const _allowedLegacyEdges = <String>{
   'features/campus_card/campus_card_payment_page.dart -> app/app_route_observer.dart',
   'features/home/home_page.dart -> app/app_bootstrap_controller.dart',
   // home 聚合页：拉取各业务模块的模型/服务做首页聚合展示（P2 目标）
-  'features/home/function_zone/function_zone_bento.dart -> features/grades/grades_model.dart',
-  'features/home/function_zone/function_zone_section.dart -> features/exam/exam_service.dart',
-  'features/home/function_zone/function_zone_section.dart -> features/grades/grades_service.dart',
   'features/home/function_zone/function_zone_section.dart -> features/service_hub/service_hub_usage_store.dart',
   'features/home/home_page.dart -> features/campus_card/campus_card_service.dart',
   'features/home/home_page.dart -> features/dorm_electricity/dorm_electricity_service.dart',

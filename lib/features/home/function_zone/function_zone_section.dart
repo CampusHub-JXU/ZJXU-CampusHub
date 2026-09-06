@@ -4,33 +4,20 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/config/feature_entry_catalog.dart';
-import '../../../features/exam/exam_service.dart';
-import '../../../features/grades/grades_service.dart';
 import '../../../features/service_hub/service_hub_usage_store.dart';
-import '../../../core/theme/app_design_tokens.dart';
-import '../../../shared/widgets/app_icon_badge.dart';
-import '../../../shared/widgets/app_tile_surface.dart';
-import 'function_zone_bento.dart';
 
-/// 首页单滚动页底部的「功能」锚点段落：离散尺寸 Bento 网格。
+/// 首页单滚动页底部的「功能」锚点段落：等宽小按钮网格。
 ///
-/// 手机（2 units/行）整行瓦片只给 rank0 一名，其余 small 两两成行；
-/// 宽屏（4 units/行）按 large / wide / small 三档组织（rank 制分配 +
-/// 贪心打包见 function_zone_bento.dart）。使用/置顶数据复用
-/// [ServiceHubUsageStore]；恢复过程只读本地缓存，绝不触网。
+/// 全部入口（含课表——快捷入口行已并入本段落）以「图标置顶 + 标签
+/// 沉底」的无框小格子平铺（手机 4 列、宽屏 6 列），整格可点；中性灰
+/// 图标、无卡面、无彩色徽标，视觉权重低于资产行与校园公告。使用/
+/// 置顶数据复用 [ServiceHubUsageStore]：置顶靠前（标签后加图钉），
+/// 其余按访问频次再按目录顺序；恢复过程只读本地缓存，绝不触网。
 class FunctionZoneSection extends StatefulWidget {
   const FunctionZoneSection({
     super.key,
-    required this.campusCardBalance,
-    required this.dormElectricity,
     this.padding = EdgeInsets.zero,
   });
-
-  /// 已格式化的一卡通余额（如 '¥38.20'；'--' 表示无数据，回退副标题）。
-  final String campusCardBalance;
-
-  /// 已格式化的宿舍剩余电量（如 '27.4 度'；'--' 表示无数据，回退副标题）。
-  final String dormElectricity;
 
   final EdgeInsetsGeometry padding;
 
@@ -45,7 +32,7 @@ class _FunctionZoneSectionState extends State<FunctionZoneSection> {
   void initState() {
     super.initState();
     _usageStore.addListener(_onUsageChanged);
-    unawaited(_restoreOfflineData());
+    unawaited(_restoreUsage());
   }
 
   @override
@@ -59,20 +46,11 @@ class _FunctionZoneSectionState extends State<FunctionZoneSection> {
     setState(() {});
   }
 
-  /// 离线恢复：使用/置顶数据 + 成绩缓存 + 考试缓存。
-  ///
-  /// 三者均只读 SharedPreferences，不发起任何网络请求；整体只调一次
-  /// （ServiceHubUsageStore.restore 内部自带幂等保护）。完成后 setState
-  /// 刷新瓦片尺寸分配与统计副文案。
-  Future<void> _restoreOfflineData() async {
+  /// 离线恢复使用/置顶数据：只读 SharedPreferences，不发起任何网络请求；
+  /// ServiceHubUsageStore.restore 内部自带幂等保护。
+  Future<void> _restoreUsage() async {
     try {
       await _usageStore.restore();
-    } catch (_) {}
-    try {
-      await GradesService.instance.restoreCache();
-    } catch (_) {}
-    try {
-      await ExamService.instance.restoreCache();
     } catch (_) {}
     if (!mounted) return;
     setState(() {});
@@ -99,63 +77,57 @@ class _FunctionZoneSectionState extends State<FunctionZoneSection> {
       );
   }
 
-  /// 解析入口的统计副文案；返回 null 表示无可用统计，回退 entry.subtitle。
-  String? _resolveStats(FeatureEntryDefinition entry) {
-    switch (entry.id) {
-      case 'grades':
-        // 只读成绩缓存计算加权绩点与已修学分；无有效缓存时回退副标题。
-        return formatGradeStats(GradesService.instance.cachedGrades);
-      case 'exam':
-        final exam = ExamService.instance.nextExam;
-        if (exam == null) return null;
-        return '${exam.countdownLabel} · ${exam.courseName}';
-      case 'campus-card':
-        final balance = widget.campusCardBalance;
-        return balance == '--' ? null : balance;
-      case 'dorm-electricity':
-        final electricity = widget.dormElectricity;
-        return electricity == '--' ? null : electricity;
-      default:
-        return null;
-    }
-  }
-
-  BentoUsageInput _buildUsageInput() {
+  /// 展示顺序：置顶优先，其余按访问频次降序、同频按目录 sortOrder。
+  List<FeatureEntryDefinition> _orderedEntries() {
     final snapshot = _usageStore.snapshot;
-    return BentoUsageInput(
-      pinnedIds: snapshot.pinnedIds,
-      visitCountById: {
-        for (final usage in snapshot.usageById.values)
-          usage.id: usage.visitCount,
-      },
-    );
+    int visitCount(String id) => snapshot.usageById[id]?.visitCount ?? 0;
+    final entries = [...AppFeaturesConfig.entries];
+    entries.sort((a, b) {
+      final pinnedA = snapshot.isPinned(a.id) ? 1 : 0;
+      final pinnedB = snapshot.isPinned(b.id) ? 1 : 0;
+      if (pinnedA != pinnedB) return pinnedB - pinnedA;
+      final byVisits = visitCount(b.id).compareTo(visitCount(a.id));
+      if (byVisits != 0) return byVisits;
+      return a.sortOrder.compareTo(b.sortOrder);
+    });
+    return entries;
   }
 
   @override
   Widget build(BuildContext context) {
-    // 主页专属裁剪：课表在 Hero（查看课表）和快捷行已有两个入口，功能
-    // 区第三个入口纯冗余——这里滤掉（功能页不受影响，仍保留完整目录）。
-    final entries = AppFeaturesConfig.entries
-        .where((entry) => entry.id != 'schedule')
-        .toList();
+    final entries = _orderedEntries();
     if (entries.isEmpty) return const SizedBox.shrink();
 
+    // 手机 4 列（每格 ~78px 宽），宽屏 6 列；等宽格子保证整格可点的
+    // 命中面积（≥44 高），避免纯文字小按钮难点中。
     return Padding(
       padding: widget.padding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const _FunctionZoneHeader(),
-          const SizedBox(height: 14),
+          const SizedBox(height: 8),
           LayoutBuilder(
             builder: (context, constraints) {
-              return _BentoGrid(
-                entries: entries,
-                usage: _buildUsageInput(),
-                resolveStats: _resolveStats,
-                availableWidth: constraints.maxWidth,
-                onTap: _openEntry,
-                onLongPress: _togglePinned,
+              final columns = constraints.maxWidth >= 600 ? 6 : 4;
+              final gap = 8.0;
+              final cellWidth =
+                  (constraints.maxWidth - (columns - 1) * gap) / columns;
+              return Wrap(
+                spacing: gap,
+                runSpacing: 4,
+                children: [
+                  for (final entry in entries)
+                    SizedBox(
+                      width: cellWidth,
+                      child: _FunctionButton(
+                        entry: entry,
+                        pinned: _usageStore.snapshot.isPinned(entry.id),
+                        onTap: () => unawaited(_openEntry(entry)),
+                        onLongPress: () => unawaited(_togglePinned(entry)),
+                      ),
+                    ),
+                ],
               );
             },
           ),
@@ -193,315 +165,79 @@ class _FunctionZoneHeader extends StatelessWidget {
   }
 }
 
-/// Bento 网格：unit 网格布局（紧凑 2 units/行，宽屏 4 units/行）。
+/// 功能小按钮：等宽格子内「图标置顶 + 标签沉底」垂直布局，整格可点。
 ///
-/// 瓦片尺寸由 [assignBentoTiles] 分配、占位由 [packBentoTiles] 打包后，
-/// 用 Stack + Positioned 按精确像素摆放（unit 宽度由可用宽度均分，
-/// unit 高度随文字缩放放大，与功能页 tile 高度策略一致）。
-class _BentoGrid extends StatelessWidget {
-  const _BentoGrid({
-    required this.entries,
-    required this.usage,
-    required this.resolveStats,
-    required this.availableWidth,
-    required this.onTap,
-    required this.onLongPress,
-  });
-
-  final List<FeatureEntryDefinition> entries;
-  final BentoUsageInput usage;
-  final String? Function(FeatureEntryDefinition entry) resolveStats;
-  final double availableWidth;
-  final Future<void> Function(FeatureEntryDefinition entry) onTap;
-  final Future<void> Function(FeatureEntryDefinition entry) onLongPress;
-
-  static const double _gap = AppSpacing.gridGap;
-
-  /// 行高按瓦片尺寸分档：行式布局下徽标是高度驱动项——半宽 small 60
-  /// （36px 徽标 + 单行标题），整行 wide 76（40px 徽标 + 标题 + 统计两行
-  /// 的 hero 档）；大字号按线性系数放大并设上限防溢出。
-  static const double _baseSmallHeight = 60;
-  static const double _baseWideHeight = 76;
-
-  @override
-  Widget build(BuildContext context) {
-    if (!availableWidth.isFinite || availableWidth <= 0) {
-      return const SizedBox.shrink();
-    }
-    // 紧凑（宽 <600）= 2 units/行；宽 ≥600 = 4 units/行。
-    final unitsPerRow = availableWidth >= 600 ? 4 : 2;
-    final unitWidth = (availableWidth - (unitsPerRow - 1) * _gap) / unitsPerRow;
-
-    // 行布局下随文字缩放的是标题+统计列（≈38px × scale），系数 30 覆盖
-    // 1.8× 满档不溢出。
-    final textScale = MediaQuery.textScalerOf(context)
-        .scale(1)
-        .clamp(1.0, 1.8)
-        .toDouble();
-    final scaleDelta = (textScale - 1) * 30;
-    final smallHeight = (_baseSmallHeight + scaleDelta).clamp(
-      _baseSmallHeight,
-      92.0,
-    );
-    final wideHeight = (_baseWideHeight + scaleDelta).clamp(
-      _baseWideHeight,
-      104.0,
-    );
-    // large（2×2）跨两行，行高由同行 small/wide 决定，不单独驱动。
-    double heightForSize(BentoTileSize size) =>
-        size == BentoTileSize.wide ? wideHeight : smallHeight;
-
-    final tiles = assignBentoTiles(
-      [
-        for (final entry in entries)
-          BentoEntryInput(id: entry.id, sortOrder: entry.sortOrder),
-      ],
-      usage,
-      unitsPerRow: unitsPerRow,
-    );
-    final placements = packBentoTiles(tiles, unitsPerRow: unitsPerRow);
-    if (placements.isEmpty) return const SizedBox.shrink();
-
-    final entryById = {for (final entry in entries) entry.id: entry};
-    // 实时统计一次性解析：null 表示该入口无可用数据，瓦片回退静态描述。
-    final liveStatsById = {
-      for (final entry in entries) entry.id: resolveStats(entry),
-    };
-    var rowCount = 0;
-    for (final placement in placements) {
-      final bottom = placement.row + placement.rowSpan;
-      if (bottom > rowCount) rowCount = bottom;
-    }
-
-    // 每行行高 = 该行单行瓦片的最高档（large 跨行不参与）。
-    final rowHeights = List<double>.filled(rowCount, smallHeight);
-    for (final placement in placements) {
-      if (placement.rowSpan != 1) continue;
-      final height = heightForSize(placement.tile.size);
-      if (height > rowHeights[placement.row]) {
-        rowHeights[placement.row] = height;
-      }
-    }
-    final rowTops = <double>[];
-    var accumulated = 0.0;
-    for (var row = 0; row < rowCount; row++) {
-      rowTops.add(accumulated);
-      accumulated += rowHeights[row] + _gap;
-    }
-    final gridHeight = accumulated - _gap;
-
-    double placementHeight(BentoPlacement placement) {
-      if (placement.rowSpan == 1) return rowHeights[placement.row];
-      var spanned = 0.0;
-      for (
-        var row = placement.row;
-        row < placement.row + placement.rowSpan;
-        row++
-      ) {
-        spanned += rowHeights[row];
-      }
-      return spanned + (placement.rowSpan - 1) * _gap;
-    }
-
-    return SizedBox(
-      height: gridHeight,
-      width: double.infinity,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          for (final placement in placements)
-            if (entryById[placement.tile.id] case final entry?)
-              Positioned(
-                left: placement.col * (unitWidth + _gap),
-                top: rowTops[placement.row],
-                width:
-                    placement.colSpan * unitWidth +
-                    (placement.colSpan - 1) * _gap,
-                height: placementHeight(placement),
-                child: _FunctionZoneTile(
-                  entry: entry,
-                  size: placement.tile.size,
-                  pinned: usage.pinnedIds.contains(placement.tile.id),
-                  statsText: liveStatsById[entry.id] ?? entry.subtitle,
-                  liveStats: liveStatsById[entry.id] != null,
-                  onTap: () => unawaited(onTap(entry)),
-                  onLongPress: () => unawaited(onLongPress(entry)),
-                ),
-              ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Bento 瓦片：AppTileSurface 平色卡面 + AppIconBadge 徽标的行式布局。
-///
-/// * small —— 36px 徽标 + 标题单行，垂直居中；
-/// * wide  —— hero 档：40px 徽标 + 标题/统计两行 + 尾部 chevron，构成
-///   段落锚点（手机上整行 rank0 与末行补丁瓦片）；
-/// * large —— 平板 2×2 专属：徽标置顶、文字块沉底，统计最多两行。
-/// 统计行分级强调：实时数据（绩点/倒计时/余额/电费）用 onSurface w600，
-/// 无数据回退的静态描述保持 onSurfaceVariant 常规灰。
-class _FunctionZoneTile extends StatelessWidget {
-  const _FunctionZoneTile({
+/// 保持无框轻量（透明 Material + InkWell，无卡面、无彩色徽标），
+/// 但命中区为整格（约 78×64 起），满足 ≥44 的可点击基线；置顶项在
+/// 标签后加 12sp 主色图钉。
+class _FunctionButton extends StatelessWidget {
+  const _FunctionButton({
     required this.entry,
-    required this.size,
     required this.pinned,
-    required this.statsText,
-    required this.liveStats,
     required this.onTap,
     required this.onLongPress,
   });
 
   final FeatureEntryDefinition entry;
-  final BentoTileSize size;
   final bool pinned;
-  final String statsText;
-
-  /// [statsText] 是否为实时统计；false 表示回退的描述文案，弱化显示。
-  final bool liveStats;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
 
+  /// 目录全称过长时用口语化短标签，保证一格一行放得下（与原快捷行一致）。
+  static const _shortLabelById = <String, String>{
+    'schedule': '课表',
+    'grades': '成绩',
+    'exam': '考试',
+    'shuati-practice': '刷题',
+    'campus-card-payment': '付款码',
+  };
+
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final label = _shortLabelById[entry.id] ?? entry.title;
     return Semantics(
       button: true,
       label: entry.title,
       hint: entry.subtitle,
-      child: AppTileSurface(
-        borderRadius: AppRadius.tileBorder,
-        // 垂直居中交给各档 body 的 Center 处理，这里只约束水平内边距。
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        onTap: onTap,
-        onLongPress: onLongPress,
-        child: switch (size) {
-          BentoTileSize.large => _buildLargeBody(context),
-          BentoTileSize.wide => _buildWideBody(context),
-          BentoTileSize.small => _buildSmallBody(context),
-        },
-      ),
-    );
-  }
-
-  /// small：徽标 + 标题，单行居中。Center(widthFactor: 1) 让 unit 多出的
-  /// 高度上下均分，行内容始终垂直居中。
-  Widget _buildSmallBody(BuildContext context) {
-    return Center(
-      widthFactor: 1,
-      child: Row(
-        children: [
-          AppIconBadge(
-            icon: entry.icon,
-            accentColor: entry.accentColor,
-            size: AppIconBadgeSize.small,
-          ),
-          const SizedBox(width: 10),
-          Expanded(child: _buildTitleRow(context, fontSize: 15)),
-        ],
-      ),
-    );
-  }
-
-  /// wide：hero 档 —— 40px 徽标 + 标题/统计两行 + 尾部 chevron。
-  Widget _buildWideBody(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Center(
-      widthFactor: 1,
-      child: Row(
-        children: [
-          AppIconBadge(
-            icon: entry.icon,
-            accentColor: entry.accentColor,
-            size: AppIconBadgeSize.medium,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: onTap,
+          onLongPress: onLongPress,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildTitleRow(context, fontSize: 16),
-                const SizedBox(height: 3),
-                // Flexible 防御：大字号下统计行优先被压缩省略，Column 不硬溢出。
-                Flexible(child: _buildStatsText(context)),
+                Icon(entry.icon, size: 24, color: cs.onSurfaceVariant),
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: cs.onSurface,
+                        ),
+                      ),
+                    ),
+                    if (pinned) ...[
+                      const SizedBox(width: 3),
+                      Icon(Icons.push_pin_rounded, size: 11, color: cs.primary),
+                    ],
+                  ],
+                ),
               ],
             ),
           ),
-          const SizedBox(width: 8),
-          Icon(
-            Icons.chevron_right_rounded,
-            size: 18,
-            color: cs.onSurfaceVariant.withValues(alpha: 0.45),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// large：badge 置顶，文字块沉底，统计最多两行。
-  Widget _buildLargeBody(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        AppIconBadge(
-          icon: entry.icon,
-          accentColor: entry.accentColor,
-          size: AppIconBadgeSize.medium,
         ),
-        const Spacer(),
-        _buildTitleRow(context, fontSize: 16),
-        const SizedBox(height: 4),
-        Flexible(child: _buildStatsText(context, maxLines: 2)),
-      ],
-    );
-  }
-
-  /// 标题行：置顶瓦片标题前加 12px 图钉（primary 色）。
-  Widget _buildTitleRow(BuildContext context, {required double fontSize}) {
-    return Row(
-      children: [
-        if (pinned) ...[
-          Icon(
-            Icons.push_pin_rounded,
-            size: 12,
-            color: Theme.of(context).colorScheme.primary,
-          ),
-          const SizedBox(width: 4),
-        ],
-        Expanded(
-          child: Text(
-            entry.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            // Apple semibold 字阶：正文级别的克制强调。
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              fontSize: fontSize,
-              fontWeight: FontWeight.w600,
-              height: 1.2,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// 统计行：实时数据用 onSurface w600 强调（本段落的「活数据」价值点），
-  /// 描述回退用 onSurfaceVariant 常规灰。
-  Widget _buildStatsText(BuildContext context, {int maxLines = 1}) {
-    final theme = Theme.of(context);
-    final base = theme.textTheme.bodySmall ?? const TextStyle();
-    return Text(
-      statsText,
-      maxLines: maxLines,
-      overflow: TextOverflow.ellipsis,
-      style: base.copyWith(
-        fontSize: 13,
-        height: 1.25,
-        fontWeight: liveStats ? FontWeight.w600 : FontWeight.w400,
-        color: liveStats
-            ? theme.colorScheme.onSurface
-            : theme.colorScheme.onSurfaceVariant,
       ),
     );
   }

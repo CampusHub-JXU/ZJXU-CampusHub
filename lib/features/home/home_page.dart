@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -34,19 +33,17 @@ import 'widgets/home_asset_strip.dart';
 import 'widgets/home_campus_notice_section.dart';
 import 'widgets/home_event_banner.dart';
 import 'widgets/home_primary_status_hero.dart';
-import 'widgets/home_quick_access_row.dart';
 import 'widgets/home_today_section.dart';
 
 /// 首页：天气 App 式的单一纵向连续滚动页。
 ///
 /// 第一屏只回答「今天什么状态」：环境行 → 无框 Hero（下一节课/当前
 /// 状态）→（可选）事件横幅 → 紧凑「今天」列表 → 资产行（校园卡 +
-/// 电费）→ 快捷入口行（课表/成绩/考试/付款码）→ 弹性留白 →「校园公告」
-/// 简化预览。留白首帧后实测回填，让公告第二条被浮动 dock 顶缘截断在
-/// 半行处；继续下滑看完公告进入「功能」锚点段落（Bento 网格）。底部
-/// dock 通过 [HomeZoneController] 做 ScrollSpy，在 首页/功能 之间自动
-/// 切换高亮。数据获取与刷新行为与旧版一致，展示层由
-/// [resolveHomePresentation]（纯函数）从 [HomeSnapshot] 派生。
+/// 电费）→「校园公告」简化预览（紧随资产行，不再压到首屏底部）→
+/// 「功能」锚点段落（全部入口的轻量小按钮工具条，含课表——原快捷
+/// 入口行已并入）。底部 dock 通过 [HomeZoneController] 做 ScrollSpy，
+/// 在 首页/功能 之间自动切换高亮。数据获取与刷新行为与旧版一致，
+/// 展示层由 [resolveHomePresentation]（纯函数）从 [HomeSnapshot] 派生。
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -63,15 +60,6 @@ class _HomePageState extends State<HomePage> {
 
   /// 滚动视口：ScrollSpy 用它把功能区顶部的全局坐标换算成视口内坐标。
   final _scrollViewportKey = GlobalKey();
-
-  /// 顶部内容（Hero/今天/资产/快捷行）整体锚点：首屏留白测量用它取高度。
-  final _topContentKey = GlobalKey();
-
-  /// 校园公告区块锚点：首屏留白测量以它定位截断基准。
-  final _noticeSectionKey = GlobalKey();
-
-  /// 公告首行锚点：截断位 = 标题行 + 首行高 × 1.5（第二条露半行）。
-  final _noticeFirstRowKey = GlobalKey();
 
   String _campusCardBalance = '--';
   String _dormElectricity = '--';
@@ -92,27 +80,6 @@ class _HomePageState extends State<HomePage> {
 
   /// 功能区段落顶部越过视口该比例线时，dock 高亮切到「功能」。
   static const double _zoneTriggerViewportFraction = 0.45;
-
-  /// 公告关闭（或收件箱为空）时，顶部内容与功能区之间的固定呼吸间距。
-  static const double _hiddenNoticeGap = 120;
-
-  /// 浮动 dock 自视口底缘起的占用高度：GlassNavBar 68 + 底距 14
-  /// （不含底部安全区，运行时经 MediaQuery bottom 注入，见测量处）。
-  /// 公告开屏截断线 = dock 顶缘——第二条公告的下半行被 dock 遮住。
-  static const double _dockTopExtent = 82;
-
-  /// 弹性留白边界：下限兜底首屏内容超高的场景；上限防止内容丰富的
-  /// 首屏被撑出大片空白——留白触顶时公告落在 Dock 上方稍高处，功能
-  /// 区磁贴在 Dock 后自然探出补位，整屏不空。
-  static const double _minFirstScreenGap = 24;
-  static const double _maxFirstScreenGap = 80;
-
-  /// 顶部内容与公告区之间的弹性留白：首帧后按「视口可用底高 − 顶部内
-  /// 容高 − 截断位（标题行 + 1.5 行公告）」实测回填，让公告第二条被
-  /// 浮动 dock 顶缘截断在半行处。测量值不依赖滚动位置，滚动过程中不
-  /// 抖动。
-  double _firstScreenGap = _hiddenNoticeGap;
-  bool _gapMeasureScheduled = false;
 
   bool get _isBootstrapReady =>
       _bootstrapController.phase.value.index >=
@@ -394,8 +361,11 @@ class _HomePageState extends State<HomePage> {
   Future<void> _scrollToFunction() async {
     final sectionContext = _functionSectionKey.currentContext;
     if (sectionContext == null) return;
+    // alignment 0：功能区顶对齐视口顶——dock「功能」的语义是直达功能区，
+    // 而非最小可见（新布局功能区起点已在首屏内，最小可见会原地不动）。
     await Scrollable.ensureVisible(
       sectionContext,
+      alignment: 0.0,
       duration: const Duration(milliseconds: 520),
       curve: Curves.easeOutCubic,
     );
@@ -524,7 +494,6 @@ class _HomePageState extends State<HomePage> {
     final now = DateTime.now();
     final bottomClearance =
         MediaQuery.paddingOf(context).bottom + _bottomNavClearance;
-    _scheduleFirstScreenGapMeasure();
 
     return SingleChildScrollView(
       key: _scrollViewportKey,
@@ -533,7 +502,6 @@ class _HomePageState extends State<HomePage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            key: _topContentKey,
             padding: const EdgeInsets.fromLTRB(
               AppSpacing.pageMargin,
               AppSpacing.xl,
@@ -586,20 +554,11 @@ class _HomePageState extends State<HomePage> {
                   onElectricityTap: () =>
                       _pushFeatureRoute(context, 'dorm-electricity'),
                 ),
-                // 快捷入口行：高频功能的直达磁贴，填充资产行与公告之间
-                // 的首屏空间，减少「下半屏空置」的松散感。
-                const SizedBox(height: AppSpacing.md),
-                HomeQuickAccessRow(
-                  onTapRoute: (routeName) {
-                    unawaited(_pushFeatureRoute(context, routeName));
-                  },
-                ),
               ],
             ),
           ),
-          // 公告 + 功能区尾段：公告开关变化时整段重建。弹性留白把公告
-          // 压到首屏底部（第二条被 dock 截断在半行），功能区在其后下滑
-          // 可达，公告不抢顶部课程的视觉中心。
+          // 公告 + 功能区尾段：公告开关变化时整段重建。公告紧随资产行
+          //（用户可不经滚动直达完整公告列表），其后是功能区小按钮段落。
           ValueListenableBuilder<bool>(
             valueListenable:
                 PersonalizationController.instance.homeCampusNoticeEnabled,
@@ -608,28 +567,21 @@ class _HomePageState extends State<HomePage> {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // 弹性留白只服务公告（把公告压到首屏底部）；公告不可见
-                  // 时不能留着 120 的隐藏值——否则未登录/关开关时凭空
-                  // 多一大块空白，功能区的 sectionBreak 顶距足够分段。
-                  if (noticeVisible) ...[
-                    SizedBox(height: _firstScreenGap),
+                  if (noticeVisible)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(
                         AppSpacing.pageMargin,
-                        0,
+                        AppSpacing.md,
                         AppSpacing.pageMargin,
                         AppSpacing.sectionBreak,
                       ),
                       child: HomeCampusNoticeSection(
-                        key: _noticeSectionKey,
-                        firstRowKey: _noticeFirstRowKey,
                         head: _noticeHead,
                         onTapNotice: _openCampusNotice,
                         onTapAll: () =>
                             context.pushNamed('notification-center'),
                       ),
                     ),
-                  ],
                   // 功能区锚点：key 挂在容器上，ensureVisible 滚动到位后
                   // 标题不贴视口顶；公告关闭时顶距退回普通段落间距。
                   Container(
@@ -639,8 +591,6 @@ class _HomePageState extends State<HomePage> {
                       bottom: bottomClearance,
                     ),
                     child: FunctionZoneSection(
-                      campusCardBalance: _campusCardBalance,
-                      dormElectricity: _dormElectricity,
                       padding: EdgeInsets.fromLTRB(
                         AppSpacing.pageMargin,
                         0,
@@ -656,73 +606,5 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
     );
-  }
-
-  /// 首屏留白补偿：让浮动 dock 的顶缘恰好把公告第二条截断在半行。
-  ///
-  /// 顶部内容（Hero/今天/资产/快捷行）高度随机型、字号与数据形态浮动，
-  /// 固定间距无法保证截断位稳定；首帧后实测「顶部内容高 + 公告块内
-  /// 露出部分（标题行 + 1.5 行公告）」，反推留白 = 视口底可用高（视口
-  /// 高 − dock 占用）− 两者之和（下限兜底）。公告块本身完整渲染、块内
-  /// 不截断：第二条的下半行被 dock 遮住，下滑后整块（含「查看全部」）
-  /// 从 dock 之下滑出、完整可见；只有 1 条公告时整块落在 dock 之上。
-  /// 公告关闭或收件箱为空时退回固定呼吸间距。测量值与滚动位置无关，
-  /// 收敛后不再触发重建。
-  void _scheduleFirstScreenGapMeasure() {
-    if (_gapMeasureScheduled) return;
-    _gapMeasureScheduled = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _gapMeasureScheduled = false;
-      if (!mounted) return;
-      final viewportBox =
-          _scrollViewportKey.currentContext?.findRenderObject() as RenderBox?;
-      final topBox =
-          _topContentKey.currentContext?.findRenderObject() as RenderBox?;
-      final noticeBox =
-          _noticeSectionKey.currentContext?.findRenderObject() as RenderBox?;
-      final firstRowBox =
-          _noticeFirstRowKey.currentContext?.findRenderObject() as RenderBox?;
-      if (viewportBox == null ||
-          !viewportBox.attached ||
-          topBox == null ||
-          !topBox.attached) {
-        return;
-      }
-      // 开屏可用底缘 = dock 顶缘。shell（extendBody）会把 dock 总高
-      // （底部安全区 + 14 底距 + 68 栏高）注入 body 的 MediaQuery
-      // bottom；独立渲染（无 dock 宿主）时退回常量。取 max 兼容两种
-      // 宿主，避免把 dock 遮挡扣两次。
-      final dockOcclusion = math.max(
-        MediaQuery.paddingOf(context).bottom,
-        _dockTopExtent,
-      );
-      final availableHeight = viewportBox.size.height - dockOcclusion;
-      double gap;
-      if (noticeBox != null &&
-          noticeBox.attached &&
-          firstRowBox != null &&
-          firstRowBox.attached &&
-          _noticeHead.latest.length >= 2) {
-        // 公告块内露出部分：区块顶 → 首行顶（标题行 + 间距）+ 1.5 行。
-        // 各行等高，首行高即行高；top 差值与滚动位置无关。
-        final headerExtent =
-            firstRowBox.localToGlobal(Offset.zero).dy -
-            noticeBox.localToGlobal(Offset.zero).dy;
-        final cutExtent = headerExtent + firstRowBox.size.height * 1.5;
-        gap = (availableHeight - topBox.size.height - cutExtent).clamp(
-          _minFirstScreenGap,
-          _maxFirstScreenGap,
-        );
-      } else if (noticeBox != null && noticeBox.attached) {
-        // 单条公告：整块（含查看全部）完整落在 dock 之上。
-        gap = (availableHeight - topBox.size.height - noticeBox.size.height)
-            .clamp(_minFirstScreenGap, _maxFirstScreenGap);
-      } else {
-        gap = _hiddenNoticeGap;
-      }
-      if ((gap - _firstScreenGap).abs() > 0.5) {
-        setState(() => _firstScreenGap = gap);
-      }
-    });
   }
 }

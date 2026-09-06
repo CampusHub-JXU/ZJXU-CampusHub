@@ -17,7 +17,7 @@ import 'package:jxu_campus_hub/features/grades/grades_service.dart';
 import 'package:jxu_campus_hub/features/home/home_page.dart';
 import 'package:jxu_campus_hub/features/home/home_zone_controller.dart';
 import 'package:jxu_campus_hub/features/home/models/home_presentation.dart';
-import 'package:jxu_campus_hub/features/home/widgets/home_quick_access_row.dart';
+import 'package:jxu_campus_hub/features/home/widgets/home_asset_strip.dart';
 import 'package:jxu_campus_hub/features/home/widgets/home_event_banner.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_cache_snapshot.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_model.dart';
@@ -51,9 +51,10 @@ void main() {
       ..scrollToFunction = null;
   });
 
-  /// 手机尺寸视口：ScrollSpy 判定依赖真实的首屏/视口比例。
-  void usePhoneSurface(WidgetTester tester) {
-    tester.view.physicalSize = const Size(412, 900);
+  /// 手机尺寸视口：ScrollSpy 判定依赖真实的首屏/视口比例。可传高度压矮
+  /// 视口制造滚动空间（新布局整页约一屏高，滚动行为测试需要溢出内容）。
+  void usePhoneSurface(WidgetTester tester, {double height = 900}) {
+    tester.view.physicalSize = Size(412, height);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -356,7 +357,7 @@ void main() {
     expect(tapped, 1);
   });
 
-  testWidgets('renders first screen without legacy sections and bento below', (
+  testWidgets('renders first screen with unified function buttons', (
     tester,
   ) async {
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
@@ -366,9 +367,8 @@ void main() {
     expect(find.text('本周'), findsNothing);
     expect(find.text('常用'), findsNothing);
     expect(find.text('全部校园服务'), findsNothing);
-    // 第一屏资产行 + 快捷入口行 + 功能区 Bento 段落（「宿舍电费」「付款码」
-    // 同时出现在资产行/快捷行与 Bento 瓦片）。课表在主页只保留快捷行
-    // 一个入口（Hero「查看课表」链接不算「课表」文本），功能区已裁剪。
+    // 快捷入口行已并入功能区小按钮段落：全部入口只出现一次，使用口语化
+    // 短标签（课表/成绩/考试/付款码/刷题），全称瓦片不再存在。
     expect(find.text('校园卡'), findsOneWidget);
     expect(find.text('宿舍电费'), findsNWidgets(2));
     expect(find.text('功能'), findsOneWidget);
@@ -376,8 +376,9 @@ void main() {
     expect(find.text('课表'), findsOneWidget);
     expect(find.text('成绩'), findsOneWidget);
     expect(find.text('考试'), findsOneWidget);
-    expect(find.text('成绩查询'), findsOneWidget);
-    expect(find.text('付款码'), findsNWidgets(2));
+    expect(find.text('付款码'), findsOneWidget);
+    expect(find.text('成绩查询'), findsNothing);
+    expect(find.text('考试安排'), findsNothing);
     expect(find.text('图书馆'), findsOneWidget);
     expect(find.text('第二课堂'), findsOneWidget);
   });
@@ -385,7 +386,8 @@ void main() {
   testWidgets('dock zone controller scrolls to function anchor', (
     tester,
   ) async {
-    usePhoneSurface(tester);
+    // 压矮视口：整页约一屏高，只有内容溢出时「滚到功能区」才可观测。
+    usePhoneSurface(tester, height: 600);
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
     await tester.pump();
 
@@ -408,7 +410,7 @@ void main() {
   testWidgets('scroll spy highlights function zone while scrolled down', (
     tester,
   ) async {
-    usePhoneSurface(tester);
+    usePhoneSurface(tester, height: 600);
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
     await tester.pump();
     await tester.pumpAndSettle();
@@ -427,7 +429,7 @@ void main() {
     expect(HomeZoneController.instance.zoneIndex, 0);
   });
 
-  testWidgets('notice gap is capped and function tiles fill the first screen', (
+  testWidgets('campus notice follows asset strip and precedes function zone', (
     tester,
   ) async {
     usePhoneSurface(tester);
@@ -449,25 +451,20 @@ void main() {
     await tester.pump();
     await tester.pumpAndSettle();
 
-    // 弹性留白触顶（80）：公告整块完整落在首屏内，功能区磁贴探出补位
-    // ——首屏不出现大片空白，公告也不再被压到 dock 底下。
-    final viewportBottom = tester
-        .getBottomRight(find.byType(SingleChildScrollView).first)
+    // 公告紧随资产行（仅隔一个段落间距），不再被弹性留白压到首屏底部；
+    // 功能区段落仍在公告之后。
+    final assetBottom = tester
+        .getBottomRight(find.byType(HomeAssetStrip))
         .dy;
-    final quickRowBottom = tester
-        .getBottomRight(find.byType(HomeQuickAccessRow))
-        .dy;
-    // 公告区块在功能区 Bento 瓦片（同名「校园公告」）之前，取树序第一份。
+    // 「校园公告」在公告区块头与功能区按钮中各出现一次，取树序第一份。
     final noticeTop = tester.getTopLeft(find.text('校园公告').first).dy;
-    expect((noticeTop - quickRowBottom).round(), 80);
-    expect(tester.getRect(find.text('通知3')).bottom, lessThan(viewportBottom));
-    // 功能段落在公告之后、且探入首屏（而非被推到视口之外）。
     final functionTop = tester.getTopLeft(find.text('功能')).dy;
+    expect(noticeTop, greaterThan(assetBottom));
+    expect(noticeTop - assetBottom, lessThan(60));
     expect(functionTop, greaterThan(noticeTop));
-    expect(functionTop, lessThan(viewportBottom));
   });
 
-  testWidgets('exam bento tile navigates to dedicated exam entry', (
+  testWidgets('exam function button navigates to dedicated exam entry', (
     tester,
   ) async {
     final router = GoRouter(
@@ -488,15 +485,15 @@ void main() {
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
     await tester.pump(const Duration(milliseconds: 200));
 
-    await tester.ensureVisible(find.text('考试安排'));
+    await tester.ensureVisible(find.text('考试'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('考试安排'));
+    await tester.tap(find.text('考试'));
     await tester.pumpAndSettle();
 
     expect(find.text('考试安排页面'), findsOneWidget);
   });
 
-  testWidgets('library bento tile navigates to dedicated library entry', (
+  testWidgets('library function button navigates to dedicated library entry', (
     tester,
   ) async {
     final router = GoRouter(
@@ -525,7 +522,7 @@ void main() {
     expect(find.text('图书馆页面'), findsOneWidget);
   });
 
-  testWidgets('second classroom bento tile navigates to dedicated entry', (
+  testWidgets('second classroom function button navigates to dedicated entry', (
     tester,
   ) async {
     final router = GoRouter(
