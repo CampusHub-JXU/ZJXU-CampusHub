@@ -69,19 +69,54 @@ class EcardService {
     return {...signParams, 'Time': time, 'Sign': sign, 'ContentType': 'json'};
   }
 
+  static const connectionFailureMessage = '旧版服务连接失败，请检查网络或使用官方付款页';
+
   Future<String> _post(String path, Map<String, String> params) async {
     await DioClient.instance.ensureInitialized();
     final dio = DioClient.instance.dio;
-    final response = await dio.post<String>(
-      '$_baseUrl$path',
-      data: params,
-      options: Options(
-        contentType: 'application/x-www-form-urlencoded',
-        responseType: ResponseType.plain,
-        headers: {'Referer': '$_baseUrl/index.html', 'Origin': _baseUrl},
-      ),
-    );
-    return response.data ?? '';
+    try {
+      final response = await dio.post<String>(
+        '$_baseUrl$path',
+        data: params,
+        options: Options(
+          contentType: 'application/x-www-form-urlencoded',
+          responseType: ResponseType.plain,
+          headers: {'Referer': '$_baseUrl/index.html', 'Origin': _baseUrl},
+        ),
+      );
+      return response.data ?? '';
+    } on DioException catch (error) {
+      if (_isConnectionFailure(error)) {
+        throw const EcardConnectionException(connectionFailureMessage);
+      }
+      rethrow;
+    }
+  }
+
+  static bool _isConnectionFailure(DioException error) {
+    DioException current = error;
+    for (var i = 0; i < 3; i++) {
+      switch (current.type) {
+        case DioExceptionType.connectionTimeout:
+        case DioExceptionType.sendTimeout:
+        case DioExceptionType.receiveTimeout:
+        case DioExceptionType.connectionError:
+          return true;
+        case DioExceptionType.unknown:
+          final nested = current.error;
+          if (nested is DioException) {
+            current = nested;
+            continue;
+          }
+          final text = current.message ?? nested?.toString() ?? '';
+          return text.contains('Connection reset') ||
+              text.contains('Connection refused') ||
+              text.contains('SocketException');
+        default:
+          return false;
+      }
+    }
+    return false;
   }
 
   static String studentIdToAccNum(String studentId) {
@@ -102,6 +137,8 @@ class EcardService {
         'ecard 认证失败: ${json?['Msg'] ?? body}',
       );
       return false;
+    } on EcardConnectionException {
+      rethrow;
     } catch (e) {
       AppLogger.instance.network(LogLevel.error, 'ecard 认证异常: $e');
       return false;
@@ -119,16 +156,24 @@ class EcardService {
         return accName;
       }
       return null;
+    } on EcardConnectionException {
+      rethrow;
     } catch (e) {
       AppLogger.instance.network(LogLevel.error, 'ecard 账户信息查询异常: $e');
       return null;
     }
   }
 
-  Future<String?> getQRCode(String accNum) async {
+  Future<String?> getQRCode(
+    String accNum, {
+    bool Function()? shouldContinue,
+  }) async {
     try {
+      // 发送前校验：登录态已变化则不出码。
+      if (shouldContinue?.call() == false) return null;
       final params = _buildParams({'AccNum': accNum});
       final body = await _post('/GetQRCode.aspx', params);
+      if (shouldContinue?.call() == false) return null;
       final json = _tryParseJson(body);
       if (json != null && json['Code'] == '1') {
         final qrCode = json['QRCode'] as String? ?? '';
@@ -140,6 +185,8 @@ class EcardService {
       final msg = json?['Msg'] as String? ?? '未知错误';
       AppLogger.instance.network(LogLevel.warn, 'ecard 二维码获取失败: $msg');
       return null;
+    } on EcardConnectionException {
+      rethrow;
     } catch (e) {
       AppLogger.instance.network(LogLevel.error, 'ecard 二维码获取异常: $e');
       return null;
@@ -167,31 +214,53 @@ class EcardService {
         );
       }
       return const QRCodeInfoResult(code: '', msg: '解析失败');
+    } on EcardConnectionException catch (e) {
+      AppLogger.instance.network(LogLevel.warn, 'ecard 二维码状态查询连接失败');
+      return QRCodeInfoResult(code: '', msg: e.message);
     } catch (e) {
       AppLogger.instance.network(LogLevel.warn, 'ecard 二维码状态查询异常: $e');
       return QRCodeInfoResult(code: '', msg: e.toString());
     }
   }
 
-  Future<QRCodeInitResult> initializeAndCreateQRCode(String studentId) async {
-    final accNum = studentIdToAccNum(studentId);
-    final authOk = await queryAccAuth(accNum);
-    if (!authOk) {
-      return QRCodeInitResult(error: '校园卡认证失败');
+  /// 认证 → 账户信息 → 取码的多步流程。
+  ///
+  /// [shouldContinue] 在每个网络请求返回后、发送下一个请求前调用；返回
+  /// false 时立即中止且不再发送后续请求（防止 QueryAccAuth 在途期间登出/
+  /// 切账号后，仍用旧 studentId 继续请求）。缺省 null 保持既有行为。
+  Future<QRCodeInitResult> initializeAndCreateQRCode(
+    String studentId, {
+    bool Function()? shouldContinue,
+  }) async {
+    bool continueRequested() => shouldContinue?.call() ?? true;
+    const aborted = QRCodeInitResult(error: '登录状态已变更，已取消本次取码');
+
+    try {
+      final accNum = studentIdToAccNum(studentId);
+      final authOk = await queryAccAuth(accNum);
+      if (!continueRequested()) return aborted;
+      if (!authOk) {
+        return QRCodeInitResult(error: '校园卡认证失败');
+      }
+
+      await getAccInfo(accNum);
+      if (!continueRequested()) return aborted;
+
+      final qrCode = await getQRCode(accNum, shouldContinue: shouldContinue);
+      if (!continueRequested()) return aborted;
+      if (qrCode == null) {
+        return QRCodeInitResult(error: '获取消费码失败');
+      }
+
+      return QRCodeInitResult(
+        accNum: accNum,
+        accName: _cachedAccName,
+        qrCode: qrCode,
+      );
+    } on EcardConnectionException catch (e) {
+      if (!continueRequested()) return aborted;
+      return QRCodeInitResult(error: e.message);
     }
-
-    await getAccInfo(accNum);
-
-    final qrCode = await getQRCode(accNum);
-    if (qrCode == null) {
-      return QRCodeInitResult(error: '获取消费码失败');
-    }
-
-    return QRCodeInitResult(
-      accNum: accNum,
-      accName: _cachedAccName,
-      qrCode: qrCode,
-    );
   }
 
   void clearCache() {
@@ -205,6 +274,15 @@ class EcardService {
       return null;
     }
   }
+}
+
+class EcardConnectionException implements Exception {
+  const EcardConnectionException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
 }
 
 class QRCodeInitResult {

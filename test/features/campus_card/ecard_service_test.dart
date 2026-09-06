@@ -1,5 +1,14 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jxu_campus_hub/core/network/dio_client.dart';
 import 'package:jxu_campus_hub/features/campus_card/ecard_service.dart';
+
+import '../../helpers/mock_http_client_adapter.dart';
+import '../../helpers/test_setup.dart';
 
 void main() {
   group('EcardService.md5Hash', () {
@@ -140,6 +149,131 @@ void main() {
     test('isPending when code is empty', () {
       const result = QRCodeInfoResult(code: '');
       expect(result.isPending, true);
+    });
+  });
+
+  group('EcardService.initializeAndCreateQRCode 取消校验（gated transport）', () {
+    setUp(() async {
+      await resetTestEnvironment();
+      DioClient.instance.debugCookieDirectoryPathProvider =
+          (folderName) async =>
+              '${Directory.systemTemp.createTempSync('ecard_test_').path}/'
+              '$folderName/';
+      await DioClient.instance.ensureInitialized();
+    });
+
+    test('QueryAccAuth 在途取消后，不再发送 QueryAccInfoH/GetQRCode', () async {
+      final adapter = MockHttpClientAdapter();
+      DioClient.instance.dio.interceptors.clear();
+      DioClient.instance.dio.httpClientAdapter = adapter;
+      final gate = Completer<ResponseBody>();
+      adapter.register('POST', '/QueryAccAuth.aspx', (_) => gate.future);
+
+      var shouldContinue = true;
+      final future = EcardService.instance.initializeAndCreateQRCode(
+        '213544',
+        shouldContinue: () => shouldContinue,
+      );
+      // 推进事件循环直到认证请求在途
+      for (var i = 0; i < 20 && adapter.requestLog.isEmpty; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(adapter.requestLog, ['POST /QueryAccAuth.aspx']);
+
+      // 认证在途期间“登出”
+      shouldContinue = false;
+      gate.complete(
+        ResponseBody.fromString(
+          jsonEncode({'Code': '1'}),
+          200,
+          headers: {
+            Headers.contentTypeHeader: ['application/json'],
+          },
+        ),
+      );
+
+      final result = await future;
+      expect(result.isSuccess, isFalse);
+      expect(result.error, '登录状态已变更，已取消本次取码');
+      // 后续 HTTP 请求零发送
+      expect(adapter.requestLog, ['POST /QueryAccAuth.aspx']);
+    });
+
+    test('缺省（不传回调）行为不变：三步全部发出并成功取码', () async {
+      final adapter = MockHttpClientAdapter();
+      DioClient.instance.dio.interceptors.clear();
+      DioClient.instance.dio.httpClientAdapter = adapter;
+      adapter
+        ..registerJson('POST', '/QueryAccAuth.aspx', {'Code': '1'})
+        ..registerJson('POST', '/QueryAccInfoH.aspx', {
+          'Code': '1',
+          'AccName': '张三',
+        })
+        ..registerJson('POST', '/GetQRCode.aspx', {
+          'Code': '1',
+          'QRCode': 'abc',
+        });
+
+      final result = await EcardService.instance.initializeAndCreateQRCode(
+        '213544',
+      );
+
+      expect(result.isSuccess, isTrue);
+      expect(result.qrCode, 'abc');
+      expect(result.accName, '张三');
+      expect(adapter.requestLog, [
+        'POST /QueryAccAuth.aspx',
+        'POST /QueryAccInfoH.aspx',
+        'POST /GetQRCode.aspx',
+      ]);
+    });
+
+    test('QueryAccAuth 连接失败：initialize 返回固定可读错误，不推断校园网', () async {
+      final adapter = MockHttpClientAdapter();
+      DioClient.instance.dio.interceptors.clear();
+      DioClient.instance.dio.httpClientAdapter = adapter;
+      adapter.register('POST', '/QueryAccAuth.aspx', (_) async {
+        throw DioException(
+          requestOptions: RequestOptions(path: '/QueryAccAuth.aspx'),
+          type: DioExceptionType.connectionError,
+          error: const SocketException('Connection reset by peer'),
+          message: 'Connection reset by peer',
+        );
+      });
+
+      final result = await EcardService.instance.initializeAndCreateQRCode(
+        '213544',
+      );
+
+      expect(result.isSuccess, isFalse);
+      expect(result.error, EcardService.connectionFailureMessage);
+      expect(result.error, isNot(contains('校园网')));
+      expect(adapter.requestLog, ['POST /QueryAccAuth.aspx']);
+    });
+
+    test('GetQRCode 超时：initialize 返回同一固定错误', () async {
+      final adapter = MockHttpClientAdapter();
+      DioClient.instance.dio.interceptors.clear();
+      DioClient.instance.dio.httpClientAdapter = adapter;
+      adapter
+        ..registerJson('POST', '/QueryAccAuth.aspx', {'Code': '1'})
+        ..registerJson('POST', '/QueryAccInfoH.aspx', {
+          'Code': '1',
+          'AccName': '张三',
+        })
+        ..register('POST', '/GetQRCode.aspx', (_) async {
+          throw DioException(
+            requestOptions: RequestOptions(path: '/GetQRCode.aspx'),
+            type: DioExceptionType.receiveTimeout,
+          );
+        });
+
+      final result = await EcardService.instance.initializeAndCreateQRCode(
+        '213544',
+      );
+
+      expect(result.isSuccess, isFalse);
+      expect(result.error, EcardService.connectionFailureMessage);
     });
   });
 }
