@@ -169,6 +169,23 @@ class UnifiedAuthService extends ChangeNotifier {
   _UnifiedAuthLoginContext? _cachedContext;
   bool _sessionActive = false;
   String? currentAccount;
+
+  /// 会话身份修订号：登录/登出等真正身份变化时递增，供 [restoreSession]
+  /// 在存储读取等待期间检测外部登录态变化（防旧 metadata 覆盖新状态）。
+  int _sessionRevision = 0;
+
+  void _touchSessionRevision() => _sessionRevision++;
+
+  /// 真正改变登录态或账号时才推进修订号；同状态写入不 bump。
+  void _applySessionIdentity({required bool active, String? account}) {
+    final nextAccount = active ? account : null;
+    if (_sessionActive == active && currentAccount == nextAccount) return;
+    _touchSessionRevision();
+    _sessionActive = active;
+    currentAccount = nextAccount;
+    if (!active) _cachedContext = null;
+  }
+
   Future<void>? _cookieSyncFuture;
   final Map<String, Future<bool?>> _sessionValidationFutures = {};
   final Map<String, bool> _sessionValidationSyncWebViewCookies = {};
@@ -272,7 +289,7 @@ class UnifiedAuthService extends ChangeNotifier {
       }
 
       final wasSessionActive = _sessionActive;
-      _sessionActive = true;
+      _applySessionIdentity(active: true, account: currentAccount);
       if (currentAccount != null) {
         await CredentialStore.instance.saveUnifiedAuthSession(currentAccount!);
       }
@@ -404,7 +421,8 @@ class UnifiedAuthService extends ChangeNotifier {
         // 如果 session 已经在 _refreshLoginContext 中建立，直接返回成功
         if (_sessionActive) {
           AppLogger.instance.auth(LogLevel.info, '统一认证已有有效 session，跳过登录');
-          currentAccount = username;
+          // 保留原语义：已有 CAS session 时仍把本次提交的 username 记为当前账号。
+          _applySessionIdentity(active: true, account: username);
           await CredentialStore.instance.saveUnifiedAuthSession(username);
           notifyListeners();
           return UnifiedAuthLoginSuccess();
@@ -442,8 +460,7 @@ class UnifiedAuthService extends ChangeNotifier {
       if (isLoginSuccess(response.statusCode, location, html)) {
         await _followRedirectChain(context.actionUri, location);
         unawaited(_syncCookiesToWebViewSafely());
-        _sessionActive = true;
-        currentAccount = username;
+        _applySessionIdentity(active: true, account: username);
         _cachedContext = null;
         await CredentialStore.instance.saveUnifiedAuthSession(username);
         AppLogger.instance.auth(LogLevel.info, '统一认证登录成功，已同步 WebView Cookie');
@@ -530,6 +547,9 @@ class UnifiedAuthService extends ChangeNotifier {
   Future<void> markLoggedOut() async {
     // 内存状态与通知必须先行：持久化清理失败（存储层异常）不能阻断
     // notifyListeners，否则 UI 会停留在「已登录」而会话实际已失效。
+    // 登出即使已是未登录也推进 revision：in-flight restore 不得拿旧
+    // metadata 把会话复活。
+    _touchSessionRevision();
     _sessionActive = false;
     currentAccount = null;
     _cachedContext = null;
@@ -546,14 +566,29 @@ class UnifiedAuthService extends ChangeNotifier {
     }
   }
 
+  /// 冷恢复持久化的会话元数据。
+  ///
+  /// 仅当身份/登录态真正变化时才 [notifyListeners]（同账号重复 restore
+  /// 不再通知，避免调用方的 epoch 守卫把正常恢复误判为身份变更）；存储
+  /// 读取等待期间若发生外部 login/logout（revision 变化），放弃套用本次
+  /// 读取到的（可能已过期的）metadata，防止登出后旧会话被“复活”。
   Future<void> restoreSession({bool syncWebViewCookies = true}) async {
-    final account = await CredentialStore.instance.loadUnifiedAuthSession();
-    if (account != null) {
-      currentAccount = account;
-      _sessionActive = true;
-      if (syncWebViewCookies) {
-        unawaited(_syncCookiesToWebViewSafely());
-      }
+    final revisionAtRead = _sessionRevision;
+    final loader = debugSessionMetadataLoader;
+    final account = loader != null
+        ? await loader()
+        : await CredentialStore.instance.loadUnifiedAuthSession();
+    if (revisionAtRead != _sessionRevision) {
+      AppLogger.instance.auth(LogLevel.debug, '统一认证冷恢复放弃：存储读取期间登录态已变化');
+      return;
+    }
+    if (account == null) return;
+    final identityChanged = currentAccount != account || !_sessionActive;
+    _applySessionIdentity(active: true, account: account);
+    if (syncWebViewCookies) {
+      unawaited(_syncCookiesToWebViewSafely());
+    }
+    if (identityChanged) {
       notifyListeners();
     }
   }
@@ -627,7 +662,7 @@ class UnifiedAuthService extends ChangeNotifier {
         AppLogger.instance.auth(LogLevel.info, '统一认证已有 session，跟随重定向完成认证');
         await _followRedirectChain(loginUri, location);
         unawaited(_syncCookiesToWebViewSafely());
-        _sessionActive = true;
+        _applySessionIdentity(active: true, account: currentAccount);
         if (currentAccount != null) {
           await CredentialStore.instance.saveUnifiedAuthSession(
             currentAccount!,
@@ -810,13 +845,26 @@ class UnifiedAuthService extends ChangeNotifier {
   @visibleForTesting
   Future<bool?> Function(String serviceUrl)? debugSessionValidator;
 
+  /// 测试钩子：替换 [restoreSession] 的会话元数据读取，用于模拟存储读取
+  /// 等待期间发生外部 login/logout。
+  @visibleForTesting
+  Future<String?> Function()? debugSessionMetadataLoader;
+
   @visibleForTesting
   void debugSetSession({required bool active, String? account}) {
-    _sessionActive = active;
-    currentAccount = active ? account : null;
-    if (!active) {
-      _cachedContext = null;
-    }
+    _applySessionIdentity(active: active, account: account);
+  }
+
+  /// 测试钩子：写入空 lt/execution 的已建立登录上下文，走 [login] 快速路径。
+  @visibleForTesting
+  void debugSeedEstablishedLoginContext({String? serviceUrl}) {
+    final url = serviceUrl ?? defaultServiceUrl;
+    _cachedContext = _UnifiedAuthLoginContext(
+      serviceUrl: url,
+      lt: '',
+      execution: '',
+      actionUri: _buildLoginUri(url),
+    );
   }
 
   @visibleForTesting
@@ -824,10 +872,12 @@ class UnifiedAuthService extends ChangeNotifier {
     _cachedContext = null;
     _sessionActive = false;
     currentAccount = null;
+    _sessionRevision = 0;
     _cookieManager = null;
     _cookieSyncFuture = null;
     _sessionValidationFutures.clear();
     _sessionValidationSyncWebViewCookies.clear();
     debugSessionValidator = null;
+    debugSessionMetadataLoader = null;
   }
 }

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jxu_campus_hub/core/auth/credential_store.dart';
 import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/core/network/dio_client.dart';
 import 'package:jxu_campus_hub/core/network/network_settings.dart';
@@ -341,6 +342,193 @@ void main() {
 
       expect(result, isFalse);
       expect(UnifiedAuthService.instance.isLoggedIn, isFalse);
+    });
+
+    test('login 快速路径：已有 session 仍记录提交的 username，restore 不得覆盖', () async {
+      UnifiedAuthService.instance.debugSetSession(active: true, account: 'A');
+      UnifiedAuthService.instance.debugSeedEstablishedLoginContext();
+
+      final started = Completer<void>();
+      final loadGate = Completer<void>();
+      UnifiedAuthService.instance.debugSessionMetadataLoader = () async {
+        if (!started.isCompleted) started.complete();
+        await loadGate.future;
+        return 'STALE';
+      };
+      final restore = UnifiedAuthService.instance.restoreSession(
+        syncWebViewCookies: false,
+      );
+      await started.future;
+
+      final result = await UnifiedAuthService.instance.login(
+        'B',
+        'unused',
+        'unused',
+      );
+      expect(result, isA<UnifiedAuthLoginSuccess>());
+      loadGate.complete();
+      await restore;
+
+      expect(UnifiedAuthService.instance.currentAccount, 'B');
+      expect(UnifiedAuthService.instance.isLoggedIn, isTrue);
+    });
+  });
+
+  group('UnifiedAuthService.restoreSession 身份通知与 revision guard', () {
+    setUp(() {
+      FlutterSecureStorage.setMockInitialValues({});
+      UnifiedAuthService.instance.debugReset();
+    });
+
+    test('同账号已有会话重复 restore：不重复通知（epoch 守卫不误判）', () async {
+      await CredentialStore.instance.saveUnifiedAuthSession('A');
+      UnifiedAuthService.instance.debugSetSession(active: true, account: 'A');
+      var notifications = 0;
+      void listener() => notifications++;
+      UnifiedAuthService.instance.addListener(listener);
+
+      await UnifiedAuthService.instance.restoreSession(
+        syncWebViewCookies: false,
+      );
+
+      UnifiedAuthService.instance.removeListener(listener);
+      expect(notifications, 0);
+      expect(UnifiedAuthService.instance.currentAccount, 'A');
+      expect(UnifiedAuthService.instance.isLoggedIn, isTrue);
+    });
+
+    test('未登录冷恢复命中 stored session：真正身份变化才通知一次', () async {
+      await CredentialStore.instance.saveUnifiedAuthSession('A');
+      var notifications = 0;
+      void listener() => notifications++;
+      UnifiedAuthService.instance.addListener(listener);
+
+      await UnifiedAuthService.instance.restoreSession(
+        syncWebViewCookies: false,
+      );
+
+      UnifiedAuthService.instance.removeListener(listener);
+      expect(notifications, 1);
+      expect(UnifiedAuthService.instance.currentAccount, 'A');
+      expect(UnifiedAuthService.instance.isLoggedIn, isTrue);
+    });
+
+    test('存储读取等待期间外部 logout：不复活旧 session', () async {
+      UnifiedAuthService.instance.debugSessionMetadataLoader = () async {
+        // 模拟存储读取等待期间发生外部登出（清内存态 + 递增 revision）
+        await UnifiedAuthService.instance.markLoggedOut();
+        return 'A'; // 过期 metadata
+      };
+      var notifications = 0;
+      void listener() => notifications++;
+      UnifiedAuthService.instance.addListener(listener);
+
+      await UnifiedAuthService.instance.restoreSession(
+        syncWebViewCookies: false,
+      );
+
+      UnifiedAuthService.instance.removeListener(listener);
+      UnifiedAuthService.instance.debugSessionMetadataLoader = null;
+      // 仅 markLoggedOut 自己的通知；restore 放弃套用旧 metadata，不再通知
+      expect(notifications, 1);
+      expect(UnifiedAuthService.instance.currentAccount, isNull);
+      expect(UnifiedAuthService.instance.isLoggedIn, isFalse);
+    });
+
+    test('存储读取等待期间外部 login(B)：不被过期 metadata 覆盖', () async {
+      UnifiedAuthService.instance.debugSessionMetadataLoader = () async {
+        UnifiedAuthService.instance.debugSetSession(active: true, account: 'B');
+        return 'A'; // 过期 metadata
+      };
+
+      await UnifiedAuthService.instance.restoreSession(
+        syncWebViewCookies: false,
+      );
+
+      UnifiedAuthService.instance.debugSessionMetadataLoader = null;
+      expect(UnifiedAuthService.instance.currentAccount, 'B');
+      expect(UnifiedAuthService.instance.isLoggedIn, isTrue);
+    });
+
+    test('restore 等待中外部合法状态变更不被旧 metadata 覆盖', () async {
+      Future<void> runCase({
+        required Future<void> Function() mutate,
+        required String? expectedAccount,
+        required bool expectedLoggedIn,
+      }) async {
+        UnifiedAuthService.instance.debugReset();
+        SharedPreferences.setMockInitialValues({});
+        FlutterSecureStorage.setMockInitialValues({});
+        final started = Completer<void>();
+        final loadGate = Completer<void>();
+        UnifiedAuthService.instance.debugSessionMetadataLoader = () async {
+          if (!started.isCompleted) started.complete();
+          await loadGate.future;
+          return 'STALE';
+        };
+
+        final restore = UnifiedAuthService.instance.restoreSession(
+          syncWebViewCookies: false,
+        );
+        await started.future;
+        await mutate();
+        loadGate.complete();
+        await restore;
+
+        expect(UnifiedAuthService.instance.currentAccount, expectedAccount);
+        expect(UnifiedAuthService.instance.isLoggedIn, expectedLoggedIn);
+      }
+
+      await runCase(
+        mutate: UnifiedAuthService.instance.markLoggedOut,
+        expectedAccount: null,
+        expectedLoggedIn: false,
+      );
+      await runCase(
+        mutate: () async {
+          UnifiedAuthService.instance.debugSetSession(
+            active: true,
+            account: 'B',
+          );
+        },
+        expectedAccount: 'B',
+        expectedLoggedIn: true,
+      );
+      await runCase(
+        mutate: () async {
+          // login 快速路径语义：已有 CAS session 时仍把提交的 username 记为当前账号。
+          UnifiedAuthService.instance.debugSetSession(
+            active: true,
+            account: 'A',
+          );
+          UnifiedAuthService.instance.debugSetSession(
+            active: true,
+            account: 'B',
+          );
+        },
+        expectedAccount: 'B',
+        expectedLoggedIn: true,
+      );
+      await runCase(
+        mutate: () async {
+          UnifiedAuthService.instance.debugSetSession(active: false);
+          UnifiedAuthService.instance.debugSetSession(
+            active: true,
+            account: 'A',
+          );
+        },
+        expectedAccount: 'A',
+        expectedLoggedIn: true,
+      );
+      await runCase(
+        mutate: () async {
+          // _refreshLoginContext / validateSession 的 inactive→active：
+          // 账号可仍为 null，但登录态变化必须 bump revision。
+          UnifiedAuthService.instance.debugSetSession(active: true);
+        },
+        expectedAccount: null,
+        expectedLoggedIn: true,
+      );
     });
   });
 }
