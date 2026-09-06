@@ -15,6 +15,7 @@ import '../sjjx_notice/sjjx_notice_service.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_empty_view.dart';
 import '../../shared/widgets/app_error_view.dart';
+import '../../shared/widgets/app_search_field.dart';
 import '../../shared/widgets/auth_required_view.dart';
 import '../../shared/widgets/login_shell.dart';
 
@@ -28,6 +29,8 @@ class NotificationCenterPage extends StatefulWidget {
 class _NotificationCenterPageState extends State<NotificationCenterPage>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
+  final _searchController = TextEditingController();
+  String _query = '';
 
   @override
   void initState() {
@@ -38,6 +41,7 @@ class _NotificationCenterPageState extends State<NotificationCenterPage>
   @override
   void dispose() {
     _tabController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -54,18 +58,48 @@ class _NotificationCenterPageState extends State<NotificationCenterPage>
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: const [_CampusNoticeTab(), _PracticeNoticeTab()],
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: AppSearchField(
+              controller: _searchController,
+              hintText: '搜索标题、类型或日期',
+              onChanged: (value) => setState(() => _query = value),
+              onClear: () => setState(() {
+                _searchController.clear();
+                _query = '';
+              }),
+            ),
+          ),
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                _CampusNoticeTab(query: _query),
+                _PracticeNoticeTab(query: _query),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
+/// 通知过滤：标题 / 类型 / 日期任一字段命中即保留（大小写不敏感）。
+bool _noticeMatchesQuery(String? text, String query) {
+  if (query.isEmpty) return true;
+  final value = (text ?? '').trim().toLowerCase();
+  return value.contains(query);
+}
+
 // --- Campus notices tab ---
 
 class _CampusNoticeTab extends StatefulWidget {
-  const _CampusNoticeTab();
+  const _CampusNoticeTab({this.query = ''});
+
+  final String query;
 
   @override
   State<_CampusNoticeTab> createState() => _CampusNoticeTabState();
@@ -200,27 +234,54 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
     }
     final unreadCount = _unreadIds.length;
     final showAuthBanner = _authRequired;
+    final query = widget.query.trim().toLowerCase();
+    final visibleNotices = query.isEmpty
+        ? _notices
+        : _notices
+              .where(
+                (notice) =>
+                    _noticeMatchesQuery(notice.title, query) ||
+                    _noticeMatchesQuery(notice.category, query) ||
+                    _noticeMatchesQuery(notice.date, query),
+              )
+              .toList();
+    final showHeader = query.isEmpty;
+    if (visibleNotices.isEmpty && query.isNotEmpty) {
+      return RefreshIndicator(
+        onRefresh: _refresh,
+        child: ListView(
+          children: const [
+            SizedBox(height: 120),
+            AppEmptyView(title: '没有匹配的通知', icon: Icons.search_off_rounded),
+          ],
+        ),
+      );
+    }
     return RefreshIndicator(
       onRefresh: _refresh,
       child: ListView.separated(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        itemCount: _notices.length + 1 + (showAuthBanner ? 1 : 0),
+        itemCount:
+            visibleNotices.length + (showHeader ? 1 : 0) + (showAuthBanner ? 1 : 0),
         separatorBuilder: (_, _) => const SizedBox(height: 10),
         itemBuilder: (context, index) {
           if (showAuthBanner && index == 0) {
             return _AuthStaleBanner(onLoginTap: _presentLoginPrompt);
           }
-          final headerIndex = showAuthBanner ? index - 1 : index;
-          if (headerIndex == 0) {
-            return Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: unreadCount == 0 ? null : _markAllRead,
-                child: Text(unreadCount > 0 ? '全部已读（$unreadCount）' : '全部已读'),
-              ),
-            );
+          var headerIndex = showAuthBanner ? index - 1 : index;
+          if (showHeader) {
+            if (headerIndex == 0) {
+              return Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: unreadCount == 0 ? null : _markAllRead,
+                  child: Text(unreadCount > 0 ? '全部已读（$unreadCount）' : '全部已读'),
+                ),
+              );
+            }
+            headerIndex--;
           }
-          final notice = _notices[headerIndex - 1];
+          final notice = visibleNotices[headerIndex];
           return _buildNoticeTile(
             context,
             tag: notice.category,
@@ -239,7 +300,9 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
 // --- Practice notices tab ---
 
 class _PracticeNoticeTab extends StatefulWidget {
-  const _PracticeNoticeTab();
+  const _PracticeNoticeTab({this.query = ''});
+
+  final String query;
 
   @override
   State<_PracticeNoticeTab> createState() => _PracticeNoticeTabState();
@@ -320,14 +383,28 @@ class _PracticeNoticeTabState extends State<_PracticeNoticeTab>
     if (_notices.isEmpty) {
       return const AppEmptyView(title: '暂无实践通知', icon: Icons.article_outlined);
     }
+    final query = widget.query.trim().toLowerCase();
+    final visibleNotices = query.isEmpty
+        ? _notices
+        : _notices
+              .where(
+                (notice) =>
+                    _noticeMatchesQuery(notice.title, query) ||
+                    _noticeMatchesQuery(notice.category, query) ||
+                    _noticeMatchesQuery(notice.date, query),
+              )
+              .toList();
+    if (visibleNotices.isEmpty) {
+      return const AppEmptyView(title: '没有匹配的通知', icon: Icons.search_off_rounded);
+    }
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView.separated(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        itemCount: _notices.length,
+        itemCount: visibleNotices.length,
         separatorBuilder: (_, _) => const SizedBox(height: 10),
         itemBuilder: (context, index) {
-          final notice = _notices[index];
+          final notice = visibleNotices[index];
           return _buildNoticeTile(
             context,
             tag: notice.category,

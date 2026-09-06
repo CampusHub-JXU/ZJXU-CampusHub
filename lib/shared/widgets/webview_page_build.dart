@@ -198,28 +198,18 @@ extension _WebViewPageBuildExtension on _WebViewPageState {
     }
   }
 
+  /// 悬浮「网页内返回」小岛按钮：盖在 WebView 内容上层，只在能后退时出现，
+  /// 不再占用底部整条布局（原全宽 FilledButton 条视觉过重）。
   Widget _buildWebViewNavigationBar() {
-    if (!widget.showWebViewBottomBackButton) {
+    if (!widget.showWebViewBottomBackButton || !_canGoBackInWebView) {
       return const SizedBox.shrink();
     }
 
-    final cs = Theme.of(context).colorScheme;
-    return SafeArea(
-      top: false,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-        decoration: BoxDecoration(
-          color: cs.surface,
-          border: Border(top: BorderSide(color: cs.outlineVariant)),
-        ),
-        child: SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
-            onPressed: _canGoBackInWebView ? _goBackInWebViewIfPossible : null,
-            icon: const Icon(Icons.arrow_back_ios_new, size: 18),
-            label: const Text('网页内返回'),
-          ),
-        ),
+    return Align(
+      alignment: Alignment.bottomLeft,
+      child: Padding(
+        padding: const EdgeInsets.only(left: 16, bottom: 16),
+        child: WebViewBackPill(onTap: _goBackInWebViewIfPossible),
       ),
     );
   }
@@ -236,6 +226,49 @@ extension _WebViewPageBuildExtension on _WebViewPageState {
           const SizedBox(height: 12),
           FilledButton(onPressed: _reloadCurrentPage, child: const Text('重试')),
         ],
+      ),
+    );
+  }
+}
+
+/// 悬浮「网页内返回」小岛按钮本体。
+///
+/// 公开以便视觉预览场景（test/preview）直接渲染验收；宿主
+/// [_WebViewPageState] 通过 [_buildWebViewNavigationBar] 挂载。
+class WebViewBackPill extends StatelessWidget {
+  const WebViewBackPill({super.key, this.onTap});
+
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: cs.surfaceContainerHighest.withValues(alpha: 0.92),
+      elevation: 3,
+      shadowColor: cs.shadow.withValues(alpha: 0.25),
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.arrow_back_ios_new, size: 13, color: cs.onSurface),
+              const SizedBox(width: 6),
+              Text(
+                '网页内返回',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: cs.onSurface,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

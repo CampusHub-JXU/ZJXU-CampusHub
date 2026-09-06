@@ -18,6 +18,7 @@ import 'package:jxu_campus_hub/features/grades/grades_service.dart';
 
 import 'package:jxu_campus_hub/features/home/home_page.dart';
 import 'package:jxu_campus_hub/features/my/my_page.dart';
+import 'package:jxu_campus_hub/features/notification_center/notification_center_page.dart';
 
 import 'package:jxu_campus_hub/features/settings/personalization_page.dart';
 import 'package:jxu_campus_hub/features/settings/settings_page.dart';
@@ -38,6 +39,7 @@ import 'package:jxu_campus_hub/features/schedule/schedule_model.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_term_context.dart';
 import 'package:jxu_campus_hub/shared/widgets/ship_card.dart';
+import 'package:jxu_campus_hub/shared/widgets/webview_page.dart';
 
 import '../helpers/test_setup.dart';
 import '../helpers/preview_support.dart';
@@ -256,6 +258,62 @@ void main() {
     await renderPage(tester, 'page_my_light', const MyPage());
   });
 
+  // ── 通知中心：搜索框 + 双 Tab（收件箱经磁盘状态文件离线 seed）───────────
+  previewTest('page_notification_center_light', (tester) async {
+    await _seedNotificationCenterInbox();
+    await renderPage(
+      tester,
+      'page_notification_center_light',
+      const NotificationCenterPage(),
+    );
+  });
+
+  previewTest('page_notification_center_dark', (tester) async {
+    await _seedNotificationCenterInbox();
+    await renderPage(
+      tester,
+      'page_notification_center_dark',
+      const NotificationCenterPage(),
+      brightness: Brightness.dark,
+    );
+  });
+
+  // 搜索过滤形态：输入「竞赛」后列表只剩命中项、隐藏「全部已读」表头。
+  previewTest('page_notification_center_search_light', (tester) async {
+    await _seedNotificationCenterInbox();
+    await pumpPreviewScene(tester, (_) => const NotificationCenterPage());
+    await tester.enterText(find.byType(TextField).first, '竞赛');
+    await tester.pump();
+    await expectPreviewGolden(tester, 'page_notification_center_search_light');
+  });
+
+  // WebView 悬浮返回小岛：模拟网页背景 + 小岛浮层——
+  // 验收点：药丸尺寸小巧、不占底部整条、半透明浮岛质感。
+  previewTest('webview_back_pill_light', (tester) async {
+    await pumpPreviewScene(
+      tester,
+      (_) => Scaffold(
+        body: Stack(
+          children: [
+            Container(
+              color: const Color(0xFFEDEDF2),
+              alignment: Alignment.center,
+              child: const Text('模拟网页内容'),
+            ),
+            Align(
+              alignment: Alignment.bottomLeft,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 16, bottom: 16),
+                child: WebViewBackPill(onTap: () {}),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    await expectPreviewGolden(tester, 'webview_back_pill_light');
+  });
+
   previewTest('page_settings_light', (tester) async {
     await renderPage(tester, 'page_settings_light', const SettingsPage());
   });
@@ -303,6 +361,75 @@ NoticeInboxHead _previewNoticeHead() => NoticeInboxHead(
   unreadIds: const {'n1', 'n2'},
   unreadCount: 2,
 );
+
+/// 通知中心收件箱种子：把磁盘状态文件写进临时目录并挂到 store 的
+/// debugDirectoryProvider 上，页面 initState 的 reload() 即读到真实收件箱。
+/// 标题覆盖两种类型与可搜索关键词（「竞赛」）。
+Future<void> _seedNotificationCenterInbox() async {
+  final dir = await Directory.systemTemp.createTemp('jxu_preview_notice_center');
+  addTearDown(() async {
+    NoticeSyncStore.instance.debugReset();
+    NoticeSyncStore.instance.debugDirectoryProvider = null;
+    if (await dir.exists()) await dir.delete(recursive: true);
+  });
+  final notices = [
+    const Notice(
+      title: '关于举办2026年大学生程序设计竞赛校内选拔的通知',
+      url: 'https://jwc.zjxu.edu.cn/info/1094/11001.htm?wbnewsid=21001',
+      category: '通知公告',
+      date: '2026-09-04',
+    ),
+    const Notice(
+      title: '2026-2027学年第一学期课程补选安排的通知',
+      url: 'https://jwc.zjxu.edu.cn/info/1094/11002.htm?wbnewsid=21002',
+      category: '通知公告',
+      date: '2026-09-02',
+    ),
+    const Notice(
+      title: '关于开展实验室安全竞赛活动的通知',
+      url: 'https://jwc.zjxu.edu.cn/info/1094/11003.htm?wbnewsid=21003',
+      category: '通知公告',
+      date: '2026-08-30',
+    ),
+    const Notice(
+      title: '图书馆数据库试用公告（2026年9月）',
+      url: 'https://jwc.zjxu.edu.cn/info/1095/11004.htm?wbnewsid=21004',
+      category: '通知公告',
+      date: '2026-08-27',
+    ),
+    const Notice(
+      title: '2026年暑期社会实践学分认定结果公示',
+      url: 'https://jwc.zjxu.edu.cn/info/1094/11005.htm?wbnewsid=21005',
+      category: '公示公告',
+      date: '2026-08-25',
+    ),
+    const Notice(
+      title: '校园网络升级维护公告',
+      url: 'https://jwc.zjxu.edu.cn/info/1095/11006.htm?wbnewsid=21006',
+      category: '通知公告',
+      date: '2026-08-21',
+    ),
+  ];
+  const unreadIds = {'21001', '21003', '21005'};
+  final file = File(
+    '${dir.path}${Platform.pathSeparator}${NoticeSyncStore.stateFileName}',
+  );
+  await file.writeAsString(jsonEncode(<String, dynamic>{
+    'v': 2,
+    'snapshotIds': {
+      for (final n in notices) n.id: DateTime(2026, 9, 5).toIso8601String(),
+    },
+    'inbox': notices.map((n) => n.toJson()).toList(),
+    'unreadIds': unreadIds.toList(),
+    'pendingNotifyIds': const <String>[],
+    'notifiedIds': unreadIds.toList(),
+    'pendingBackfillPage': null,
+    'baselineBuilt': true,
+    'lastAttemptAt': DateTime(2026, 9, 5, 8).toIso8601String(),
+    'lastSuccessfulSyncAt': DateTime(2026, 9, 5, 8).toIso8601String(),
+  }));
+  NoticeSyncStore.instance.debugDirectoryProvider = () async => dir;
+}
 
 /// 富状态首页种子：今天跨下午/晚间的课程（任意时间渲染都有"正在上课/下一节"）、
 /// 明天上午考试（事件横幅）、校园卡/电费新鲜缓存（缓存命中，离线不触发网络与
