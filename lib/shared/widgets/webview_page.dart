@@ -751,10 +751,10 @@ class _WebViewPageState extends State<WebViewPage> {
                     ),
                   if (_progress < 1 && !_hasError)
                     LinearProgressIndicator(value: _progress),
+                  _buildWebViewNavigationBar(),
                 ],
               ),
             ),
-            _buildWebViewNavigationBar(),
             _buildQuickFillBar(),
           ],
         ),
