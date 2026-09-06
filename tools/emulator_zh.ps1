@@ -2,38 +2,100 @@
 #requires -Version 5.1
 <#
 .SYNOPSIS
-    启动 Android 模拟器并设置为东八区时区
+    启动 Android 模拟器并设置为东八区时区（SDK/AVD 自动探测，跨机器可移植）
 
 .DESCRIPTION
-    该脚本启动 Android 模拟器，自动配置时区为东八区 (Asia/Shanghai/GMT+8)
-    适用于 Flutter 开发中需要测试中国时区的场景
+    与旧版不同，不再硬编码 %LOCALAPPDATA%\Android\Sdk，SDK 根目录按以下顺序探测：
+      1. android/local.properties 的 sdk.dir（Flutter 工程标准做法，随仓库各机器各配）
+      2. ANDROID_HOME / ANDROID_SDK_ROOT 环境变量
+      3. %LOCALAPPDATA%\Android\Sdk 等常见默认位置
+    AVD 名称按以下顺序解析：
+      1. -EmulatorName 参数
+      2. ANDROID_AVD_HOME（或 ~/.android/avd）下唯一可用的 .ini
 
 .PARAMETER EmulatorName
-    模拟器名称，默认为 Pixel_9
+    模拟器名称；缺省时自动探测本机唯一的 AVD
 
 .EXAMPLE
     .\emulator_zh.ps1
-    有真机在线时跳过；模拟器在线时唤醒后跳过；否则启动默认模拟器并设置时区
+    有真机在线时跳过；模拟器在线时唤醒后跳过；否则启动探测到的 AVD 并设置时区
 
 .EXAMPLE
     .\emulator_zh.ps1 -EmulatorName "Pixel_8_API_37"
     启动指定模拟器
 
 .NOTES
-    需要 Android SDK 已安装并配置环境变量
+    需要 PowerShell 7（pwsh）。被 .vscode F5 的 preLaunchTask 复用，非交互安全。
 #>
 
 param(
     [Parameter()]
-    [string]$EmulatorName = "Pixel_9"
+    [string]$EmulatorName = ""
 )
 
 $ErrorActionPreference = "Stop"
 
-# Android SDK 路径
-$AndroidSdk = "$env:LOCALAPPDATA\Android\Sdk"
+function Find-AndroidSdkRoot {
+    $candidates = @()
+
+    # 1. Flutter 工程 android/local.properties（路径形如 D:\\Android\\Sdk，需还原反斜杠）
+    $localProps = Join-Path $PSScriptRoot "..\android\local.properties"
+    if (Test-Path $localProps) {
+        $sdkDir = (Select-String -Path $localProps -Pattern '^\s*sdk\.dir\s*=\s*(.+)$').Matches |
+            ForEach-Object { $_.Groups[1].Value.Trim() } | Select-Object -First 1
+        if ($sdkDir) { $candidates += $sdkDir -replace '\\\\', '\' }
+    }
+
+    # 2. 环境变量
+    if ($env:ANDROID_HOME) { $candidates += $env:ANDROID_HOME }
+    if ($env:ANDROID_SDK_ROOT) { $candidates += $env:ANDROID_SDK_ROOT }
+
+    # 3. 常见默认位置
+    $candidates += @(
+        "$env:LOCALAPPDATA\Android\Sdk",
+        "$env:SystemDrive\Android\Sdk",
+        "D:\Android\Sdk"
+    )
+
+    foreach ($c in $candidates | Select-Object -Unique) {
+        if ($c -and (Test-Path (Join-Path $c "platform-tools\adb.exe"))) {
+            return (Resolve-Path $c).Path
+        }
+    }
+    return $null
+}
+
+function Find-AvdName {
+    param([string]$Requested)
+
+    if ($Requested) { return $Requested }
+
+    $avdHome = $env:ANDROID_AVD_HOME
+    if (-not $avdHome) { $avdHome = "$env:USERPROFILE\.android\avd" }
+    $ini = Get-ChildItem -Path $avdHome -Filter *.ini -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if ($ini) { return $ini.BaseName }
+    return $null
+}
+
+$AndroidSdk = Find-AndroidSdkRoot
+if (-not $AndroidSdk) {
+    Write-Error "未找到 Android SDK：请检查 android/local.properties 的 sdk.dir、ANDROID_HOME 或默认安装位置"
+    exit 1
+}
 $EmulatorPath = "$AndroidSdk\emulator\emulator.exe"
 $AdbPath = "$AndroidSdk\platform-tools\adb.exe"
+
+if (-not (Test-Path $EmulatorPath)) {
+    Write-Error "找不到 emulator.exe（SDK: $AndroidSdk），请安装 emulator 组件"
+    exit 1
+}
+
+$AvdName = Find-AvdName -Requested $EmulatorName
+if (-not $AvdName) {
+    Write-Error "未指定 -EmulatorName 且未在本机找到任何 AVD（已查找 ANDROID_AVD_HOME / ~\.android\avd）"
+    exit 1
+}
 
 function Set-ChinaTimezone {
     param(
@@ -75,21 +137,11 @@ function Set-ChinaTimezone {
     }
 }
 
-# 检查必要的工具是否存在
-if (-not (Test-Path $EmulatorPath)) {
-    Write-Error "找不到 emulator.exe，请检查 Android SDK 是否已安装"
-    exit 1
-}
-
-if (-not (Test-Path $AdbPath)) {
-    Write-Error "找不到 adb.exe，请检查 Android SDK 是否已安装"
-    exit 1
-}
-
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host "Android 模拟器启动工具" -ForegroundColor Cyan
 Write-Host "目标时区: 东八区 (Asia/Shanghai/GMT+8)" -ForegroundColor Yellow
-Write-Host "模拟器: $EmulatorName" -ForegroundColor White
+Write-Host "SDK 根目录: $AndroidSdk" -ForegroundColor White
+Write-Host "模拟器: $AvdName" -ForegroundColor White
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -113,9 +165,9 @@ if ($deviceLines | Where-Object { $_ -match '^emulator-' }) {
 }
 
 # 启动模拟器
-Write-Host "启动模拟器: $EmulatorName ..." -ForegroundColor Green
+Write-Host "启动模拟器: $AvdName ..." -ForegroundColor Green
 # 使用 AVD 配置里的宿主 GPU 渲染与 Quick Boot 快照（首次冷启动后，后续启动走快照秒开）
-Start-Process -FilePath $EmulatorPath -ArgumentList "-avd", $EmulatorName, "-timezone", "Asia/Shanghai", "-no-boot-anim" -WindowStyle Normal
+Start-Process -FilePath $EmulatorPath -ArgumentList "-avd", $AvdName, "-timezone", "Asia/Shanghai", "-no-boot-anim" -WindowStyle Normal
 
 # 等待设备连接
 Write-Host "等待设备启动..." -ForegroundColor Gray
