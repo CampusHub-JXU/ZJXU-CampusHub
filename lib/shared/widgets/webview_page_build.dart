@@ -205,39 +205,11 @@ extension _WebViewPageBuildExtension on _WebViewPageState {
       return const SizedBox.shrink();
     }
 
-    final cs = Theme.of(context).colorScheme;
     return Align(
       alignment: Alignment.bottomLeft,
       child: Padding(
         padding: const EdgeInsets.only(left: 16, bottom: 16),
-        child: Material(
-          color: cs.surfaceContainerHighest.withValues(alpha: 0.92),
-          elevation: 3,
-          shadowColor: cs.shadow.withValues(alpha: 0.25),
-          borderRadius: BorderRadius.circular(18),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(18),
-            onTap: _goBackInWebViewIfPossible,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.arrow_back_ios_new, size: 13, color: cs.onSurface),
-                  const SizedBox(width: 6),
-                  Text(
-                    '网页内返回',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: cs.onSurface,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
+        child: WebViewBackPill(onTap: _goBackInWebViewIfPossible),
       ),
     );
   }
@@ -254,6 +226,49 @@ extension _WebViewPageBuildExtension on _WebViewPageState {
           const SizedBox(height: 12),
           FilledButton(onPressed: _reloadCurrentPage, child: const Text('重试')),
         ],
+      ),
+    );
+  }
+}
+
+/// 悬浮「网页内返回」小岛按钮本体。
+///
+/// 公开以便视觉预览场景（test/preview）直接渲染验收；宿主
+/// [_WebViewPageState] 通过 [_buildWebViewNavigationBar] 挂载。
+class WebViewBackPill extends StatelessWidget {
+  const WebViewBackPill({super.key, this.onTap});
+
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: cs.surfaceContainerHighest.withValues(alpha: 0.92),
+      elevation: 3,
+      shadowColor: cs.shadow.withValues(alpha: 0.25),
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.arrow_back_ios_new, size: 13, color: cs.onSurface),
+              const SizedBox(width: 6),
+              Text(
+                '网页内返回',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: cs.onSurface,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
