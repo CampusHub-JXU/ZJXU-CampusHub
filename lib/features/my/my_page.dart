@@ -180,7 +180,9 @@ class _MyPageState extends State<MyPage> {
     return '$month-$day $hour:$minute';
   }
 
-  String _academicSubtitle() {
+  /// 副标题只承载状态点之外的增量信息：登录/未登录由行尾状态点表达，
+  /// 不再重复出现；返回 null 表示本行无额外信息、不渲染副标题。
+  String? _academicSubtitle() {
     if (_academicStatusChecking) {
       if (_hasScheduleCache) {
         return '正在校验教务状态 · 课表缓存 ${_formatTime(_scheduleUpdatedAt)}';
@@ -188,28 +190,28 @@ class _MyPageState extends State<MyPage> {
       return '正在校验教务状态 · 课表未缓存';
     }
     if (_academicStatusUnknown) {
-      return '登录状态未知 · 网络异常，点按重新校验';
+      return '登录状态未知 · 点按重新校验';
     }
     if (_academicLoggedIn) {
       if (_hasScheduleCache) {
-        return '已登录 · 课表更新 ${_formatTime(_scheduleUpdatedAt)}';
+        return '课表更新 ${_formatTime(_scheduleUpdatedAt)}';
       }
-      return '已登录 · 课表未缓存';
+      return '课表未缓存';
     }
     if (_hasScheduleCache) {
-      return '未登录 · 课表缓存 ${_formatTime(_scheduleUpdatedAt)}';
+      return '课表缓存 ${_formatTime(_scheduleUpdatedAt)}';
     }
-    return '未登录 · 课表未缓存';
+    return null;
   }
 
-  String _campusSubtitle() {
+  String? _campusSubtitle() {
     if (_campusStatusChecking) {
       return '正在校验统一认证状态';
     }
     if (_campusStatusUnknown) {
-      return '登录状态未知 · 网络异常，点按重新校验';
+      return '登录状态未知 · 点按重新校验';
     }
-    return _campusLoggedIn ? '已登录' : '未登录';
+    return null;
   }
 
   @override
@@ -258,15 +260,6 @@ class _MyPageState extends State<MyPage> {
                               fontWeight: FontWeight.w700,
                               height: 1.2,
                               color: cs.onSurface,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            '管理统一认证（含一卡通）、教务登录状态',
-                            style: TextStyle(
-                              fontSize: 14,
-                              height: 1.25,
-                              color: cs.onSurfaceVariant,
                             ),
                           ),
                           // 头部到卡片群的呼吸空间，与首页环境行 → Hero
@@ -328,74 +321,87 @@ class _MyPageState extends State<MyPage> {
                                 _buildHairlineDivider(context),
                                 // 我的年级：行尾紧凑下拉（与第二课堂筛选
                                 // 同一组件），默认「自动（跟随学号）」；说明
-                                // 常驻行下——这个身份只用于过滤教务处公告，
-                                // 可能误判，不参与任何登录/身份逻辑。
+                                // 收进标题旁的问号 tooltip——这个身份只用于
+                                // 过滤教务处公告，可能误判，不参与任何登录/
+                                // 身份逻辑，不值得常驻占一行。
                                 Padding(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    16,
-                                    12,
-                                    16,
-                                    14,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 8,
                                   ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                                  child: Row(
                                     children: [
-                                      Row(
-                                        children: [
-                                          AppIconBadge(
-                                            icon: Icons.badge_outlined,
-                                            accentColor: academicIconColor,
-                                            size: AppIconBadgeSize.small,
-                                          ),
-                                          const SizedBox(width: 10),
-                                          Expanded(
-                                            child: Text(
-                                              '我的年级',
-                                              style: TextStyle(
-                                                fontSize: 15,
-                                                fontWeight: FontWeight.w600,
-                                                height: 1.2,
-                                                color: cs.onSurface,
+                                      AppIconBadge(
+                                        icon: Icons.badge_outlined,
+                                        accentColor: academicIconColor,
+                                        size: AppIconBadgeSize.small,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Row(
+                                          children: [
+                                            Flexible(
+                                              child: Text(
+                                                '我的年级',
+                                                style: TextStyle(
+                                                  fontSize: 15,
+                                                  fontWeight: FontWeight.w600,
+                                                  height: 1.2,
+                                                  color: cs.onSurface,
+                                                ),
                                               ),
                                             ),
-                                          ),
-                                          AppDropdown<int>(
-                                            value:
-                                                UserProfileController
-                                                    .instance
-                                                    .manualEnrollmentYear
-                                                    .value ??
-                                                _enrollmentYearAutoSentinel,
-                                            items: _enrollmentYearItems(),
-                                            onChanged: (value) {
-                                              if (value == null) return;
-                                              unawaited(
-                                                UserProfileController.instance
-                                                    .setManualEnrollmentYear(
-                                                      value ==
-                                                              _enrollmentYearAutoSentinel
-                                                          ? null
-                                                          : value,
-                                                    )
-                                                    .then((_) {
-                                                      if (mounted) {
-                                                        setState(() {});
-                                                      }
-                                                    }),
-                                              );
-                                            },
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        '默认跟随学号自动识别，仅用于过滤与你无关的教务处公告，可能误判。',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          height: 1.3,
-                                          color: cs.onSurfaceVariant,
+                                            const SizedBox(width: 4),
+                                            Tooltip(
+                                              triggerMode:
+                                                  TooltipTriggerMode.tap,
+                                              showDuration: const Duration(
+                                                seconds: 4,
+                                              ),
+                                              margin:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 24,
+                                                  ),
+                                              message:
+                                                  '默认跟随学号自动识别，仅用于过滤与你无关的教务处公告，可能误判。',
+                                              child: Padding(
+                                                padding:
+                                                    const EdgeInsets.all(4),
+                                                child: Icon(
+                                                  Icons.help_outline_rounded,
+                                                  size: 15,
+                                                  color: cs.onSurfaceVariant,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ),
+                                      ),
+                                      AppDropdown<int>(
+                                        value:
+                                            UserProfileController
+                                                .instance
+                                                .manualEnrollmentYear
+                                                .value ??
+                                            _enrollmentYearAutoSentinel,
+                                        items: _enrollmentYearItems(),
+                                        onChanged: (value) {
+                                          if (value == null) return;
+                                          unawaited(
+                                            UserProfileController.instance
+                                                .setManualEnrollmentYear(
+                                                  value ==
+                                                          _enrollmentYearAutoSentinel
+                                                      ? null
+                                                      : value,
+                                                )
+                                                .then((_) {
+                                                  if (mounted) {
+                                                    setState(() {});
+                                                  }
+                                                }),
+                                          );
+                                        },
                                       ),
                                     ],
                                   ),
@@ -590,7 +596,9 @@ class _GroupRowTile extends StatelessWidget {
   final IconData icon;
   final Color iconColor;
   final String title;
-  final String subtitle;
+
+  /// 增量副标题（null = 不渲染，避免与行尾状态点重复表达登录态）。
+  final String? subtitle;
   final VoidCallback onTap;
   final Widget? status;
   final Widget? trailing;
@@ -629,17 +637,19 @@ class _GroupRowTile extends StatelessWidget {
                         color: cs.onSurface,
                       ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 13,
-                        height: 1.25,
-                        color: cs.onSurfaceVariant,
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          height: 1.25,
+                          color: cs.onSurfaceVariant,
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),
@@ -654,3 +664,4 @@ class _GroupRowTile extends StatelessWidget {
     );
   }
 }
+

@@ -99,9 +99,17 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    // 默认「自动」紧凑档（行尾小矩形）；说明文案常驻行下。
+    // 默认「自动」紧凑档（行尾小矩形）；说明文案收进问号 tooltip，
+    // 不再常驻行下。
     expect(find.text('自动'), findsOneWidget);
-    expect(find.text('默认跟随学号自动识别，仅用于过滤与你无关的教务处公告，可能误判。'), findsOneWidget);
+    expect(
+      find.text('默认跟随学号自动识别，仅用于过滤与你无关的教务处公告，可能误判。'),
+      findsNothing,
+    );
+    expect(
+      find.byTooltip('默认跟随学号自动识别，仅用于过滤与你无关的教务处公告，可能误判。'),
+      findsOneWidget,
+    );
 
     // 选择手动年级：写入持久化，按钮文案随选中项切换。
     await tester.tap(find.byType(AppDropdown<int>));
