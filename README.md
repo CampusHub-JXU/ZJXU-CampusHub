@@ -1,6 +1,6 @@
 # JXU-CampusHub
 
-嘉兴大学智能中台， Vibecoding。
+嘉兴大学校园应用， Vibecoding。
 
 一个把课表、成绩、校园卡、服务大厅什么的一堆东西放到同一个 App 里的 Flutter 项目。
 
