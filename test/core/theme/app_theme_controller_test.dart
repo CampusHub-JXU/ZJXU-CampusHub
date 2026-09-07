@@ -7,13 +7,17 @@ import 'package:jxu_campus_hub/app/theme.dart';
 void main() {
   setUp(AppThemeController.instance.debugReset);
 
-  testWidgets('图标颜色应透传入口强调色', (tester) async {
+  testWidgets('普通图标颜色应使用主题色而非入口强调色', (tester) async {
     const accent = Color(0xFF7B61FF);
+    const seed = Color(0xFF00695C);
     Color? resolved;
+    Color? themePrimary;
     await tester.pumpWidget(
       MaterialApp(
+        theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: seed)),
         home: Builder(
           builder: (context) {
+            themePrimary = Theme.of(context).colorScheme.primary;
             resolved = AppThemeController.instance.resolveIconColor(
               context,
               accent,
@@ -23,7 +27,33 @@ void main() {
         ),
       ),
     );
-    expect(resolved, accent);
+    expect(resolved, themePrimary);
+    expect(resolved, isNot(accent));
+  });
+
+  testWidgets('语义图标颜色应保留调用方传入色', (tester) async {
+    const semantic = Color(0xFFB3261E);
+    const seed = Color(0xFF00695C);
+    Color? resolved;
+    Color? themePrimary;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: seed)),
+        home: Builder(
+          builder: (context) {
+            themePrimary = Theme.of(context).colorScheme.primary;
+            resolved = AppThemeController.instance.resolveIconColor(
+              context,
+              semantic,
+              semantic: true,
+            );
+            return const SizedBox.shrink();
+          },
+        ),
+      ),
+    );
+    expect(resolved, semantic);
+    expect(resolved, isNot(themePrimary));
   });
 
   test('首页文字颜色通知器应反映统一偏好控制器同步值', () {

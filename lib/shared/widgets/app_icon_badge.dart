@@ -9,8 +9,7 @@ enum AppIconBadgeSize { small, medium, large }
 ///
 /// 收敛散落的 badge 尺寸（36/38/40 + 圆角 9/10/12/13 + 图标 20/21/22）为
 /// small / medium / large 三档，取自 [AppBadgeSize] token。
-/// 图标颜色经 [AppThemeController.resolveIconColor] 透传 [accentColor]，
-/// 使 feature_entry_catalog 的入口色板生效。
+/// 普通装饰图标走主题色；状态语义色需显式 [semantic]。
 class AppIconBadge extends StatelessWidget {
   const AppIconBadge({
     super.key,
@@ -18,18 +17,21 @@ class AppIconBadge extends StatelessWidget {
     required this.accentColor,
     this.size = AppIconBadgeSize.medium,
     this.backgroundAlpha = 0.12,
+    this.semantic = false,
   });
 
   final IconData icon;
   final Color accentColor;
   final AppIconBadgeSize size;
   final double backgroundAlpha;
+  final bool semantic;
 
   @override
   Widget build(BuildContext context) {
     var iconColor = AppThemeController.instance.resolveIconColor(
       context,
       accentColor,
+      semantic: semantic,
     );
     // 深色模式把饱和 accent 提亮一档：暗底上原色（如酒红）会沉成泥色，
     // 徽标几乎读不出图形。

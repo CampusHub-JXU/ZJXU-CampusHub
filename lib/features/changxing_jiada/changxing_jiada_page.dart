@@ -649,6 +649,7 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
                   icon: typeIcon,
                   accentColor: color,
                   size: AppIconBadgeSize.large,
+                  semantic: true,
                 ),
                 const SizedBox(width: 11),
                 Expanded(

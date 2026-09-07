@@ -30,7 +30,17 @@ class AppThemeController {
     homeTextColorMode.value = mode;
   }
 
-  Color resolveIconColor(BuildContext context, Color fallback) => fallback;
+  /// 普通装饰图标统一使用 [ColorScheme.primary]。
+  ///
+  /// 语义状态色由调用方显式传入 [semantic]，不要用颜色等值猜测。
+  Color resolveIconColor(
+    BuildContext context,
+    Color fallback, {
+    bool semantic = false,
+  }) {
+    if (semantic) return fallback;
+    return Theme.of(context).colorScheme.primary;
+  }
 
   Color resolveHomeTextColor(BuildContext context, Color fallback) {
     return switch (homeTextColorMode.value) {
