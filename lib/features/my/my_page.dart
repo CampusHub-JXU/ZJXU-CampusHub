@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../core/theme/app_theme_controller.dart';
-import '../../core/theme/app_colors.dart';
 import '../../core/auth/unified_auth.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/profile/user_profile_controller.dart';
@@ -180,9 +179,7 @@ class _MyPageState extends State<MyPage> {
     return '$month-$day $hour:$minute';
   }
 
-  /// 副标题只承载状态点之外的增量信息：登录/未登录由行尾状态点表达，
-  /// 不再重复出现；返回 null 表示本行无额外信息、不渲染副标题。
-  String? _academicSubtitle() {
+  String _academicSubtitle() {
     if (_academicStatusChecking) {
       if (_hasScheduleCache) {
         return '正在校验教务状态 · 课表缓存 ${_formatTime(_scheduleUpdatedAt)}';
@@ -194,36 +191,32 @@ class _MyPageState extends State<MyPage> {
     }
     if (_academicLoggedIn) {
       if (_hasScheduleCache) {
-        return '课表更新 ${_formatTime(_scheduleUpdatedAt)}';
+        return '已登录 · 课表更新 ${_formatTime(_scheduleUpdatedAt)}';
       }
-      return '课表未缓存';
+      return '已登录 · 课表未缓存';
     }
     if (_hasScheduleCache) {
-      return '课表缓存 ${_formatTime(_scheduleUpdatedAt)}';
+      return '未登录 · 课表缓存 ${_formatTime(_scheduleUpdatedAt)}';
     }
-    return null;
+    return '未登录 · 课表未缓存';
   }
 
-  String? _campusSubtitle() {
+  String _campusSubtitle() {
     if (_campusStatusChecking) {
       return '正在校验统一认证状态';
     }
     if (_campusStatusUnknown) {
       return '登录状态未知 · 点按重新校验';
     }
-    return null;
+    return _campusLoggedIn ? '已登录' : '未登录';
   }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final accountIconColor = AppThemeController.instance.resolveIconColor(
+    final primaryIconColor = AppThemeController.instance.resolveIconColor(
       context,
       cs.primary,
-    );
-    final academicIconColor = AppThemeController.instance.resolveIconColor(
-      context,
-      cs.secondary,
     );
     return Scaffold(
       // 不再挂空顶栏：标题语义由正文 large title「我的」承担，
@@ -274,16 +267,10 @@ class _MyPageState extends State<MyPage> {
                                     top: Radius.circular(AppRadius.card),
                                   ),
                                   icon: Icons.account_balance_wallet_outlined,
-                                  iconColor: accountIconColor,
+                                  iconColor: primaryIconColor,
                                   title: '统一认证（含一卡通）',
                                   subtitle: _campusSubtitle(),
-                                  status: _buildStatusIndicator(
-                                    checking: _campusStatusChecking,
-                                    loggedIn: _campusLoggedIn,
-                                    unknown: _campusStatusUnknown,
-                                    label: _campusLoggedIn ? '已登录' : '未登录',
-                                    statusKey: const Key('my_campus_status'),
-                                  ),
+                                  subtitleKey: const Key('my_campus_status'),
                                   onTap: () {
                                     if (_campusStatusUnknown) {
                                       // 状态未知时点按 = 重新测活，而不是直接弹登录框。
@@ -299,16 +286,10 @@ class _MyPageState extends State<MyPage> {
                                 _GroupRowTile(
                                   borderRadius: BorderRadius.zero,
                                   icon: Icons.school_outlined,
-                                  iconColor: academicIconColor,
+                                  iconColor: primaryIconColor,
                                   title: '教务系统',
                                   subtitle: _academicSubtitle(),
-                                  status: _buildStatusIndicator(
-                                    checking: _academicStatusChecking,
-                                    loggedIn: _academicLoggedIn,
-                                    unknown: _academicStatusUnknown,
-                                    label: _academicLoggedIn ? '已登录' : '未登录',
-                                    statusKey: const Key('my_academic_status'),
-                                  ),
+                                  subtitleKey: const Key('my_academic_status'),
                                   trailing: _academicLoggedIn
                                       ? _buildAcademicEnterButton(context)
                                       : null,
@@ -333,7 +314,7 @@ class _MyPageState extends State<MyPage> {
                                     children: [
                                       AppIconBadge(
                                         icon: Icons.badge_outlined,
-                                        accentColor: academicIconColor,
+                                        accentColor: primaryIconColor,
                                         size: AppIconBadgeSize.small,
                                       ),
                                       const SizedBox(width: 10),
@@ -362,11 +343,11 @@ class _MyPageState extends State<MyPage> {
                                                   const EdgeInsets.symmetric(
                                                     horizontal: 24,
                                                   ),
-                                              message:
-                                                  '默认跟随学号自动识别，仅用于过滤与你无关的教务处公告，可能误判。',
+                                              message: '默认跟随学号自动识别，仅用于过滤与你无关的教务处公告，可能误判。',
                                               child: Padding(
-                                                padding:
-                                                    const EdgeInsets.all(4),
+                                                padding: const EdgeInsets.all(
+                                                  4,
+                                                ),
                                                 child: Icon(
                                                   Icons.help_outline_rounded,
                                                   size: 15,
@@ -481,49 +462,6 @@ class _MyPageState extends State<MyPage> {
     );
   }
 
-  /// 行尾状态指示：校验中为小号加载圈，稳定后是「圆点 + 文字」。
-  ///
-  /// 已登录用品牌绿点，未登录退回中性灰，测活失败（网络异常）用警示橙，
-  /// 与首页状态语义一致。
-  Widget _buildStatusIndicator({
-    required bool checking,
-    required bool loggedIn,
-    required String label,
-    required Key statusKey,
-    bool unknown = false,
-  }) {
-    final cs = Theme.of(context).colorScheme;
-    if (checking) {
-      return const SizedBox.square(
-        dimension: 14,
-        child: CircularProgressIndicator(strokeWidth: 2.0),
-      );
-    }
-    final dotColor = unknown
-        ? AppColors.warning
-        : (loggedIn ? AppColors.success : cs.onSurfaceVariant);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 7,
-          height: 7,
-          decoration: BoxDecoration(shape: BoxShape.circle, color: dotColor),
-        ),
-        const SizedBox(width: 5),
-        Text(
-          unknown ? '未知' : label,
-          key: statusKey,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-            color: cs.onSurfaceVariant,
-          ),
-        ),
-      ],
-    );
-  }
-
   /// 「进入」紧凑文字按钮：直达教务系统 H5 门户（不丢可达性）。
   Widget _buildAcademicEnterButton(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -587,7 +525,7 @@ class _GroupRowTile extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.onTap,
-    this.status,
+    this.subtitleKey,
     this.trailing,
   });
 
@@ -596,11 +534,9 @@ class _GroupRowTile extends StatelessWidget {
   final IconData icon;
   final Color iconColor;
   final String title;
-
-  /// 增量副标题（null = 不渲染，避免与行尾状态点重复表达登录态）。
-  final String? subtitle;
+  final String subtitle;
   final VoidCallback onTap;
-  final Widget? status;
+  final Key? subtitleKey;
   final Widget? trailing;
 
   @override
@@ -637,23 +573,21 @@ class _GroupRowTile extends StatelessWidget {
                         color: cs.onSurface,
                       ),
                     ),
-                    if (subtitle != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 13,
-                          height: 1.25,
-                          color: cs.onSurfaceVariant,
-                        ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      key: subtitleKey,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.25,
+                        color: cs.onSurfaceVariant,
                       ),
-                    ],
+                    ),
                   ],
                 ),
               ),
-              if (status != null) ...[const SizedBox(width: 8), status!],
               if (trailing != null) ...[const SizedBox(width: 4), trailing!],
               const SizedBox(width: 2),
               Icon(Icons.chevron_right, size: 20, color: cs.onSurfaceVariant),
@@ -664,4 +598,3 @@ class _GroupRowTile extends StatelessWidget {
     );
   }
 }
-

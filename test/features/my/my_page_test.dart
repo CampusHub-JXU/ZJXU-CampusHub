@@ -38,8 +38,8 @@ void main() {
 
       expect(find.text('统一认证（含一卡通）'), findsOneWidget);
       expect(find.text('已登录'), findsNothing);
-      // 新版行瓦片：副标题与行尾状态徽标都会出现「未登录」。
-      expect(find.text('未登录'), findsWidgets);
+      // 副标题呈现「未登录」，已去除行尾状态灯及右侧独立状态文案。
+      expect(find.text('未登录'), findsOneWidget);
       expect(
         tester.widget<Text>(find.byKey(const Key('my_campus_status'))).data,
         '未登录',
@@ -61,8 +61,8 @@ void main() {
     await tester.pump();
 
     expect(find.text('统一认证（含一卡通）'), findsOneWidget);
-    // 副标题与行尾状态徽标均为「已登录」。
-    expect(find.text('已登录'), findsWidgets);
+    // 副标题呈现「已登录」，已去除行尾状态灯及右侧独立状态文案。
+    expect(find.text('已登录'), findsOneWidget);
     expect(
       tester.widget<Text>(find.byKey(const Key('my_campus_status'))).data,
       '已登录',
@@ -84,11 +84,11 @@ void main() {
       await tester.pump();
 
       expect(find.text('已登录'), findsNothing);
+      expect(find.textContaining('登录状态未知'), findsOneWidget);
       expect(
         tester.widget<Text>(find.byKey(const Key('my_campus_status'))).data,
-        '未知',
+        '登录状态未知 · 点按重新校验',
       );
-      expect(find.textContaining('登录状态未知'), findsWidgets);
     },
   );
 
@@ -102,14 +102,8 @@ void main() {
     // 默认「自动」紧凑档（行尾小矩形）；说明文案收进问号 tooltip，
     // 不再常驻行下。
     expect(find.text('自动'), findsOneWidget);
-    expect(
-      find.text('默认跟随学号自动识别，仅用于过滤与你无关的教务处公告，可能误判。'),
-      findsNothing,
-    );
-    expect(
-      find.byTooltip('默认跟随学号自动识别，仅用于过滤与你无关的教务处公告，可能误判。'),
-      findsOneWidget,
-    );
+    expect(find.text('默认跟随学号自动识别，仅用于过滤与你无关的教务处公告，可能误判。'), findsNothing);
+    expect(find.byTooltip('默认跟随学号自动识别，仅用于过滤与你无关的教务处公告，可能误判。'), findsOneWidget);
 
     // 选择手动年级：写入持久化，按钮文案随选中项切换。
     await tester.tap(find.byType(AppDropdown<int>));
@@ -135,5 +129,57 @@ void main() {
     final prefsAfter = await SharedPreferences.getInstance();
     expect(prefsAfter.getInt('profile_enrollment_year'), isNull);
     expect(find.text('自动'), findsOneWidget);
+  });
+
+  testWidgets('renders on small screen (360x640) without overflow', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(const MaterialApp(home: MyPage()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('我的'), findsOneWidget);
+    expect(find.text('统一认证（含一卡通）'), findsOneWidget);
+    expect(find.text('教务系统'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('renders with large text scale (1.5x) without overflow', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: MediaQuery(
+          data: MediaQueryData(textScaler: TextScaler.linear(1.5)),
+          child: MyPage(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('我的'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('renders in dark mode with unified icon colors', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(useMaterial3: true),
+        home: const MyPage(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('我的'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }
