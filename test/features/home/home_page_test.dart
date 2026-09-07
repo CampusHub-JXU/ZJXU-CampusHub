@@ -10,6 +10,8 @@ import 'package:jxu_campus_hub/app/app_bootstrap_controller.dart';
 import 'package:jxu_campus_hub/core/notice/notice_model.dart';
 import 'package:jxu_campus_hub/core/notice/notice_sync_store.dart';
 import 'package:jxu_campus_hub/core/semester/semester_calendar.dart';
+import 'package:jxu_campus_hub/core/theme/personalization_controller.dart';
+import 'package:jxu_campus_hub/shared/widgets/app_card.dart';
 import 'package:jxu_campus_hub/features/campus_card/campus_card_service.dart';
 import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_service.dart';
 import 'package:jxu_campus_hub/features/exam/exam_service.dart';
@@ -45,6 +47,8 @@ void main() {
   });
 
   tearDown(() {
+    PersonalizationController.instance.shaderEnabled.value = false;
+    PersonalizationController.instance.backgroundImagePath.value = null;
     // 单例注入点在页面 dispose 时置空；这里兜底防止失败用例泄漏。
     HomeZoneController.instance
       ..scrollToTop = null
@@ -453,9 +457,7 @@ void main() {
 
     // 公告紧随资产行（仅隔一个段落间距），不再被弹性留白压到首屏底部；
     // 功能区段落仍在公告之后。
-    final assetBottom = tester
-        .getBottomRight(find.byType(HomeAssetStrip))
-        .dy;
+    final assetBottom = tester.getBottomRight(find.byType(HomeAssetStrip)).dy;
     // 「校园公告」在公告区块头与功能区按钮中各出现一次，取树序第一份。
     final noticeTop = tester.getTopLeft(find.text('校园公告').first).dy;
     final functionTop = tester.getTopLeft(find.text('功能')).dy;
@@ -550,6 +552,37 @@ void main() {
 
     expect(find.text('第二课堂页面'), findsOneWidget);
   });
+
+  testWidgets(
+    'keeps home content sections unboxed when background is not enabled',
+    (tester) async {
+      PersonalizationController.instance.shaderEnabled.value = false;
+      PersonalizationController.instance.backgroundImagePath.value = null;
+
+      await tester.pumpWidget(const MaterialApp(home: HomePage()));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      // In default ambient background, Hero and sections are unboxed without AppCard
+      expect(find.byType(AppCard), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'wraps content sections in frosted AppCard when fluid background is enabled',
+    (tester) async {
+      PersonalizationController.instance.shaderEnabled.value = true;
+
+      await tester.pumpWidget(const MaterialApp(home: HomePage()));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      // When fluid/shader background is enabled, content sections receive frosted glass AppCard wrappers
+      final cards = tester.widgetList<AppCard>(find.byType(AppCard));
+      expect(cards.isNotEmpty, isTrue);
+      expect(cards.every((card) => card.glassEnabled), isTrue);
+    },
+  );
 }
 
 double _scrollOffset(WidgetTester tester) {

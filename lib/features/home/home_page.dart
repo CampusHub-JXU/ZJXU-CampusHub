@@ -14,6 +14,7 @@ import '../../core/theme/app_theme_controller.dart';
 import '../../core/theme/personalization_controller.dart';
 import '../../core/theme/widgets/home_background_layer.dart';
 import '../../core/update/update_checker.dart';
+import '../../shared/widgets/app_card.dart';
 import '../../shared/widgets/network_error_toast.dart';
 import '../../shared/widgets/update_dialog.dart';
 import '../campus_card/campus_card_service.dart';
@@ -479,7 +480,20 @@ class _HomePageState extends State<HomePage> {
                       valueListenable: PersonalizationController
                           .instance
                           .fullDayCoursesEnabled,
-                      builder: (context, _, _) => _buildScrollBody(context),
+                      builder: (context, _, _) =>
+                          ValueListenableBuilder<String?>(
+                            valueListenable: PersonalizationController
+                                .instance
+                                .backgroundImagePath,
+                            builder: (context, _, _) =>
+                                ValueListenableBuilder<bool>(
+                                  valueListenable: PersonalizationController
+                                      .instance
+                                      .shaderEnabled,
+                                  builder: (context, _, _) =>
+                                      _buildScrollBody(context),
+                                ),
+                          ),
                     ),
               ),
             ),
@@ -489,11 +503,43 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  bool get _hasCustomOrFluidBackground {
+    final pc = PersonalizationController.instance;
+    return pc.backgroundImagePath.value != null || pc.shaderEnabled.value;
+  }
+
   Widget _buildScrollBody(BuildContext context) {
     final presentation = _resolvePresentation();
     final now = DateTime.now();
     final bottomClearance =
         MediaQuery.paddingOf(context).bottom + _bottomNavClearance;
+    final hasBackground = _hasCustomOrFluidBackground;
+
+    final heroWidget = HomePrimaryStatusHero(
+      hero: presentation.hero,
+      envDateText: _formatEnvDate(now),
+      envStatusText: presentation.weekLabel,
+      canShowUpdateAction: _canShowUpdateAction,
+      unreadNoticeCount: _noticeHead.unreadCount,
+      onOpenSchedule: () async {
+        await _pushFeatureRoute(context, 'schedule');
+      },
+      onNotificationTap: () => context.pushNamed('notification-center'),
+      onUpdateTap: _handleUpdateTap,
+    );
+
+    final todayWidget = HomeTodaySection(
+      today: presentation.today,
+      onOpenSchedule: () async {
+        await _pushFeatureRoute(context, 'schedule');
+      },
+    );
+
+    final assetWidget = HomeAssetStrip(
+      status: presentation.status,
+      onCampusCardTap: () => _pushFeatureRoute(context, 'campus-card'),
+      onElectricityTap: () => _pushFeatureRoute(context, 'dorm-electricity'),
+    );
 
     return SingleChildScrollView(
       key: _scrollViewportKey,
@@ -511,19 +557,15 @@ class _HomePageState extends State<HomePage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                HomePrimaryStatusHero(
-                  hero: presentation.hero,
-                  envDateText: _formatEnvDate(now),
-                  envStatusText: presentation.weekLabel,
-                  canShowUpdateAction: _canShowUpdateAction,
-                  unreadNoticeCount: _noticeHead.unreadCount,
-                  onOpenSchedule: () async {
-                    await _pushFeatureRoute(context, 'schedule');
-                  },
-                  onNotificationTap: () =>
-                      context.pushNamed('notification-center'),
-                  onUpdateTap: _handleUpdateTap,
-                ),
+                if (hasBackground)
+                  AppCard(
+                    glassEnabled: true,
+                    padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+                    radius: AppRadius.card,
+                    child: heroWidget,
+                  )
+                else
+                  heroWidget,
                 if (presentation.alert != null) ...[
                   const SizedBox(height: AppSpacing.md),
                   HomeEventBanner(
@@ -540,20 +582,31 @@ class _HomePageState extends State<HomePage> {
                 // 形态）优先于资产行：课程安排是第一屏价值最高的状态信息,
                 // 余额/电费次之。
                 const SizedBox(height: AppSpacing.md),
-                HomeTodaySection(
-                  today: presentation.today,
-                  onOpenSchedule: () async {
-                    await _pushFeatureRoute(context, 'schedule');
-                  },
-                ),
+                if (hasBackground && !presentation.today.isEmpty)
+                  AppCard(
+                    glassEnabled: true,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
+                    radius: AppRadius.card,
+                    child: todayWidget,
+                  )
+                else
+                  todayWidget,
                 const SizedBox(height: AppSpacing.xl),
-                HomeAssetStrip(
-                  status: presentation.status,
-                  onCampusCardTap: () =>
-                      _pushFeatureRoute(context, 'campus-card'),
-                  onElectricityTap: () =>
-                      _pushFeatureRoute(context, 'dorm-electricity'),
-                ),
+                if (hasBackground)
+                  AppCard(
+                    glassEnabled: true,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
+                    radius: AppRadius.card,
+                    child: assetWidget,
+                  )
+                else
+                  assetWidget,
               ],
             ),
           ),
@@ -564,6 +617,12 @@ class _HomePageState extends State<HomePage> {
                 PersonalizationController.instance.homeCampusNoticeEnabled,
             builder: (context, noticeEnabled, _) {
               final noticeVisible = noticeEnabled && !_noticeHead.isEmpty;
+              final noticeWidget = HomeCampusNoticeSection(
+                head: _noticeHead,
+                onTapNotice: _openCampusNotice,
+                onTapAll: () => context.pushNamed('notification-center'),
+              );
+
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -575,12 +634,17 @@ class _HomePageState extends State<HomePage> {
                         AppSpacing.pageMargin,
                         AppSpacing.sectionBreak,
                       ),
-                      child: HomeCampusNoticeSection(
-                        head: _noticeHead,
-                        onTapNotice: _openCampusNotice,
-                        onTapAll: () =>
-                            context.pushNamed('notification-center'),
-                      ),
+                      child: hasBackground
+                          ? AppCard(
+                              glassEnabled: true,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 14,
+                              ),
+                              radius: AppRadius.card,
+                              child: noticeWidget,
+                            )
+                          : noticeWidget,
                     ),
                   // 功能区锚点：key 挂在容器上，ensureVisible 滚动到位后
                   // 标题不贴视口顶；公告关闭时顶距退回普通段落间距。
@@ -591,6 +655,8 @@ class _HomePageState extends State<HomePage> {
                       bottom: bottomClearance,
                     ),
                     child: FunctionZoneSection(
+                      campusCardBalance: _campusCardBalance,
+                      dormElectricity: _dormElectricity,
                       padding: EdgeInsets.fromLTRB(
                         AppSpacing.pageMargin,
                         0,
