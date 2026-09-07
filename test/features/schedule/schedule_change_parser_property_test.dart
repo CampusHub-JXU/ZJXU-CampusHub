@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';
+import 'package:jxu_campus_hub/features/schedule/schedule_term_context.dart';
 
 import '../../helpers/property.dart';
 
@@ -12,6 +13,24 @@ void main() {
   const courseNameAlphabet = '高等数学线性代数据结构英语体育AI+创新创业与实践1A';
   const teacherAlphabet = '汤龙杨月红胡亚楠王张刘陈';
   const classroomAlphabet = '明德笃行楼教ABC012346789';
+
+  const mixedAreaThreeHtmlFixture = '''
+<a class="list-group-item" data-tkxx="换教室提醒:原定李恒老师在第2-5周,7-18周星期一第6-7节兴德楼南楼223上的数字经济概论课程现改为在博学楼(8号楼)501上课，请各位同学相互告知！">
+  <span class="fraction">2026-09-01 11:05:07</span>
+</a>
+<a class="list-group-item" data-tkxx="调课提醒:解丽老师于第12周星期四第8-9节在兴德楼南楼226上的大学英语(英语国家社会与文化)课程调课到由解丽老师在第13周星期四第8-9节兴德楼南楼226上课，请各位同学相互告知！">
+  <span class="fraction">2026-05-19 14:46:48</span>
+</a>
+<a class="list-group-item" data-tkxx="调课提醒:沈芳老师于第10周星期三第3-4节在兴德楼南楼107上的大学生职业规划与就业指导1课程调课到由沈芳老师在第10周星期三第3-4节网络平台上课，请各位同学相互告知！">
+  <span class="fraction">2026-04-29 09:33:22</span>
+</a>
+<a class="list-group-item" data-tkxx="调课提醒:刘晓罡老师于第8周星期五第8-10节在厚德楼308上的微观经济学课程调课到由刘晓罡老师在第8周星期二第8-10节厚德楼255上课，请各位同学相互告知！">
+  <span class="fraction">2026-04-20 09:35:44</span>
+</a>
+<a class="list-group-item" data-tkxx="调课提醒:胡亚楠老师于第8周星期一第1-2节在铭德楼467上的AI+创新创业基础课程调课到由胡亚楠老师在第8周星期四第1-2节厚德楼259上课，请各位同学相互告知！">
+  <span class="fraction">2026-04-20 08:30:46</span>
+</a>
+''';
 
   final slotGen = Gen<(int, int, int, int)>((random) {
     final week = intsInRange(1, 25).next(random);
@@ -156,6 +175,21 @@ void main() {
       });
     });
 
+    test('跨来源去重时保留带发布时间的副本', () {
+      const message =
+          '换教室提醒:原定李恒老师在第2周星期一第6-7节兴德楼南楼223上的数字经济概论课程现改为在博学楼(8号楼)501上课，请各位同学相互告知！';
+      final rules = parseScheduleChangeMessageEntries([
+        const ScheduleChangeMessage(message: message),
+        ScheduleChangeMessage(
+          message: message,
+          publishedAt: DateTime(2026, 9, 1, 11, 5, 7),
+        ),
+      ]);
+
+      expect(rules, hasLength(1));
+      expect(rules.single.publishedAt, DateTime(2026, 9, 1, 11, 5, 7));
+    });
+
     test('不含提醒关键词的文本永远不产生规则', () {
       // 字母表中不含 提/醒/调/停/补，无法拼出任何提醒关键词。
       final noiseGen = stringsOf('今夜月色很好明日风和日丽大家记得早睡上课认真听讲', 0, 40);
@@ -163,6 +197,71 @@ void main() {
       forAll('普通文本消息解析结果为空', noiseGen, (String noise) {
         expect(parseScheduleChangeMessages([noise]), isEmpty, reason: noise);
       });
+    });
+  });
+
+  group('真实 AreaThree 消息形状', () {
+    test('解析换教室周次范围，并不把发布日期当作学期证据', () {
+      final entries = extractScheduleChangeMessageEntriesFromAreaThreeHtml(
+        mixedAreaThreeHtmlFixture,
+      );
+      final messages = extractScheduleChangeMessagesFromAreaThreeHtml(
+        mixedAreaThreeHtmlFixture,
+      );
+      final rules = parseScheduleChangeMessageEntries(entries);
+
+      expect(messages, hasLength(5));
+      expect(entries, hasLength(5));
+      expect(entries.first.publishedAt, DateTime(2026, 9, 1, 11, 5, 7));
+      expect(entries[1].publishedAt, DateTime(2026, 5, 19, 14, 46, 48));
+      expect(rules.where((rule) => rule.courseName == '数字经济概论'), hasLength(16));
+      expect(
+        rules
+            .where((rule) => rule.courseName == '数字经济概论')
+            .every(
+              (rule) =>
+                  rule.originalLesson?.signature ==
+                      rule.targetLesson?.signature &&
+                  rule.classroom == '博学楼(8号楼)501' &&
+                  rule.termContext == null,
+            ),
+        isTrue,
+      );
+      final roomChange = rules
+          .where((rule) => rule.courseName == '数字经济概论')
+          .first;
+      expect(roomChange.rawMessage, contains('数字经济概论'));
+      expect(roomChange.originalClassroom, '兴德楼南楼223');
+      expect(roomChange.classroom, '博学楼(8号楼)501');
+      expect(roomChange.publishedAt, DateTime(2026, 9, 1, 11, 5, 7));
+
+      const current = ScheduleTermContext(academicYear: 2026, term: 3);
+      expect(filterScheduleChangeRulesForTerm(rules, current), isEmpty);
+
+      final explicit = parseScheduleChangeMessages([
+        '2026-2027学年第1学期 调课提醒:胡亚楠老师于第8周星期一第1-2节在铭德楼467上的AI+创新创业基础课程调课到由胡亚楠老师在第8周星期四第1-2节厚德楼259上课，请各位同学相互告知！',
+      ]).single;
+      expect(explicit.termContext, current);
+      expect(filterScheduleChangeRulesForTerm([explicit, ...rules], current), [
+        explicit,
+      ]);
+    });
+
+    test('非法日期降级为未知，未来日期保留', () {
+      expect(parseScheduleChangePublishedAt('2026-02-30 09:00:00'), isNull);
+      expect(parseScheduleChangePublishedAt('not-a-date'), isNull);
+      expect(
+        parseScheduleChangePublishedAt('2099-01-01 00:00:00'),
+        DateTime(2099, 1, 1),
+      );
+    });
+
+    test('畸形学年范围降级为未知', () {
+      final rule = parseScheduleChangeMessages([
+        '2026-2028学年第1学期 换教室提醒:原定李老师在第2周星期一第1节A楼101上的高等数学课程现改为在B楼202上课，请各位同学相互告知！',
+      ]).single;
+
+      expect(rule.termContext, isNull);
     });
   });
 

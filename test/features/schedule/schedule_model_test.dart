@@ -1,4 +1,4 @@
-﻿import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_model.dart';
 
 void main() {
@@ -46,5 +46,21 @@ void main() {
 
     expect(course.isInWeek(1), isFalse);
     expect(course.weekDistanceTo(1), 999);
+  });
+
+  test('reads the authoritative schedule-change marker', () {
+    final course = CourseEntry.fromJson({
+      'kcmc': '数字经济概论',
+      'xm': '李恒',
+      'xqj': '1',
+      'jcs': '6-7',
+      'zcd': '2-5周,7-18周',
+      'cdmc': '博学楼(8号楼)501',
+      'jxbsftkbj': '1',
+    });
+
+    expect(course.hasScheduleChange, isTrue);
+    expect(course.classroom, '博学楼(8号楼)501');
+    expect(CourseEntry.fromJson(course.toJson()).hasScheduleChange, isTrue);
   });
 }

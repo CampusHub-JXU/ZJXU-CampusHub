@@ -47,6 +47,12 @@ class SchedulePageController extends ChangeNotifier {
   String? get infoMessage => _infoMessage;
   List<CourseEntry> get courses => _courses;
   List<CourseChangeRule> get courseChangeRules => _courseChangeRules;
+  List<CourseChangeNotice> get courseChangeNotices =>
+      ScheduleService.instance.buildCourseChangeNotices(
+        courses: _courses,
+        changeRules: _courseChangeRules,
+        termContext: activeTermContext,
+      );
   int get term => _term;
   int get displayWeek => _displayWeek;
   DateTime? get scheduleUpdatedAt => _scheduleUpdatedAt;
@@ -212,6 +218,7 @@ class SchedulePageController extends ChangeNotifier {
           courses: _courses,
           week: week,
           changeRules: _courseChangeRules,
+          termContext: activeTermContext,
         );
 
     final currentWeekCoursesByDay = <int, List<CourseEntry>>{

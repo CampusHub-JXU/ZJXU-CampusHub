@@ -10,6 +10,8 @@ class ScheduleCacheSnapshot {
     this.changeRules = const [],
     this.scheduleUpdatedAt,
     this.changeRulesUpdatedAt,
+    this.changeRulesCurrentScoped = false,
+    this.changeRulesDateAware = true,
   });
 
   final String studentId;
@@ -18,6 +20,12 @@ class ScheduleCacheSnapshot {
   final List<CourseChangeRule> changeRules;
   final DateTime? scheduleUpdatedAt;
   final DateTime? changeRulesUpdatedAt;
+
+  /// 仅由当前学期上下文抓取后写入；这不是消息本身的学期证明。
+  final bool changeRulesCurrentScoped;
+
+  /// Missing in the pre-date schema; such snapshots must refresh once.
+  final bool changeRulesDateAware;
 
   bool get hasData =>
       courses.isNotEmpty ||
@@ -48,6 +56,7 @@ class ScheduleCacheSnapshot {
   }) {
     final updatedAt = changeRulesUpdatedAt;
     if (updatedAt == null) return true;
+    if (changeRules.isNotEmpty && !changeRulesDateAware) return true;
     return now.difference(updatedAt) >= maxAge;
   }
 
@@ -58,6 +67,8 @@ class ScheduleCacheSnapshot {
     List<CourseChangeRule>? changeRules,
     DateTime? scheduleUpdatedAt,
     DateTime? changeRulesUpdatedAt,
+    bool? changeRulesCurrentScoped,
+    bool? changeRulesDateAware,
     bool clearScheduleUpdatedAt = false,
     bool clearChangeRulesUpdatedAt = false,
   }) {
@@ -72,6 +83,9 @@ class ScheduleCacheSnapshot {
       changeRulesUpdatedAt: clearChangeRulesUpdatedAt
           ? null
           : changeRulesUpdatedAt ?? this.changeRulesUpdatedAt,
+      changeRulesCurrentScoped:
+          changeRulesCurrentScoped ?? this.changeRulesCurrentScoped,
+      changeRulesDateAware: changeRulesDateAware ?? this.changeRulesDateAware,
     );
   }
 
@@ -82,6 +96,8 @@ class ScheduleCacheSnapshot {
     'changeRules': changeRules.map((rule) => rule.toJson()).toList(),
     'scheduleUpdatedAt': scheduleUpdatedAt?.millisecondsSinceEpoch,
     'changeRulesUpdatedAt': changeRulesUpdatedAt?.millisecondsSinceEpoch,
+    'changeRulesCurrentScoped': changeRulesCurrentScoped,
+    'changeRulesDateAware': changeRulesDateAware,
   };
 
   factory ScheduleCacheSnapshot.fromJson(Map<String, dynamic> json) {
@@ -103,6 +119,10 @@ class ScheduleCacheSnapshot {
           .toList(),
       scheduleUpdatedAt: _dateFromMillis(json['scheduleUpdatedAt']),
       changeRulesUpdatedAt: _dateFromMillis(json['changeRulesUpdatedAt']),
+      changeRulesCurrentScoped: json['changeRulesCurrentScoped'] == true,
+      changeRulesDateAware: json.containsKey('changeRulesDateAware')
+          ? json['changeRulesDateAware'] == true
+          : false,
     );
   }
 

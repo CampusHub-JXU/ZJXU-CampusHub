@@ -108,7 +108,8 @@ class _SchedulePageState extends State<SchedulePage> {
   }
 
   Future<void> _showCourseChangeSheet() async {
-    if (_controller.courseChangeRules.isEmpty) return;
+    final notices = _controller.courseChangeNotices;
+    if (notices.isEmpty) return;
 
     await showModalBottomSheet<void>(
       context: context,
@@ -118,12 +119,12 @@ class _SchedulePageState extends State<SchedulePage> {
       builder: (context) {
         return DraggableScrollableSheet(
           expand: false,
-          initialChildSize: 0.62,
+          initialChildSize: 0.68,
           minChildSize: 0.38,
-          maxChildSize: 0.92,
+          maxChildSize: 0.94,
           builder: (context, scrollController) {
             return ScheduleChangeSheet(
-              changeRules: _controller.courseChangeRules,
+              notices: notices,
               displayWeek: _controller.displayWeek,
               scrollController: scrollController,
             );
@@ -224,15 +225,15 @@ class _SchedulePageState extends State<SchedulePage> {
             title: const Text('课表'),
             actions: (_controller.loggedIn || _controller.courses.isNotEmpty)
                 ? [
-                    if (_controller.courseChangeRules.isNotEmpty)
+                    if (_controller.courseChangeNotices.isNotEmpty)
                       IconButton(
                         tooltip: '调课提醒',
                         onPressed: _showCourseChangeSheet,
                         icon: Badge(
                           label: Text(
-                            _controller.courseChangeRules.length > 99
+                            _controller.courseChangeNotices.length > 99
                                 ? '99+'
-                                : '${_controller.courseChangeRules.length}',
+                                : '${_controller.courseChangeNotices.length}',
                           ),
                           child: const Icon(Icons.swap_horiz_rounded),
                         ),

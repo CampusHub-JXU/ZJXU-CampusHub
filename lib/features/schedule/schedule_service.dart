@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:html/parser.dart' as html_parser;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/auth/zhengfang_auth.dart';
@@ -61,6 +62,9 @@ class ScheduleService {
 
   static const _cacheStorageKey = 'zjxu_schedule_cache_snapshots_v1';
   static const _lastStudentStorageKey = 'zjxu_schedule_last_student_id_v1';
+  // Keep a conservative pre-semester window so advance notices are not hidden.
+  // This affects display only; it does not prove a message's term or alter courses.
+  static const _notificationPreSemesterWindow = Duration(days: 60);
 
   final Map<String, ScheduleCacheSnapshot> _snapshots = {};
   final Map<String, Future<ScheduleLoadResult>> _inflightLoads = {};
@@ -122,7 +126,9 @@ class ScheduleService {
         termContext ??
         CurrentTermResolver.instance.knownCurrentTerm ??
         getCurrentTermContext();
-    return _snapshots[_cacheKeyFor(resolvedStudentId, context)];
+    final snapshot = _snapshots[_cacheKeyFor(resolvedStudentId, context)];
+    if (snapshot == null) return null;
+    return _snapshotForDisplay(snapshot);
   }
 
   Future<ScheduleLoadResult> loadScheduleSnapshot({
@@ -144,6 +150,7 @@ class ScheduleService {
       studentId: resolvedStudentId,
       context: context,
       forceRefresh: forceRefresh,
+      allowChangeRules: _canFetchChangeRulesFor(context),
     );
 
     // 未显式指定学期且当前学期没有课表数据（常见于新学期开学前），
@@ -156,6 +163,7 @@ class ScheduleService {
       studentId: resolvedStudentId,
       context: previousContext,
       forceRefresh: false,
+      allowChangeRules: false,
     );
     if (fallback.snapshot?.hasData != true) {
       return result;
@@ -190,25 +198,33 @@ class ScheduleService {
     required String studentId,
     required ScheduleTermContext context,
     required bool forceRefresh,
+    required bool allowChangeRules,
   }) async {
     final cacheKey = _cacheKeyFor(studentId, context);
-    final cachedSnapshot =
+    var cachedSnapshot =
         _snapshots[cacheKey] ??
         ScheduleCacheSnapshot.empty(studentId: studentId, termContext: context);
 
-    if (!forceRefresh && cachedSnapshot.hasData) {
-      return ScheduleLoadResult(snapshot: cachedSnapshot, usedCache: true);
+    final shouldRefreshChangeRules =
+        allowChangeRules &&
+        (forceRefresh ||
+            cachedSnapshot.needsChangeRulesRefresh(DateTime.now()));
+    if (!forceRefresh && cachedSnapshot.hasData && !shouldRefreshChangeRules) {
+      return ScheduleLoadResult(
+        snapshot: _snapshotForDisplay(cachedSnapshot),
+        usedCache: true,
+      );
     }
 
     final shouldRefreshSchedule =
-        forceRefresh || cachedSnapshot.scheduleUpdatedAt == null;
-    final shouldRefreshChangeRules =
-        forceRefresh || cachedSnapshot.changeRulesUpdatedAt == null;
+        forceRefresh || cachedSnapshot.needsScheduleRefresh(DateTime.now());
     final needsRefresh = shouldRefreshSchedule || shouldRefreshChangeRules;
 
     if (!needsRefresh) {
       return ScheduleLoadResult(
-        snapshot: cachedSnapshot.hasData ? cachedSnapshot : null,
+        snapshot: cachedSnapshot.hasData
+            ? _snapshotForDisplay(cachedSnapshot)
+            : null,
         usedCache: cachedSnapshot.hasData,
       );
     }
@@ -219,7 +235,7 @@ class ScheduleService {
     if (!canRefresh) {
       if (cachedSnapshot.hasData) {
         return ScheduleLoadResult(
-          snapshot: cachedSnapshot,
+          snapshot: _snapshotForDisplay(cachedSnapshot),
           requiresLogin: true,
           usedCache: true,
           message: '显示的是本地缓存课表，刷新需要重新登录教务',
@@ -236,6 +252,7 @@ class ScheduleService {
         termContext: context,
         refreshSchedule: shouldRefreshSchedule,
         refreshChangeRules: shouldRefreshChangeRules,
+        allowChangeRules: allowChangeRules,
       ),
     );
   }
@@ -296,10 +313,16 @@ class ScheduleService {
   }
 
   Future<List<CourseChangeRule>> fetchCourseChangeRules(
-    String studentId,
-  ) async {
+    String studentId, {
+    required ScheduleTermContext termContext,
+  }) async {
+    // 两个消息源都没有学期参数；历史学期直接禁止访问无作用域消息。
+    if (!_canFetchChangeRulesFor(termContext)) {
+      return const [];
+    }
+
     await DioClient.instance.ensureInitialized();
-    final messages = <String>{};
+    final messages = <ScheduleChangeMessage>[];
     messages.addAll(await _fetchInboxChangeMessages());
 
     final referer = ZhengfangAuth.instance.academicServiceUrl;
@@ -331,11 +354,11 @@ class ScheduleService {
       throw const ScheduleAuthExpiredException();
     }
 
-    messages.addAll(_extractAreaThreeMessages(html));
-    return parseScheduleChangeMessages(messages);
+    messages.addAll(extractScheduleChangeMessageEntriesFromAreaThreeHtml(html));
+    return parseScheduleChangeMessageEntries(messages);
   }
 
-  Future<List<String>> _fetchInboxChangeMessages() async {
+  Future<List<ScheduleChangeMessage>> _fetchInboxChangeMessages() async {
     await DioClient.instance.ensureInitialized();
     final resp = await _dio.post<dynamic>(
       _academicUrl('/xtgl/index_cxDbsy.html'),
@@ -358,6 +381,9 @@ class ScheduleService {
     }
 
     final data = resp.data;
+    if (data is String) {
+      return extractScheduleChangeMessageEntriesFromAreaThreeHtml(data);
+    }
     if (data is! Map<String, dynamic>) {
       final raw = data?.toString() ?? '';
       if (_looksLikeLoginExpired(raw)) {
@@ -378,36 +404,31 @@ class ScheduleService {
         )
         .map((message) => _decodeHtmlEntities(message).trim())
         .where((message) => message.isNotEmpty)
+        .map((message) => ScheduleChangeMessage(message: message))
         .toList();
-  }
-
-  List<String> _extractAreaThreeMessages(String html) {
-    final messages = <String>[];
-    final messagePattern = RegExp(r'data-tkxx="([^"]+)"');
-
-    for (final match in messagePattern.allMatches(html)) {
-      final encodedMessage = match.group(1) ?? '';
-      final message = _decodeHtmlEntities(encodedMessage).trim();
-      if (message.isNotEmpty) messages.add(message);
-    }
-
-    return messages;
   }
 
   List<CourseEntry> buildEffectiveWeekCourses({
     required List<CourseEntry> courses,
     required int week,
     List<CourseChangeRule> changeRules = const [],
+    ScheduleTermContext? termContext,
   }) {
+    final applicableRules = changeRules.where(
+      (rule) =>
+          rule.termContext != null &&
+          (termContext == null || rule.termContext == termContext) &&
+          !_isProtectedByAuthoritativeCourse(rule, courses),
+    );
     final effectiveCourses = courses
         .where((course) => course.isInWeek(week))
         .where(
           (course) =>
-              !changeRules.any((rule) => rule.removesCourse(course, week)),
+              !applicableRules.any((rule) => rule.removesCourse(course, week)),
         )
         .toList();
 
-    for (final rule in changeRules.where(
+    for (final rule in applicableRules.where(
       (rule) => rule.addsCourseToWeek(week),
     )) {
       final syntheticCourse = _buildSyntheticCourse(
@@ -438,6 +459,139 @@ class ScheduleService {
     }
 
     return deduped;
+  }
+
+  /// 将按周解析出的规则按原文合并，供通知列表展示。
+  List<CourseChangeNotice> buildCourseChangeNotices({
+    required List<CourseEntry> courses,
+    required List<CourseChangeRule> changeRules,
+    required ScheduleTermContext termContext,
+    DateTime? now,
+  }) {
+    final grouped = <String, List<CourseChangeRule>>{};
+    for (final rule in changeRules) {
+      if (!_isVisibleCourseChangeRule(
+        rule,
+        termContext,
+        now ?? DateTime.now(),
+      )) {
+        continue;
+      }
+      grouped.putIfAbsent(rule.noticeSignature, () => []).add(rule);
+    }
+
+    return [
+      for (final rules in grouped.values)
+        _buildCourseChangeNotice(rules, courses),
+    ];
+  }
+
+  bool _isVisibleCourseChangeRule(
+    CourseChangeRule rule,
+    ScheduleTermContext termContext,
+    DateTime now,
+  ) {
+    // A message's explicit term always outranks its publication date.
+    if (rule.termContext != null) return rule.termContext == termContext;
+
+    final publishedAt = rule.publishedAt;
+    if (publishedAt == null) return true;
+
+    final currentTerm =
+        CurrentTermResolver.instance.knownCurrentTerm ??
+        getCurrentTermContext(now);
+    // Do not use today's date to censor notices while viewing a history term.
+    if (termContext != currentTerm) return true;
+
+    final configuredStart = _normalizeDate(
+      SemesterCalendar.instance.semesterStartDate.value,
+    );
+    // ScheduleTermContext.current is a month-based heuristic only.  It is used
+    // here to reject an unrelated global calendar setting, never as term proof.
+    if (ScheduleTermContext.current(configuredStart) != termContext) {
+      return true;
+    }
+
+    final semesterStart = configuredStart;
+    final earliestVisible = semesterStart.subtract(
+      _notificationPreSemesterWindow,
+    );
+    return !_normalizeDate(publishedAt).isBefore(earliestVisible);
+  }
+
+  static DateTime _normalizeDate(DateTime date) =>
+      DateTime(date.year, date.month, date.day);
+
+  CourseChangeNotice _buildCourseChangeNotice(
+    List<CourseChangeRule> rules,
+    List<CourseEntry> courses,
+  ) {
+    if (rules.isNotEmpty &&
+        rules.every((rule) => _findReflectedCourse(rule, courses) != null)) {
+      return CourseChangeNotice(
+        rule: rules.first,
+        status: CourseChangeNoticeStatus.reflected,
+        effectiveCourse: _findReflectedCourse(rules.first, courses),
+      );
+    }
+    return CourseChangeNotice(
+      rule: rules.first,
+      status: CourseChangeNoticeStatus.unapplied,
+    );
+  }
+
+  CourseEntry? _findReflectedCourse(
+    CourseChangeRule rule,
+    List<CourseEntry> courses,
+  ) {
+    final lesson = rule.targetLesson ?? rule.originalLesson;
+    if (lesson == null) return null;
+
+    for (final course in courses) {
+      if (!course.hasScheduleChange ||
+          course.weekday != lesson.weekday ||
+          course.startLesson != lesson.startLesson ||
+          course.endLesson != lesson.endLesson) {
+        continue;
+      }
+      if (!course.isInWeek(lesson.week)) continue;
+      if (!_matchesCourseName(course.courseName, rule.courseName ?? '')) {
+        continue;
+      }
+      final teacher = rule.teacherName?.trim() ?? '';
+      if (teacher.isEmpty || course.teacherName.trim() != teacher) {
+        continue;
+      }
+      final classroom = rule.classroom?.trim() ?? '';
+      if (classroom.isEmpty || course.classroom.trim() != classroom) {
+        continue;
+      }
+      return course;
+    }
+    return null;
+  }
+
+  bool _isProtectedByAuthoritativeCourse(
+    CourseChangeRule rule,
+    List<CourseEntry> courses,
+  ) {
+    final lesson = rule.targetLesson ?? rule.originalLesson;
+    if (lesson == null) return false;
+
+    // 即使通知只覆盖了部分节次，权威课表的调课标记也不能被通知反向覆盖。
+    for (final course in courses) {
+      if (!course.hasScheduleChange || !course.isInWeek(lesson.week)) {
+        continue;
+      }
+      if (course.weekday != lesson.weekday ||
+          !lesson.overlaps(course) ||
+          !_matchesCourseName(course.courseName, rule.courseName ?? '')) {
+        continue;
+      }
+      final teacher = rule.teacherName?.trim() ?? '';
+      if (teacher.isEmpty || course.teacherName.trim() == teacher) return true;
+    }
+    return false;
   }
 
   CourseEntry? _buildSyntheticCourse({
@@ -544,6 +698,7 @@ class ScheduleService {
     required ScheduleTermContext termContext,
     required bool refreshSchedule,
     required bool refreshChangeRules,
+    required bool allowChangeRules,
   }) async {
     var nextSnapshot = existingSnapshot;
     var didRefresh = false;
@@ -586,14 +741,32 @@ class ScheduleService {
     }
 
     final shouldLoadChangeRules =
-        refreshChangeRules && nextSnapshot.courses.isNotEmpty;
+        allowChangeRules &&
+        refreshChangeRules &&
+        nextSnapshot.courses.isNotEmpty;
     if (shouldLoadChangeRules) {
       try {
-        final changeRules = await fetchCourseChangeRules(studentId);
-        nextSnapshot = nextSnapshot.copyWith(
-          changeRules: changeRules,
-          changeRulesUpdatedAt: DateTime.now(),
+        final fetchedRules = await fetchCourseChangeRules(
+          studentId,
+          termContext: termContext,
         );
+        nextSnapshot = nextSnapshot.copyWith(
+          changeRules: fetchedRules,
+          changeRulesUpdatedAt: DateTime.now(),
+          changeRulesCurrentScoped: true,
+          changeRulesDateAware: true,
+        );
+        final notices = buildCourseChangeNotices(
+          courses: nextSnapshot.courses,
+          changeRules: fetchedRules,
+          termContext: termContext,
+        );
+        final unappliedCount = notices
+            .where((notice) => notice.isUnapplied)
+            .length;
+        if (unappliedCount > 0) {
+          warnings.add('有$unappliedCount条调课提醒未在当前课表体现');
+        }
         didRefresh = true;
       } on ScheduleAuthExpiredException {
         await ZhengfangAuth.instance.markLoggedOut();
@@ -601,7 +774,9 @@ class ScheduleService {
           await _persistSnapshot(nextSnapshot);
         }
         return ScheduleLoadResult(
-          snapshot: nextSnapshot.hasData ? nextSnapshot : existingSnapshot,
+          snapshot: nextSnapshot.hasData
+              ? _snapshotForDisplay(nextSnapshot)
+              : _snapshotForDisplay(existingSnapshot),
           requiresLogin: true,
           usedCache: (nextSnapshot.hasData || existingSnapshot.hasData),
           didRefresh: didRefresh,
@@ -620,9 +795,11 @@ class ScheduleService {
       await _persistSnapshot(nextSnapshot);
     }
 
-    final snapshot = nextSnapshot.hasData
-        ? nextSnapshot
-        : (existingSnapshot.hasData ? existingSnapshot : null);
+    final visibleNextSnapshot = _snapshotForDisplay(nextSnapshot);
+    final visibleExistingSnapshot = _snapshotForDisplay(existingSnapshot);
+    final snapshot = visibleNextSnapshot.hasData
+        ? visibleNextSnapshot
+        : (visibleExistingSnapshot.hasData ? visibleExistingSnapshot : null);
     return ScheduleLoadResult(
       snapshot: snapshot,
       message: warnings.isEmpty ? null : warnings.join('，'),
@@ -635,9 +812,11 @@ class ScheduleService {
     ScheduleCacheSnapshot existingSnapshot,
     ScheduleCacheSnapshot updatedSnapshot,
   ) {
-    final snapshot = updatedSnapshot.hasData
-        ? updatedSnapshot
-        : (existingSnapshot.hasData ? existingSnapshot : null);
+    final visibleUpdatedSnapshot = _snapshotForDisplay(updatedSnapshot);
+    final visibleExistingSnapshot = _snapshotForDisplay(existingSnapshot);
+    final snapshot = visibleUpdatedSnapshot.hasData
+        ? visibleUpdatedSnapshot
+        : (visibleExistingSnapshot.hasData ? visibleExistingSnapshot : null);
 
     if (snapshot != null) {
       return ScheduleLoadResult(
@@ -682,6 +861,31 @@ class ScheduleService {
 
   String _cacheKeyFor(String studentId, ScheduleTermContext termContext) {
     return '$studentId|${termContext.academicYear}|${termContext.term}';
+  }
+
+  bool _canFetchChangeRulesFor(ScheduleTermContext context) {
+    final current =
+        CurrentTermResolver.instance.knownCurrentTerm ??
+        getCurrentTermContext();
+    return context == current;
+  }
+
+  ScheduleCacheSnapshot _snapshotForDisplay(ScheduleCacheSnapshot snapshot) {
+    final scopedRules = snapshot.changeRules
+        .where(
+          (rule) =>
+              rule.termContext == null ||
+              rule.termContext == snapshot.termContext,
+        )
+        .toList();
+    if (scopedRules.length == snapshot.changeRules.length &&
+        (scopedRules.isNotEmpty || snapshot.changeRulesUpdatedAt == null)) {
+      return snapshot;
+    }
+    return snapshot.copyWith(
+      changeRules: scopedRules,
+      clearChangeRulesUpdatedAt: scopedRules.isEmpty,
+    );
   }
 
   String? _deriveLastStudentId() {

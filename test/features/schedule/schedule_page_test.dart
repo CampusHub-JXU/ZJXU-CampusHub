@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -47,7 +47,7 @@ void main() {
             typeSymbol: '',
           ),
         ],
-        changeRules: const [
+        changeRules: [
           CourseChangeRule(
             type: CourseChangeType.reschedule,
             originalLesson: CourseLessonSlot(
@@ -65,10 +65,12 @@ void main() {
             courseName: 'AI+创新创业基础',
             teacherName: '胡亚楠',
             classroom: '铭德楼468',
+            termContext: termContext,
           ),
         ],
         scheduleUpdatedAt: now,
         changeRulesUpdatedAt: now,
+        changeRulesCurrentScoped: true,
       ),
     );
 

@@ -11,6 +11,7 @@ class CourseEntry {
     required this.classroom,
     required this.campus,
     required this.typeSymbol,
+    this.hasScheduleChange = false,
   });
 
   final String courseName;
@@ -22,6 +23,9 @@ class CourseEntry {
   final String classroom;
   final String campus;
   final String typeSymbol; // ◆★□●◇
+
+  /// 正方课表的 jxbsftkbj=1，表示该教学班有调课记录。
+  final bool hasScheduleChange;
 
   /// 判断课程是否在指定周次（支持"单/双"周修饰符）
   bool isInWeek(int week) {
@@ -77,6 +81,9 @@ class CourseEntry {
       campus: json['campus'] as String? ?? json['xqmc'] as String? ?? '',
       typeSymbol:
           json['typeSymbol'] as String? ?? json['xslxbj'] as String? ?? '',
+      hasScheduleChange:
+          json['hasScheduleChange'] == true ||
+          json['jxbsftkbj']?.toString() == '1',
     );
   }
 
@@ -90,6 +97,7 @@ class CourseEntry {
     'classroom': classroom,
     'campus': campus,
     'typeSymbol': typeSymbol,
+    'hasScheduleChange': hasScheduleChange,
   };
 }
 
