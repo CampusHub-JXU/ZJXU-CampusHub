@@ -31,6 +31,8 @@ typedef _WebViewPageSnapshot = ({
   int childCount,
 });
 
+enum _WebViewMenuAction { refresh, openExternal }
+
 /// Reusable full-screen WebView page with progress bar and error handling.
 class WebViewPage extends StatefulWidget {
   const WebViewPage({
@@ -207,6 +209,9 @@ class _WebViewPageState extends State<WebViewPage> {
   }
 
   Future<void> _handleAppBackPressed() async {
+    if (!mounted) return;
+    final didGoBack = await _goBackInWebViewIfPossible();
+    if (didGoBack) return;
     if (!mounted) return;
     await _popRoute();
   }
@@ -419,10 +424,15 @@ class _WebViewPageState extends State<WebViewPage> {
   Widget build(BuildContext context) {
     final canPopRoute = Navigator.of(context).canPop();
     final showHomeButton = widget.onHomePressed != null;
+    final showHistoryBackButton = _canGoBackInWebView;
     final showRouteBackButton = canPopRoute;
-    final hasCustomLeading = showRouteBackButton || showHomeButton;
+    final showBackButton = showRouteBackButton || showHistoryBackButton;
+    final showCloseButton = _canGoBackInWebView && canPopRoute;
+    final hasCustomLeading =
+        showBackButton || showCloseButton || showHomeButton;
     final leadingButtonCount = [
-      if (showRouteBackButton) true,
+      if (showBackButton) true,
+      if (showCloseButton) true,
       if (showHomeButton) true,
     ].length;
 
@@ -440,11 +450,17 @@ class _WebViewPageState extends State<WebViewPage> {
               ? Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (showRouteBackButton)
+                    if (showBackButton)
                       IconButton(
                         icon: const Icon(Icons.arrow_back),
-                        tooltip: '返回',
+                        tooltip: _canGoBackInWebView ? '后退' : '返回',
                         onPressed: _handleAppBackPressed,
+                      ),
+                    if (showCloseButton)
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        tooltip: '关闭',
+                        onPressed: _popRoute,
                       ),
                     if (showHomeButton)
                       IconButton(
@@ -456,13 +472,7 @@ class _WebViewPageState extends State<WebViewPage> {
                 )
               : null,
           title: Text(widget.title),
-          actions: [
-            ...widget.appBarActions,
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              onPressed: _reloadCurrentPage,
-            ),
-          ],
+          actions: [...widget.appBarActions, _buildWebViewPopupMenu()],
         ),
         body: Column(
           children: [
@@ -668,35 +678,34 @@ class _WebViewPageState extends State<WebViewPage> {
                         _trackCurrentUrl(url);
                         unawaited(_refreshWebViewBackState(controller));
                       },
-                      shouldOverrideUrlLoading:
-                          (controller, navigationAction) async {
-                            final uri = navigationAction.request.url?.uriValue;
-                            if (uri == null) {
-                              return NavigationActionPolicy.ALLOW;
-                            }
+                      shouldOverrideUrlLoading: (controller, navigationAction) async {
+                        final uri = navigationAction.request.url?.uriValue;
+                        if (uri == null) {
+                          return NavigationActionPolicy.ALLOW;
+                        }
 
-                            final requestCallback = widget.onNavigationRequest;
-                            if (requestCallback != null) {
-                              final policy = await requestCallback(
-                                controller,
-                                uri,
-                              );
-                              if (policy != null) return policy;
-                            }
+                        final requestCallback = widget.onNavigationRequest;
+                        if (requestCallback != null) {
+                          final policy = await requestCallback(controller, uri);
+                          if (policy != null) return policy;
+                        }
 
-                            final scheme = uri.scheme.toLowerCase();
-                            if (scheme == 'http' || scheme == 'https') {
-                              return NavigationActionPolicy.ALLOW;
-                            }
+                        final scheme = uri.scheme.toLowerCase();
+                        if (scheme == 'http' || scheme == 'https') {
+                          return NavigationActionPolicy.ALLOW;
+                        }
 
-                            if (scheme == 'weixin') {
-                              await launchExternalUriFromWebView(uri);
-                              return NavigationActionPolicy.CANCEL;
-                            }
+                        if (isSafeExternalScheme(scheme)) {
+                          await launchExternalUriFromWebView(uri);
+                          return NavigationActionPolicy.CANCEL;
+                        }
 
-                            await launchExternalUriFromWebView(uri);
-                            return NavigationActionPolicy.CANCEL;
-                          },
+                        AppLogger.instance.webview(
+                          LogLevel.warn,
+                          'WebView 拦截非安全或未知 Scheme 跳转: $scheme (url: ${scrubSensitiveUrl(uri.toString())})',
+                        );
+                        return NavigationActionPolicy.CANCEL;
+                      },
                       onConsoleMessage: (controller, consoleMessage) {
                         _handleConsoleMessage(controller, consoleMessage);
                       },

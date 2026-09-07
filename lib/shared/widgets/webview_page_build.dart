@@ -198,20 +198,82 @@ extension _WebViewPageBuildExtension on _WebViewPageState {
     }
   }
 
-  /// 悬浮「网页内返回」小岛按钮：盖在 WebView 内容上层，只在能后退时出现，
-  /// 不再占用底部整条布局（原全宽 FilledButton 条视觉过重）。
-  Widget _buildWebViewNavigationBar() {
-    if (!widget.showWebViewBottomBackButton || !_canGoBackInWebView) {
-      return const SizedBox.shrink();
+  Widget _buildWebViewPopupMenu() {
+    return PopupMenuButton<_WebViewMenuAction>(
+      icon: const Icon(Icons.more_vert),
+      tooltip: '更多操作',
+      onSelected: (action) {
+        switch (action) {
+          case _WebViewMenuAction.refresh:
+            _reloadCurrentPage();
+          case _WebViewMenuAction.openExternal:
+            _openCurrentUrlInExternalBrowser();
+        }
+      },
+      itemBuilder: (context) => [
+        const PopupMenuItem(
+          value: _WebViewMenuAction.refresh,
+          child: Row(
+            children: [
+              Icon(Icons.refresh, size: 20),
+              SizedBox(width: 12),
+              Text('刷新'),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
+          value: _WebViewMenuAction.openExternal,
+          child: Row(
+            children: [
+              Icon(Icons.open_in_browser, size: 20),
+              SizedBox(width: 12),
+              Text('在浏览器中打开'),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<String> _resolveCurrentActiveUrl() async {
+    final controller = _controller;
+    if (controller != null) {
+      try {
+        final currentWebUri = await controller.getUrl();
+        final candidate = currentWebUri?.toString().trim();
+        if (candidate != null && candidate.isNotEmpty) {
+          _currentUrl = candidate;
+          return candidate;
+        }
+      } catch (error) {
+        _logWebViewLifecycle('获取实时 URL 失败，使用记录 URL：$error');
+      }
+    }
+    return _currentUrl;
+  }
+
+  Future<void> _openCurrentUrlInExternalBrowser() async {
+    final activeUrl = await _resolveCurrentActiveUrl();
+    if (!isExternalHttpUrl(activeUrl)) {
+      _showHint('当前链接无效或不支持在外部浏览器打开');
+      return;
     }
 
-    return Align(
-      alignment: Alignment.bottomLeft,
-      child: Padding(
-        padding: const EdgeInsets.only(left: 16, bottom: 16),
-        child: WebViewBackPill(onTap: _goBackInWebViewIfPossible),
-      ),
-    );
+    if (isSensitiveAuthIntermediateUrl(activeUrl)) {
+      _showHint('当前页面处于登录认证跳转中，请在页面完全加载后再尝试外部打开');
+      return;
+    }
+
+    final success = await openInExternalBrowser(activeUrl);
+    if (!success && mounted) {
+      _showHint('未能调起系统外部浏览器');
+    }
+  }
+
+  /// 底部导航条：已移除页面内悬浮返回小岛控件（改为 AppBar 后退与系统手势拦截），
+  /// 此处返回空组件以保持布局结构纯净。
+  Widget _buildWebViewNavigationBar() {
+    return const SizedBox.shrink();
   }
 
   Widget _buildError() {
@@ -233,8 +295,9 @@ extension _WebViewPageBuildExtension on _WebViewPageState {
 
 /// 悬浮「网页内返回」小岛按钮本体。
 ///
-/// 公开以便视觉预览场景（test/preview）直接渲染验收；宿主
-/// [_WebViewPageState] 通过 [_buildWebViewNavigationBar] 挂载。
+/// 保留此类以向后兼容历史预览测试（test/preview/preview_render_test.dart），
+/// 实际页面内已废弃未挂载，后续待预览测试更新后可整体清理。
+@Deprecated('网页内返回小岛已废弃，保留仅为兼容 preview_render_test.dart 编译')
 class WebViewBackPill extends StatelessWidget {
   const WebViewBackPill({super.key, this.onTap});
 
