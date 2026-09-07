@@ -16,6 +16,9 @@
 .PARAMETER EmulatorName
     模拟器名称；缺省时自动探测本机唯一的 AVD
 
+.PARAMETER ColdBoot
+    不加载 Quick Boot 快照，执行一次完整冷启动（不清除应用数据）
+
 .EXAMPLE
     .\emulator_zh.ps1
     有真机在线时跳过；模拟器在线时唤醒后跳过；否则启动探测到的 AVD 并设置时区
@@ -30,7 +33,10 @@
 
 param(
     [Parameter()]
-    [string]$EmulatorName = ""
+    [string]$EmulatorName = "",
+
+    [Parameter()]
+    [switch]$ColdBoot
 )
 
 $ErrorActionPreference = "Stop"
@@ -137,6 +143,62 @@ function Set-ChinaTimezone {
     }
 }
 
+function Add-NativeWindowControls {
+    param(
+        [int]$ProcessId
+    )
+
+    if (-not ('EmulatorWindowStyle' -as [type])) {
+        Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+
+public static class EmulatorWindowStyle {
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern int GetWindowLong(IntPtr hWnd, int index);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern int SetWindowLong(IntPtr hWnd, int index, int value);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool SetWindowPos(
+        IntPtr hWnd,
+        IntPtr insertAfter,
+        int x,
+        int y,
+        int width,
+        int height,
+        uint flags);
+}
+'@
+    }
+
+    $candidateProcessIds = @($ProcessId) + @(
+        Get-CimInstance Win32_Process -Filter "ParentProcessId = $ProcessId" |
+            Select-Object -ExpandProperty ProcessId
+    )
+    $window = $candidateProcessIds |
+        ForEach-Object { Get-Process -Id $_ -ErrorAction SilentlyContinue } |
+        Where-Object { $_.MainWindowHandle -ne 0 } |
+        Select-Object -First 1
+    if (-not $window) { return $false }
+
+    $styleIndex = -16
+    $style = [EmulatorWindowStyle]::GetWindowLong($window.MainWindowHandle, $styleIndex)
+    # Restore the native system menu and the standard min/max buttons.
+    $style = $style -bor 0x00080000 -bor 0x00020000 -bor 0x00010000
+    [EmulatorWindowStyle]::SetWindowLong($window.MainWindowHandle, $styleIndex, $style) | Out-Null
+    [EmulatorWindowStyle]::SetWindowPos(
+        $window.MainWindowHandle,
+        [IntPtr]::Zero,
+        0,
+        0,
+        0,
+        0,
+        0x0027) | Out-Null
+    return $true
+}
+
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host "Android 模拟器启动工具" -ForegroundColor Cyan
 Write-Host "目标时区: 东八区 (Asia/Shanghai/GMT+8)" -ForegroundColor Yellow
@@ -161,13 +223,28 @@ if ($deviceLines | Where-Object { $_ -notmatch '^emulator-' }) {
 if ($deviceLines | Where-Object { $_ -match '^emulator-' }) {
     Write-Host "检测到模拟器已在线，唤醒屏幕并跳过启动。" -ForegroundColor Yellow
     & $AdbPath shell input keyevent KEYCODE_WAKEUP 2>$null
+    Get-Process -Name qemu-system-x86_64 -ErrorAction SilentlyContinue |
+        Where-Object { $_.MainWindowHandle -ne 0 } |
+        ForEach-Object { Add-NativeWindowControls -ProcessId $_.Id | Out-Null }
     exit 0
 }
 
 # 启动模拟器
 Write-Host "启动模拟器: $AvdName ..." -ForegroundColor Green
 # 使用 AVD 配置里的宿主 GPU 渲染与 Quick Boot 快照（首次冷启动后，后续启动走快照秒开）
-Start-Process -FilePath $EmulatorPath -ArgumentList "-avd", $AvdName, "-timezone", "Asia/Shanghai", "-no-boot-anim" -WindowStyle Normal
+$emulatorArguments = @(
+    "-avd", $AvdName,
+    "-timezone", "Asia/Shanghai",
+    "-no-boot-anim"
+)
+if ($ColdBoot) {
+    $emulatorArguments += "-no-snapshot-load"
+    Write-Host "使用完整冷启动，不加载 Quick Boot 快照。" -ForegroundColor Yellow
+}
+$emulatorProcess = Start-Process -FilePath $EmulatorPath -ArgumentList $emulatorArguments -WindowStyle Normal -PassThru
+
+# Android Emulator 37 may omit the native Windows caption buttons on a restored window.
+$windowControlsApplied = $false
 
 # 等待设备连接
 Write-Host "等待设备启动..." -ForegroundColor Gray
@@ -177,6 +254,10 @@ $attempt = 0
 while ($attempt -lt $maxAttempts) {
     Start-Sleep -Seconds 2
     $attempt++
+
+    if (-not $windowControlsApplied) {
+        $windowControlsApplied = Add-NativeWindowControls -ProcessId $emulatorProcess.Id
+    }
 
     $deviceState = & $AdbPath get-state 2>$null
     if ($deviceState -eq "device") {
