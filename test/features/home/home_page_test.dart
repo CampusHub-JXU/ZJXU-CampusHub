@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,6 +12,7 @@ import 'package:jxu_campus_hub/core/notice/notice_model.dart';
 import 'package:jxu_campus_hub/core/notice/notice_sync_store.dart';
 import 'package:jxu_campus_hub/core/semester/semester_calendar.dart';
 import 'package:jxu_campus_hub/core/theme/personalization_controller.dart';
+import 'package:jxu_campus_hub/core/theme/widgets/home_background_layer.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_card.dart';
 import 'package:jxu_campus_hub/features/campus_card/campus_card_service.dart';
 import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_service.dart';
@@ -19,6 +21,7 @@ import 'package:jxu_campus_hub/features/grades/grades_service.dart';
 import 'package:jxu_campus_hub/features/home/home_page.dart';
 import 'package:jxu_campus_hub/features/home/home_zone_controller.dart';
 import 'package:jxu_campus_hub/features/home/models/home_presentation.dart';
+import 'package:jxu_campus_hub/features/home/widgets/home_ambient_background.dart';
 import 'package:jxu_campus_hub/features/home/widgets/home_asset_strip.dart';
 import 'package:jxu_campus_hub/features/home/widgets/home_event_banner.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_cache_snapshot.dart';
@@ -569,7 +572,7 @@ void main() {
   );
 
   testWidgets(
-    'wraps content sections in frosted AppCard when fluid background is enabled',
+    'maintains unboxed continuous layout without AppCard when background or shader is enabled',
     (tester) async {
       PersonalizationController.instance.shaderEnabled.value = true;
 
@@ -577,12 +580,164 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
 
-      // When fluid/shader background is enabled, content sections receive frosted glass AppCard wrappers
-      final cards = tester.widgetList<AppCard>(find.byType(AppCard));
-      expect(cards.isNotEmpty, isTrue);
-      expect(cards.every((card) => card.glassEnabled), isTrue);
+      // Even when shader/background is enabled, content sections stay unboxed without AppCard
+      expect(find.byType(AppCard), findsNothing);
     },
   );
+
+  testWidgets(
+    'mounts hero fade gradient scrim overlay when background image is present',
+    (tester) async {
+      PersonalizationController.instance.backgroundImagePath.value =
+          'test_bg.png';
+      PersonalizationController.instance.shaderEnabled.value = true;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData.light(),
+          darkTheme: ThemeData.dark(),
+          home: const HomePage(),
+        ),
+      );
+      // shader 滤镜有持续 ticker，不能 pumpAndSettle。
+      await tester.pump();
+
+      expect(_hasHeroFadeScrim(tester), isTrue);
+      expect(find.byType(AppCard), findsNothing);
+
+      PersonalizationController.instance.shaderEnabled.value = false;
+      await tester.pump();
+
+      expect(_hasHeroFadeScrim(tester), isFalse);
+    },
+  );
+
+  testWidgets(
+    'already-mounted home swaps ambient background when setter updates path',
+    (tester) async {
+      PersonalizationController.instance.shaderEnabled.value = false;
+      PersonalizationController.instance.backgroundImagePath.value = null;
+
+      await tester.pumpWidget(const MaterialApp(home: HomePage()));
+      await tester.pump();
+
+      expect(find.byType(HomeAmbientBackground), findsOneWidget);
+      expect(find.byType(HomeBackgroundLayer), findsNothing);
+
+      late final File file;
+      await tester.runAsync(() async {
+        final dir = await Directory.systemTemp.createTemp('home_bg_live_');
+        addTearDown(() => dir.delete(recursive: true));
+        file = File('${dir.path}/bg.png');
+        await file.writeAsBytes(_kOnePixelPng);
+      });
+
+      await PersonalizationController.instance.setBackgroundImagePath(
+        file.path,
+      );
+      await tester.pump();
+
+      final layer = tester.widget<HomeBackgroundLayer>(
+        find.byType(HomeBackgroundLayer),
+      );
+      expect(layer.path, file.path);
+      final image = tester.widget<Image>(
+        find.descendant(
+          of: find.byType(HomeBackgroundLayer),
+          matching: find.byType(Image),
+        ),
+      );
+      expect(image.image, isA<FileImage>());
+      expect((image.image as FileImage).file.path, file.path);
+      expect(find.byType(HomeAmbientBackground), findsNothing);
+
+      await PersonalizationController.instance.setBackgroundImagePath(null);
+      await tester.pump();
+
+      expect(find.byType(HomeAmbientBackground), findsOneWidget);
+      expect(find.byType(HomeBackgroundLayer), findsNothing);
+    },
+  );
+}
+
+/// 1×1 透明 PNG，给 Image.file 一条真实可读路径。
+const _kOnePixelPng = <int>[
+  0x89,
+  0x50,
+  0x4E,
+  0x47,
+  0x0D,
+  0x0A,
+  0x1A,
+  0x0A,
+  0x00,
+  0x00,
+  0x00,
+  0x0D,
+  0x49,
+  0x48,
+  0x44,
+  0x52,
+  0x00,
+  0x00,
+  0x00,
+  0x01,
+  0x00,
+  0x00,
+  0x00,
+  0x01,
+  0x08,
+  0x06,
+  0x00,
+  0x00,
+  0x00,
+  0x1F,
+  0x15,
+  0xC4,
+  0x89,
+  0x00,
+  0x00,
+  0x00,
+  0x0A,
+  0x49,
+  0x44,
+  0x41,
+  0x54,
+  0x78,
+  0x9C,
+  0x63,
+  0x00,
+  0x01,
+  0x00,
+  0x00,
+  0x05,
+  0x00,
+  0x01,
+  0x0D,
+  0x0A,
+  0x2D,
+  0xB4,
+  0x00,
+  0x00,
+  0x00,
+  0x00,
+  0x49,
+  0x45,
+  0x4E,
+  0x44,
+  0xAE,
+  0x42,
+  0x60,
+  0x82,
+];
+
+bool _hasHeroFadeScrim(WidgetTester tester) {
+  return tester.widgetList<DecoratedBox>(find.byType(DecoratedBox)).any((box) {
+    final decoration = box.decoration;
+    if (decoration is! BoxDecoration) return false;
+    final gradient = decoration.gradient;
+    return gradient is LinearGradient && gradient.stops?.length == 5;
+  });
 }
 
 double _scrollOffset(WidgetTester tester) {

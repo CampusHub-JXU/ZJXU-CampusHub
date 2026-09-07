@@ -14,7 +14,6 @@ import '../../core/theme/app_theme_controller.dart';
 import '../../core/theme/personalization_controller.dart';
 import '../../core/theme/widgets/home_background_layer.dart';
 import '../../core/update/update_checker.dart';
-import '../../shared/widgets/app_card.dart';
 import '../../shared/widgets/network_error_toast.dart';
 import '../../shared/widgets/update_dialog.dart';
 import '../campus_card/campus_card_service.dart';
@@ -434,8 +433,6 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgImagePath =
-        PersonalizationController.instance.backgroundImagePath.value;
     final topInset = MediaQuery.paddingOf(context).top;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: (isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark)
@@ -451,24 +448,108 @@ class _HomePageState extends State<HomePage> {
         body: Stack(
           fit: StackFit.expand,
           children: [
-            if (bgImagePath != null) ...[
-              HomeBackgroundLayer(path: bgImagePath),
-              // 自定义背景图时在状态栏区域垫一层表面色，保证图标可读；
-              // 默认环境背景自带浅色氛围，不需要这一层。
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                height: topInset,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surface
-                        .withValues(alpha: 0.94),
-                  ),
-                ),
-              ),
-            ] else
-              HomeAmbientBackground(),
+            ValueListenableBuilder<String?>(
+              valueListenable:
+                  PersonalizationController.instance.backgroundImagePath,
+              builder: (context, bgImagePath, _) {
+                return ValueListenableBuilder<bool>(
+                  valueListenable:
+                      PersonalizationController.instance.shaderEnabled,
+                  builder: (context, shaderEnabled, _) {
+                    if (bgImagePath != null) {
+                      return Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          HomeBackgroundLayer(path: bgImagePath),
+                          if (shaderEnabled) ...[
+                            // Hero 舞台氛围渐隐遮罩（Hero Fade Scrim）：
+                            // 顶部保留 Shader / 背景微光氛围并附带柔和 tint 保护，
+                            // 向下平滑过渡到纯净主题表面（scaffoldBackgroundColor），
+                            // 保证正文（课表列表、资产、公告）直接坐在稳定主题底色上。
+                            Positioned.fill(
+                              child: IgnorePointer(
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topCenter,
+                                      end: Alignment.bottomCenter,
+                                      stops: const [0.0, 0.18, 0.36, 0.52, 1.0],
+                                      colors: [
+                                        Theme.of(context)
+                                            .scaffoldBackgroundColor
+                                            .withValues(
+                                              alpha: isDark ? 0.45 : 0.32,
+                                            ),
+                                        Theme.of(context)
+                                            .scaffoldBackgroundColor
+                                            .withValues(
+                                              alpha: isDark ? 0.52 : 0.40,
+                                            ),
+                                        Theme.of(context)
+                                            .scaffoldBackgroundColor
+                                            .withValues(
+                                              alpha: isDark ? 0.82 : 0.76,
+                                            ),
+                                        Theme.of(context)
+                                            .scaffoldBackgroundColor,
+                                        Theme.of(context)
+                                            .scaffoldBackgroundColor,
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            // 状态栏顶部柔和微羽化，保障极端高光壁纸下系统状态图标清晰可读
+                            if (topInset > 0)
+                              Positioned(
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                height: topInset + 8,
+                                child: IgnorePointer(
+                                  child: DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        begin: Alignment.topCenter,
+                                        end: Alignment.bottomCenter,
+                                        colors: [
+                                          Theme.of(context).colorScheme.surface
+                                              .withValues(
+                                                alpha: isDark ? 0.38 : 0.28,
+                                              ),
+                                          Theme.of(context).colorScheme.surface
+                                              .withValues(alpha: 0.0),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ] else ...[
+                            // 禁用 Shader 保持原布局：纯壁纸形态在状态栏区域垫一层表面色保障图标可读
+                            if (topInset > 0)
+                              Positioned(
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                height: topInset,
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context).colorScheme.surface
+                                        .withValues(alpha: 0.94),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ],
+                      );
+                    }
+                    return const HomeAmbientBackground();
+                  },
+                );
+              },
+            ),
             SafeArea(
               bottom: false,
               child: ValueListenableBuilder<HomeTextColorMode>(
@@ -480,20 +561,7 @@ class _HomePageState extends State<HomePage> {
                       valueListenable: PersonalizationController
                           .instance
                           .fullDayCoursesEnabled,
-                      builder: (context, _, _) =>
-                          ValueListenableBuilder<String?>(
-                            valueListenable: PersonalizationController
-                                .instance
-                                .backgroundImagePath,
-                            builder: (context, _, _) =>
-                                ValueListenableBuilder<bool>(
-                                  valueListenable: PersonalizationController
-                                      .instance
-                                      .shaderEnabled,
-                                  builder: (context, _, _) =>
-                                      _buildScrollBody(context),
-                                ),
-                          ),
+                      builder: (context, _, _) => _buildScrollBody(context),
                     ),
               ),
             ),
@@ -503,17 +571,11 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  bool get _hasCustomOrFluidBackground {
-    final pc = PersonalizationController.instance;
-    return pc.backgroundImagePath.value != null || pc.shaderEnabled.value;
-  }
-
   Widget _buildScrollBody(BuildContext context) {
     final presentation = _resolvePresentation();
     final now = DateTime.now();
     final bottomClearance =
         MediaQuery.paddingOf(context).bottom + _bottomNavClearance;
-    final hasBackground = _hasCustomOrFluidBackground;
 
     final heroWidget = HomePrimaryStatusHero(
       hero: presentation.hero,
@@ -557,15 +619,7 @@ class _HomePageState extends State<HomePage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (hasBackground)
-                  AppCard(
-                    glassEnabled: true,
-                    padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
-                    radius: AppRadius.card,
-                    child: heroWidget,
-                  )
-                else
-                  heroWidget,
+                heroWidget,
                 if (presentation.alert != null) ...[
                   const SizedBox(height: AppSpacing.md),
                   HomeEventBanner(
@@ -582,31 +636,9 @@ class _HomePageState extends State<HomePage> {
                 // 形态）优先于资产行：课程安排是第一屏价值最高的状态信息,
                 // 余额/电费次之。
                 const SizedBox(height: AppSpacing.md),
-                if (hasBackground && !presentation.today.isEmpty)
-                  AppCard(
-                    glassEnabled: true,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 14,
-                    ),
-                    radius: AppRadius.card,
-                    child: todayWidget,
-                  )
-                else
-                  todayWidget,
+                todayWidget,
                 const SizedBox(height: AppSpacing.xl),
-                if (hasBackground)
-                  AppCard(
-                    glassEnabled: true,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 14,
-                    ),
-                    radius: AppRadius.card,
-                    child: assetWidget,
-                  )
-                else
-                  assetWidget,
+                assetWidget,
               ],
             ),
           ),
@@ -634,17 +666,7 @@ class _HomePageState extends State<HomePage> {
                         AppSpacing.pageMargin,
                         AppSpacing.sectionBreak,
                       ),
-                      child: hasBackground
-                          ? AppCard(
-                              glassEnabled: true,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 14,
-                              ),
-                              radius: AppRadius.card,
-                              child: noticeWidget,
-                            )
-                          : noticeWidget,
+                      child: noticeWidget,
                     ),
                   // 功能区锚点：key 挂在容器上，ensureVisible 滚动到位后
                   // 标题不贴视口顶；公告关闭时顶距退回普通段落间距。
