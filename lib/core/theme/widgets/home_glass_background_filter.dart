@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
+import '../../logging/app_logger.dart';
 import '../personalization_controller.dart';
 
 class HomeGlassBackgroundFilter extends StatefulWidget {
@@ -29,130 +30,225 @@ class HomeGlassBackgroundFilter extends StatefulWidget {
   final double animationSpeed;
   final Widget child;
 
+  @visibleForTesting
+  static Future<ui.FragmentProgram> Function(HomeShaderMode mode)?
+  debugProgramLoader;
+
+  @visibleForTesting
+  static void debugResetShaderCache({bool clearLoader = true}) {
+    if (clearLoader) {
+      debugProgramLoader = null;
+    }
+    _HomeBackgroundShaderCache.reset();
+  }
+
+  @visibleForTesting
+  static Future<ui.FragmentProgram?> debugLoadShader(HomeShaderMode mode) {
+    return _HomeBackgroundShaderCache.load(mode);
+  }
+
+  @visibleForTesting
+  static bool debugShaderInitialized(HomeShaderMode mode) {
+    return _HomeBackgroundShaderCache.initialized(mode);
+  }
+
   @override
-  State<HomeGlassBackgroundFilter> createState() =>
-      _HomeGlassBackgroundFilterState();
+  HomeGlassBackgroundFilterState createState() =>
+      HomeGlassBackgroundFilterState();
 }
 
-class _HomeGlassBackgroundFilterState extends State<HomeGlassBackgroundFilter>
+class HomeGlassBackgroundFilterState extends State<HomeGlassBackgroundFilter>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   static const _frameInterval = Duration(milliseconds: 33);
   static const _maxTickDelta = Duration(milliseconds: 120);
 
   late final Ticker _ticker;
   ui.FragmentShader? _fragmentShader;
+  HomeShaderMode? _boundMode;
+  int _loadGeneration = 0;
+  bool _loadFailed = false;
+  bool _resumedRetryUsed = false;
+  bool _tickerModeEnabled = true;
+  AppLifecycleState _lifecycleState = AppLifecycleState.resumed;
   Duration _lastTickElapsed = Duration.zero;
   Duration _lastPaintElapsed = Duration.zero;
   Duration _pendingTickDelta = Duration.zero;
   double _shaderTimeSeconds = 0.0;
 
+  @visibleForTesting
+  bool get debugTickerActive => _ticker.isActive;
+
+  @visibleForTesting
+  HomeShaderMode? get debugBoundMode => _boundMode;
+
+  @visibleForTesting
+  double get debugShaderTimeSeconds => _shaderTimeSeconds;
+
+  @visibleForTesting
+  ui.FragmentShader? get debugFragmentShader => _fragmentShader;
+
   @override
   void initState() {
     super.initState();
+    _lifecycleState =
+        WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this);
+    _ticker = createTicker(_onTick);
     _loadShader();
-    _ticker = createTicker((elapsed) {
-      if (widget.mode != HomeShaderMode.ribbon &&
-          widget.mode != HomeShaderMode.collage) {
-        return;
-      }
-      if (_lastTickElapsed == Duration.zero) {
-        _lastTickElapsed = elapsed;
-        return;
-      }
-      final delta = elapsed - _lastTickElapsed;
-      _lastTickElapsed = elapsed;
-      if (delta <= Duration.zero) {
-        return;
-      }
-      if (delta > _maxTickDelta) {
-        _pendingTickDelta = Duration.zero;
-        return;
-      }
-      _pendingTickDelta += delta;
-      if (elapsed - _lastPaintElapsed < _frameInterval) {
-        return;
-      }
-      _lastPaintElapsed = elapsed;
-      _shaderTimeSeconds =
-          (_shaderTimeSeconds +
-              _pendingTickDelta.inMicroseconds /
-                  1000000.0 *
-                  widget.animationSpeed.clamp(0.0, 2.0)) %
-          60.0;
-      _pendingTickDelta = Duration.zero;
-      setState(() {});
-    });
-    if (widget.mode == HomeShaderMode.ribbon ||
-        widget.mode == HomeShaderMode.collage) {
-      _ticker.start();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final enabled = TickerMode.valuesOf(context).enabled;
+    if (enabled && !_tickerModeEnabled) {
+      _resetTickClock();
     }
+    _tickerModeEnabled = enabled;
+    _syncTicker();
   }
 
   @override
   void didUpdateWidget(covariant HomeGlassBackgroundFilter oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.mode != widget.mode) {
+      _releaseShader();
+      _loadFailed = false;
+      _resumedRetryUsed = false;
       _loadShader();
-      if (widget.mode == HomeShaderMode.ribbon ||
-          widget.mode == HomeShaderMode.collage) {
-        if (!_ticker.isActive) _ticker.start();
-      } else {
-        _ticker.stop();
-      }
     }
+    _syncTicker();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    _lifecycleState = state;
     if (state == AppLifecycleState.resumed) {
-      _lastTickElapsed = Duration.zero;
-      _lastPaintElapsed = Duration.zero;
-      _pendingTickDelta = Duration.zero;
-      if ((widget.mode == HomeShaderMode.ribbon ||
-              widget.mode == HomeShaderMode.collage) &&
-          !_ticker.isActive) {
-        _ticker.start();
-      }
-      return;
+      _resetTickClock();
+      _retryLoadAfterResume();
     }
-    if (state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.hidden ||
-        state == AppLifecycleState.paused ||
-        state == AppLifecycleState.detached) {
-      _ticker.stop();
-      _lastTickElapsed = Duration.zero;
-      _lastPaintElapsed = Duration.zero;
-      _pendingTickDelta = Duration.zero;
-    }
+    _syncTicker();
   }
 
   @override
   void dispose() {
+    _loadGeneration++;
     WidgetsBinding.instance.removeObserver(this);
     _ticker.dispose();
-    _fragmentShader?.dispose();
+    _releaseShader();
     super.dispose();
   }
 
+  void _onTick(Duration elapsed) {
+    if (!_modeNeedsTicker) {
+      return;
+    }
+    if (_lastTickElapsed == Duration.zero) {
+      _lastTickElapsed = elapsed;
+      return;
+    }
+    final delta = elapsed - _lastTickElapsed;
+    _lastTickElapsed = elapsed;
+    if (delta <= Duration.zero) {
+      return;
+    }
+    if (delta > _maxTickDelta) {
+      _pendingTickDelta = Duration.zero;
+      return;
+    }
+    _pendingTickDelta += delta;
+    if (elapsed - _lastPaintElapsed < _frameInterval) {
+      return;
+    }
+    _lastPaintElapsed = elapsed;
+    _shaderTimeSeconds =
+        (_shaderTimeSeconds +
+            _pendingTickDelta.inMicroseconds /
+                1000000.0 *
+                widget.animationSpeed.clamp(0.0, 2.0)) %
+        60.0;
+    _pendingTickDelta = Duration.zero;
+    setState(() {});
+  }
+
+  bool get _modeNeedsTicker =>
+      widget.mode == HomeShaderMode.ribbon ||
+      widget.mode == HomeShaderMode.collage;
+
+  bool get _lifecycleAllowsTicker =>
+      _lifecycleState == AppLifecycleState.resumed;
+
+  void _syncTicker() {
+    final shouldRun =
+        _modeNeedsTicker && _tickerModeEnabled && _lifecycleAllowsTicker;
+    if (shouldRun) {
+      if (!_ticker.isActive) {
+        _ticker.start();
+      }
+      return;
+    }
+    if (_ticker.isActive) {
+      _ticker.stop();
+      _resetTickClock();
+    }
+  }
+
+  void _resetTickClock() {
+    _lastTickElapsed = Duration.zero;
+    _lastPaintElapsed = Duration.zero;
+    _pendingTickDelta = Duration.zero;
+  }
+
+  void _releaseShader() {
+    _fragmentShader?.dispose();
+    _fragmentShader = null;
+    _boundMode = null;
+  }
+
+  void _retryLoadAfterResume() {
+    if (_resumedRetryUsed || !_loadFailed || _fragmentShader != null) {
+      return;
+    }
+    _resumedRetryUsed = true;
+    _loadShader();
+  }
+
   Future<void> _loadShader() async {
-    await _HomeBackgroundShaderCache.initialize(widget.mode);
-    if (mounted) setState(() {});
+    final mode = widget.mode;
+    final generation = ++_loadGeneration;
+    final program = await _HomeBackgroundShaderCache.load(mode);
+    if (!mounted || generation != _loadGeneration || widget.mode != mode) {
+      return;
+    }
+    final previous = _fragmentShader;
+    _fragmentShader = program?.fragmentShader();
+    previous?.dispose();
+    _boundMode = mode;
+    _loadFailed = program == null;
+    setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!ui.ImageFilter.isShaderFilterSupported ||
-        !_HomeBackgroundShaderCache.initialized(widget.mode)) {
+    final shader = _fragmentShader;
+    if (!ui.ImageFilter.isShaderFilterSupported || shader == null) {
       return widget.child;
     }
 
-    _fragmentShader?.dispose();
-    _fragmentShader = _HomeBackgroundShaderCache.program(widget.mode)!
-        .fragmentShader();
+    _applyUniforms(shader);
+    return ImageFiltered(
+      imageFilter: ui.ImageFilter.shader(shader),
+      child: CustomPaint(
+        painter: const _ShaderCoveragePainter(),
+        child: widget.child,
+      ),
+    );
+  }
+
+  void _applyUniforms(ui.FragmentShader shader) {
     switch (widget.mode) {
       case HomeShaderMode.glass:
-        _fragmentShader!
+        shader
           ..setFloat(2, widget.intensity.clamp(0.0, 1.0))
           ..setFloat(3, widget.levels.clamp(4.0, 18.0))
           ..setFloat(4, widget.themeColor.r)
@@ -161,7 +257,7 @@ class _HomeGlassBackgroundFilterState extends State<HomeGlassBackgroundFilter>
           ..setFloat(7, widget.opacity.clamp(0.0, 1.0))
           ..setFloat(8, widget.isDarkMode ? 1.0 : 0.0);
       case HomeShaderMode.ribbon:
-        _fragmentShader!
+        shader
           ..setFloat(2, _shaderTimeSeconds)
           ..setFloat(3, widget.intensity.clamp(0.0, 1.0))
           ..setFloat(4, widget.themeColor.r)
@@ -171,7 +267,7 @@ class _HomeGlassBackgroundFilterState extends State<HomeGlassBackgroundFilter>
           ..setFloat(8, widget.isDarkMode ? 1.0 : 0.0);
       case HomeShaderMode.collage:
         final colors = _shaderPalette();
-        _fragmentShader!
+        shader
           ..setFloat(2, _shaderTimeSeconds)
           ..setFloat(3, widget.intensity.clamp(0.0, 1.0))
           ..setFloat(4, widget.themeColor.r)
@@ -198,14 +294,6 @@ class _HomeGlassBackgroundFilterState extends State<HomeGlassBackgroundFilter>
           ..setFloat(25, colors[5].b)
           ..setFloat(26, widget.isDarkMode ? 1.0 : 0.0);
     }
-
-    return ImageFiltered(
-      imageFilter: ui.ImageFilter.shader(_fragmentShader!),
-      child: CustomPaint(
-        painter: _ShaderCoveragePainter(),
-        child: widget.child,
-      ),
-    );
   }
 
   List<Color> _shaderPalette() {
@@ -270,6 +358,8 @@ class _HomeGlassBackgroundFilterState extends State<HomeGlassBackgroundFilter>
 }
 
 class _ShaderCoveragePainter extends CustomPainter {
+  const _ShaderCoveragePainter();
+
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
@@ -288,23 +378,41 @@ class _ShaderCoveragePainter extends CustomPainter {
 }
 
 class _HomeBackgroundShaderCache {
-  static final _initCalled = <HomeShaderMode>{};
+  static final _loads = <HomeShaderMode, Future<ui.FragmentProgram?>>{};
   static final _programs = <HomeShaderMode, ui.FragmentProgram>{};
 
   static bool initialized(HomeShaderMode mode) => _programs.containsKey(mode);
 
-  static ui.FragmentProgram? program(HomeShaderMode mode) => _programs[mode];
+  static void reset() {
+    _loads.clear();
+    _programs.clear();
+  }
 
-  static Future<void> initialize(HomeShaderMode mode) async {
-    if (initialized(mode)) return;
-    if (_initCalled.contains(mode)) {
-      while (!initialized(mode)) {
-        await Future<void>.delayed(const Duration(milliseconds: 16));
-      }
-      return;
+  static Future<ui.FragmentProgram?> load(HomeShaderMode mode) {
+    final cached = _programs[mode];
+    if (cached != null) {
+      return Future<ui.FragmentProgram?>.value(cached);
     }
-    _initCalled.add(mode);
-    _programs[mode] = await ui.FragmentProgram.fromAsset(_assetFor(mode));
+    return _loads.putIfAbsent(mode, () async {
+      try {
+        final loader = HomeGlassBackgroundFilter.debugProgramLoader;
+        final program = loader == null
+            ? await ui.FragmentProgram.fromAsset(_assetFor(mode))
+            : await loader(mode);
+        _programs[mode] = program;
+        return program;
+      } catch (error, stackTrace) {
+        AppLogger.instance.ui(
+          LogLevel.warn,
+          '首页着色器加载失败: ${mode.name}',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        return null;
+      } finally {
+        _loads.remove(mode);
+      }
+    });
   }
 
   static String _assetFor(HomeShaderMode mode) {
