@@ -409,9 +409,7 @@ Future<void> _seedNotificationCenterInbox() async {
   ];
   NoticeSyncStore.instance.debugInjectState(
     NoticeSyncSnapshot(
-      snapshotIds: {
-        for (final n in notices) n.id: DateTime(2026, 9, 5),
-      },
+      snapshotIds: {for (final n in notices) n.id: DateTime(2026, 9, 5)},
       inbox: notices,
       unreadIds: unreadIds,
       pendingNotifyIds: const <String>{},

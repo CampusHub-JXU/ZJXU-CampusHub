@@ -909,57 +909,51 @@ void main() {
       },
     );
 
-    testWidgets(
-      '19. old fallback RouteAware: didPushNext 清码，didPopNext 重取新码',
-      (tester) async {
-        await CredentialStore.instance.saveUnifiedAuthCredentials(
-          '20260001',
-          'pass',
+    testWidgets('19. old fallback RouteAware: didPushNext 清码，didPopNext 重取新码', (
+      tester,
+    ) async {
+      await CredentialStore.instance.saveUnifiedAuthCredentials(
+        '20260001',
+        'pass',
+      );
+      final adapter = await initEcardMock();
+      var qrCalls = 0;
+      adapter.register('POST', '/GetQRCode.aspx', (options) async {
+        qrCalls++;
+        return ResponseBody.fromString(
+          jsonEncode({'Code': '1', 'QRCode': 'fallback_route_code_$qrCalls'}),
+          200,
+          headers: {
+            Headers.contentTypeHeader: ['application/json'],
+          },
         );
-        final adapter = await initEcardMock();
-        var qrCalls = 0;
-        adapter.register('POST', '/GetQRCode.aspx', (options) async {
-          qrCalls++;
-          return ResponseBody.fromString(
-            jsonEncode({'Code': '1', 'QRCode': 'fallback_route_code_$qrCalls'}),
-            200,
-            headers: {
-              Headers.contentTypeHeader: ['application/json'],
-            },
-          );
-        });
+      });
 
-        await tester.pumpWidget(
-          MaterialApp(
-            navigatorObservers: [appRouteObserver],
-            home: CampusCardFallbackPaymentPage(
-              routeObserver: appRouteObserver,
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-        expect(find.byType(QrImageView), findsOneWidget);
-        expect(qrCalls, 1);
+      await tester.pumpWidget(
+        MaterialApp(
+          navigatorObservers: [appRouteObserver],
+          home: CampusCardFallbackPaymentPage(routeObserver: appRouteObserver),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(QrImageView), findsOneWidget);
+      expect(qrCalls, 1);
 
-        final nav = tester.state<NavigatorState>(find.byType(Navigator));
-        nav.push(
-          MaterialPageRoute<void>(
-            builder: (_) => const Scaffold(body: Text('Sub Page')),
-          ),
-        );
-        await tester.pumpAndSettle();
-        expect(find.text('Sub Page'), findsOneWidget);
-        // 被遮挡的旧页仍在树中：必须真清码，不能只靠 offstage 藏起来。
-        expect(
-          find.byType(QrImageView, skipOffstage: false),
-          findsNothing,
-        );
+      final nav = tester.state<NavigatorState>(find.byType(Navigator));
+      nav.push(
+        MaterialPageRoute<void>(
+          builder: (_) => const Scaffold(body: Text('Sub Page')),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Sub Page'), findsOneWidget);
+      // 被遮挡的旧页仍在树中：必须真清码，不能只靠 offstage 藏起来。
+      expect(find.byType(QrImageView, skipOffstage: false), findsNothing);
 
-        nav.pop();
-        await tester.pumpAndSettle();
-        expect(find.byType(QrImageView), findsOneWidget);
-        expect(qrCalls, 2);
-      },
-    );
+      nav.pop();
+      await tester.pumpAndSettle();
+      expect(find.byType(QrImageView), findsOneWidget);
+      expect(qrCalls, 2);
+    });
   });
 }

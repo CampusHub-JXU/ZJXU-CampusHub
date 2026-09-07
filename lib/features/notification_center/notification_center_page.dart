@@ -262,7 +262,9 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
       child: ListView.separated(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         itemCount:
-            visibleNotices.length + (showHeader ? 1 : 0) + (showAuthBanner ? 1 : 0),
+            visibleNotices.length +
+            (showHeader ? 1 : 0) +
+            (showAuthBanner ? 1 : 0),
         separatorBuilder: (_, _) => const SizedBox(height: 10),
         itemBuilder: (context, index) {
           if (showAuthBanner && index == 0) {
@@ -395,7 +397,10 @@ class _PracticeNoticeTabState extends State<_PracticeNoticeTab>
               )
               .toList();
     if (visibleNotices.isEmpty) {
-      return const AppEmptyView(title: '没有匹配的通知', icon: Icons.search_off_rounded);
+      return const AppEmptyView(
+        title: '没有匹配的通知',
+        icon: Icons.search_off_rounded,
+      );
     }
     return RefreshIndicator(
       onRefresh: _load,
