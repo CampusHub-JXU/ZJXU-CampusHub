@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Design tokens for the 智能中台 UI system.
+/// Design tokens for the 嘉兴大学 App UI system.
 ///
 /// Centralizes radius / spacing / elevation / icon-badge sizing so that
 /// scattered hard-coded values across features converge on a single source of

@@ -10,21 +10,12 @@ class ShaderAnimationSpeedSlider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<HomeShaderMode>(
-      valueListenable: PersonalizationController.instance.shaderMode,
-      builder: (context, shaderMode, _) {
-        if (shaderMode == HomeShaderMode.glass) {
-          return const SizedBox.shrink();
-        }
-        return _ShaderSlider(
-          valueListenable:
-              PersonalizationController.instance.shaderAnimationSpeed,
-          label: (speed) => '动画速度  ${speed.toStringAsFixed(1)}x',
-          max: 2,
-          divisions: 20,
-          onChanged: PersonalizationController.instance.setShaderAnimationSpeed,
-        );
-      },
+    return _ShaderSlider(
+      valueListenable: PersonalizationController.instance.shaderAnimationSpeed,
+      label: (speed) => '动画速度  ${speed.toStringAsFixed(1)}x',
+      max: 2,
+      divisions: 20,
+      onChanged: PersonalizationController.instance.setShaderAnimationSpeed,
     );
   }
 }

@@ -52,7 +52,6 @@ class PersonalizationShaderSection extends StatelessWidget {
                     ),
                     if (shaderEnabled) ...[
                       const _Hairline(),
-                      _buildShaderModePicker(context),
                       const ShaderAnimationSpeedSlider(),
                       const ShaderStrengthSlider(),
                       const ShaderOpacitySlider(),
@@ -63,78 +62,20 @@ class PersonalizationShaderSection extends StatelessWidget {
             ),
           ),
         ),
+        // 模式说明：仅保留流体纹理（无模式选择器）。
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: Text(
+            '模式：流体纹理 — 对背景做块状取样并施加流体扰动，'
+            '无背景图时以主题色渐变生成配色；动画会持续占用 GPU。',
+            style: TextStyle(
+              fontSize: 12,
+              color: cs.onSurfaceVariant,
+              height: 1.4,
+            ),
+          ),
+        ),
       ],
-    );
-  }
-
-  Widget _buildShaderModePicker(BuildContext context) {
-    return ValueListenableBuilder<HomeShaderMode>(
-      valueListenable: PersonalizationController.instance.shaderMode,
-      builder: (context, shaderMode, _) {
-        final cs = Theme.of(context).colorScheme;
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-              child: Text(
-                'Shader 模式',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: cs.onSurface,
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: SegmentedButton<HomeShaderMode>(
-                segments: const [
-                  ButtonSegment(
-                    value: HomeShaderMode.glass,
-                    icon: Icon(Icons.blur_on_outlined, size: 18),
-                    label: Text('玻璃背景'),
-                  ),
-                  ButtonSegment(
-                    value: HomeShaderMode.ribbon,
-                    icon: Icon(Icons.waves_outlined, size: 18),
-                    label: Text('流光丝带'),
-                  ),
-                  ButtonSegment(
-                    value: HomeShaderMode.collage,
-                    icon: Icon(Icons.auto_awesome_mosaic_outlined, size: 18),
-                    label: Text('流体纹理'),
-                  ),
-                ],
-                selected: {shaderMode},
-                onSelectionChanged: (selection) {
-                  PersonalizationController.instance.setShaderMode(
-                    selection.first,
-                  );
-                },
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: Text(
-                switch (shaderMode) {
-                  HomeShaderMode.ribbon =>
-                    '保留原始流动丝带场，用背景图纹理为丝带着色并轻微混合主题色；动画会持续占用 GPU。',
-                  HomeShaderMode.collage =>
-                    '先将背景图切成细块取样，再用流体扰动场推移块状纹理，保留原图配色并产生液态形变；动画会持续占用 GPU。',
-                  HomeShaderMode.glass =>
-                    '将背景图作为纹理输入，柔焦雾化、轻微折射并混合当前主题色，适合搭配毛玻璃卡片。',
-                },
-                style: TextStyle(
-                  fontSize: 12,
-                  color: cs.onSurfaceVariant,
-                  height: 1.4,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
     );
   }
 }

@@ -101,9 +101,8 @@ HomePresentation resolveHomePresentation(
 /// 学期中（晚间/无课日）显示明天或下一个有课日，避免首页上半屏空置、
 /// 功能区过早进入视口。
 ///
-/// 全天形态（[fullDay]）：今天有任何课程或考试时，列出全天课程
-/// （已结束行 [HomeTodayCourseRow.isDone] 灰显、进行中保留胶囊），
-/// 不再折叠——同学想看的就是一整天的安排；今天完全没有课程时仍走
+/// 全天形态（[fullDay]）：今天有任何剩余课程或考试时，列出它们
+/// （进行中保留胶囊），已结束课程不展示；今天没有剩余安排时仍走
 /// 次日预览兜底。
 ///
 /// 预览段与 Hero 的分工：Hero 已用课程大字展示命中日首课（今天没课态）
@@ -120,9 +119,9 @@ HomeTodayPresentation _resolveTodayPresentation({
   required bool fullDay,
 }) {
   if (fullDay) {
-    if (todayState.fullRows.isNotEmpty || todayState.exams.isNotEmpty) {
+    if (todayState.rows.isNotEmpty || todayState.exams.isNotEmpty) {
       return HomeTodayPresentation(
-        courses: todayState.fullRows,
+        courses: todayState.rows,
         exams: todayState.exams,
         isFullDay: true,
       );
@@ -185,17 +184,12 @@ HomeTodayPresentation _resolveTodayPresentation({
 class _TodayState {
   const _TodayState({
     required this.rows,
-    required this.fullRows,
     required this.exams,
     this.currentCourse,
   });
 
-  /// 按当前模式过滤后的展示行：剩余模式剔除已结束课程，全天模式
-  /// 与 [fullRows] 相同。
+  /// 展示行：已剔除已结束课程。
   final List<HomeTodayCourseRow> rows;
-
-  /// 今天全部课程行（含已结束，[HomeTodayCourseRow.isDone] 标记）。
-  final List<HomeTodayCourseRow> fullRows;
   final List<HomeTodayExamRow> exams;
   final CourseEntry? currentCourse;
 }
@@ -262,9 +256,8 @@ _TodayState _resolveTodayState({
   }
 
   return _TodayState(
-    // 剩余模式保持原有「剔除已结束」行为；全天模式原样保留全部行。
-    rows: fullDay ? rows : rows.where((row) => !row.isDone).toList(),
-    fullRows: rows,
+    // 已结束的课一律不进「今天」列表，全天/剩余模式行为一致。
+    rows: rows.where((row) => !row.isDone).toList(),
     exams: exams,
     currentCourse: currentCourse,
   );

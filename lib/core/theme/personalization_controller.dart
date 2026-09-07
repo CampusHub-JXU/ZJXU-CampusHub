@@ -39,7 +39,6 @@ class PersonalizationController {
   static const _keyBackgroundPath = 'home_background_image_path';
   static const _keyShaderEnabled = 'home_shader_enabled';
   static const _keyLegacyColorFilterEnabled = 'home_color_filter_enabled';
-  static const _keyShaderMode = 'home_shader_mode';
   static const _keyShaderStrength = 'home_shader_strength';
   static const _keyShaderOpacity = 'home_shader_opacity';
   static const _keyShaderAnimationSpeed = 'home_shader_animation_speed';
@@ -56,9 +55,6 @@ class PersonalizationController {
 
   final ValueNotifier<String?> backgroundImagePath = ValueNotifier(null);
   final ValueNotifier<bool> shaderEnabled = ValueNotifier(false);
-  final ValueNotifier<HomeShaderMode> shaderMode = ValueNotifier(
-    HomeShaderMode.glass,
-  );
   final ValueNotifier<bool> headerGlassEnabled = ValueNotifier(false);
   final ValueNotifier<double> shaderStrength = ValueNotifier(0.45);
   final ValueNotifier<double> shaderOpacity = ValueNotifier(1.0);
@@ -79,9 +75,10 @@ class PersonalizationController {
   /// 剩余课程。默认开（班级同学反馈想看一整天的课）。
   final ValueNotifier<bool> fullDayCoursesEnabled = ValueNotifier(true);
 
-  /// 首页「校园公告」区块（资产行下方的教务处通知内容块）；默认开，
-  /// 关闭后首页不再展示该区块（通知中心与后台提醒不受影响）。
-  final ValueNotifier<bool> homeCampusNoticeEnabled = ValueNotifier(true);
+  /// 首页「校园公告」区块（资产行下方的教务处通知内容块）；默认关
+  /// （新公告靠推送与通知中心红点即可），开启后首页展示该区块
+  ///（通知中心与后台提醒不受影响）。
+  final ValueNotifier<bool> homeCampusNoticeEnabled = ValueNotifier(false);
 
   final ValueNotifier<List<Color>?> monetColors = ValueNotifier(null);
 
@@ -272,13 +269,6 @@ class PersonalizationController {
         prefs.getBool(_keyLegacyColorFilterEnabled) ??
         false;
 
-    final modeIdx = prefs.getInt(_keyShaderMode);
-    if (modeIdx != null &&
-        modeIdx >= 0 &&
-        modeIdx < HomeShaderMode.values.length) {
-      shaderMode.value = HomeShaderMode.values[modeIdx];
-    }
-
     headerGlassEnabled.value = prefs.getBool(_keyHeaderGlass) ?? false;
 
     shaderStrength.value =
@@ -312,7 +302,8 @@ class PersonalizationController {
     );
     emblemWatermarkEnabled.value = prefs.getBool(_keyEmblemWatermark) ?? true;
     fullDayCoursesEnabled.value = prefs.getBool(_keyFullDayCourses) ?? true;
-    homeCampusNoticeEnabled.value = prefs.getBool(_keyHomeCampusNotice) ?? true;
+    homeCampusNoticeEnabled.value =
+        prefs.getBool(_keyHomeCampusNotice) ?? false;
   }
 
   Future<void> setBackgroundImagePath(String? path) async {
@@ -338,12 +329,6 @@ class PersonalizationController {
     if (enabled) {
       unawaited(getMonetColors());
     }
-  }
-
-  Future<void> setShaderMode(HomeShaderMode mode) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_keyShaderMode, mode.index);
-    shaderMode.value = mode;
   }
 
   Future<void> setHeaderGlassEnabled(bool enabled) async {
@@ -422,8 +407,6 @@ class PersonalizationController {
   void debugReset() {
     backgroundImagePath.value = null;
     shaderEnabled.value = false;
-    shaderMode.value = HomeShaderMode.glass;
-    headerGlassEnabled.value = false;
     shaderStrength.value = 0.45;
     shaderOpacity.value = 1.0;
     shaderAnimationSpeed.value = 1.0;
@@ -433,7 +416,7 @@ class PersonalizationController {
     backgroundScale.value = 1.0;
     emblemWatermarkEnabled.value = true;
     fullDayCoursesEnabled.value = true;
-    homeCampusNoticeEnabled.value = true;
+    homeCampusNoticeEnabled.value = false;
     _monetColors = null;
     _monetSourcePath = null;
     monetColors.value = null;

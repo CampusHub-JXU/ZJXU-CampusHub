@@ -1,5 +1,5 @@
 name: jxu_campus_hub
-description: "嘉兴大学-智能中台 App"
+description: "嘉兴大学校园应用"
 publish_to: 'none'
 version: 0.6.10+25
 
@@ -57,6 +57,4 @@ flutter:
     - assets/shuatipwa/
     - assets/shuatipwa/assets/
   shaders:
-    - shaders/home_glass_background.frag
-    - shaders/home_ribbon_background.frag
     - shaders/home_collage_background.frag
