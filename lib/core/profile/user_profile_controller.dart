@@ -8,7 +8,7 @@ import '../notice/notice_relevance.dart';
 ///
 /// 手动设置优先；未手动设置时从已登录的学号自动识别（取开头 20XX，
 /// 见 [NoticeRelevance.inferEnrollmentYearFromId]）。学号格式不含年份
-/// 前缀的同学在「我的 → 我的年级」手动选择即可。
+/// 前缀的同学在「设置 → 学期 · 我的年级」手动选择即可。
 class UserProfileController {
   UserProfileController._();
   static final UserProfileController instance = UserProfileController._();

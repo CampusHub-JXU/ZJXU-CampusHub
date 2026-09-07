@@ -9,6 +9,7 @@ import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/core/network/dio_client.dart';
 import 'package:jxu_campus_hub/core/logging/app_logger.dart';
+import 'package:jxu_campus_hub/core/profile/user_profile_controller.dart';
 import 'package:jxu_campus_hub/core/theme/glass_style_controller.dart';
 import 'package:jxu_campus_hub/core/theme/personalization_controller.dart';
 import 'package:jxu_campus_hub/core/network/network_settings.dart';
@@ -30,7 +31,7 @@ Future<void> resetTestEnvironment() async {
   SharedPreferences.setMockInitialValues({});
   FlutterSecureStorage.setMockInitialValues({});
   PackageInfo.setMockInitialValues(
-    appName: '嘉兴大学-智能中台',
+    appName: '嘉兴大学',
     packageName: 'test.package',
     version: '1.0.0',
     buildNumber: '1',
@@ -61,4 +62,5 @@ Future<void> resetTestEnvironment() async {
   ExamService.instance.debugReset();
   GradesService.instance.debugReset();
   ServiceHubUsageStore.instance.debugReset();
+  UserProfileController.instance.debugReset();
 }

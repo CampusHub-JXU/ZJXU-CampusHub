@@ -6,7 +6,6 @@ import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/features/my/my_page.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';
-import 'package:jxu_campus_hub/shared/widgets/app_dropdown.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -91,45 +90,6 @@ void main() {
       );
     },
   );
-
-  testWidgets('grade dropdown switches between auto follow and manual year', (
-    tester,
-  ) async {
-    await tester.pumpWidget(const MaterialApp(home: MyPage()));
-    await tester.pump();
-    await tester.pump();
-
-    // 默认「自动」紧凑档（行尾小矩形）；说明文案收进问号 tooltip，
-    // 不再常驻行下。
-    expect(find.text('自动'), findsOneWidget);
-    expect(find.text('默认跟随学号自动识别，仅用于过滤与你无关的教务处公告，可能误判。'), findsNothing);
-    expect(find.byTooltip('默认跟随学号自动识别，仅用于过滤与你无关的教务处公告，可能误判。'), findsOneWidget);
-
-    // 选择手动年级：写入持久化，按钮文案随选中项切换。
-    await tester.tap(find.byType(AppDropdown<int>));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('2024级'));
-    await tester.pumpAndSettle();
-
-    final prefs = await SharedPreferences.getInstance();
-    expect(prefs.getInt('profile_enrollment_year'), 2024);
-
-    // 恢复「自动」：手动值清除。菜单项用弹出层 key 定位，与按钮上的
-    // 同名回显文案区分开。
-    await tester.tap(find.byType(AppDropdown<int>));
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.descendant(
-        of: find.byKey(const ValueKey('app-dropdown-menu')),
-        matching: find.text('自动'),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    final prefsAfter = await SharedPreferences.getInstance();
-    expect(prefsAfter.getInt('profile_enrollment_year'), isNull);
-    expect(find.text('自动'), findsOneWidget);
-  });
 
   testWidgets('renders on small screen (360x640) without overflow', (
     tester,

@@ -20,6 +20,7 @@ import '../features/notification_center/notification_center_page.dart';
 import '../features/exam/exam_page.dart';
 import '../features/shuati/shuati_webview_page.dart';
 import '../features/settings/settings_page.dart';
+import '../features/settings/about_page.dart';
 import '../features/settings/personalization_page.dart';
 import '../features/settings/push_debug_page.dart';
 import '../features/settings/theme_settings_page.dart';
@@ -163,6 +164,11 @@ final GoRouter appRouter = GoRouter(
       path: '/push-debug',
       name: 'push-debug',
       builder: (context, state) => const PushDebugPage(),
+    ),
+    _appRoute(
+      path: '/about',
+      name: 'about',
+      builder: (context, state) => const AboutPage(),
     ),
     _appRoute(
       path: '/notification-center',

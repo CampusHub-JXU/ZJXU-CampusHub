@@ -7,13 +7,24 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../core/theme/app_theme_controller.dart';
 import '../../core/auth/unified_auth.dart';
 import '../../core/auth/zhengfang_auth.dart';
-import '../../core/profile/user_profile_controller.dart';
 import '../../core/theme/app_design_tokens.dart';
 import '../../shared/widgets/app_card.dart';
-import '../../shared/widgets/app_dropdown.dart';
 import '../../shared/widgets/app_icon_badge.dart';
 import '../../shared/widgets/login_shell.dart';
 import '../schedule/schedule_service.dart';
+
+/// 行级视觉 token（自首页功能瓦片 / 「今天」列表行提取，全 App 行规格同档）：
+/// 徽标与文字列之间的固定间距，发丝分隔线缩进公式也复用它。
+const double _rowIconTextGap = 10;
+
+/// 组行标题规格：15/w600/h1.2（Apple semibold 行标题档），
+/// 与 _GroupRowTile 及年级行的手写样式收敛为单一来源。
+TextStyle _rowTitleStyle(ColorScheme cs) => TextStyle(
+  fontSize: 15,
+  fontWeight: FontWeight.w600,
+  height: 1.2,
+  color: cs.onSurface,
+);
 
 class MyPage extends StatefulWidget {
   const MyPage({super.key});
@@ -46,7 +57,6 @@ class _MyPageState extends State<MyPage> {
     UnifiedAuthService.instance.addListener(_onAuthChanged);
     ZhengfangAuth.instance.addListener(_onAuthChanged);
     _refreshStatus();
-    _refreshEnrollmentYear();
   }
 
   @override
@@ -59,7 +69,6 @@ class _MyPageState extends State<MyPage> {
   void _onAuthChanged() {
     if (!mounted) return;
     unawaited(_refreshStatus());
-    unawaited(_refreshEnrollmentYear());
   }
 
   Future<void> _refreshStatus() async {
@@ -244,16 +253,13 @@ class _MyPageState extends State<MyPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           // Apple large-title 头部：无卡容器，纯文字块与卡片
-                          // 左缘对齐；字号与首页 Hero 大字（30）同档，
-                          // 给整页建立和主页一致的排版重心。
+                          // 左缘对齐；直接复用全局 Apple 字阶展示档
+                          // headlineMedium（28/w700 + 收紧字距 -0.4），与
+                          // 首页 Hero 大字同一展示语言，建立一致的排版重心。
                           Text(
                             '我的',
-                            style: TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.w700,
-                              height: 1.2,
-                              color: cs.onSurface,
-                            ),
+                            style: Theme.of(context).textTheme.headlineMedium!
+                                .copyWith(color: cs.onSurface),
                           ),
                           // 头部到卡片群的呼吸空间，与首页环境行 → Hero
                           // 的大留白同一意图（按本页体量收窄为 24）。
@@ -284,7 +290,9 @@ class _MyPageState extends State<MyPage> {
                                 ),
                                 _buildHairlineDivider(context),
                                 _GroupRowTile(
-                                  borderRadius: BorderRadius.zero,
+                                  borderRadius: BorderRadius.vertical(
+                                    bottom: Radius.circular(AppRadius.card),
+                                  ),
                                   icon: Icons.school_outlined,
                                   iconColor: primaryIconColor,
                                   title: '教务系统',
@@ -299,98 +307,10 @@ class _MyPageState extends State<MyPage> {
                                         : _loginAcademic(),
                                   ),
                                 ),
-                                _buildHairlineDivider(context),
-                                // 我的年级：行尾紧凑下拉（与第二课堂筛选
-                                // 同一组件），默认「自动（跟随学号）」；说明
-                                // 收进标题旁的问号 tooltip——这个身份只用于
-                                // 过滤教务处公告，可能误判，不参与任何登录/
-                                // 身份逻辑，不值得常驻占一行。
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 8,
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      AppIconBadge(
-                                        icon: Icons.badge_outlined,
-                                        accentColor: primaryIconColor,
-                                        size: AppIconBadgeSize.small,
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: Row(
-                                          children: [
-                                            Flexible(
-                                              child: Text(
-                                                '我的年级',
-                                                style: TextStyle(
-                                                  fontSize: 15,
-                                                  fontWeight: FontWeight.w600,
-                                                  height: 1.2,
-                                                  color: cs.onSurface,
-                                                ),
-                                              ),
-                                            ),
-                                            const SizedBox(width: 4),
-                                            Tooltip(
-                                              triggerMode:
-                                                  TooltipTriggerMode.tap,
-                                              showDuration: const Duration(
-                                                seconds: 4,
-                                              ),
-                                              margin:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 24,
-                                                  ),
-                                              message: '默认跟随学号自动识别，仅用于过滤与你无关的教务处公告，可能误判。',
-                                              child: Padding(
-                                                padding: const EdgeInsets.all(
-                                                  4,
-                                                ),
-                                                child: Icon(
-                                                  Icons.help_outline_rounded,
-                                                  size: 15,
-                                                  color: cs.onSurfaceVariant,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      AppDropdown<int>(
-                                        value:
-                                            UserProfileController
-                                                .instance
-                                                .manualEnrollmentYear
-                                                .value ??
-                                            _enrollmentYearAutoSentinel,
-                                        items: _enrollmentYearItems(),
-                                        onChanged: (value) {
-                                          if (value == null) return;
-                                          unawaited(
-                                            UserProfileController.instance
-                                                .setManualEnrollmentYear(
-                                                  value ==
-                                                          _enrollmentYearAutoSentinel
-                                                      ? null
-                                                      : value,
-                                                )
-                                                .then((_) {
-                                                  if (mounted) {
-                                                    setState(() {});
-                                                  }
-                                                }),
-                                          );
-                                        },
-                                      ),
-                                    ],
-                                  ),
-                                ),
                               ],
                             ),
                           ),
-                          const SizedBox(height: AppSpacing.gridGap),
+                          const SizedBox(height: AppSpacing.lg),
                           AppCard(
                             padding: EdgeInsets.zero,
                             child: _GroupRowTile(
@@ -398,7 +318,7 @@ class _MyPageState extends State<MyPage> {
                                 AppRadius.card,
                               ),
                               icon: Icons.settings_outlined,
-                              iconColor: cs.primary,
+                              iconColor: primaryIconColor,
                               title: '设置',
                               subtitle: '主题、学期、网络与调试选项',
                               onTap: () async {
@@ -427,6 +347,7 @@ class _MyPageState extends State<MyPage> {
   /// 版本号规格与设置页「关于」一致。
   Widget _buildFooter(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
     return Padding(
       padding: EdgeInsets.fromLTRB(
         AppSpacing.pageMargin,
@@ -443,8 +364,8 @@ class _MyPageState extends State<MyPage> {
                 ? 'v${snapshot.data!.version}+${snapshot.data!.buildNumber}'
                 : '';
             return Text(
-              '嘉兴大学-智能中台 $version',
-              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+              '嘉兴大学 $version',
+              style: textTheme.bodySmall!.copyWith(color: cs.onSurfaceVariant),
             );
           },
         ),
@@ -457,7 +378,9 @@ class _MyPageState extends State<MyPage> {
     final cs = Theme.of(context).colorScheme;
     return Container(
       height: 1,
-      margin: const EdgeInsets.only(left: 16 + AppBadgeSize.smallBox + 10),
+      margin: const EdgeInsets.only(
+        left: AppSpacing.lg + AppBadgeSize.smallBox + _rowIconTextGap,
+      ),
       color: cs.outlineVariant.withValues(alpha: 0.35),
     );
   }
@@ -477,38 +400,6 @@ class _MyPageState extends State<MyPage> {
       ),
       child: const Text('进入'),
     );
-  }
-
-  /// 「自动（跟随学号）」选项的哨兵值：null 的手动设置与「恢复自动」
-  /// 语义相同，但菜单里需要一个可点选的选项值。
-  static const _enrollmentYearAutoSentinel = -1;
-
-  /// 年级下拉选项：「自动」置顶并标注当前识别结果，其后可选年份从
-  /// 明年倒排到 2016 级。标签刻意保持短小——按钮是行尾紧凑矩形，
-  /// 「跟随学号」的语义由行下说明文案承载。
-  List<AppDropdownItem<int>> _enrollmentYearItems() {
-    final auto = UserProfileController.instance.autoEnrollmentYear.value;
-    final thisYear = DateTime.now().year;
-    return [
-      AppDropdownItem(
-        value: _enrollmentYearAutoSentinel,
-        label: auto == null ? '自动' : '自动（$auto级）',
-      ),
-      for (var year = thisYear + 1; year >= 2016; year--)
-        AppDropdownItem(value: year, label: '$year级'),
-    ];
-  }
-
-  /// 学号自动识别的年级依赖登录态：进入页面与登录态变化后重算，让
-  /// 下拉里的「自动」选项始终反映当前账号。
-  Future<void> _refreshEnrollmentYear() async {
-    try {
-      await UserProfileController.instance.refreshAutoEnrollmentYear();
-    } catch (_) {
-      // 凭据读取失败（如无安全存储插件）时维持现状，不影响页面其余部分。
-      return;
-    }
-    if (mounted) setState(() {});
   }
 }
 
@@ -548,7 +439,10 @@ class _GroupRowTile extends StatelessWidget {
         onTap: onTap,
         customBorder: RoundedSuperellipseBorder(borderRadius: borderRadius),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.lg,
+          ),
           child: Row(
             children: [
               AppIconBadge(
@@ -556,7 +450,7 @@ class _GroupRowTile extends StatelessWidget {
                 accentColor: iconColor,
                 size: AppIconBadgeSize.small,
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: _rowIconTextGap),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -566,12 +460,7 @@ class _GroupRowTile extends StatelessWidget {
                       title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        height: 1.2,
-                        color: cs.onSurface,
-                      ),
+                      style: _rowTitleStyle(cs),
                     ),
                     const SizedBox(height: 2),
                     Text(
