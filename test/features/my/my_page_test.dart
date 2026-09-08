@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
@@ -66,6 +67,41 @@ void main() {
       tester.widget<Text>(find.byKey(const Key('my_campus_status'))).data,
       '已登录',
     );
+  });
+
+  testWidgets('logged-in CAS row navigates to campus card instead of modal', (
+    tester,
+  ) async {
+    UnifiedAuthService.instance.debugSetSession(
+      active: true,
+      account: '2025001',
+    );
+    UnifiedAuthService.instance.debugSessionValidator = (_) async => true;
+
+    final router = GoRouter(
+      routes: [
+        GoRoute(
+          path: '/',
+          name: 'my',
+          builder: (context, state) => const MyPage(),
+        ),
+        GoRoute(
+          path: '/campus-card',
+          name: 'campus-card',
+          builder: (context, state) => const Scaffold(body: Text('校园卡一卡通页')),
+        ),
+      ],
+    );
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.text('统一认证（含一卡通）'));
+    await tester.pumpAndSettle();
+
+    // 已登录点按直接进一卡通页，不再弹「重登模态自动关闭」的闪现。
+    expect(find.text('校园卡一卡通页'), findsOneWidget);
+    expect(find.byType(MyPage), findsNothing);
   });
 
   testWidgets(

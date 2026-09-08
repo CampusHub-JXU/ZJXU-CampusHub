@@ -134,13 +134,7 @@ class _MyPageState extends State<MyPage> {
   }
 
   Future<void> _openCampusCardAction() async {
-    if (_campusLoggedIn) {
-      await context.pushNamed('campus-card');
-      if (!mounted) return;
-      await _refreshStatus();
-      return;
-    }
-    await showUnifiedAuthLoginModal(context);
+    await context.pushNamed('campus-card');
     if (!mounted) return;
     await _refreshStatus();
   }
@@ -169,12 +163,6 @@ class _MyPageState extends State<MyPage> {
       'external-webview',
       extra: {'title': '教务系统', 'url': h5Url, 'enableLoginQuickFill': true},
     );
-    if (!mounted) return;
-    await _refreshStatus();
-  }
-
-  Future<void> _reloginCampus() async {
-    await showUnifiedAuthLoginModal(context);
     if (!mounted) return;
     await _refreshStatus();
   }
@@ -281,9 +269,10 @@ class _MyPageState extends State<MyPage> {
                                     if (_campusStatusUnknown) {
                                       // 状态未知时点按 = 重新测活，而不是直接弹登录框。
                                       unawaited(_refreshStatus());
-                                    } else if (_campusLoggedIn) {
-                                      unawaited(_reloginCampus());
                                     } else {
+                                      // 已登录或未登录都进一卡通页：未登录时
+                                      // 由受保护页面自己引导登录，避免已登录
+                                      // 时弹出的重登模态立即自动关闭（闪一下）。
                                       unawaited(_openCampusCardAction());
                                     }
                                   },
