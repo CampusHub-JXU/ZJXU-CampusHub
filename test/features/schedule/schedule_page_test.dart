@@ -87,6 +87,7 @@ void main() {
     expect(find.text('调课提醒'), findsOneWidget);
     expect(find.text('AI+创新创业基础'), findsWidgets);
     expect(find.textContaining('第5周 周四 第8-9节 -> 第5周 周五 第8-9节'), findsOneWidget);
-    expect(find.text('胡亚楠 · 铭德楼468'), findsOneWidget);
+    expect(find.text('胡亚楠'), findsWidgets);
+    expect(find.text('教室：铭德楼468'), findsOneWidget);
   });
 }

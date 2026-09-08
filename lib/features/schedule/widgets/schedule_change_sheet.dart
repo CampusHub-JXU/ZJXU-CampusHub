@@ -95,7 +95,7 @@ class _ScheduleChangeSheetState extends State<ScheduleChangeSheet> {
             child: Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                '绿色标签为当前课表已体现条目；学期未确认的提醒请参考原文核对',
+                '未确认的提醒请核对原文',
                 style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
               ),
             ),
@@ -110,7 +110,7 @@ class _ScheduleChangeSheetState extends State<ScheduleChangeSheet> {
                 if (reflected.isNotEmpty) ...[
                   _buildSectionHeader(
                     context,
-                    title: '当前课表已体现 (${reflected.length})',
+                    title: '课表已体现 (${reflected.length})',
                     icon: Icons.check_circle_outline_rounded,
                     iconColor: const Color(0xFF2E7D32),
                   ),
@@ -281,13 +281,12 @@ class _ScheduleChangeSheetState extends State<ScheduleChangeSheet> {
         : (isDark ? const Color(0xFFFFB74D) : const Color(0xFFE65100));
 
     final statusText = notice.isReflected
-        ? '当前课表已体现'
-        : (rule.termContext == null ? '学期未确认 · 未应用' : '当前课表未体现');
+        ? '已体现'
+        : (rule.termContext == null ? '学期待确认' : '课表未体现');
 
     final courseName = (rule.courseName ?? '').trim();
     final meta = [
       if ((rule.teacherName ?? '').trim().isNotEmpty) rule.teacherName!.trim(),
-      if ((rule.classroom ?? '').trim().isNotEmpty) rule.classroom!.trim(),
     ].join(' · ');
 
     final hasOldClassroom =
@@ -376,7 +375,7 @@ class _ScheduleChangeSheetState extends State<ScheduleChangeSheet> {
                 const SizedBox(width: 4),
                 Flexible(
                   child: Text(
-                    '教室变更：${rule.originalClassroom} → ${rule.classroom}',
+                    '${rule.originalClassroom} → ${rule.classroom}',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -394,7 +393,7 @@ class _ScheduleChangeSheetState extends State<ScheduleChangeSheet> {
                 const SizedBox(width: 4),
                 Flexible(
                   child: Text(
-                    '上课教室：${rule.classroom}',
+                    '教室：${rule.classroom}',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -457,6 +456,17 @@ class _ScheduleChangeSheetState extends State<ScheduleChangeSheet> {
   }
 
   String _formatRuleSummary(CourseChangeRule rule, {String? weekText}) {
+    final original = rule.originalLesson;
+    final target = rule.targetLesson;
+    if (rule.type == CourseChangeType.reschedule &&
+        original != null &&
+        target != null &&
+        original.week == target.week &&
+        original.weekday == target.weekday &&
+        original.startLesson == target.startLesson &&
+        original.endLesson == target.endLesson) {
+      return _formatSlot(original, weekText: weekText);
+    }
     return switch (rule.type) {
       CourseChangeType.reschedule =>
         '${_formatSlot(rule.originalLesson, weekText: weekText)} -> ${_formatSlot(rule.targetLesson, weekText: weekText)}',

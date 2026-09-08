@@ -97,14 +97,16 @@ void main() {
       expect(find.text('共 1 条'), findsOneWidget);
 
       // Grouping
-      expect(find.text('当前课表已体现 (1)'), findsOneWidget);
+      expect(find.text('课表已体现 (1)'), findsOneWidget);
 
       // Notice details
       expect(find.text('数字经济概论'), findsOneWidget);
-      expect(find.text('当前课表已体现'), findsOneWidget);
+      expect(find.text('已体现'), findsOneWidget);
       expect(find.text('换教室'), findsOneWidget);
-      expect(find.text('教室变更：教A-101 → 博学楼8号楼501'), findsOneWidget);
-      expect(find.text('李老师 · 博学楼8号楼501'), findsOneWidget);
+      expect(find.text('教A-101 → 博学楼8号楼501'), findsOneWidget);
+      expect(find.text('李老师'), findsOneWidget);
+      expect(find.text('1-16周 周一 第1-2节'), findsOneWidget);
+      expect(find.textContaining(' -> '), findsNothing);
       expect(find.textContaining('关于数字经济概论课程换到博学楼8号楼501'), findsOneWidget);
     },
   );
@@ -129,7 +131,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('共 2 条'), findsOneWidget);
-      expect(find.text('当前课表已体现 (1)'), findsOneWidget);
+      expect(find.text('课表已体现 (1)'), findsOneWidget);
       expect(find.text('数字经济概论'), findsOneWidget);
 
       // 默认折叠待确认提醒
@@ -141,7 +143,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('宏观经济学'), findsOneWidget);
-      expect(find.text('学期未确认 · 未应用'), findsOneWidget);
+      expect(find.text('学期待确认'), findsOneWidget);
       expect(find.textContaining('往期4月调课提醒'), findsOneWidget);
     },
   );
@@ -206,7 +208,7 @@ void main() {
     expect(find.text('数字经济概论'), findsOneWidget);
     expect(find.text('第1-16周'), findsOneWidget);
     expect(find.textContaining('第1-16周 周一 第1-2节'), findsOneWidget);
-    expect(find.text('教室变更：教A-101 → 博学楼8号楼501'), findsOneWidget);
+    expect(find.text('教A-101 → 博学楼8号楼501'), findsOneWidget);
   });
 
   testWidgets(
@@ -248,8 +250,8 @@ void main() {
       await tester.pumpAndSettle();
 
       // 准确标明「当前课表未体现」，不误标为已体现
-      expect(find.text('当前课表未体现'), findsOneWidget);
-      expect(find.text('当前课表已体现'), findsNothing);
+      expect(find.text('课表未体现'), findsOneWidget);
+      expect(find.text('已体现'), findsNothing);
       expect(find.text('微观经济学'), findsOneWidget);
       expect(find.text('已根据这些提醒自动修正课表显示'), findsNothing);
     },
