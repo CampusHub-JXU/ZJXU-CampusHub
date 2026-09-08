@@ -3,14 +3,19 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 
+/// Web/stub: no Dart HttpClient proxy. See proxy_mode_io.dart.
 void applyProxyModeToDio(Dio dio, {required bool ignoreSystemProxy}) {}
 
 Future<String?> detectSystemProxy({
   String testUrl = 'https://newca.zjxu.edu.cn/',
-}) async {
+}) {
+  return resolveHttpProxyForUri(Uri.parse(testUrl));
+}
+
+Future<String?> resolveHttpProxyForUri(Uri uri) async {
   final lookup = debugSystemProxyLookup;
   if (lookup != null) {
-    return _normalizeProxyRules(await lookup(Uri.parse(testUrl)));
+    return _normalizeProxyRules(await lookup(uri));
   }
   return null;
 }
@@ -47,6 +52,11 @@ bool shouldRetryWithSystemProxyForError(
     if (error.type == DioExceptionType.connectionTimeout ||
         error.type == DioExceptionType.receiveTimeout ||
         error.type == DioExceptionType.connectionError) {
+      return true;
+    }
+    final inner = error.error?.toString().toLowerCase() ?? '';
+    if (inner.contains('socketexception') ||
+        inner.contains('handshakeexception')) {
       return true;
     }
   }

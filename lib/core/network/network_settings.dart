@@ -46,6 +46,8 @@ class NetworkSettings {
   @visibleForTesting
   void debugReset({bool ignoreSystemProxyValue = true}) {
     _initFuture = null;
-    ignoreSystemProxy.value = ignoreSystemProxyValue;
+    if (ignoreSystemProxy.value != ignoreSystemProxyValue) {
+      ignoreSystemProxy.value = ignoreSystemProxyValue;
+    }
   }
 }

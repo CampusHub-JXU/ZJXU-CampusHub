@@ -314,6 +314,11 @@ class UnifiedAuthService extends ChangeNotifier {
     );
     client.interceptors.add(buildCookieInterceptor(_cookieJar));
     applyProxyModeToDio(client, ignoreSystemProxy: false);
+    final override = debugProxyFallbackAdapter;
+    if (override != null) {
+      client.httpClientAdapter.close();
+      client.httpClientAdapter = override;
+    }
     return client;
   }
 
@@ -329,13 +334,24 @@ class UnifiedAuthService extends ChangeNotifier {
     required Future<Response<T>> Function(Dio dio, CancelToken token) request,
     CancelToken? cancelToken,
   }) async {
+    Uri? requestUri;
+    // ponytail: overlapping sends on the same Dio can clobber requestUri.
+    final capture = InterceptorsWrapper(
+      onRequest: (options, handler) {
+        requestUri = options.uri;
+        handler.next(options);
+      },
+    );
+
     Future<Response<T>> send(Dio dio) async {
       if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
       final token = CancelToken();
       unawaited(cancelToken?.whenCancel.then((error) => token.cancel(error)));
+      dio.interceptors.add(capture);
       try {
         return await request(dio, token).timeout(_requestTimeout);
       } finally {
+        dio.interceptors.remove(capture);
         // Future.timeout alone leaves the socket and cookie response alive.
         token.cancel('CAS request finished or timed out');
       }
@@ -346,8 +362,15 @@ class UnifiedAuthService extends ChangeNotifier {
     } catch (error) {
       if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
       if (!_shouldRetryWithSystemProxyForAny(error)) rethrow;
+      final target = requestUri ?? _uriFromError(error);
+      if (target == null || await resolveHttpProxyForUri(target) == null) {
+        rethrow;
+      }
       final reason = describeSystemProxyRetryReason(error);
-      AppLogger.instance.auth(LogLevel.warn, '$label 直连失败（$reason），尝试通过系统代理重试');
+      AppLogger.instance.auth(
+        LogLevel.warn,
+        '$label 直连失败（$reason），尝试通过 HTTP_PROXY 环境代理重试',
+      );
       final fallbackDio = _createProxyFallbackDio();
       try {
         return await send(fallbackDio);
@@ -355,6 +378,11 @@ class UnifiedAuthService extends ChangeNotifier {
         fallbackDio.close(force: true);
       }
     }
+  }
+
+  Uri? _uriFromError(Object error) {
+    if (error is DioException) return error.requestOptions.uri;
+    return null;
   }
 
   Future<Uint8List> fetchCaptcha({
@@ -504,6 +532,11 @@ class UnifiedAuthService extends ChangeNotifier {
   /// WebVPN), so load that exact URI from the same cookie jar as well. Errors
   /// while writing target cookies deliberately propagate to the caller.
   Future<void> syncCookiesToWebViewForUrl(String targetUrl) async {
+    final override = debugSyncCookiesToWebViewForUrlOverride;
+    if (override != null) {
+      await override(targetUrl);
+      return;
+    }
     await syncCookiesToWebView();
 
     final uri = Uri.parse(targetUrl);
@@ -855,7 +888,16 @@ class UnifiedAuthService extends ChangeNotifier {
   }
 
   @visibleForTesting
+  HttpClientAdapter? debugProxyFallbackAdapter;
+
+  @visibleForTesting
   Future<bool?> Function(String serviceUrl)? debugSessionValidator;
+
+  /// 测试钩子：替换 [syncCookiesToWebViewForUrl] 的 CookieManager 写入，
+  /// 避免 widget 测试因真实文件/插件 I/O 无法完成而挂起。
+  @visibleForTesting
+  Future<void> Function(String targetUrl)?
+  debugSyncCookiesToWebViewForUrlOverride;
 
   /// 测试钩子：替换 [restoreSession] 的会话元数据读取，用于模拟存储读取
   /// 等待期间发生外部 login/logout。
@@ -891,5 +933,7 @@ class UnifiedAuthService extends ChangeNotifier {
     _sessionValidationSyncWebViewCookies.clear();
     debugSessionValidator = null;
     debugSessionMetadataLoader = null;
+    debugProxyFallbackAdapter = null;
+    debugSyncCookiesToWebViewForUrlOverride = null;
   }
 }

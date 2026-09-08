@@ -224,19 +224,49 @@ class ZhengfangAuth extends ChangeNotifier {
     required String label,
     required Future<Response<T>> Function(Dio dio) request,
   }) async {
+    Uri? requestUri;
+    // ponytail: overlapping sends on the same Dio can clobber requestUri.
+    final capture = InterceptorsWrapper(
+      onRequest: (options, handler) {
+        requestUri = options.uri;
+        handler.next(options);
+      },
+    );
+
+    Future<Response<T>> send(Dio dio) async {
+      dio.interceptors.add(capture);
+      try {
+        return await request(dio);
+      } finally {
+        dio.interceptors.remove(capture);
+      }
+    }
+
     try {
-      return await request(_dio);
+      return await send(_dio);
     } catch (error) {
       if (!_shouldRetryWithSystemProxyForAny(error)) rethrow;
+      final target = requestUri ?? _uriFromError(error);
+      if (target == null || await resolveHttpProxyForUri(target) == null) {
+        rethrow;
+      }
       final reason = describeSystemProxyRetryReason(error);
-      AppLogger.instance.auth(LogLevel.warn, '$label 直连失败（$reason），尝试通过系统代理重试');
+      AppLogger.instance.auth(
+        LogLevel.warn,
+        '$label 直连失败（$reason），尝试通过 HTTP_PROXY 环境代理重试',
+      );
       final fallbackDio = _createProxyFallbackDio();
       try {
-        return await request(fallbackDio);
+        return await send(fallbackDio);
       } finally {
         fallbackDio.close(force: true);
       }
     }
+  }
+
+  Uri? _uriFromError(Object error) {
+    if (error is DioException) return error.requestOptions.uri;
+    return null;
   }
 
   String get _baseUrl => _mode == ZhengfangMode.direct

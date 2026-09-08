@@ -24,6 +24,19 @@ void main() {
       );
     });
 
+    test('retries socket failures wrapped as Dio unknown', () {
+      final error = DioException(
+        requestOptions: RequestOptions(path: '/cas/login'),
+        type: DioExceptionType.unknown,
+        error: const SocketException('Failed host lookup'),
+      );
+
+      expect(
+        shouldRetryWithSystemProxyForError(error, ignoreSystemProxy: true),
+        isTrue,
+      );
+    });
+
     test('does not retry when system proxy is already enabled', () {
       final error = DioException(
         requestOptions: RequestOptions(path: '/cas/login'),
@@ -49,6 +62,48 @@ void main() {
       debugSystemProxyLookup = (_) async => 'DIRECT';
 
       expect(await detectSystemProxy(), isNull);
+    });
+  });
+
+  group('resolveHttpProxyForUri', () {
+    test('uses the request uri instead of a hardcoded CAS host', () async {
+      final seen = <Uri>[];
+      debugSystemProxyLookup = (uri) async {
+        seen.add(uri);
+        if (uri.host == 'jwzx.zjxu.edu.cn') {
+          return 'PROXY 127.0.0.1:8888';
+        }
+        return 'DIRECT';
+      };
+
+      expect(
+        await resolveHttpProxyForUri(
+          Uri.parse('https://jwzx.zjxu.edu.cn/jwglxt'),
+        ),
+        'PROXY 127.0.0.1:8888',
+      );
+      expect(
+        await resolveHttpProxyForUri(
+          Uri.parse('https://newca.zjxu.edu.cn/cas/login'),
+        ),
+        isNull,
+      );
+      expect(seen.map((uri) => uri.host), [
+        'jwzx.zjxu.edu.cn',
+        'newca.zjxu.edu.cn',
+      ]);
+    });
+
+    test('treats NO_PROXY / DIRECT targets as no retryable proxy', () async {
+      debugSystemProxyLookup = (uri) async {
+        if (uri.host.endsWith('zjxu.edu.cn')) return 'DIRECT';
+        return 'PROXY 127.0.0.1:8888';
+      };
+
+      expect(
+        await resolveHttpProxyForUri(Uri.parse('https://newca.zjxu.edu.cn/')),
+        isNull,
+      );
     });
   });
 }

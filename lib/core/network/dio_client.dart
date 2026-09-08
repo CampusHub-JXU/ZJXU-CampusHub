@@ -21,6 +21,7 @@ class DioClient {
   Dio? _zhengfangDio;
   Dio? _unifiedAuthDio;
   Future<void>? _initFuture;
+  VoidCallback? _proxyModeListener;
 
   PersistCookieJar get cookieJar => zhengfangCookieJar;
 
@@ -93,6 +94,7 @@ class DioClient {
       jar: _unifiedAuthCookieJar!,
       baseUrl: 'https://newca.zjxu.edu.cn',
     );
+    _listenProxyModeOnce();
   }
 
   void applyProxyMode() {
@@ -106,6 +108,21 @@ class DioClient {
     }
   }
 
+  void _listenProxyModeOnce() {
+    if (_proxyModeListener != null) return;
+    final settings = NetworkSettings.instance.ignoreSystemProxy;
+    void listener() => applyProxyMode();
+    settings.addListener(listener);
+    _proxyModeListener = listener;
+  }
+
+  void _removeProxyModeListener() {
+    final listener = _proxyModeListener;
+    if (listener == null) return;
+    NetworkSettings.instance.ignoreSystemProxy.removeListener(listener);
+    _proxyModeListener = null;
+  }
+
   void updateBaseUrl(String baseUrl) {
     final client = _zhengfangDio;
     if (client == null || client.options.baseUrl == baseUrl) return;
@@ -114,10 +131,15 @@ class DioClient {
   }
 
   void _applyProxyMode(Dio client) {
+    final previous = client.httpClientAdapter;
     applyProxyModeToDio(
       client,
       ignoreSystemProxy: NetworkSettings.instance.ignoreSystemProxy.value,
     );
+    if (!identical(previous, client.httpClientAdapter)) {
+      // Close idle sockets only. force:true would abort in-flight requests.
+      previous.close();
+    }
   }
 
   Dio _createDio({required PersistCookieJar jar, required String baseUrl}) {
@@ -224,10 +246,14 @@ class DioClient {
   }
 
   @visibleForTesting
+  bool get debugHasProxyModeListener => _proxyModeListener != null;
+
+  @visibleForTesting
   Future<String> Function(String folderName)? debugCookieDirectoryPathProvider;
 
   @visibleForTesting
   void debugReset() {
+    _removeProxyModeListener();
     _zhengfangCookieJar = null;
     _unifiedAuthCookieJar = null;
     _zhengfangDio = null;

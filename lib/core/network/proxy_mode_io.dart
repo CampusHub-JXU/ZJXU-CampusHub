@@ -5,6 +5,11 @@ import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:flutter/foundation.dart';
 
+/// Applies Dart HttpClient proxy policy. Default is DIRECT.
+///
+/// When [ignoreSystemProxy] is false, HttpClient uses
+/// [HttpClient.findProxyFromEnvironment] (HTTP_PROXY / HTTPS_PROXY / NO_PROXY).
+/// This is not a phone-VPN bypass and does not read Android Wi-Fi proxy.
 void applyProxyModeToDio(Dio dio, {required bool ignoreSystemProxy}) {
   dio.httpClientAdapter = IOHttpClientAdapter(
     createHttpClient: () {
@@ -19,14 +24,18 @@ void applyProxyModeToDio(Dio dio, {required bool ignoreSystemProxy}) {
 
 Future<String?> detectSystemProxy({
   String testUrl = 'https://newca.zjxu.edu.cn/',
-}) async {
+}) {
+  return resolveHttpProxyForUri(Uri.parse(testUrl));
+}
+
+/// First non-DIRECT rule for [uri], or null when the target is DIRECT / unset.
+/// Honors NO_PROXY via [HttpClient.findProxyFromEnvironment] (or [debugSystemProxyLookup]).
+Future<String?> resolveHttpProxyForUri(Uri uri) async {
   final lookup = debugSystemProxyLookup;
   if (lookup != null) {
-    return _normalizeProxyRules(await lookup(Uri.parse(testUrl)));
+    return _normalizeProxyRules(await lookup(uri));
   }
-
-  final rules = HttpClient.findProxyFromEnvironment(Uri.parse(testUrl));
-  return _normalizeProxyRules(rules);
+  return _normalizeProxyRules(HttpClient.findProxyFromEnvironment(uri));
 }
 
 String describeSystemProxyRetryReason(Object error) {
@@ -56,12 +65,17 @@ bool shouldRetryWithSystemProxyForError(
   required bool ignoreSystemProxy,
 }) {
   if (!ignoreSystemProxy) return false;
-  if (error is TimeoutException || error is HandshakeException) return true;
+  if (error is TimeoutException ||
+      error is HandshakeException ||
+      error is SocketException) {
+    return true;
+  }
   if (error is DioException) {
     if (error.type == DioExceptionType.connectionTimeout ||
         error.type == DioExceptionType.receiveTimeout ||
         error.type == DioExceptionType.connectionError ||
-        error.error is HandshakeException) {
+        error.error is HandshakeException ||
+        error.error is SocketException) {
       return true;
     }
   }

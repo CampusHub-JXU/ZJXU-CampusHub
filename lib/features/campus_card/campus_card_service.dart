@@ -207,10 +207,13 @@ class CampusCardService {
     if (!UnifiedAuthService.instance.isLoggedIn) {
       throw const CasAuthExpiredException();
     }
-    final gatewayReady = await ZhengfangAuth.instance
-        .ensureWebVpnGatewaySession(syncWebViewCookies: true);
-    if (gatewayReady == false) throw const CasAuthExpiredException();
-    if (gatewayReady == null) throw TimeoutException('校园卡网关暂时无法连接');
+    final gateway = await ZhengfangAuth.instance
+        .ensureWebVpnGatewaySessionResult(
+          syncWebViewCookies: true,
+          targetUrl: statusPageUrl,
+        );
+    if (gateway.ready == false) throw const CasAuthExpiredException();
+    if (gateway.ready == null) throw TimeoutException('校园卡网关暂时无法连接');
 
     final sessionStatus = await CasSession.ensure(
       CasService.campusCardStatus.serviceUrl,
@@ -223,7 +226,7 @@ class CampusCardService {
       throw TimeoutException('校园卡认证暂时无法连接');
     }
     await UnifiedAuthService.instance.syncCookiesToWebViewForUrl(statusPageUrl);
-    return ZhengfangAuth.instance.mode == ZhengfangMode.webVpn
+    return gateway.selectedMode == ZhengfangMode.webVpn
         ? ZhengfangAuth.instance.buildWebVpnProxyUrl(statusPageUrl)
         : statusPageUrl;
   }

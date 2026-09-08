@@ -27,4 +27,18 @@ void main() {
 
     expect(NetworkSettings.instance.ignoreSystemProxy.value, isFalse);
   });
+
+  test('debugReset does not notify when the value is unchanged', () {
+    var notifications = 0;
+    void listener() => notifications++;
+    NetworkSettings.instance.ignoreSystemProxy.addListener(listener);
+    addTearDown(
+      () => NetworkSettings.instance.ignoreSystemProxy.removeListener(listener),
+    );
+
+    NetworkSettings.instance.debugReset();
+
+    expect(notifications, 0);
+    expect(NetworkSettings.instance.ignoreSystemProxy.value, isTrue);
+  });
 }

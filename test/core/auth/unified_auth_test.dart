@@ -8,6 +8,7 @@ import 'package:jxu_campus_hub/core/auth/credential_store.dart';
 import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/core/network/dio_client.dart';
 import 'package:jxu_campus_hub/core/network/network_settings.dart';
+import 'package:jxu_campus_hub/core/network/proxy_mode.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../helpers/mock_http_client_adapter.dart';
@@ -265,6 +266,7 @@ void main() {
     });
 
     tearDown(() async {
+      debugSystemProxyLookup = null;
       UnifiedAuthService.instance.debugReset();
       DioClient.instance.debugReset();
       NetworkSettings.instance.debugReset();
@@ -349,6 +351,7 @@ void main() {
     );
 
     test('caller cancellation stops CAS without proxy retry', () async {
+      debugSystemProxyLookup = (_) async => 'PROXY 127.0.0.1:8888';
       final pending = Completer<ResponseBody>();
       final started = Completer<CancelToken>();
       final adapter = MockHttpClientAdapter()
@@ -357,6 +360,7 @@ void main() {
           return pending.future;
         });
       DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
+      UnifiedAuthService.instance.debugProxyFallbackAdapter = adapter;
       final cancelToken = CancelToken();
       final result = expectLater(
         UnifiedAuthService.instance.prepareLogin(cancelToken: cancelToken),
@@ -375,6 +379,93 @@ void main() {
       expect(adapter.requestLog, ['GET /cas/login']);
       pending.complete(ResponseBody.fromString('late response', 200));
     });
+
+    test(
+      'does not retry the same DIRECT request when no proxy matches',
+      () async {
+        final seen = <Uri>[];
+        debugSystemProxyLookup = (uri) async {
+          seen.add(uri);
+          return 'DIRECT';
+        };
+        final adapter = MockHttpClientAdapter()
+          ..register('GET', '/cas/login', (options) async {
+            throw const SocketException('Failed host lookup');
+          });
+        DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
+        UnifiedAuthService.instance.debugProxyFallbackAdapter = adapter;
+
+        await expectLater(
+          UnifiedAuthService.instance.prepareLogin(),
+          throwsA(isA<DioException>()),
+        );
+
+        expect(adapter.requestLog, ['GET /cas/login']);
+        expect(seen, isNotEmpty);
+        expect(seen.first.host, 'newca.zjxu.edu.cn');
+      },
+    );
+
+    test('retries only when the request uri has a non-DIRECT proxy', () async {
+      debugSystemProxyLookup = (uri) async {
+        if (uri.host == 'newca.zjxu.edu.cn') {
+          return 'PROXY 127.0.0.1:8888';
+        }
+        return 'DIRECT';
+      };
+      var calls = 0;
+      final adapter = MockHttpClientAdapter()
+        ..register('GET', '/cas/login', (options) async {
+          calls++;
+          if (calls == 1) {
+            throw const SocketException('Failed host lookup');
+          }
+          return ResponseBody.fromString(
+            '<html><body>CAS login</body></html>',
+            200,
+            headers: {
+              'set-cookie': [
+                'CASTGC=ticket-1; Path=/cas; Domain=newca.zjxu.edu.cn',
+              ],
+            },
+          );
+        });
+      DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
+      UnifiedAuthService.instance.debugProxyFallbackAdapter = adapter;
+
+      await UnifiedAuthService.instance.prepareLogin();
+
+      expect(adapter.requestLog, ['GET /cas/login', 'GET /cas/login']);
+      final unifiedCookies = await DioClient.instance.unifiedAuthCookieJar
+          .loadForRequest(Uri.parse('https://newca.zjxu.edu.cn/cas/login'));
+      final zhengfangCookies = await DioClient.instance.zhengfangCookieJar
+          .loadForRequest(Uri.parse('https://newca.zjxu.edu.cn/cas/login'));
+      expect(unifiedCookies.map((cookie) => cookie.name), contains('CASTGC'));
+      expect(zhengfangCookies, isEmpty);
+    });
+
+    test(
+      'respects NO_PROXY for the actual target instead of a CAS probe host',
+      () async {
+        debugSystemProxyLookup = (uri) async {
+          if (uri.host == 'newca.zjxu.edu.cn') return 'DIRECT';
+          return 'PROXY 127.0.0.1:8888';
+        };
+        final adapter = MockHttpClientAdapter()
+          ..register('GET', '/cas/login', (options) async {
+            throw const SocketException('Failed host lookup');
+          });
+        DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
+        UnifiedAuthService.instance.debugProxyFallbackAdapter = adapter;
+
+        await expectLater(
+          UnifiedAuthService.instance.prepareLogin(),
+          throwsA(isA<DioException>()),
+        );
+
+        expect(adapter.requestLog, ['GET /cas/login']);
+      },
+    );
 
     test('does not treat HTTP 500 as an active session', () async {
       final adapter = MockHttpClientAdapter()

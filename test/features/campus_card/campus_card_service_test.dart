@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:dio/dio.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:jxu_campus_hub/features/campus_card/campus_card_service.dart';
@@ -14,6 +17,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  InAppWebViewPlatform.instance = _FakeInAppWebViewPlatform();
 
   final service = CampusCardService.instance;
 
@@ -39,6 +43,9 @@ void main() {
         account: 'test',
       );
       ConnectModeResolver.instance.directReachabilityChecker = () async => true;
+      ConnectModeResolver.instance.targetDirectReachabilityChecker = (
+        _,
+      ) async => true;
       ConnectModeResolver.instance.webVpnReachabilityChecker = () async =>
           false;
     });
@@ -70,16 +77,81 @@ void main() {
     );
 
     test(
+      'jwzx unreachability does not hijack campus card direct URL',
+      () async {
+        ConnectModeResolver.instance.directReachabilityChecker = () async =>
+            false;
+        ConnectModeResolver.instance.webVpnReachabilityChecker = () async =>
+            true;
+        expect(
+          await ConnectModeResolver.instance.resolve(),
+          ZhengfangMode.webVpn,
+        );
+        UnifiedAuthService.instance.debugSessionValidator = (url) async {
+          expect(url, CasService.campusCardStatus.serviceUrl);
+          return true;
+        };
+
+        expect(
+          await service.prepareStatusPage(),
+          CampusCardService.statusPageUrl,
+        );
+        expect(ZhengfangAuth.instance.mode, ZhengfangMode.direct);
+      },
+    );
+
+    test('jwzx direct with card unreachable uses webvpn url', () async {
+      ConnectModeResolver.instance.directReachabilityChecker = () async => true;
+      ConnectModeResolver.instance.targetDirectReachabilityChecker = (
+        _,
+      ) async => false;
+      ConnectModeResolver.instance.webVpnReachabilityChecker = () async => true;
+      expect(
+        await ConnectModeResolver.instance.resolve(),
+        ZhengfangMode.direct,
+      );
+      final services = <String>[];
+      UnifiedAuthService.instance.debugSessionValidator = (url) async {
+        services.add(url);
+        return true;
+      };
+      DioClient.instance.unifiedAuthDio.httpClientAdapter =
+          _WebVpnPortalAdapter();
+
+      expect(
+        await service.prepareStatusPage(),
+        ZhengfangAuth.instance.buildWebVpnProxyUrl(
+          CampusCardService.statusPageUrl,
+        ),
+      );
+      expect(services, [
+        ZhengfangAuth.webVpnGatewayServiceUrl,
+        CasService.campusCardStatus.serviceUrl,
+      ]);
+      expect(ZhengfangAuth.instance.mode, ZhengfangMode.webVpn);
+    });
+
+    test(
       'unreachable gateway preserves cached balance and skips target CAS',
       () async {
         service.debugSetCachedBalance(23.5);
+        ZhengfangAuth.instance.debugSetSession(
+          active: true,
+          studentId: '20250001',
+        );
         ConnectModeResolver.instance.directReachabilityChecker = () async =>
+            true;
+        ConnectModeResolver.instance.targetDirectReachabilityChecker = (
+          _,
+        ) async => false;
+        ConnectModeResolver.instance.webVpnReachabilityChecker = () async =>
             false;
         UnifiedAuthService.instance.debugSessionValidator = (_) async =>
             fail('target CAS must wait for gateway');
         expect(await service.fetchBalance(forceRefresh: true), isNull);
         expect(service.cachedBalance, 23.5);
         expect(UnifiedAuthService.instance.isLoggedIn, isTrue);
+        expect(ZhengfangAuth.instance.isLoggedIn, isTrue);
       },
     );
 
@@ -193,4 +265,93 @@ void main() {
       },
     );
   });
+}
+
+class _FakeInAppWebViewPlatform extends InAppWebViewPlatform {
+  @override
+  PlatformCookieManager createPlatformCookieManager(
+    PlatformCookieManagerCreationParams params,
+  ) {
+    return _FakePlatformCookieManager(params);
+  }
+}
+
+class _FakePlatformCookieManager extends PlatformCookieManager {
+  _FakePlatformCookieManager(super.params) : super.implementation();
+
+  final Map<String, Cookie> _cookies = {};
+
+  String _key(WebUri url, String name, String? domain, String path) {
+    return '${url.host}|${domain ?? ''}|$path|$name';
+  }
+
+  @override
+  Future<bool> setCookie({
+    required WebUri url,
+    required String name,
+    required String value,
+    String path = '/',
+    String? domain,
+    int? expiresDate,
+    int? maxAge,
+    bool? isSecure,
+    bool? isHttpOnly,
+    HTTPCookieSameSitePolicy? sameSite,
+    @Deprecated('Use webViewController instead')
+    PlatformInAppWebViewController? iosBelow11WebViewController,
+    PlatformInAppWebViewController? webViewController,
+  }) async {
+    _cookies[_key(url, name, domain, path)] = Cookie(
+      name: name,
+      value: value,
+      domain: domain,
+      path: path,
+    );
+    return true;
+  }
+
+  @override
+  Future<List<Cookie>> getCookies({
+    required WebUri url,
+    @Deprecated('Use webViewController instead')
+    PlatformInAppWebViewController? iosBelow11WebViewController,
+    PlatformInAppWebViewController? webViewController,
+  }) async {
+    return _cookies.values.toList(growable: false);
+  }
+
+  @override
+  Future<bool> deleteCookie({
+    required WebUri url,
+    required String name,
+    String path = '/',
+    String? domain,
+    @Deprecated('Use webViewController instead')
+    PlatformInAppWebViewController? iosBelow11WebViewController,
+    PlatformInAppWebViewController? webViewController,
+  }) async {
+    _cookies.remove(_key(url, name, domain, path));
+    return true;
+  }
+}
+
+class _WebVpnPortalAdapter implements HttpClientAdapter {
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    options.path = 'https://webvpn.zjxu.edu.cn/user/index';
+    return ResponseBody.fromString(
+      '<html><body>webvpn portal</body></html>',
+      200,
+      headers: {
+        Headers.contentTypeHeader: ['text/html; charset=utf-8'],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
 }

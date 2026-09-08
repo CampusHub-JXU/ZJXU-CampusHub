@@ -63,4 +63,57 @@ void main() {
       expect(result, isNull);
     },
   );
+
+  test(
+    'ensureWebVpnGatewaySessionResult uses targetUrl not jwzx reachability',
+    () async {
+      await DioClient.instance.ensureInitialized();
+      ZhengfangAuth.instance.setMode(ZhengfangMode.webVpn);
+      ZhengfangAuth.instance.debugSetSession(
+        active: true,
+        studentId: '20250001',
+      );
+      final resolver = ConnectModeResolver.instance;
+      resolver.invalidate();
+      resolver.directReachabilityChecker = () async => false;
+      resolver.targetDirectReachabilityChecker = (_) async => true;
+      resolver.webVpnReachabilityChecker = () async => true;
+
+      final byTarget = await ZhengfangAuth.instance
+          .ensureWebVpnGatewaySessionResult(
+            syncWebViewCookies: false,
+            targetUrl: 'https://mobilehall.zjxu.edu.cn/ykt',
+          );
+      expect(byTarget.ready, true);
+      expect(byTarget.selectedMode, ZhengfangMode.direct);
+      expect(ZhengfangAuth.instance.mode, ZhengfangMode.direct);
+      expect(ZhengfangAuth.instance.isLoggedIn, isTrue);
+    },
+  );
+
+  test(
+    'ensureWebVpnGatewaySessionResult null does not log out zhengfang',
+    () async {
+      await DioClient.instance.ensureInitialized();
+      ZhengfangAuth.instance.debugSetSession(
+        active: true,
+        studentId: '20250001',
+      );
+      final resolver = ConnectModeResolver.instance;
+      resolver.invalidate();
+      resolver.directReachabilityChecker = () async => true;
+      resolver.targetDirectReachabilityChecker = (_) async => false;
+      resolver.webVpnReachabilityChecker = () async => false;
+
+      final result = await ZhengfangAuth.instance
+          .ensureWebVpnGatewaySessionResult(
+            syncWebViewCookies: false,
+            targetUrl: 'https://mobilehall.zjxu.edu.cn/ykt',
+          );
+
+      expect(result.ready, isNull);
+      expect(result.selectedMode, isNull);
+      expect(ZhengfangAuth.instance.isLoggedIn, isTrue);
+    },
+  );
 }

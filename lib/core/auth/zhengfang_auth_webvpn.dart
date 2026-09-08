@@ -1,5 +1,13 @@
 part of 'zhengfang_auth.dart';
 
+/// 网关确保结果：ready 三态 + 本次选中的连接模式。
+class WebVpnGatewayEnsureResult {
+  const WebVpnGatewayEnsureResult({required this.ready, this.selectedMode});
+
+  final bool? ready;
+  final ZhengfangMode? selectedMode;
+}
+
 extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
   /// 同步 WebVPN Cookie 到 WebView
   Future<void> syncWebVpnCookiesToWebView() async {
@@ -271,6 +279,19 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
 
   Future<bool?> ensureWebVpnGatewaySession({
     bool syncWebViewCookies = true,
+    String? targetUrl,
+  }) async {
+    return (await ensureWebVpnGatewaySessionResult(
+      syncWebViewCookies: syncWebViewCookies,
+      targetUrl: targetUrl,
+    )).ready;
+  }
+
+  /// 与 [ensureWebVpnGatewaySession] 相同，额外返回本次选中的连接模式，
+  /// 避免调用方再读可能被并发请求改掉的全局 [ZhengfangAuth.mode]。
+  Future<WebVpnGatewayEnsureResult> ensureWebVpnGatewaySessionResult({
+    bool syncWebViewCookies = true,
+    String? targetUrl,
   }) async {
     await DioClient.instance.ensureInitialized();
 
@@ -278,16 +299,18 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
     // - 直连可达 → 切回直连模式，无需 WebVPN 网关会话，直接返回 true。
     // - WebVPN 可达 → 切换 WebVPN 并建立网关会话。
     // - 两者均不可达 → 返回 null，网络异常不代表会话失效。
-    final mode = await ConnectModeResolver.instance.resolve();
+    final mode = await ConnectModeResolver.instance.resolve(
+      targetUrl: targetUrl,
+    );
     if (mode == ZhengfangMode.direct) {
       if (_mode != ZhengfangMode.direct) {
         setMode(ZhengfangMode.direct);
       }
-      return true;
+      return WebVpnGatewayEnsureResult(ready: true, selectedMode: mode);
     }
     if (mode != ZhengfangMode.webVpn) {
       AppLogger.instance.auth(LogLevel.warn, 'WebVPN 网关会话不可用：直连与 WebVPN 均不可达');
-      return null;
+      return const WebVpnGatewayEnsureResult(ready: null);
     }
     setMode(ZhengfangMode.webVpn);
 
@@ -299,7 +322,10 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
       if (unifiedAuthActive == false) {
         markWebVpnLoggedOut();
       }
-      return unifiedAuthActive;
+      return WebVpnGatewayEnsureResult(
+        ready: unifiedAuthActive,
+        selectedMode: mode,
+      );
     }
 
     try {
@@ -321,23 +347,23 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
       if (_looksLikeWebVpnAuthResponse(realUrl, html)) {
         AppLogger.instance.auth(LogLevel.warn, 'WebVPN 网关会话恢复后仍命中登录页');
         markWebVpnLoggedOut();
-        return false;
+        return WebVpnGatewayEnsureResult(ready: false, selectedMode: mode);
       }
 
       markWebVpnLoggedIn();
       if (syncWebViewCookies) {
         await syncWebVpnCookiesToWebView();
       }
-      return true;
+      return WebVpnGatewayEnsureResult(ready: true, selectedMode: mode);
     } on DioException catch (e) {
       AppLogger.instance.auth(
         LogLevel.warn,
         'WebVPN 网关会话校验失败（网络异常）: ${e.type} ${e.message}',
       );
-      return null;
+      return WebVpnGatewayEnsureResult(ready: null, selectedMode: mode);
     } catch (e) {
       AppLogger.instance.auth(LogLevel.warn, 'WebVPN 网关会话校验失败（未知异常）: $e');
-      return null;
+      return WebVpnGatewayEnsureResult(ready: null, selectedMode: mode);
     }
   }
 
