@@ -114,6 +114,17 @@ class ElectricityBatteryHeader extends StatelessWidget {
             textBaseline: TextBaseline.alphabetic,
             children: [
               Text(
+                '剩余',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  height: 1.0,
+                  letterSpacing: 0.4,
+                  color: dimColor,
+                ),
+              ),
+              const SizedBox(width: 5),
+              Text(
                 valueText,
                 style: TextStyle(
                   fontFamily: 'DIN Alternate',
@@ -134,17 +145,6 @@ class ElectricityBatteryHeader extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                   height: 1.0,
                   color: unitColor,
-                ),
-              ),
-              const SizedBox(width: 5),
-              Text(
-                '剩余',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  height: 1.0,
-                  letterSpacing: 0.4,
-                  color: dimColor,
                 ),
               ),
             ],

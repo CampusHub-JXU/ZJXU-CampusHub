@@ -143,63 +143,11 @@ class _DormElectricityPageState extends State<DormElectricityPage>
 
   _ElectricityColors _resolveColors(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final value = _electricity;
-
-    if (value == null) {
-      // 未知状态用主题色，暗色酒红下提亮避免字体发脏。
-      final unknownAccent = isDark
-          ? HSLColor.fromColor(cs.primary)
-                .withLightness(
-                  (HSLColor.fromColor(cs.primary).lightness + 0.12).clamp(
-                    0.5,
-                    0.7,
-                  ),
-                )
-                .withSaturation(
-                  (HSLColor.fromColor(cs.primary).saturation * 0.9).clamp(
-                    0.4,
-                    0.7,
-                  ),
-                )
-                .toColor()
-          : cs.primary;
-      return _ElectricityColors(primary: unknownAccent, label: '未知');
-    }
-    // 状态色保持纯净，不再与品牌酒红 lerp，避免暗色下变脏。
+    // 状态强调色统一跟随全局主题色，不再为电量单独引入绿色系。
     return _ElectricityColors(
-      primary: _statusColorFor(value, isDark: isDark),
-      label: _statusLabelFor(value),
+      primary: cs.primary,
+      label: _electricity == null ? '未知' : _statusLabelFor(_electricity!),
     );
-  }
-
-  Color _statusColorFor(double value, {required bool isDark}) {
-    const safe = Color(0xFF16A34A);
-    const warning = Color(0xFFE79A16);
-    const low = Color(0xFFE86A1A);
-    const danger = Color(0xFFC73434);
-
-    Color resolve(Color c) {
-      if (!isDark) return c;
-      // 暗色下统一提亮 + 略降饱和，避免低明度状态色在深背景上发脏。
-      final hsl = HSLColor.fromColor(c);
-      return hsl
-          .withLightness((hsl.lightness + 0.08).clamp(0.45, 0.68))
-          .withSaturation((hsl.saturation * 0.92).clamp(0.4, 0.72))
-          .toColor();
-    }
-
-    if (value >= 50) return resolve(safe);
-    if (value >= 20) {
-      final t = ((value - 20) / 30).clamp(0.0, 1.0).toDouble();
-      return resolve(Color.lerp(warning, safe, t)!);
-    }
-    if (value >= 10) {
-      final t = ((value - 10) / 10).clamp(0.0, 1.0).toDouble();
-      return resolve(Color.lerp(low, warning, t)!);
-    }
-    final t = (value / 10).clamp(0.0, 1.0).toDouble();
-    return resolve(Color.lerp(danger, low, t)!);
   }
 
   String _statusLabelFor(double value) {
