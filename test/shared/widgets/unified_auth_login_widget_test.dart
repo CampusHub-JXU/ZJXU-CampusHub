@@ -140,6 +140,40 @@ void main() {
   });
 
   testWidgets(
+    'does not auto-succeed when session is active without an account',
+    (tester) async {
+      var loginSucceeded = false;
+      var captchaRequested = false;
+
+      UnifiedAuthService.instance.debugSetSession(active: true);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: UnifiedAuthLoginWidget(
+              onLoginSuccess: () => loginSucceeded = true,
+              loadSavedCredentials: () async => ('', ''),
+              sessionPreflight: () async =>
+                  UnifiedAuthService.instance.isLoggedIn,
+              captchaLoader: () async {
+                captchaRequested = true;
+                return tinyPng();
+              },
+              loginHandler: (_, _, _) async => null,
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      expect(loginSucceeded, isFalse);
+      expect(captchaRequested, isTrue);
+      expect(find.text('登录'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
     'skips network call and captcha when isLoggedIn is already true',
     (tester) async {
       var loginSucceeded = false;

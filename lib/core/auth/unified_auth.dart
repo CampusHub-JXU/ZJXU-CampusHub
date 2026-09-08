@@ -102,6 +102,15 @@ class UnifiedAuthCaptchaException implements Exception {
   String toString() => message;
 }
 
+class UnifiedAuthIncompleteSessionException implements Exception {
+  UnifiedAuthIncompleteSessionException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 class _UnifiedAuthLoginContext {
   const _UnifiedAuthLoginContext({
     required this.serviceUrl,
@@ -138,67 +147,80 @@ class UnifiedAuthService extends ChangeNotifier {
   bool _sessionActive = false;
   String? currentAccount;
 
-  /// 会话身份修订号：登录/登出等真正身份变化时递增，供 [restoreSession]
-  /// 在存储读取等待期间检测外部登录态变化（防旧 metadata 覆盖新状态）。
+  /// 身份修订号：login/logout 时递增，供 restore/validate 丢弃过期结果。
   int _sessionRevision = 0;
 
   void _touchSessionRevision() => _sessionRevision++;
 
-  /// 真正改变登录态或账号时才推进修订号；同状态写入不 bump。
+  /// 同状态不 bump；空白账号不得写成已登录。
   void _applySessionIdentity({required bool active, String? account}) {
-    final nextAccount = active ? account : null;
-    if (_sessionActive == active && currentAccount == nextAccount) return;
+    final trimmed = account?.trim();
+    final nextActive = active && trimmed != null && trimmed.isNotEmpty;
+    final nextAccount = nextActive ? trimmed : null;
+    if (_sessionActive == nextActive && currentAccount == nextAccount) return;
     _touchSessionRevision();
-    _sessionActive = active;
+    _sessionActive = nextActive;
     currentAccount = nextAccount;
-    if (!active) _cachedContext = null;
+    if (!nextActive) _cachedContext = null;
   }
 
   Future<void>? _cookieSyncFuture;
   final Map<String, Future<bool?>> _sessionValidationFutures = {};
   final Map<String, bool> _sessionValidationSyncWebViewCookies = {};
 
-  bool get isLoggedIn => _sessionActive;
+  bool get isLoggedIn {
+    final account = currentAccount?.trim();
+    return _sessionActive && account != null && account.isNotEmpty;
+  }
 
   Future<bool> prepareLogin({
     String serviceUrl = defaultServiceUrl,
     CancelToken? cancelToken,
   }) async {
-    if (_sessionActive) return true;
-    final context = await _refreshLoginContext(
-      serviceUrl,
-      cancelToken: cancelToken,
-    );
-    return _sessionActive && context.lt.isEmpty && context.execution.isEmpty;
+    if (!isLoggedIn) {
+      await restoreSession(syncWebViewCookies: false);
+    }
+    if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+    if (isLoggedIn) return true;
+    try {
+      final context = await _refreshLoginContext(
+        serviceUrl,
+        cancelToken: cancelToken,
+      );
+      return isLoggedIn && context.lt.isEmpty && context.execution.isEmpty;
+    } on UnifiedAuthIncompleteSessionException catch (error) {
+      AppLogger.instance.auth(LogLevel.warn, error.message);
+      return false;
+    }
   }
 
   Future<bool?> validateSession({
     String serviceUrl = defaultServiceUrl,
     bool syncWebViewCookies = true,
   }) {
-    if (!_sessionActive) return Future.value(false);
+    if (!isLoggedIn) return Future.value(false);
 
-    final existing = _sessionValidationFutures[serviceUrl];
+    final validationKey = '$serviceUrl#$_sessionRevision';
+    final existing = _sessionValidationFutures[validationKey];
     if (existing != null) {
-      _sessionValidationSyncWebViewCookies[serviceUrl] =
-          (_sessionValidationSyncWebViewCookies[serviceUrl] ?? false) |
+      _sessionValidationSyncWebViewCookies[validationKey] =
+          (_sessionValidationSyncWebViewCookies[validationKey] ?? false) |
           syncWebViewCookies;
       return existing;
     }
 
-    _sessionValidationSyncWebViewCookies[serviceUrl] = syncWebViewCookies;
+    _sessionValidationSyncWebViewCookies[validationKey] = syncWebViewCookies;
     final future = _validateSessionInner(serviceUrl: serviceUrl);
-    _sessionValidationFutures[serviceUrl] = future;
+    _sessionValidationFutures[validationKey] = future;
     return future.whenComplete(() {
-      if (identical(_sessionValidationFutures[serviceUrl], future)) {
-        _sessionValidationFutures.remove(serviceUrl);
-        _sessionValidationSyncWebViewCookies.remove(serviceUrl);
+      if (identical(_sessionValidationFutures[validationKey], future)) {
+        _sessionValidationFutures.remove(validationKey);
+        _sessionValidationSyncWebViewCookies.remove(validationKey);
       }
     });
   }
 
-  /// 登出清理：凭据存储失败不应改变调用方的失效结论（测试环境无 secure
-  /// storage mock、真实环境存储异常都会在这里抛出）。
+  /// 登出清理失败不影响调用方的失效结论。
   Future<void> _markLoggedOutBestEffort() async {
     try {
       await markLoggedOut();
@@ -213,10 +235,12 @@ class UnifiedAuthService extends ChangeNotifier {
   }
 
   Future<bool?> _validateSessionInner({required String serviceUrl}) async {
+    final revisionAtStart = _sessionRevision;
     try {
       final validator = debugSessionValidator;
       if (validator != null) {
         final result = await validator(serviceUrl);
+        if (revisionAtStart != _sessionRevision) return null;
         if (result == false) {
           await _markLoggedOutBestEffort();
         }
@@ -252,6 +276,7 @@ class UnifiedAuthService extends ChangeNotifier {
                 !looksLikeUnifiedAuthLoginHtml(html);
 
       if (!hasActiveSession) {
+        if (revisionAtStart != _sessionRevision) return null;
         AppLogger.instance.auth(LogLevel.warn, '统一认证会话已失效，标记登出');
         await _markLoggedOutBestEffort();
         return false;
@@ -263,12 +288,17 @@ class UnifiedAuthService extends ChangeNotifier {
         } catch (_) {}
       }
 
+      if (revisionAtStart != _sessionRevision) return null;
+      if (!isLoggedIn) return null;
+
       final wasSessionActive = _sessionActive;
       _applySessionIdentity(active: true, account: currentAccount);
       if (currentAccount != null) {
         await CredentialStore.instance.saveUnifiedAuthSession(currentAccount!);
       }
-      if (_sessionValidationSyncWebViewCookies[serviceUrl] == true) {
+      if (revisionAtStart != _sessionRevision) return null;
+      if (_sessionValidationSyncWebViewCookies['$serviceUrl#$revisionAtStart'] ==
+          true) {
         unawaited(_syncCookiesToWebViewSafely());
       }
       if (!wasSessionActive) {
@@ -391,7 +421,11 @@ class UnifiedAuthService extends ChangeNotifier {
   }) async {
     await DioClient.instance.ensureInitialized();
     if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
-    await _ensureLoginContext(serviceUrl, cancelToken: cancelToken);
+    try {
+      await _ensureLoginContext(serviceUrl, cancelToken: cancelToken);
+    } on UnifiedAuthIncompleteSessionException catch (error) {
+      throw UnifiedAuthCaptchaException(error.message);
+    }
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final referer = _buildLoginUri(serviceUrl).toString();
     final captchaUri = Uri.parse('$_newcaOrigin/cas/captcha.html?t=$timestamp');
@@ -439,13 +473,9 @@ class UnifiedAuthService extends ChangeNotifier {
       await DioClient.instance.ensureInitialized();
       final context = await _ensureLoginContext(serviceUrl);
       if (context.lt.isEmpty || context.execution.isEmpty) {
-        // 如果 session 已经在 _refreshLoginContext 中建立，直接返回成功
-        if (_sessionActive) {
+        // 空上下文只允许已知身份同账号短路，不得把输入学号绑到旧 session。
+        if (isLoggedIn && currentAccount == username) {
           AppLogger.instance.auth(LogLevel.info, '统一认证已有有效 session，跳过登录');
-          // 保留原语义：已有 CAS session 时仍把本次提交的 username 记为当前账号。
-          _applySessionIdentity(active: true, account: username);
-          await CredentialStore.instance.saveUnifiedAuthSession(username);
-          notifyListeners();
           return UnifiedAuthLoginSuccess();
         }
         AppLogger.instance.auth(LogLevel.warn, '统一认证初始化上下文缺失');
@@ -494,6 +524,10 @@ class UnifiedAuthService extends ChangeNotifier {
       final msg = extractLoginFailureMessage(html);
       AppLogger.instance.auth(LogLevel.warn, '统一认证登录失败: $msg');
       return UnifiedAuthLoginFailure(msg);
+    } on UnifiedAuthIncompleteSessionException catch (error) {
+      _cachedContext = null;
+      AppLogger.instance.auth(LogLevel.warn, error.message);
+      return UnifiedAuthLoginFailure(error.message);
     } on DioException catch (error) {
       _cachedContext = null;
       AppLogger.instance.auth(
@@ -525,12 +559,7 @@ class UnifiedAuthService extends ChangeNotifier {
     }
   }
 
-  /// Synchronizes the shared session cookies needed by [targetUrl].
-  ///
-  /// The fixed origins above cover the common CAS destinations. A business
-  /// flow may instead redirect to a service-specific host (for example JWC or
-  /// WebVPN), so load that exact URI from the same cookie jar as well. Errors
-  /// while writing target cookies deliberately propagate to the caller.
+  /// 同步 [targetUrl] 所需 Cookie；目标 host 写入失败向上抛。
   Future<void> syncCookiesToWebViewForUrl(String targetUrl) async {
     final override = debugSyncCookiesToWebViewForUrlOverride;
     if (override != null) {
@@ -572,10 +601,7 @@ class UnifiedAuthService extends ChangeNotifier {
   }
 
   Future<void> markLoggedOut() async {
-    // 内存状态与通知必须先行：持久化清理失败（存储层异常）不能阻断
-    // notifyListeners，否则 UI 会停留在「已登录」而会话实际已失效。
-    // 登出即使已是未登录也推进 revision：in-flight restore 不得拿旧
-    // metadata 把会话复活。
+    // 先改内存并通知；登出也 bump revision，避免 in-flight restore 复活会话。
     _touchSessionRevision();
     _sessionActive = false;
     currentAccount = null;
@@ -593,12 +619,7 @@ class UnifiedAuthService extends ChangeNotifier {
     }
   }
 
-  /// 冷恢复持久化的会话元数据。
-  ///
-  /// 仅当身份/登录态真正变化时才 [notifyListeners]（同账号重复 restore
-  /// 不再通知，避免调用方的 epoch 守卫把正常恢复误判为身份变更）；存储
-  /// 读取等待期间若发生外部 login/logout（revision 变化），放弃套用本次
-  /// 读取到的（可能已过期的）metadata，防止登出后旧会话被“复活”。
+  /// 冷恢复会话元数据。同账号不通知；revision 漂移则丢弃本次读取。
   Future<void> restoreSession({bool syncWebViewCookies = true}) async {
     final revisionAtRead = _sessionRevision;
     final loader = debugSessionMetadataLoader;
@@ -609,15 +630,40 @@ class UnifiedAuthService extends ChangeNotifier {
       AppLogger.instance.auth(LogLevel.debug, '统一认证冷恢复放弃：存储读取期间登录态已变化');
       return;
     }
-    if (account == null) return;
-    final identityChanged = currentAccount != account || !_sessionActive;
-    _applySessionIdentity(active: true, account: account);
+    final trustedAccount = account?.trim();
+    if (trustedAccount == null || trustedAccount.isEmpty) return;
+    final identityChanged = currentAccount != trustedAccount || !isLoggedIn;
+    _applySessionIdentity(active: true, account: trustedAccount);
     if (syncWebViewCookies) {
       unawaited(_syncCookiesToWebViewSafely());
     }
     if (identityChanged) {
       notifyListeners();
     }
+  }
+
+  /// 只清 CAS host Cookie，不过 `delete(uri, true)`（会误删 `.zjxu.edu.cn`）。
+  Future<void> _clearCasOriginCookies() async {
+    final origin = Uri.parse('$_newcaOrigin/');
+    await _cookieJar.delete(origin);
+    final host = origin.host;
+    final expired = <io.Cookie>[];
+    for (final domain in [host, '.$host']) {
+      final paths = _cookieJar.domainCookies[domain];
+      if (paths == null) continue;
+      for (final pathEntry in paths.entries) {
+        for (final name in pathEntry.value.keys) {
+          expired.add(
+            io.Cookie(name, '')
+              ..domain = host
+              ..path = pathEntry.key
+              ..expires = DateTime.fromMillisecondsSinceEpoch(0),
+          );
+        }
+      }
+    }
+    if (expired.isEmpty) return;
+    await _cookieJar.saveFromResponse(origin, expired);
   }
 
   Future<void> _syncCookiesToWebViewSafely() async {
@@ -649,7 +695,8 @@ class UnifiedAuthService extends ChangeNotifier {
   }) async {
     final context = _cachedContext;
     if (context != null && context.serviceUrl == serviceUrl) {
-      return context;
+      final hasForm = context.lt.isNotEmpty && context.execution.isNotEmpty;
+      if (isLoggedIn || hasForm) return context;
     }
     return _refreshLoginContext(serviceUrl, cancelToken: cancelToken);
   }
@@ -658,7 +705,7 @@ class UnifiedAuthService extends ChangeNotifier {
     String serviceUrl, {
     CancelToken? cancelToken,
   }) async {
-    if (_sessionActive) {
+    if (isLoggedIn) {
       return _UnifiedAuthLoginContext(
         serviceUrl: serviceUrl,
         lt: '',
@@ -669,6 +716,23 @@ class UnifiedAuthService extends ChangeNotifier {
 
     await DioClient.instance.ensureInitialized();
     if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+    final revisionAtStart = _sessionRevision;
+    if (!isLoggedIn) {
+      await _clearCasOriginCookies();
+    }
+    if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+    if (revisionAtStart != _sessionRevision) {
+      AppLogger.instance.auth(LogLevel.debug, '统一认证登录上下文放弃：清 Cookie 期间登录态已变化');
+      throw UnifiedAuthIncompleteSessionException('统一认证登录上下文已过期，请重试');
+    }
+    if (isLoggedIn) {
+      return _UnifiedAuthLoginContext(
+        serviceUrl: serviceUrl,
+        lt: '',
+        execution: '',
+        actionUri: _buildLoginUri(serviceUrl),
+      );
+    }
     final loginUri = _buildLoginUri(serviceUrl);
     final response = await _sendWithProxyFallback<String>(
       label: '统一认证登录上下文',
@@ -685,36 +749,19 @@ class UnifiedAuthService extends ChangeNotifier {
       ),
     );
 
-    // CAS 返回 302 说明已有 session，直接跟随重定向完成认证
+    if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+    if (revisionAtStart != _sessionRevision) {
+      AppLogger.instance.auth(LogLevel.debug, '统一认证登录上下文放弃：等待期间登录态已变化');
+      throw UnifiedAuthIncompleteSessionException('统一认证登录上下文已过期，请重试');
+    }
+
     final statusCode = response.statusCode ?? 0;
     final location = response.headers.value('location') ?? '';
     if ((statusCode == 302 || statusCode == 303) && location.isNotEmpty) {
       final lowerLocation = location.toLowerCase();
       if (!lowerLocation.contains('/cas/login')) {
-        AppLogger.instance.auth(LogLevel.info, '统一认证已有 session，跟随重定向完成认证');
-        await _followRedirectChain(
-          loginUri,
-          location,
-          cancelToken: cancelToken,
-        );
-        if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
-        unawaited(_syncCookiesToWebViewSafely());
-        _applySessionIdentity(active: true, account: currentAccount);
-        if (currentAccount != null) {
-          await CredentialStore.instance.saveUnifiedAuthSession(
-            currentAccount!,
-          );
-        }
-        notifyListeners();
-        // 返回空上下文，标记已认证
-        final context = _UnifiedAuthLoginContext(
-          serviceUrl: serviceUrl,
-          lt: '',
-          execution: '',
-          actionUri: loginUri,
-        );
-        _cachedContext = context;
-        return context;
+        AppLogger.instance.auth(LogLevel.warn, '统一认证已有未知身份 session，拒绝写成已登录');
+        throw UnifiedAuthIncompleteSessionException('统一认证会话身份未知，请刷新后重试');
       }
       // 302 回到 /cas/login，需要跟随获取登录页面
       final redirectUrl = _resolveUri(loginUri, location).toString();
@@ -730,6 +777,11 @@ class UnifiedAuthService extends ChangeNotifier {
           ),
         ),
       );
+      if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+      if (revisionAtStart != _sessionRevision) {
+        AppLogger.instance.auth(LogLevel.debug, '统一认证登录上下文放弃：登录页重定向期间登录态已变化');
+        throw UnifiedAuthIncompleteSessionException('统一认证登录上下文已过期，请重试');
+      }
       final html = casResp.data ?? '';
       final lt = _extractHiddenField(html, 'lt');
       final execution = _extractHiddenField(html, 'execution');
@@ -893,14 +945,10 @@ class UnifiedAuthService extends ChangeNotifier {
   @visibleForTesting
   Future<bool?> Function(String serviceUrl)? debugSessionValidator;
 
-  /// 测试钩子：替换 [syncCookiesToWebViewForUrl] 的 CookieManager 写入，
-  /// 避免 widget 测试因真实文件/插件 I/O 无法完成而挂起。
   @visibleForTesting
   Future<void> Function(String targetUrl)?
   debugSyncCookiesToWebViewForUrlOverride;
 
-  /// 测试钩子：替换 [restoreSession] 的会话元数据读取，用于模拟存储读取
-  /// 等待期间发生外部 login/logout。
   @visibleForTesting
   Future<String?> Function()? debugSessionMetadataLoader;
 
@@ -909,7 +957,6 @@ class UnifiedAuthService extends ChangeNotifier {
     _applySessionIdentity(active: active, account: account);
   }
 
-  /// 测试钩子：写入空 lt/execution 的已建立登录上下文，走 [login] 快速路径。
   @visibleForTesting
   void debugSeedEstablishedLoginContext({String? serviceUrl}) {
     final url = serviceUrl ?? defaultServiceUrl;

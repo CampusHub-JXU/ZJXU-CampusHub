@@ -176,6 +176,7 @@ void main() {
 
   group('UnifiedAuthService session short-circuit', () {
     setUp(() {
+      FlutterSecureStorage.setMockInitialValues({});
       UnifiedAuthService.instance.debugReset();
     });
 
@@ -212,12 +213,18 @@ void main() {
       expect(UnifiedAuthService.instance.currentAccount, isNull);
     });
 
+    test('active session without account is not logged in', () {
+      UnifiedAuthService.instance.debugSetSession(active: true);
+      expect(UnifiedAuthService.instance.isLoggedIn, isFalse);
+      expect(UnifiedAuthService.instance.currentAccount, isNull);
+    });
+
     test(
       'coalesces concurrent validation independently for each service',
       () async {
         final pending = <String, Completer<bool?>>{};
         final calls = <String, int>{};
-        UnifiedAuthService.instance.debugSetSession(active: true);
+        UnifiedAuthService.instance.debugSetSession(active: true, account: 'A');
         UnifiedAuthService.instance.debugSessionValidator = (serviceUrl) {
           calls[serviceUrl] = (calls[serviceUrl] ?? 0) + 1;
           return (pending[serviceUrl] ??= Completer<bool?>()).future;
@@ -235,7 +242,7 @@ void main() {
     );
 
     test('validator exceptions become unknown instead of escaping', () async {
-      UnifiedAuthService.instance.debugSetSession(active: true);
+      UnifiedAuthService.instance.debugSetSession(active: true, account: 'A');
       UnifiedAuthService.instance.debugSessionValidator = (_) async {
         throw StateError('initialization failed');
       };
@@ -245,6 +252,113 @@ void main() {
       expect(result, isNull);
       expect(UnifiedAuthService.instance.isLoggedIn, isTrue);
     });
+
+    test(
+      'validateSession does not promote a blank account to logged in',
+      () async {
+        UnifiedAuthService.instance.debugSetSession(active: true);
+        UnifiedAuthService.instance.debugSessionValidator = (_) async => true;
+
+        expect(await UnifiedAuthService.instance.validateSession(), isFalse);
+        expect(UnifiedAuthService.instance.isLoggedIn, isFalse);
+        expect(UnifiedAuthService.instance.currentAccount, isNull);
+      },
+    );
+
+    test('current-identity failed validation still logs out', () async {
+      UnifiedAuthService.instance.debugSetSession(active: true, account: 'A');
+      UnifiedAuthService.instance.debugSessionValidator = (_) async => false;
+
+      expect(await UnifiedAuthService.instance.validateSession(), isFalse);
+      expect(UnifiedAuthService.instance.isLoggedIn, isFalse);
+      expect(UnifiedAuthService.instance.currentAccount, isNull);
+    });
+
+    test('stale failed validation must not log out a newer identity', () async {
+      final gate = Completer<bool?>();
+      UnifiedAuthService.instance.debugSetSession(active: true, account: 'A');
+      UnifiedAuthService.instance.debugSessionValidator = (_) => gate.future;
+
+      final pending = UnifiedAuthService.instance.validateSession();
+      UnifiedAuthService.instance.debugSetSession(active: true, account: 'B');
+      gate.complete(false);
+
+      expect(await pending, isNull);
+      expect(UnifiedAuthService.instance.isLoggedIn, isTrue);
+      expect(UnifiedAuthService.instance.currentAccount, 'B');
+    });
+
+    test(
+      'stale successful validation must not revive a logged-out session',
+      () async {
+        final gate = Completer<bool?>();
+        UnifiedAuthService.instance.debugSetSession(active: true, account: 'A');
+        UnifiedAuthService.instance.debugSessionValidator = (_) => gate.future;
+
+        final pending = UnifiedAuthService.instance.validateSession();
+        await UnifiedAuthService.instance.markLoggedOut();
+        gate.complete(true);
+
+        expect(await pending, isNull);
+        expect(UnifiedAuthService.instance.isLoggedIn, isFalse);
+        expect(UnifiedAuthService.instance.currentAccount, isNull);
+      },
+    );
+
+    test(
+      'stale successful validation must not rewrite a newer identity',
+      () async {
+        final gate = Completer<bool?>();
+        UnifiedAuthService.instance.debugSetSession(active: true, account: 'A');
+        UnifiedAuthService.instance.debugSessionValidator = (_) => gate.future;
+
+        final pending = UnifiedAuthService.instance.validateSession();
+        UnifiedAuthService.instance.debugSetSession(active: true, account: 'B');
+        gate.complete(true);
+
+        expect(await pending, isNull);
+        expect(UnifiedAuthService.instance.isLoggedIn, isTrue);
+        expect(UnifiedAuthService.instance.currentAccount, 'B');
+      },
+    );
+
+    test(
+      'same service does not reuse a pending validation after identity change',
+      () async {
+        final pending = <Completer<bool?>>[];
+        var calls = 0;
+        UnifiedAuthService.instance.debugSetSession(active: true, account: 'A');
+        UnifiedAuthService.instance.debugSessionValidator = (_) {
+          calls++;
+          final completer = Completer<bool?>();
+          pending.add(completer);
+          return completer.future;
+        };
+
+        final first = UnifiedAuthService.instance.validateSession(
+          serviceUrl: 'svc',
+        );
+        UnifiedAuthService.instance.debugSetSession(active: true, account: 'B');
+        final second = UnifiedAuthService.instance.validateSession(
+          serviceUrl: 'svc',
+        );
+        expect(calls, 2);
+
+        // 旧校验清理不得删掉新身份的 in-flight future。
+        pending[0].complete(false);
+        expect(await first, isNull);
+        final third = UnifiedAuthService.instance.validateSession(
+          serviceUrl: 'svc',
+        );
+        expect(calls, 2);
+
+        pending[1].complete(true);
+        expect(await second, isTrue);
+        expect(await third, isTrue);
+        expect(UnifiedAuthService.instance.isLoggedIn, isTrue);
+        expect(UnifiedAuthService.instance.currentAccount, 'B');
+      },
+    );
   });
 
   group('UnifiedAuthService redirect chain', () {
@@ -486,7 +600,42 @@ void main() {
       expect(UnifiedAuthService.instance.isLoggedIn, isFalse);
     });
 
-    test('login 快速路径：已有 session 仍记录提交的 username，restore 不得覆盖', () async {
+    test(
+      'prepareLogin restores trusted session metadata without guessing',
+      () async {
+        await CredentialStore.instance.saveUnifiedAuthSession('A');
+
+        final result = await UnifiedAuthService.instance.prepareLogin();
+
+        expect(result, isTrue);
+        expect(UnifiedAuthService.instance.isLoggedIn, isTrue);
+        expect(UnifiedAuthService.instance.currentAccount, 'A');
+      },
+    );
+
+    test('login 空上下文：已知身份同账号可成功，不得把 A 改成输入的 B', () async {
+      UnifiedAuthService.instance.debugSetSession(active: true, account: 'A');
+      UnifiedAuthService.instance.debugSeedEstablishedLoginContext();
+
+      final sameAccount = await UnifiedAuthService.instance.login(
+        'A',
+        'unused',
+        'unused',
+      );
+      expect(sameAccount, isA<UnifiedAuthLoginSuccess>());
+      expect(UnifiedAuthService.instance.currentAccount, 'A');
+
+      final switched = await UnifiedAuthService.instance.login(
+        'B',
+        'unused',
+        'unused',
+      );
+      expect(switched, isA<UnifiedAuthLoginFailure>());
+      expect(UnifiedAuthService.instance.currentAccount, 'A');
+      expect(UnifiedAuthService.instance.isLoggedIn, isTrue);
+    });
+
+    test('login 空上下文等待期间迟到 restore 不得覆盖新身份', () async {
       UnifiedAuthService.instance.debugSetSession(active: true, account: 'A');
       UnifiedAuthService.instance.debugSeedEstablishedLoginContext();
 
@@ -502,18 +651,127 @@ void main() {
       );
       await started.future;
 
-      final result = await UnifiedAuthService.instance.login(
-        'B',
-        'unused',
-        'unused',
-      );
-      expect(result, isA<UnifiedAuthLoginSuccess>());
+      UnifiedAuthService.instance.debugSetSession(active: true, account: 'B');
       loadGate.complete();
       await restore;
 
       expect(UnifiedAuthService.instance.currentAccount, 'B');
       expect(UnifiedAuthService.instance.isLoggedIn, isTrue);
     });
+
+    test(
+      'orphan CAS cookie without metadata must yield a submit form',
+      () async {
+        const loginHtml = '''
+          <html>
+            <form id="fm1" action="/cas/login">
+              <input type="hidden" name="lt" value="LT-1" />
+              <input type="hidden" name="execution" value="e1s1" />
+            </form>
+          </html>
+        ''';
+        final adapter = MockHttpClientAdapter()
+          ..register('GET', '/cas/login', (options) async {
+            return ResponseBody.fromString(loginHtml, 200);
+          });
+        DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
+        final jar = DioClient.instance.unifiedAuthCookieJar;
+        final casUri = Uri.parse('https://newca.zjxu.edu.cn/cas/login');
+        final hallUri = Uri.parse('https://mobilehall.zjxu.edu.cn/');
+        await jar.saveFromResponse(casUri, [
+          Cookie('CASTGC', 'orphan-ticket')..path = '/cas',
+          Cookie('JSESSIONID', 'cas-session')..path = '/',
+          Cookie('CASTGC', 'domain-tgc')
+            ..domain = 'newca.zjxu.edu.cn'
+            ..path = '/cas',
+        ]);
+        await jar.saveFromResponse(hallUri, [
+          Cookie('FR_SESSION', 'hall-session')..path = '/',
+        ]);
+        await jar.saveFromResponse(casUri, [
+          Cookie('CAMPUS_SHARED', 'keep-me')
+            ..domain = '.zjxu.edu.cn'
+            ..path = '/',
+        ]);
+
+        final prepared = await UnifiedAuthService.instance.prepareLogin();
+        expect(prepared, isFalse);
+        expect(UnifiedAuthService.instance.isLoggedIn, isFalse);
+        expect(UnifiedAuthService.instance.currentAccount, isNull);
+
+        final casCookies = await jar.loadForRequest(casUri);
+        expect(
+          casCookies.map((cookie) => cookie.name),
+          isNot(contains('CASTGC')),
+        );
+        expect(
+          casCookies.map((cookie) => cookie.name),
+          isNot(contains('JSESSIONID')),
+        );
+        expect(
+          casCookies.map((cookie) => cookie.name),
+          contains('CAMPUS_SHARED'),
+        );
+        final hallCookies = await jar.loadForRequest(hallUri);
+        expect(
+          hallCookies.map((cookie) => cookie.name),
+          containsAll(['FR_SESSION', 'CAMPUS_SHARED']),
+        );
+        expect(adapter.requestLog, ['GET /cas/login']);
+      },
+    );
+
+    test('unknown-identity CAS redirect is not written as logged in', () async {
+      const ticketUrl =
+          'https://newca.zjxu.edu.cn/casClient/login/ydd?ticket=ST-1-test';
+      final adapter = MockHttpClientAdapter()
+        ..register('GET', '/cas/login', (options) async {
+          return ResponseBody.fromString(
+            '',
+            302,
+            headers: {
+              'location': [ticketUrl],
+            },
+          );
+        });
+      DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
+
+      expect(await UnifiedAuthService.instance.prepareLogin(), isFalse);
+      expect(UnifiedAuthService.instance.isLoggedIn, isFalse);
+      expect(UnifiedAuthService.instance.currentAccount, isNull);
+    });
+
+    test(
+      'stale login-context response must not overwrite a newer identity',
+      () async {
+        const loginHtml = '''
+          <html>
+            <form id="fm1" action="/cas/login">
+              <input type="hidden" name="lt" value="LT-1" />
+              <input type="hidden" name="execution" value="e1s1" />
+            </form>
+          </html>
+        ''';
+        final started = Completer<void>();
+        final gate = Completer<void>();
+        final adapter = MockHttpClientAdapter()
+          ..register('GET', '/cas/login', (options) async {
+            if (!started.isCompleted) started.complete();
+            await gate.future;
+            return ResponseBody.fromString(loginHtml, 200);
+          });
+        DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
+
+        final pending = UnifiedAuthService.instance.prepareLogin();
+        await started.future;
+        UnifiedAuthService.instance.debugSetSession(active: true, account: 'B');
+        gate.complete();
+
+        expect(await pending, isFalse);
+        expect(UnifiedAuthService.instance.isLoggedIn, isTrue);
+        expect(UnifiedAuthService.instance.currentAccount, 'B');
+      },
+    );
   });
 
   group('UnifiedAuthService.restoreSession 身份通知与 revision guard', () {
@@ -537,6 +795,18 @@ void main() {
       expect(notifications, 0);
       expect(UnifiedAuthService.instance.currentAccount, 'A');
       expect(UnifiedAuthService.instance.isLoggedIn, isTrue);
+    });
+
+    test('空白账号 metadata 不得恢复成已登录', () async {
+      UnifiedAuthService.instance.debugSessionMetadataLoader = () async => '  ';
+
+      await UnifiedAuthService.instance.restoreSession(
+        syncWebViewCookies: false,
+      );
+
+      UnifiedAuthService.instance.debugSessionMetadataLoader = null;
+      expect(UnifiedAuthService.instance.currentAccount, isNull);
+      expect(UnifiedAuthService.instance.isLoggedIn, isFalse);
     });
 
     test('未登录冷恢复命中 stored session：真正身份变化才通知一次', () async {
@@ -638,7 +908,6 @@ void main() {
       );
       await runCase(
         mutate: () async {
-          // login 快速路径语义：已有 CAS session 时仍把提交的 username 记为当前账号。
           UnifiedAuthService.instance.debugSetSession(
             active: true,
             account: 'A',
@@ -660,15 +929,6 @@ void main() {
           );
         },
         expectedAccount: 'A',
-        expectedLoggedIn: true,
-      );
-      await runCase(
-        mutate: () async {
-          // _refreshLoginContext / validateSession 的 inactive→active：
-          // 账号可仍为 null，但登录态变化必须 bump revision。
-          UnifiedAuthService.instance.debugSetSession(active: true);
-        },
-        expectedAccount: null,
         expectedLoggedIn: true,
       );
     });
