@@ -70,4 +70,45 @@ void main() {
     );
     expect(bar.preferredSize.height, kToolbarHeight + 48);
   });
+
+  testWidgets('默认顶栏按主题亮度指定状态栏图标颜色', (tester) async {
+    await pumpBar(tester);
+    expect(
+      tester
+          .widget<AppBar>(find.byType(AppBar))
+          .systemOverlayStyle
+          ?.statusBarIconBrightness,
+      Brightness.dark,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(useMaterial3: true),
+        home: Scaffold(
+          appBar: const AppAppBar(title: Text('标题')),
+          body: const Center(child: Text('内容')),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<AppBar>(find.byType(AppBar))
+          .systemOverlayStyle
+          ?.statusBarIconBrightness,
+      Brightness.light,
+    );
+  });
+
+  testWidgets('显式 backgroundColor 时交由 AppBar 推导状态栏样式', (tester) async {
+    await pumpBar(
+      tester,
+      bar: AppAppBar(title: const Text('扫码'), backgroundColor: Colors.black),
+    );
+
+    expect(
+      tester.widget<AppBar>(find.byType(AppBar)).systemOverlayStyle,
+      isNull,
+    );
+  });
 }

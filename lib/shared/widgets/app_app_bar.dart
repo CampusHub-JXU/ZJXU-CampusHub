@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/theme/glass_style_controller.dart';
 
@@ -49,6 +50,7 @@ class AppAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return AppBar(
       title: title,
       actions: actions,
@@ -61,6 +63,13 @@ class AppAppBar extends StatelessWidget implements PreferredSizeWidget {
       leadingWidth: leadingWidth,
       foregroundColor: foregroundColor,
       backgroundColor: backgroundColor ?? Colors.transparent,
+      // 透明背景会让 AppBar 把状态栏图标判成浅色（estimateBrightnessForColor
+      // 把透明当深色）；玻璃顶栏实际是浅色表面，这里按主题亮度显式指定。
+      // 显式 backgroundColor 的调用方（如扫码页纯黑顶栏）保持 AppBar 默认推导。
+      systemOverlayStyle: backgroundColor == null
+          ? (isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark)
+                .copyWith(statusBarColor: Colors.transparent)
+          : null,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       scrolledUnderElevation: 0,
