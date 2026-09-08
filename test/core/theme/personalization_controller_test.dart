@@ -11,12 +11,12 @@ void main() {
     controller.debugReset();
   });
 
-  test('new home presentation preferences default to enabled', () async {
+  test('home defaults enable watermark and courses but hide notices', () async {
     await controller.init();
 
     expect(controller.emblemWatermarkEnabled.value, isTrue);
     expect(controller.fullDayCoursesEnabled.value, isTrue);
-    expect(controller.homeCampusNoticeEnabled.value, isTrue);
+    expect(controller.homeCampusNoticeEnabled.value, isFalse);
   });
 
   test('init restores disabled home presentation preferences', () async {

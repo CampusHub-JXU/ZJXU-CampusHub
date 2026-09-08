@@ -15,12 +15,11 @@ void main() {
   late ui.FragmentProgram ribbonProgram;
 
   setUpAll(() async {
+    // Loader injection tests lifecycle behavior, not removed shader variants.
     glassProgram = await ui.FragmentProgram.fromAsset(
-      'shaders/home_glass_background.frag',
+      'shaders/home_collage_background.frag',
     );
-    ribbonProgram = await ui.FragmentProgram.fromAsset(
-      'shaders/home_ribbon_background.frag',
-    );
+    ribbonProgram = glassProgram;
   });
 
   setUp(() {

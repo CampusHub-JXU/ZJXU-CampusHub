@@ -440,6 +440,7 @@ void main() {
     tester,
   ) async {
     usePhoneSurface(tester);
+    PersonalizationController.instance.homeCampusNoticeEnabled.value = true;
     addTearDown(NoticeSyncStore.instance.debugReset);
     NoticeSyncStore.instance.debugReset();
     // 直接注入收件箱头（纯内存）：commitSync 涉及真实文件锁，在

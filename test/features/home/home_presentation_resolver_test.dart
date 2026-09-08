@@ -434,7 +434,7 @@ void main() {
       ]);
     });
 
-    test('全天模式：已结束课程保留并标记 isDone，非全天模式仍过滤', () {
+    test('全天与非全天模式都过滤已结束课程', () {
       final today = DateTime(2026, 9, 15);
       final snapshot = buildSnapshot(
         courses: [
@@ -446,11 +446,8 @@ void main() {
       final fullDay = resolveHomePresentation(snapshot, fullDayCourses: true);
       expect(fullDay.today.isFullDay, isTrue);
       expect(fullDay.today.isCollapsed, isFalse);
-      expect(fullDay.today.courses.map((c) => c.courseName).toList(), [
-        '已结束的课',
-        '下午的课',
-      ]);
-      expect(fullDay.today.courses.first.isDone, isTrue);
+      expect(fullDay.today.courses.map((c) => c.courseName).toList(), ['下午的课']);
+      expect(fullDay.today.courses.first.isDone, isFalse);
       expect(fullDay.today.courses.first.isOngoing, isFalse);
       expect(fullDay.today.courses.last.isDone, isFalse);
 
@@ -478,10 +475,7 @@ void main() {
       expect(presentation.hero.kind, HomeHeroKind.currentCourse);
       expect(presentation.today.isFullDay, isTrue);
       expect(presentation.today.isCollapsed, isFalse);
-      expect(presentation.today.courses.map((c) => c.isDone), [
-        isTrue,
-        isFalse,
-      ]);
+      expect(presentation.today.courses.map((c) => c.isDone), [isFalse]);
       expect(presentation.today.courses.last.isOngoing, isTrue);
     });
 
