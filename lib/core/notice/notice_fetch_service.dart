@@ -154,10 +154,19 @@ class NoticeService {
   /// 永不抛异常：共享 CAS 资源入口复用 Cookie 并完成站点真实回调。
   /// 会话明确失效归入 authRequired，其余一切异常
   /// 归入 unavailable，保留旧快照的决定权交给调用方。
-  Future<NoticeFetchResult> fetchNoticesRaw({int page = 1}) async {
+  Future<NoticeFetchResult> fetchNoticesRaw({
+    int page = 1,
+    CancelToken? cancelToken,
+    DateTime? deadline,
+  }) async {
     try {
       final url = _buildNoticePageUrl(page);
-      final resp = await CasAuthBroker.getResource(url, dio: _noticeDio);
+      final resp = await CasAuthBroker.getResource(
+        url,
+        dio: _noticeDio,
+        cancelToken: cancelToken,
+        deadline: deadline,
+      );
       final data = resp.data;
       if (data == null || data.isEmpty) {
         return const NoticeFetchResult.unavailable();

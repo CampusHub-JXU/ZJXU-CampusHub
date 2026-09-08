@@ -32,6 +32,7 @@ import '../features/changxing_jiada/changxing_jiada_page.dart';
 import '../features/changxing_jiada/changxing_leave_form_page.dart';
 import '../features/changxing_jiada/changxing_overtime_form_page.dart';
 import '../features/changxing_jiada/changxing_jiada_model.dart';
+import '../core/auth/unified_auth.dart';
 import '../shared/widgets/unified_auth_protected_webview_page.dart';
 import '../shared/widgets/webview_page.dart';
 
@@ -227,37 +228,7 @@ final GoRouter appRouter = GoRouter(
     _appRoute(
       path: '/external-webview',
       name: 'external-webview',
-      builder: (context, state) {
-        final extra = Map<String, dynamic>.from(
-          (state.extra as Map?) ?? const <String, dynamic>{},
-        );
-        if (extra['requireUnifiedAuthProtection'] == true) {
-          return UnifiedAuthProtectedWebViewPage(
-            title: extra['title'] ?? '网页',
-            url: extra['url'] ?? '',
-            serviceUrl:
-                extra['serviceUrl'] as String? ??
-                (extra['url'] as String? ?? ''),
-            loginDescription:
-                extra['loginDescription'] as String? ?? '需要先完成统一认证',
-            emulateDingTalkEnvironment:
-                extra['emulateDingTalkEnvironment'] == true,
-            showWebViewBottomBackButton:
-                extra['showWebViewBottomBackButton'] == true,
-            onHomePressed: () => context.goNamed('home'),
-          );
-        }
-        return WebViewPage(
-          title: extra['title'] ?? '网页',
-          url: extra['url'] ?? '',
-          enableLoginQuickFill: extra['enableLoginQuickFill'] == true,
-          emulateDingTalkEnvironment:
-              extra['emulateDingTalkEnvironment'] == true,
-          showWebViewBottomBackButton:
-              extra['showWebViewBottomBackButton'] == true,
-          onHomePressed: () => context.goNamed('home'),
-        );
-      },
+      builder: buildExternalWebViewPage,
     ),
     _appRoute(
       path: '/changxing-jiada',
@@ -294,3 +265,40 @@ final GoRouter appRouter = GoRouter(
     ),
   ],
 );
+
+/// 外部 WebView 路由：资源型目标必须转发 [warmUpAsResource]，
+/// 不能把资源 URL 当 CAS service。
+Widget buildExternalWebViewPage(BuildContext context, GoRouterState state) {
+  final extra = Map<String, dynamic>.from(
+    (state.extra as Map?) ?? const <String, dynamic>{},
+  );
+  if (extra['requireUnifiedAuthProtection'] == true) {
+    final warmUpAsResource = extra['warmUpAsResource'] == true;
+    final url = extra['url'] as String? ?? '';
+    final serviceUrl = extra['serviceUrl'] as String?;
+    return UnifiedAuthProtectedWebViewPage(
+      title: extra['title'] as String? ?? '网页',
+      url: url,
+      // 资源 URL 不是 CAS service：登录弹窗用注册服务默认值，
+      // 业务 Cookie 由 getResource 跟随站点真实回调建立。
+      serviceUrl: warmUpAsResource
+          ? (serviceUrl == null || serviceUrl.isEmpty || serviceUrl == url
+                ? UnifiedAuthService.defaultServiceUrl
+                : serviceUrl)
+          : (serviceUrl ?? url),
+      loginDescription: extra['loginDescription'] as String? ?? '需要先完成统一认证',
+      emulateDingTalkEnvironment: extra['emulateDingTalkEnvironment'] == true,
+      showWebViewBottomBackButton: extra['showWebViewBottomBackButton'] == true,
+      warmUpAsResource: warmUpAsResource,
+      onHomePressed: () => context.goNamed('home'),
+    );
+  }
+  return WebViewPage(
+    title: extra['title'] as String? ?? '网页',
+    url: extra['url'] as String? ?? '',
+    enableLoginQuickFill: extra['enableLoginQuickFill'] == true,
+    emulateDingTalkEnvironment: extra['emulateDingTalkEnvironment'] == true,
+    showWebViewBottomBackButton: extra['showWebViewBottomBackButton'] == true,
+    onHomePressed: () => context.goNamed('home'),
+  );
+}

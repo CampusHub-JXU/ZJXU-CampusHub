@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
@@ -217,6 +218,28 @@ void main() {
         result.status,
         anyOf(NoticeFetchStatus.authRequired, NoticeFetchStatus.unavailable),
       );
+    });
+
+    test('login form is authRequired; network cancel is unavailable', () async {
+      final loginService = _serviceWith(
+        MockHttpClientAdapter()..registerText('GET', '/list.jsp', _loginHtml),
+      );
+      expect(
+        (await loginService.fetchNoticesRaw()).status,
+        NoticeFetchStatus.authRequired,
+      );
+
+      NoticeService.instance.debugReset();
+      final cancelToken = CancelToken();
+      final pending = Completer<ResponseBody>();
+      final networkService = _serviceWith(
+        MockHttpClientAdapter()
+          ..register('GET', '/list.jsp', (_) => pending.future),
+      );
+      final future = networkService.fetchNoticesRaw(cancelToken: cancelToken);
+      cancelToken.cancel('offline');
+      expect((await future).status, NoticeFetchStatus.unavailable);
+      pending.complete(ResponseBody.fromString(_listHtml, 200));
     });
   });
 

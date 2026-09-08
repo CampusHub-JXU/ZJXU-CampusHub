@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
@@ -54,10 +55,11 @@ class UnifiedAuthProtectedWebViewPage extends StatefulWidget {
 
   @override
   State<UnifiedAuthProtectedWebViewPage> createState() =>
-      _UnifiedAuthProtectedWebViewPageState();
+      UnifiedAuthProtectedWebViewPageState();
 }
 
-class _UnifiedAuthProtectedWebViewPageState
+@visibleForTesting
+class UnifiedAuthProtectedWebViewPageState
     extends State<UnifiedAuthProtectedWebViewPage> {
   late bool _authenticated;
   late bool _authResolved;
@@ -67,6 +69,8 @@ class _UnifiedAuthProtectedWebViewPageState
   bool _loginPromptInFlight = false;
   bool _preparationFailed = false;
   Key _webViewKey = UniqueKey();
+  CancelToken? _resourceWarmUpToken;
+  int _resourceWarmUpGeneration = 0;
 
   @override
   void initState() {
@@ -80,10 +84,45 @@ class _UnifiedAuthProtectedWebViewPageState
   @override
   void didUpdateWidget(covariant UnifiedAuthProtectedWebViewPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.url == widget.url) return;
+    if (oldWidget.url == widget.url &&
+        oldWidget.warmUpAsResource == widget.warmUpAsResource) {
+      return;
+    }
 
     _webViewUrl = widget.url;
     _webViewKey = UniqueKey();
+    if (widget.warmUpAsResource) {
+      unawaited(_resolveByResourceWarmUp());
+    }
+  }
+
+  @override
+  void dispose() {
+    _cancelResourceWarmUp();
+    super.dispose();
+  }
+
+  @visibleForTesting
+  CancelToken? get debugResourceWarmUpToken => _resourceWarmUpToken;
+
+  @visibleForTesting
+  int get debugResourceWarmUpGeneration => _resourceWarmUpGeneration;
+
+  @visibleForTesting
+  String get debugWebViewUrl => _webViewUrl;
+
+  @visibleForTesting
+  Future<void> debugOnCasLoginEntry(String currentUrl) {
+    return _onCasLoginEntry(currentUrl);
+  }
+
+  void _cancelResourceWarmUp() {
+    final token = _resourceWarmUpToken;
+    _resourceWarmUpToken = null;
+    _resourceWarmUpGeneration++;
+    if (token != null && !token.isCancelled) {
+      token.cancel('protected webview disposed or refreshed');
+    }
   }
 
   void _onLoginSuccess() {
@@ -114,7 +153,10 @@ class _UnifiedAuthProtectedWebViewPageState
       context,
       title: '登录统一认证',
       description: widget.loginDescription,
-      serviceUrl: widget.serviceUrl,
+      // 资源型目标的 URL 不是 CAS service；登录弹窗走注册服务。
+      serviceUrl: widget.warmUpAsResource
+          ? UnifiedAuthService.defaultServiceUrl
+          : widget.serviceUrl,
     );
     _loginPromptInFlight = false;
     if (!mounted || !loggedIn) return;
@@ -221,36 +263,58 @@ class _UnifiedAuthProtectedWebViewPageState
     }
   }
 
+  Future<void> _syncResourceCookies(String url) async {
+    try {
+      // WebView 打开前业务 Cookie 必须已落盘，否则详情页会再次落回 CAS
+      // 登录页。有界等待：插件通道异常时不让页面无限卡住。
+      await UnifiedAuthService.instance
+          .syncCookiesToWebViewForUrl(url)
+          .timeout(const Duration(seconds: 10));
+    } catch (syncError, syncStack) {
+      AppLogger.instance.webview(
+        LogLevel.warn,
+        '目标 URL Cookie 同步失败，交由 WebView 重同步兜底',
+        error: syncError,
+        stackTrace: syncStack,
+      );
+    }
+  }
+
   /// 资源型目标的认证预热：逐跳跟随重定向建立业务 Cookie，收到登录
   /// 表单才判定失效。Cookie 同步失败不推翻认证结论——业务 Cookie 已在
   /// 共享 jar 中，WebView 侧缺失时由 onLoadStop 的重同步兜底。
   Future<void> _resolveByResourceWarmUp() async {
+    _cancelResourceWarmUp();
+    final generation = _resourceWarmUpGeneration;
+    final token = CancelToken();
+    _resourceWarmUpToken = token;
+    if (mounted) {
+      setState(() {
+        _authResolved = false;
+        _preparationFailed = false;
+      });
+    }
     try {
-      await CasAuthBroker.getResource(widget.url);
-      if (!mounted) return;
-      try {
-        await UnifiedAuthService.instance.syncCookiesToWebViewForUrl(
-          widget.url,
-        );
-      } catch (syncError, syncStack) {
-        AppLogger.instance.webview(
-          LogLevel.warn,
-          '目标 URL Cookie 同步失败，交由 WebView 重同步兜底',
-          error: syncError,
-          stackTrace: syncStack,
-        );
-      }
+      await CasAuthBroker.getResource(widget.url, cancelToken: token);
+      if (!mounted || generation != _resourceWarmUpGeneration) return;
+      await _syncResourceCookies(widget.url);
+      if (!mounted || generation != _resourceWarmUpGeneration) return;
       setState(() {
         _authenticated = true;
         _authResolved = true;
+        _webViewUrl = widget.url;
+        _webViewKey = UniqueKey();
       });
     } on CasAuthExpiredException {
-      if (!mounted) return;
+      if (!mounted || generation != _resourceWarmUpGeneration) return;
       setState(() {
         _authenticated = false;
         _authResolved = true;
       });
     } catch (error, stackTrace) {
+      if (token.isCancelled || generation != _resourceWarmUpGeneration) {
+        return;
+      }
       AppLogger.instance.webview(
         LogLevel.warn,
         '资源预热失败，信任本地会话继续',
@@ -258,29 +322,30 @@ class _UnifiedAuthProtectedWebViewPageState
         stackTrace: stackTrace,
       );
       if (!mounted) return;
+      // 网络未知不是登录过期：有本地会话则开门并允许重试，无会话才引导登录。
       setState(() {
         _authenticated = UnifiedAuthService.instance.isLoggedIn;
         _authResolved = true;
+        // 网络未知不是登录过期：有本地会话也先给重试，避免把离线当失效。
+        _preparationFailed = true;
       });
     }
   }
 
-  Future<void> _handleLoadStop(
-    InAppWebViewController controller,
-    String currentUrl,
-  ) async {
-    final isUnifiedAuthLogin = isUnifiedAuthLoginEntryUrl(currentUrl);
+  Future<void> _onCasLoginEntry(String currentUrl) async {
+    AppLogger.instance.webview(
+      LogLevel.warn,
+      'WebView 跳转到 CAS 登录页，尝试重新同步 Cookie',
+    );
 
-    if (isUnifiedAuthLogin) {
-      AppLogger.instance.webview(
-        LogLevel.warn,
-        'WebView 跳转到 CAS 登录页，尝试重新同步 Cookie',
-      );
-
-      // 如果已在重试中，或 native 已登出，直接标记登出
-      if (_resyncing || !UnifiedAuthService.instance.isLoggedIn) {
-        AppLogger.instance.webview(LogLevel.warn, 'Cookie 重同步失败，标记登出');
-        await UnifiedAuthService.instance.markLoggedOut();
+    // 资源型目标：目标页/代理重复落到登录页只做局部恢复，
+    // 不能仅因 CAS 入口 URL 就全局 markLoggedOut。
+    if (widget.warmUpAsResource) {
+      if (_resyncing) {
+        AppLogger.instance.webview(
+          LogLevel.warn,
+          '资源页再次落到 CAS 登录入口，局部恢复业务 Cookie',
+        );
         if (mounted) {
           setState(() {
             _authenticated = false;
@@ -290,29 +355,55 @@ class _UnifiedAuthProtectedWebViewPageState
         await _presentLoginPrompt(force: true);
         return;
       }
-
-      // 第一次：重新同步 cookie 后重新加载
       _resyncing = true;
-      if (widget.prepareAuthenticatedUrl != null) {
-        await _resolveInitialAuthentication();
-        return;
-      }
-      await UnifiedAuthService.instance.syncCookiesToWebView();
-      if (!mounted) return;
+      await _resolveByResourceWarmUp();
+      return;
+    }
 
-      final retryUrl =
-          extractUnifiedAuthServiceUrl(currentUrl) ??
-          (currentUrl.trim().isNotEmpty ? currentUrl : widget.url);
-      AppLogger.instance.webview(
-        LogLevel.debug,
-        'Cookie 重同步完成，重新加载 WebView: $retryUrl',
-      );
-      // 通过快捷方式快速进入时，这里的旧 controller 偶发会失效。
-      // 直接重建 WebView 比继续调用旧实例更稳定。
-      setState(() {
-        _webViewUrl = retryUrl;
-        _webViewKey = UniqueKey();
-      });
+    // 注册服务：如果已在重试中，或 native 已登出，直接标记登出
+    if (_resyncing || !UnifiedAuthService.instance.isLoggedIn) {
+      AppLogger.instance.webview(LogLevel.warn, 'Cookie 重同步失败，标记登出');
+      await UnifiedAuthService.instance.markLoggedOut();
+      if (mounted) {
+        setState(() {
+          _authenticated = false;
+          _authResolved = true;
+        });
+      }
+      await _presentLoginPrompt(force: true);
+      return;
+    }
+
+    // 第一次：重新同步 cookie 后重新加载
+    _resyncing = true;
+    if (widget.prepareAuthenticatedUrl != null) {
+      await _resolveInitialAuthentication();
+      return;
+    }
+    await UnifiedAuthService.instance.syncCookiesToWebView();
+    if (!mounted) return;
+
+    final retryUrl =
+        extractUnifiedAuthServiceUrl(currentUrl) ??
+        (currentUrl.trim().isNotEmpty ? currentUrl : widget.url);
+    AppLogger.instance.webview(
+      LogLevel.debug,
+      'Cookie 重同步完成，重新加载 WebView: $retryUrl',
+    );
+    // 通过快捷方式快速进入时，这里的旧 controller 偶发会失效。
+    // 直接重建 WebView 比继续调用旧实例更稳定。
+    setState(() {
+      _webViewUrl = retryUrl;
+      _webViewKey = UniqueKey();
+    });
+  }
+
+  Future<void> _handleLoadStop(
+    InAppWebViewController controller,
+    String currentUrl,
+  ) async {
+    if (isUnifiedAuthLoginEntryUrl(currentUrl)) {
+      await _onCasLoginEntry(currentUrl);
       return;
     }
 

@@ -61,7 +61,17 @@ class MockHttpClientAdapter implements HttpClientAdapter {
         'Unhandled request: ${options.method} ${options.uri}',
       );
     }
-    return handler(options);
+    if (cancelFuture == null) return handler(options);
+    return Future.any<ResponseBody>([
+      handler(options),
+      cancelFuture.then((_) {
+        throw DioException(
+          requestOptions: options,
+          type: DioExceptionType.cancel,
+          error: options.cancelToken?.cancelError ?? 'cancelled',
+        );
+      }),
+    ]);
   }
 
   @override
