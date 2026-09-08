@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/app_bootstrap_controller.dart';
+import '../../core/logging/app_logger.dart';
 import '../../core/shortcut/app_shortcut_service.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/ship_card.dart';
@@ -406,7 +407,8 @@ class _CampusCardPageState extends State<CampusCardPage> {
           title: title,
           url: CampusCardService.statusPageUrl,
           serviceUrl: CampusCardService.statusPageCasServiceUrl,
-          loginDescription: '校园卡仅支持校园网内直连访问，请连接校园网后登录统一认证',
+          loginDescription: '账号为校园一卡通号，校外网络自动通过 WebVPN 访问',
+          prepareAuthenticatedUrl: CampusCardService.instance.prepareStatusPage,
           onHomePressed: () => context.goNamed('home'),
         ),
       ),
@@ -420,19 +422,36 @@ class _CampusCardPageState extends State<CampusCardPage> {
     if (_balanceLoading) return;
     setState(() => _balanceLoading = true);
 
-    final balance = await CampusCardService.instance.fetchBalance(
-      forceRefresh: true,
-    );
+    double? balance;
+    try {
+      balance = await CampusCardService.instance.fetchBalance(
+        forceRefresh: true,
+      );
+    } catch (error, stackTrace) {
+      AppLogger.instance.network(
+        LogLevel.warn,
+        '校园卡余额刷新异常',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    } finally {
+      if (mounted) setState(() => _balanceLoading = false);
+    }
     if (!mounted) return;
 
-    setState(() => _balanceLoading = false);
     if (!showFeedback) return;
 
     final messenger = ScaffoldMessenger.of(context);
     messenger.hideCurrentSnackBar();
     messenger.showSnackBar(
       SnackBar(
-        content: Text(balance == null ? '余额页面中未找到余额，请稍后重试' : '校园卡余额已刷新'),
+        content: Text(
+          balance == null
+              ? (CampusCardService.instance.cachedBalance == null
+                    ? '余额查询失败，请检查网络或登录状态后重试'
+                    : '刷新失败，仍显示上次余额，请切换网络后重试')
+              : '校园卡余额已刷新',
+        ),
       ),
     );
   }

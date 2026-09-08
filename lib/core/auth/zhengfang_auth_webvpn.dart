@@ -277,7 +277,7 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
     // FR-1: 不再无条件切换为 WebVPN。先探测连接模式：
     // - 直连可达 → 切回直连模式，无需 WebVPN 网关会话，直接返回 true。
     // - WebVPN 可达 → 切换 WebVPN 并建立网关会话。
-    // - 两者均不可达 → 返回 false（调用方决定是否提示）。
+    // - 两者均不可达 → 返回 null，网络异常不代表会话失效。
     final mode = await ConnectModeResolver.instance.resolve();
     if (mode == ZhengfangMode.direct) {
       if (_mode != ZhengfangMode.direct) {
@@ -287,7 +287,7 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
     }
     if (mode != ZhengfangMode.webVpn) {
       AppLogger.instance.auth(LogLevel.warn, 'WebVPN 网关会话不可用：直连与 WebVPN 均不可达');
-      return false;
+      return null;
     }
     setMode(ZhengfangMode.webVpn);
 

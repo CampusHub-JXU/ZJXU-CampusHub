@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jxu_campus_hub/core/auth/cas_auth_broker.dart';
 import 'package:jxu_campus_hub/shared/widgets/external_url_launcher.dart';
+import 'package:jxu_campus_hub/shared/widgets/unified_auth_protected_webview_page.dart';
 import 'package:jxu_campus_hub/shared/widgets/webview_page.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -36,6 +38,59 @@ void main() {
 
   tearDown(() {
     debugResetExternalUrlLauncher();
+  });
+
+  testWidgets(
+    'protected page retries network preparation and uses selected URL',
+    (tester) async {
+      var calls = 0;
+      const proxyUrl = 'https://webvpn.zjxu.edu.cn/https/example/#/form';
+      await tester.pumpWidget(
+        MaterialApp(
+          home: UnifiedAuthProtectedWebViewPage(
+            title: '校园卡',
+            url: 'https://mobilehall.zjxu.edu.cn/',
+            serviceUrl: CasService.campusCardStatus.serviceUrl,
+            autoPromptLogin: false,
+            prepareAuthenticatedUrl: () async {
+              if (++calls == 1) throw StateError('network offline');
+              return proxyUrl;
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('暂时无法连接服务，请切换网络后重试'), findsOneWidget);
+      expect(find.text('登录统一认证'), findsNothing);
+      await tester.tap(find.text('重试'));
+      await tester.pumpAndSettle();
+      expect(calls, 2);
+      expect(
+        tester.widget<WebViewPage>(find.byType(WebViewPage)).url,
+        proxyUrl,
+      );
+    },
+  );
+
+  testWidgets('protected page requests login only on explicit auth expiry', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: UnifiedAuthProtectedWebViewPage(
+          title: '校园卡',
+          url: 'https://mobilehall.zjxu.edu.cn/',
+          serviceUrl: CasService.campusCardStatus.serviceUrl,
+          autoPromptLogin: false,
+          prepareAuthenticatedUrl: () async =>
+              throw const CasAuthExpiredException(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('需要统一认证后继续'), findsOneWidget);
+    expect(find.text('登录统一认证'), findsOneWidget);
+    expect(find.byType(WebViewPage), findsNothing);
   });
 
   group('detectWebViewQuickFillKind', () {

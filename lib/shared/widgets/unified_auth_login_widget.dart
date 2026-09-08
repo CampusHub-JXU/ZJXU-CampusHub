@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -66,39 +67,23 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
 
   Uint8List? _captchaBytes;
   bool _loading = false;
+  bool _captchaLoading = false;
+  CancelToken? _captchaCancelToken;
   bool _obscurePassword = true;
   String? _error;
 
-  static const _proxyHint = '请求超时，请检查手机系统代理或 VPN 软件';
+  static const _proxyHint = '请求超时，请切换网络后重试；如使用代理或 VPN，请检查其设置';
 
   @override
   void initState() {
     super.initState();
-    _bootstrapLoginState();
+    _refreshCaptcha(prepare: true);
   }
 
-  Future<void> _bootstrapLoginState() async {
-    try {
-      await _loadSaved();
-      final hasActiveSession = await _preparePrimaryLoginMode();
-      if (!mounted) return;
-
-      if (hasActiveSession) {
-        widget.onLoginSuccess();
-        return;
-      }
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _captchaBytes = null;
-        _error = _friendlyNetworkMessage(error, fallback: '统一认证初始化失败，请稍后重试');
-      });
-    }
-  }
-
-  Future<bool> _preparePrimaryLoginMode() async {
+  Future<bool> _preparePrimaryLoginMode(CancelToken token) async {
     if (widget.sessionPreflight != null) {
       final hasActiveSession = await widget.sessionPreflight!.call();
+      if (token.isCancelled) throw token.cancelError!;
       if (!mounted || hasActiveSession) {
         return hasActiveSession;
       }
@@ -107,61 +92,72 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
     }
 
     if (widget.loginHandler != null && widget.captchaLoader != null) {
-      setState(() {
-        _error = null;
-        _captchaBytes = null;
-      });
-      await _refreshCaptcha();
       return false;
     }
 
-    final hasActiveSession = await UnifiedAuthService.instance.prepareLogin(
+    return UnifiedAuthService.instance.prepareLogin(
       serviceUrl: widget.serviceUrl,
+      cancelToken: token,
     );
-    if (!mounted || hasActiveSession) {
-      return hasActiveSession;
-    }
-
-    final directReachable = await UnifiedAuthService.checkDirectReachable();
-    if (!mounted) return false;
-    if (directReachable) {
-      setState(() {
-        _error = null;
-        _captchaBytes = null;
-      });
-      await _refreshCaptcha();
-      return false;
-    }
-
-    if (mounted && _captchaBytes == null && _error == null) {
-      setState(() {
-        _error = '无法连接统一认证，请检查网络连接';
-      });
-    }
-    return false;
   }
 
-  Future<void> _loadSaved() async {
+  Future<void> _loadSaved(CancelToken token) async {
     final credentials =
         await widget.loadSavedCredentials?.call() ??
         await CredentialStore.instance.loadUnifiedAuthCredentials();
+    if (!mounted || token.isCancelled) return;
     if (credentials != null) {
       _usernameCtrl.text = credentials.$1;
       _passwordCtrl.text = credentials.$2;
     }
   }
 
-  Future<void> _refreshCaptcha({bool preserveError = false}) async {
+  Future<void> _refreshCaptcha({
+    bool preserveError = false,
+    bool prepare = false,
+  }) async {
+    if (_captchaLoading || _loading) return;
     final previousError = preserveError ? _error : null;
+    final token = CancelToken();
+    _captchaCancelToken = token;
+    setState(() {
+      _captchaLoading = true;
+      _captchaBytes = null;
+      _error = previousError;
+    });
+    _captchaCtrl.clear();
     try {
       final bytes =
-          await widget.captchaLoader?.call() ??
-          await UnifiedAuthService.instance.fetchCaptcha(
-            serviceUrl: widget.serviceUrl,
+          await Future.any<Uint8List?>([
+            (() async {
+              if (prepare) {
+                await _loadSaved(token);
+                if (token.isCancelled) throw token.cancelError!;
+                if (await _preparePrimaryLoginMode(token)) return null;
+              }
+              if (token.isCancelled) throw token.cancelError!;
+              return await widget.captchaLoader?.call() ??
+                  await UnifiedAuthService.instance.fetchCaptcha(
+                    serviceUrl: widget.serviceUrl,
+                    cancelToken: token,
+                  );
+            })(),
+            token.whenCancel.then((error) => throw error),
+          ]).timeout(
+            const Duration(seconds: 20),
+            onTimeout: () {
+              token.cancel('Captcha preparation timed out');
+              throw TimeoutException('Captcha preparation timed out');
+            },
           );
+      if (!mounted || token.isCancelled) return;
+      if (bytes == null) {
+        widget.onLoginSuccess();
+        return;
+      }
       final codec = await ui.instantiateImageCodec(bytes);
       codec.dispose();
-      if (!mounted) return;
+      if (!mounted || token.isCancelled) return;
       setState(() {
         _captchaBytes = bytes;
         _error = previousError;
@@ -178,16 +174,20 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
         _captchaBytes = null;
         _error = _friendlyNetworkMessage(e, fallback: '验证码加载失败，请点击重试');
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
       setState(() {
         _captchaBytes = null;
-        _error = '验证码加载失败，请点击重试';
+        _error = _friendlyNetworkMessage(error, fallback: '验证码加载失败，请点击重试');
       });
+    } finally {
+      token.cancel('Captcha loading finished');
+      if (mounted) setState(() => _captchaLoading = false);
     }
   }
 
   String _friendlyNetworkMessage(Object error, {required String fallback}) {
+    if (error is TimeoutException) return _proxyHint;
     final text = error.toString().toLowerCase();
     if (text.contains('handshakeexception') ||
         text.contains('connection terminated during handshake')) {
@@ -196,7 +196,7 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
     if (error is DioException) {
       if (error.type == DioExceptionType.connectionTimeout ||
           error.type == DioExceptionType.receiveTimeout) {
-        return '$_proxyHint，然后重试统一认证';
+        return _proxyHint;
       }
       if (error.type == DioExceptionType.connectionError) {
         return '无法连接统一认证，请检查网络或系统代理设置';
@@ -207,6 +207,7 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
   }
 
   Future<void> _login() async {
+    if (_loading || _captchaLoading || _captchaBytes == null) return;
     final username = _usernameCtrl.text.trim();
     final password = _passwordCtrl.text;
     final captcha = _captchaCtrl.text.trim();
@@ -220,52 +221,65 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
       _error = null;
     });
 
-    if (widget.loginHandler != null) {
-      final message = await widget.loginHandler!(username, password, captcha);
-      if (!mounted) return;
-      if (message == null) {
-        await widget.saveCredentials?.call(username, password);
-        widget.onLoginSuccess();
-        return;
-      }
+    try {
+      if (widget.loginHandler != null) {
+        final message = await widget.loginHandler!(username, password, captcha);
+        if (!mounted) return;
+        if (message == null) {
+          await widget.saveCredentials?.call(username, password);
+          if (!mounted) return;
+          widget.onLoginSuccess();
+          return;
+        }
 
-      setState(() {
-        _loading = false;
-        _error = message;
-      });
-      _captchaCtrl.clear();
-      await _refreshCaptcha(preserveError: true);
-      return;
-    }
-
-    final result = await UnifiedAuthService.instance.login(
-      username,
-      password,
-      captcha,
-      serviceUrl: widget.serviceUrl,
-    );
-    if (!mounted) return;
-
-    switch (result) {
-      case UnifiedAuthLoginSuccess():
-        await (widget.saveCredentials?.call(username, password) ??
-            CredentialStore.instance.saveUnifiedAuthCredentials(
-              username,
-              password,
-            ));
-        widget.onLoginSuccess();
-      case UnifiedAuthLoginFailure(:final message):
         setState(() {
           _loading = false;
           _error = message;
         });
         _captchaCtrl.clear();
         await _refreshCaptcha(preserveError: true);
+        return;
+      }
+
+      final result = await UnifiedAuthService.instance.login(
+        username,
+        password,
+        captcha,
+        serviceUrl: widget.serviceUrl,
+      );
+      if (!mounted) return;
+
+      switch (result) {
+        case UnifiedAuthLoginSuccess():
+          await (widget.saveCredentials?.call(username, password) ??
+              CredentialStore.instance.saveUnifiedAuthCredentials(
+                username,
+                password,
+              ));
+          if (!mounted) return;
+          widget.onLoginSuccess();
+        case UnifiedAuthLoginFailure(:final message):
+          setState(() {
+            _loading = false;
+            _error = message;
+          });
+          _captchaCtrl.clear();
+          await _refreshCaptcha(preserveError: true);
+      }
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = _friendlyNetworkMessage(error, fallback: '登录未完成，请重试');
+      });
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
   @override
   void dispose() {
+    _captchaCancelToken?.cancel('Login page closed');
     _usernameCtrl.dispose();
     _passwordCtrl.dispose();
     _captchaCtrl.dispose();
@@ -344,7 +358,7 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
           Padding(
             padding: const EdgeInsets.only(left: 4),
             child: Text(
-              _captchaBytes == null ? '正在准备验证码...' : '点击右侧验证码刷新',
+              _captchaLoading ? '正在准备验证码...' : '点击右侧验证码刷新',
               style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
             ),
           ),
@@ -394,7 +408,7 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
         ),
         const SizedBox(width: 12),
         GestureDetector(
-          onTap: _refreshCaptcha,
+          onTap: (_captchaLoading || _loading) ? null : _refreshCaptcha,
           child: Container(
             width: 140,
             height: 72,

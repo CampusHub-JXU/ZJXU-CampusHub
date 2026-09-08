@@ -8,6 +8,7 @@ import '../../core/auth/cas_auth_broker.dart';
 import '../../core/auth/unified_auth.dart';
 import '../../core/logging/app_logger.dart';
 import 'auth_required_view.dart';
+import 'app_error_view.dart';
 import 'login_shell.dart';
 import 'webview_page.dart';
 import './app_app_bar.dart';
@@ -27,6 +28,7 @@ class UnifiedAuthProtectedWebViewPage extends StatefulWidget {
     this.appBarActions = const [],
     this.autoPromptLogin = true,
     this.warmUpAsResource = false,
+    this.prepareAuthenticatedUrl,
   });
 
   final String title;
@@ -47,6 +49,9 @@ class UnifiedAuthProtectedWebViewPage extends StatefulWidget {
   /// 签发 ticket，但那不代表目标业务的 Cookie 已建立。
   final bool warmUpAsResource;
 
+  /// Establish gateway and business cookies before selecting a network URL.
+  final Future<String> Function()? prepareAuthenticatedUrl;
+
   @override
   State<UnifiedAuthProtectedWebViewPage> createState() =>
       _UnifiedAuthProtectedWebViewPageState();
@@ -60,6 +65,7 @@ class _UnifiedAuthProtectedWebViewPageState
   bool _resyncing = false;
   bool _loginPromptShown = false;
   bool _loginPromptInFlight = false;
+  bool _preparationFailed = false;
   Key _webViewKey = UniqueKey();
 
   @override
@@ -82,6 +88,10 @@ class _UnifiedAuthProtectedWebViewPageState
 
   void _onLoginSuccess() {
     if (!mounted) return;
+    if (widget.prepareAuthenticatedUrl != null) {
+      unawaited(_resolveInitialAuthentication());
+      return;
+    }
     if (widget.warmUpAsResource) {
       // 登录只恢复了 CAS 主会话；业务 Cookie 仍需逐跳预热后才能开门。
       setState(() => _authResolved = false);
@@ -123,6 +133,35 @@ class _UnifiedAuthProtectedWebViewPageState
   }
 
   Future<void> _resolveInitialAuthentication() async {
+    final prepare = widget.prepareAuthenticatedUrl;
+    if (prepare != null) {
+      setState(() {
+        _authResolved = false;
+        _preparationFailed = false;
+      });
+      try {
+        final url = await prepare();
+        if (!mounted) return;
+        setState(() {
+          _webViewUrl = url;
+          _webViewKey = UniqueKey();
+          _authenticated = true;
+        });
+      } on CasAuthExpiredException {
+        if (mounted) setState(() => _authenticated = false);
+      } catch (error, stackTrace) {
+        AppLogger.instance.webview(
+          LogLevel.warn,
+          '业务页面网络准备失败',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        if (mounted) setState(() => _preparationFailed = true);
+      } finally {
+        if (mounted) setState(() => _authResolved = true);
+      }
+      return;
+    }
     if (widget.warmUpAsResource) {
       await _resolveByResourceWarmUp();
       return;
@@ -254,6 +293,10 @@ class _UnifiedAuthProtectedWebViewPageState
 
       // 第一次：重新同步 cookie 后重新加载
       _resyncing = true;
+      if (widget.prepareAuthenticatedUrl != null) {
+        await _resolveInitialAuthentication();
+        return;
+      }
       await UnifiedAuthService.instance.syncCookiesToWebView();
       if (!mounted) return;
 
@@ -319,7 +362,7 @@ class _UnifiedAuthProtectedWebViewPageState
 
   @override
   Widget build(BuildContext context) {
-    if (!_authResolved) {
+    if (!_authResolved || _preparationFailed) {
       return Scaffold(
         appBar: AppAppBar(
           automaticallyImplyLeading: widget.onHomePressed == null,
@@ -328,7 +371,12 @@ class _UnifiedAuthProtectedWebViewPageState
           title: Text(widget.title),
           actions: widget.appBarActions,
         ),
-        body: const Center(child: CircularProgressIndicator()),
+        body: _preparationFailed
+            ? AppErrorView(
+                message: '暂时无法连接服务，请切换网络后重试',
+                onRetry: _resolveInitialAuthentication,
+              )
+            : const Center(child: CircularProgressIndicator()),
       );
     }
 

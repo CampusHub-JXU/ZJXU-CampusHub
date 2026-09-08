@@ -120,38 +120,6 @@ class UnifiedAuthService extends ChangeNotifier {
   UnifiedAuthService._();
   static final UnifiedAuthService instance = UnifiedAuthService._();
 
-  static Future<bool> checkDirectReachable() async {
-    try {
-      await NetworkSettings.instance.ensureInitialized();
-      final dio = Dio(
-        BaseOptions(
-          connectTimeout: const Duration(seconds: 3),
-          receiveTimeout: const Duration(seconds: 3),
-          followRedirects: false,
-          validateStatus: (s) => s != null && s < 500,
-        ),
-      );
-      applyProxyModeToDio(
-        dio,
-        ignoreSystemProxy: NetworkSettings.instance.ignoreSystemProxy.value,
-      );
-      final resp = await dio.get<String>(
-        '$_newcaOrigin/cas/login',
-        queryParameters: {'service': defaultServiceUrl},
-      );
-      final statusCode = resp.statusCode ?? 0;
-      final reachable = statusCode > 0 && statusCode < 500;
-      AppLogger.instance.auth(
-        LogLevel.info,
-        '统一认证直连: ${reachable ? "可达" : "不可达"} ($statusCode)',
-      );
-      return reachable;
-    } catch (e) {
-      AppLogger.instance.auth(LogLevel.warn, '统一认证直连不可达: $e');
-      return false;
-    }
-  }
-
   static const defaultServiceUrl =
       'https://newca.zjxu.edu.cn/casClient/login/ydd';
 
@@ -192,9 +160,15 @@ class UnifiedAuthService extends ChangeNotifier {
 
   bool get isLoggedIn => _sessionActive;
 
-  Future<bool> prepareLogin({String serviceUrl = defaultServiceUrl}) async {
+  Future<bool> prepareLogin({
+    String serviceUrl = defaultServiceUrl,
+    CancelToken? cancelToken,
+  }) async {
     if (_sessionActive) return true;
-    final context = await _refreshLoginContext(serviceUrl);
+    final context = await _refreshLoginContext(
+      serviceUrl,
+      cancelToken: cancelToken,
+    );
     return _sessionActive && context.lt.isEmpty && context.execution.isEmpty;
   }
 
@@ -253,8 +227,9 @@ class UnifiedAuthService extends ChangeNotifier {
       final loginUri = _buildLoginUri(serviceUrl);
       final response = await _sendWithProxyFallback<String>(
         label: '统一认证会话校验',
-        request: (dio) => dio.getUri<String>(
+        request: (dio, token) => dio.getUri<String>(
           loginUri,
+          cancelToken: token,
           options: Options(
             responseType: ResponseType.plain,
             followRedirects: false,
@@ -351,17 +326,31 @@ class UnifiedAuthService extends ChangeNotifier {
 
   Future<Response<T>> _sendWithProxyFallback<T>({
     required String label,
-    required Future<Response<T>> Function(Dio dio) request,
+    required Future<Response<T>> Function(Dio dio, CancelToken token) request,
+    CancelToken? cancelToken,
   }) async {
+    Future<Response<T>> send(Dio dio) async {
+      if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+      final token = CancelToken();
+      unawaited(cancelToken?.whenCancel.then((error) => token.cancel(error)));
+      try {
+        return await request(dio, token).timeout(_requestTimeout);
+      } finally {
+        // Future.timeout alone leaves the socket and cookie response alive.
+        token.cancel('CAS request finished or timed out');
+      }
+    }
+
     try {
-      return await request(_dio).timeout(_requestTimeout);
+      return await send(_dio);
     } catch (error) {
+      if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
       if (!_shouldRetryWithSystemProxyForAny(error)) rethrow;
       final reason = describeSystemProxyRetryReason(error);
       AppLogger.instance.auth(LogLevel.warn, '$label 直连失败（$reason），尝试通过系统代理重试');
       final fallbackDio = _createProxyFallbackDio();
       try {
-        return await request(fallbackDio).timeout(_requestTimeout);
+        return await send(fallbackDio);
       } finally {
         fallbackDio.close(force: true);
       }
@@ -370,16 +359,20 @@ class UnifiedAuthService extends ChangeNotifier {
 
   Future<Uint8List> fetchCaptcha({
     String serviceUrl = defaultServiceUrl,
+    CancelToken? cancelToken,
   }) async {
     await DioClient.instance.ensureInitialized();
-    await _ensureLoginContext(serviceUrl);
+    if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+    await _ensureLoginContext(serviceUrl, cancelToken: cancelToken);
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final referer = _buildLoginUri(serviceUrl).toString();
     final captchaUri = Uri.parse('$_newcaOrigin/cas/captcha.html?t=$timestamp');
     final resp = await _sendWithProxyFallback<List<int>>(
       label: '统一认证验证码',
-      request: (dio) => dio.getUri<List<int>>(
+      cancelToken: cancelToken,
+      request: (dio, token) => dio.getUri<List<int>>(
         captchaUri,
+        cancelToken: token,
         options: Options(
           responseType: ResponseType.bytes,
           headers: {'Referer': referer},
@@ -435,8 +428,9 @@ class UnifiedAuthService extends ChangeNotifier {
       final referer = _buildLoginUri(serviceUrl).toString();
       final response = await _sendWithProxyFallback<String>(
         label: '统一认证登录',
-        request: (dio) => dio.postUri<String>(
+        request: (dio, token) => dio.postUri<String>(
           context.actionUri,
+          cancelToken: token,
           data: {
             'username': username,
             'password': encryptedPassword,
@@ -617,18 +611,20 @@ class UnifiedAuthService extends ChangeNotifier {
   }
 
   Future<_UnifiedAuthLoginContext> _ensureLoginContext(
-    String serviceUrl,
-  ) async {
+    String serviceUrl, {
+    CancelToken? cancelToken,
+  }) async {
     final context = _cachedContext;
     if (context != null && context.serviceUrl == serviceUrl) {
       return context;
     }
-    return _refreshLoginContext(serviceUrl);
+    return _refreshLoginContext(serviceUrl, cancelToken: cancelToken);
   }
 
   Future<_UnifiedAuthLoginContext> _refreshLoginContext(
-    String serviceUrl,
-  ) async {
+    String serviceUrl, {
+    CancelToken? cancelToken,
+  }) async {
     if (_sessionActive) {
       return _UnifiedAuthLoginContext(
         serviceUrl: serviceUrl,
@@ -639,11 +635,14 @@ class UnifiedAuthService extends ChangeNotifier {
     }
 
     await DioClient.instance.ensureInitialized();
+    if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
     final loginUri = _buildLoginUri(serviceUrl);
     final response = await _sendWithProxyFallback<String>(
       label: '统一认证登录上下文',
-      request: (dio) => dio.getUri<String>(
+      cancelToken: cancelToken,
+      request: (dio, token) => dio.getUri<String>(
         loginUri,
+        cancelToken: token,
         options: Options(
           responseType: ResponseType.plain,
           followRedirects: false,
@@ -660,7 +659,12 @@ class UnifiedAuthService extends ChangeNotifier {
       final lowerLocation = location.toLowerCase();
       if (!lowerLocation.contains('/cas/login')) {
         AppLogger.instance.auth(LogLevel.info, '统一认证已有 session，跟随重定向完成认证');
-        await _followRedirectChain(loginUri, location);
+        await _followRedirectChain(
+          loginUri,
+          location,
+          cancelToken: cancelToken,
+        );
+        if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
         unawaited(_syncCookiesToWebViewSafely());
         _applySessionIdentity(active: true, account: currentAccount);
         if (currentAccount != null) {
@@ -683,8 +687,10 @@ class UnifiedAuthService extends ChangeNotifier {
       final redirectUrl = _resolveUri(loginUri, location).toString();
       final casResp = await _sendWithProxyFallback<String>(
         label: '统一认证登录页重定向',
-        request: (dio) => dio.get<String>(
+        cancelToken: cancelToken,
+        request: (dio, token) => dio.get<String>(
           redirectUrl,
+          cancelToken: token,
           options: Options(
             responseType: ResponseType.plain,
             headers: {'Referer': loginUri.toString()},
@@ -732,7 +738,11 @@ class UnifiedAuthService extends ChangeNotifier {
     return baseUri.resolveUri(resolved);
   }
 
-  Future<void> _followRedirectChain(Uri baseUri, String location) async {
+  Future<void> _followRedirectChain(
+    Uri baseUri,
+    String location, {
+    CancelToken? cancelToken,
+  }) async {
     var nextUri = _resolveUri(baseUri, location);
     for (var i = 0; i < 8; i++) {
       // CAS 完成认证后会把 service ticket 挂到下游 URL 上；这个
@@ -748,8 +758,10 @@ class UnifiedAuthService extends ChangeNotifier {
 
       final response = await _sendWithProxyFallback<String>(
         label: '统一认证重定向链',
-        request: (dio) => dio.getUri<String>(
+        cancelToken: cancelToken,
+        request: (dio, token) => dio.getUri<String>(
           nextUri,
+          cancelToken: token,
           options: Options(
             responseType: ResponseType.plain,
             followRedirects: false,

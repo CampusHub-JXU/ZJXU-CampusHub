@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -325,5 +326,118 @@ void main() {
 
     expect(captchaLoads, 2);
     expect(find.text('账号或密码错误，请检查后重试'), findsOneWidget);
+  });
+
+  testWidgets('bounds captcha loading and ignores late results after retry', (
+    tester,
+  ) async {
+    final pending = Completer<Uint8List>();
+    var calls = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UnifiedAuthLoginWidget(
+            onLoginSuccess: () {},
+            loadSavedCredentials: () async => ('', ''),
+            sessionPreflight: () async => false,
+            loginHandler: (_, _, _) async => null,
+            captchaLoader: () =>
+                ++calls == 1 ? pending.future : Future.value(tinyPng()),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 20));
+    expect(find.textContaining('请求超时，请切换网络'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    await tester.tap(find.byIcon(Icons.refresh));
+    await tester.pumpAndSettle();
+    expect(calls, 2);
+    expect(find.byType(Image), findsOneWidget);
+    pending.completeError(StateError('late failure'));
+    await tester.pumpAndSettle();
+    expect(find.byType(Image), findsOneWidget);
+    expect(find.textContaining('验证码加载失败'), findsNothing);
+  });
+
+  testWidgets('does not issue parallel captcha refreshes', (tester) async {
+    final pending = Completer<Uint8List>();
+    var calls = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UnifiedAuthLoginWidget(
+            onLoginSuccess: () {},
+            loadSavedCredentials: () async => ('', ''),
+            sessionPreflight: () async => false,
+            loginHandler: (_, _, _) async => null,
+            captchaLoader: () {
+              calls++;
+              return pending.future;
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.byType(CircularProgressIndicator));
+    await tester.pump();
+    expect(calls, 1);
+    pending.complete(tinyPng());
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('closing login cancels its pending loading deadline', (
+    tester,
+  ) async {
+    final pending = Completer<Uint8List>();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UnifiedAuthLoginWidget(
+            onLoginSuccess: () => fail('disposed login must not complete'),
+            loadSavedCredentials: () async => ('', ''),
+            sessionPreflight: () async => false,
+            loginHandler: (_, _, _) async => null,
+            captchaLoader: () => pending.future,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+    pending.complete(tinyPng());
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('submission exceptions reenable login', (tester) async {
+    var calls = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UnifiedAuthLoginWidget(
+            onLoginSuccess: () {},
+            loadSavedCredentials: () async => ('account', 'password'),
+            sessionPreflight: () async => false,
+            captchaLoader: () async => tinyPng(),
+            loginHandler: (_, _, _) async {
+              calls++;
+              throw TimeoutException('offline');
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).at(2), 'abcd');
+    await tester.tap(find.text('登录'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('请求超时，请切换网络'), findsOneWidget);
+    await tester.tap(find.text('登录'));
+    await tester.pumpAndSettle();
+    expect(calls, 2);
   });
 }

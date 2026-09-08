@@ -325,6 +325,57 @@ void main() {
       expect(adapter.requestLog, ['GET /cas/login', 'GET /login']);
     });
 
+    test(
+      'cancels timed out transport instead of leaving the request alive',
+      () async {
+        await NetworkSettings.instance.setIgnoreSystemProxy(false);
+        final pending = Completer<ResponseBody>();
+        final started = Completer<CancelToken>();
+        final adapter = MockHttpClientAdapter()
+          ..register('GET', '/cas/login', (options) {
+            started.complete(options.cancelToken!);
+            return pending.future;
+          });
+        DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
+        final result = expectLater(
+          UnifiedAuthService.instance.prepareLogin(),
+          throwsA(isA<TimeoutException>()),
+        );
+        final token = await started.future;
+        await result;
+        expect(token.isCancelled, isTrue);
+        pending.complete(ResponseBody.fromString('late response', 200));
+      },
+    );
+
+    test('caller cancellation stops CAS without proxy retry', () async {
+      final pending = Completer<ResponseBody>();
+      final started = Completer<CancelToken>();
+      final adapter = MockHttpClientAdapter()
+        ..register('GET', '/cas/login', (options) {
+          started.complete(options.cancelToken!);
+          return pending.future;
+        });
+      DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
+      final cancelToken = CancelToken();
+      final result = expectLater(
+        UnifiedAuthService.instance.prepareLogin(cancelToken: cancelToken),
+        throwsA(
+          isA<DioException>().having(
+            (e) => e.type,
+            'type',
+            DioExceptionType.cancel,
+          ),
+        ),
+      );
+      final transportToken = await started.future;
+      cancelToken.cancel('page closed');
+      await result;
+      expect(transportToken.isCancelled, isTrue);
+      expect(adapter.requestLog, ['GET /cas/login']);
+      pending.complete(ResponseBody.fromString('late response', 200));
+    });
+
     test('does not treat HTTP 500 as an active session', () async {
       final adapter = MockHttpClientAdapter()
         ..register('GET', '/cas/login', (options) async {

@@ -128,6 +128,31 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.byType(UnifiedAuthProtectedWebViewPage), findsOneWidget);
+    final page = tester.widget<UnifiedAuthProtectedWebViewPage>(
+      find.byType(UnifiedAuthProtectedWebViewPage),
+    );
+    expect(page.prepareAuthenticatedUrl, isNotNull);
+    expect(page.loginDescription, contains('WebVPN'));
+  });
+
+  testWidgets('balance exception shows failure and allows another refresh', (
+    tester,
+  ) async {
+    var calls = 0;
+    CampusCardService.instance.debugBalanceFetcher = () async {
+      calls++;
+      throw StateError('offline');
+    };
+    await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('刷新余额'));
+    await tester.pumpAndSettle();
+    expect(find.text('刷新失败，仍显示上次余额，请切换网络后重试'), findsOneWidget);
+    expect(CampusCardService.instance.cachedBalance, 23.5);
+    await tester.tap(find.byTooltip('刷新余额'));
+    await tester.pumpAndSettle();
+    expect(calls, 2);
+    expect(tester.takeException(), isNull);
   });
 
   group('bootstrap-aware balance refresh', () {

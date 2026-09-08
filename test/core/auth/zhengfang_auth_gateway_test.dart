@@ -48,7 +48,7 @@ void main() {
   });
 
   test(
-    'ensureWebVpnGatewaySession returns false when both unreachable',
+    'ensureWebVpnGatewaySession returns unknown when both unreachable',
     () async {
       await DioClient.instance.ensureInitialized();
       final resolver = ConnectModeResolver.instance;
@@ -60,7 +60,7 @@ void main() {
         syncWebViewCookies: false,
       );
 
-      expect(result, false);
+      expect(result, isNull);
     },
   );
 }

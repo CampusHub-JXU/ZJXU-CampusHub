@@ -6,6 +6,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:html/parser.dart' as html_parser;
 
 import '../../core/auth/cas_auth_broker.dart';
+import '../../core/auth/unified_auth.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/network/dio_client.dart';
@@ -180,38 +181,54 @@ class CampusCardService {
     if (testFetcher != null) {
       final balance = await testFetcher();
       if (balance != null) updateCachedBalance(balance);
-      return balance ?? _cachedBalance;
+      return balance;
     }
 
+    try {
+      final targetUrl = await prepareStatusPage();
+      return await _fetchBalanceFromRenderedPage(targetUrl);
+    } on CasAuthExpiredException {
+      return clearCachedBalance();
+    } catch (error, stackTrace) {
+      AppLogger.instance.network(
+        LogLevel.warn,
+        '校园卡余额刷新失败，保留上次余额',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return null;
+    }
+  }
+
+  /// 余额与交互页面共用网关、目标 CAS 会话及 URL 选择。
+  Future<String> prepareStatusPage() async {
     await DioClient.instance.ensureInitialized();
+    await UnifiedAuthService.instance.restoreSession(syncWebViewCookies: false);
+    if (!UnifiedAuthService.instance.isLoggedIn) {
+      throw const CasAuthExpiredException();
+    }
     final gatewayReady = await ZhengfangAuth.instance
         .ensureWebVpnGatewaySession(syncWebViewCookies: true);
-    if (gatewayReady != true) {
-      AppLogger.instance.auth(
-        gatewayReady == false ? LogLevel.warn : LogLevel.debug,
-        '校园卡余额查询跳过：教务网关会话不可用',
-      );
-      return clearCachedBalance();
-    }
+    if (gatewayReady == false) throw const CasAuthExpiredException();
+    if (gatewayReady == null) throw TimeoutException('校园卡网关暂时无法连接');
 
     final sessionStatus = await CasSession.ensure(
       CasService.campusCardStatus.serviceUrl,
-      syncWebViewCookies: true,
+      syncWebViewCookies: false,
     );
-    if (sessionStatus != CasSessionStatus.active) {
-      AppLogger.instance.auth(
-        sessionStatus == CasSessionStatus.inactive
-            ? LogLevel.warn
-            : LogLevel.debug,
-        '校园卡余额查询跳过：统一认证会话不可用',
-      );
-      return clearCachedBalance();
+    if (sessionStatus == CasSessionStatus.inactive) {
+      throw const CasAuthExpiredException();
     }
-
-    return _fetchBalanceFromRenderedPage();
+    if (sessionStatus == CasSessionStatus.unknown) {
+      throw TimeoutException('校园卡认证暂时无法连接');
+    }
+    await UnifiedAuthService.instance.syncCookiesToWebViewForUrl(statusPageUrl);
+    return ZhengfangAuth.instance.mode == ZhengfangMode.webVpn
+        ? ZhengfangAuth.instance.buildWebVpnProxyUrl(statusPageUrl)
+        : statusPageUrl;
   }
 
-  Future<double?> _fetchBalanceFromRenderedPage() async {
+  Future<double?> _fetchBalanceFromRenderedPage(String targetUrl) async {
     final completer = Completer<double?>();
     HeadlessInAppWebView? webView;
     var pollingStarted = false;
@@ -224,10 +241,6 @@ class CampusCardService {
     }
 
     try {
-      // FR-1: 直连模式下直接加载 mobilehall 原始页面；WebVPN 模式下走代理 URL。
-      final targetUrl = ZhengfangAuth.instance.mode == ZhengfangMode.webVpn
-          ? ZhengfangAuth.instance.buildWebVpnProxyUrl(statusPageUrl)
-          : statusPageUrl;
       webView = HeadlessInAppWebView(
         initialUrlRequest: URLRequest(url: WebUri(targetUrl)),
         initialSettings: InAppWebViewSettings(
@@ -282,7 +295,7 @@ class CampusCardService {
       );
       if (balance == null) {
         AppLogger.instance.network(LogLevel.warn, '校园卡余额渲染后仍未找到余额字段');
-        return clearCachedBalance();
+        return null;
       }
 
       updateCachedBalance(balance);
@@ -295,7 +308,7 @@ class CampusCardService {
         error: error,
         stackTrace: stackTrace,
       );
-      return clearCachedBalance();
+      return null;
     } finally {
       cancelled = true;
       await webView?.dispose();
