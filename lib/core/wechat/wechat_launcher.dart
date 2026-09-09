@@ -9,6 +9,7 @@ class WechatLauncher {
 
   static const _channel = MethodChannel('edu.zjxu.jxucampushub/wechat');
 
+  /// True means a URL intent was launched, not that the webpage finished loading.
   Future<bool> openUrl(String url) async {
     final trimmedUrl = url.trim();
     if (trimmedUrl.isEmpty) return false;

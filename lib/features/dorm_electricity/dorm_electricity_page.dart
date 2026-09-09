@@ -1,10 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/logging/app_logger.dart';
 import '../../core/notification/app_notification_service.dart';
+import '../../core/wechat/wechat_launcher.dart';
 import 'dorm_electricity_service.dart';
 import 'widgets/electricity_battery_header.dart';
 import '../../shared/widgets/app_app_bar.dart';
@@ -139,6 +141,55 @@ class _DormElectricityPageState extends State<DormElectricityPage>
         stackTrace: stackTrace,
       );
     }
+  }
+
+  Future<void> _openRecharge() async {
+    final url = DormElectricityService.rechargeUrl;
+    final opened = await WechatLauncher.instance.openUrl(url);
+    if (!mounted) return;
+
+    var copied = false;
+    if (!opened) {
+      copied = await _copyLink(url);
+      if (!mounted) return;
+    }
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            opened
+                ? '已跳转到微信，请在微信中完成电费充值'
+                : copied
+                ? '未能打开页面，充值链接已复制，请到微信中打开'
+                : '未能打开页面，可复制链接后到微信中打开',
+          ),
+          action: SnackBarAction(
+            label: '复制链接',
+            onPressed: () {
+              if (!mounted) return;
+              unawaited(_copyLink(url, showFeedback: true));
+            },
+          ),
+        ),
+      );
+  }
+
+  Future<bool> _copyLink(String url, {bool showFeedback = false}) async {
+    var copied = false;
+    try {
+      await Clipboard.setData(ClipboardData(text: url));
+      copied = true;
+    } on PlatformException {
+      copied = false;
+    }
+    if (showFeedback && mounted) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(copied ? '链接已复制' : '复制失败')));
+    }
+    return copied;
   }
 
   _ElectricityColors _resolveColors(BuildContext context) {
@@ -381,6 +432,15 @@ class _DormElectricityPageState extends State<DormElectricityPage>
                 ],
               ),
             ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.tonalIcon(
+            onPressed: _openRecharge,
+            icon: const Icon(Icons.account_balance_wallet_outlined, size: 18),
+            label: const Text('去微信充值'),
           ),
         ),
       ],

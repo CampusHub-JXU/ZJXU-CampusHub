@@ -76,7 +76,8 @@ abstract interface class Epay100Gateway {
 }
 
 class HeadlessEpay100Gateway implements Epay100Gateway {
-  static const _rechargeUrl =
+  /// 电费充值页。会话启动也用它触发 checkCas；在微信内打开才会展示微信支付。
+  static const rechargeUrl =
       'https://www.epay100.cn/901/6279/elecService/recharge';
   static const _uniId = '6279';
   static const _attach = '5.6.2607315';
@@ -769,7 +770,7 @@ class HeadlessEpay100Gateway implements Epay100Gateway {
     );
     try {
       await controller.loadUrl(
-        urlRequest: URLRequest(url: WebUri(_rechargeUrl)),
+        urlRequest: URLRequest(url: WebUri(rechargeUrl)),
       );
       await checkToken();
       await ready.future;

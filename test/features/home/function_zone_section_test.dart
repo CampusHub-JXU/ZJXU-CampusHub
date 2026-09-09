@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:jxu_campus_hub/core/auth/cas_auth_broker.dart';
 import 'package:jxu_campus_hub/core/config/feature_entry_catalog.dart';
 import 'package:jxu_campus_hub/features/home/function_zone/function_zone_section.dart';
 import 'package:jxu_campus_hub/features/service_hub/service_hub_usage_store.dart';
@@ -277,6 +279,54 @@ void main() {
       findsNWidgets(AppFeaturesConfig.entries.length),
     );
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('library launch failure copy action copies exact wechat url', (
+    tester,
+  ) async {
+    const wechatChannel = MethodChannel('edu.zjxu.jxucampushub/wechat');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(wechatChannel, (call) async => false);
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(wechatChannel, null);
+    });
+    final clipboard = <String>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+          if (call.method == 'Clipboard.setData') {
+            clipboard.add((call.arguments as Map)['text'] as String);
+          }
+          return null;
+        });
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null);
+    });
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(child: FunctionZoneSection()),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.ensureVisible(find.text('图书馆'));
+    await tester.pump();
+    await tester.tap(find.text('图书馆'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('未能打开页面，可复制链接后到微信中打开'), findsOneWidget);
+    expect(find.textContaining('已安装微信'), findsNothing);
+    expect(find.widgetWithText(SnackBarAction, '复制链接'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(SnackBarAction, '复制链接'));
+    await tester.pumpAndSettle();
+
+    expect(clipboard, [CasService.librarySso.serviceUrl]);
+    expect(find.text('链接已复制'), findsOneWidget);
   });
 
   testWidgets('dark mode applies correct theme colors to surfaces and badges', (

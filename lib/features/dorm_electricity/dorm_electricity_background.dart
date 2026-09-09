@@ -86,9 +86,10 @@ Future<void> _showNotification({
   );
 }
 
-/// Schedule a daily alarm-clock notification for 8:00 AM tomorrow.
-/// Uses `setAlarmClock` mode — fires reliably even when the app is killed
-/// or the device is in Doze mode.
+/// Schedule a daily notification for 8:00 AM.
+/// Uses `setAlarmClock` when the user has granted exact-alarm access, otherwise
+/// falls back to an inexact alarm — Android 12+ denies exact alarms by default
+/// and a daily reminder does not need to-the-minute precision.
 Future<void> _scheduleDailyAlarmNotification() async {
   try {
     final prefs = await SharedPreferences.getInstance();
@@ -106,6 +107,14 @@ Future<void> _scheduleDailyAlarmNotification() async {
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
       ),
     );
+
+    final canScheduleExact =
+        await plugin
+            .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin
+            >()
+            ?.canScheduleExactNotifications() ??
+        false;
 
     // Calculate next 8:00 AM.
     final now = tz.TZDateTime.now(tz.local);
@@ -129,7 +138,9 @@ Future<void> _scheduleDailyAlarmNotification() async {
           icon: '@mipmap/ic_launcher',
         ),
       ),
-      androidScheduleMode: AndroidScheduleMode.alarmClock,
+      androidScheduleMode: canScheduleExact
+          ? AndroidScheduleMode.alarmClock
+          : AndroidScheduleMode.inexactAllowWhileIdle,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
       payload: 'dorm-electricity',

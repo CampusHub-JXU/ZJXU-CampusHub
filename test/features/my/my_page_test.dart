@@ -105,6 +105,36 @@ void main() {
   });
 
   testWidgets(
+    'logged-out CAS row prompts unified auth login instead of navigating',
+    (tester) async {
+      final router = GoRouter(
+        routes: [
+          GoRoute(
+            path: '/',
+            name: 'my',
+            builder: (context, state) => const MyPage(),
+          ),
+          GoRoute(
+            path: '/campus-card',
+            name: 'campus-card',
+            builder: (context, state) => const Scaffold(body: Text('校园卡一卡通页')),
+          ),
+        ],
+      );
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pump();
+      await tester.pump();
+
+      await tester.tap(find.text('统一认证（含一卡通）'));
+      await tester.pumpAndSettle();
+
+      // 未登录先弹统一认证登录，不直接进一卡通页。
+      expect(find.text('登录一卡通'), findsWidgets);
+      expect(find.text('校园卡一卡通页'), findsNothing);
+    },
+  );
+
+  testWidgets(
     'shows unknown state when liveness check fails with network error',
     (tester) async {
       UnifiedAuthService.instance.debugSetSession(

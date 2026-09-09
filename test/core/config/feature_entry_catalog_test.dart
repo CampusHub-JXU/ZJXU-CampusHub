@@ -8,6 +8,9 @@ void main() {
   test('功能入口配置包含生产展示与路由所需字段并保持排序', () {
     final entries = AppFeaturesConfig.entries;
     final library = entries.firstWhere((entry) => entry.id == 'library');
+    final secondClassroom = entries.firstWhere(
+      (entry) => entry.id == 'second-classroom',
+    );
     final changxing = entries.firstWhere(
       (entry) => entry.id == 'changxing-jiada',
     );
@@ -37,6 +40,9 @@ void main() {
     expect(library.routeName, 'library');
     expect(library.icon, Icons.local_library_outlined);
     expect(library.accentColor, AppColors.info);
+    expect(library.wechatH5Url, contains('libapp.zjxu.edu.cn'));
+    expect(secondClassroom.wechatH5Url, isNull);
+    expect(changxing.wechatH5Url, isNull);
     expect(changxing.accentColor, const Color(0xFF2EA567));
   });
 }

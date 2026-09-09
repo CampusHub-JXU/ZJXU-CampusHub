@@ -142,6 +142,48 @@ void main() {
     expect(gateway.calls.single.data['L1_area_id'], '3');
   });
 
+  test('fetchBuildings retries once after a gateway timeout', () async {
+    final gateway = _FakeEpayElectricityGateway()
+      ..enqueue(
+        'app.electric.getBuildingList',
+        const EpayGatewayException('一卡通网关响应超时，请稍后重试'),
+      )
+      ..enqueue(
+        'app.electric.getBuildingList',
+        _success({
+          'building_list': [
+            {'id': 114, 'name': '和兴苑4号楼'},
+          ],
+        }),
+      );
+    DormElectricityService.instance.debugSetGateway(gateway);
+    const area = DormArea(id: '3', name: '梁林校区');
+
+    final buildings = await DormElectricityService.instance.fetchBuildings(
+      area,
+    );
+
+    expect(buildings.single.buildingId, '114');
+    expect(gateway.calls, hasLength(2));
+  });
+
+  test('fetchBuildings does not retry a binding-required error', () async {
+    final gateway = _FakeEpayElectricityGateway()
+      ..enqueue(
+        'app.electric.getBuildingList',
+        const EpayBindingRequiredException(),
+      );
+    DormElectricityService.instance.debugSetGateway(gateway);
+
+    await expectLater(
+      DormElectricityService.instance.fetchBuildings(
+        const DormArea(id: '3', name: '梁林校区'),
+      ),
+      throwsA(isA<EpayBindingRequiredException>()),
+    );
+    expect(gateway.calls, hasLength(1));
+  });
+
   test(
     'fetchBuildings keeps different area parameters in separate caches',
     () async {

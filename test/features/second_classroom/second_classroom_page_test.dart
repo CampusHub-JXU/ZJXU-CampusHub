@@ -123,6 +123,48 @@ void main() {
       SecondClassroomPage.initialUrl,
     );
     expect(find.text('已打开微信，请在微信中完成第二课堂授权'), findsOneWidget);
+    expect(find.widgetWithText(SnackBarAction, '复制链接'), findsOneWidget);
+  });
+
+  testWidgets('app bar wechat failure offers copy of exact page url', (
+    tester,
+  ) async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(wechatChannel, (call) async => false);
+    final clipboard = <String>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+          if (call.method == 'Clipboard.setData') {
+            clipboard.add((call.arguments as Map)['text'] as String);
+          }
+          return null;
+        });
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null);
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SecondClassroomPage(
+          service: _FakeSecondClassroomService(),
+          subscriptionService: _testSubscriptionService(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('在微信中打开'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('未能打开页面，可复制链接后到微信中打开'), findsOneWidget);
+    expect(find.textContaining('已安装微信'), findsNothing);
+
+    await tester.tap(find.widgetWithText(SnackBarAction, '复制链接'));
+    await tester.pumpAndSettle();
+
+    expect(clipboard, [SecondClassroomPage.initialUrl]);
+    expect(find.text('链接已复制'), findsOneWidget);
   });
 
   testWidgets('opens activity detail page in WeChat from detail sheet', (
@@ -158,6 +200,7 @@ void main() {
       'https://twdekt.zjxu.edu.cn/dekt/wx/index?_WXFTL=0#/hd-detail?hdId=2485',
     );
     expect(find.text('已打开微信，可直接查看该活动详情'), findsOneWidget);
+    expect(find.widgetWithText(SnackBarAction, '复制链接'), findsOneWidget);
   });
 }
 

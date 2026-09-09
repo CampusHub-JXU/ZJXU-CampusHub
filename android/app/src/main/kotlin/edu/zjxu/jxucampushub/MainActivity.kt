@@ -130,17 +130,9 @@ class MainActivity : FlutterActivity() {
             if (tryStartWeChatIntent(intent, "url-attempt-$index")) return true
         }
 
-        val launchIntent = packageManager.getLaunchIntentForPackage("com.tencent.mm")
-        if (launchIntent != null && tryStartWeChatIntent(launchIntent, "launcher")) {
-            return true
-        }
-
-        return tryStartWeChatIntent(
-            Intent(Intent.ACTION_VIEW, Uri.parse("weixin://")).apply {
-                setPackage("com.tencent.mm")
-            },
-            "scheme-home",
-        )
+        // Opening the WeChat home screen does not deliver the URL. Keep the
+        // caller in the app so it can offer copying the link instead.
+        return false
     }
 
     private fun createWeChatWebViewIntent(url: String, className: String): Intent {

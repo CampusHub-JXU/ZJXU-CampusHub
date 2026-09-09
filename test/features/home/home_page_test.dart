@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -499,25 +500,10 @@ void main() {
     expect(find.text('考试安排页面'), findsOneWidget);
   });
 
-  testWidgets('library function button navigates to dedicated library entry', (
-    tester,
-  ) async {
-    final router = GoRouter(
-      routes: [
-        GoRoute(
-          path: '/',
-          name: 'home',
-          builder: (context, state) => const HomePage(),
-        ),
-        GoRoute(
-          path: '/library',
-          name: 'library',
-          builder: (context, state) => const Scaffold(body: Text('图书馆页面')),
-        ),
-      ],
-    );
+  testWidgets('library function button jumps to WeChat H5', (tester) async {
+    final launchedUrls = _captureWechatLaunches();
 
-    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpWidget(const MaterialApp(home: HomePage()));
     await tester.pump(const Duration(milliseconds: 200));
 
     await tester.ensureVisible(find.text('图书馆'));
@@ -525,37 +511,40 @@ void main() {
     await tester.tap(find.text('图书馆'));
     await tester.pumpAndSettle();
 
-    expect(find.text('图书馆页面'), findsOneWidget);
+    expect(launchedUrls, hasLength(1));
+    expect(launchedUrls.single, contains('libapp.zjxu.edu.cn'));
+    expect(find.textContaining('已跳转到微信'), findsOneWidget);
   });
 
-  testWidgets('second classroom function button navigates to dedicated entry', (
-    tester,
-  ) async {
-    final router = GoRouter(
-      routes: [
-        GoRoute(
-          path: '/',
-          name: 'home',
-          builder: (context, state) => const HomePage(),
-        ),
-        GoRoute(
-          path: '/second-classroom',
-          name: 'second-classroom',
-          builder: (context, state) => const Scaffold(body: Text('第二课堂页面')),
-        ),
-      ],
-    );
+  testWidgets(
+    'second classroom function button opens native subscription page',
+    (tester) async {
+      final router = GoRouter(
+        routes: [
+          GoRoute(
+            path: '/',
+            name: 'home',
+            builder: (context, state) => const HomePage(),
+          ),
+          GoRoute(
+            path: '/second-classroom',
+            name: 'second-classroom',
+            builder: (context, state) => const Scaffold(body: Text('第二课堂页面')),
+          ),
+        ],
+      );
 
-    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
-    await tester.pump(const Duration(milliseconds: 200));
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pump(const Duration(milliseconds: 200));
 
-    await tester.ensureVisible(find.text('第二课堂'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('第二课堂'));
-    await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('第二课堂'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('第二课堂'));
+      await tester.pumpAndSettle();
 
-    expect(find.text('第二课堂页面'), findsOneWidget);
-  });
+      expect(find.text('第二课堂页面'), findsOneWidget);
+    },
+  );
 
   testWidgets(
     'keeps home content sections unboxed when background is not enabled',
@@ -731,6 +720,23 @@ const _kOnePixelPng = <int>[
   0x60,
   0x82,
 ];
+
+/// 拦截微信拉起通道，返回已请求打开的 URL 列表（按调用顺序）。
+List<String> _captureWechatLaunches() {
+  const channel = MethodChannel('edu.zjxu.jxucampushub/wechat');
+  final messenger =
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+  final launchedUrls = <String>[];
+  messenger.setMockMethodCallHandler(channel, (call) async {
+    if (call.method == 'openUrlInWeChat') {
+      launchedUrls.add((call.arguments as Map)['url'] as String);
+      return true;
+    }
+    return null;
+  });
+  addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+  return launchedUrls;
+}
 
 bool _hasHeroFadeScrim(WidgetTester tester) {
   return tester.widgetList<DecoratedBox>(find.byType(DecoratedBox)).any((box) {

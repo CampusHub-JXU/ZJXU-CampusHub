@@ -134,6 +134,17 @@ class _MyPageState extends State<MyPage> {
   }
 
   Future<void> _openCampusCardAction() async {
+    if (!_campusLoggedIn) {
+      // 未登录先弹统一认证登录，登录成功后再进一卡通页。
+      final loggedIn = await showUnifiedAuthLoginModal(
+        context,
+        title: '登录一卡通',
+        description: '登录后可查看一卡通余额与账单',
+      );
+      if (!mounted) return;
+      await _refreshStatus();
+      if (!mounted || !loggedIn) return;
+    }
     await context.pushNamed('campus-card');
     if (!mounted) return;
     await _refreshStatus();
@@ -270,9 +281,8 @@ class _MyPageState extends State<MyPage> {
                                       // 状态未知时点按 = 重新测活，而不是直接弹登录框。
                                       unawaited(_refreshStatus());
                                     } else {
-                                      // 已登录或未登录都进一卡通页：未登录时
-                                      // 由受保护页面自己引导登录，避免已登录
-                                      // 时弹出的重登模态立即自动关闭（闪一下）。
+                                      // 已登录直接进一卡通页；未登录先弹统一
+                                      // 认证登录，避免绕过登录直接落到受保护页。
                                       unawaited(_openCampusCardAction());
                                     }
                                   },

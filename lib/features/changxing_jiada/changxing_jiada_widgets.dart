@@ -2,114 +2,197 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_design_tokens.dart';
 import '../../shared/widgets/app_card.dart';
+import '../../shared/widgets/app_icon_badge.dart';
 
-class ChangxingLoginPill extends StatelessWidget {
-  const ChangxingLoginPill({
-    super.key,
-    required this.icon,
-    required this.label,
-  });
+/// 统计单元：大号数字 + 小标签。
+class ChangxingMetric extends StatelessWidget {
+  const ChangxingMetric({super.key, required this.value, required this.label});
 
-  final IconData icon;
+  final int value;
   final String label;
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 15, color: cs.primary),
-          const SizedBox(width: 5),
-          Text(
-            label,
-            style: TextStyle(
-              color: cs.onSurfaceVariant,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-            ),
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '$value',
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w700,
+            height: 1,
+            fontFeatures: const [FontFeature.tabularFigures()],
           ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          label,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: cs.onSurfaceVariant,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
     );
   }
 }
 
-class ChangxingInfoPill extends StatelessWidget {
-  const ChangxingInfoPill({super.key, required this.icon, required this.label});
+/// 两列信息栅格：标签在上、值在下。
+class ChangxingInfoGrid extends StatelessWidget {
+  const ChangxingInfoGrid({super.key, required this.items, this.columns = 2});
 
-  final IconData icon;
-  final String label;
+  final List<({String label, String value})> items;
+  final int columns;
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 15, color: cs.primary),
-          const SizedBox(width: 6),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 230),
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: cs.onSurfaceVariant,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const gap = 16.0;
+        final cellWidth =
+            (constraints.maxWidth - gap * (columns - 1)) / columns;
+        return Wrap(
+          spacing: gap,
+          runSpacing: 14,
+          children: [
+            for (final item in items)
+              SizedBox(
+                width: cellWidth,
+                child: _InfoCell(label: item.label, value: item.value),
               ),
-            ),
-          ),
-        ],
-      ),
+          ],
+        );
+      },
     );
   }
 }
 
-class ChangxingDetailChip extends StatelessWidget {
-  const ChangxingDetailChip({
-    super.key,
-    required this.label,
-    required this.value,
-  });
+class _InfoCell extends StatelessWidget {
+  const _InfoCell({required this.label, required this.value});
 
   final String label;
   final String value;
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHigh,
-        borderRadius: AppRadius.chipBorder,
-      ),
-      child: RichText(
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        text: TextSpan(
-          style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-          children: [
-            TextSpan(
-              text: '$label ',
-              style: const TextStyle(fontWeight: FontWeight.w700),
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: cs.onSurfaceVariant,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          value,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w500,
+            height: 1.35,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 章节标题：标题 + 右侧计数。
+class ChangxingSectionHeading extends StatelessWidget {
+  const ChangxingSectionHeading({
+    super.key,
+    required this.title,
+    this.trailing,
+  });
+
+  final String title;
+  final String? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Text(
+          title,
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const Spacer(),
+        if (trailing != null)
+          Text(
+            trailing!,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
             ),
-            TextSpan(text: value),
+          ),
+      ],
+    );
+  }
+}
+
+/// 办理入口行：图标徽标 + 标题 + 副说明 + 箭头。
+class ChangxingActionRow extends StatelessWidget {
+  const ChangxingActionRow({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.hint,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String hint;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            AppIconBadge(
+              icon: icon,
+              accentColor: cs.primary,
+              size: AppIconBadgeSize.small,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    hint,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 20,
+              color: cs.onSurfaceVariant,
+            ),
           ],
         ),
       ),
@@ -117,8 +200,9 @@ class ChangxingDetailChip extends StatelessWidget {
   }
 }
 
-class ChangxingStatusBadge extends StatelessWidget {
-  const ChangxingStatusBadge({
+/// 状态小标签：浅色底 + 同色字。
+class ChangxingStatusChip extends StatelessWidget {
+  const ChangxingStatusChip({
     super.key,
     required this.label,
     required this.color,
@@ -130,18 +214,15 @@ class ChangxingStatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: AppRadius.chipBorder,
       ),
       child: Text(
         label,
-        style: TextStyle(
-          color: color,
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-        ),
+        style: Theme.of(context).textTheme.labelSmall
+            ?.copyWith(color: color, fontWeight: FontWeight.w700),
       ),
     );
   }
@@ -187,11 +268,11 @@ class ChangxingEmptyApplications extends StatelessWidget {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     return AppCard(
-      padding: const EdgeInsets.fromLTRB(18, 22, 18, 22),
+      padding: const EdgeInsets.symmetric(vertical: 30, horizontal: 20),
       child: Column(
         children: [
-          Icon(Icons.inbox_outlined, size: 38, color: cs.onSurfaceVariant),
-          const SizedBox(height: 10),
+          Icon(Icons.inbox_outlined, size: 30, color: cs.onSurfaceVariant),
+          const SizedBox(height: 12),
           Text(
             '暂无申请记录',
             style: theme.textTheme.titleSmall?.copyWith(
@@ -200,7 +281,7 @@ class ChangxingEmptyApplications extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            '发起办理后会在这里显示进度。',
+            '发起办理后会在这里显示进度',
             style: theme.textTheme.bodySmall?.copyWith(
               color: cs.onSurfaceVariant,
             ),

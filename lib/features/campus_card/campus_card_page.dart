@@ -1,11 +1,19 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/app_bootstrap_controller.dart';
+import '../../core/config/app_config.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/shortcut/app_shortcut_service.dart';
+import '../../core/theme/app_design_tokens.dart';
+import '../../core/wechat/wechat_launcher.dart';
 import '../../shared/widgets/app_app_bar.dart';
-import '../../shared/widgets/ship_card.dart';
+import '../../shared/widgets/app_card.dart';
+import '../../shared/widgets/app_icon_badge.dart';
+import '../../shared/widgets/app_tile_surface.dart';
 import '../../shared/widgets/unified_auth_protected_webview_page.dart';
 import 'campus_card_service.dart';
 
@@ -20,6 +28,9 @@ class CampusCardPage extends StatefulWidget {
 }
 
 class _CampusCardPageState extends State<CampusCardPage> {
+  bool _balanceLoading = false;
+  bool _obscured = false;
+
   @override
   void initState() {
     super.initState();
@@ -61,64 +72,75 @@ class _CampusCardPageState extends State<CampusCardPage> {
     });
   }
 
-  bool _balanceLoading = false;
-  bool _obscured = false;
-
   @override
   Widget build(BuildContext context) {
     final service = CampusCardService.instance;
     final balance = service.cachedBalance;
     final lastUpdated = service.lastUpdated;
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final isAndroid = Theme.of(context).platform == TargetPlatform.android;
 
     return Scaffold(
-      body: CustomScrollView(
-        slivers: [
-          SliverAppBar(
-            pinned: true,
-            backgroundColor: Colors.transparent,
-            surfaceTintColor: Colors.transparent,
-            elevation: 0,
-            scrolledUnderElevation: 0,
-            flexibleSpace: const GlassAppBarSpace(),
-            title: const Text('校园卡'),
-            actions: [
-              if (isAndroid)
-                PopupMenuButton<_CampusCardMenuAction>(
-                  tooltip: '更多操作',
-                  onSelected: (action) {
-                    switch (action) {
-                      case _CampusCardMenuAction.addShortcut:
-                        _requestPaymentShortcut();
-                    }
-                  },
-                  itemBuilder: (context) => const [
-                    PopupMenuItem<_CampusCardMenuAction>(
-                      value: _CampusCardMenuAction.addShortcut,
-                      child: ListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(Icons.add_to_home_screen_outlined),
-                        title: Text('添加至桌面'),
-                      ),
-                    ),
-                  ],
+      appBar: AppAppBar(
+        title: const Text('校园卡'),
+        actions: [
+          IconButton(
+            tooltip: '刷新余额',
+            onPressed: _balanceLoading ? null : _refreshBalance,
+            icon: const Icon(Icons.refresh_rounded),
+          ),
+          if (isAndroid)
+            PopupMenuButton<_CampusCardMenuAction>(
+              tooltip: '更多操作',
+              onSelected: (action) {
+                switch (action) {
+                  case _CampusCardMenuAction.addShortcut:
+                    _requestPaymentShortcut();
+                }
+              },
+              itemBuilder: (context) => const [
+                PopupMenuItem<_CampusCardMenuAction>(
+                  value: _CampusCardMenuAction.addShortcut,
+                  child: ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.add_to_home_screen_outlined),
+                    title: Text('添加至桌面'),
+                  ),
                 ),
-            ],
-          ),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                _buildBalanceCard(context, balance, lastUpdated, isDark),
-                const SizedBox(height: 16),
-                _buildQuickActions(context, cs),
-              ]),
+              ],
             ),
-          ),
         ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: () => _refreshBalance(showFeedback: false),
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.pageMargin,
+            AppSpacing.sm,
+            AppSpacing.pageMargin,
+            AppSpacing.xl,
+          ),
+          children: [
+            _buildBalanceCard(context, balance, lastUpdated),
+            const SizedBox(height: AppSpacing.lg),
+            _buildActionTile(
+              context,
+              icon: Icons.receipt_long_outlined,
+              title: '账单',
+              subtitle: '查看校园卡消费明细',
+              onTap: () => _openCampusCardWebView(title: '校园卡账单'),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            _buildActionTile(
+              context,
+              icon: Icons.add_card_outlined,
+              title: '充值',
+              subtitle: '在微信服务号内完成充值',
+              onTap: _openRechargePage,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -129,271 +151,151 @@ class _CampusCardPageState extends State<CampusCardPage> {
     BuildContext context,
     double? balance,
     DateTime? lastUpdated,
-    bool isDark,
   ) {
+    final cs = Theme.of(context).colorScheme;
     final balanceText = balance != null ? balance.toStringAsFixed(2) : '--';
     final timeText = lastUpdated != null
         ? '${lastUpdated.month}/${lastUpdated.day} '
               '${lastUpdated.hour.toString().padLeft(2, '0')}:'
               '${lastUpdated.minute.toString().padLeft(2, '0')} 更新'
         : '暂未获取余额';
-    final cs = Theme.of(context).colorScheme;
-    final cardForeground = _contrastOn(cs.primary);
-    final gradientEnd = _shiftColor(
-      cs.primary,
-      lightnessDelta: isDark ? -0.18 : -0.12,
-      saturationDelta: 0.04,
-    );
 
-    return ShipCard(
-      gradient: LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [cs.primary, gradientEnd],
-      ),
-      padding: EdgeInsets.zero,
-      elevation: isDark ? 0 : 4,
-      child: Stack(
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Decorative circles
-          Positioned(
-            right: -30,
-            top: -30,
-            child: Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: cardForeground.withValues(alpha: 0.04),
+          Row(
+            children: [
+              Icon(Icons.credit_card_outlined, size: 18, color: cs.primary),
+              const SizedBox(width: AppSpacing.sm),
+              Text(
+                '校园卡余额',
+                style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
               ),
-            ),
-          ),
-          Positioned(
-            right: 40,
-            bottom: -20,
-            child: Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: cardForeground.withValues(alpha: 0.03),
+              const Spacer(),
+              IconButton(
+                tooltip: _obscured ? '显示余额' : '隐藏余额',
+                onPressed: () => setState(() => _obscured = !_obscured),
+                icon: Icon(
+                  _obscured
+                      ? Icons.visibility_off_rounded
+                      : Icons.visibility_rounded,
+                ),
+                iconSize: 20,
+                color: cs.onSurfaceVariant,
+                visualDensity: VisualDensity.compact,
               ),
-            ),
+            ],
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          const SizedBox(height: AppSpacing.xs),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                '¥',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w500,
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.xs),
+              Text(
+                _obscured ? '****' : balanceText,
+                style: TextStyle(
+                  fontSize: 40,
+                  fontWeight: FontWeight.w600,
+                  color: cs.onSurface,
+                  letterSpacing: -1,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          if (balance == null)
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.tonalIcon(
+                onPressed: _balanceLoading ? null : _refreshBalance,
+                icon: const Icon(Icons.touch_app_outlined, size: 18),
+                label: Text(_balanceLoading ? '正在查询余额' : '点击查询余额'),
+              ),
+            )
+          else
+            Row(
               children: [
-                // Header row
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: cardForeground.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(
-                        Icons.credit_card,
-                        color: cardForeground,
-                        size: 18,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Text(
-                      '校园卡余额',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
-                        color: cardForeground,
-                      ),
-                    ),
-                    const Spacer(),
-                    _headerIcon(
-                      icon: Icons.refresh_rounded,
-                      onTap: _balanceLoading ? null : _refreshBalance,
-                      tooltip: '刷新余额',
-                      foreground: cardForeground,
-                    ),
-                    const SizedBox(width: 2),
-                    _headerIcon(
-                      icon: _obscured
-                          ? Icons.visibility_off_rounded
-                          : Icons.visibility_rounded,
-                      onTap: () => setState(() => _obscured = !_obscured),
-                      tooltip: _obscured ? '显示余额' : '隐藏余额',
-                      foreground: cardForeground,
-                    ),
-                  ],
+                Icon(Icons.schedule, size: 13, color: cs.onSurfaceVariant),
+                const SizedBox(width: AppSpacing.xs),
+                Text(
+                  timeText,
+                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
                 ),
-                const SizedBox(height: 28),
-                // Balance value
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.baseline,
-                  textBaseline: TextBaseline.alphabetic,
-                  children: [
-                    Text(
-                      '¥',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w500,
-                        color: cardForeground.withValues(alpha: 0.6),
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      _obscured ? '****' : balanceText,
-                      style: TextStyle(
-                        fontSize: 48,
-                        fontWeight: FontWeight.bold,
-                        color: cardForeground,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                        letterSpacing: -1,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                // Bottom row: time + status chip
-                if (balance == null)
-                  GestureDetector(
-                    onTap: _balanceLoading ? null : _refreshBalance,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: cardForeground.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.touch_app,
-                            size: 14,
-                            color: cardForeground.withValues(alpha: 0.8),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            _balanceLoading ? '正在查询余额' : '点击查询余额',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: cardForeground.withValues(alpha: 0.8),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                else
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.schedule,
-                        size: 13,
-                        color: cardForeground.withValues(alpha: 0.4),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        timeText,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: cardForeground.withValues(alpha: 0.4),
-                        ),
-                      ),
-                    ],
-                  ),
               ],
             ),
-          ),
         ],
       ),
     );
   }
 
-  Widget _headerIcon({
+  // ── Action Tiles ────────────────────────────────────────────────────────
+
+  Widget _buildActionTile(
+    BuildContext context, {
     required IconData icon,
-    required VoidCallback? onTap,
-    required String tooltip,
-    required Color foreground,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
   }) {
-    return Tooltip(
-      message: tooltip,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.all(6),
-          child: Icon(icon, size: 18, color: foreground.withValues(alpha: 0.6)),
-        ),
+    final cs = Theme.of(context).colorScheme;
+    return AppTileSurface(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: 13,
       ),
-    );
-  }
-
-  // ── Quick Actions Row ───────────────────────────────────────────────────
-
-  Widget _buildQuickActions(BuildContext context, ColorScheme cs) {
-    return Row(
-      children: [
-        _quickActionChip(
-          icon: Icons.refresh_rounded,
-          label: '刷新',
-          cs: cs,
-          onTap: _balanceLoading ? null : _refreshBalance,
-        ),
-        const SizedBox(width: 8),
-        _quickActionChip(
-          icon: Icons.receipt_long_outlined,
-          label: '账单',
-          cs: cs,
-          onTap: () => _openCampusCardWebView(title: '校园卡账单'),
-        ),
-        const SizedBox(width: 8),
-        _quickActionChip(
-          icon: Icons.add_circle_outline,
-          label: '充值',
-          cs: cs,
-          onTap: _openRechargePage,
-        ),
-      ],
-    );
-  }
-
-  Widget _quickActionChip({
-    required IconData icon,
-    required String label,
-    required ColorScheme cs,
-    required VoidCallback? onTap,
-  }) {
-    return Expanded(
-      child: Material(
-        color: cs.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(12),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+      onTap: onTap,
+      child: Row(
+        children: [
+          AppIconBadge(
+            icon: icon,
+            accentColor: cs.primary,
+            size: AppIconBadgeSize.medium,
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(icon, size: 18, color: cs.primary),
-                const SizedBox(width: 6),
                 Text(
-                  label,
+                  title,
                   style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    height: 1.2,
                     color: cs.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 12,
+                    height: 1.25,
+                    color: cs.onSurfaceVariant,
                   ),
                 ),
               ],
             ),
           ),
-        ),
+          const SizedBox(width: AppSpacing.sm),
+          Icon(
+            Icons.chevron_right_rounded,
+            size: 20,
+            color: cs.onSurfaceVariant.withValues(alpha: 0.45),
+          ),
+        ],
       ),
     );
   }
@@ -458,8 +360,52 @@ class _CampusCardPageState extends State<CampusCardPage> {
 
   Future<void> _openRechargePage() async {
     if (!mounted) return;
+    final url = AppConfig.xiaofubaoRechargeUri.toString();
+    final opened = await WechatLauncher.instance.openUrl(url);
+    if (!mounted) return;
+
+    var copied = false;
+    if (!opened) {
+      copied = await _copyLink(url);
+      if (!mounted) return;
+    }
+
     ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('请到微信「嘉兴大学校园卡」服务号完成充值')));
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            opened
+                ? '已跳转到微信，请在微信中完成充值'
+                : copied
+                ? '未能打开页面，充值链接已复制，请到微信中打开'
+                : '未能打开页面，可复制链接后到微信中打开',
+          ),
+          action: SnackBarAction(
+            label: '复制链接',
+            onPressed: () {
+              if (!mounted) return;
+              unawaited(_copyLink(url, showFeedback: true));
+            },
+          ),
+        ),
+      );
+  }
+
+  Future<bool> _copyLink(String url, {bool showFeedback = false}) async {
+    var copied = false;
+    try {
+      await Clipboard.setData(ClipboardData(text: url));
+      copied = true;
+    } on PlatformException {
+      copied = false;
+    }
+    if (showFeedback && mounted) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(copied ? '链接已复制' : '复制失败')));
+    }
+    return copied;
   }
 
   Future<void> _requestPaymentShortcut() async {
@@ -488,19 +434,3 @@ class _CampusCardPageState extends State<CampusCardPage> {
 // ── Campus Card Action ──────────────────────────────────────────────────────
 
 enum _CampusCardMenuAction { addShortcut }
-
-Color _shiftColor(
-  Color color, {
-  double lightnessDelta = 0,
-  double saturationDelta = 0,
-}) {
-  final hsl = HSLColor.fromColor(color);
-  return hsl
-      .withLightness((hsl.lightness + lightnessDelta).clamp(0.0, 1.0))
-      .withSaturation((hsl.saturation + saturationDelta).clamp(0.0, 1.0))
-      .toColor();
-}
-
-Color _contrastOn(Color background) {
-  return background.computeLuminance() > 0.45 ? Colors.black : Colors.white;
-}

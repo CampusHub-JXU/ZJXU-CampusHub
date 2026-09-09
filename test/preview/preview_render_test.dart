@@ -38,7 +38,6 @@ import 'package:jxu_campus_hub/features/schedule/schedule_cache_snapshot.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_model.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_term_context.dart';
-import 'package:jxu_campus_hub/shared/widgets/ship_card.dart';
 import 'package:jxu_campus_hub/shared/widgets/webview_page.dart';
 
 import '../helpers/test_setup.dart';
@@ -593,7 +592,6 @@ class _ComponentGallery extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final searchController = TextEditingController();
 
     return Scaffold(
@@ -750,29 +748,6 @@ class _ComponentGallery extends StatelessWidget {
             tier: GlassTier.overlay,
             padding: const EdgeInsets.all(16),
             child: const Text('overlay tier · sigma 30（弹层）'),
-          ),
-          _sectionLabel('ShipCard · 品牌渐变卡'),
-          ShipCard(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [cs.primary, cs.primary.withValues(alpha: 0.75)],
-            ),
-            child: const Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('校园卡余额', style: TextStyle(color: Colors.white)),
-                SizedBox(height: 8),
-                Text(
-                  '¥ 38.20',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 28,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
           ),
           _sectionLabel('AppIconBadge · 三档尺寸'),
           const Row(

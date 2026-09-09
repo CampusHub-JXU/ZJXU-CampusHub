@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/auth/cas_auth_broker.dart';
@@ -55,11 +56,34 @@ class _ServiceHallPageState extends State<ServiceHallPage> {
       _openingInWeChat = false;
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(opened ? '已打开微信，请在学校公众号服务中继续' : '未能打开微信，请确认已安装微信'),
-      ),
-    );
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(opened ? '已打开微信，请在学校公众号服务中继续' : '未能打开页面，可复制链接后到微信中打开'),
+          action: SnackBarAction(
+            label: '复制链接',
+            onPressed: () {
+              if (!mounted) return;
+              unawaited(_copyLink(ServiceHallPage.homeUrl));
+            },
+          ),
+        ),
+      );
+  }
+
+  Future<void> _copyLink(String url) async {
+    var copied = false;
+    try {
+      await Clipboard.setData(ClipboardData(text: url));
+      copied = true;
+    } on PlatformException {
+      copied = false;
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(copied ? '链接已复制' : '复制失败')));
   }
 
   @override

@@ -1,17 +1,21 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/logging/app_logger.dart';
+import '../../core/theme/app_design_tokens.dart';
 import '../../core/wechat/wechat_launcher.dart';
+import '../../shared/widgets/app_app_bar.dart';
+import '../../shared/widgets/app_card.dart';
 import '../../shared/widgets/app_dropdown.dart';
 import '../../shared/widgets/app_empty_view.dart';
 import '../../shared/widgets/app_error_view.dart';
+import '../../shared/widgets/app_icon_badge.dart';
 import 'second_classroom_cache_store.dart';
 import 'second_classroom_model.dart';
 import 'second_classroom_service.dart';
 import 'second_classroom_subscription_service.dart';
-import '../../shared/widgets/app_app_bar.dart';
 
 part 'second_classroom_widgets.dart';
 
@@ -242,7 +246,16 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
       final opened = await WechatLauncher.instance.openUrl(url);
       if (!mounted) return;
 
-      _showSnackBar(opened ? successMessage : '未能打开微信，请确认已安装微信后重试');
+      _showSnackBar(
+        opened ? successMessage : '未能打开页面，可复制链接后到微信中打开',
+        action: SnackBarAction(
+          label: '复制链接',
+          onPressed: () {
+            if (!mounted) return;
+            unawaited(_copyLink(url));
+          },
+        ),
+      );
     } finally {
       _openingInWeChat = false;
     }
@@ -451,11 +464,23 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
     );
   }
 
-  void _showSnackBar(String message) {
+  void _showSnackBar(String message, {SnackBarAction? action}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
+      ..showSnackBar(SnackBar(content: Text(message), action: action));
+  }
+
+  Future<void> _copyLink(String url) async {
+    var copied = false;
+    try {
+      await Clipboard.setData(ClipboardData(text: url));
+      copied = true;
+    } on PlatformException {
+      copied = false;
+    }
+    if (!mounted) return;
+    _showSnackBar(copied ? '链接已复制' : '复制失败');
   }
 
   @override
@@ -466,9 +491,8 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
         appBar: AppAppBar(
           title: const Text('第二课堂'),
           actions: [
-            IconButton(
-              icon: const Icon(Icons.notifications_outlined),
-              tooltip: '已订阅活动名',
+            _SubscriptionActionButton(
+              count: _subscribedKeys.length,
               onPressed: _openSubscriptionsSheet,
             ),
             IconButton(
@@ -493,10 +517,12 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
   }
 
   Widget _buildActivityList() {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
     return ListView(
       controller: _scrollController,
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
       children: [
         _SearchAndFilters(
           controller: _searchController,
@@ -512,19 +538,16 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
           },
           onQueryChanged: _applyQuery,
         ),
-        const SizedBox(height: 12),
-        _SubscriptionSummary(
-          count: _subscribedKeys.length,
-          onTap: _openSubscriptionsSheet,
-        ),
-        const SizedBox(height: 8),
-        _SyncStatusLine(
+        const SizedBox(height: 14),
+        _OverviewBar(
+          subscriptionCount: _subscribedKeys.length,
           activityCount: _activities.length,
           updatedAt: _cacheUpdatedAt,
           showingCache: _showingCache,
           syncing: _refreshing,
+          onTap: _openSubscriptionsSheet,
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 16),
         if (_activities.isEmpty)
           const _EmptyActivityState()
         else
@@ -537,17 +560,24 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
               onTap: () => _openActivityDetail(activity),
               onSubscribe: () => _toggleSubscription(activity),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
           ],
         if (_refreshing && _activities.isNotEmpty)
           const Padding(
-            padding: EdgeInsets.symmetric(vertical: 16),
+            padding: EdgeInsets.symmetric(vertical: 20),
             child: Center(child: CircularProgressIndicator()),
           )
         else if (_activities.isNotEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 12),
-            child: Center(child: Text('已加载全部活动')),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Center(
+              child: Text(
+                '已加载全部活动',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+            ),
           ),
       ],
     );
@@ -557,6 +587,27 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
     return _subscribedKeys.contains(
       secondClassroomSubscriptionKey(activity.title),
     );
+  }
+}
+
+class _SubscriptionActionButton extends StatelessWidget {
+  const _SubscriptionActionButton({
+    required this.count,
+    required this.onPressed,
+  });
+
+  final int count;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final button = IconButton(
+      icon: const Icon(Icons.notifications_outlined),
+      tooltip: '已订阅活动名',
+      onPressed: onPressed,
+    );
+    if (count == 0) return button;
+    return Badge.count(count: count, child: button);
   }
 }
 
@@ -600,10 +651,21 @@ class _SearchAndFilters extends StatelessWidget {
                     onPressed: onClearSearch,
                   ),
             filled: true,
-            fillColor: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+            fillColor: cs.surfaceContainerLowest,
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(AppRadius.input),
               borderSide: BorderSide.none,
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppRadius.input),
+              borderSide: BorderSide(
+                color: cs.outlineVariant.withValues(alpha: 0.5),
+                width: 0.8,
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppRadius.input),
+              borderSide: BorderSide(color: cs.primary, width: 1.4),
             ),
           ),
         ),
@@ -663,14 +725,6 @@ class _SearchAndFilters extends StatelessWidget {
                   onQueryChanged(query.copyWith(departmentId: value));
                 },
               ),
-              if (refreshing) ...[
-                const SizedBox(width: 12),
-                const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              ],
             ],
           ),
         ),
@@ -745,213 +799,83 @@ class _OptionFilterMenu extends StatelessWidget {
   }
 }
 
-class _SubscriptionSummary extends StatelessWidget {
-  const _SubscriptionSummary({required this.count, required this.onTap});
-
-  final int count;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Material(
-      color: cs.primaryContainer.withValues(alpha: 0.36),
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          child: Row(
-            children: [
-              Icon(Icons.notifications_active_outlined, color: cs.primary),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  count == 0 ? '还没有订阅活动名' : '已订阅 $count 个活动名',
-                  style: Theme.of(context).textTheme.bodyMedium
-                      ?.copyWith(fontWeight: FontWeight.w600),
-                ),
-              ),
-              Icon(Icons.chevron_right_rounded, color: cs.onSurfaceVariant),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ActivityCard extends StatelessWidget {
-  const _ActivityCard({
-    required this.activity,
-    required this.imageUrl,
-    required this.subscribed,
-    required this.loading,
+/// 订阅概览 + 同步状态合并为一条信息条，减少列表头部的堆叠。
+class _OverviewBar extends StatelessWidget {
+  const _OverviewBar({
+    required this.subscriptionCount,
+    required this.activityCount,
+    required this.updatedAt,
+    required this.showingCache,
+    required this.syncing,
     required this.onTap,
-    required this.onSubscribe,
   });
 
-  final SecondClassroomActivity activity;
-  final String imageUrl;
-  final bool subscribed;
-  final bool loading;
+  final int subscriptionCount;
+  final int activityCount;
+  final DateTime? updatedAt;
+  final bool showingCache;
+  final bool syncing;
   final VoidCallback onTap;
-  final VoidCallback onSubscribe;
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Material(
-      color: cs.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(16),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _ActivityCover(imageUrl: imageUrl, size: 88),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            activity.title,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.titleSmall
-                                ?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                  height: 1.2,
-                                ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        if (loading)
-                          const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        else
-                          IconButton(
-                            constraints: const BoxConstraints(
-                              minWidth: 36,
-                              minHeight: 36,
-                            ),
-                            padding: EdgeInsets.zero,
-                            icon: Icon(
-                              subscribed
-                                  ? Icons.notifications_active_rounded
-                                  : Icons.notifications_none_rounded,
-                            ),
-                            tooltip: subscribed ? '取消开招提醒' : '订阅开招提醒',
-                            color: subscribed
-                                ? cs.primary
-                                : cs.onSurfaceVariant,
-                            onPressed: onSubscribe,
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: [
-                        _TinyBadge(
-                          label: activity.recruitmentLabel,
-                          color: _statusColor(context, activity),
-                        ),
-                        if (activity.categoryName.isNotEmpty)
-                          _TinyBadge(label: activity.categoryName),
-                        if (activity.creditHours > 0)
-                          _TinyBadge(
-                            label:
-                                '${_formatCreditHours(activity.creditHours)} 学时',
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    _MetaLine(
-                      icon: Icons.event_available_outlined,
-                      text:
-                          '报名 ${_formatRange(activity.registrationStartAt, activity.registrationEndAt)}',
-                    ),
-                    const SizedBox(height: 4),
-                    _MetaLine(
-                      icon: Icons.schedule_outlined,
-                      text:
-                          '活动 ${_formatRange(activity.activityStartAt, activity.activityEndAt)}',
-                    ),
-                    const SizedBox(height: 4),
-                    _MetaLine(
-                      icon: Icons.place_outlined,
-                      text: activity.location.isEmpty
-                          ? '地点待确认'
-                          : activity.location,
-                    ),
-                    const SizedBox(height: 4),
-                    _MetaLine(
-                      icon: Icons.people_outline_rounded,
-                      text: activity.capacity > 0
-                          ? '${activity.enrolledCount}/${activity.capacity} 人'
-                          : '${activity.enrolledCount} 人已报名',
-                    ),
-                  ],
-                ),
-              ),
-            ],
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    return AppCard(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      onTap: onTap,
+      child: Row(
+        children: [
+          AppIconBadge(
+            icon: Icons.notifications_active_outlined,
+            accentColor: cs.primary,
+            size: AppIconBadgeSize.large,
           ),
-        ),
-      ),
-    );
-  }
-
-  Color _statusColor(BuildContext context, SecondClassroomActivity activity) {
-    final cs = Theme.of(context).colorScheme;
-    return switch (activity.recruitmentLabel) {
-      '招募中' => const Color(0xFF168A52),
-      '活动预热' => cs.primary,
-      '已招满' => const Color(0xFFE08A00),
-      _ => cs.onSurfaceVariant,
-    };
-  }
-}
-
-class _ActivityCover extends StatelessWidget {
-  const _ActivityCover({required this.imageUrl, required this.size});
-
-  final String imageUrl;
-  final double size;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        width: size,
-        height: size,
-        color: cs.surfaceContainerHighest,
-        child: imageUrl.isEmpty
-            ? Icon(Icons.workspace_premium_outlined, color: cs.primary)
-            : Image.network(
-                imageUrl,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return Icon(
-                    Icons.workspace_premium_outlined,
-                    color: cs.primary,
-                  );
-                },
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  subscriptionCount == 0
+                      ? '还没有订阅活动名'
+                      : '已订阅 $subscriptionCount 个活动名',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  _syncStatusText(
+                    activityCount: activityCount,
+                    updatedAt: updatedAt,
+                    showingCache: showingCache,
+                    syncing: syncing,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          if (syncing)
+            SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: cs.primary,
               ),
+            )
+          else
+            Icon(Icons.chevron_right_rounded, color: cs.onSurfaceVariant),
+        ],
       ),
     );
   }

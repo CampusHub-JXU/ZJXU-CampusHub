@@ -121,6 +121,9 @@ class DormElectricityService {
   /// 这里作为缺省值兜底。
   static const defaultAdapterId = '6279260700100006';
 
+  /// 电费充值页（epay100 电控）。必须在微信内打开才会展示微信支付。
+  static String get rechargeUrl => HeadlessEpay100Gateway.rechargeUrl;
+
   /// 从房间名解析楼层标签：`HX4-105` → `1楼`，`HX4-1005` → `10楼`。
   ///
   /// 约定 `-` 后数字串的末两位为房间序号、其余为楼层号；解析不出
@@ -483,6 +486,31 @@ class DormElectricityService {
     return gateway.call(method, data);
   }
 
+  /// 目录 RPC 超时/网关抖动时自动重试一次。超时路径会作废会话，下一次
+  /// 调用会重建会话，多数情况下第二次即成功；绑定缺失需用户处理，不重试。
+  static const _catalogRetryAttempts = 2;
+  static const _catalogRetryDelay = Duration(milliseconds: 600);
+
+  Future<String> _callCatalogWithRetry(
+    String method,
+    Map<String, String> data,
+  ) async {
+    for (var attempt = 1; ; attempt++) {
+      try {
+        return await _call(method, data);
+      } catch (error) {
+        if (attempt >= _catalogRetryAttempts ||
+            !_isRetryableCatalogError(error)) {
+          rethrow;
+        }
+        await Future<void>.delayed(_catalogRetryDelay);
+      }
+    }
+  }
+
+  bool _isRetryableCatalogError(Object error) =>
+      error is EpayGatewayException && error is! EpayBindingRequiredException;
+
   /// 目录 RPC 走通用读穿缓存。余额等动态数据仍使用 [_call]，避免把实时值
   /// 按目录 TTL 缓存。key 包含排序后的全部参数，同一方法不同园区/楼幢不会
   /// 串数据。
@@ -504,7 +532,7 @@ class DormElectricityService {
         policy: CachePolicy.catalog,
         decode: (payload) => payload is String ? payload : null,
         encode: (value) => value,
-        fetch: () => _call(method, requestData),
+        fetch: () => _callCatalogWithRetry(method, requestData),
       ),
     );
     final result = await resource.get();

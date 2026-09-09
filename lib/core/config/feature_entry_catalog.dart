@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../auth/cas_auth_broker.dart';
 import '../theme/app_colors.dart';
 
 class FeatureEntryDefinition {
@@ -11,6 +12,7 @@ class FeatureEntryDefinition {
     required this.accentColor,
     required this.routeName,
     required this.sortOrder,
+    this.wechatH5Url,
   });
 
   final String id;
@@ -20,12 +22,15 @@ class FeatureEntryDefinition {
   final Color accentColor;
   final String routeName;
   final int sortOrder;
+
+  /// 非空时该入口依赖微信用户态：点击直接拉起微信打开该 H5，不进 App 内 WebView。
+  final String? wechatH5Url;
 }
 
 class AppFeaturesConfig {
   AppFeaturesConfig._();
 
-  static const entries = <FeatureEntryDefinition>[
+  static final entries = <FeatureEntryDefinition>[
     FeatureEntryDefinition(
       id: 'schedule',
       title: '课表',
@@ -79,6 +84,7 @@ class AppFeaturesConfig {
       accentColor: AppColors.info,
       routeName: 'library',
       sortOrder: 30,
+      wechatH5Url: CasService.librarySso.serviceUrl,
     ),
     FeatureEntryDefinition(
       id: 'campus-card',

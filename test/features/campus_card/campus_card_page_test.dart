@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/app/app_bootstrap_controller.dart';
+import 'package:jxu_campus_hub/core/config/app_config.dart';
 import 'package:jxu_campus_hub/features/campus_card/campus_card_page.dart';
 import 'package:jxu_campus_hub/features/campus_card/campus_card_service.dart';
 import 'package:jxu_campus_hub/shared/widgets/unified_auth_protected_webview_page.dart';
@@ -135,6 +136,98 @@ void main() {
     expect(page.loginDescription, contains('WebVPN'));
   });
 
+  testWidgets('recharge tile opens xiaofubao page in WeChat', (tester) async {
+    const wechatChannel = MethodChannel('edu.zjxu.jxucampushub/wechat');
+    final calls = <MethodCall>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(wechatChannel, (call) async {
+          calls.add(call);
+          return true;
+        });
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(wechatChannel, null);
+    });
+    final clipboard = _mockClipboard();
+
+    await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('充值'));
+    await tester.pumpAndSettle();
+
+    expect(calls, hasLength(1));
+    expect(calls.single.method, 'openUrlInWeChat');
+    expect(
+      (calls.single.arguments as Map)['url'],
+      contains('webapp.xiaofubao.com'),
+    );
+    expect(find.text('已跳转到微信，请在微信中完成充值'), findsOneWidget);
+    expect(find.widgetWithText(SnackBarAction, '复制链接'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(SnackBarAction, '复制链接'));
+    await tester.pumpAndSettle();
+
+    expect(clipboard.single, AppConfig.xiaofubaoRechargeUri.toString());
+    expect(find.text('链接已复制'), findsOneWidget);
+  });
+
+  testWidgets('recharge failure auto-copies link and copy action copies url', (
+    tester,
+  ) async {
+    const wechatChannel = MethodChannel('edu.zjxu.jxucampushub/wechat');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(wechatChannel, (call) async => false);
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(wechatChannel, null);
+    });
+    final clipboard = _mockClipboard();
+    final url = AppConfig.xiaofubaoRechargeUri.toString();
+
+    await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('充值'));
+    await tester.pumpAndSettle();
+
+    expect(clipboard, [url]);
+    expect(find.text('未能打开页面，充值链接已复制，请到微信中打开'), findsOneWidget);
+    expect(find.textContaining('已安装微信'), findsNothing);
+    expect(find.widgetWithText(SnackBarAction, '复制链接'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(SnackBarAction, '复制链接'));
+    await tester.pumpAndSettle();
+
+    expect(clipboard, [url, url]);
+    expect(find.text('链接已复制'), findsOneWidget);
+  });
+
+  testWidgets('recharge copy survives clipboard PlatformException', (
+    tester,
+  ) async {
+    const wechatChannel = MethodChannel('edu.zjxu.jxucampushub/wechat');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(wechatChannel, (call) async => false);
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(wechatChannel, null);
+    });
+    _mockClipboard(throwOnSet: true);
+
+    await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('充值'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('未能打开页面，可复制链接后到微信中打开'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.widgetWithText(SnackBarAction, '复制链接'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('复制失败'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('balance exception shows failure and allows another refresh', (
     tester,
   ) async {
@@ -219,4 +312,23 @@ void main() {
       },
     );
   });
+}
+
+List<String> _mockClipboard({bool throwOnSet = false}) {
+  final texts = <String>[];
+  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.setData') {
+          if (throwOnSet) {
+            throw PlatformException(code: 'unavailable');
+          }
+          texts.add((call.arguments as Map)['text'] as String);
+        }
+        return null;
+      });
+  addTearDown(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, null);
+  });
+  return texts;
 }
