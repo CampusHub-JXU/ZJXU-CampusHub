@@ -4,6 +4,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot 'flutter_env.ps1')
 
 function Set-ProxyEnv {
     param(
@@ -108,6 +109,6 @@ Write-Host "PUB_HOSTED_URL=$($env:PUB_HOSTED_URL)"
 Write-Host "FLUTTER_STORAGE_BASE_URL=$($env:FLUTTER_STORAGE_BASE_URL)"
 
 if (-not $SkipFlutter) {
-    & flutter @FlutterArgs
+    & $FlutterExe @FlutterArgs
     exit $LASTEXITCODE
 }

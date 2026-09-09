@@ -62,17 +62,30 @@ android {
 
     buildTypes {
         debug {
+            // 与 release 包名隔离，便于在真机上与正式版共存并测试微信跳转。
+            applicationIdSuffix = ".dev"
             val ksFilePath = envOrProp("KEYSTORE_FILE", "storeFile")
             if (ksFilePath.isNotEmpty()) {
                 signingConfig = signingConfigs.getByName("release")
             }
         }
 
+        // 真机微信跳转联调：AOT 构建，体积远小于 debug，debug 签名可直接安装。
+        val profileBuildType = maybeCreate("profile")
+        profileBuildType.initWith(getByName("debug"))
+        profileBuildType.applicationIdSuffix = ".dev"
+
         release {
             if (releaseKeystorePath.isNotEmpty()) {
                 signingConfig = signingConfigs.getByName("release")
             }
         }
+    }
+
+    sourceSets {
+        // debug 与 profile 均带 .dev 后缀，共用同一套 dev 图标覆盖（蓝色背景）。
+        getByName("debug").res.srcDir("src/dev/res")
+        maybeCreate("profile").res.srcDir("src/dev/res")
     }
 }
 

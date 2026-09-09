@@ -12,6 +12,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot 'flutter_env.ps1')
 Set-Location (Join-Path $PSScriptRoot "..")
 
 New-Item -ItemType Directory -Force -Path "preview/render" | Out-Null
@@ -27,7 +28,7 @@ if ($Filter -ne "") {
   $flutterArgs += @("--plain-name", $Filter)
 }
 
-& flutter @flutterArgs
+& $FlutterExe @flutterArgs
 $exitCode = $LASTEXITCODE
 Remove-Item Env:JXU_PREVIEW_RENDER -ErrorAction SilentlyContinue
 

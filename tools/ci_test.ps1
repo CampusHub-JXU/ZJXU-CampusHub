@@ -6,6 +6,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'flutter_env.ps1')
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
 Push-Location $repoRoot
@@ -42,12 +43,12 @@ try {
   }
 
   Invoke-CiStep "Flutter and Dart versions" {
-    Invoke-Native flutter --version
-    Invoke-Native dart --version
+    Invoke-Native $FlutterExe --version
+    Invoke-Native $DartExe --version
   }
 
   Invoke-CiStep "Install dependencies" {
-    Invoke-Native flutter pub get
+    Invoke-Native $FlutterExe pub get
   }
 
   Invoke-CiStep "Validate workflow YAML files" {
@@ -87,31 +88,31 @@ try {
   }
 
   Invoke-CiStep "Verify formatting" {
-    Invoke-Native dart format --output=none --set-exit-if-changed lib test integration_test
+    Invoke-Native $DartExe format --output=none --set-exit-if-changed lib test integration_test
   }
 
   Invoke-CiStep "Analyze project source" {
-    Invoke-Native flutter analyze
+    Invoke-Native $FlutterExe analyze
   }
 
   Invoke-CiStep "Focused regression tests" {
-    Invoke-Native flutter test test/core/update/update_service_test.dart
-    Invoke-Native flutter test test/shared/widgets/protected_webview_auth_test.dart --plain-name "shows login guidance"
+    Invoke-Native $FlutterExe test test/core/update/update_service_test.dart
+    Invoke-Native $FlutterExe test test/shared/widgets/protected_webview_auth_test.dart --plain-name "shows login guidance"
   }
 
   if (-not $SkipFullTest) {
     Invoke-CiStep "Full Flutter test suite" {
       if ($WithCoverage) {
-        Invoke-Native flutter test --coverage --concurrency=1
+        Invoke-Native $FlutterExe test --coverage --concurrency=1
       } else {
-        Invoke-Native flutter test --concurrency=1
+        Invoke-Native $FlutterExe test --concurrency=1
       }
     }
   }
 
   if ($BuildApkSmoke) {
     Invoke-CiStep "Android APK build smoke test" {
-      Invoke-Native flutter build apk --debug
+      Invoke-Native $FlutterExe build apk --debug
     }
   }
 

@@ -1,5 +1,6 @@
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'flutter_env.ps1')
 
 $sourcePath = $null
 $skipPwaBuild = $false
@@ -67,5 +68,5 @@ if ($LASTEXITCODE -ne 0) {
   exit $LASTEXITCODE
 }
 
-& flutter @flutterArgs
+& $FlutterExe @flutterArgs
 exit $LASTEXITCODE
