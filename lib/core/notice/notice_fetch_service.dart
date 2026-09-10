@@ -101,7 +101,10 @@ List<Notice> parseNoticeListDocument(Document doc) {
     final link = item.querySelector('a.a1') ?? item.querySelector('a');
     if (link == null) continue;
 
-    final title = link.text.trim();
+    final title = link.text
+        .trim()
+        .replaceFirst(RegExp(r'\s*new$', caseSensitive: false), '')
+        .trim();
     final href = link.attributes['href']?.trim() ?? '';
     if (title.isEmpty || href.isEmpty) continue;
 

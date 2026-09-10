@@ -10,6 +10,7 @@ import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_empty_view.dart';
 import '../../shared/widgets/app_error_view.dart';
 import '../../shared/widgets/auth_required_view.dart';
+import '../../shared/widgets/copy_text_feedback.dart';
 import '../../shared/widgets/login_shell.dart';
 
 bool shouldOpenNoticeViaUnifiedAuth(String url) {
@@ -287,6 +288,9 @@ class _NoticeCard extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: onTap,
+        onLongPress: notice.url.isEmpty
+            ? null
+            : () => copyTextWithFeedback(context, notice.url),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           child: Row(

@@ -16,6 +16,7 @@ import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_empty_view.dart';
 import '../../shared/widgets/app_error_view.dart';
 import '../../shared/widgets/app_search_field.dart';
+import '../../shared/widgets/copy_text_feedback.dart';
 import '../../shared/widgets/auth_required_view.dart';
 import '../../shared/widgets/login_shell.dart';
 
@@ -292,6 +293,7 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
             date: notice.date,
             unread: _unreadIds.contains(notice.id),
             onTap: () => _openNotice(notice),
+            onLongPress: () => copyTextWithFeedback(context, notice.url),
           );
         },
       ),
@@ -424,6 +426,7 @@ class _PracticeNoticeTabState extends State<_PracticeNoticeTab>
                 'emulateDingTalkEnvironment': false,
               },
             ),
+            onLongPress: () => copyTextWithFeedback(context, notice.url),
           );
         },
       ),
@@ -440,6 +443,7 @@ Widget _buildNoticeTile(
   required String title,
   required String? date,
   required VoidCallback onTap,
+  VoidCallback? onLongPress,
   bool unread = false,
 }) {
   final cs = Theme.of(context).colorScheme;
@@ -453,6 +457,7 @@ Widget _buildNoticeTile(
     child: InkWell(
       borderRadius: BorderRadius.circular(12),
       onTap: onTap,
+      onLongPress: onLongPress,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Row(

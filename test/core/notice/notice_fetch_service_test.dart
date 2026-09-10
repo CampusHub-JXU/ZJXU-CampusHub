@@ -14,7 +14,7 @@ const _listHtml = '''
 <ul id="ul1">
   <li class="clearfix">
     <span class="fr"><a href="content.jsp?urltype=news.NewsContentUrl&wbtreeid=1046&wbnewsid=10853" class="a2">[通知公告]</a>2026-04-08</span>
-    <a href="content.jsp?urltype=news.NewsContentUrl&wbtreeid=1046&wbnewsid=10853" class="fl a1">关于开展继续教育专项检查工作的通知</a>
+    <a href="content.jsp?urltype=news.NewsContentUrl&wbtreeid=1046&wbnewsid=10853" class="fl a1">关于开展继续教育专项检查工作的通知new</a>
   </li>
   <li class="clearfix">
     <span class="fr"><a href="http://sjjx.zjxu.edu.cn/sjjx/shownews.aspx?ptype=js&newsno=1901" class="a2">[通知公告]</a>2026-03-30</span>

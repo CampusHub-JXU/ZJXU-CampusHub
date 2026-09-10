@@ -4,6 +4,7 @@ import '../../../core/notice/notice_model.dart';
 import '../../../core/notice/notice_relevance.dart';
 import '../../../core/notice/notice_sync_store.dart';
 import '../../../core/profile/user_profile_controller.dart';
+import '../../../shared/widgets/copy_text_feedback.dart';
 
 /// 首页「校园公告」区块：紧随资产行、功能区之前。
 ///
@@ -87,6 +88,9 @@ class _NoticeRow extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
+      onLongPress: notice.url.isEmpty
+          ? null
+          : () => copyTextWithFeedback(context, notice.url),
       borderRadius: BorderRadius.circular(8),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 11),

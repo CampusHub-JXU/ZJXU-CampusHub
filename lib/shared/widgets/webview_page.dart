@@ -10,6 +10,7 @@ import '../../core/auth/credential_store.dart';
 import '../../core/logging/app_logger.dart';
 import 'external_url_launcher.dart';
 import 'qr_scanner_page.dart';
+import 'system_downloader.dart';
 import './app_app_bar.dart';
 
 part 'webview_page_helpers.dart';
@@ -342,6 +343,29 @@ class _WebViewPageState extends State<WebViewPage> {
     }
   }
 
+  Future<void> _handleDownload(DownloadStartRequest request) async {
+    final url = request.url.toString();
+    final suggested = (request.suggestedFilename ?? '').trim();
+    final fileName = suggested.isEmpty ? 'attachment' : suggested;
+
+    final enqueued = await SystemDownloader.enqueue(
+      url: url,
+      fileName: fileName,
+      mimeType: request.mimeType,
+      userAgent: request.userAgent,
+      referer: _currentUrl,
+    );
+
+    AppLogger.instance.webview(
+      enqueued ? LogLevel.info : LogLevel.warn,
+      'WebView 附件下载${enqueued ? '已交给系统' : '入队失败'}: '
+      '${scrubSensitiveUrl(url)}',
+    );
+
+    if (!mounted) return;
+    _showHint(enqueued ? '已开始下载：$fileName' : '下载失败，请重试');
+  }
+
   Future<void> _inspectLoadedPage(InAppWebViewController controller) async {
     try {
       final snapshot = await _capturePageSnapshot(controller);
@@ -557,6 +581,7 @@ class _WebViewPageState extends State<WebViewPage> {
                         domStorageEnabled: true,
                         useShouldOverrideUrlLoading: true,
                         useShouldInterceptRequest: true,
+                        useOnDownloadStart: true,
                         useHybridComposition: true,
                         allowsInlineMediaPlayback: true,
                         mixedContentMode:
@@ -708,6 +733,9 @@ class _WebViewPageState extends State<WebViewPage> {
                       },
                       onConsoleMessage: (controller, consoleMessage) {
                         _handleConsoleMessage(controller, consoleMessage);
+                      },
+                      onDownloadStartRequest: (controller, request) {
+                        unawaited(_handleDownload(request));
                       },
                       shouldInterceptRequest: (controller, request) async {
                         final uri = request.url.uriValue;
