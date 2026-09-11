@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+import '../actions/campus_action.dart';
+import '../actions/campus_action_registry.dart';
 import '../logging/app_logger.dart';
 
 class AppShortcutService {
@@ -88,6 +90,64 @@ class AppShortcutService {
     );
   }
 
+  /// 通用桌面快捷方式请求（PRD §40）：只传 Action ID 与标题，不再为每个
+  /// 功能新增 `requestXxxShortcut()`。
+  Future<AppShortcutRequestResult> requestPinnedShortcut(
+    String actionId, {
+    required String title,
+  }) async {
+    await _ensureInitialized();
+    try {
+      final result = await _channel.invokeMethod<Object>('requestPinnedShortcut', {
+        'actionId': actionId,
+        'title': title,
+      });
+      return AppShortcutRequestResult.fromPlatformValue(result);
+    } on MissingPluginException {
+      return AppShortcutRequestResult.unavailable;
+    } on PlatformException catch (error) {
+      AppLogger.instance.ui(
+        LogLevel.error,
+        '添加桌面快捷方式失败: ${error.message ?? error.code}',
+      );
+      return AppShortcutRequestResult.failed;
+    } catch (error) {
+      AppLogger.instance.ui(LogLevel.error, '添加桌面快捷方式异常: $error');
+      return AppShortcutRequestResult.failed;
+    }
+  }
+
+  /// 默认动态快捷方式（长按应用图标菜单）：引用稳定 Action ID。
+  static const defaultDynamicShortcuts = <(String, String)>[
+    ('schedule.today', '今日课表'),
+    ('campus-card.payment', '校园卡付款'),
+    ('electricity.open', '宿舍电费'),
+    ('notice.inbox', '通知中心'),
+  ];
+
+  /// 同步动态快捷方式；native 侧按 id 去重重建。
+  Future<bool> syncDynamicShortcuts(List<(String, String)> shortcuts) async {
+    await _ensureInitialized();
+    try {
+      final synced = await _channel.invokeMethod<bool>('syncDynamicShortcuts', {
+        'ids': [for (final shortcut in shortcuts) shortcut.$1],
+        'titles': [for (final shortcut in shortcuts) shortcut.$2],
+      });
+      return synced ?? false;
+    } on MissingPluginException {
+      return false;
+    } on PlatformException catch (error) {
+      AppLogger.instance.ui(
+        LogLevel.error,
+        '同步动态快捷方式失败: ${error.message ?? error.code}',
+      );
+      return false;
+    } catch (error) {
+      AppLogger.instance.ui(LogLevel.error, '同步动态快捷方式异常: $error');
+      return false;
+    }
+  }
+
   Future<bool> openShortcutPermissionSettings() async {
     await _ensureInitialized();
 
@@ -164,6 +224,14 @@ class AppShortcutService {
           final navigateToNamedRoute = _navigateToNamedRoute;
           if (navigateToNamedRoute != null) {
             unawaited(navigateToNamedRoute('shuati-practice'));
+          }
+          break;
+        default:
+          // 动态快捷方式以 CampusAction ID 表达；Route 动作复用注入的导航回调。
+          final target = CampusActionRegistry.instance.findById(action)?.target;
+          final navigateToNamedRoute = _navigateToNamedRoute;
+          if (target is RouteActionTarget && navigateToNamedRoute != null) {
+            unawaited(navigateToNamedRoute(target.routeName));
           }
           break;
       }

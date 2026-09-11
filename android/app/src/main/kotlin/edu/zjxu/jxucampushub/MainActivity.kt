@@ -29,9 +29,11 @@ class MainActivity : FlutterActivity() {
         private const val WECHAT_CHANNEL = "edu.zjxu.jxucampushub/wechat"
         private const val SHORTCUT_CHANNEL = "edu.zjxu.jxucampushub/shortcut"
         private const val DOWNLOAD_CHANNEL = "edu.zjxu.jxucampushub/download"
+        private const val DEEP_LINK_CHANNEL = "edu.zjxu.jxucampushub/deeplink"
         private const val EXTRA_SHORTCUT_ACTION = "shortcut_action"
         private const val SHORTCUT_SCHEME = "jxucampushub"
         private const val SHORTCUT_HOST = "shortcut"
+        private const val ACTION_HOST = "action"
         private const val CAMPUS_CARD_PAYMENT_ACTION = "campus-card-payment"
         private const val SHUATI_ACTION = "shuati-practice"
         private const val CAMPUS_CARD_PAYMENT_PINNED_SHORTCUT_ID = "campus_card_payment_pinned_v2"
@@ -41,11 +43,14 @@ class MainActivity : FlutterActivity() {
     }
 
     private var pendingShortcutAction: String? = null
+    private var pendingDeepLink: String? = null
     private var shortcutChannel: MethodChannel? = null
+    private var deepLinkChannel: MethodChannel? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         pendingShortcutAction = extractShortcutAction(intent)
+        pendingDeepLink = extractDeepLinkRaw(intent)
         cleanupLegacyPaymentShortcut()
     }
 
@@ -89,8 +94,41 @@ class MainActivity : FlutterActivity() {
                         result.success(requestShuatiShortcut().code)
                     }
 
+                    "requestPinnedShortcut" -> {
+                        val actionId = call.argument<String>("actionId")
+                        if (actionId.isNullOrBlank()) {
+                            result.error("invalid_args", "actionId is required", null)
+                            return@setMethodCallHandler
+                        }
+                        val title = call.argument<String>("title") ?: actionId
+                        result.success(requestPinnedShortcut(actionId, title).code)
+                    }
+
+                    "syncDynamicShortcuts" -> {
+                        val ids = call.argument<List<String>>("ids") ?: emptyList()
+                        val titles = call.argument<List<String>>("titles") ?: emptyList()
+                        result.success(syncDynamicShortcuts(ids, titles))
+                    }
+
                     "openShortcutPermissionSettings" -> {
                         result.success(openShortcutPermissionSettings())
+                    }
+
+                    else -> result.notImplemented()
+                }
+            }
+        }
+
+        deepLinkChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            DEEP_LINK_CHANNEL,
+        ).apply {
+            setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "consumeInitialDeepLink" -> {
+                        val raw = pendingDeepLink
+                        pendingDeepLink = null
+                        result.success(raw)
                     }
 
                     else -> result.notImplemented()
@@ -181,6 +219,17 @@ class MainActivity : FlutterActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
 
+        val deepLink = extractDeepLinkRaw(intent)
+        if (deepLink != null) {
+            val channel = deepLinkChannel
+            if (channel == null) {
+                pendingDeepLink = deepLink
+            } else {
+                channel.invokeMethod("onDeepLinkAction", deepLink)
+            }
+            return
+        }
+
         val action = extractShortcutAction(intent) ?: return
         val channel = shortcutChannel
         if (channel == null) {
@@ -249,8 +298,8 @@ class MainActivity : FlutterActivity() {
                 CAMPUS_CARD_PAYMENT_PINNED_SHORTCUT_ID,
                 LEGACY_CAMPUS_CARD_PAYMENT_SHORTCUT_ID,
             ),
-            shortLabelRes = R.string.shortcut_campus_card_payment_short_label,
-            longLabelRes = R.string.shortcut_campus_card_payment_long_label,
+            shortLabel = getString(R.string.shortcut_campus_card_payment_short_label),
+            longLabel = getString(R.string.shortcut_campus_card_payment_long_label),
         )
     }
 
@@ -259,17 +308,57 @@ class MainActivity : FlutterActivity() {
             action = SHUATI_ACTION,
             shortcutId = SHUATI_PINNED_SHORTCUT_ID,
             shortcutIdsToReplace = listOf(SHUATI_PINNED_SHORTCUT_ID),
-            shortLabelRes = R.string.shortcut_shuati_short_label,
-            longLabelRes = R.string.shortcut_shuati_long_label,
+            shortLabel = getString(R.string.shortcut_shuati_short_label),
+            longLabel = getString(R.string.shortcut_shuati_long_label),
         )
+    }
+
+    /** 通用固定快捷方式（PRD §40）：只按 Action ID + 标题重建，不再按功能定制。 */
+    private fun requestPinnedShortcut(actionId: String, title: String): ShortcutRequestResult {
+        val shortcutId = "pinned_" + actionId.replace(Regex("[^A-Za-z0-9_]"), "_")
+        return requestShortcut(
+            action = actionId,
+            shortcutId = shortcutId,
+            shortcutIdsToReplace = listOf(shortcutId),
+            shortLabel = title,
+            longLabel = title,
+        )
+    }
+
+    /** 动态快捷方式（长按图标菜单）：按提交的 Action ID 重建。 */
+    private fun syncDynamicShortcuts(ids: List<String>, titles: List<String>): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N_MR1) return false
+        val shortcutManager = getSystemService(ShortcutManager::class.java) ?: return false
+        if (ids.isEmpty()) {
+            shortcutManager.removeAllDynamicShortcuts()
+            return true
+        }
+
+        val infos = ids.mapIndexed { index, actionId ->
+            val title = titles.getOrNull(index) ?: actionId
+            ShortcutInfo.Builder(this, "dyn_" + actionId.replace(Regex("[^A-Za-z0-9_]"), "_"))
+                .setShortLabel(title)
+                .setLongLabel(title)
+                .setIcon(buildShortcutIcon(actionId))
+                .setIntent(createShortcutIntent(actionId))
+                .build()
+        }
+
+        return try {
+            shortcutManager.setDynamicShortcuts(infos)
+            true
+        } catch (e: Exception) {
+            android.util.Log.e("Shortcut", "syncDynamicShortcuts failed: ${e.message}")
+            false
+        }
     }
 
     private fun requestShortcut(
         action: String,
         shortcutId: String,
         shortcutIdsToReplace: List<String>,
-        shortLabelRes: Int,
-        longLabelRes: Int,
+        shortLabel: String,
+        longLabel: String,
     ): ShortcutRequestResult {
         val shortcutIntent = createShortcutIntent(action)
 
@@ -280,8 +369,8 @@ class MainActivity : FlutterActivity() {
                 action = action,
                 shortcutId = shortcutId,
                 shortcutIntent = shortcutIntent,
-                shortLabelRes = shortLabelRes,
-                longLabelRes = longLabelRes,
+                shortLabel = shortLabel,
+                longLabel = longLabel,
             )
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -457,12 +546,12 @@ class MainActivity : FlutterActivity() {
         action: String,
         shortcutId: String,
         shortcutIntent: Intent,
-        shortLabelRes: Int,
-        longLabelRes: Int,
+        shortLabel: String,
+        longLabel: String,
     ): ShortcutInfo {
         return ShortcutInfo.Builder(this, shortcutId)
-            .setShortLabel(getString(shortLabelRes))
-            .setLongLabel(getString(longLabelRes))
+            .setShortLabel(shortLabel)
+            .setLongLabel(longLabel)
             .setIcon(buildShortcutIcon(action))
             .setIntent(shortcutIntent)
             .build()
@@ -530,10 +619,34 @@ class MainActivity : FlutterActivity() {
     private fun createShortcutIntent(shortcutAction: String): Intent {
         return Intent(this, MainActivity::class.java).apply {
             action = Intent.ACTION_VIEW
-            data = Uri.parse("$SHORTCUT_SCHEME://$SHORTCUT_HOST/$shortcutAction")
+            // 新格式：jxucampushub://action/<action-id>（PRD §8 主格式）。
+            data = Uri.parse("$SHORTCUT_SCHEME://$ACTION_HOST/$shortcutAction")
             putExtra(EXTRA_SHORTCUT_ACTION, shortcutAction)
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         }
+    }
+
+    /**
+     * 深链原始串（只允许本 scheme + action/shortcut host）；Dart 侧再经
+     * CampusDeepLink 白名单解析。
+     */
+    private fun extractDeepLinkRaw(intent: Intent?): String? {
+        if (intent == null) return null
+
+        val data = intent.data
+        if (data != null &&
+            data.scheme == SHORTCUT_SCHEME &&
+            (data.host == ACTION_HOST || data.host == SHORTCUT_HOST)
+        ) {
+            return data.toString()
+        }
+
+        val extraAction = intent.getStringExtra(EXTRA_SHORTCUT_ACTION)?.trim()
+        if (!extraAction.isNullOrEmpty()) {
+            return "$SHORTCUT_SCHEME://$ACTION_HOST/$extraAction"
+        }
+
+        return null
     }
 
     private fun extractShortcutAction(intent: Intent?): String? {
@@ -545,7 +658,9 @@ class MainActivity : FlutterActivity() {
         }
 
         val data = intent.data ?: return null
-        if (data.scheme != SHORTCUT_SCHEME || data.host != SHORTCUT_HOST) {
+        if (data.scheme != SHORTCUT_SCHEME ||
+            (data.host != SHORTCUT_HOST && data.host != ACTION_HOST)
+        ) {
             return null
         }
 

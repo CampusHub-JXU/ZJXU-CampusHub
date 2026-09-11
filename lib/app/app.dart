@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../core/logging/app_logger.dart';
 import '../core/network/proxy_mode.dart';
 import '../core/theme/app_preferences_controller.dart';
+import 'app_messenger.dart';
 import 'routes.dart';
 import '../core/theme/text_scale_controller.dart';
 import 'theme.dart';
@@ -44,7 +45,6 @@ class _JXUCampusHubAppState extends State<JXUCampusHubApp> {
       '检测到系统代理或 VPN/TUN；若校务功能异常，请排除本 App 或将 *.zjxu.edu.cn 设为 DIRECT';
 
   final _preferencesController = AppPreferencesController.instance;
-  final _scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
   bool _shouldShowStartupProxyWarning = false;
   bool _startupProxyWarningShown = false;
   bool _startupProxyWarningScheduled = false;
@@ -110,7 +110,7 @@ class _JXUCampusHubAppState extends State<JXUCampusHubApp> {
         return;
       }
 
-      final messenger = _scaffoldMessengerKey.currentState;
+      final messenger = rootScaffoldMessengerKey.currentState;
       if (messenger == null) {
         _scheduleStartupProxyWarning();
         return;
@@ -149,7 +149,7 @@ class _JXUCampusHubAppState extends State<JXUCampusHubApp> {
         filledButtonSoftStyle: prefs.filledButtonSoftStyle,
       ),
       themeMode: prefs.materialThemeMode,
-      scaffoldMessengerKey: _scaffoldMessengerKey,
+      scaffoldMessengerKey: rootScaffoldMessengerKey,
       // Disable the built-in AnimatedTheme transition — it forces every
       // Theme.of(context) dependent to rebuild on every animation frame,
       // causing visible jank during light/dark toggle.

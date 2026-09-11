@@ -4,10 +4,12 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import 'app/app.dart';
+import 'app/app_action_dispatcher.dart';
 import 'app/app_bootstrap_controller.dart';
 import 'app/background_task_dispatcher.dart';
 import 'app/routes.dart';
 import 'core/auth/connect_mode_resolver.dart';
+import 'core/deep_link/campus_deep_link_service.dart';
 import 'core/logging/app_logger.dart';
 import 'core/notice/notice_sync_service.dart';
 import 'core/notice/notice_sync_store.dart';
@@ -76,6 +78,17 @@ Future<void> main() async {
         AppShortcutService.instance.initialize(
           navigationReady: AppBootstrapController.instance.navigationReady,
           navigateToNamedRoute: appRouter.pushNamed,
+        ),
+      );
+      unawaited(
+        AppShortcutService.instance.syncDynamicShortcuts(
+          AppShortcutService.defaultDynamicShortcuts,
+        ),
+      );
+      unawaited(
+        CampusDeepLinkService.instance.initialize(
+          navigationReady: AppBootstrapController.instance.navigationReady,
+          dispatch: AppActionDispatcher.dispatch,
         ),
       );
       unawaited(AppNotificationService.instance.initialize());

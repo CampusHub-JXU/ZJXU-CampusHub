@@ -45,12 +45,11 @@
 
                 <data
                     android:scheme="jxucampushub"
-                    android:host="shortcut"
-                    android:pathPrefix="/campus-card-payment" />
+                    android:host="action" />
+                <!-- 旧格式兼容（至少一个大版本）：jxucampushub://shortcut/<id> -->
                 <data
                     android:scheme="jxucampushub"
-                    android:host="shortcut"
-                    android:pathPrefix="/shuati-practice" />
+                    android:host="shortcut" />
             </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.
