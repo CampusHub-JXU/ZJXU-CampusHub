@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -6,6 +7,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:jxu_campus_hub/core/epay100/epay100_gateway.dart';
 import 'package:jxu_campus_hub/features/campus_card/campus_card_service.dart';
 import 'package:jxu_campus_hub/core/auth/cas_auth_broker.dart';
 import 'package:jxu_campus_hub/core/auth/connect_mode_resolver.dart';
@@ -14,6 +16,33 @@ import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/core/network/dio_client.dart';
 import 'package:jxu_campus_hub/core/network/network_settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+class _FakeGateway implements Epay100Gateway {
+  _FakeGateway({this.body, this.error});
+
+  final String? body;
+  final Object? error;
+  final List<({String method, Map<String, String> data})> calls = [];
+
+  @override
+  Future<String> call(String method, Map<String, String> data) async {
+    calls.add((method: method, data: Map<String, String>.of(data)));
+    if (error != null) throw error!;
+    return body!;
+  }
+
+  @override
+  Future<void> invalidate() async {}
+
+  @override
+  void debugReset() {}
+}
+
+String _balanceEnvelope(Object? balance) => jsonEncode({
+  'code': '200',
+  'msg': 'SUC0000',
+  'data': balance == null ? <String, dynamic>{} : {'balance': balance},
+});
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -130,83 +159,63 @@ void main() {
       ]);
       expect(ZhengfangAuth.instance.mode, ZhengfangMode.webVpn);
     });
+  });
 
-    test(
-      'unreachable gateway preserves cached balance and skips target CAS',
-      () async {
-        service.debugSetCachedBalance(23.5);
-        ZhengfangAuth.instance.debugSetSession(
-          active: true,
-          studentId: '20250001',
-        );
-        ConnectModeResolver.instance.directReachabilityChecker = () async =>
-            true;
-        ConnectModeResolver.instance.targetDirectReachabilityChecker = (
-          _,
-        ) async => false;
-        ConnectModeResolver.instance.webVpnReachabilityChecker = () async =>
-            false;
-        UnifiedAuthService.instance.debugSessionValidator = (_) async =>
-            fail('target CAS must wait for gateway');
-        expect(await service.fetchBalance(forceRefresh: true), isNull);
-        expect(service.cachedBalance, 23.5);
-        expect(UnifiedAuthService.instance.isLoggedIn, isTrue);
-        expect(ZhengfangAuth.instance.isLoggedIn, isTrue);
-      },
-    );
+  group('campus card balance via epay100 gateway', () {
+    test('fetches and caches balance from the cardService RPC', () async {
+      final gateway = _FakeGateway(body: _balanceEnvelope(23.5));
+      service.debugGateway = gateway;
 
-    test('unknown target session preserves cached balance', () async {
-      service.debugSetCachedBalance(23.5);
-      UnifiedAuthService.instance.debugSessionValidator = (_) async => null;
-      expect(await service.fetchBalance(forceRefresh: true), isNull);
+      expect(await service.fetchBalance(forceRefresh: true), 23.5);
       expect(service.cachedBalance, 23.5);
+      expect(gateway.calls.single.method, 'app.yktservice.getBalance');
+      expect(gateway.calls.single.data, isEmpty);
     });
 
-    test('explicitly expired target session clears cached balance', () async {
-      service.debugSetCachedBalance(23.5);
-      UnifiedAuthService.instance.debugSessionValidator = (_) async => false;
+    test('parses a string balance field', () async {
+      service.debugGateway = _FakeGateway(body: _balanceEnvelope('36.80'));
+
+      expect(await service.fetchBalance(forceRefresh: true), 36.8);
+    });
+
+    test('missing balance field returns null without caching', () async {
+      service.debugGateway = _FakeGateway(body: _balanceEnvelope(null));
+
       expect(await service.fetchBalance(forceRefresh: true), isNull);
       expect(service.cachedBalance, isNull);
     });
-  });
 
-  group('CampusCardService.parseBalanceFromPageText', () {
-    test('parses amount from same line with currency sign', () {
-      final balance = service.parseBalanceFromPageText('卡内余额：￥23.50 元');
+    test('session unavailable clears cached balance', () async {
+      service.debugSetCachedBalance(23.5, updatedAt: DateTime(2026, 9, 8));
+      service.debugGateway = _FakeGateway(
+        error: const EpaySessionUnavailableException(),
+      );
 
-      expect(balance, 23.5);
+      expect(await service.fetchBalance(forceRefresh: true), isNull);
+      expect(service.cachedBalance, isNull);
+      expect(service.lastUpdated, isNull);
     });
 
-    test('parses amount near balance label on adjacent line', () {
-      final balance = service.parseBalanceFromPageText('''
-校园卡信息
-18.25 元
-卡内余额
-''');
+    test('gateway failure preserves cached balance', () async {
+      final updatedAt = DateTime(2026, 9, 8);
+      service.debugSetCachedBalance(23.5, updatedAt: updatedAt);
+      service.debugGateway = _FakeGateway(
+        error: const EpayGatewayException('一卡通网关暂时无法响应，请稍后重试'),
+      );
 
-      expect(balance, 18.25);
+      expect(await service.fetchBalance(forceRefresh: true), isNull);
+      expect(service.cachedBalance, 23.5);
+      expect(service.lastUpdated, updatedAt);
     });
 
-    test('returns null when no balance text exists', () {
-      final balance = service.parseBalanceFromPageText('当前页面没有余额字段');
+    test('binding required preserves cached balance', () async {
+      service.debugSetCachedBalance(23.5);
+      service.debugGateway = _FakeGateway(
+        error: const EpayBindingRequiredException(),
+      );
 
-      expect(balance, isNull);
-    });
-
-    test('parses balance directly from returned html', () {
-      final balance = service.parseBalanceFromHtml('''
-        <html><body><section><span>卡内余额</span><strong>￥36.80</strong></section></body></html>
-      ''');
-
-      expect(balance, 36.8);
-    });
-
-    test('returns null when returned html is only a report shell', () {
-      final balance = service.parseBalanceFromHtml('''
-        <html><head><script src="report.js"></script></head><body><div id="app"></div></body></html>
-      ''');
-
-      expect(balance, isNull);
+      expect(await service.fetchBalance(forceRefresh: true), isNull);
+      expect(service.cachedBalance, 23.5);
     });
 
     test('coalesces concurrent balance refreshes', () async {
@@ -245,25 +254,6 @@ void main() {
       expect(service.cachedBalance, isNull);
       expect(service.lastUpdated, isNull);
     });
-
-    test(
-      'stops quietly when the rendered page is released during polling',
-      () async {
-        var finishCalls = 0;
-        var cancelled = false;
-
-        await service.debugPollRenderedBalance(
-          evaluate: () {
-            cancelled = true;
-            return Future<String?>.error(StateError('webview disposed'));
-          },
-          finish: (_) async => finishCalls++,
-          isCancelled: () => cancelled,
-        );
-
-        expect(finishCalls, 0);
-      },
-    );
   });
 }
 
