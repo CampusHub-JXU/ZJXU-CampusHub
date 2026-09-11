@@ -21,6 +21,7 @@ import 'package:jxu_campus_hub/features/exam/exam_service.dart';
 import 'package:jxu_campus_hub/features/grades/grades_service.dart';
 import 'package:jxu_campus_hub/features/home/home_page.dart';
 import 'package:jxu_campus_hub/features/home/home_zone_controller.dart';
+import 'package:jxu_campus_hub/features/home/widget/campus_widget_sync.dart';
 import 'package:jxu_campus_hub/features/home/models/home_presentation.dart';
 import 'package:jxu_campus_hub/features/home/widgets/home_ambient_background.dart';
 import 'package:jxu_campus_hub/features/home/widgets/home_asset_strip.dart';
@@ -48,6 +49,7 @@ void main() {
     );
     HomeZoneController.instance.updateZone(0);
     await ScheduleService.instance.debugClearCache();
+    CampusWidgetSync.instance.debugSetDebounce(Duration.zero);
   });
 
   tearDown(() {

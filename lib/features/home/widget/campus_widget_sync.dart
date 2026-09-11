@@ -15,7 +15,7 @@ class CampusWidgetSync {
 
   static final CampusWidgetSync instance = CampusWidgetSync._();
 
-  static const _debounce = Duration(milliseconds: 800);
+  Duration _debounce = const Duration(milliseconds: 800);
 
   Timer? _timer;
   bool _started = false;
@@ -33,10 +33,21 @@ class CampusWidgetSync {
   }
 
   /// 请求一次（debounced）同步；从缓存读取，不触发网络。
+  ///
+  /// debounce 归零时（测试环境）直接同步，不创建 Timer，避免测试结束后
+  /// 仍有 pending timer 触发 binding 断言。
   void requestSync() {
     _timer?.cancel();
+    _timer = null;
+    if (_debounce == Duration.zero) {
+      unawaited(_sync());
+      return;
+    }
     _timer = Timer(_debounce, () => unawaited(_sync()));
   }
+
+  /// 测试用：调整 debounce 窗口（`Duration.zero` 走同步路径）。
+  void debugSetDebounce(Duration value) => _debounce = value;
 
   /// 立即同步（测试/关键路径用）。
   Future<void> syncNow() => _sync();
