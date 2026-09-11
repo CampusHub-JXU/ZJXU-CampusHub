@@ -28,12 +28,6 @@ enum CasService {
     '?op=h5&viewlet=xxkj%252Fmobile%252Fykt.frm',
   ),
 
-  /// 校园卡消费码（服务大厅业务页入口）。
-  campusCardPayment(
-    'https://newca.zjxu.edu.cn/casClient/login/ydd'
-    '?services=business%2Fydd%2Fwfw',
-  ),
-
   /// 图书馆移动端 SSO 入口（目标 URL 本身即 service）。
   librarySso('https://libapp.zjxu.edu.cn/Info/Thirdparty/ssoFromDingDing'),
 

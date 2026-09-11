@@ -13,7 +13,6 @@ import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/core/epay100/epay100_gateway.dart';
 import 'package:jxu_campus_hub/core/network/dio_client.dart';
 import 'package:jxu_campus_hub/features/campus_card/campus_card_payment_page.dart';
-import 'package:jxu_campus_hub/features/campus_card/campus_card_service.dart';
 import 'package:jxu_campus_hub/features/campus_card/epay_payment_code_service.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_error_view.dart';
 import 'package:jxu_campus_hub/shared/widgets/auth_required_view.dart';
@@ -528,7 +527,6 @@ void main() {
         find.byType(UnifiedAuthProtectedWebViewPage),
       );
       expect(webView.url, EpayPaymentCodeService.officialUrl);
-      expect(webView.url, isNot(CampusCardService.paymentCodeEntryUrl));
       expect(webView.warmUpAsResource, isTrue);
       expect(webView.emulateDingTalkEnvironment, isFalse);
 
