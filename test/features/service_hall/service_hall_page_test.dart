@@ -85,6 +85,11 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
+    // PRD 0.7.0 §27：不再进入即自动拉起微信，改由用户明确点击。
+    await tester.tap(find.byTooltip('在微信中打开'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
     expect(find.text('未能打开页面，可复制链接后到微信中打开'), findsOneWidget);
     expect(find.textContaining('已安装微信'), findsNothing);
     expect(find.widgetWithText(SnackBarAction, '复制链接'), findsOneWidget);

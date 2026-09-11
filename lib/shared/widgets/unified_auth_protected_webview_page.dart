@@ -425,40 +425,12 @@ class UnifiedAuthProtectedWebViewPageState
     }
   }
 
-  Widget? _buildAppBarLeading(BuildContext context) {
-    if (widget.onHomePressed == null) return null;
-
-    final canPop = Navigator.of(context).canPop();
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (canPop)
-          IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () => Navigator.of(context).maybePop(),
-          ),
-        IconButton(
-          icon: const Icon(Icons.home_outlined),
-          tooltip: '返回主页',
-          onPressed: widget.onHomePressed,
-        ),
-      ],
-    );
-  }
-
-  double? _appBarLeadingWidth(BuildContext context) {
-    if (widget.onHomePressed == null) return null;
-    return Navigator.of(context).canPop() ? 96 : 48;
-  }
-
   @override
   Widget build(BuildContext context) {
     if (!_authResolved || _preparationFailed) {
       return Scaffold(
         appBar: AppAppBar(
-          automaticallyImplyLeading: widget.onHomePressed == null,
-          leadingWidth: _appBarLeadingWidth(context),
-          leading: _buildAppBarLeading(context),
+          automaticallyImplyLeading: true,
           title: Text(widget.title),
           actions: widget.appBarActions,
         ),
@@ -491,9 +463,7 @@ class UnifiedAuthProtectedWebViewPageState
 
     return Scaffold(
       appBar: AppAppBar(
-        automaticallyImplyLeading: widget.onHomePressed == null,
-        leadingWidth: _appBarLeadingWidth(context),
-        leading: _buildAppBarLeading(context),
+        automaticallyImplyLeading: true,
         title: Text(widget.title),
         actions: widget.appBarActions,
       ),

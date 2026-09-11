@@ -26,15 +26,7 @@ class ServiceHallPage extends StatefulWidget {
 class _ServiceHallPageState extends State<ServiceHallPage> {
   bool _openingInWeChat = false;
 
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      unawaited(_openInWeChat());
-    });
-  }
-
+  // PRD 0.7.0 §27：移除进入只即自动拉起微信，微信入口改为用户明确点击。
   Future<void> _openInWeChat() async {
     if (_openingInWeChat) return;
     setState(() {

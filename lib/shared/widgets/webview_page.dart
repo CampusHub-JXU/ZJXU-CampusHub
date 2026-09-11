@@ -183,6 +183,10 @@ class _WebViewPageState extends State<WebViewPage> {
     }
   }
 
+  static const _doubleBackWindow = Duration(milliseconds: 450);
+
+  DateTime? _lastBackPressedAt;
+
   Future<bool> _goBackInWebViewIfPossible() async {
     final controller = _controller;
     if (controller == null || _hasError) return false;
@@ -211,10 +215,32 @@ class _WebViewPageState extends State<WebViewPage> {
 
   Future<void> _handleAppBackPressed() async {
     if (!mounted) return;
+
+    // PRD 0.7.0 §37/§38：双击返回（450ms 窗口）直接回首页，取代独立 Home 按钮。
+    final now = DateTime.now();
+    final isDoubleTap =
+        _lastBackPressedAt != null &&
+        now.difference(_lastBackPressedAt!) < _doubleBackWindow;
+    _lastBackPressedAt = now;
+    if (isDoubleTap) {
+      _lastBackPressedAt = null;
+      _returnToCampusHome();
+      return;
+    }
+
     final didGoBack = await _goBackInWebViewIfPossible();
     if (didGoBack) return;
     if (!mounted) return;
     await _popRoute();
+  }
+
+  void _returnToCampusHome() {
+    final onHome = widget.onHomePressed;
+    if (onHome != null) {
+      onHome();
+      return;
+    }
+    Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
   Future<void> _refreshWebViewBackState([
@@ -447,17 +473,14 @@ class _WebViewPageState extends State<WebViewPage> {
   @override
   Widget build(BuildContext context) {
     final canPopRoute = Navigator.of(context).canPop();
-    final showHomeButton = widget.onHomePressed != null;
     final showHistoryBackButton = _canGoBackInWebView;
     final showRouteBackButton = canPopRoute;
     final showBackButton = showRouteBackButton || showHistoryBackButton;
     final showCloseButton = _canGoBackInWebView && canPopRoute;
-    final hasCustomLeading =
-        showBackButton || showCloseButton || showHomeButton;
+    final hasCustomLeading = showBackButton || showCloseButton;
     final leadingButtonCount = [
       if (showBackButton) true,
       if (showCloseButton) true,
-      if (showHomeButton) true,
     ].length;
 
     return PopScope<void>(
@@ -485,12 +508,6 @@ class _WebViewPageState extends State<WebViewPage> {
                         icon: const Icon(Icons.close),
                         tooltip: '关闭',
                         onPressed: _popRoute,
-                      ),
-                    if (showHomeButton)
-                      IconButton(
-                        icon: const Icon(Icons.home_outlined),
-                        tooltip: '返回主页',
-                        onPressed: widget.onHomePressed,
                       ),
                   ],
                 )
