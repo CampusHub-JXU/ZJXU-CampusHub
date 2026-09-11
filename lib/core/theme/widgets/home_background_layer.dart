@@ -117,6 +117,12 @@ class HomeBackgroundLayer extends StatelessWidget {
           alignment.x * constraints.maxWidth * 0.5,
           alignment.y * constraints.maxHeight * 0.5,
         );
+        // 原图保真存储，decode 尺寸在渲染层收敛（PRD §19），
+        // 上限 2160px 避免大屏/高 DPR 一次性解出超大位图。
+        final decodeWidth =
+            (constraints.maxWidth * MediaQuery.devicePixelRatioOf(context))
+                .round()
+                .clamp(1, 2160);
         return Transform.translate(
           offset: offset,
           child: Transform.scale(
@@ -125,6 +131,7 @@ class HomeBackgroundLayer extends StatelessWidget {
               File(path),
               fit: fit.boxFit,
               alignment: Alignment.center,
+              cacheWidth: decodeWidth,
               errorBuilder: (_, _, _) {
                 return errorBuilder?.call(context) ?? const SizedBox.expand();
               },

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -10,6 +11,7 @@ import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_dropdown.dart';
 import '../../../shared/widgets/app_icon_badge.dart';
 import '../../../core/theme/personalization_controller.dart';
+import '../background_editor_page.dart';
 
 /// 首页个性化 — 背景图片 section（PRD FR-4 拆分）。
 ///
@@ -158,34 +160,46 @@ class PersonalizationBackgroundSection extends StatelessWidget {
 
   Future<void> _pickHomeBackgroundImage(BuildContext context) async {
     try {
-      final picker = ImagePicker();
-      final picked = await picker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 2048,
-        maxHeight: 2048,
-        imageQuality: 85,
-      );
+      // 保留原始图像：不设 maxWidth/maxHeight/imageQuality，避免默认重编码
+      // （PRD §19）；decode 尺寸在渲染层控制。
+      final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
       if (picked == null) return;
 
       final appDir = await getApplicationDocumentsDirectory();
       final destDir = Directory('${appDir.path}/home_bg');
       if (!await destDir.exists()) {
         await destDir.create(recursive: true);
-      } else {
-        await for (final file in destDir.list()) {
-          if (file is File) {
-            unawaited(file.delete().catchError((_) => file));
-          }
-        }
       }
 
       final dotIdx = picked.path.lastIndexOf('.');
       final ext = dotIdx == -1 ? '.jpg' : picked.path.substring(dotIdx);
       final destPath =
           '${destDir.path}/bg_${DateTime.now().millisecondsSinceEpoch}$ext';
-
       await File(picked.path).copy(destPath);
-      await PersonalizationController.instance.setBackgroundImagePath(destPath);
+
+      if (!context.mounted) return;
+      final controller = PersonalizationController.instance;
+
+      // 全屏编辑：编辑状态独立，确认前不修改正式设置（PRD §18）。
+      final result = await context.pushNamed<BackgroundEditorResult?>(
+        'background-editor',
+        extra: BackgroundEditorArgs(
+          imagePath: destPath,
+          alignment: controller.backgroundAlignment.value,
+          scale: controller.backgroundScale.value,
+        ),
+      );
+
+      if (result == null) {
+        // 取消：丢弃新副本，保留原正式背景。
+        unawaited(File(destPath).delete().catchError((_) => File(destPath)));
+        return;
+      }
+
+      await controller.setBackgroundImagePath(destPath);
+      await controller.setBackgroundAlignment(result.alignment);
+      await controller.setBackgroundScale(result.scale);
+      await _pruneOtherBackgrounds(destDir, destPath);
 
       if (context.mounted) {
         ScaffoldMessenger.of(context)
@@ -195,6 +209,15 @@ class PersonalizationBackgroundSection extends StatelessWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('选择图片失败，请稍后重试')));
+      }
+    }
+  }
+
+  /// 确认后清理旧背景文件，只保留当前生效的一份。
+  Future<void> _pruneOtherBackgrounds(Directory destDir, String keepPath) async {
+    await for (final file in destDir.list()) {
+      if (file is File && file.path != keepPath) {
+        unawaited(file.delete().catchError((_) => file));
       }
     }
   }

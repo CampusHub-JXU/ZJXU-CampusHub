@@ -22,6 +22,7 @@ import '../features/shuati/shuati_webview_page.dart';
 import '../features/settings/settings_page.dart';
 import '../features/settings/about_page.dart';
 import '../features/settings/appearance_page.dart';
+import '../features/settings/background_editor_page.dart';
 import '../features/home/home_surface_scene.dart';
 import '../features/home/models/example_campus_snapshot.dart';
 import '../features/settings/push_debug_page.dart';
@@ -170,6 +171,17 @@ final GoRouter appRouter = GoRouter(
       path: '/personalization',
       name: 'personalization',
       redirect: (context, state) => '/appearance',
+    ),
+    _appRoute(
+      path: '/background-editor',
+      name: 'background-editor',
+      builder: (context, state) {
+        final args = state.extra;
+        if (args is! BackgroundEditorArgs) {
+          return const SizedBox.shrink();
+        }
+        return BackgroundEditorPage(args: args);
+      },
     ),
     _appRoute(
       path: '/push-debug',
