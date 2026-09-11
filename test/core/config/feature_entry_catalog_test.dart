@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:jxu_campus_hub/core/actions/campus_action_ids.dart';
 import 'package:jxu_campus_hub/core/theme/app_colors.dart';
 import 'package:jxu_campus_hub/core/config/feature_entry_catalog.dart';
 
@@ -37,12 +38,11 @@ void main() {
     );
     expect(library.title, '图书馆');
     expect(library.subtitle, isNotEmpty);
-    expect(library.routeName, 'library');
+    expect(library.primaryActionId, CampusActionIds.libraryOpen);
     expect(library.icon, Icons.local_library_outlined);
     expect(library.accentColor, AppColors.info);
-    expect(library.wechatH5Url, contains('libapp.zjxu.edu.cn'));
-    expect(secondClassroom.wechatH5Url, isNull);
-    expect(changxing.wechatH5Url, isNull);
+    expect(secondClassroom.primaryActionId, CampusActionIds.secondClassroomOpen);
+    expect(changxing.primaryActionId, CampusActionIds.changxingJiadaOpen);
     expect(changxing.accentColor, const Color(0xFF2EA567));
   });
 }

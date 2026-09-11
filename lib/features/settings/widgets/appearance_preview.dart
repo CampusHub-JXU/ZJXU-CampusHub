@@ -3,65 +3,33 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
-import '../../core/theme/app_design_tokens.dart';
-import '../../core/theme/glass_style_controller.dart';
-import '../../core/theme/personalization_controller.dart';
-import '../../core/theme/widgets/home_background_layer.dart';
-import 'widgets/personalization_background_section.dart';
-import 'widgets/personalization_glass_section.dart';
-import 'widgets/personalization_home_section.dart';
-import 'widgets/personalization_shader_section.dart';
-import '../../shared/widgets/app_app_bar.dart';
-import '../../shared/widgets/app_card.dart';
+import '../../../core/theme/app_design_tokens.dart';
+import '../../../core/theme/glass_style_controller.dart';
+import '../../../core/theme/personalization_controller.dart';
+import '../../../core/theme/widgets/home_background_layer.dart';
+import '../../../shared/widgets/app_card.dart';
 
-class PersonalizationPage extends StatefulWidget {
-  const PersonalizationPage({super.key});
+/// 外观页顶部的真实比例首页预览（PRD 0.7.0 §16/§17）。
+///
+/// 从原 `PersonalizationPage` 抽出的可复用预览：背景走真实
+/// [HomeBackgroundLayer]，卡片/头部按当前 Glass 配置合成。
+/// TODO(0.7.0-B2): 换成与真实 Home 共用的 HomeSurfaceScene。
+class AppearancePreview extends StatefulWidget {
+  const AppearancePreview({super.key, this.maxHeight = 320});
+
+  final double maxHeight;
 
   @override
-  State<PersonalizationPage> createState() => _PersonalizationPageState();
+  State<AppearancePreview> createState() => _AppearancePreviewState();
 }
 
-class _PersonalizationPageState extends State<PersonalizationPage> {
-  bool _previewDragging = false;
+class _AppearancePreviewState extends State<AppearancePreview> {
   double _gestureStartScale = 1.0;
   Alignment _gestureStartAlignment = Alignment.center;
   Offset _gestureStartFocalPoint = Offset.zero;
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppAppBar(title: const Text('首页个性化')),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: _buildPreviewSection(context, maxHeight: 320),
-          ),
-          Expanded(
-            child: ListView(
-              physics: _previewDragging
-                  ? const NeverScrollableScrollPhysics()
-                  : const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              children: const [
-                PersonalizationHomeSection(),
-                SizedBox(height: 16),
-                PersonalizationBackgroundSection(),
-                SizedBox(height: 16),
-                PersonalizationShaderSection(),
-                SizedBox(height: 16),
-                PersonalizationGlassSection(),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // --- Preview ---
-
-  Widget _buildPreviewSection(BuildContext context, {double maxHeight = 520}) {
     return ValueListenableBuilder<String?>(
       valueListenable: PersonalizationController.instance.backgroundImagePath,
       builder: (context, bgPath, _) {
@@ -106,21 +74,18 @@ class _PersonalizationPageState extends State<PersonalizationPage> {
                     final frameSize = _homePreviewFrameSize(
                       context,
                       constraints.maxWidth,
-                      maxHeight: maxHeight,
                     );
-                    final frameWidth = frameSize.width;
-                    final frameHeight = frameSize.height;
                     return Center(
                       child: SizedBox(
-                        width: frameWidth,
-                        height: frameHeight,
+                        width: frameSize.width,
+                        height: frameSize.height,
                         child: ClipRRect(
                           borderRadius: AppRadius.tileBorder,
                           child: DecoratedBox(
                             decoration: BoxDecoration(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .surfaceContainerHigh,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.surfaceContainerHigh,
                               border: Border.all(
                                 color: Theme.of(context)
                                     .colorScheme
@@ -134,7 +99,6 @@ class _PersonalizationPageState extends State<PersonalizationPage> {
                                 _gestureStartScale = scale;
                                 _gestureStartAlignment = alignment;
                                 _gestureStartFocalPoint = details.focalPoint;
-                                setState(() => _previewDragging = true);
                               },
                               onScaleUpdate: (details) {
                                 _updatePreviewTransform(
@@ -144,7 +108,6 @@ class _PersonalizationPageState extends State<PersonalizationPage> {
                                 );
                               },
                               onScaleEnd: (_) {
-                                setState(() => _previewDragging = false);
                                 PersonalizationController.instance
                                     .setBackgroundAlignment(
                                       PersonalizationController
@@ -221,11 +184,7 @@ class _PersonalizationPageState extends State<PersonalizationPage> {
     );
   }
 
-  Size _homePreviewFrameSize(
-    BuildContext context,
-    double maxWidth, {
-    double maxHeight = 520,
-  }) {
+  Size _homePreviewFrameSize(BuildContext context, double maxWidth) {
     final media = MediaQuery.of(context);
     const bottomNavigationHeight = 80.0;
     final visibleHeight = math.max(
@@ -237,7 +196,7 @@ class _PersonalizationPageState extends State<PersonalizationPage> {
     );
     final aspect = media.size.width / visibleHeight;
     final frameWidth = maxWidth;
-    final frameHeight = math.min(maxHeight, frameWidth / aspect);
+    final frameHeight = math.min(widget.maxHeight, frameWidth / aspect);
     return Size(frameHeight * aspect, frameHeight);
   }
 

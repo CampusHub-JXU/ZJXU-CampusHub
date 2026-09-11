@@ -4,7 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:jxu_campus_hub/core/theme/app_preferences_controller.dart';
 import 'package:jxu_campus_hub/core/theme/app_theme_controller.dart';
-import 'package:jxu_campus_hub/features/settings/theme_settings_page.dart';
+import 'package:jxu_campus_hub/features/settings/appearance_page.dart';
 
 import '../../helpers/pump_app.dart';
 
@@ -19,10 +19,19 @@ void main() {
     AppThemeController.instance.debugReset();
   });
 
-  testWidgets('自定义主题色弹层保存后应切换到 custom 色源', (tester) async {
-    await pumpPage(tester, const ThemeSettingsPage());
+  testWidgets('外观页合并主题与个性化区块', (tester) async {
+    await pumpPage(tester, const AppearancePage());
 
-    await tester.drag(find.byType(ListView), const Offset(0, -280));
+    expect(find.text('外观与个性化'), findsOneWidget);
+    expect(find.text('主题模式'), findsOneWidget);
+  });
+
+  testWidgets('自定义主题色弹层保存后应切换到 custom 色源', (tester) async {
+    await pumpPage(tester, const AppearancePage());
+
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('custom-theme-color-button')),
+    );
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey('custom-theme-color-button')));
     await tester.pumpAndSettle();

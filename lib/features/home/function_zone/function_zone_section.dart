@@ -1,13 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:go_router/go_router.dart';
 
+import '../../../core/actions/campus_action_executor.dart';
 import '../../../core/config/feature_entry_catalog.dart';
 import '../../../core/theme/app_design_tokens.dart';
 import '../../../core/theme/app_theme_controller.dart';
-import '../../../core/wechat/wechat_launcher.dart';
 import '../../../features/service_hub/service_hub_usage_store.dart';
 import '../../../shared/widgets/app_icon_badge.dart';
 import '../../../shared/widgets/app_tile_surface.dart';
@@ -70,45 +68,7 @@ class _FunctionZoneSectionState extends State<FunctionZoneSection> {
   Future<void> _openEntry(FeatureEntryDefinition entry) async {
     await _usageStore.recordVisit(entry.id);
     if (!mounted) return;
-
-    final wechatH5Url = entry.wechatH5Url;
-    if (wechatH5Url != null) {
-      final opened = await WechatLauncher.instance.openUrl(wechatH5Url);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          SnackBar(
-            content: Text(
-              opened ? '已跳转到微信，请在微信中打开${entry.title}' : '未能打开页面，可复制链接后到微信中打开',
-            ),
-            action: SnackBarAction(
-              label: '复制链接',
-              onPressed: () {
-                if (!mounted) return;
-                unawaited(_copyLink(wechatH5Url));
-              },
-            ),
-          ),
-        );
-      return;
-    }
-
-    await context.pushNamed(entry.routeName);
-  }
-
-  Future<void> _copyLink(String url) async {
-    var copied = false;
-    try {
-      await Clipboard.setData(ClipboardData(text: url));
-      copied = true;
-    } on PlatformException {
-      copied = false;
-    }
-    if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(copied ? '链接已复制' : '复制失败')));
+    await CampusActionExecutor.instance.execute(context, entry.primaryActionId);
   }
 
   Future<void> _togglePinned(FeatureEntryDefinition entry) async {

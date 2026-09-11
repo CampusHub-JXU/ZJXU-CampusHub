@@ -1,11 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
+import '../../core/actions/campus_action_executor.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/theme/app_design_tokens.dart';
-import '../../core/wechat/wechat_launcher.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_card.dart';
 import '../../shared/widgets/app_dropdown.dart';
@@ -243,18 +242,12 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
     _openingInWeChat = true;
     AppLogger.instance.webview(LogLevel.info, '第二课堂打开微信授权页: $url');
     try {
-      final opened = await WechatLauncher.instance.openUrl(url);
       if (!mounted) return;
-
-      _showSnackBar(
-        opened ? successMessage : '未能打开页面，可复制链接后到微信中打开',
-        action: SnackBarAction(
-          label: '复制链接',
-          onPressed: () {
-            if (!mounted) return;
-            unawaited(_copyLink(url));
-          },
-        ),
+      await CampusActionExecutor.instance.executeWechat(
+        context,
+        url: url,
+        title: '第二课堂',
+        successMessage: successMessage,
       );
     } finally {
       _openingInWeChat = false;
@@ -469,18 +462,6 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message), action: action));
-  }
-
-  Future<void> _copyLink(String url) async {
-    var copied = false;
-    try {
-      await Clipboard.setData(ClipboardData(text: url));
-      copied = true;
-    } on PlatformException {
-      copied = false;
-    }
-    if (!mounted) return;
-    _showSnackBar(copied ? '链接已复制' : '复制失败');
   }
 
   @override

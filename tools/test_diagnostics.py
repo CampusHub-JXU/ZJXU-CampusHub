@@ -105,106 +105,146 @@ def extract_route_names(routes_source: str) -> set[str]:
     return set(re.findall(r"\bname:\s*'([^']+)'", routes_source))
 
 
+def extract_action_id_constants(ids_source: str) -> dict[str, str]:
+    return {
+        match.group(1): match.group(2)
+        for match in re.finditer(r"static const (\w+)\s*=\s*'([^']+)'", ids_source)
+    }
+
+
 def extract_feature_entries(catalog_source: str) -> list[dict[str, str]]:
     entries: list[dict[str, str]] = []
     for match in re.finditer(r"FeatureEntryDefinition\s*\((.*?)\n\s*\)", catalog_source, re.S):
         block = match.group(1)
         entry_id = re.search(r"\bid:\s*'([^']+)'", block)
-        route_name = re.search(r"\brouteName:\s*'([^']+)'", block)
-        title = re.search(r"\btitle:\s*'([^']+)'", block)
+        primary_action = re.search(r"\bprimaryActionId:\s*'([^']+)'", block)
         entries.append(
             {
                 "id": entry_id.group(1) if entry_id else "",
-                "routeName": route_name.group(1) if route_name else "",
-                "title": title.group(1) if title else "",
+                "primaryActionId": primary_action.group(1) if primary_action else "",
             }
         )
     return entries
 
 
+def extract_registered_actions(
+    registry_source: str, id_constants: dict[str, str]
+) -> dict[str, str]:
+    """Map action id -> RouteActionTarget route name ('' for non-route targets)."""
+    actions: dict[str, str] = {}
+    for match in re.finditer(r"CampusAction\((.*?)\n\s*\)", registry_source, re.S):
+        block = match.group(1)
+        id_ref = re.search(r"\bid:\s*CampusActionIds\.(\w+)", block)
+        id_literal = re.search(r"\bid:\s*'([^']+)'", block)
+        if id_ref:
+            action_id = id_constants.get(id_ref.group(1), "")
+        elif id_literal:
+            action_id = id_literal.group(1)
+        else:
+            continue
+        if not action_id:
+            continue
+        route = re.search(r"RouteActionTarget\('([^']+)'\)", block)
+        actions[action_id] = route.group(1) if route else ""
+    return actions
+
+
 def check_route_catalog_consistency(repo: RepoView) -> list[DiagnosticIssue]:
-    routes_path = repo.root / "lib/app/routes.dart"
     catalog_path = repo.root / "lib/core/config/feature_entry_catalog.dart"
-    if not routes_path.exists() or not catalog_path.exists():
+    ids_path = repo.root / "lib/core/actions/campus_action_ids.dart"
+    registry_path = repo.root / "lib/core/actions/campus_action_registry.dart"
+    routes_path = repo.root / "lib/app/routes.dart"
+
+    required = (catalog_path, ids_path, registry_path, routes_path)
+    if any(not path.exists() for path in required):
         return [
             DiagnosticIssue(
                 "error",
                 "route_catalog_consistency",
-                "Missing route or feature catalog file.",
-                help="Both lib/app/routes.dart and lib/core/config/feature_entry_catalog.dart are required.",
+                "Missing feature catalog, action registry, or routing file.",
+                help=(
+                    "lib/core/config/feature_entry_catalog.dart, "
+                    "lib/core/actions/campus_action_ids.dart, "
+                    "lib/core/actions/campus_action_registry.dart and "
+                    "lib/app/routes.dart are all required."
+                ),
             )
         ]
 
-    routes_source = routes_path.read_text(encoding="utf-8")
-    catalog_source = catalog_path.read_text(encoding="utf-8")
-    route_names = extract_route_names(routes_source)
-    entries = extract_feature_entries(catalog_source)
-    issues: list[DiagnosticIssue] = []
+    route_names = extract_route_names(routes_path.read_text(encoding="utf-8"))
+    id_constants = extract_action_id_constants(ids_path.read_text(encoding="utf-8"))
+    actions = extract_registered_actions(
+        registry_path.read_text(encoding="utf-8"), id_constants
+    )
+    entries = extract_feature_entries(catalog_path.read_text(encoding="utf-8"))
+    catalog_rel = repo.relative(catalog_path)
+    registry_rel = repo.relative(registry_path)
 
-    seen_ids: dict[str, int] = {}
-    seen_routes: dict[str, int] = {}
+    issues: list[DiagnosticIssue] = []
+    seen_ids: set[str] = set()
     for entry in entries:
         entry_id = entry["id"]
-        route_name = entry["routeName"]
+        action_id = entry["primaryActionId"]
         if not entry_id:
             issues.append(
                 DiagnosticIssue(
                     "error",
                     "route_catalog_consistency",
                     "Feature entry is missing id.",
-                    repo.relative(catalog_path),
+                    catalog_rel,
                 )
             )
-        elif entry_id in seen_ids:
+            continue
+        if entry_id in seen_ids:
             issues.append(
                 DiagnosticIssue(
                     "error",
                     "route_catalog_consistency",
                     f"Duplicate feature entry id: {entry_id}",
-                    repo.relative(catalog_path),
+                    catalog_rel,
                     line_at(catalog_path, f"id: '{entry_id}'"),
                     "Feature ids must remain stable and unique for caching, sorting, and UI tests.",
                 )
             )
-        else:
-            seen_ids[entry_id] = 1
+        seen_ids.add(entry_id)
 
-        if not route_name:
+        if not action_id:
             issues.append(
                 DiagnosticIssue(
                     "error",
                     "route_catalog_consistency",
-                    f"Feature entry {entry_id or '<unknown>'} is missing routeName.",
-                    repo.relative(catalog_path),
-                    line_at(catalog_path, f"id: '{entry_id}'") if entry_id else None,
+                    f"Feature entry {entry_id} is missing primaryActionId.",
+                    catalog_rel,
+                    line_at(catalog_path, f"id: '{entry_id}'"),
+                    "Catalog entries must reference a CampusAction id instead of a route.",
                 )
             )
             continue
 
-        if route_name not in route_names:
+        if action_id not in actions:
             issues.append(
                 DiagnosticIssue(
                     "error",
                     "route_catalog_consistency",
-                    f"Feature entry {entry_id} points to missing route '{route_name}'.",
-                    repo.relative(catalog_path),
-                    line_at(catalog_path, f"routeName: '{route_name}'"),
-                    "Add a matching GoRoute name in lib/app/routes.dart or fix the catalog routeName.",
+                    f"Feature entry {entry_id} references unregistered CampusAction '{action_id}'.",
+                    catalog_rel,
+                    line_at(catalog_path, f"primaryActionId: '{action_id}'"),
+                    "Register the action in lib/core/actions/campus_action_registry.dart.",
                 )
             )
 
-        if route_name in seen_routes:
+    for action_id, route_name in actions.items():
+        if route_name and route_name not in route_names:
             issues.append(
                 DiagnosticIssue(
-                    "warning",
+                    "error",
                     "route_catalog_consistency",
-                    f"Multiple feature entries point to route '{route_name}'.",
-                    repo.relative(catalog_path),
-                    line_at(catalog_path, f"routeName: '{route_name}'"),
-                    "This is allowed only when the duplicate entries intentionally expose the same destination.",
+                    f"CampusAction {action_id} points to missing route '{route_name}'.",
+                    registry_rel,
+                    line_at(registry_path, f"RouteActionTarget('{route_name}')"),
+                    "Add a matching GoRoute name in lib/app/routes.dart or fix the action target.",
                 )
             )
-        seen_routes[route_name] = 1
 
     return issues
 
@@ -546,6 +586,7 @@ def run_self_test() -> None:
         root = Path(temp)
         (root / "lib/app").mkdir(parents=True)
         (root / "lib/core/config").mkdir(parents=True)
+        (root / "lib/core/actions").mkdir(parents=True)
         (root / "lib/features/demo").mkdir(parents=True)
         (root / "test/features/demo").mkdir(parents=True)
         (root / "lib/app/routes.dart").write_text(
@@ -553,11 +594,29 @@ def run_self_test() -> None:
             "void nav(context) => context.pushNamed('missing-route');\n",
             encoding="utf-8",
         )
+        (root / "lib/core/actions/campus_action_ids.dart").write_text(
+            "abstract final class CampusActionIds {\n"
+            "  static const demoOpen = 'demo.open';\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        (root / "lib/core/actions/campus_action_registry.dart").write_text(
+            "class CampusActionRegistry {\n"
+            "  static List<CampusAction> _build() => [\n"
+            "    CampusAction(\n"
+            "      id: CampusActionIds.demoOpen,\n"
+            "      title: 'Demo',\n"
+            "      target: RouteActionTarget('missing-route'),\n"
+            "    ),\n"
+            "  ];\n"
+            "}\n",
+            encoding="utf-8",
+        )
         (root / "lib/core/config/feature_entry_catalog.dart").write_text(
             "FeatureEntryDefinition(\n"
             "  id: 'demo',\n"
             "  title: 'Demo',\n"
-            "  routeName: 'missing-route',\n"
+            "  primaryActionId: 'demo.open',\n"
             ")\n",
             encoding="utf-8",
         )

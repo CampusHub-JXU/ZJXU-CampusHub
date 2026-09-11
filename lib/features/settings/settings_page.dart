@@ -100,18 +100,10 @@ class SettingsPage extends StatelessWidget {
             children: [
               _SettingsRow(
                 icon: Icons.palette_outlined,
-                title: '主题与外观',
-                subtitle: '主题模式、颜色、纯黑模式、文本缩放',
+                title: '外观与个性化',
+                subtitle: '主题、颜色、背景、材质与显示',
                 trailing: _chevron(context),
-                onTap: () => context.pushNamed('theme-settings'),
-              ),
-              const _Hairline(),
-              _SettingsRow(
-                icon: Icons.wallpaper_outlined,
-                title: '首页个性化',
-                subtitle: '背景图片、Shader、毛玻璃效果',
-                trailing: _chevron(context),
-                onTap: () => context.pushNamed('personalization'),
+                onTap: () => context.pushNamed('appearance'),
               ),
             ],
           ),

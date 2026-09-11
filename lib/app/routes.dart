@@ -21,9 +21,8 @@ import '../features/exam/exam_page.dart';
 import '../features/shuati/shuati_webview_page.dart';
 import '../features/settings/settings_page.dart';
 import '../features/settings/about_page.dart';
-import '../features/settings/personalization_page.dart';
+import '../features/settings/appearance_page.dart';
 import '../features/settings/push_debug_page.dart';
-import '../features/settings/theme_settings_page.dart';
 import '../features/dorm_electricity/dorm_electricity_page.dart';
 import '../features/dorm_electricity/dorm_electricity_settings_page.dart';
 import '../features/second_classroom/second_classroom_page.dart';
@@ -147,19 +146,24 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const SettingsPage(),
     ),
     _appRoute(
-      path: '/personalization',
-      name: 'personalization',
-      builder: (context, state) => const PersonalizationPage(),
+      path: '/appearance',
+      name: 'appearance',
+      builder: (context, state) => const AppearancePage(),
     ),
     GoRoute(
       path: '/theme',
       name: 'theme',
-      redirect: (context, state) => '/theme-settings',
+      redirect: (context, state) => '/appearance',
     ),
-    _appRoute(
+    GoRoute(
       path: '/theme-settings',
       name: 'theme-settings',
-      builder: (context, state) => const ThemeSettingsPage(),
+      redirect: (context, state) => '/appearance',
+    ),
+    GoRoute(
+      path: '/personalization',
+      name: 'personalization',
+      redirect: (context, state) => '/appearance',
     ),
     _appRoute(
       path: '/push-debug',

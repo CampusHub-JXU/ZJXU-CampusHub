@@ -1,21 +1,22 @@
 import 'package:flutter/material.dart';
 
-import '../../core/theme/app_design_tokens.dart';
+import '../../../core/theme/app_design_tokens.dart';
+import '../../../core/theme/app_preferences_controller.dart';
+import '../../../core/theme/app_theme_palette.dart';
+import '../../../core/theme/text_scale_controller.dart';
+import 'hsv_color_picker_sheet.dart';
 
-import '../../core/theme/app_preferences_controller.dart';
-import '../../core/theme/text_scale_controller.dart';
-import '../../core/theme/app_theme_palette.dart';
-import 'widgets/hsv_color_picker_sheet.dart';
-import '../../shared/widgets/app_app_bar.dart';
-
-class ThemeSettingsPage extends StatefulWidget {
-  const ThemeSettingsPage({super.key});
+/// 「外观与个性化」页的主题区（PRD 0.7.0 §16）。
+///
+/// 从原 `ThemeSettingsPage` 抽出的无 Scaffold 内容块，供外观页与其他容器复用。
+class ThemeSettingsSections extends StatefulWidget {
+  const ThemeSettingsSections({super.key});
 
   @override
-  State<ThemeSettingsPage> createState() => _ThemeSettingsPageState();
+  State<ThemeSettingsSections> createState() => _ThemeSettingsSectionsState();
 }
 
-class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
+class _ThemeSettingsSectionsState extends State<ThemeSettingsSections> {
   bool _textScaleEnabled = false;
 
   AppPreferencesController get _ctrl => AppPreferencesController.instance;
@@ -34,66 +35,55 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
       animation: _ctrl,
       builder: (context, _) {
         final prefs = _ctrl.state;
-        return Scaffold(
-          appBar: AppAppBar(
-            title: const Text('主题'),
-            leading: const BackButton(),
-          ),
-          body: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
-            children: [
-              // ── 主题模式 ──
-              const _SectionTitle(
-                icon: Icons.settings_brightness,
-                title: '主题模式',
-              ),
-              const SizedBox(height: 8),
-              _buildModeButtons(prefs),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // ── 主题模式 ──
+            const _SectionTitle(icon: Icons.settings_brightness, title: '主题模式'),
+            const SizedBox(height: 8),
+            _buildModeButtons(prefs),
 
-              const SizedBox(height: 32),
-              // ── 主题色彩 ──
-              const _SectionTitle(icon: Icons.palette_outlined, title: '主题色彩'),
-              const SizedBox(height: 8),
-              _buildPaletteGrid(prefs),
+            const SizedBox(height: 32),
+            // ── 主题色彩 ──
+            const _SectionTitle(icon: Icons.palette_outlined, title: '主题色彩'),
+            const SizedBox(height: 8),
+            _buildPaletteGrid(prefs),
 
-              const SizedBox(height: 32),
-              // ── 纯黑模式 ──
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                secondary: const Icon(Icons.contrast),
-                title: const Text('纯黑模式'),
-                subtitle: const Text('深色主题使用纯黑背景，适合 OLED 屏幕省电'),
-                value: prefs.pureBlack,
-                onChanged: _ctrl.setPureBlack,
-              ),
+            const SizedBox(height: 16),
+            // ── 纯黑模式 ──
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              secondary: const Icon(Icons.contrast),
+              title: const Text('纯黑模式'),
+              subtitle: const Text('深色主题使用纯黑背景，适合 OLED 屏幕省电'),
+              value: prefs.pureBlack,
+              onChanged: _ctrl.setPureBlack,
+            ),
 
-              const SizedBox(height: 8),
-              // ── 强调色按钮样式 ──
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                secondary: const Icon(Icons.smart_button_outlined),
-                title: const Text('柔和强调色按钮'),
-                subtitle: const Text('强调按钮使用主题柔和色块，降低视觉强度'),
-                value: prefs.filledButtonSoftStyle,
-                onChanged: _ctrl.setFilledButtonSoftStyle,
-              ),
+            const SizedBox(height: 8),
+            // ── 强调色按钮样式 ──
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              secondary: const Icon(Icons.smart_button_outlined),
+              title: const Text('柔和强调色按钮'),
+              subtitle: const Text('强调按钮使用主题柔和色块，降低视觉强度'),
+              value: prefs.filledButtonSoftStyle,
+              onChanged: _ctrl.setFilledButtonSoftStyle,
+            ),
 
-              const SizedBox(height: 8),
-              // ── 文本缩放 ──
-              _buildTextScale(prefs),
+            const SizedBox(height: 8),
+            // ── 文本缩放 ──
+            _buildTextScale(prefs),
 
-              const SizedBox(height: 32),
-              // ── 首页卡片文字 ──
-              const _SectionTitle(
-                icon: Icons.format_color_text_outlined,
-                title: '首页卡片文字',
-              ),
-              const SizedBox(height: 8),
-              _buildHomeTextColor(prefs),
-
-              const SizedBox(height: 40),
-            ],
-          ),
+            const SizedBox(height: 32),
+            // ── 首页卡片文字 ──
+            const _SectionTitle(
+              icon: Icons.format_color_text_outlined,
+              title: '首页卡片文字',
+            ),
+            const SizedBox(height: 8),
+            _buildHomeTextColor(prefs),
+          ],
         );
       },
     );

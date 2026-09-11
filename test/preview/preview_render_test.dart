@@ -20,9 +20,8 @@ import 'package:jxu_campus_hub/features/home/home_page.dart';
 import 'package:jxu_campus_hub/features/my/my_page.dart';
 import 'package:jxu_campus_hub/features/notification_center/notification_center_page.dart';
 
-import 'package:jxu_campus_hub/features/settings/personalization_page.dart';
+import 'package:jxu_campus_hub/features/settings/appearance_page.dart';
 import 'package:jxu_campus_hub/features/settings/settings_page.dart';
-import 'package:jxu_campus_hub/features/settings/theme_settings_page.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_app_bar.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_card.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_dropdown.dart';
@@ -317,20 +316,8 @@ void main() {
     await renderPage(tester, 'page_settings_light', const SettingsPage());
   });
 
-  previewTest('page_personalization_light', (tester) async {
-    await renderPage(
-      tester,
-      'page_personalization_light',
-      const PersonalizationPage(),
-    );
-  });
-
-  previewTest('page_theme_settings_light', (tester) async {
-    await renderPage(
-      tester,
-      'page_theme_settings_light',
-      const ThemeSettingsPage(),
-    );
+  previewTest('page_appearance_light', (tester) async {
+    await renderPage(tester, 'page_appearance_light', const AppearancePage());
   });
 
   // 说明：GradesPage / SchedulePage 在离线场景下会遗留网络重试 Timer，

@@ -1,15 +1,12 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/app_bootstrap_controller.dart';
+import '../../core/actions/campus_action_executor.dart';
 import '../../core/config/app_config.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/shortcut/app_shortcut_service.dart';
 import '../../core/theme/app_design_tokens.dart';
-import '../../core/wechat/wechat_launcher.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_card.dart';
 import '../../shared/widgets/app_icon_badge.dart';
@@ -360,52 +357,14 @@ class _CampusCardPageState extends State<CampusCardPage> {
 
   Future<void> _openRechargePage() async {
     if (!mounted) return;
-    final url = AppConfig.xiaofubaoRechargeUri.toString();
-    final opened = await WechatLauncher.instance.openUrl(url);
-    if (!mounted) return;
-
-    var copied = false;
-    if (!opened) {
-      copied = await _copyLink(url);
-      if (!mounted) return;
-    }
-
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(
-            opened
-                ? '已跳转到微信，请在微信中完成充值'
-                : copied
-                ? '未能打开页面，充值链接已复制，请到微信中打开'
-                : '未能打开页面，可复制链接后到微信中打开',
-          ),
-          action: SnackBarAction(
-            label: '复制链接',
-            onPressed: () {
-              if (!mounted) return;
-              unawaited(_copyLink(url, showFeedback: true));
-            },
-          ),
-        ),
-      );
-  }
-
-  Future<bool> _copyLink(String url, {bool showFeedback = false}) async {
-    var copied = false;
-    try {
-      await Clipboard.setData(ClipboardData(text: url));
-      copied = true;
-    } on PlatformException {
-      copied = false;
-    }
-    if (showFeedback && mounted) {
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text(copied ? '链接已复制' : '复制失败')));
-    }
-    return copied;
+    await CampusActionExecutor.instance.executeWechat(
+      context,
+      url: AppConfig.xiaofubaoRechargeUri.toString(),
+      title: '一卡通充值',
+      successMessage: '已跳转到微信，请在微信中完成充值',
+      failureMessage: '未能打开页面，充值链接已复制，请到微信中打开',
+      autoCopyOnFailure: true,
+    );
   }
 
   Future<void> _requestPaymentShortcut() async {

@@ -1,12 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/actions/campus_action_executor.dart';
 import '../../core/auth/cas_auth_broker.dart';
 import '../../core/logging/app_logger.dart';
-import '../../core/wechat/wechat_launcher.dart';
 import '../../shared/widgets/unified_auth_protected_webview_page.dart';
 
 class ServiceHallPage extends StatefulWidget {
@@ -47,43 +46,17 @@ class _ServiceHallPageState extends State<ServiceHallPage> {
       '服务大厅尝试在微信中打开: ${ServiceHallPage.homeUrl}',
     );
 
-    final opened = await WechatLauncher.instance.openUrl(
-      ServiceHallPage.homeUrl,
+    await CampusActionExecutor.instance.executeWechat(
+      context,
+      url: ServiceHallPage.homeUrl,
+      title: '服务大厅',
+      successMessage: '已打开微信，请在学校公众号服务中继续',
     );
     if (!mounted) return;
 
     setState(() {
       _openingInWeChat = false;
     });
-
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(opened ? '已打开微信，请在学校公众号服务中继续' : '未能打开页面，可复制链接后到微信中打开'),
-          action: SnackBarAction(
-            label: '复制链接',
-            onPressed: () {
-              if (!mounted) return;
-              unawaited(_copyLink(ServiceHallPage.homeUrl));
-            },
-          ),
-        ),
-      );
-  }
-
-  Future<void> _copyLink(String url) async {
-    var copied = false;
-    try {
-      await Clipboard.setData(ClipboardData(text: url));
-      copied = true;
-    } on PlatformException {
-      copied = false;
-    }
-    if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(copied ? '链接已复制' : '复制失败')));
   }
 
   @override
