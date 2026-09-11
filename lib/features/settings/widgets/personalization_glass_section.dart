@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_design_tokens.dart';
 import '../../../core/theme/glass_style_controller.dart';
+import '../../../core/theme/surface_material.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_icon_badge.dart';
 import '../../../core/theme/personalization_controller.dart';
@@ -33,6 +34,8 @@ class PersonalizationGlassSection extends StatelessWidget {
             borderRadius: AppRadius.cardBorder,
             child: Column(
               children: [
+                _buildMaterialStyleSelector(context, style),
+                const _Hairline(),
                 ValueListenableBuilder<bool>(
                   valueListenable: style.enabled,
                   builder: (context, glassEnabled, _) {
@@ -70,9 +73,9 @@ class PersonalizationGlassSection extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
           child: Text(
-            // 与新语义同步：模糊强度滑条是全局唯一输入源，
-            // 同时作用于顶栏/底栏/弹层/玻璃卡片。
-            '全局材质参数：模糊强度与透明度统一作用于顶栏、底部导航、弹层与玻璃卡片',
+            // 与新语义同步：材质风格决定渲染配方，
+            // 模糊强度滑条同时作用于顶栏/底栏/弹层/玻璃卡片。
+            '材质风格决定表面渲染方式；模糊强度与透明度统一作用于顶栏、底部导航、弹层与玻璃卡片',
             style: TextStyle(
               fontSize: 12,
               color: cs.onSurfaceVariant,
@@ -81,6 +84,61 @@ class PersonalizationGlassSection extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildMaterialStyleSelector(
+    BuildContext context,
+    GlassStyleController style,
+  ) {
+    final cs = Theme.of(context).colorScheme;
+    return ValueListenableBuilder<SurfaceMaterialStyle>(
+      valueListenable: style.materialStyle,
+      builder: (context, selected, _) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '表面材质',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: cs.onSurface,
+                  height: 1.2,
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: SegmentedButton<SurfaceMaterialStyle>(
+                  showSelectedIcon: false,
+                  segments: [
+                    for (final option in SurfaceMaterialStyle.values)
+                      ButtonSegment<SurfaceMaterialStyle>(
+                        value: option,
+                        label: Text(option.label),
+                      ),
+                  ],
+                  selected: {selected},
+                  onSelectionChanged: (selection) =>
+                      style.setMaterialStyle(selection.first),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                selected.description,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: cs.onSurfaceVariant,
+                  height: 1.3,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 

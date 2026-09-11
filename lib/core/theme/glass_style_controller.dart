@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'surface_material.dart';
+
 /// 玻璃材质等级。
 ///
 /// 同一屏的模糊层数量直接决定 GPU 开销，等级制用于约束用量：
@@ -27,6 +29,11 @@ class GlassStyleController {
   static const _keyEnabled = 'glass_material_enabled_v1';
   static const _keyBlurSigma = 'glass_blur_sigma_v1';
   static const _keyTintOpacity = 'glass_tint_opacity_v1';
+  static const _keyMaterialStyle = 'glass_material_style_v1';
+
+  /// 当前表面材质风格（实色/玻璃/亚克力/云母）。渲染配方见 [MaterialRecipe]。
+  final ValueNotifier<SurfaceMaterialStyle> materialStyle =
+      ValueNotifier<SurfaceMaterialStyle>(SurfaceMaterialStyle.glass);
 
   /// 玻璃材质总开关。关闭后所有玻璃表面降级为实色，不产生 BackdropFilter。
   final ValueNotifier<bool> enabled = ValueNotifier<bool>(true);
@@ -68,7 +75,16 @@ class GlassStyleController {
       0.2,
       1.0,
     );
+    materialStyle.value = SurfaceMaterialStyle.fromName(
+      prefs.getString(_keyMaterialStyle),
+    );
     _restored = true;
+  }
+
+  Future<void> setMaterialStyle(SurfaceMaterialStyle style) async {
+    materialStyle.value = style;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyMaterialStyle, style.name);
   }
 
   Future<void> setEnabled(bool value) async {
@@ -96,11 +112,13 @@ class GlassStyleController {
     enabled.value = true;
     blurSigma.value = 14;
     tintOpacity.value = 0.84;
+    materialStyle.value = SurfaceMaterialStyle.glass;
     _restored = true;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_keyEnabled);
     await prefs.remove(_keyBlurSigma);
     await prefs.remove(_keyTintOpacity);
+    await prefs.remove(_keyMaterialStyle);
   }
 
   static double _clampDouble(double value, double min, double max) {
