@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -6,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_design_tokens.dart';
 import '../../core/theme/glass_style_controller.dart';
 import '../../core/theme/surface_material.dart';
+import 'material_noise.dart';
 
 /// 玻璃材质等级定义在参数中心（[GlassStyleController]），此处 re-export
 /// 保持既有导入路径 `shared/widgets/glass_container.dart` 向后兼容。
@@ -151,7 +151,7 @@ class GlassContainer extends StatelessWidget {
             Positioned.fill(
               child: IgnorePointer(
                 child: CustomPaint(
-                  painter: _NoisePainter(
+                  painter: MaterialNoisePainter(
                     opacity: recipe.noiseOpacity,
                     isDark: isDark,
                   ),
@@ -243,32 +243,6 @@ class GlassContainer extends StatelessWidget {
   }
 }
 
-/// 程序化噪点纹理（亚克力 / 云母用）。
-///
-/// 固定随机种子 → 每像素稳定，不引入图片资源；1px 点阵在低不透明度下即为
-/// 细微 grain。
-class _NoisePainter extends CustomPainter {
-  const _NoisePainter({required this.opacity, required this.isDark});
+/// 程序化噪点纹理已抽取为共享 [MaterialNoisePainter]（见 material_noise.dart）。
 
-  final double opacity;
-  final bool isDark;
 
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint();
-    final random = math.Random(20240912);
-    final count = (size.width * size.height / 24).clamp(0, 4000).toInt();
-    final baseColor = isDark ? Colors.white : Colors.black;
-    for (var i = 0; i < count; i++) {
-      final x = random.nextDouble() * size.width;
-      final y = random.nextDouble() * size.height;
-      final alpha = opacity * (0.35 + random.nextDouble() * 0.65);
-      paint.color = baseColor.withValues(alpha: alpha);
-      canvas.drawRect(Rect.fromLTWH(x, y, 1, 1), paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(_NoisePainter oldDelegate) =>
-      oldDelegate.opacity != opacity || oldDelegate.isDark != isDark;
-}

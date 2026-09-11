@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/core/theme/glass_style_controller.dart';
+import 'package:jxu_campus_hub/core/theme/surface_material.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_app_bar.dart';
 
 import '../../helpers/test_setup.dart';
@@ -44,6 +45,26 @@ void main() {
 
   testWidgets('模糊强度拉到 0 时不创建 BackdropFilter（滑条 0 = 关模糊）', (tester) async {
     await GlassStyleController.instance.setBlurSigma(0);
+    await pumpBar(tester);
+
+    expect(find.text('标题'), findsOneWidget);
+    expect(find.byType(BackdropFilter), findsNothing);
+  });
+
+  testWidgets('亚克力材质保留模糊', (tester) async {
+    await GlassStyleController.instance.setMaterialStyle(
+      SurfaceMaterialStyle.acrylic,
+    );
+    await pumpBar(tester);
+
+    expect(find.text('标题'), findsOneWidget);
+    expect(find.byType(BackdropFilter), findsOneWidget);
+  });
+
+  testWidgets('实色材质回退实色且不创建 BackdropFilter', (tester) async {
+    await GlassStyleController.instance.setMaterialStyle(
+      SurfaceMaterialStyle.solid,
+    );
     await pumpBar(tester);
 
     expect(find.text('标题'), findsOneWidget);

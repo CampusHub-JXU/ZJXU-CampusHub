@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/theme/glass_style_controller.dart';
+import '../../core/theme/surface_material.dart';
+import 'material_noise.dart';
 
 /// 全局玻璃质感 AppBar。
 ///
@@ -80,12 +82,16 @@ class AppAppBar extends StatelessWidget implements PreferredSizeWidget {
 
 /// 玻璃 AppBar 的填充层，可单独用于 [SliverAppBar.flexibleSpace]。
 ///
+/// 材质由统一 [MaterialRecipe] 驱动（与 [GlassContainer] 同一套配方），不再
+/// 自持 BackdropFilter / tint / border 常量：
+/// * 玻璃 —— 模糊 + 半透明 tint + 底部发丝线 + 顶部高光；
+/// * 亚克力 —— 更强模糊 + 更高 tint + 噪点；
+/// * 云母 —— 低模糊 + 更高表面不透明度；
+/// * 实色 / 总开关关闭 / 滑条归零 / 显式 [fallbackColor] —— 回退实色填充，
+///   不创建 BackdropFilter，保证低端机流畅。
+///
 /// 注意：裁剪必须放在 BackdropFilter 的祖先位置。BackdropFilter 作用于
 /// 整个父层 backdrop 而非自身 bounds，不先裁剪会把整屏内容糊掉。
-///
-/// 模糊强度跟随 [GlassStyleController.sigmaFor]（nav 档），设置页
-/// 「模糊强度」滑条实时生效；[GlassStyleController.enabled] 关闭或滑条
-/// 拉到 0 时回退为 [fallbackColor]（缺省为主题 surfaceContainer）的实色填充。
 class GlassAppBarSpace extends StatelessWidget {
   const GlassAppBarSpace({super.key, this.fallbackColor});
 
@@ -100,65 +106,139 @@ class GlassAppBarSpace extends StatelessWidget {
     final tintColor =
         fallbackColor ??
         (isDark ? cs.surfaceContainerLow : cs.surfaceContainerLowest);
-    final borderColor = isDark
-        ? Colors.white.withValues(alpha: 0.10)
-        : cs.outlineVariant.withValues(alpha: 0.45);
     final style = GlassStyleController.instance;
 
-    return ValueListenableBuilder<bool>(
-      valueListenable: style.enabled,
-      builder: (context, _, _) {
-        return ValueListenableBuilder<double>(
-          valueListenable: style.blurSigma,
-          builder: (context, _, _) {
-            final useGlass = fallbackColor == null && style.shouldBlur();
-            return ClipRect(
-              child: useGlass
-                  ? BackdropFilter(
-                      filter: ImageFilter.blur(
-                        sigmaX: style.sigmaFor(GlassTier.nav),
-                        sigmaY: style.sigmaFor(GlassTier.nav),
-                      ),
-                      child: _AppBarFill(
-                        tintColor: tintColor,
-                        // 磨砂水平：低到能看清模糊，高到标题仍满足 WCAG AA。
-                        tintAlpha: isDark ? 0.34 : 0.42,
-                        borderColor: borderColor,
-                      ),
+    return AnimatedBuilder(
+      animation: Listenable.merge([
+        style.enabled,
+        style.blurSigma,
+        style.tintOpacity,
+        style.materialStyle,
+      ]),
+      builder: (context, _) {
+        final recipe = MaterialRecipe.resolve(
+          style.materialStyle.value,
+          blurBase: style.blurSigma.value,
+          tintBase: style.tintOpacity.value,
+        );
+        final useGlass =
+            fallbackColor == null && style.shouldBlur() && recipe.usesBackdropBlur;
+        final sigma = recipe.style == SurfaceMaterialStyle.glass
+            ? style.sigmaFor(GlassTier.nav)
+            : (recipe.blurSigma * 1.2).clamp(0.0, 44.0);
+        final borderColor = useGlass
+            ? (isDark
+                  ? Colors.white.withValues(
+                      alpha: (recipe.borderOpacity * 0.15).clamp(0.0, 1.0),
                     )
-                  : _AppBarFill(
-                      tintColor: tintColor,
-                      tintAlpha: 1.0,
-                      borderColor: Colors.transparent,
+                  : cs.outlineVariant.withValues(
+                      alpha: (recipe.borderOpacity * 0.64).clamp(0.0, 1.0),
+                    ))
+            : Colors.transparent;
+        final fill = _AppBarFill(
+          tintColor: tintColor,
+          tintAlpha: useGlass ? _appBarTintAlpha(recipe, isDark) : 1.0,
+          borderColor: borderColor,
+          highlightOpacity: useGlass ? recipe.highlightOpacity : 0,
+          noiseOpacity: useGlass ? recipe.noiseOpacity : 0,
+          isDark: isDark,
+        );
+        return ClipRect(
+          child: useGlass
+              ? BackdropFilter(
+                  filter: ImageFilter.compose(
+                    outer: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+                    inner: ColorFilter.matrix(
+                      saturationColorMatrix(recipe.saturation),
                     ),
-            );
-          },
+                  ),
+                  child: fill,
+                )
+              : fill,
         );
       },
     );
   }
+
+  /// 顶栏 tint 策略：低到能看清模糊，高到标题仍满足 WCAG AA。
+  static double _appBarTintAlpha(MaterialRecipe recipe, bool isDark) {
+    switch (recipe.style) {
+      case SurfaceMaterialStyle.solid:
+        return 1.0;
+      case SurfaceMaterialStyle.glass:
+        return isDark ? 0.34 : 0.42;
+      case SurfaceMaterialStyle.acrylic:
+        return isDark ? 0.42 : 0.50;
+      case SurfaceMaterialStyle.mica:
+        return isDark ? 0.50 : 0.58;
+    }
+  }
 }
 
 /// 平色 tint 填充 + 底部发丝线（无受光渐变，深色模式不出现顶缘亮带）。
+/// 亚克力 / 云母按配方叠加细微噪点与顶部高光。
 class _AppBarFill extends StatelessWidget {
   const _AppBarFill({
     required this.tintColor,
     required this.tintAlpha,
     required this.borderColor,
+    this.highlightOpacity = 0,
+    this.noiseOpacity = 0,
+    this.isDark = true,
   });
 
   final Color tintColor;
   final double tintAlpha;
   final Color borderColor;
+  final double highlightOpacity;
+  final double noiseOpacity;
+  final bool isDark;
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
+    final fill = DecoratedBox(
       decoration: BoxDecoration(
         color: tintColor.withValues(alpha: tintAlpha),
         border: Border(bottom: BorderSide(color: borderColor, width: 0.8)),
       ),
       child: const SizedBox.expand(),
     );
+
+    if (highlightOpacity <= 0.001 && noiseOpacity <= 0.001) return fill;
+
+    return Stack(
+      children: [
+        fill,
+        if (highlightOpacity > 0.001)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.white.withValues(alpha: highlightOpacity),
+                      Colors.white.withValues(alpha: 0),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        if (noiseOpacity > 0.001)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: CustomPaint(
+                painter: MaterialNoisePainter(
+                  opacity: noiseOpacity,
+                  isDark: isDark,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
   }
 }
+
