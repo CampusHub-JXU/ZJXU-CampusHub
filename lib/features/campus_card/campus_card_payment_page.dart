@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../app/app_route_observer.dart';
+import '../../core/actions/campus_action_executor.dart';
+import '../../core/actions/campus_action_ids.dart';
 import '../../core/auth/unified_auth.dart';
 import '../../core/epay100/epay100_gateway.dart';
 import '../../shared/widgets/app_app_bar.dart';
@@ -669,6 +671,20 @@ class _CampusCardPaymentPageState extends State<CampusCardPaymentPage>
                     foregroundColor: colorScheme.outline,
                   ),
                   child: const Text('遇到兼容问题？使用旧版备用码'),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Center(
+                child: TextButton(
+                  onPressed: () => CampusActionExecutor.instance.execute(
+                    context,
+                    CampusActionIds.campusCardResetPassword,
+                  ),
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    foregroundColor: colorScheme.outline,
+                  ),
+                  child: const Text('忘记一卡通密码？'),
                 ),
               ),
             ],
