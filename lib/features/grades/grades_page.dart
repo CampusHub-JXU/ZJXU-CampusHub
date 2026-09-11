@@ -373,7 +373,7 @@ class _GradesPageState extends State<GradesPage>
                 crossAxisCount: 2,
                 mainAxisSpacing: 6,
                 crossAxisSpacing: 6,
-                childAspectRatio: 1.02,
+                childAspectRatio: 1.5,
               ),
               delegate: SliverChildBuilderDelegate((context, index) {
                 final grade = filteredGrades[index];
@@ -419,18 +419,18 @@ class _GradesPageState extends State<GradesPage>
           ),
           _Divider(),
           _StatCell(
-            label: '已获学分',
+            label: '学分',
             value: _totalCredits.toStringAsFixed(1),
             accent: cs.primary,
           ),
-          _Divider(),
-          _StatCell(label: '课程数', value: '$_courseCount', accent: cs.tertiary),
           _Divider(),
           _StatCell(
             label: '均分',
             value: _avgScore.toStringAsFixed(1),
             accent: cs.tertiary,
           ),
+          _Divider(),
+          _StatCell(label: '课程', value: '$_courseCount', accent: cs.tertiary),
         ],
       ),
     );

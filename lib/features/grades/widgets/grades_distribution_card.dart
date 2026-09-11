@@ -8,10 +8,19 @@ import '../grades_score_palette.dart';
 ///
 /// 柱状图颜色与成绩卡分数数字共用 [gradeBandColor] 分段 token：
 /// 优/良/中/及格为主题色深浅梯度，不及格为 error 语义色。
-class GradesDistributionCard extends StatelessWidget {
+class GradesDistributionCard extends StatefulWidget {
   const GradesDistributionCard({super.key, required this.grades});
 
   final List<GradeEntry> grades;
+
+  @override
+  State<GradesDistributionCard> createState() => _GradesDistributionCardState();
+}
+
+class _GradesDistributionCardState extends State<GradesDistributionCard> {
+  bool _expanded = true;
+
+  List<GradeEntry> get grades => widget.grades;
 
   @override
   Widget build(BuildContext context) {
@@ -20,35 +29,64 @@ class GradesDistributionCard extends StatelessWidget {
     final total = grades.length;
 
     return AppCard(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '成绩分布',
-            style: Theme.of(context).textTheme.titleSmall
-                ?.copyWith(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            height: 80,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                for (final (index, entry) in distribution.indexed) ...[
-                  Expanded(
-                    child: _DistBar(
-                      label: entry.label,
-                      count: entry.count,
-                      total: total,
-                      color: gradeBandColor(cs, entry.band),
-                    ),
+          InkWell(
+            onTap: () => setState(() => _expanded = !_expanded),
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                children: [
+                  Text(
+                    '成绩分布',
+                    style: Theme.of(context).textTheme.titleSmall
+                        ?.copyWith(fontWeight: FontWeight.w700),
                   ),
-                  if (index != distribution.length - 1)
-                    const SizedBox(width: 6),
+                  const Spacer(),
+                  Icon(
+                    _expanded
+                        ? Icons.expand_less_rounded
+                        : Icons.expand_more_rounded,
+                    size: 20,
+                    color: cs.onSurfaceVariant,
+                  ),
                 ],
-              ],
+              ),
             ),
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: _expanded
+                ? Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: SizedBox(
+                      height: 64,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          for (final (index, entry)
+                              in distribution.indexed) ...[
+                            Expanded(
+                              child: _DistBar(
+                                label: entry.label,
+                                count: entry.count,
+                                total: total,
+                                color: gradeBandColor(cs, entry.band),
+                              ),
+                            ),
+                            if (index != distribution.length - 1)
+                              const SizedBox(width: 6),
+                          ],
+                        ],
+                      ),
+                    ),
+                  )
+                : const SizedBox(width: double.infinity),
           ),
         ],
       ),

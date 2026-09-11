@@ -24,37 +24,45 @@ class GradesGradeCard extends StatelessWidget {
 
     return AppCard(
       radius: AppRadius.cardAlt,
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            grade.courseName,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: 14,
-              height: 1.3,
-            ),
-          ),
-          const SizedBox(height: 8),
           Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Expanded(
+                child: Text(
+                  grade.courseName,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13.5,
+                    height: 1.25,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
               Text(
                 grade.grade,
                 style: TextStyle(
-                  fontSize: 28,
+                  fontSize: 26,
                   fontWeight: FontWeight.w900,
                   height: 1,
                   color: scoreColor,
                   letterSpacing: -0.8,
                 ),
               ),
-              if (grade.credits > 0) ...[
-                const SizedBox(width: 6),
+            ],
+          ),
+          Wrap(
+            spacing: 5,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              if (grade.credits > 0)
                 Text(
                   '${_formatCredits(grade.credits)}学分',
                   style: TextStyle(
@@ -63,14 +71,6 @@ class GradesGradeCard extends StatelessWidget {
                     color: scoreColor.withValues(alpha: 0.75),
                   ),
                 ),
-              ],
-            ],
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 5,
-            runSpacing: 4,
-            children: [
               if (grade.gpaPoints > 0)
                 _InfoChip(label: 'GPA ${grade.gpaPoints.toStringAsFixed(1)}'),
               if (grade.assessmentMethod.isNotEmpty)
