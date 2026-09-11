@@ -9,6 +9,7 @@ import '../../core/auth/zhengfang_auth.dart';
 import '../../core/network/dio_client.dart';
 import '../../core/semester/current_term_resolver.dart';
 import '../../core/semester/semester_calendar.dart';
+import '../../core/system_surface/campus_data_change_bus.dart';
 import 'schedule_cache_snapshot.dart';
 import 'schedule_change_rule.dart';
 import 'schedule_model.dart';
@@ -152,6 +153,9 @@ class ScheduleService {
       forceRefresh: forceRefresh,
       allowChangeRules: _canFetchChangeRulesFor(context),
     );
+    if (result.didRefresh) {
+      CampusDataChangeBus.instance.notifyChanged();
+    }
 
     // 未显式指定学期且当前学期没有课表数据（常见于新学期开学前），
     // 回退展示上一学期，避免假期里打开课表是一片空白。

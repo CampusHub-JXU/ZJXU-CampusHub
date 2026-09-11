@@ -9,6 +9,7 @@ import '../../core/auth/zhengfang_auth.dart';
 import '../../core/network/dio_client.dart';
 import '../../core/semester/current_term_resolver.dart';
 import '../../core/semester/schedule_term_context.dart';
+import '../../core/system_surface/campus_data_change_bus.dart';
 import 'exam_model.dart';
 
 class ExamService {
@@ -65,6 +66,7 @@ class ExamService {
         jsonEncode(exams.map((e) => e.toJson()).toList()),
       );
     } catch (_) {}
+    CampusDataChangeBus.instance.notifyChanged();
   }
 
   /// Fetch exams from network, with cache-first strategy.

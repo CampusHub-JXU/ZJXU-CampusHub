@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/cache/cache_policy.dart';
 import '../../core/cache/cached_resource.dart';
 import '../../core/logging/app_logger.dart';
+import '../../core/system_surface/campus_data_change_bus.dart';
 import 'epay_electricity_gateway.dart';
 
 /// 宿舍电费服务异常：携带可直接展示给用户的 [message]。
@@ -446,6 +447,7 @@ class DormElectricityService {
       _cachedElectricity = value;
       _lastUpdated = DateTime.now();
       await _persistCache();
+      CampusDataChangeBus.instance.notifyChanged();
       _lastError = null;
       _requiresAuthentication = false;
       AppLogger.instance.network(LogLevel.info, '电费解析成功: $value 度');

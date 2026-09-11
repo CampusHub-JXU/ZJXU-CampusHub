@@ -10,6 +10,7 @@ import '../../core/auth/zhengfang_auth.dart';
 import '../../core/epay100/epay100_gateway.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/network/dio_client.dart';
+import '../../core/system_surface/campus_data_change_bus.dart';
 
 class CampusCardService {
   CampusCardService._();
@@ -51,6 +52,7 @@ class CampusCardService {
     _cachedBalance = balance;
     _lastUpdated = DateTime.now();
     _storage.write(key: _keyBalance, value: balance.toString());
+    CampusDataChangeBus.instance.notifyChanged();
   }
 
   double? clearCachedBalance() {

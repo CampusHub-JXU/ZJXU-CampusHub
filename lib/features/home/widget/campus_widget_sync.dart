@@ -2,6 +2,7 @@ import 'dart:async';
 
 import '../../../core/notice/notice_sync_store.dart';
 import '../../../core/semester/semester_calendar.dart';
+import '../../../core/system_surface/campus_data_change_bus.dart';
 import '../../../core/system_surface/campus_widget_bridge.dart';
 import '../../../core/theme/personalization_controller.dart';
 import 'campus_widget_projection.dart';
@@ -21,10 +22,13 @@ class CampusWidgetSync {
   bool _started = false;
 
   /// 订阅影响模块数据的全局状态，变化时 debounce 同步（PRD §14）。
-  /// 网络刷新（课表/校园卡/电费/考试）由 HomePage 完成后显式 requestSync()。
+  ///
+  /// 课表/成绩/考试/校园卡/电费在数据真正落库时由各自 service ping
+  /// [CampusDataChangeBus]，这里统一消费；首页刷新路径也会显式 requestSync()。
   void start() {
     if (_started) return;
     _started = true;
+    CampusDataChangeBus.instance.revision.addListener(requestSync);
     NoticeSyncStore.instance.unreadSummary.addListener(requestSync);
     SemesterCalendar.instance.semesterStartDate.addListener(requestSync);
     PersonalizationController.instance.fullDayCoursesEnabled.addListener(

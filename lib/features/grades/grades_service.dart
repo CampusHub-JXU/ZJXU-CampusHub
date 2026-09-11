@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/auth/academic_auth_guard.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/network/dio_client.dart';
+import '../../core/system_surface/campus_data_change_bus.dart';
 import 'grades_model.dart';
 
 class GradesService {
@@ -56,6 +57,7 @@ class GradesService {
     await prefs.setInt(_cacheTimeKey, DateTime.now().millisecondsSinceEpoch);
     _cachedGrades = grades;
     _lastSavedAt = DateTime.now();
+    CampusDataChangeBus.instance.notifyChanged();
   }
 
   Future<List<GradeEntry>> fetchGrades(
