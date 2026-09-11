@@ -7,7 +7,6 @@ import '../../../core/theme/app_design_tokens.dart';
 import '../../../core/theme/glass_style_controller.dart';
 import '../../../core/theme/personalization_controller.dart';
 import '../../../core/theme/widgets/home_background_layer.dart';
-import '../../../shared/widgets/app_card.dart';
 
 /// 外观页顶部的真实比例首页预览（PRD 0.7.0 §16/§17）。
 ///
@@ -15,9 +14,17 @@ import '../../../shared/widgets/app_card.dart';
 /// [HomeBackgroundLayer]，卡片/头部按当前 Glass 配置合成。
 /// TODO(0.7.0-B2): 换成与真实 Home 共用的 HomeSurfaceScene。
 class AppearancePreview extends StatefulWidget {
-  const AppearancePreview({super.key, this.maxHeight = 320});
+  const AppearancePreview({
+    super.key,
+    this.maxHeight = 320,
+    this.homeSceneBuilder,
+  });
 
   final double maxHeight;
+
+  /// 真实首页场景构建器（由 app 层注入 `HomeSurfaceScene`，避免
+  /// feature→feature 依赖）。为空时回退到内置示意层。
+  final WidgetBuilder? homeSceneBuilder;
 
   @override
   State<AppearancePreview> createState() => _AppearancePreviewState();
@@ -33,34 +40,6 @@ class _AppearancePreviewState extends State<AppearancePreview> {
     return ValueListenableBuilder<String?>(
       valueListenable: PersonalizationController.instance.backgroundImagePath,
       builder: (context, bgPath, _) {
-        if (bgPath == null) {
-          return AppCard(
-            padding: EdgeInsets.zero,
-            child: SizedBox(
-              height: 120,
-              width: double.infinity,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.wallpaper_outlined,
-                    size: 36,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '暂未设置背景图片',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-
         return ValueListenableBuilder<Alignment>(
           valueListenable:
               PersonalizationController.instance.backgroundAlignment,
@@ -126,22 +105,23 @@ class _AppearancePreviewState extends State<AppearancePreview> {
                               child: Stack(
                                 fit: StackFit.expand,
                                 children: [
-                                  HomeBackgroundLayer(
-                                    path: bgPath,
-                                    errorBuilder: (context) {
-                                      return Container(
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .surfaceContainerHigh,
-                                        child: const Center(
-                                          child: Icon(
-                                            Icons.broken_image_outlined,
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                  _buildHomeWidgetPreviewOverlay(context),
+                                  if (bgPath != null)
+                                    HomeBackgroundLayer(
+                                      path: bgPath,
+                                      errorBuilder: (context) {
+                                        return Container(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .surfaceContainerHigh,
+                                        );
+                                      },
+                                    )
+                                  else
+                                    _buildPreviewBackgroundPlaceholder(
+                                      context,
+                                    ),
+                                  widget.homeSceneBuilder?.call(context) ??
+                                      _buildHomeWidgetPreviewOverlay(context),
                                   Positioned(
                                     top: 10,
                                     right: 10,
@@ -198,6 +178,30 @@ class _AppearancePreviewState extends State<AppearancePreview> {
     final frameWidth = maxWidth;
     final frameHeight = math.min(widget.maxHeight, frameWidth / aspect);
     return Size(frameHeight * aspect, frameHeight);
+  }
+
+  Widget _buildPreviewBackgroundPlaceholder(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      color: cs.surfaceContainerHigh,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.wallpaper_outlined,
+              size: 32,
+              color: cs.onSurfaceVariant,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '暂未设置背景图片',
+              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildHomeWidgetPreviewOverlay(BuildContext context) {

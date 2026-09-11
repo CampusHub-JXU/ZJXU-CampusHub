@@ -26,6 +26,17 @@ void main() {
     expect(find.text('主题模式'), findsOneWidget);
   });
 
+  testWidgets('注入的首页场景构建器用于预览', (tester) async {
+    await pumpPage(
+      tester,
+      AppearancePage(
+        homeSceneBuilder: (context) => const Center(child: Text('真实首页场景')),
+      ),
+    );
+
+    expect(find.text('真实首页场景'), findsOneWidget);
+  });
+
   testWidgets('自定义主题色弹层保存后应切换到 custom 色源', (tester) async {
     await pumpPage(tester, const AppearancePage());
 

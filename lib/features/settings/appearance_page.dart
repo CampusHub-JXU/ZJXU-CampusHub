@@ -13,7 +13,10 @@ import 'widgets/theme_settings_sections.dart';
 /// 原「主题与外观」+「首页个性化」合并页：顶部真实比例预览，下方依次是主题、
 /// 首页、背景、Shader、材质设置。
 class AppearancePage extends StatelessWidget {
-  const AppearancePage({super.key});
+  const AppearancePage({super.key, this.homeSceneBuilder});
+
+  /// 真实首页场景构建器（app 层注入 `HomeSurfaceScene`）。
+  final WidgetBuilder? homeSceneBuilder;
 
   @override
   Widget build(BuildContext context) {
@@ -24,9 +27,12 @@ class AppearancePage extends StatelessWidget {
       ),
       body: Column(
         children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: AppearancePreview(maxHeight: 320),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: AppearancePreview(
+              maxHeight: 320,
+              homeSceneBuilder: homeSceneBuilder,
+            ),
           ),
           Expanded(
             child: ListView(

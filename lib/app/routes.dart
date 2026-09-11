@@ -22,6 +22,8 @@ import '../features/shuati/shuati_webview_page.dart';
 import '../features/settings/settings_page.dart';
 import '../features/settings/about_page.dart';
 import '../features/settings/appearance_page.dart';
+import '../features/home/home_surface_scene.dart';
+import '../features/home/models/example_campus_snapshot.dart';
 import '../features/settings/push_debug_page.dart';
 import '../features/dorm_electricity/dorm_electricity_page.dart';
 import '../features/dorm_electricity/dorm_electricity_settings_page.dart';
@@ -148,7 +150,11 @@ final GoRouter appRouter = GoRouter(
     _appRoute(
       path: '/appearance',
       name: 'appearance',
-      builder: (context, state) => const AppearancePage(),
+        builder: (context, state) => AppearancePage(
+          homeSceneBuilder: (context) => const HomeSurfaceScene(
+            presentation: ExampleCampusSnapshot.presentation,
+          ),
+        ),
     ),
     GoRoute(
       path: '/theme',
