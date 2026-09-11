@@ -637,8 +637,12 @@ void main() {
           matching: find.byType(Image),
         ),
       );
-      expect(image.image, isA<FileImage>());
-      expect((image.image as FileImage).file.path, file.path);
+      // Image.file 带 cacheWidth 时会被包成 ResizeImage(FileImage(...))：
+      // 原图仍为 FileImage，仅解码尺寸受限（PRD §19）。
+      final provider = image.image;
+      final fileProvider = provider is ResizeImage ? provider.imageProvider : provider;
+      expect(fileProvider, isA<FileImage>());
+      expect((fileProvider as FileImage).file.path, file.path);
       expect(find.byType(HomeAmbientBackground), findsNothing);
 
       await PersonalizationController.instance.setBackgroundImagePath(null);

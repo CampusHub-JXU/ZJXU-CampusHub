@@ -16,13 +16,9 @@ import '../../core/theme/widgets/home_background_layer.dart';
 import '../../core/update/update_checker.dart';
 import '../../shared/widgets/network_error_toast.dart';
 import '../../shared/widgets/update_dialog.dart';
-import '../campus_card/campus_card_service.dart';
-import '../dorm_electricity/dorm_electricity_service.dart';
 import '../exam/exam_model.dart';
-import '../exam/exam_service.dart';
-import '../grades/grades_service.dart';
 import '../schedule/schedule_cache_snapshot.dart';
-import '../schedule/schedule_service.dart';
+import 'campus_snapshot_coordinator.dart';
 import 'function_zone/function_zone_section.dart';
 import 'home_presentation_resolver.dart';
 import 'home_zone_controller.dart';
@@ -53,6 +49,7 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final _bootstrapController = AppBootstrapController.instance;
+  final _snapshotCoordinator = CampusSnapshotCoordinator.instance;
   final _scrollController = ScrollController();
 
   /// 功能区锚点：dock「功能」点击的滚动定位与 ScrollSpy 判定都基于它。
@@ -192,23 +189,13 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _applyRestoredState() {
-    final now = DateTime.now();
-    final cachedBalance = CampusCardService.instance.cachedBalance;
-    final dormService = DormElectricityService.instance;
-    final scheduleSnapshot = ScheduleService.instance.preferredSnapshot(
-      termContext: ScheduleService.instance.getCurrentTermContext(now),
-    );
-
-    _scheduleSnapshot = scheduleSnapshot;
-    _hasScheduleCache = scheduleSnapshot?.hasData ?? false;
-    _courseLoggedIn = ZhengfangAuth.instance.isLoggedIn || _hasScheduleCache;
-    _campusCardBalance = CampusCardService.instance.formatBalance(
-      cachedBalance,
-    );
-    _dormElectricity = dormService.formatElectricity(
-      dormService.cachedElectricity,
-    );
-    _nextExam = ExamService.instance.nextExam;
+    final data = _snapshotCoordinator.restore(DateTime.now());
+    _scheduleSnapshot = data.scheduleSnapshot;
+    _hasScheduleCache = data.hasScheduleCache;
+    _courseLoggedIn = data.courseLoggedIn;
+    _campusCardBalance = data.campusCardBalance;
+    _dormElectricity = data.dormElectricity;
+    _nextExam = data.nextExam;
   }
 
   Future<void> _refreshDeferredContent() async {
@@ -224,43 +211,38 @@ class _HomePageState extends State<HomePage> {
   Future<void> _refreshNextCourse() async {
     if (!_isBootstrapReady) return;
     try {
-      final now = DateTime.now();
-      final result = await ScheduleService.instance.loadScheduleSnapshot(
-        termContext: ScheduleService.instance.getCurrentTermContext(now),
-      );
+      final result = await _snapshotCoordinator.refreshSchedule();
       if (!mounted) return;
 
       setState(() {
         _scheduleSnapshot = result.snapshot;
-        _hasScheduleCache = result.snapshot?.hasData ?? false;
-        _courseLoggedIn =
-            ZhengfangAuth.instance.isLoggedIn || _hasScheduleCache;
+        _hasScheduleCache = result.hasScheduleCache;
+        _courseLoggedIn = result.courseLoggedIn;
       });
     } catch (_) {
       if (!mounted) return;
       // 网络失败时保留已有缓存快照，仅同步登录态。
       setState(() {
-        _courseLoggedIn =
-            ZhengfangAuth.instance.isLoggedIn || _hasScheduleCache;
+        _courseLoggedIn = _snapshotCoordinator.courseLoggedInForCache(
+          _hasScheduleCache,
+        );
       });
     }
   }
 
   Future<void> _refreshCampusCardBalance() async {
-    final cached = CampusCardService.instance.cachedBalance;
-    if (cached != null && mounted) {
+    final cachedText = _snapshotCoordinator.cachedCampusCardBalanceText();
+    if (cachedText != null && mounted) {
       setState(() {
-        _campusCardBalance = CampusCardService.instance.formatBalance(cached);
+        _campusCardBalance = cachedText;
       });
       return;
     }
     try {
-      final networkBalance = await CampusCardService.instance.fetchBalance();
+      final text = await _snapshotCoordinator.fetchCampusCardBalanceText();
       if (!mounted) return;
       setState(() {
-        _campusCardBalance = CampusCardService.instance.formatBalance(
-          networkBalance,
-        );
+        _campusCardBalance = text;
       });
     } catch (e) {
       if (!mounted) return;
@@ -270,8 +252,7 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _refreshDormElectricity() async {
     if (!_isBootstrapReady) return;
-    final service = DormElectricityService.instance;
-    if (!await service.hasRoomConfig()) {
+    if (!await _snapshotCoordinator.hasElectricityRoomConfig()) {
       if (!mounted) return;
       setState(() {
         _dormElectricity = '--';
@@ -279,10 +260,10 @@ class _HomePageState extends State<HomePage> {
       return;
     }
     try {
-      final value = await service.fetchElectricity();
+      final text = await _snapshotCoordinator.fetchElectricityText();
       if (!mounted) return;
       setState(() {
-        _dormElectricity = service.formatElectricity(value);
+        _dormElectricity = text;
       });
     } catch (e) {
       if (!mounted) return;
@@ -292,18 +273,18 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _refreshExam() async {
     if (!_isBootstrapReady) return;
-    final cached = ExamService.instance.nextExam;
+    final cached = _snapshotCoordinator.cachedNextExam;
     if (cached != null && mounted) {
       setState(() {
         _nextExam = cached;
       });
     }
-    if (!ZhengfangAuth.instance.isLoggedIn) return;
+    if (!_snapshotCoordinator.isAcademicLoggedIn) return;
     try {
-      await ExamService.instance.fetchExams();
+      final next = await _snapshotCoordinator.fetchNextExam();
       if (!mounted) return;
       setState(() {
-        _nextExam = ExamService.instance.nextExam;
+        _nextExam = next;
       });
     } catch (e) {
       if (!mounted) return;
@@ -313,10 +294,9 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _refreshGrades() async {
     if (!_isBootstrapReady) return;
-    if (!ZhengfangAuth.instance.isLoggedIn) return;
+    if (!_snapshotCoordinator.isAcademicLoggedIn) return;
     try {
-      final studentId = ZhengfangAuth.instance.currentStudentId ?? '';
-      await GradesService.instance.fetchGrades(studentId);
+      await _snapshotCoordinator.warmGrades();
     } catch (e) {
       if (!mounted) return;
       NetworkErrorToast.show(context, e);
