@@ -13,6 +13,8 @@ import '../features/grades/grades_page.dart';
 import '../features/campus_card/campus_card_page.dart';
 import '../features/campus_card/campus_card_payment_page.dart';
 import '../features/library/library_page.dart';
+import '../features/micro_life/micro_life_page.dart';
+import '../features/one_stop_service/one_stop_service_page.dart';
 import '../features/notice/notice_list_page.dart';
 import '../features/sjjx_notice/sjjx_notice_list_page.dart';
 import '../features/service_hall/service_hall_page.dart';
@@ -136,6 +138,16 @@ final GoRouter appRouter = GoRouter(
       path: '/library',
       name: 'library',
       builder: (context, state) => const LibraryPage(),
+    ),
+    _appRoute(
+      path: '/micro-life',
+      name: 'micro-life',
+      builder: (context, state) => const MicroLifePage(),
+    ),
+    _appRoute(
+      path: '/one-stop-service',
+      name: 'one-stop-service',
+      builder: (context, state) => const OneStopServicePage(),
     ),
     _appRoute(
       path: '/second-classroom',

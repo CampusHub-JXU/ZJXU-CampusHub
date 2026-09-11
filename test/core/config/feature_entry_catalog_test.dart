@@ -34,6 +34,8 @@ void main() {
         60,
         65,
         70,
+        75,
+        80,
       ]),
     );
     expect(library.title, '图书馆');

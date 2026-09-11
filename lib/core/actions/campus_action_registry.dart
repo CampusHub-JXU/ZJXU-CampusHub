@@ -16,12 +16,6 @@ class CampusActionRegistry {
   static const _resetPasswordUrl =
       'https://webvpn.zjxu.edu.cn/https/77726476706e69737468656265737421fef2569f267e725a661dc7a99c406d362a/security/start/index.html#/business/security/mResetPassword';
 
-  static const _oneStopServiceUrl =
-      'https://webvpn.zjxu.edu.cn/https/77726476706e69737468656265737421e3e05b84692a62486b468ca88d1b203b/';
-
-  static const _microLifeUrl =
-      'http://jdhq.wap.zjxu.edu.cn/Base/Center/center/account_id/6';
-
   late final Map<String, CampusAction> _byId = {
     for (final action in _build()) action.id: action,
   };
@@ -126,12 +120,12 @@ class CampusActionRegistry {
     const CampusAction(
       id: CampusActionIds.oneStopServiceOpen,
       title: '校务服务',
-      target: ProtectedWebActionTarget(_oneStopServiceUrl),
+      target: RouteActionTarget('one-stop-service'),
     ),
     const CampusAction(
       id: CampusActionIds.microLifeOpen,
       title: '嘉大微生活',
-      target: WebActionTarget(_microLifeUrl),
+      target: RouteActionTarget('micro-life'),
     ),
   ];
 }

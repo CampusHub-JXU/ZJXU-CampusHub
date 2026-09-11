@@ -158,5 +158,23 @@ class AppFeaturesConfig {
       primaryActionId: 'notification.center',
       sortOrder: 70,
     ),
+    const FeatureEntryDefinition(
+      id: 'micro-life',
+      title: '嘉大微生活',
+      subtitle: '后勤生活服务与校园生活入口',
+      icon: Icons.storefront_outlined,
+      accentColor: Color(0xFF00897B),
+      primaryActionId: 'micro-life.open',
+      sortOrder: 75,
+    ),
+    const FeatureEntryDefinition(
+      id: 'one-stop-service',
+      title: '校务服务',
+      subtitle: '网上办事大厅（WebVPN 访问）',
+      icon: Icons.apartment_outlined,
+      accentColor: Color(0xFF3949AB),
+      primaryActionId: 'one-stop-service.open',
+      sortOrder: 80,
+    ),
   ];
 }
