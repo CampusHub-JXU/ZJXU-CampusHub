@@ -20,7 +20,7 @@ class OneStopServicePage extends StatelessWidget {
     return UnifiedAuthProtectedWebViewPage(
       title: titleText,
       url: homeUrl,
-      serviceUrl: homeUrl,
+      warmUpAsResource: true,
       loginDescription: loginDescription,
       showWebViewBottomBackButton: true,
       onHomePressed: () => context.goNamed('home'),

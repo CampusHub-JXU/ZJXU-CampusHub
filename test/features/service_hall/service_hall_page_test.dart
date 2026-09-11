@@ -1,8 +1,10 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:jxu_campus_hub/core/auth/cas_auth_broker.dart';
 import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/features/service_hall/service_hall_page.dart';
 
@@ -45,6 +47,7 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform, null);
     UnifiedAuthService.instance.debugReset();
+    CasAuthBroker.debugGetResourceOverride = null;
   });
 
   test('uses the expected service hall protected webview configuration', () {
@@ -54,8 +57,8 @@ void main() {
       'https://mobilehall.zjxu.edu.cn/mportal/start/index.html#/business/ydd/portal/home',
     );
     expect(
-      ServiceHallPage.authServiceUrl,
-      'https://newca.zjxu.edu.cn/casClient/login/ydd',
+      ServiceHallPage.webVpnHomeUrl,
+      'https://webvpn.zjxu.edu.cn/http/77726476706e69737468656265737421fdf843952b3560517204c7b6924d367bdd166b13aa07/mportal/start/index.html#/business/ydd/portal/home',
     );
     expect(ServiceHallPage.authLoginDescription, contains('统一认证'));
   });
@@ -70,6 +73,23 @@ void main() {
     UnifiedAuthService.instance.debugSessionMetadataLoader = () async =>
         '2024001';
     UnifiedAuthService.instance.debugSessionValidator = (_) async => true;
+    // 资源预热在测试环境中不能走真实网络与 WebView Cookie 同步。
+    UnifiedAuthService.instance.debugSyncCookiesToWebViewForUrlOverride = (
+      _,
+    ) async {};
+    CasAuthBroker.debugGetResourceOverride =
+        (
+          url, {
+          dio,
+          needsLogin,
+          cancelToken,
+          Duration? timeout,
+          deadline,
+        }) async => Response<List<int>>(
+          data: const <int>[],
+          requestOptions: RequestOptions(path: url),
+          statusCode: 200,
+        );
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(wechatChannel, (call) async => false);
     final clipboard = <String>[];
