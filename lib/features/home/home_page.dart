@@ -30,6 +30,7 @@ import 'widgets/home_campus_notice_section.dart';
 import 'widgets/home_event_banner.dart';
 import 'widgets/home_primary_status_hero.dart';
 import 'widgets/home_today_section.dart';
+import 'widget/campus_widget_sync.dart';
 
 /// 首页：天气 App 式的单一纵向连续滚动页。
 ///
@@ -196,6 +197,7 @@ class _HomePageState extends State<HomePage> {
     _campusCardBalance = data.campusCardBalance;
     _dormElectricity = data.dormElectricity;
     _nextExam = data.nextExam;
+    CampusWidgetSync.instance.requestSync();
   }
 
   Future<void> _refreshDeferredContent() async {
@@ -206,6 +208,7 @@ class _HomePageState extends State<HomePage> {
       _refreshExam(),
       _refreshGrades(),
     ]);
+    CampusWidgetSync.instance.requestSync();
   }
 
   Future<void> _refreshNextCourse() async {

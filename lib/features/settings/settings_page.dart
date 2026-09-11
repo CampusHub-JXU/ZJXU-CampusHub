@@ -154,6 +154,20 @@ class SettingsPage extends StatelessWidget {
             style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
           ),
           const SizedBox(height: 24),
+          const _SectionHeader('桌面与后台'),
+          const SizedBox(height: 8),
+          _GroupCard(
+            children: [
+              _SettingsRow(
+                icon: Icons.widgets_outlined,
+                title: '桌面与后台',
+                subtitle: '桌面组件、快捷方式、通知权限与后台运行说明',
+                trailing: _chevron(context),
+                onTap: () => context.pushNamed('desktop-background'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
           const _SectionHeader('版本'),
           const SizedBox(height: 8),
           FutureBuilder<PackageInfo>(

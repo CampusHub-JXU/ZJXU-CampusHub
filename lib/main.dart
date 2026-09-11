@@ -18,6 +18,7 @@ import 'core/notification/background_task_service.dart';
 import 'core/push/push_service.dart';
 import 'core/shortcut/app_shortcut_service.dart';
 import 'features/second_classroom/second_classroom_subscription_service.dart';
+import 'features/home/widget/campus_widget_sync.dart';
 
 void _handleNotificationPayload(String payload) {
   if (payload == 'dorm-electricity') {
@@ -91,6 +92,9 @@ Future<void> main() async {
           dispatch: AppActionDispatcher.dispatch,
         ),
       );
+      // 桌面组件：订阅全局状态变化 + 启动时推一次缓存快照（PRD §14）。
+      CampusWidgetSync.instance.start();
+      unawaited(CampusWidgetSync.instance.syncNow());
       unawaited(AppNotificationService.instance.initialize());
       unawaited(
         SecondClassroomSubscriptionService.instance.checkRecruitingMatches(),
@@ -125,6 +129,7 @@ Future<void> main() async {
         onStateChange: (state) {
           if (state == AppLifecycleState.resumed) {
             unawaited(runForegroundBackgroundChecks());
+            CampusWidgetSync.instance.requestSync();
           }
         },
       );

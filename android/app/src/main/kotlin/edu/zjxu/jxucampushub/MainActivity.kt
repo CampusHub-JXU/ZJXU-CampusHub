@@ -2,7 +2,9 @@ package edu.zjxu.jxucampushub
 
 import android.app.AppOpsManager
 import android.app.DownloadManager
+import android.appwidget.AppWidgetManager
 import android.content.ActivityNotFoundException
+import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
@@ -22,6 +24,9 @@ import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import edu.zjxu.jxucampushub.widget.CampusWidgetProvider
+import edu.zjxu.jxucampushub.widget.CampusWidgetStore
+import org.json.JSONObject
 import kotlin.math.roundToInt
 
 class MainActivity : FlutterActivity() {
@@ -30,6 +35,7 @@ class MainActivity : FlutterActivity() {
         private const val SHORTCUT_CHANNEL = "edu.zjxu.jxucampushub/shortcut"
         private const val DOWNLOAD_CHANNEL = "edu.zjxu.jxucampushub/download"
         private const val DEEP_LINK_CHANNEL = "edu.zjxu.jxucampushub/deeplink"
+        private const val WIDGET_CHANNEL = "edu.zjxu.jxucampushub/widget"
         private const val EXTRA_SHORTCUT_ACTION = "shortcut_action"
         private const val SHORTCUT_SCHEME = "jxucampushub"
         private const val SHORTCUT_HOST = "shortcut"
@@ -52,6 +58,17 @@ class MainActivity : FlutterActivity() {
         pendingShortcutAction = extractShortcutAction(intent)
         pendingDeepLink = extractDeepLinkRaw(intent)
         cleanupLegacyPaymentShortcut()
+    }
+
+    private fun requestCampusWidgetPin(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
+        val manager = AppWidgetManager.getInstance(this)
+        if (!manager.isRequestPinAppWidgetSupported) return false
+        return manager.requestPinAppWidget(
+            ComponentName(this, CampusWidgetProvider::class.java),
+            null,
+            null,
+        )
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -133,6 +150,35 @@ class MainActivity : FlutterActivity() {
 
                     else -> result.notImplemented()
                 }
+            }
+        }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            WIDGET_CHANNEL,
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "pushSnapshot" -> {
+                    val snapshot = call.argument<Map<String, Any?>>("snapshot")
+                    if (snapshot == null) {
+                        result.error("invalid_args", "snapshot is required", null)
+                        return@setMethodCallHandler
+                    }
+                    CampusWidgetStore.store(this, JSONObject(snapshot).toString())
+                    result.success(null)
+                }
+
+                "requestPin" -> result.success(requestCampusWidgetPin())
+
+                "isSupported" -> {
+                    result.success(
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                            AppWidgetManager.getInstance(this)
+                                .isRequestPinAppWidgetSupported,
+                    )
+                }
+
+                else -> result.notImplemented()
             }
         }
 
@@ -404,7 +450,7 @@ class MainActivity : FlutterActivity() {
                 putExtra(Intent.EXTRA_SHORTCUT_INTENT, shortcutIntent)
                 putExtra(
                     Intent.EXTRA_SHORTCUT_NAME,
-                    getString(shortLabelRes),
+                    shortLabel,
                 )
                 putExtra(
                     if (action == SHUATI_ACTION) {
