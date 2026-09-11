@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../core/cache/json_cache_store.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/notification/app_notification_service.dart';
 import '../../core/profile/user_profile_controller.dart';
@@ -85,6 +86,30 @@ class SettingsPage extends StatelessWidget {
     }
   }
 
+  Future<void> _clearOfflineCache(BuildContext context) async {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('清除离线缓存'),
+        content: const Text('将清空课表、目录等离线缓存，不影响登录状态与个性化设置。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('清除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await JsonCacheStore.instance.clearAll();
+    messenger?.showSnackBar(const SnackBar(content: Text('离线缓存已清除')));
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -108,7 +133,7 @@ class SettingsPage extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 24),
-          const _SectionHeader('学期'),
+          const _SectionHeader('校园'),
           const SizedBox(height: 8),
           ValueListenableBuilder<DateTime>(
             valueListenable: SemesterCalendar.instance.semesterStartDate,
@@ -168,7 +193,37 @@ class SettingsPage extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 24),
-          const _SectionHeader('版本'),
+          const _SectionHeader('账户与数据'),
+          const SizedBox(height: 8),
+          _GroupCard(
+            children: [
+              _SettingsRow(
+                icon: Icons.school_outlined,
+                title: '教务系统',
+                subtitle: '登录状态与课表、成绩数据来源',
+                trailing: _chevron(context),
+                onTap: () => context.pushNamed('academic-service'),
+              ),
+              const _Hairline(),
+              _SettingsRow(
+                icon: Icons.verified_user_outlined,
+                title: '统一认证',
+                subtitle: '统一认证（含一卡通）登录状态',
+                trailing: _chevron(context),
+                onTap: () => context.pushNamed('unified-auth-login'),
+              ),
+              const _Hairline(),
+              _SettingsRow(
+                icon: Icons.cleaning_services_outlined,
+                title: '清除离线缓存',
+                subtitle: '清空目录与资源缓存，不影响登录状态',
+                trailing: _chevron(context),
+                onTap: () => _clearOfflineCache(context),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          const _SectionHeader('应用'),
           const SizedBox(height: 8),
           FutureBuilder<PackageInfo>(
             future: PackageInfo.fromPlatform(),

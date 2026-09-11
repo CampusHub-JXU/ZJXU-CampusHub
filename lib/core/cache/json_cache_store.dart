@@ -108,6 +108,20 @@ class JsonCacheStore {
     await _persistBucket(bucket, <String, CacheRecord>{});
   }
 
+  /// 清空全部缓存桶与落盘文件（设置页「清除离线缓存」）。
+  ///
+  /// 只动离线缓存目录，不影响登录态、偏好设置与用户背景图。
+  Future<void> clearAll() async {
+    await Future.wait<void>(_writeTails.values);
+    _buckets.clear();
+    _loadFutures.clear();
+    final dir = _cacheDir;
+    _cacheDir = null;
+    if (dir != null && await dir.exists()) {
+      await dir.delete(recursive: true);
+    }
+  }
+
   @visibleForTesting
   Future<void> debugClear() async {
     await Future.wait<void>(_writeTails.values);

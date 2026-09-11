@@ -25,6 +25,22 @@ void main() {
     expect(find.text('检查更新'), findsOneWidget);
   });
 
+  testWidgets('按 外观/校园/桌面与后台/账户与数据/应用 分组', (tester) async {
+    await pumpPage(tester, const SettingsPage());
+
+    expect(find.text('外观'), findsOneWidget);
+    expect(find.text('校园'), findsOneWidget);
+
+    await tester.scrollUntilVisible(find.text('账户与数据'), 300);
+    expect(find.text('账户与数据'), findsOneWidget);
+    expect(find.text('教务系统'), findsOneWidget);
+    expect(find.text('统一认证'), findsOneWidget);
+
+    await tester.scrollUntilVisible(find.text('应用'), 300);
+    expect(find.text('应用'), findsOneWidget);
+    expect(find.text('关于'), findsOneWidget);
+  });
+
   testWidgets('学期卡片展示自动识别的当前学年学期', (tester) async {
     await pumpPage(tester, const SettingsPage());
 

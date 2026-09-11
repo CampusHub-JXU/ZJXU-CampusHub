@@ -167,6 +167,18 @@ void main() {
 
       expect((await store.read('balance', 'card'))!.payload, 'B');
     });
+
+    test('clearAll 清空全部桶并删除落盘文件', () async {
+      await store.write('dorm', 'rooms', 'A');
+      await store.write('balance', 'card', 'B');
+
+      await store.clearAll();
+
+      expect(await store.read('dorm', 'rooms'), isNull);
+      expect(await store.read('balance', 'card'), isNull);
+      expect(await bucketFile('dorm').exists(), isFalse);
+      expect(await bucketFile('balance').exists(), isFalse);
+    });
   });
 
   group('损坏与版本不兼容时整桶丢弃', () {
