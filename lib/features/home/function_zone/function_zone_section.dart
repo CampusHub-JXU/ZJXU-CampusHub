@@ -13,8 +13,9 @@ import '../../../shared/widgets/app_tile_surface.dart';
 /// 首页单滚动页底部的「功能」锚点段落：圆润磁贴网格（有主次层级）。
 ///
 /// 视觉与交互参考 Win10 磁贴设计并圆润化：
-/// - 主次分明：置顶项与高频项升级为宽磁贴（展示徽标、标题、状态/副标题与前进箭头），
-///   其余入口为两两成行的标准磁贴；末行孤单项自动升级为宽磁贴以保持网格饱满。
+/// - 主次分明（PRD §25）：仅排序 rank #1 的入口升级为唯一的 Primary（宽）磁贴，
+///   其余入口都是 Compact 磁贴网格（手机 2 列 / 宽屏 3-4 列）；不再出现多个
+///   宽磁贴连续，也不再因奇数项把最后一个自动升级。
 /// - 淡淡圆角毛玻璃：使用现有表面机制 [AppTileSurface]（平色填充 / 半透明 tint +
 ///   柔和落底阴影 + squircle 圆角），零 BackdropFilter，避免每格重叠滤镜导致 GPU 开销。
 /// - 非语义图标统一主题色：入口徽标统一跟随主题主色，保持沉稳内敛的视觉节奏。
@@ -122,30 +123,8 @@ class _FunctionZoneSectionState extends State<FunctionZoneSection> {
     if (entries.isEmpty) return const SizedBox.shrink();
 
     final snapshot = _usageStore.snapshot;
-    final pinnedCount = entries.where((e) => snapshot.isPinned(e.id)).length;
-
-    // 磁贴主次分级：置顶项优先升级为宽磁贴（最多 2 个）；若无置顶项，
-    // 则将排在首位的最重要入口（rank 0）作为宽磁贴焦点。
-    final primaryWideCount = pinnedCount > 0
-        ? (pinnedCount > 2 ? 2 : pinnedCount)
-        : 1;
-
-    final wideEntries = entries.take(primaryWideCount).toList();
-    final remainingEntries = entries.skip(primaryWideCount).toList();
-
-    // 手机端两列排布：若剩余标准磁贴数为奇数，将最后一个升级为宽磁贴，末行保持整齐。
-    final hasOrphan = remainingEntries.length.isOdd;
-    FeatureEntryDefinition? orphanWideEntry;
-    List<FeatureEntryDefinition> standardEntries;
-    if (hasOrphan) {
-      orphanWideEntry = remainingEntries.last;
-      standardEntries = remainingEntries.sublist(
-        0,
-        remainingEntries.length - 1,
-      );
-    } else {
-      standardEntries = remainingEntries;
-    }
+    final primaryEntry = entries.first;
+    final compactEntries = entries.skip(1).toList();
 
     return Padding(
       padding: widget.padding,
@@ -157,135 +136,51 @@ class _FunctionZoneSectionState extends State<FunctionZoneSection> {
           LayoutBuilder(
             builder: (context, constraints) {
               const gap = 10.0;
-              final isWideScreen = constraints.maxWidth >= 600;
+              final maxWidth = constraints.maxWidth;
+              final columns = maxWidth >= 840
+                  ? 4
+                  : maxWidth >= 600
+                  ? 3
+                  : 2;
+              final itemWidth = (maxWidth - (columns - 1) * gap) / columns;
 
-              if (isWideScreen) {
-                return _buildWideScreenLayout(
-                  context,
-                  entries: entries,
-                  snapshot: snapshot,
-                  gap: gap,
-                  maxWidth: constraints.maxWidth,
-                );
-              }
-
-              return _buildPhoneLayout(
-                context,
-                wideEntries: wideEntries,
-                standardEntries: standardEntries,
-                orphanWideEntry: orphanWideEntry,
-                snapshot: snapshot,
-                gap: gap,
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _WideFunctionTile(
+                    entry: primaryEntry,
+                    pinned: snapshot.isPinned(primaryEntry.id),
+                    statsText:
+                        _resolveStats(primaryEntry) ?? primaryEntry.subtitle,
+                    onTap: () => unawaited(_openEntry(primaryEntry)),
+                    onLongPress: () => unawaited(_togglePinned(primaryEntry)),
+                  ),
+                  if (compactEntries.isNotEmpty) ...[
+                    const SizedBox(height: gap),
+                    Wrap(
+                      spacing: gap,
+                      runSpacing: gap,
+                      children: [
+                        for (final entry in compactEntries)
+                          SizedBox(
+                            width: itemWidth,
+                            child: _SmallFunctionTile(
+                              entry: entry,
+                              pinned: snapshot.isPinned(entry.id),
+                              onTap: () => unawaited(_openEntry(entry)),
+                              onLongPress: () =>
+                                  unawaited(_togglePinned(entry)),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ],
               );
             },
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildPhoneLayout(
-    BuildContext context, {
-    required List<FeatureEntryDefinition> wideEntries,
-    required List<FeatureEntryDefinition> standardEntries,
-    required FeatureEntryDefinition? orphanWideEntry,
-    required dynamic snapshot,
-    required double gap,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (final entry in wideEntries) ...[
-          _WideFunctionTile(
-            entry: entry,
-            pinned: snapshot.isPinned(entry.id),
-            statsText: _resolveStats(entry) ?? entry.subtitle,
-            onTap: () => unawaited(_openEntry(entry)),
-            onLongPress: () => unawaited(_togglePinned(entry)),
-          ),
-          SizedBox(height: gap),
-        ],
-        for (var i = 0; i < standardEntries.length; i += 2) ...[
-          Row(
-            children: [
-              Expanded(
-                child: _SmallFunctionTile(
-                  entry: standardEntries[i],
-                  pinned: snapshot.isPinned(standardEntries[i].id),
-                  onTap: () => unawaited(_openEntry(standardEntries[i])),
-                  onLongPress: () =>
-                      unawaited(_togglePinned(standardEntries[i])),
-                ),
-              ),
-              SizedBox(width: gap),
-              Expanded(
-                child: _SmallFunctionTile(
-                  entry: standardEntries[i + 1],
-                  pinned: snapshot.isPinned(standardEntries[i + 1].id),
-                  onTap: () => unawaited(_openEntry(standardEntries[i + 1])),
-                  onLongPress: () =>
-                      unawaited(_togglePinned(standardEntries[i + 1])),
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: gap),
-        ],
-        if (orphanWideEntry != null)
-          _WideFunctionTile(
-            entry: orphanWideEntry,
-            pinned: snapshot.isPinned(orphanWideEntry.id),
-            statsText:
-                _resolveStats(orphanWideEntry) ?? orphanWideEntry.subtitle,
-            onTap: () => unawaited(_openEntry(orphanWideEntry)),
-            onLongPress: () => unawaited(_togglePinned(orphanWideEntry)),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildWideScreenLayout(
-    BuildContext context, {
-    required List<FeatureEntryDefinition> entries,
-    required dynamic snapshot,
-    required double gap,
-    required double maxWidth,
-  }) {
-    final unitWidth = (maxWidth - 3 * gap) / 4;
-    final wideWidth = unitWidth * 2 + gap;
-
-    final pinnedCount = entries.where((e) => snapshot.isPinned(e.id)).length;
-    final wideCount = pinnedCount > 0 ? (pinnedCount > 2 ? 2 : pinnedCount) : 2;
-
-    final wideList = entries.take(wideCount).toList();
-    final smallList = entries.skip(wideCount).toList();
-
-    return Wrap(
-      spacing: gap,
-      runSpacing: gap,
-      children: [
-        for (final entry in wideList)
-          SizedBox(
-            width: wideWidth,
-            child: _WideFunctionTile(
-              entry: entry,
-              pinned: snapshot.isPinned(entry.id),
-              statsText: _resolveStats(entry) ?? entry.subtitle,
-              onTap: () => unawaited(_openEntry(entry)),
-              onLongPress: () => unawaited(_togglePinned(entry)),
-            ),
-          ),
-        for (final entry in smallList)
-          SizedBox(
-            width: unitWidth,
-            child: _SmallFunctionTile(
-              entry: entry,
-              pinned: snapshot.isPinned(entry.id),
-              onTap: () => unawaited(_openEntry(entry)),
-              onLongPress: () => unawaited(_togglePinned(entry)),
-            ),
-          ),
-      ],
     );
   }
 }
