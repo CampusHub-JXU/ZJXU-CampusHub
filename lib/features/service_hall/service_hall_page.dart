@@ -5,10 +5,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/actions/campus_action_executor.dart';
 import '../../core/auth/cas_auth_broker.dart';
-import '../../core/auth/unified_auth.dart';
-import '../../core/auth/zhengfang_auth.dart';
+import '../../core/auth/protected_web_entry_preparer.dart';
 import '../../core/logging/app_logger.dart';
-import '../../core/network/dio_client.dart';
 import '../../shared/widgets/unified_auth_protected_webview_page.dart';
 
 class ServiceHallPage extends StatefulWidget {
@@ -30,42 +28,18 @@ class ServiceHallPage extends StatefulWidget {
   /// 设备抓包（2026-09-12）显示：直连 mobilehall 会 302 到 WebVPN 网关，
   /// 而服务大厅 SPA 自身跳的 CAS service 是 ydd 通道
   /// （`https://newca.zjxu.edu.cn/casClient/login/ydd`）。所以校外访问要先
-  /// 建好 wengine 网关会话 + ydd 通道会话，再按选路结果给出最终地址。
-  /// 流程与校园卡账单页 `prepareStatusPage` 保持一致。
+  /// 建好 wengine 网关会话 + ydd 通道会话，再按选路结果给出最终地址；
+  /// 具体顺序集中在 [ProtectedWebEntryPreparer]。
   static Future<String> prepareEntry() async {
     final override = debugPrepareEntryOverride;
     if (override != null) return override();
 
-    await DioClient.instance.ensureInitialized();
-    await UnifiedAuthService.instance.restoreSession(syncWebViewCookies: false);
-    if (!UnifiedAuthService.instance.isLoggedIn) {
-      throw const CasAuthExpiredException();
-    }
-
-    final gateway = await ZhengfangAuth.instance
-        .ensureWebVpnGatewaySessionResult(
-          syncWebViewCookies: true,
-          targetUrl: homeUrl,
-        );
-    if (gateway.ready == false) throw const CasAuthExpiredException();
-    if (gateway.ready == null) throw TimeoutException('服务大厅网关暂时无法连接');
-
-    final sessionStatus = await CasSession.ensure(
-      CasService.ydd.serviceUrl,
-      syncWebViewCookies: false,
+    return ProtectedWebEntryPreparer.prepare(
+      targetUrl: homeUrl,
+      serviceUrl: CasService.ydd.serviceUrl,
+      gatewayTimeoutMessage: '服务大厅网关暂时无法连接',
+      authTimeoutMessage: '服务大厅认证暂时无法连接',
     );
-    if (sessionStatus == CasSessionStatus.inactive) {
-      throw const CasAuthExpiredException();
-    }
-    if (sessionStatus == CasSessionStatus.unknown) {
-      throw TimeoutException('服务大厅认证暂时无法连接');
-    }
-
-    final url = gateway.selectedMode == ZhengfangMode.webVpn
-        ? ZhengfangAuth.instance.buildWebVpnProxyUrl(homeUrl)
-        : homeUrl;
-    await UnifiedAuthService.instance.syncCookiesToWebViewForUrl(url);
-    return url;
   }
 
   @override
