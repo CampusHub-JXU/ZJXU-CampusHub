@@ -160,7 +160,7 @@ extension _WebViewPageBuildExtension on _WebViewPageState {
 
   return {
     usernameFilled: setInputValue(
-      ['#username', 'input[name="username"]', 'input[name="login_name"]'],
+      ['#username', 'input[name="username"]'],
       $username
     ),
     passwordFilled: setInputValue(

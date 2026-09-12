@@ -20,7 +20,9 @@ void main() {
     );
     expect(page.loginDescription, '图书馆经 WebVPN 访问，请先完成统一认证登录');
     expect(page.prepareAuthenticatedUrl, isNotNull);
-    expect(page.enableLoginQuickFill, isTrue);
+    // 刻意关闭：图书馆登录页由 lrnw 框架控制，只认真实键盘输入，JS 填充
+    // 会让登录按钮永久 disabled（设备实测 2026-09-12）。
+    expect(page.enableLoginQuickFill, isFalse);
     expect(page.onNavigationRequest, isNotNull);
     expect(page.showWebViewBottomBackButton, isTrue);
   });

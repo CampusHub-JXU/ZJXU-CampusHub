@@ -56,7 +56,9 @@ class LibraryPage extends StatelessWidget {
       serviceUrl: CasService.librarySso.serviceUrl,
       prepareAuthenticatedUrl: prepareEntry,
       loginDescription: authLoginDescription,
-      enableLoginQuickFill: true,
+      // 不开快速填充：图书馆登录页由自研 lrnw 框架控制，只有真实键盘输入
+      // 才会写入它的表单模型；JS 写 value 会让「登录」按钮永久 disabled
+      // （设备实测 2026-09-12），反而误导用户。详见 E3/E4 进展记录。
       showWebViewBottomBackButton: true,
       onHomePressed: () => context.goNamed('home'),
       // 书目详情改由原生页接管（PRD 0.7.0 §34）：汇图接口免登录即可给出

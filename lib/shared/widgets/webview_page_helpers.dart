@@ -26,11 +26,6 @@ WebViewQuickFillKind? detectWebViewQuickFillKind(String currentUrl) {
   if (normalizedUrl.contains('/cas/login')) {
     return WebViewQuickFillKind.unifiedAuth;
   }
-  // 图书馆（libapp）站点自带的登录页：一卡通号 + 卡证密码，
-  // 表单字段为 login_name / password（设备实测 2026-09-12）。
-  if (normalizedUrl.contains('/user/index/login')) {
-    return WebViewQuickFillKind.unifiedAuth;
-  }
   return null;
 }
 
