@@ -1,4 +1,3 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
@@ -48,6 +47,7 @@ void main() {
         .setMockMethodCallHandler(SystemChannels.platform, null);
     UnifiedAuthService.instance.debugReset();
     CasAuthBroker.debugGetResourceOverride = null;
+    ServiceHallPage.debugPrepareEntryOverride = null;
   });
 
   test('uses the expected service hall protected webview configuration', () {
@@ -56,9 +56,10 @@ void main() {
       ServiceHallPage.homeUrl,
       'https://mobilehall.zjxu.edu.cn/mportal/start/index.html#/business/ydd/portal/home',
     );
+    // PRD 0.7.0 §27 审计：服务大厅 SPA 自身跳的 CAS service 就是 ydd 通道。
     expect(
-      ServiceHallPage.webVpnHomeUrl,
-      'https://webvpn.zjxu.edu.cn/http/77726476706e69737468656265737421fdf843952b3560517204c7b6924d367bdd166b13aa07/mportal/start/index.html#/business/ydd/portal/home',
+      CasService.ydd.serviceUrl,
+      'https://newca.zjxu.edu.cn/casClient/login/ydd',
     );
     expect(ServiceHallPage.authLoginDescription, contains('统一认证'));
   });
@@ -73,23 +74,12 @@ void main() {
     UnifiedAuthService.instance.debugSessionMetadataLoader = () async =>
         '2024001';
     UnifiedAuthService.instance.debugSessionValidator = (_) async => true;
-    // 资源预热在测试环境中不能走真实网络与 WebView Cookie 同步。
+    // 入口准备在测试环境中不能走真实网关/CAS 网络。
+    ServiceHallPage.debugPrepareEntryOverride = () async =>
+        ServiceHallPage.homeUrl;
     UnifiedAuthService.instance.debugSyncCookiesToWebViewForUrlOverride = (
       _,
     ) async {};
-    CasAuthBroker.debugGetResourceOverride =
-        (
-          url, {
-          dio,
-          needsLogin,
-          cancelToken,
-          Duration? timeout,
-          deadline,
-        }) async => Response<List<int>>(
-          data: const <int>[],
-          requestOptions: RequestOptions(path: url),
-          statusCode: 200,
-        );
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(wechatChannel, (call) async => false);
     final clipboard = <String>[];
