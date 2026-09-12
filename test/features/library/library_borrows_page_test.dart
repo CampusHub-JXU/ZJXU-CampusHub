@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/core/network/dio_client.dart';
 import 'package:jxu_campus_hub/features/library/library_borrows_page.dart';
+import 'package:jxu_campus_hub/features/library/library_session.dart';
 import 'package:jxu_campus_hub/features/library/library_token_reader.dart';
 
 import '../../helpers/mock_http_client_adapter.dart';
@@ -25,6 +26,7 @@ void main() {
 
   setUp(() async {
     await resetTestEnvironment();
+    LibrarySession.instance.debugReset();
     LibraryTokenReader.debugReadOverride = (url) async => 'token-abc';
     DioClient.instance.debugCookieDirectoryPathProvider = (folderName) async =>
         'test/$folderName';
@@ -32,7 +34,34 @@ void main() {
   });
 
   tearDown(() {
+    LibrarySession.instance.debugReset();
     LibraryTokenReader.debugReadOverride = null;
+  });
+
+  testWidgets('优先使用 LibrarySession 缓存的令牌（不再开隐藏 WebView）', (tester) async {
+    LibrarySession.instance.debugSetAccessToken('token-from-page');
+    LibraryTokenReader.debugReadOverride = (url) async => null;
+
+    final adapter = MockHttpClientAdapter();
+    adapter.register('GET', '/user/borrows', (options) async {
+      expect(options.headers['Authorization'], 'Bearer token-from-page');
+      return ResponseBody.fromString(
+        '{"items":[],"page":1,"pageSize":100}',
+        200,
+        headers: <String, List<String>>{
+          Headers.contentTypeHeader: <String>['application/json'],
+        },
+      );
+    });
+    DioClient.instance.dio.httpClientAdapter = adapter;
+
+    await tester.pumpWidget(
+      const MaterialApp(home: LibraryBorrowsPage()),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('没有借阅'), findsOneWidget);
+    expect(adapter.requestLog, <String>['GET /user/borrows']);
   });
 
   testWidgets('渲染借阅条目并显示到期提醒与续借入口', (tester) async {

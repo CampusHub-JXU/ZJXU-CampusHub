@@ -10,6 +10,7 @@ import '../../shared/widgets/app_error_view.dart';
 import 'library_models.dart';
 import 'library_page.dart';
 import 'library_service.dart';
+import 'library_session.dart';
 import 'library_token_reader.dart';
 
 /// 原生「我的借阅」页（PRD 0.7.0 §32–§34）。
@@ -42,8 +43,11 @@ class _LibraryBorrowsPageState extends State<LibraryBorrowsPage> {
     );
   }
 
-  /// localStorage 按 origin 隔离：先试 WebVPN 网关 origin，再试直连 origin。
+  /// 令牌优先用 [LibrarySession] 从已打开的图书馆 WebView 里缓存的（可靠）；
+  /// 缓存为空时才退回隐藏 WebView 兜底（冷启动/直接进入借阅页时可能命中）。
   Future<String?> _resolveToken() async {
+    final cached = LibrarySession.instance.accessToken;
+    if (cached != null && cached.trim().isNotEmpty) return cached;
     final candidates = <String>[
       ZhengfangAuth.instance.buildWebVpnProxyUrl(LibraryPage.libraryUrl),
       LibraryPage.libraryUrl,

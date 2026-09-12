@@ -6,6 +6,7 @@ import '../../core/auth/cas_auth_broker.dart';
 import '../../core/auth/protected_web_entry_preparer.dart';
 import '../../shared/widgets/unified_auth_protected_webview_page.dart';
 import 'library_service.dart';
+import 'library_session.dart';
 
 class LibraryPage extends StatelessWidget {
   const LibraryPage({super.key});
@@ -62,7 +63,10 @@ class LibraryPage extends StatelessWidget {
       showWebViewBottomBackButton: true,
       onHomePressed: () => context.goNamed('home'),
       // 「我的借阅」已是原生页（PRD 0.7.0 §34）：借阅/续借走汇图接口，
-      // 令牌从图书馆 WebView 的 localStorage 读取。
+      // 令牌从这个 WebView 自己的 localStorage 取（隐藏 WebView 取不到，
+      // 见 LibrarySession 说明）。
+      onLoadStop: (controller, url) =>
+          LibrarySession.instance.captureFrom(controller),
       appBarActions: <Widget>[
         IconButton(
           tooltip: '我的借阅',

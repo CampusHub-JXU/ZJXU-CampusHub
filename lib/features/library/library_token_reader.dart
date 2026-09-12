@@ -50,8 +50,8 @@ class LibraryTokenReader {
         ),
         onLoadStop: (controller, url) async {
           try {
-            final raw = await controller.evaluateJavascript(source: _readScript);
-            final token = _cleanToken(raw);
+            final raw = await controller.evaluateJavascript(source: readScript);
+            final token = cleanToken(raw);
             finish(token.isEmpty ? null : token);
           } catch (error) {
             AppLogger.instance.storage(
@@ -91,7 +91,7 @@ class LibraryTokenReader {
   }
 
   /// `evaluateJavascript` 返回的是 JSON 编码字符串，需去掉外层引号。
-  static String _cleanToken(Object? raw) {
+  static String cleanToken(Object? raw) {
     var text = raw?.toString().trim() ?? '';
     if (text.length >= 2 && text.startsWith('"') && text.endsWith('"')) {
       text = text.substring(1, text.length - 1);
@@ -101,7 +101,10 @@ class LibraryTokenReader {
   }
 
   /// 只读 localStorage，不写、不打印令牌内容。
-  static const String _readScript = r'''
+  ///
+  /// 同时被 [LibrarySession] 复用（在已打开的图书馆 WebView 里就地读取），
+  /// 保证只有一份读取脚本。
+  static const String readScript = r'''
 (function () {
   try {
     var key = null;
