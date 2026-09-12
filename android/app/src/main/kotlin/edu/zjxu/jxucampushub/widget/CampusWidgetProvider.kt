@@ -95,11 +95,11 @@ object CampusWidgetStore {
             R.id.widget_header,
             if (minWidth >= 210) View.VISIBLE else View.GONE,
         )
-        views.setTextViewText(R.id.widget_header, json.optString("weekLabel"))
+        views.setTextViewText(R.id.widget_header, json.text("weekLabel"))
 
         views.setTextViewText(R.id.widget_hero_label, "下一节课")
-        val heroCourse = json.optString("heroCourseName").ifBlank {
-            json.optString("heroHeadline")
+        val heroCourse = json.text("heroCourseName").ifBlank {
+            json.text("heroHeadline")
         }
         views.setTextViewText(
             R.id.widget_hero_course,
@@ -108,8 +108,8 @@ object CampusWidgetStore {
         views.setTextViewText(
             R.id.widget_hero_meta,
             buildMeta(
-                json.optString("heroTimeText"),
-                json.optString("heroLocationText"),
+                json.text("heroTimeText"),
+                json.text("heroLocationText"),
             ),
         )
 
@@ -165,7 +165,7 @@ object CampusWidgetStore {
             views.setViewVisibility(rowIds[i], View.VISIBLE)
             views.setTextViewText(
                 rowIds[i],
-                "${row.optString("timeText")}  ${row.optString("courseName")}",
+                "${row.text("timeText")}  ${row.text("courseName")}",
             )
         }
     }
@@ -181,7 +181,7 @@ object CampusWidgetStore {
         views.setTextViewText(
             R.id.widget_balance,
             if (json.optBoolean("hasCampusCardData")) {
-                "一卡通 ${json.optString("campusCardBalance")}"
+                "一卡通 ${json.text("campusCardBalance")}"
             } else {
                 ""
             },
@@ -189,7 +189,7 @@ object CampusWidgetStore {
         views.setTextViewText(
             R.id.widget_electricity,
             if (json.optBoolean("hasElectricityData")) {
-                "电费 ${json.optString("dormElectricity")}"
+                "电费 ${json.text("dormElectricity")}"
             } else {
                 ""
             },
@@ -197,7 +197,7 @@ object CampusWidgetStore {
     }
 
     private fun renderExtras(views: RemoteViews, json: JSONObject, minWidth: Int) {
-        val examName = json.optString("nextExamCourseName")
+        val examName = json.text("nextExamCourseName")
         val showExam = minWidth >= 300 && examName.isNotBlank()
         if (showExam) {
             views.setViewVisibility(R.id.widget_exam, View.VISIBLE)
@@ -205,7 +205,7 @@ object CampusWidgetStore {
                 R.id.widget_exam,
                 buildMeta(
                     "考试 " + examName,
-                    json.optString("nextExamTimeText"),
+                    json.text("nextExamTimeText"),
                 ),
             )
         } else {
@@ -221,6 +221,18 @@ object CampusWidgetStore {
         if (showNotice) {
             views.setTextViewText(R.id.widget_notice, "未读通知 $unread 条")
         }
+    }
+
+    /**
+     * JSON null / 缺失一律视为空串。
+     *
+     * `optString` 会把 JSON null 读成字面量 "null"（Dart 侧 `Map<String, Object?>`
+     * 的可空字段序列化后就是 JSON null），屏幕上会直接显示 "null"。
+     */
+    private fun JSONObject.text(key: String): String {
+        if (isNull(key)) return ""
+        val value = optString(key)
+        return if (value == "null") "" else value
     }
 
     private fun buildMeta(primary: String, secondary: String): String {
