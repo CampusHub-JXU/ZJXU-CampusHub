@@ -165,4 +165,29 @@ void main() {
     expect(detail!.hasAvailable, isFalse);
     expect(detail.summary, '嘉兴学院图书馆 0/1');
   });
+
+  test('bidFromDetailUrl 解析 SPA 书目详情链接', () {
+    expect(
+      LibraryService.bidFromDetailUrl(
+        Uri.parse(
+          'https://webvpn.zjxu.edu.cn/https/abc/Book/Index/bookDetail/id/1123876/b_id/0001123876',
+        ),
+      ),
+      '0001123876',
+    );
+    expect(
+      LibraryService.bidFromDetailUrl(
+        Uri.parse(
+          'https://webvpn.zjxu.edu.cn/https/abc/Book/Index/bookDetail/id/1123876',
+        ),
+      ),
+      '0001123876',
+    );
+    expect(
+      LibraryService.bidFromDetailUrl(
+        Uri.parse('https://webvpn.zjxu.edu.cn/https/abc/Content/Index/index'),
+      ),
+      isNull,
+    );
+  });
 }

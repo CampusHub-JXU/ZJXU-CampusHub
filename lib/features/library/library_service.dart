@@ -26,6 +26,27 @@ class LibraryService {
   /// 书目号补零到 10 位。
   static String padBid(String bid) => bid.padLeft(10, '0');
 
+  /// 从图书馆 SPA 的书目详情链接里解析书目号。
+  ///
+  /// 实测形如 `.../Book/Index/bookDetail/id/1123876/b_id/0001123876`
+  /// （WebVPN 前缀与查询串可省略）；识别不到返回 null，交回 WebView 继续。
+  static String? bidFromDetailUrl(Uri uri) {
+    final segments = uri.pathSegments;
+    final bIdIndex = segments.indexOf('b_id');
+    if (bIdIndex >= 0 && bIdIndex + 1 < segments.length) {
+      final value = segments[bIdIndex + 1].trim();
+      if (value.isNotEmpty) return value;
+    }
+    final idIndex = segments.indexOf('id');
+    if (segments.contains('bookDetail') &&
+        idIndex >= 0 &&
+        idIndex + 1 < segments.length) {
+      final value = segments[idIndex + 1].trim();
+      if (value.isNotEmpty) return padBid(value);
+    }
+    return null;
+  }
+
   /// 拉取馆藏详情（无需登录）。
   Future<LibraryBookDetail> fetchBookDetail(String bid) async {
     final trimmed = bid.trim();

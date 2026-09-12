@@ -21,6 +21,7 @@ void main() {
     expect(page.loginDescription, '图书馆经 WebVPN 访问，请先完成统一认证登录');
     expect(page.prepareAuthenticatedUrl, isNotNull);
     expect(page.enableLoginQuickFill, isTrue);
+    expect(page.onNavigationRequest, isNotNull);
     expect(page.showWebViewBottomBackButton, isTrue);
   });
 }

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/auth/cas_auth_broker.dart';
 import '../../core/auth/protected_web_entry_preparer.dart';
 import '../../shared/widgets/unified_auth_protected_webview_page.dart';
+import 'library_service.dart';
 
 class LibraryPage extends StatelessWidget {
   const LibraryPage({super.key});
@@ -57,6 +59,17 @@ class LibraryPage extends StatelessWidget {
       enableLoginQuickFill: true,
       showWebViewBottomBackButton: true,
       onHomePressed: () => context.goNamed('home'),
+      // 书目详情改由原生页接管（PRD 0.7.0 §34）：汇图接口免登录即可给出
+      // 索书号、馆藏位置与可借册数，比 H5 页面更直接。
+      onNavigationRequest: (controller, uri) async {
+        final bid = LibraryService.bidFromDetailUrl(uri);
+        if (bid == null) return null;
+        await context.pushNamed(
+          'library-book',
+          pathParameters: <String, String>{'bid': bid},
+        );
+        return NavigationActionPolicy.CANCEL;
+      },
     );
   }
 }
