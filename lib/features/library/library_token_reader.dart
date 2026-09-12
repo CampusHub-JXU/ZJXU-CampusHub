@@ -121,20 +121,32 @@ class LibraryTokenReader {
   ///
   /// 同时被 [LibrarySession] 复用（在已打开的图书馆 WebView 里就地读取），
   /// 保证只有一份读取脚本。
+  ///
+  /// 站点会同时残留多个 `__N_lrnw_AS_Parse/lab4/currentUser`（设备实测
+  /// 2026-09-12：`__4_` 在前但 57 个字段里 `access_token` 为空，真正带令牌的
+  /// 是 `__3_`），因此必须遍历所有匹配键，返回第一个非空令牌，不能取首个匹配。
   static const String readScript = r'''
 (function () {
   try {
-    var key = null;
+    var fallback = '';
     for (var i = 0; i < localStorage.length; i++) {
-      var k = localStorage.key(i);
-      if (/^__\d+_lrnw_AS_Parse\/lab4\/currentUser$/.test(k)) { key = k; break; }
+      var key = localStorage.key(i);
+      if (!/^__\d+_lrnw_AS_Parse\/lab4\/currentUser$/.test(key)) continue;
+      var raw = localStorage.getItem(key);
+      if (!raw) continue;
+      var token = '';
+      try {
+        var user = JSON.parse(raw);
+        if (user) token = user.access_token || user.accessToken || '';
+      } catch (e) {
+        var matched = raw.match(/"access_?token"\s*:\s*"([^"]{20,180})"/i);
+        if (matched) token = matched[1];
+      }
+      if (typeof token !== 'string') continue;
+      if (token.length > 0) return token;
+      if (!fallback) fallback = token;
     }
-    if (!key) return '';
-    var raw = localStorage.getItem(key);
-    if (!raw) return '';
-    var user = JSON.parse(raw);
-    var token = user && (user.access_token || user.accessToken || '');
-    return typeof token === 'string' ? token : '';
+    return fallback;
   } catch (e) {
     return '';
   }

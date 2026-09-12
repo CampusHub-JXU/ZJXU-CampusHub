@@ -45,6 +45,16 @@ class LibrarySession {
           source: LibraryTokenReader.readScript,
         );
         final token = LibraryTokenReader.cleanToken(raw);
+        if (attempt == 1 && token.isEmpty) {
+          // 诊断：确认 evaluateJavascript 通道本身是否可用。
+          final probe = await controller.evaluateJavascript(
+            source: _probeScript,
+          );
+          AppLogger.instance.webview(
+            LogLevel.info,
+            '图书馆令牌探测 ${probe?.toString() ?? 'null'}（read=${raw?.toString() ?? 'null'}）',
+          );
+        }
         if (token.isNotEmpty) {
           _accessToken = token;
           AppLogger.instance.webview(
@@ -53,8 +63,13 @@ class LibrarySession {
           );
           return;
         }
-      } catch (_) {
-        // 页面可能正在导航/销毁，稍后重试。
+      } catch (error) {
+        if (attempt <= 3) {
+          AppLogger.instance.webview(
+            LogLevel.warn,
+            '图书馆令牌读取抛错：$error',
+          );
+        }
       }
       if (attempt < _maxAttempts) {
         await Future<void>.delayed(_retryInterval);
@@ -62,6 +77,13 @@ class LibrarySession {
     }
     AppLogger.instance.webview(LogLevel.warn, '未从图书馆页面读到令牌（可能未登录）');
   }
+
+  /// 诊断用：只有通道可用时才会返回非 null。
+  static const String _probeScript = r'''
+(function () {
+  try { return localStorage.length + '|' + document.title; } catch (e) { return 'ERR:' + e; }
+})();
+''';
 
   @visibleForTesting
   void debugSetAccessToken(String? value) {
