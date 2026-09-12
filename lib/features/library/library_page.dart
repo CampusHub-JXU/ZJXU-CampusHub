@@ -61,6 +61,15 @@ class LibraryPage extends StatelessWidget {
       // （设备实测 2026-09-12），反而误导用户。详见 E3/E4 进展记录。
       showWebViewBottomBackButton: true,
       onHomePressed: () => context.goNamed('home'),
+      // 「我的借阅」已是原生页（PRD 0.7.0 §34）：借阅/续借走汇图接口，
+      // 令牌从图书馆 WebView 的 localStorage 读取。
+      appBarActions: <Widget>[
+        IconButton(
+          tooltip: '我的借阅',
+          icon: const Icon(Icons.menu_book_outlined),
+          onPressed: () => context.pushNamed('library-borrows'),
+        ),
+      ],
       // 书目详情改由原生页接管（PRD 0.7.0 §34）：汇图接口免登录即可给出
       // 索书号、馆藏位置与可借册数，比 H5 页面更直接。
       onNavigationRequest: (controller, uri) async {

@@ -73,22 +73,78 @@ class LibraryService {
   Future<LibraryBorrowPage> fetchBorrows({
     required String accessToken,
     bool history = false,
+    int page = 1,
+    int pageSize = 100,
   }) async {
     final token = accessToken.trim();
     if (token.isEmpty) {
       throw const LibraryApiException('缺少图书馆登录凭据');
     }
     await DioClient.instance.ensureInitialized();
-    final response = await DioClient.instance.dio.get<Object?>(
-      history ? '$host/user/borrows/history' : '$host/user/borrows',
-      queryParameters: <String, Object?>{
-        'orgId': orgId,
-        'schoolId': schoolId,
-      },
-      options: Options(
-        headers: <String, Object?>{'Authorization': 'Bearer $token'},
-      ),
-    );
-    return LibraryBorrowPage.fromJson(response.data);
+    try {
+      final response = await DioClient.instance.dio.get<Object?>(
+        history ? '$host/user/borrows/history' : '$host/user/borrows',
+        queryParameters: <String, Object?>{
+          'orgId': orgId,
+          'schoolId': schoolId,
+          'page': page,
+          'pageSize': pageSize,
+        },
+        options: Options(
+          headers: <String, Object?>{'Authorization': 'Bearer $token'},
+        ),
+      );
+      return LibraryBorrowPage.fromJson(response.data);
+    } on DioException catch (error) {
+      throw _mapDioError(error, '借阅记录加载失败');
+    }
+  }
+
+  /// 续借一本书（`POST /book/renew`，body 为扁平的 `{cid}`）。
+  ///
+  /// `cid` 取自借阅记录的 `renewID`；接口用 `Authorization: Bearer` 鉴权，
+  /// 未登录 401 `invalid_access_token`，不可续借 500 `renew_error`。
+  Future<void> renewBorrow({
+    required String accessToken,
+    required String cid,
+  }) async {
+    final token = accessToken.trim();
+    if (token.isEmpty) {
+      throw const LibraryApiException('缺少图书馆登录凭据');
+    }
+    final renewId = cid.trim();
+    if (renewId.isEmpty) {
+      throw const LibraryApiException('缺少续借参数');
+    }
+    await DioClient.instance.ensureInitialized();
+    try {
+      await DioClient.instance.dio.post<Object?>(
+        '$host/book/renew',
+        data: <String, Object?>{'cid': renewId},
+        options: Options(
+          headers: <String, Object?>{'Authorization': 'Bearer $token'},
+        ),
+      );
+    } on DioException catch (error) {
+      throw _mapDioError(error, '续借失败，请稍后重试');
+    }
+  }
+
+  /// 接口错误体是 `{code, message, error}`，优先取服务端文案。
+  static LibraryApiException _mapDioError(
+    DioException error,
+    String fallback,
+  ) {
+    if (error.response?.statusCode == 401) {
+      return const LibraryApiException('图书馆登录已过期，请重新登录');
+    }
+    final data = error.response?.data;
+    if (data is Map) {
+      final message = (data['message'] ?? data['error'] ?? '').toString().trim();
+      if (message.isNotEmpty && message != 'null') {
+        return LibraryApiException(message);
+      }
+    }
+    return LibraryApiException(fallback);
   }
 }

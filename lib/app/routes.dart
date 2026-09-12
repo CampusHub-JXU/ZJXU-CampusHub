@@ -13,6 +13,7 @@ import '../features/grades/grades_page.dart';
 import '../features/campus_card/campus_card_page.dart';
 import '../features/campus_card/campus_card_payment_page.dart';
 import '../features/library/library_book_page.dart';
+import '../features/library/library_borrows_page.dart';
 import '../features/library/library_page.dart';
 import '../features/micro_life/micro_life_page.dart';
 import '../features/one_stop_service/one_stop_service_page.dart';
@@ -148,6 +149,11 @@ final GoRouter appRouter = GoRouter(
         bid: state.pathParameters['bid'] ?? '',
         title: state.uri.queryParameters['title'],
       ),
+    ),
+    _appRoute(
+      path: '/library/borrows',
+      name: 'library-borrows',
+      builder: (context, state) => const LibraryBorrowsPage(),
     ),
     _appRoute(
       path: '/micro-life',

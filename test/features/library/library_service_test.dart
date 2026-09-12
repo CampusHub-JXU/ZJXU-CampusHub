@@ -109,10 +109,20 @@ void main() {
     });
     adapter.registerJson('GET', '/user/borrows/history', <String, Object?>{
       'items': <Object?>[
-        <String, Object?>{'title': '高等数学', 'returnDate': '2026-06-01'},
+        <String, Object?>{
+          'bookName': '高等数学',
+          'author': '同济大学数学系',
+          'desc': 'O13/68 · 高等教育出版社',
+          'borrowTime': '2026-03-01 09:12:00',
+          'endTime': '2026年06月01日',
+          'returnTime': '2026-05-20 10:00:00',
+          'renewID': '',
+          'returnCode': 'A2470655',
+        },
       ],
       'page': 1,
       'pageSize': 20,
+      'nextUrl': '',
     });
     DioClient.instance.dio.httpClientAdapter = adapter;
 
@@ -131,7 +141,111 @@ void main() {
     expect(current.isEmpty, isTrue);
     expect(current.pageSize, 20);
     expect(history.items, hasLength(1));
-    expect(history.items.single['title'], '高等数学');
+    final item = history.items.single;
+    expect(item.bookName, '高等数学');
+    expect(item.author, '同济大学数学系');
+    expect(item.endTime, '2026年06月01日');
+    expect(item.returnCode, 'A2470655');
+    expect(item.canRenew, isFalse);
+  });
+
+  test('renewBorrow 以扁平 {cid} 与 Bearer 头提交', () async {
+    final adapter = MockHttpClientAdapter();
+    adapter.register('POST', '/book/renew', (options) async {
+      expect(options.headers['Authorization'], 'Bearer token-abc');
+      final raw = options.data;
+      final body = raw is String
+          ? jsonDecode(raw)
+          : (raw as Map).cast<String, Object?>();
+      expect(body, <String, Object?>{'cid': 'R2026'});
+      return ResponseBody.fromString(
+        jsonEncode(<String, Object?>{'code': '200', 'message': ''}),
+        200,
+        headers: <String, List<String>>{
+          Headers.contentTypeHeader: <String>['application/json'],
+        },
+      );
+    });
+    DioClient.instance.dio.httpClientAdapter = adapter;
+
+    await LibraryService.instance.renewBorrow(
+      accessToken: 'token-abc',
+      cid: 'R2026',
+    );
+
+    expect(adapter.requestLog, <String>['POST /book/renew']);
+  });
+
+  test('renewBorrow 透出服务端文案（不可续借）', () async {
+    final adapter = MockHttpClientAdapter();
+    adapter.register('POST', '/book/renew', (options) async {
+      return ResponseBody.fromString(
+        jsonEncode(<String, Object?>{
+          'code': 'renew_error',
+          'message': '未借阅该书',
+        }),
+        500,
+        headers: <String, List<String>>{
+          Headers.contentTypeHeader: <String>['application/json'],
+        },
+      );
+    });
+    DioClient.instance.dio.httpClientAdapter = adapter;
+
+    expect(
+      () => LibraryService.instance.renewBorrow(
+        accessToken: 'token-abc',
+        cid: 'R2026',
+      ),
+      throwsA(
+        isA<LibraryApiException>().having(
+          (e) => e.message,
+          'message',
+          '未借阅该书',
+        ),
+      ),
+    );
+  });
+
+  test('renewBorrow 401 映射为重新登录提示', () async {
+    final adapter = MockHttpClientAdapter();
+    adapter.register('POST', '/book/renew', (options) async {
+      return ResponseBody.fromString(
+        jsonEncode(<String, Object?>{
+          'code': 'invalid_access_token',
+          'message': '未登录',
+        }),
+        401,
+        headers: <String, List<String>>{
+          Headers.contentTypeHeader: <String>['application/json'],
+        },
+      );
+    });
+    DioClient.instance.dio.httpClientAdapter = adapter;
+
+    expect(
+      () => LibraryService.instance.renewBorrow(
+        accessToken: 'token-abc',
+        cid: 'R2026',
+      ),
+      throwsA(
+        isA<LibraryApiException>().having(
+          (e) => e.message,
+          'message',
+          contains('重新登录'),
+        ),
+      ),
+    );
+  });
+
+  test('renewBorrow 缺参抛 LibraryApiException', () async {
+    expect(
+      () => LibraryService.instance.renewBorrow(
+        accessToken: 'token-abc',
+        cid: ' ',
+      ),
+      throwsA(isA<LibraryApiException>()),
+    );
   });
 
   test('fetchBorrows 缺凭据抛 LibraryApiException', () async {
