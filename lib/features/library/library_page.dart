@@ -10,8 +10,15 @@ class LibraryPage extends StatelessWidget {
 
   static const titleText = '图书馆';
 
-  /// 直连入口；WebVPN 模式下由 [prepareEntry] 改写为网关地址。
-  static final libraryUrl = CasService.librarySso.serviceUrl;
+  /// 图书馆站点根；校外由 [prepareEntry] 改写为 WebVPN 网关地址。
+  ///
+  /// 不再使用 `Info/Thirdparty/ssoFromDingDing`：该入口面向钉钉工作台，
+  /// 依赖 `dd.runtime.permission.requestAuthCode` 返回真实 authCode，非钉钉
+  /// 容器无法满足——App 注入的 dd mock 会直接 onFail，页面随即提示
+  /// `{"errorCode":3,"not supported"}`（该文案是 App 自己造的，不是服务端拒绝）。
+  /// 设备实测（2026-09-12）：`https://webvpn.zjxu.edu.cn/https/<libapp>/`
+  /// 可直接打开图书馆站点（标题「嘉兴大学图书馆」，自带一卡通/密码登录页）。
+  static const libraryUrl = 'https://libapp.zjxu.edu.cn/';
 
   static const authLoginDescription = '图书馆经 WebVPN 访问，请先完成统一认证登录';
 
@@ -21,10 +28,9 @@ class LibraryPage extends StatelessWidget {
 
   /// 站内入口准备（PRD 0.7.0 §32）。
   ///
-  /// 设备抓包（2026-09-12）显示：服务大厅内「掌上图书馆」直接跳
-  /// `libapp.zjxu.edu.cn/Info/Thirdparty/ssoFromDingDing`，校外环境
-  /// `net::ERR_CONNECTION_CLOSED`；libapp 必须先建好 WebVPN 网关会话与
-  /// 图书馆 CAS service 会话才能打开。
+  /// 设备实验（2026-09-12）：`ssoFromDingDing` 入口必须返回真实钉钉 authCode
+  /// 才继续，非钉钉容器无解；而 WebVPN 网关下的站点根可直接打开图书馆并进入
+  /// 其自带的一卡通/密码登录页，因此入口改为站点根 + 固定走 WebVPN 代理。
   static Future<String> prepareEntry() async {
     final override = debugPrepareEntryOverride;
     if (override != null) return override();

@@ -13,10 +13,7 @@ void main() {
     );
 
     expect(page.title, '图书馆');
-    expect(
-      page.url,
-      'https://libapp.zjxu.edu.cn/Info/Thirdparty/ssoFromDingDing',
-    );
+    expect(page.url, 'https://libapp.zjxu.edu.cn/');
     expect(
       page.serviceUrl,
       'https://libapp.zjxu.edu.cn/Info/Thirdparty/ssoFromDingDing',
