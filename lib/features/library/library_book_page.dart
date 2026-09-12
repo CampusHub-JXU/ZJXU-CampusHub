@@ -54,7 +54,9 @@ class _LibraryBookPageState extends State<LibraryBookPage> {
             final error = snapshot.error;
             return AppErrorView(
               title: '馆藏信息加载失败',
-              message: error is LibraryApiException ? error.message : '请检查网络后重试',
+              message: error is LibraryApiException
+                  ? error.message
+                  : '请检查网络后重试',
               onRetry: _retry,
             );
           }

@@ -41,7 +41,9 @@ void main() {
     DioClient.instance.dio.httpClientAdapter = adapter;
 
     await tester.pumpWidget(
-      const MaterialApp(home: LibraryBookPage(bid: '1123876', title: '高等数学')),
+      const MaterialApp(
+        home: LibraryBookPage(bid: '1123876', title: '高等数学'),
+      ),
     );
     await tester.pumpAndSettle();
 
@@ -55,12 +57,9 @@ void main() {
 
   testWidgets('接口异常时展示错误态并可重试', (tester) async {
     final adapter = MockHttpClientAdapter();
-    adapter.registerJson(
-      'GET',
-      '/book/detail',
-      <String, Object?>{'code': 'book_not_exists'},
-      statusCode: 500,
-    );
+    adapter.registerJson('GET', '/book/detail', <String, Object?>{
+      'code': 'book_not_exists',
+    }, statusCode: 500);
     DioClient.instance.dio.httpClientAdapter = adapter;
 
     await tester.pumpWidget(

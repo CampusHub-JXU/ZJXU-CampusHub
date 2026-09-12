@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -84,14 +82,15 @@ class AppAppBar extends StatelessWidget implements PreferredSizeWidget {
 ///
 /// 材质由统一 [MaterialRecipe] 驱动（与 [GlassContainer] 同一套配方），不再
 /// 自持 BackdropFilter / tint / border 常量：
-/// * 玻璃 —— 模糊 + 半透明 tint + 底部发丝线 + 顶部高光；
-/// * 亚克力 —— 更强模糊 + 更高 tint + 噪点；
-/// * 云母 —— 低模糊 + 更高表面不透明度；
+/// * 玻璃 —— 裁剪后 bounded 背景模糊 + 半透明 tint + 底部发丝线；
+/// * 亚克力 —— 更强模糊 + 更高 tint + 细微噪点；
+/// * 云母 —— 不透明稳定主题表面，不创建 BackdropFilter；
 /// * 实色 / 总开关关闭 / 滑条归零 / 显式 [fallbackColor] —— 回退实色填充，
 ///   不创建 BackdropFilter，保证低端机流畅。
 ///
 /// 注意：裁剪必须放在 BackdropFilter 的祖先位置。BackdropFilter 作用于
-/// 整个父层 backdrop 而非自身 bounds，不先裁剪会把整屏内容糊掉。
+/// 整个父层 backdrop 而非自身 bounds，不先裁剪会把整屏内容糊掉；模糊经
+/// [ImageFilterConfig.blur]（bounded）限制采样范围，杜绝边缘溢色。
 class GlassAppBarSpace extends StatelessWidget {
   const GlassAppBarSpace({super.key, this.fallbackColor});
 
@@ -103,9 +102,6 @@ class GlassAppBarSpace extends StatelessWidget {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
-    final tintColor =
-        fallbackColor ??
-        (isDark ? cs.surfaceContainerLow : cs.surfaceContainerLowest);
     final style = GlassStyleController.instance;
 
     return AnimatedBuilder(
@@ -121,12 +117,31 @@ class GlassAppBarSpace extends StatelessWidget {
           blurBase: style.blurSigma.value,
           tintBase: style.tintOpacity.value,
         );
+        final baseTint = isDark
+            ? cs.surfaceContainerLow
+            : cs.surfaceContainerLowest;
+        // 云母回退为不透明顶栏：叠加主题色调，避免和中性实色/半透明玻璃
+        // 混同；玻璃与亚克力仍走半透明 + 实时模糊分支。
+        final tintColor =
+            fallbackColor ??
+            (recipe.style == SurfaceMaterialStyle.mica
+                ? Color.alphaBlend(
+                    cs.primary.withValues(
+                      alpha: (recipe.tintOpacity * (isDark ? 0.42 : 0.28))
+                          .clamp(0.0, 0.2),
+                    ),
+                    baseTint,
+                  )
+                : baseTint);
         final useGlass =
-            fallbackColor == null && style.shouldBlur() && recipe.usesBackdropBlur;
+            fallbackColor == null &&
+            style.shouldBlur() &&
+            recipe.usesBackdropBlur;
         final sigma = recipe.style == SurfaceMaterialStyle.glass
             ? style.sigmaFor(GlassTier.nav)
             : (recipe.blurSigma * 1.2).clamp(0.0, 44.0);
-        final borderColor = useGlass
+        final borderColor =
+            useGlass || recipe.style == SurfaceMaterialStyle.mica
             ? (isDark
                   ? Colors.white.withValues(
                       alpha: (recipe.borderOpacity * 0.15).clamp(0.0, 1.0),
@@ -139,17 +154,22 @@ class GlassAppBarSpace extends StatelessWidget {
           tintColor: tintColor,
           tintAlpha: useGlass ? _appBarTintAlpha(recipe, isDark) : 1.0,
           borderColor: borderColor,
-          highlightOpacity: useGlass ? recipe.highlightOpacity : 0,
           noiseOpacity: useGlass ? recipe.noiseOpacity : 0,
           isDark: isDark,
         );
         return ClipRect(
           child: useGlass
               ? BackdropFilter(
-                  filter: ImageFilter.compose(
-                    outer: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
-                    inner: ColorFilter.matrix(
-                      saturationColorMatrix(recipe.saturation),
+                  filterConfig: ImageFilterConfig.compose(
+                    outer: ImageFilterConfig.blur(
+                      sigmaX: sigma,
+                      sigmaY: sigma,
+                      bounded: true,
+                    ),
+                    inner: ImageFilterConfig(
+                      ColorFilter.matrix(
+                        saturationColorMatrix(recipe.saturation),
+                      ),
                     ),
                   ),
                   child: fill,
@@ -170,19 +190,19 @@ class GlassAppBarSpace extends StatelessWidget {
       case SurfaceMaterialStyle.acrylic:
         return isDark ? 0.42 : 0.50;
       case SurfaceMaterialStyle.mica:
-        return isDark ? 0.50 : 0.58;
+        // 云母不进入模糊分支（不透明回退），此处仅为穷尽 switch 兜底。
+        return 1.0;
     }
   }
 }
 
 /// 平色 tint 填充 + 底部发丝线（无受光渐变，深色模式不出现顶缘亮带）。
-/// 亚克力 / 云母按配方叠加细微噪点与顶部高光。
+/// 亚克力按配方叠加细微程序化微粒噪点。
 class _AppBarFill extends StatelessWidget {
   const _AppBarFill({
     required this.tintColor,
     required this.tintAlpha,
     required this.borderColor,
-    this.highlightOpacity = 0,
     this.noiseOpacity = 0,
     this.isDark = true,
   });
@@ -190,7 +210,6 @@ class _AppBarFill extends StatelessWidget {
   final Color tintColor;
   final double tintAlpha;
   final Color borderColor;
-  final double highlightOpacity;
   final double noiseOpacity;
   final bool isDark;
 
@@ -204,41 +223,22 @@ class _AppBarFill extends StatelessWidget {
       child: const SizedBox.expand(),
     );
 
-    if (highlightOpacity <= 0.001 && noiseOpacity <= 0.001) return fill;
+    if (noiseOpacity <= 0.001) return fill;
 
     return Stack(
       children: [
         fill,
-        if (highlightOpacity > 0.001)
-          Positioned.fill(
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.white.withValues(alpha: highlightOpacity),
-                      Colors.white.withValues(alpha: 0),
-                    ],
-                  ),
-                ),
+        Positioned.fill(
+          child: IgnorePointer(
+            child: CustomPaint(
+              painter: MaterialNoisePainter(
+                opacity: noiseOpacity,
+                isDark: isDark,
               ),
             ),
           ),
-        if (noiseOpacity > 0.001)
-          Positioned.fill(
-            child: IgnorePointer(
-              child: CustomPaint(
-                painter: MaterialNoisePainter(
-                  opacity: noiseOpacity,
-                  isDark: isDark,
-                ),
-              ),
-            ),
-          ),
+        ),
       ],
     );
   }
 }
-

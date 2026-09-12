@@ -3,40 +3,78 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jxu_campus_hub/core/theme/surface_material.dart';
 
 void main() {
-  group('MaterialRecipe.resolve 材质差异（PRD §21-23）', () {
+  group('MaterialRecipe.resolve 材质差异与重构语义', () {
     MaterialRecipe resolve(SurfaceMaterialStyle style) =>
         MaterialRecipe.resolve(style, blurBase: 14, tintBase: 0.84);
 
     test('实色不模糊且完全不透明', () {
       final recipe = resolve(SurfaceMaterialStyle.solid);
       expect(recipe.usesBackdropBlur, isFalse);
+      expect(recipe.blurSigma, 0.0);
       expect(recipe.surfaceOpacity, 1.0);
       expect(recipe.hasNoise, isFalse);
+      expect(recipe.hasHighlight, isFalse);
     });
 
-    test('玻璃明显模糊、低 tint、有边缘高光', () {
+    test('玻璃受约束模糊、半透明 tint、无伪高光渐变', () {
       final recipe = resolve(SurfaceMaterialStyle.glass);
       expect(recipe.usesBackdropBlur, isTrue);
       expect(recipe.blurSigma, greaterThan(6));
       expect(recipe.tintOpacity, lessThan(0.4));
-      expect(recipe.hasHighlight, isTrue);
+      expect(recipe.hasHighlight, isFalse);
       expect(recipe.hasNoise, isFalse);
+      expect(recipe.shadowOpacity, lessThanOrEqualTo(0.12));
     });
 
-    test('亚克力比玻璃更强模糊、更高 tint、带噪点', () {
+    test('亚克力比玻璃更强模糊/更高 tint、明显半透明且带细微噪点', () {
       final glass = resolve(SurfaceMaterialStyle.glass);
       final acrylic = resolve(SurfaceMaterialStyle.acrylic);
+      expect(acrylic.usesBackdropBlur, isTrue);
       expect(acrylic.blurSigma, greaterThan(glass.blurSigma));
+      expect(acrylic.blurSigma, lessThanOrEqualTo(44.0));
       expect(acrylic.tintOpacity, greaterThan(glass.tintOpacity));
+      expect(acrylic.saturation, greaterThan(glass.saturation));
       expect(acrylic.hasNoise, isTrue);
+      expect(acrylic.noiseOpacity, greaterThan(0));
+      expect(acrylic.noiseOpacity, lessThanOrEqualTo(0.04));
+      expect(acrylic.borderOpacity, lessThanOrEqualTo(glass.borderOpacity));
+      expect(acrylic.hasHighlight, isFalse);
     });
 
-    test('云母低模糊、高表面不透明度、细微噪点', () {
+    test('亚克力与云母在模糊/透明/噪点上互斥（视觉可区分）', () {
+      final acrylic = resolve(SurfaceMaterialStyle.acrylic);
+      final mica = resolve(SurfaceMaterialStyle.mica);
+      expect(acrylic.usesBackdropBlur, isTrue);
+      expect(mica.usesBackdropBlur, isFalse);
+      expect(acrylic.blurSigma, greaterThan(0));
+      expect(mica.blurSigma, 0.0);
+      expect(acrylic.surfaceOpacity, lessThan(1.0));
+      expect(mica.surfaceOpacity, 1.0);
+      expect(acrylic.hasNoise, isTrue);
+      expect(mica.hasNoise, isFalse);
+      expect(acrylic.noiseOpacity, greaterThan(0));
+      expect(mica.noiseOpacity, 0.0);
+      expect(mica.saturation, 1.0);
+      expect(mica.tintOpacity, greaterThan(0));
+    });
+
+    test('云母无实时背景模糊、完全不透明且无噪点', () {
       final glass = resolve(SurfaceMaterialStyle.glass);
       final mica = resolve(SurfaceMaterialStyle.mica);
-      expect(mica.blurSigma, lessThan(glass.blurSigma));
+      expect(mica.usesBackdropBlur, isFalse);
+      expect(mica.blurSigma, 0.0);
       expect(mica.surfaceOpacity, greaterThan(glass.surfaceOpacity));
-      expect(mica.hasNoise, isTrue);
+      expect(mica.surfaceOpacity, 1.0);
+      expect(mica.hasNoise, isFalse);
+      expect(mica.hasHighlight, isFalse);
+    });
+
+    test('MaterialSurfaceType 为 SurfaceMaterialStyle 别名', () {
+      expect(MaterialSurfaceType.values, SurfaceMaterialStyle.values);
+      expect(MaterialSurfaceType.glass, SurfaceMaterialStyle.glass);
+      expect(MaterialSurfaceType.acrylic, SurfaceMaterialStyle.acrylic);
+      expect(MaterialSurfaceType.mica, SurfaceMaterialStyle.mica);
+      expect(MaterialSurfaceType.solid, SurfaceMaterialStyle.solid);
     });
 
     test('四种风格均产出有限参数', () {

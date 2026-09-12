@@ -131,16 +131,15 @@ class LibraryService {
   }
 
   /// 接口错误体是 `{code, message, error}`，优先取服务端文案。
-  static LibraryApiException _mapDioError(
-    DioException error,
-    String fallback,
-  ) {
+  static LibraryApiException _mapDioError(DioException error, String fallback) {
     if (error.response?.statusCode == 401) {
       return const LibraryApiException('图书馆登录已过期，请重新登录');
     }
     final data = error.response?.data;
     if (data is Map) {
-      final message = (data['message'] ?? data['error'] ?? '').toString().trim();
+      final message = (data['message'] ?? data['error'] ?? '')
+          .toString()
+          .trim();
       if (message.isNotEmpty && message != 'null') {
         return LibraryApiException(message);
       }

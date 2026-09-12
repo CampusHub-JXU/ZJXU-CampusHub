@@ -249,8 +249,8 @@ class PersonalizationController {
 
   static List<Color> _defaultBrandColors() => const [
     Color(0xFF8B1A2D),
-    Colors.black,
-    Colors.white,
+    Color(0xFFB03A48),
+    Color(0xFF5A0D1A),
   ];
 
   Future<void> init() async {

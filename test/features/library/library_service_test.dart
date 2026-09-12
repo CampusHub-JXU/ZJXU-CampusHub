@@ -198,11 +198,7 @@ void main() {
         cid: 'R2026',
       ),
       throwsA(
-        isA<LibraryApiException>().having(
-          (e) => e.message,
-          'message',
-          '未借阅该书',
-        ),
+        isA<LibraryApiException>().having((e) => e.message, 'message', '未借阅该书'),
       ),
     );
   });

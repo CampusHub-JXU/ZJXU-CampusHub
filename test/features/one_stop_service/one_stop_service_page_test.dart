@@ -74,7 +74,14 @@ void main() {
       _,
     ) async {};
     CasAuthBroker.debugGetResourceOverride =
-        (url, {dio, needsLogin, cancelToken, Duration? timeout, deadline}) async {
+        (
+          url, {
+          dio,
+          needsLogin,
+          cancelToken,
+          Duration? timeout,
+          deadline,
+        }) async {
           return Response<List<int>>(
             data: <int>[],
             requestOptions: RequestOptions(path: url),

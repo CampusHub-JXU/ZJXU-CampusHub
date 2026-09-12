@@ -134,6 +134,10 @@ void main() {
     );
     expect(page.prepareAuthenticatedUrl, isNotNull);
     expect(page.loginDescription, contains('WebVPN'));
+    // 受保护业务页绝不进入 CAS H5 登录页，也不提供一键填充。
+    expect(page.url, isNot(contains('/cas/login')));
+    expect(find.text('一键填充'), findsNothing);
+    expect(find.text('一卡通快速填充'), findsNothing);
   });
 
   testWidgets('recharge tile opens xiaofubao page in WeChat', (tester) async {

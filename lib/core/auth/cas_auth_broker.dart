@@ -31,6 +31,11 @@ enum CasService {
   /// 图书馆移动端 SSO 入口（目标 URL 本身即 service）。
   librarySso('https://libapp.zjxu.edu.cn/Info/Thirdparty/ssoFromDingDing'),
 
+  /// 体测服务（学生服务平台）CAS 回调：ticket 校验后建立该站业务会话。
+  /// 资源页（`/weixin/main.jsp`、`/spQuery`）不是 service，禁止传给
+  /// [CasSession.ensure]。
+  physicalTest('http://jkjy.zjxu.edu.cn/weixin/login.jsp'),
+
   /// WebVPN 网关会话（教务两阶段登录的第一阶段，见 ZhengfangAuth）。
   webVpnGateway(ZhengfangAuth.webVpnGatewayServiceUrl);
 

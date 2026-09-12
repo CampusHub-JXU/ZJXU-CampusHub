@@ -60,11 +60,7 @@ class DesktopBackgroundPage extends StatelessWidget {
           const SizedBox(height: 24),
           const _SectionHeader('通知'),
           const SizedBox(height: 8),
-          _GroupCard(
-            children: [
-              _NotificationPermissionRow(),
-            ],
-          ),
+          _GroupCard(children: [_NotificationPermissionRow()]),
           const SizedBox(height: 24),
           const _SectionHeader('后台运行'),
           const SizedBox(height: 8),
@@ -103,10 +99,7 @@ class DesktopBackgroundPage extends StatelessWidget {
   Future<void> _addWidget(BuildContext context) async {
     final requested = await CampusWidgetBridge.instance.requestPin();
     if (!context.mounted) return;
-    _toast(
-      context,
-      requested ? '已请求添加桌面组件，请在桌面确认' : '当前设备或桌面不支持固定组件，请在桌面手动添加',
-    );
+    _toast(context, requested ? '已请求添加桌面组件，请在桌面确认' : '当前设备或桌面不支持固定组件，请在桌面手动添加');
   }
 
   Future<void> _addShortcut(BuildContext context) async {
@@ -142,8 +135,8 @@ class _NotificationPermissionRow extends StatefulWidget {
 
 class _NotificationPermissionRowState
     extends State<_NotificationPermissionRow> {
-  late final Future<bool> _enabled =
-      AppNotificationService.instance.areNotificationsEnabled();
+  late final Future<bool> _enabled = AppNotificationService.instance
+      .areNotificationsEnabled();
 
   @override
   Widget build(BuildContext context) {
@@ -292,11 +285,7 @@ class _ActionRow extends StatelessWidget {
 }
 
 class _InfoRow extends StatelessWidget {
-  const _InfoRow({
-    required this.icon,
-    required this.title,
-    required this.body,
-  });
+  const _InfoRow({required this.icon, required this.title, required this.body});
 
   final IconData icon;
   final String title;

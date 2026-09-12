@@ -24,12 +24,12 @@ class UnifiedAuthProtectedWebViewPage extends StatefulWidget {
     this.onLoadStop,
     this.onNavigationRequest,
     this.emulateDingTalkEnvironment = true,
-    this.enableLoginQuickFill = false,
     this.showWebViewBottomBackButton = false,
     this.onHomePressed,
     this.appBarActions = const [],
     this.autoPromptLogin = true,
     this.warmUpAsResource = false,
+    this.preserveSessionOnAuthBounce = false,
     this.prepareAuthenticatedUrl,
   });
 
@@ -40,7 +40,6 @@ class UnifiedAuthProtectedWebViewPage extends StatefulWidget {
   final WebViewLoadStopCallback? onLoadStop;
   final WebViewNavigationRequestCallback? onNavigationRequest;
   final bool emulateDingTalkEnvironment;
-  final bool enableLoginQuickFill;
   final bool showWebViewBottomBackButton;
   final VoidCallback? onHomePressed;
   final List<Widget> appBarActions;
@@ -51,6 +50,17 @@ class UnifiedAuthProtectedWebViewPage extends StatefulWidget {
   /// Cookie，而不是把资源 URL 当 service 校验——CAS 对任意 URL 都可能
   /// 签发 ticket，但那不代表目标业务的 Cookie 已建立。
   final bool warmUpAsResource;
+
+  /// 业务页再次落到 CAS 登录入口时保留全局统一认证会话。
+  ///
+  /// 默认 false：其余业务路径维持原行为（第二次 bounce 视为主会话失效，
+  /// `markLoggedOut` 后弹原生登录）。图书馆这类已经过
+  /// [prepareAuthenticatedUrl] 用注册 service 确认过主会话的页面，之后
+  /// WebView 再被 CAS 弹回更可能是业务/网关 Cookie 未生效而非统一认证
+  /// 过期；置 true 时不再清全局会话，停在原生 AuthRequiredView 等用户
+  /// 显式重试，也不自动弹登录框（避免「弹窗借本地会话自动判成功 → 再
+  /// 预热 → 再 bounce」的无界循环）。
+  final bool preserveSessionOnAuthBounce;
 
   /// Establish gateway and business cookies before selecting a network URL.
   final Future<String> Function()? prepareAuthenticatedUrl;
@@ -78,7 +88,11 @@ class UnifiedAuthProtectedWebViewPageState
   void initState() {
     super.initState();
     _webViewUrl = widget.url;
-    _authenticated = UnifiedAuthService.instance.isLoggedIn;
+    // 目标本身就是 CAS 登录页时不预置已登录：否则 WebView 会把 H5 登录页
+    // 直接渲染给用户。登录引导走原生 AuthRequiredView/登录弹窗。
+    _authenticated =
+        UnifiedAuthService.instance.isLoggedIn &&
+        !isWebViewCasLoginEntryUrl(widget.url);
     _authResolved = false;
     unawaited(_resolveInitialAuthentication());
   }
@@ -146,7 +160,10 @@ class UnifiedAuthProtectedWebViewPageState
   }
 
   Future<void> _presentLoginPrompt({bool force = false}) async {
-    if (!mounted || _loginPromptInFlight || _authenticated) return;
+    if (!mounted || _loginPromptInFlight) return;
+    // 常规路径已登录就不再打扰；force 用于「已登录但目标只剩 CAS 登录页」
+    // 的兜底场景（见 build 的 loginUrlBlocked）。
+    if (_authenticated && !force) return;
     if (!force && _loginPromptShown) return;
 
     _loginPromptShown = true;
@@ -186,11 +203,20 @@ class UnifiedAuthProtectedWebViewPageState
       try {
         final url = await prepare();
         if (!mounted) return;
-        setState(() {
-          _webViewUrl = url;
-          _webViewKey = UniqueKey();
-          _authenticated = true;
-        });
+        if (isWebViewCasLoginEntryUrl(url)) {
+          // prepare 返回登录页说明业务 Cookie 并未真正建立：不把 CAS H5
+          // 交给用户，退回原生登录引导。
+          setState(() {
+            _authenticated = false;
+            _preparationFailed = false;
+          });
+        } else {
+          setState(() {
+            _webViewUrl = url;
+            _webViewKey = UniqueKey();
+            _authenticated = true;
+          });
+        }
       } on CasAuthExpiredException {
         if (mounted) setState(() => _authenticated = false);
       } catch (error, stackTrace) {
@@ -346,13 +372,20 @@ class UnifiedAuthProtectedWebViewPageState
       if (_resyncing) {
         AppLogger.instance.webview(
           LogLevel.warn,
-          '资源页再次落到 CAS 登录入口，局部恢复业务 Cookie',
+          '资源页再次落到 CAS 登录入口，停止自动重试并走原生登录引导',
         );
         if (mounted) {
           setState(() {
             _authenticated = false;
             _authResolved = true;
           });
+        }
+        if (UnifiedAuthService.instance.isLoggedIn) {
+          // 本地会话仍在却再次被 CAS 弹回：登录弹窗会被本地会话自动判成功
+          // 并再次预热，形成 [预热 → CAS → 弹窗自动成功 → 预热] 的无界循环。
+          // 停在原生 AuthRequiredView，等用户显式操作后再重试一次。
+          _loginPromptShown = true;
+          return;
         }
         await _presentLoginPrompt(force: true);
         return;
@@ -364,6 +397,23 @@ class UnifiedAuthProtectedWebViewPageState
 
     // 注册服务：如果已在重试中，或 native 已登出，直接标记登出
     if (_resyncing || !UnifiedAuthService.instance.isLoggedIn) {
+      if (widget.preserveSessionOnAuthBounce &&
+          UnifiedAuthService.instance.isLoggedIn) {
+        // 业务 bounce 不推翻已由 prepare 确认的主会话：停在原生认证视图，
+        // 等用户显式重试；不自动弹登录框（见字段说明）。
+        AppLogger.instance.webview(
+          LogLevel.warn,
+          '业务页再次落到 CAS 登录入口，保留统一认证会话并等待用户重试',
+        );
+        if (mounted) {
+          setState(() {
+            _authenticated = false;
+            _authResolved = true;
+          });
+        }
+        _loginPromptShown = true;
+        return;
+      }
       AppLogger.instance.webview(LogLevel.warn, 'Cookie 重同步失败，标记登出');
       await UnifiedAuthService.instance.markLoggedOut();
       if (mounted) {
@@ -388,6 +438,19 @@ class UnifiedAuthProtectedWebViewPageState
     final retryUrl =
         extractUnifiedAuthServiceUrl(currentUrl) ??
         (currentUrl.trim().isNotEmpty ? currentUrl : widget.url);
+    if (isWebViewCasLoginEntryUrl(retryUrl)) {
+      // 重试地址仍是 CAS 登录页（WebVPN 代理形态，或缺少 service 参数）：
+      // 不把 H5 登录页挂回 WebView，恢复业务入口并走应用内登录引导。
+      AppLogger.instance.webview(LogLevel.warn, 'CAS 登录页无法还原业务地址，改为应用内登录引导');
+      setState(() {
+        _authenticated = false;
+        _authResolved = true;
+        _webViewUrl = widget.url;
+        _webViewKey = UniqueKey();
+      });
+      await _presentLoginPrompt(force: true);
+      return;
+    }
     AppLogger.instance.webview(
       LogLevel.debug,
       'Cookie 重同步完成，重新加载 WebView: $retryUrl',
@@ -404,7 +467,7 @@ class UnifiedAuthProtectedWebViewPageState
     InAppWebViewController controller,
     String currentUrl,
   ) async {
-    if (isUnifiedAuthLoginEntryUrl(currentUrl)) {
+    if (isWebViewCasLoginEntryUrl(currentUrl)) {
       await _onCasLoginEntry(currentUrl);
       return;
     }
@@ -427,33 +490,50 @@ class UnifiedAuthProtectedWebViewPageState
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    if (!_authResolved || _preparationFailed) {
-      return Scaffold(
-        appBar: AppAppBar(
-          automaticallyImplyLeading: true,
-          title: Text(widget.title),
-          actions: widget.appBarActions,
-        ),
-        body: _preparationFailed
-            ? AppErrorView(
-                message: '暂时无法连接服务，请切换网络后重试',
-                onRetry: _resolveInitialAuthentication,
-              )
-            : const Center(child: CircularProgressIndicator()),
-      );
+  /// 导航阶段拦截 CAS 登录页：`shouldOverrideUrlLoading` 早于页面渲染，
+  /// 把它交给 [_onCasLoginEntry] 做局部恢复/原生登录引导，避免 H5 登录页
+  /// 在 WebView 中闪现甚至停留。
+  Future<NavigationActionPolicy?> _handleNavigationRequest(
+    InAppWebViewController controller,
+    Uri uri,
+  ) async {
+    final target = uri.toString();
+    if (isWebViewCasLoginEntryUrl(target)) {
+      unawaited(_onCasLoginEntry(target));
+      return NavigationActionPolicy.CANCEL;
     }
 
-    if (_authenticated) {
+    final callback = widget.onNavigationRequest;
+    if (callback == null) return null;
+    return callback(controller, uri);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_authResolved) {
+      return _buildScaffold(const Center(child: CircularProgressIndicator()));
+    }
+
+    // prepare/预热可能把 CAS 登录页当成可加载目标；命中时绝不挂 WebView。
+    final loginUrlBlocked =
+        _authenticated && isWebViewCasLoginEntryUrl(_webViewUrl);
+
+    if (_authenticated && !loginUrlBlocked) {
+      if (_preparationFailed) {
+        return _buildScaffold(
+          AppErrorView(
+            message: '暂时无法连接服务，请切换网络后重试',
+            onRetry: _resolveInitialAuthentication,
+          ),
+        );
+      }
       return WebViewPage(
         key: _webViewKey,
         title: widget.title,
         url: _webViewUrl,
         onLoadStop: _handleLoadStop,
-        onNavigationRequest: widget.onNavigationRequest,
+        onNavigationRequest: _handleNavigationRequest,
         emulateDingTalkEnvironment: widget.emulateDingTalkEnvironment,
-        enableLoginQuickFill: widget.enableLoginQuickFill,
         showWebViewBottomBackButton: widget.showWebViewBottomBackButton,
         onHomePressed: widget.onHomePressed,
         appBarActions: widget.appBarActions,
@@ -461,22 +541,30 @@ class UnifiedAuthProtectedWebViewPageState
     }
 
     if (widget.autoPromptLogin) {
-      _scheduleLoginPrompt();
+      // loginUrlBlocked 下 _authenticated 仍为 true，需 force 才能弹出；
+      // 已弹过一次就不再强制，避免每次重建都重新弹出。
+      _scheduleLoginPrompt(force: loginUrlBlocked && !_loginPromptShown);
     }
 
-    return Scaffold(
-      appBar: AppAppBar(
-        automaticallyImplyLeading: true,
-        title: Text(widget.title),
-        actions: widget.appBarActions,
-      ),
-      body: AuthRequiredView(
+    return _buildScaffold(
+      AuthRequiredView(
         title: '需要统一认证后继续',
         message: widget.loginDescription,
         buttonLabel: '登录统一认证',
         onAction: () => _presentLoginPrompt(force: true),
         icon: Icons.account_balance_outlined,
       ),
+    );
+  }
+
+  Widget _buildScaffold(Widget body) {
+    return Scaffold(
+      appBar: AppAppBar(
+        automaticallyImplyLeading: true,
+        title: Text(widget.title),
+        actions: widget.appBarActions,
+      ),
+      body: body,
     );
   }
 }

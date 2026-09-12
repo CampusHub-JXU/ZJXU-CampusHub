@@ -91,32 +91,27 @@ void main() {
     },
   );
 
-  test(
-    'ensureWebVpnGatewaySessionResult forceWebVpn overrides direct reachability',
-    () async {
-      await DioClient.instance.ensureInitialized();
-      ZhengfangAuth.instance.debugSetSession(
-        active: true,
-        studentId: '20250001',
-      );
-      final resolver = ConnectModeResolver.instance;
-      resolver.invalidate();
-      resolver.directReachabilityChecker = () async => true;
-      resolver.targetDirectReachabilityChecker = (_) async => true;
-      resolver.webVpnReachabilityChecker = () async => true;
+  test('ensureWebVpnGatewaySessionResult forceWebVpn overrides direct reachability', () async {
+    await DioClient.instance.ensureInitialized();
+    ZhengfangAuth.instance.debugSetSession(active: true, studentId: '20250001');
+    final resolver = ConnectModeResolver.instance;
+    resolver.invalidate();
+    resolver.directReachabilityChecker = () async => true;
+    resolver.targetDirectReachabilityChecker = (_) async => true;
+    resolver.webVpnReachabilityChecker = () async => true;
 
-      final forced = await ZhengfangAuth.instance
-          .ensureWebVpnGatewaySessionResult(
-            syncWebViewCookies: false,
-            targetUrl: 'https://libapp.zjxu.edu.cn/Info/Thirdparty/ssoFromDingDing',
-            forceWebVpn: true,
-          );
+    final forced = await ZhengfangAuth.instance
+        .ensureWebVpnGatewaySessionResult(
+          syncWebViewCookies: false,
+          targetUrl:
+              'https://libapp.zjxu.edu.cn/Info/Thirdparty/ssoFromDingDing',
+          forceWebVpn: true,
+        );
 
-      // 忽略直连提前返回，进入 WebVPN 分支（网关校验结果视网络而定）。
-      expect(forced.selectedMode, ZhengfangMode.webVpn);
-      expect(ZhengfangAuth.instance.mode, ZhengfangMode.webVpn);
-    },
-  );
+    // 忽略直连提前返回，进入 WebVPN 分支（网关校验结果视网络而定）。
+    expect(forced.selectedMode, ZhengfangMode.webVpn);
+    expect(ZhengfangAuth.instance.mode, ZhengfangMode.webVpn);
+  });
 
   test(
     'ensureWebVpnGatewaySessionResult null does not log out zhengfang',

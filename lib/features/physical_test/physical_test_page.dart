@@ -1,38 +1,307 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 
-import '../../shared/widgets/unified_auth_protected_webview_page.dart';
+import '../../core/auth/cas_auth_broker.dart';
+import '../../core/auth/unified_auth.dart';
+import '../../core/logging/app_logger.dart';
+import '../../core/theme/app_design_tokens.dart';
+import '../../shared/widgets/app_app_bar.dart';
+import '../../shared/widgets/app_card.dart';
+import '../../shared/widgets/app_empty_view.dart';
+import '../../shared/widgets/app_error_view.dart';
+import '../../shared/widgets/auth_required_view.dart';
+import '../../shared/widgets/login_shell.dart';
+import 'physical_test_model.dart';
+import 'physical_test_service.dart';
 
-/// 体测成绩（学生服务平台）。
+typedef PhysicalTestSnapshotFetcher = Future<PhysicalTestSnapshot> Function();
+
+/// 体测成绩原生页面。
 ///
-/// 学校体测系统「学生服务平台」原本藏在服务大厅深处，一学期只用两次；
-/// 0.7 起作为独立入口，经 WebVPN 的受保护 WebView 访问。
-///
-/// 关键点（2026-09-12 设备实测）：
-/// * 站点是 `POST /spQuery` + `method=<功能>` 的 JSP 应用（`healthscore` 体测
-///   成绩、`bespeakRecord` 预约记录、`notTestList` 待测名单…），走 WebVPN 资源
-///   预热即可打开菜单页；
-/// * 它的 SSO 面向钉钉工作台：页面会调用 `dd.permission.requestAuthCode`，
-///   若注入钉钉模拟（`emulateDingTalkEnvironment`）会拿到 `errorCode 3` 而卡在
-///   登录中，因此这里显式关闭模拟（与官方付款码页同一策略）。
-class PhysicalTestPage extends StatelessWidget {
-  const PhysicalTestPage({super.key});
+/// 接入 [PhysicalTestService] 原生数据服务：
+/// * 未登录：展示统一认证原生登录引导 [AuthRequiredView]，唤起登录弹窗 [showUnifiedAuthLoginModal]；
+/// * 登录成功 / 账号切换：自动拉取对应账号体测成绩，登出立即清除历史成绩；
+/// * 有数据：按学年卡片展示体测记录与单项明细；
+/// * 无数据：中性空态 [AppEmptyView]；
+/// * 失败：错误态 [AppErrorView] 并支持重试；
+/// * 严禁挂载任何 WebView、CAS H5 页面或凭据快速填充。
+class PhysicalTestPage extends StatefulWidget {
+  const PhysicalTestPage({super.key, this.snapshotFetcher});
 
   static const titleText = '体测成绩';
-  static const homeUrl =
-      'https://webvpn.zjxu.edu.cn/http/77726476706e69737468656265737421fafc4b85692a62486b468ca88d1b203b/weixin/main.jsp';
-  static const loginDescription = '体测成绩经 WebVPN 访问，请先完成统一认证登录';
+
+  /// 测试注入；为空时走 [PhysicalTestService.fetchSnapshot]。
+  final PhysicalTestSnapshotFetcher? snapshotFetcher;
+
+  @override
+  State<PhysicalTestPage> createState() => _PhysicalTestPageState();
+}
+
+class _PhysicalTestPageState extends State<PhysicalTestPage> {
+  bool _loading = true;
+  bool _authRequired = false;
+  String? _error;
+  PhysicalTestSnapshot? _snapshot;
+  String? _currentAccount;
+
+  int _authEpoch = 0;
+  int _loadId = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentAccount = UnifiedAuthService.instance.currentAccount;
+    UnifiedAuthService.instance.addListener(_onAuthChanged);
+    unawaited(_load());
+  }
+
+  @override
+  void dispose() {
+    UnifiedAuthService.instance.removeListener(_onAuthChanged);
+    super.dispose();
+  }
+
+  void _onAuthChanged() {
+    _authEpoch++;
+    final auth = UnifiedAuthService.instance;
+    final isLoggedIn = auth.isLoggedIn;
+    final newAccount = auth.currentAccount;
+
+    if (!isLoggedIn || newAccount == null || newAccount.isEmpty) {
+      _currentAccount = null;
+      if (mounted) {
+        setState(() {
+          _snapshot = null;
+          _authRequired = true;
+          _loading = false;
+          _error = null;
+        });
+      }
+      return;
+    }
+
+    if (newAccount != _currentAccount) {
+      _currentAccount = newAccount;
+      if (mounted) {
+        setState(() {
+          _snapshot = null;
+          _authRequired = false;
+          _error = null;
+        });
+        unawaited(_load(forceRefresh: true));
+      }
+      return;
+    }
+
+    if (_authRequired && mounted) {
+      unawaited(_load());
+    }
+  }
+
+  Future<void> _presentLoginPrompt() async {
+    final loggedIn = await showUnifiedAuthLoginModal(
+      context,
+      title: '登录统一认证',
+      description: '登录后可查看体测成绩',
+    );
+    if (loggedIn && mounted) {
+      await _load(forceRefresh: true);
+    }
+  }
+
+  Future<void> _load({bool forceRefresh = false}) async {
+    final loadId = ++_loadId;
+    final currentEpoch = _authEpoch;
+
+    setState(() {
+      _loading = true;
+      _error = null;
+      _authRequired = false;
+    });
+
+    try {
+      final snapshot = widget.snapshotFetcher != null
+          ? await widget.snapshotFetcher!()
+          : await PhysicalTestService.instance.fetchSnapshot(
+              forceRefresh: forceRefresh,
+            );
+
+      if (!mounted || loadId != _loadId || currentEpoch != _authEpoch) {
+        return;
+      }
+
+      setState(() {
+        _snapshot = snapshot;
+        _authRequired = false;
+        _error = null;
+      });
+    } on CasAuthExpiredException {
+      if (!mounted || loadId != _loadId || currentEpoch != _authEpoch) {
+        return;
+      }
+      setState(() {
+        _snapshot = null;
+        _authRequired = true;
+        _error = null;
+      });
+    } catch (error, stackTrace) {
+      AppLogger.instance.network(
+        LogLevel.warn,
+        '体测成绩加载失败',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      if (!mounted || loadId != _loadId || currentEpoch != _authEpoch) {
+        return;
+      }
+      setState(() {
+        _error = '体测成绩加载失败，请稍后重试';
+      });
+    } finally {
+      if (mounted && loadId == _loadId && currentEpoch == _authEpoch) {
+        setState(() => _loading = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return UnifiedAuthProtectedWebViewPage(
-      title: titleText,
-      url: homeUrl,
-      warmUpAsResource: true,
-      emulateDingTalkEnvironment: false,
-      loginDescription: loginDescription,
-      showWebViewBottomBackButton: true,
-      onHomePressed: () => context.goNamed('home'),
+    return Scaffold(
+      appBar: AppAppBar(
+        title: const Text(PhysicalTestPage.titleText),
+        actions: [
+          if (!_loading && !_authRequired && _error == null)
+            IconButton(
+              icon: const Icon(Icons.refresh_rounded),
+              tooltip: '刷新',
+              onPressed: () => _load(forceRefresh: true),
+            ),
+        ],
+      ),
+      body: _buildBody(),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_loading && _snapshot == null && !_authRequired && _error == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_authRequired) {
+      return AuthRequiredView(
+        title: '需要统一认证后继续',
+        message: '登录统一身份认证后可查看体测成绩',
+        buttonLabel: '登录统一认证',
+        icon: Icons.directions_run_outlined,
+        onAction: _presentLoginPrompt,
+      );
+    }
+
+    final error = _error;
+    if (error != null) {
+      return AppErrorView(
+        message: error,
+        onRetry: () => _load(forceRefresh: true),
+      );
+    }
+
+    final records = _snapshot?.records ?? const <PhysicalTestRecord>[];
+    if (records.isEmpty) {
+      return AppEmptyView(
+        title: '暂无体测成绩',
+        icon: Icons.directions_run_outlined,
+        message: _snapshot?.message,
+        actionLabel: '刷新',
+        onAction: () => _load(forceRefresh: true),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: () => _load(forceRefresh: true),
+      child: ListView.separated(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.pageMargin,
+          AppSpacing.sm,
+          AppSpacing.pageMargin,
+          AppSpacing.xl,
+        ),
+        itemCount: records.length,
+        separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.md),
+        itemBuilder: (context, index) => _buildRecordCard(records[index]),
+      ),
+    );
+  }
+
+  Widget _buildRecordCard(PhysicalTestRecord record) {
+    final cs = Theme.of(context).colorScheme;
+    final summary = [
+      record.totalScore,
+      record.grade,
+    ].where((value) => value.isNotEmpty).join(' · ');
+
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  record.academicYear.isEmpty ? '体测记录' : record.academicYear,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              if (summary.isNotEmpty)
+                Text(
+                  summary,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: cs.primary,
+                  ),
+                ),
+            ],
+          ),
+          if (record.items.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.sm),
+            for (final item in record.items) _buildItemRow(item),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildItemRow(PhysicalTestItem item) {
+    final cs = Theme.of(context).colorScheme;
+    final trailing = [
+      item.result,
+      if (item.score.isNotEmpty) '${item.score} 分',
+      item.level,
+    ].where((value) => value.isNotEmpty).join(' · ');
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              item.name.isEmpty ? '未命名项目' : item.name,
+              style: TextStyle(fontSize: 14, color: cs.onSurface),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          if (trailing.isNotEmpty)
+            Text(
+              trailing,
+              style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+            ),
+        ],
+      ),
     );
   }
 }

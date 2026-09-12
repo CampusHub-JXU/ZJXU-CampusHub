@@ -19,10 +19,10 @@ void main() {
     AppThemeController.instance.debugReset();
   });
 
-  testWidgets('外观页合并主题与个性化区块', (tester) async {
+  testWidgets('外观页展示主题与设置区块', (tester) async {
     await pumpPage(tester, const AppearancePage());
 
-    expect(find.text('外观与个性化'), findsOneWidget);
+    expect(find.text('外观'), findsOneWidget);
     expect(find.text('主题模式'), findsOneWidget);
   });
 

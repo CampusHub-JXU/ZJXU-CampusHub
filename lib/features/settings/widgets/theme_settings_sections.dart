@@ -6,7 +6,7 @@ import '../../../core/theme/app_theme_palette.dart';
 import '../../../core/theme/text_scale_controller.dart';
 import 'hsv_color_picker_sheet.dart';
 
-/// 「外观与个性化」页的主题区（PRD 0.7.0 §16）。
+/// 「外观」页的主题区（PRD 0.7.0 §16）。
 ///
 /// 从原 `ThemeSettingsPage` 抽出的无 Scaffold 内容块，供外观页与其他容器复用。
 class ThemeSettingsSections extends StatefulWidget {

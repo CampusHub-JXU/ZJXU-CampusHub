@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../../core/auth/credential_store.dart';
+import '../../core/auth/unified_auth.dart';
 import '../../core/logging/app_logger.dart';
 import 'external_url_launcher.dart';
 import 'qr_scanner_page.dart';
@@ -77,8 +78,7 @@ class _WebViewPageState extends State<WebViewPage> {
   late String _currentUrl;
   InAppWebViewController? _controller;
   (String, String)? _savedZhengfangCredentials;
-  (String, String)? _savedUnifiedCredentials;
-  WebViewQuickFillKind? _quickFillKind;
+  bool _quickFillAvailable = false;
   bool _quickFillBusy = false;
 
   LogConfig get _logConfig => AppLogger.instance.config.value;
@@ -103,7 +103,7 @@ class _WebViewPageState extends State<WebViewPage> {
     _currentUrl = widget.url;
     if (widget.enableLoginQuickFill) {
       _restoreSavedCredentials();
-      _quickFillKind = detectWebViewQuickFillKind(widget.url);
+      _quickFillAvailable = isZhengfangQuickFillTarget(widget.url);
     }
   }
 
@@ -113,11 +113,11 @@ class _WebViewPageState extends State<WebViewPage> {
     _currentUrl = value;
     if (!widget.enableLoginQuickFill) return;
 
-    final nextKind = detectWebViewQuickFillKind(value);
-    if (nextKind != _quickFillKind && mounted) {
-      setState(() => _quickFillKind = nextKind);
+    final nextAvailable = isZhengfangQuickFillTarget(value);
+    if (nextAvailable != _quickFillAvailable && mounted) {
+      setState(() => _quickFillAvailable = nextAvailable);
     } else {
-      _quickFillKind = nextKind;
+      _quickFillAvailable = nextAvailable;
     }
   }
 
@@ -157,15 +157,13 @@ class _WebViewPageState extends State<WebViewPage> {
   }
 
   Future<void> _restoreSavedCredentials() async {
+    // 只加载教务凭据：统一认证/一卡通凭据不得进入 WebView 快速填充。
     final zhengfangCredentials = await CredentialStore.instance
         .loadCredentials();
-    final unifiedCredentials = await CredentialStore.instance
-        .loadUnifiedAuthCredentials();
     if (!mounted) return;
 
     setState(() {
       _savedZhengfangCredentials = zhengfangCredentials;
-      _savedUnifiedCredentials = unifiedCredentials;
     });
   }
 

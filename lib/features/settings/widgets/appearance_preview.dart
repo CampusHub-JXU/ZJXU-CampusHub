@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
@@ -7,6 +6,7 @@ import '../../../core/theme/app_design_tokens.dart';
 import '../../../core/theme/glass_style_controller.dart';
 import '../../../core/theme/personalization_controller.dart';
 import '../../../core/theme/widgets/home_background_layer.dart';
+import '../../../shared/widgets/glass_container.dart';
 
 /// 外观页顶部的真实比例首页预览（PRD 0.7.0 §16/§17）。
 ///
@@ -62,9 +62,9 @@ class _AppearancePreviewState extends State<AppearancePreview> {
                           borderRadius: AppRadius.tileBorder,
                           child: DecoratedBox(
                             decoration: BoxDecoration(
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.surfaceContainerHigh,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .surfaceContainerHigh,
                               border: Border.all(
                                 color: Theme.of(context)
                                     .colorScheme
@@ -117,9 +117,7 @@ class _AppearancePreviewState extends State<AppearancePreview> {
                                       },
                                     )
                                   else
-                                    _buildPreviewBackgroundPlaceholder(
-                                      context,
-                                    ),
+                                    _buildPreviewBackgroundPlaceholder(context),
                                   widget.homeSceneBuilder?.call(context) ??
                                       _buildHomeWidgetPreviewOverlay(context),
                                   Positioned(
@@ -211,22 +209,10 @@ class _AppearancePreviewState extends State<AppearancePreview> {
         return ValueListenableBuilder<bool>(
           valueListenable: GlassStyleController.instance.enabled,
           builder: (context, cardGlassEnabled, _) {
-            return ValueListenableBuilder<double>(
-              valueListenable: GlassStyleController.instance.blurSigma,
-              builder: (context, glassBlur, _) {
-                return ValueListenableBuilder<double>(
-                  valueListenable: GlassStyleController.instance.tintOpacity,
-                  builder: (context, glassOpacity, _) {
-                    return _buildHomeWidgetPreviewBoxes(
-                      context,
-                      headerGlassEnabled: headerGlassEnabled,
-                      cardGlassEnabled: cardGlassEnabled,
-                      glassBlur: glassBlur,
-                      glassOpacity: glassOpacity,
-                    );
-                  },
-                );
-              },
+            return _buildHomeWidgetPreviewBoxes(
+              context,
+              headerGlassEnabled: headerGlassEnabled,
+              cardGlassEnabled: cardGlassEnabled,
             );
           },
         );
@@ -238,8 +224,6 @@ class _AppearancePreviewState extends State<AppearancePreview> {
     BuildContext context, {
     required bool headerGlassEnabled,
     required bool cardGlassEnabled,
-    required double glassBlur,
-    required double glassOpacity,
   }) {
     Widget box({
       required double left,
@@ -250,35 +234,16 @@ class _AppearancePreviewState extends State<AppearancePreview> {
       double radius = 10,
     }) {
       final borderRadius = BorderRadius.circular(radius);
-      final surfaceAlpha = glassEnabled ? glassOpacity : 0.16;
-      final borderAlpha = glassEnabled ? 0.42 : 0.72;
-      final content = DecoratedBox(
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: surfaceAlpha),
-          borderRadius: borderRadius,
-          border: Border.all(
-            color: Colors.white.withValues(alpha: borderAlpha),
-            width: 1.2,
-          ),
-        ),
-      );
       return Positioned(
         left: left,
         top: top,
         width: width,
         height: height,
         child: IgnorePointer(
-          child: ClipRRect(
+          child: AppMaterialSurface(
             borderRadius: borderRadius,
-            child: glassEnabled
-                ? BackdropFilter(
-                    filter: ImageFilter.blur(
-                      sigmaX: glassBlur,
-                      sigmaY: glassBlur,
-                    ),
-                    child: content,
-                  )
-                : content,
+            blurred: glassEnabled,
+            child: const SizedBox.expand(),
           ),
         ),
       );

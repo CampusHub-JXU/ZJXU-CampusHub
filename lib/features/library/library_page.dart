@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:go_router/go_router.dart';
@@ -13,14 +15,11 @@ class LibraryPage extends StatelessWidget {
 
   static const titleText = '图书馆';
 
-  /// 图书馆站点根；校外由 [prepareEntry] 改写为 WebVPN 网关地址。
+  /// 图书馆站点根：WebView 的兜底地址与业务主页。
   ///
-  /// 不再使用 `Info/Thirdparty/ssoFromDingDing`：该入口面向钉钉工作台，
-  /// 依赖 `dd.runtime.permission.requestAuthCode` 返回真实 authCode，非钉钉
-  /// 容器无法满足——App 注入的 dd mock 会直接 onFail，页面随即提示
-  /// `{"errorCode":3,"not supported"}`（该文案是 App 自己造的，不是服务端拒绝）。
-  /// 设备实测（2026-09-12）：`https://webvpn.zjxu.edu.cn/https/<libapp>/`
-  /// 可直接打开图书馆站点（标题「嘉兴大学图书馆」，自带一卡通/密码登录页）。
+  /// 它不是 CAS service，也不是 SSO 入口（站点根只渲染站点自带的
+  /// 一卡通/密码登录页）。图书馆的 CAS 校验入口是
+  /// `Info/Thirdparty/ssoFromDingDing`（见 [prepareEntry]）。
   static const libraryUrl = 'https://libapp.zjxu.edu.cn/';
 
   static const authLoginDescription = '图书馆经 WebVPN 访问，请先完成统一认证登录';
@@ -31,15 +30,29 @@ class LibraryPage extends StatelessWidget {
 
   /// 站内入口准备（PRD 0.7.0 §32）。
   ///
-  /// 设备实验（2026-09-12）：`ssoFromDingDing` 入口必须返回真实钉钉 authCode
-  /// 才继续，非钉钉容器无解；而 WebVPN 网关下的站点根可直接打开图书馆并进入
-  /// 其自带的一卡通/密码登录页，因此入口改为站点根 + 固定走 WebVPN 代理。
+  /// 图书馆的 CAS service 是 `Info/Thirdparty/ssoFromDingDing`：抓包实证
+  /// （2026-09-12）直连该地址会 302 到 `newca.zjxu.edu.cn/cas/login` 并把
+  /// 该地址作为 `service` 参数；设备日志（2026-09-13）确认 CAS 签发的 ticket
+  /// 同样回投该地址。名称中的 DingDing 只是历史命名，并非钉钉容器专属。
+  ///
+  /// 因此这里只准备注册的精确 service：[ProtectedWebEntryPreparer.prepare]
+  /// 内部按「统一认证主会话 → WebVPN 网关 → [CasSession.ensure]（精确 service）
+  /// → 同步 WebView Cookie」执行。ensure 的 ticket 回调本身就是图书馆业务
+  /// 会话的建立过程，三步全部成功后才返回可打开的地址。
+  ///
+  /// 服务 URL 是 ticket 消费者而不是业务资源，进入 WebView 前不得再对它调用
+  /// [CasAuthBroker.getResource]：那等于在 ensure 之后重跑一次 SSO，真实日志
+  /// 里该链最终回落到 `https://webvpn.zjxu.edu.cn` 门户页并被误判成
+  /// 「统一认证登录已失效」，预热被吞掉后 WebView 只能再次落到 CAS。会话是
+  /// 否就绪一律由 ensure 三态决定：inactive → [CasAuthExpiredException] 走
+  /// 原生登录引导，unknown → [TimeoutException] 给网络重试，都不交给
+  /// WebView 继续 SSO。
   static Future<String> prepareEntry() async {
     final override = debugPrepareEntryOverride;
     if (override != null) return override();
 
     return ProtectedWebEntryPreparer.prepare(
-      targetUrl: libraryUrl,
+      targetUrl: CasService.librarySso.serviceUrl,
       serviceUrl: CasService.librarySso.serviceUrl,
       // 设备日志：libapp 直连探测 302「可达」，但 WebView 直连必被断开
       // （net::ERR_CONNECTION_CLOSED），所以图书馆固定走 WebVPN 代理。
@@ -57,6 +70,15 @@ class LibraryPage extends StatelessWidget {
       serviceUrl: CasService.librarySso.serviceUrl,
       prepareAuthenticatedUrl: prepareEntry,
       loginDescription: authLoginDescription,
+      // prepareEntry 已用注册 service 的 CasSession.ensure 确认统一认证主会话
+      // 有效；此后 WebView 再被 CAS 弹回属于业务 / 网关 Cookie 问题，不是主
+      // 会话过期。停在原生认证视图等用户显式重试，不清全局统一认证会话。
+      preserveSessionOnAuthBounce: true,
+      // 图书馆 SSO 经 CAS `oauth/forward`。App 注入的 dd mock 会让该页误判
+      // 钉钉容器并自动改走钉钉 OAuth，随后固定 onFail 卡死（设备实测
+      // 2026-09-12；体测页同为该问题，关闭模拟后恢复）。图书馆站点本身
+      // 不依赖钉钉，关闭模拟让 CAS 流程正常走完。
+      emulateDingTalkEnvironment: false,
       // 不开快速填充：图书馆登录页由自研 lrnw 框架控制，只有真实键盘输入
       // 才会写入它的表单模型；JS 写 value 会让「登录」按钮永久 disabled
       // （设备实测 2026-09-12），反而误导用户。详见 E3/E4 进展记录。

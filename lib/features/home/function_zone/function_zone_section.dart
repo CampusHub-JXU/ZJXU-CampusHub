@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -128,23 +129,28 @@ class _FunctionZoneSectionState extends State<FunctionZoneSection> {
 
     return Padding(
       padding: widget.padding,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const _FunctionZoneHeader(),
-          const SizedBox(height: 12),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              const gap = 10.0;
-              final maxWidth = constraints.maxWidth;
-              final columns = maxWidth >= 840
-                  ? 4
-                  : maxWidth >= 600
-                  ? 3
-                  : 2;
-              final itemWidth = (maxWidth - (columns - 1) * gap) / columns;
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final maxWidth = constraints.maxWidth;
+          if (maxWidth <= 0) return const SizedBox.shrink();
 
-              return Column(
+          const gap = 10.0;
+          final columns = maxWidth >= 840
+              ? 4
+              : maxWidth >= 600
+              ? 3
+              : 2;
+          final itemWidth = math.max(
+            0.0,
+            (maxWidth - (columns - 1) * gap) / columns,
+          );
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const _FunctionZoneHeader(),
+              const SizedBox(height: 12),
+              Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   _WideFunctionTile(
@@ -176,10 +182,10 @@ class _FunctionZoneSectionState extends State<FunctionZoneSection> {
                     ),
                   ],
                 ],
-              );
-            },
-          ),
-        ],
+              ),
+            ],
+          );
+        },
       ),
     );
   }

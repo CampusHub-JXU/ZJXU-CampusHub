@@ -98,10 +98,10 @@ class AppShortcutService {
   }) async {
     await _ensureInitialized();
     try {
-      final result = await _channel.invokeMethod<Object>('requestPinnedShortcut', {
-        'actionId': actionId,
-        'title': title,
-      });
+      final result = await _channel.invokeMethod<Object>(
+        'requestPinnedShortcut',
+        {'actionId': actionId, 'title': title},
+      );
       return AppShortcutRequestResult.fromPlatformValue(result);
     } on MissingPluginException {
       return AppShortcutRequestResult.unavailable;

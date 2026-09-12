@@ -10,7 +10,8 @@ void main() {
     expect(
       violations,
       isEmpty,
-      reason: '架构边界违例（新增违例必须修复，不得加入 allowlist）：\n'
+      reason:
+          '架构边界违例（新增违例必须修复，不得加入 allowlist）：\n'
           '${violations.join('\n')}',
     );
   });

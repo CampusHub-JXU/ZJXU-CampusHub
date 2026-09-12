@@ -327,4 +327,53 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('tight zero-width constraints collapse and recover with tiles', (
+    tester,
+  ) async {
+    var width = 0.0;
+    late StateSetter setWidth;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) {
+              setWidth = setState;
+              return SizedBox(
+                width: width,
+                child: const SingleChildScrollView(
+                  child: FunctionZoneSection(),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Zero-width phase: the section collapses without exceptions and no tile
+    // is laid out with a negative width.
+    expect(tester.takeException(), isNull);
+    expect(find.byType(AppTileSurface), findsNothing);
+
+    final zeroWidthElement = tester.element(find.byType(FunctionZoneSection));
+
+    // Restore a normal phone width on the same mounted element.
+    setWidth(() => width = 360);
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(
+      tester.element(find.byType(FunctionZoneSection)),
+      same(zeroWidthElement),
+    );
+    expect(find.text('功能'), findsOneWidget);
+    expect(find.text('长按置顶'), findsOneWidget);
+    expect(
+      find.byType(AppTileSurface),
+      findsNWidgets(AppFeaturesConfig.entries.length),
+    );
+  });
 }

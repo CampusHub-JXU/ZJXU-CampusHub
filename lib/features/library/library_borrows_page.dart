@@ -26,26 +26,44 @@ class LibraryBorrowsPage extends StatefulWidget {
 }
 
 class _LibraryBorrowsPageState extends State<LibraryBorrowsPage> {
+  /// 与 `LibraryService._mapDioError` 的 401 文案一致；命中即清缓存令牌。
+  static const _expiredTokenMessage = '图书馆登录已过期，请重新登录';
+
   bool _history = false;
   String? _token;
   late Future<LibraryBorrowPage> _future = _load();
   final Set<String> _renewing = <String>{};
 
   Future<LibraryBorrowPage> _load() async {
-    _token = await _resolveToken();
-    final token = _token;
+    final guard = LibrarySession.instance.captureGuard();
+    final token = await _resolveToken(guard);
+    LibrarySession.instance.ensureGuard(guard);
+    _token = token;
     if (token == null || token.isEmpty) {
       throw const LibraryApiException('未登录图书馆');
     }
-    return LibraryService.instance.fetchBorrows(
-      accessToken: token,
-      history: _history,
-    );
+    try {
+      final page = await LibraryService.instance.fetchBorrows(
+        accessToken: token,
+        history: _history,
+      );
+      // 响应回来前登出 / 切号：结果属于旧账号，丢弃。
+      LibrarySession.instance.ensureGuard(guard);
+      return page;
+    } on LibraryApiException catch (error) {
+      if (error.message == _expiredTokenMessage) {
+        LibrarySession.instance.clearToken();
+      }
+      rethrow;
+    }
   }
 
   /// 令牌优先用 [LibrarySession] 从已打开的图书馆 WebView 里缓存的（可靠）；
   /// 缓存为空时才退回隐藏 WebView 兜底（冷启动/直接进入借阅页时可能命中）。
-  Future<String?> _resolveToken() async {
+  ///
+  /// 兜底读到的令牌同样必须绑定当前统一认证身份，且每个 await 边界都校验
+  /// [guard]，防止读取期间登出 / 切号后旧账号令牌被采用。
+  Future<String?> _resolveToken(LibrarySessionGuard guard) async {
     final cached = LibrarySession.instance.accessToken;
     if (cached != null && cached.trim().isNotEmpty) return cached;
     final candidates = <String>[
@@ -54,7 +72,11 @@ class _LibraryBorrowsPageState extends State<LibraryBorrowsPage> {
     ];
     for (final url in candidates) {
       final token = await LibraryTokenReader.instance.readAccessToken(url);
-      if (token != null && token.trim().isNotEmpty) return token;
+      if (token != null && token.trim().isNotEmpty) {
+        LibrarySession.instance.ensureGuard(guard);
+        return LibrarySession.instance.bindToken(token) ? token : null;
+      }
+      LibrarySession.instance.ensureGuard(guard);
     }
     return null;
   }
@@ -68,9 +90,12 @@ class _LibraryBorrowsPageState extends State<LibraryBorrowsPage> {
   Future<void> _renew(LibraryBorrowItem item) async {
     final token = _token;
     if (token == null || token.isEmpty) return;
+    final guard = LibrarySession.instance.captureGuard();
     setState(() => _renewing.add(item.renewId));
     final messenger = ScaffoldMessenger.maybeOf(context);
     try {
+      // 令牌解析后、请求发出前登出 / 切号：不得用旧令牌续借旧账号的书。
+      LibrarySession.instance.ensureGuard(guard);
       await LibraryService.instance.renewBorrow(
         accessToken: token,
         cid: item.renewId,
@@ -78,6 +103,11 @@ class _LibraryBorrowsPageState extends State<LibraryBorrowsPage> {
       messenger?.showSnackBar(const SnackBar(content: Text('续借成功')));
       if (mounted) _reload();
     } on LibraryApiException catch (error) {
+      if (error.message == _expiredTokenMessage) {
+        LibrarySession.instance.clearToken();
+      }
+      messenger?.showSnackBar(SnackBar(content: Text(error.message)));
+    } on LibrarySessionChangedException catch (error) {
       messenger?.showSnackBar(SnackBar(content: Text(error.message)));
     } finally {
       if (mounted) setState(() => _renewing.remove(item.renewId));
@@ -128,6 +158,8 @@ class _LibraryBorrowsPageState extends State<LibraryBorrowsPage> {
                   return AppErrorView(
                     title: '借阅记录加载失败',
                     message: error is LibraryApiException
+                        ? error.message
+                        : error is LibrarySessionChangedException
                         ? error.message
                         : '请检查网络后重试',
                     onRetry: _reload,

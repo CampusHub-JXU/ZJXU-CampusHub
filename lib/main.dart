@@ -55,12 +55,13 @@ Future<void> main() async {
       FlutterError.onError = (details) {
         AppLogger.instance.ui(
           LogLevel.error,
-          // Debug 下带上诊断详情：FlutterErrorDetails 里含
-          // 「The relevant error-causing widget was: <file:line>」，
-          // 定位布局/构建期断言时必须靠它（Release 保持精简）。
+          // Debug 下带上完整诊断树：toDiagnosticsNode().toStringDeep() 含
+          // informationCollector 输出（「The relevant error-causing widget was:
+          // <file:line>」），定位布局/构建期断言必须靠它；details.toString()
+          // 在该 Flutter 版本不含这一段（Release 保持精简）。
           _isProductBuild
               ? 'Flutter 框架异常'
-              : 'Flutter 框架异常 | ${details.toString()}',
+              : 'Flutter 框架异常 | ${details.toDiagnosticsNode().toStringDeep()}',
           error: details.exception,
           stackTrace: details.stack,
           force: true,

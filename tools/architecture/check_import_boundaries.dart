@@ -42,9 +42,7 @@ List<BoundaryViolation> collectBoundaryViolations({String root = 'lib'}) {
 
     final text = entity.readAsStringSync();
     if (_methodChannelPattern.hasMatch(text)) {
-      violations.add(
-        BoundaryViolation(posix, 'feature 不得直接创建 MethodChannel'),
-      );
+      violations.add(BoundaryViolation(posix, 'feature 不得直接创建 MethodChannel'));
     }
     if (_launchUrlPattern.hasMatch(text)) {
       violations.add(BoundaryViolation(posix, 'feature 不得直接 launchUrl'));
@@ -52,7 +50,10 @@ List<BoundaryViolation> collectBoundaryViolations({String root = 'lib'}) {
     if (_wechatLauncherPattern.hasMatch(text) &&
         !allowedWechatLauncherFeatureFiles.contains(posix)) {
       violations.add(
-        BoundaryViolation(posix, 'feature 不得直接调用 WechatLauncher（必须经 CampusAction）'),
+        BoundaryViolation(
+          posix,
+          'feature 不得直接调用 WechatLauncher（必须经 CampusAction）',
+        ),
       );
     }
   }

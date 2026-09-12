@@ -58,6 +58,7 @@ logcat_dump.txt
 # Local agent/tooling state
 /.agents/
 /.claude/
+/.opencode/
 /skills-lock.json
 
 # Local runtime logs and crash dumps

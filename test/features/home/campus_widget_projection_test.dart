@@ -21,7 +21,10 @@ void main() {
 
     final map = projection.toMap();
     expect(map['generatedAt'], generatedAt.toIso8601String());
-    expect((map['todayCourses'] as List), hasLength(projection.todayCourses.length));
+    expect(
+      (map['todayCourses'] as List),
+      hasLength(projection.todayCourses.length),
+    );
 
     final keys = map.keys.join(',').toLowerCase();
     for (final secret in const [

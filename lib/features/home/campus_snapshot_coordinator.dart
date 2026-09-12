@@ -50,7 +50,8 @@ class ScheduleRefreshResult {
 class CampusSnapshotCoordinator {
   CampusSnapshotCoordinator._();
 
-  static final CampusSnapshotCoordinator instance = CampusSnapshotCoordinator._();
+  static final CampusSnapshotCoordinator instance =
+      CampusSnapshotCoordinator._();
 
   bool get isAcademicLoggedIn => ZhengfangAuth.instance.isLoggedIn;
 

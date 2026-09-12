@@ -214,7 +214,10 @@ class PersonalizationBackgroundSection extends StatelessWidget {
   }
 
   /// 确认后清理旧背景文件，只保留当前生效的一份。
-  Future<void> _pruneOtherBackgrounds(Directory destDir, String keepPath) async {
+  Future<void> _pruneOtherBackgrounds(
+    Directory destDir,
+    String keepPath,
+  ) async {
     await for (final file in destDir.list()) {
       if (file is File && file.path != keepPath) {
         unawaited(file.delete().catchError((_) => file));

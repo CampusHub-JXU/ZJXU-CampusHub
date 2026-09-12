@@ -1,7 +1,11 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/core/network/dio_client.dart';
 import 'package:jxu_campus_hub/features/library/library_borrows_page.dart';
 import 'package:jxu_campus_hub/features/library/library_session.dart';
@@ -9,6 +13,8 @@ import 'package:jxu_campus_hub/features/library/library_token_reader.dart';
 
 import '../../helpers/mock_http_client_adapter.dart';
 import '../../helpers/test_setup.dart';
+
+const _testAccount = 'TEST_LIB_ACCOUNT_1';
 
 Map<String, Object?> _borrowItem({String renewId = 'R2026'}) =>
     <String, Object?>{
@@ -27,6 +33,10 @@ void main() {
   setUp(() async {
     await resetTestEnvironment();
     LibrarySession.instance.debugReset();
+    UnifiedAuthService.instance.debugSetSession(
+      active: true,
+      account: _testAccount,
+    );
     LibraryTokenReader.debugReadOverride = (url) async => 'token-abc';
     DioClient.instance.debugCookieDirectoryPathProvider = (folderName) async =>
         'test/$folderName';
@@ -55,9 +65,7 @@ void main() {
     });
     DioClient.instance.dio.httpClientAdapter = adapter;
 
-    await tester.pumpWidget(
-      const MaterialApp(home: LibraryBorrowsPage()),
-    );
+    await tester.pumpWidget(const MaterialApp(home: LibraryBorrowsPage()));
     await tester.pumpAndSettle();
 
     expect(find.text('没有借阅'), findsOneWidget);
@@ -74,9 +82,7 @@ void main() {
     });
     DioClient.instance.dio.httpClientAdapter = adapter;
 
-    await tester.pumpWidget(
-      const MaterialApp(home: LibraryBorrowsPage()),
-    );
+    await tester.pumpWidget(const MaterialApp(home: LibraryBorrowsPage()));
     await tester.pumpAndSettle();
 
     expect(find.text('我的借阅'), findsOneWidget);
@@ -98,9 +104,7 @@ void main() {
     });
     DioClient.instance.dio.httpClientAdapter = adapter;
 
-    await tester.pumpWidget(
-      const MaterialApp(home: LibraryBorrowsPage()),
-    );
+    await tester.pumpWidget(const MaterialApp(home: LibraryBorrowsPage()));
     await tester.pumpAndSettle();
 
     expect(find.text('没有借阅'), findsOneWidget);
@@ -109,9 +113,7 @@ void main() {
   testWidgets('读不到令牌时提示先登录图书馆', (tester) async {
     LibraryTokenReader.debugReadOverride = (url) async => null;
 
-    await tester.pumpWidget(
-      const MaterialApp(home: LibraryBorrowsPage()),
-    );
+    await tester.pumpWidget(const MaterialApp(home: LibraryBorrowsPage()));
     await tester.pumpAndSettle();
 
     expect(find.text('未登录图书馆'), findsOneWidget);
@@ -138,9 +140,7 @@ void main() {
     });
     DioClient.instance.dio.httpClientAdapter = adapter;
 
-    await tester.pumpWidget(
-      const MaterialApp(home: LibraryBorrowsPage()),
-    );
+    await tester.pumpWidget(const MaterialApp(home: LibraryBorrowsPage()));
     await tester.pumpAndSettle();
     await tester.tap(find.text('续借'));
     await tester.pumpAndSettle();
@@ -151,5 +151,80 @@ void main() {
       'GET /user/borrows',
     ]);
     expect(find.text('续借成功'), findsOneWidget);
+  });
+
+  testWidgets('登出后缓存令牌立即失效，不再用旧账号令牌请求', (tester) async {
+    LibrarySession.instance.debugSetAccessToken('token-account-a');
+    expect(LibrarySession.instance.accessToken, 'token-account-a');
+
+    await UnifiedAuthService.instance.markLoggedOut();
+    expect(LibrarySession.instance.accessToken, isNull);
+    LibraryTokenReader.debugReadOverride = (url) async => null;
+
+    final adapter = MockHttpClientAdapter();
+    DioClient.instance.dio.httpClientAdapter = adapter;
+
+    await tester.pumpWidget(const MaterialApp(home: LibraryBorrowsPage()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('未登录图书馆'), findsOneWidget);
+    expect(adapter.requestLog, isEmpty);
+  });
+
+  testWidgets('切换账号后旧账号在途借阅结果被拒绝', (tester) async {
+    LibrarySession.instance.debugSetAccessToken('token-account-a');
+    final pending = Completer<ResponseBody>();
+    var borrowCalls = 0;
+    final adapter = MockHttpClientAdapter();
+    adapter.register('GET', '/user/borrows', (options) {
+      borrowCalls++;
+      return pending.future;
+    });
+    DioClient.instance.dio.httpClientAdapter = adapter;
+
+    await tester.pumpWidget(const MaterialApp(home: LibraryBorrowsPage()));
+    // dio 请求链经事件循环 Timer 推进：有限步进假时钟直到请求挂在闸门上。
+    for (var i = 0; i < 20 && borrowCalls < 1; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(borrowCalls, 1);
+
+    UnifiedAuthService.instance.debugSetSession(
+      active: true,
+      account: 'TEST_LIB_ACCOUNT_2',
+    );
+    pending.complete(
+      ResponseBody.fromString(
+        jsonEncode(<String, Object?>{
+          'items': <Object?>[_borrowItem()],
+          'page': 1,
+          'pageSize': 100,
+        }),
+        200,
+        headers: <String, List<String>>{
+          Headers.contentTypeHeader: <String>['application/json'],
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('高等数学'), findsNothing);
+    expect(find.text('统一认证会话已变化，请重试'), findsOneWidget);
+  });
+
+  testWidgets('401 清除缓存令牌并提示重新登录', (tester) async {
+    LibrarySession.instance.debugSetAccessToken('token-stale');
+    final adapter = MockHttpClientAdapter();
+    adapter.registerJson('GET', '/user/borrows', <String, Object?>{
+      'code': 'invalid_access_token',
+      'message': '未登录',
+    }, statusCode: 401);
+    DioClient.instance.dio.httpClientAdapter = adapter;
+
+    await tester.pumpWidget(const MaterialApp(home: LibraryBorrowsPage()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('图书馆登录已过期，请重新登录'), findsOneWidget);
+    expect(LibrarySession.instance.accessToken, isNull);
   });
 }

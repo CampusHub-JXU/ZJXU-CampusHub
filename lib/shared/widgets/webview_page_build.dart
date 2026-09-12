@@ -2,16 +2,15 @@ part of 'webview_page.dart';
 
 extension _WebViewPageBuildExtension on _WebViewPageState {
   Widget _buildQuickFillBar() {
-    if (!widget.enableLoginQuickFill || _quickFillKind == null) {
+    // 快速填充只服务教务（正方）登录页：统一认证/一卡通 CAS 登录页既不能
+    // 识别为填充目标，也不能渲染「一卡通快速填充」UI。
+    if (!widget.enableLoginQuickFill || !_quickFillAvailable) {
       return const SizedBox.shrink();
     }
 
     final cs = Theme.of(context).colorScheme;
-    final kind = _quickFillKind!;
-    final credentials = kind == WebViewQuickFillKind.zhengfang
-        ? _savedZhengfangCredentials
-        : _savedUnifiedCredentials;
-    final title = kind == WebViewQuickFillKind.zhengfang ? '教务快速填充' : '一卡通快速填充';
+    final credentials = _savedZhengfangCredentials;
+    const title = '教务快速填充';
     final description = credentials == null
         ? '还没有记住账号密码，先用应用内登录一次后这里会自动复用'
         : '检测到已保存账号密码，可一键填入当前网页登录表单';
@@ -96,17 +95,12 @@ extension _WebViewPageBuildExtension on _WebViewPageState {
     required bool fillPassword,
   }) async {
     final controller = _controller;
-    final kind = _quickFillKind;
-    if (controller == null || kind == null || _quickFillBusy) return;
+    if (controller == null || !_quickFillAvailable || _quickFillBusy) return;
 
-    final credentials = switch (kind) {
-      WebViewQuickFillKind.zhengfang => _savedZhengfangCredentials,
-      WebViewQuickFillKind.unifiedAuth => _savedUnifiedCredentials,
-    };
-
+    // 只使用教务凭据；统一认证/一卡通凭据禁止注入任何 WebView 表单。
+    final credentials = _savedZhengfangCredentials;
     if (credentials == null) {
-      final loginType = kind == WebViewQuickFillKind.zhengfang ? '教务' : '一卡通';
-      _showHint('还没有记住$loginType账号密码，请先用应用内登录一次');
+      _showHint('还没有记住教务账号密码，请先用应用内登录一次');
       return;
     }
 
@@ -114,8 +108,7 @@ extension _WebViewPageBuildExtension on _WebViewPageState {
 
     final username = jsonEncode(fillUsername ? credentials.$1 : '');
     final password = jsonEncode(fillPassword ? credentials.$2 : '');
-    final script = switch (kind) {
-      WebViewQuickFillKind.zhengfang =>
+    final script =
         '''
 (() => {
   const setInputValue = (selectors, value) => {
@@ -140,37 +133,7 @@ extension _WebViewPageBuildExtension on _WebViewPageState {
     ),
   };
 })()
-''',
-      WebViewQuickFillKind.unifiedAuth =>
-        '''
-(() => {
-  const setInputValue = (selectors, value) => {
-    if (!value) return false;
-    for (const selector of selectors) {
-      const input = document.querySelector(selector);
-      if (!input) continue;
-      input.focus();
-      input.value = value;
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      input.dispatchEvent(new Event('change', { bubbles: true }));
-      return true;
-    }
-    return false;
-  };
-
-  return {
-    usernameFilled: setInputValue(
-      ['#username', 'input[name="username"]'],
-      $username
-    ),
-    passwordFilled: setInputValue(
-      ['#password', 'input[name="password"]', 'input[type="password"]'],
-      $password
-    ),
-  };
-})()
-''',
-    };
+''';
 
     try {
       final result = await controller.evaluateJavascript(source: script);
@@ -186,9 +149,7 @@ extension _WebViewPageBuildExtension on _WebViewPageState {
           (fillPassword && !passwordFilled)) {
         _showHint('当前登录页字段未识别到，请手动输入');
       } else {
-        _showHint(
-          kind == WebViewQuickFillKind.zhengfang ? '已填充教务账号密码' : '已填充一卡通账号密码',
-        );
+        _showHint('已填充教务账号密码');
       }
     } catch (error) {
       AppLogger.instance.webview(

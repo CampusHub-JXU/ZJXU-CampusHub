@@ -304,9 +304,7 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
     // [forceWebVpn] 跳过「直连可达即返回」：部分目标（如 libapp）直连探测能
     // 拿到 302，但 WebView 里直连会被服务端断开（net::ERR_CONNECTION_CLOSED），
     // 这类入口必须走 WebVPN 代理。
-    var mode = await ConnectModeResolver.instance.resolve(
-      targetUrl: targetUrl,
-    );
+    var mode = await ConnectModeResolver.instance.resolve(targetUrl: targetUrl);
     if (!forceWebVpn) {
       if (mode == ZhengfangMode.direct) {
         if (_mode != ZhengfangMode.direct) {

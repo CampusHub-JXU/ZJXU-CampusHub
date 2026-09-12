@@ -214,10 +214,10 @@ class _ZhengfangProtectedWebViewPageState
     }
 
     return Scaffold(
-          appBar: AppAppBar(
-            automaticallyImplyLeading: true,
-            title: Text(widget.title),
-          ),
+      appBar: AppAppBar(
+        automaticallyImplyLeading: true,
+        title: Text(widget.title),
+      ),
       body: AuthRequiredView(
         title: '需要登录后继续',
         message: widget.loginDescription,

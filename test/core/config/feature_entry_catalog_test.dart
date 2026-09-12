@@ -44,7 +44,10 @@ void main() {
     expect(library.primaryActionId, CampusActionIds.libraryOpen);
     expect(library.icon, Icons.local_library_outlined);
     expect(library.accentColor, AppColors.info);
-    expect(secondClassroom.primaryActionId, CampusActionIds.secondClassroomOpen);
+    expect(
+      secondClassroom.primaryActionId,
+      CampusActionIds.secondClassroomOpen,
+    );
     expect(changxing.primaryActionId, CampusActionIds.changxingJiadaOpen);
     expect(changxing.accentColor, const Color(0xFF2EA567));
     final physicalTest = entries.firstWhere(

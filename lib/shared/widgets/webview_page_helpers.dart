@@ -15,18 +15,28 @@ const _webViewConsoleNoiseKeywords = <String>[
   'keyboard',
 ];
 
-enum WebViewQuickFillKind { zhengfang, unifiedAuth }
+/// WebView 侧的统一认证登录入口判定：newca 直连 CAS，或 WebVPN 代理后的
+/// CAS 登录页。
+///
+/// [isUnifiedAuthLoginEntryUrl] 只认 `newca.zjxu.edu.cn`；WebVPN 会把 CAS
+/// 登录页代理成 `https://webvpn.zjxu.edu.cn/(http|https)/<hash>/cas/login…`。
+/// 受保护业务页若渲染它，就会把学校 CAS 的 H5 登录表单直接交给用户；这里
+/// 把代理形态一并识别，供受保护 WebView 在导航阶段拦截。
+bool isWebViewCasLoginEntryUrl(String currentUrl) {
+  if (isUnifiedAuthLoginEntryUrl(currentUrl)) return true;
 
-WebViewQuickFillKind? detectWebViewQuickFillKind(String currentUrl) {
-  final normalizedUrl = currentUrl.trim().toLowerCase();
-  if (normalizedUrl.isEmpty) return null;
-  if (normalizedUrl.contains('/xtgl/login_slogin.html')) {
-    return WebViewQuickFillKind.zhengfang;
-  }
-  if (normalizedUrl.contains('/cas/login')) {
-    return WebViewQuickFillKind.unifiedAuth;
-  }
-  return null;
+  final uri = Uri.tryParse(currentUrl.trim());
+  if (uri == null) return false;
+  if (uri.host.toLowerCase() != 'webvpn.zjxu.edu.cn') return false;
+  return uri.path.toLowerCase().contains('/cas/login');
+}
+
+/// 教务（正方）登录页判定：快速填充只保留教务表单。
+///
+/// 统一认证 / 一卡通 CAS 登录页（含 WebVPN 代理形态）不得识别为快速填充
+/// 目标：禁止在 CAS H5 注入一卡通凭据，也不得渲染「一卡通快速填充」UI。
+bool isZhengfangQuickFillTarget(String currentUrl) {
+  return currentUrl.trim().toLowerCase().contains('/xtgl/login_slogin.html');
 }
 
 String selectLoadedWebViewUrl({

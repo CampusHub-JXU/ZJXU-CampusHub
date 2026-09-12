@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta charset="utf-8">
+    <meta name="author" content="Lee">
+    <meta name="format-detection" content="telephone=no">
+    <meta name="viewport" content="width=device-width, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Cache-Control" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>学生服务平台</title>
+    <link rel="stylesheet" type="text/css" href="/weixin/css/global.css">
+    <link rel="stylesheet" type="text/css" href="/weixin/css/demo.css">
+    <link rel="stylesheet" type="text/css" href="/weixin/css/plugin.css">
+    <link rel="stylesheet" type="text/css" href="/weixin/css/frozenui.css">
+    <script src="/weixin/js/weixin.js"></script>
+    <script language="javascript">
+    function queryHealth(){
+        var url = "/spQuery";
+        var method = "healthscore";
+        checkSubmit(url, method);
+    }
+    function queryExercise(){
+        var url = "/spQuery";
+        var method = "exercise";
+        checkSubmit(url, method);
+    }
+    function queryTiyucj(){
+        var url = "/spQuery";
+        var method = "gymscore";
+        checkSubmit(url, method);
+    }
+    function selectGym(){
+        var url = "/spQuery";
+        var method = "selectGym";
+        checkSubmit(url, method);
+    }
+    function selectBespeak(){
+        var url = "/spQuery";
+        var method = "selectBespeak";
+        checkSubmit(url, method);
+    }
+    function bespeakRecord(){
+        var url = "/spQuery";
+        var method = "bespeakRecord";
+        checkSubmit(url, method);
+    }
+    function notTestList(){
+        var url = "/spQuery";
+        var method = "notTestList";
+        checkSubmit(url, method);
+    }
+    function loadHealth(){
+        var url = "/spQuery";
+        var method = "loadHealth";
+        checkSubmit(url, method);
+    }
+    function loadPassword(){
+        var url = "/spQuery";
+        var method = "loadPassword";
+        checkSubmit(url, method);
+    }
+    function stuInfo(){
+        var url = "/spQuery";
+        var method = "stuInfo";
+        checkSubmit(url, method);
+    }
+    function barcode(){
+        var url = "/spQuery";
+        var method = "barcode";
+        checkSubmit(url, method);
+    }
+    function checkSubmit(url, value){
+        document.getElementsByName("method")[0].value=value;
+        document.myform.action=url;
+        document.myform.submit();
+    }
+    function wxLogout(){
+        if (window.confirm("确定注销登录吗？")){
+            window.location.href="/wxlogin?method=casLogout";
+        }
+    }
+    </script>
+</head>
+<body>
+<form name="myform" method="post" action="">
+    <div>
+        <div>
+            <ul class="ui-row-flex">
+                <li class="ui-col ui-flex ui-flex-pack-start">
+                   <div class="">
+                    <div class="imgdiv">
+                        <a href="#" onclick="queryHealth()"><img src="/weixin/images/geren.png" alt=""></a>
+                        </div>
+                        <a href="#" onclick="queryHealth()">体测成绩</a>
+                    </div>
+                </li>
+                <li class="ui-col ui-flex ui-flex-pack-center">
+                    <div class="">
+                    <div class="imgdiv">
+                        <a href="#" onclick="selectBespeak()"><img src="/weixin/images/tuchao.png" alt=""></a>
+                         </div>
+                         <a href="#" onclick="selectBespeak()">预约测试</a>
+                    </div>
+                </li>
+                <li class="ui-col ui-flex ui-flex-pack-end">
+                    <div class="">
+                    <div class="imgdiv">
+                         <a href="#" onclick="bespeakRecord()"><img src="/weixin/images/diaocha.png" alt=""></a>
+                         </div>
+                         <a href="#" onclick="bespeakRecord()">预约记录</a>
+                    </div>
+                </li>
+            </ul>
+            <ul class="ui-row-flex">
+                <li class="ui-col ui-flex ui-flex-pack-start">
+                    <div class="">
+                    <div class="imgdiv">
+                         <a href="#" onclick="loadHealth()"><img src="/weixin/images/tougao.png" alt=""></a>
+                         </div>
+                         <a href="#" onclick="loadHealth()">体测计算</a>
+                    </div>
+                </li>
+                <li class="ui-col ui-flex ui-flex-pack-center">
+                    <div class="">
+                    <div class="imgdiv">
+                         <a href="#" onclick="stuInfo()"><img src="/weixin/images/zaizhi.png" alt=""></a>
+                         </div>
+                            <a href="#" onclick="stuInfo()">我的信息</a>
+                    </div>
+                </li>
+                <li class="ui-col ui-flex ui-flex-pack-end">
+                    <div class="">
+                    <div class="imgdiv">
+                         <a href="#" onclick="wxLogout()"><img src="/weixin/images/logout.png" alt=""></a>
+                         </div>
+                            <a href="#" onclick="wxLogout()">注销登录</a>
+                    </div>
+                </li>
+            </ul>
+        </div>
+    </div>
+    <input type="hidden" name="method" value="">
+    <input type="hidden" name="stuNo" value="VEVTVF9TVFVERU5UXzAwMDE=">
+    <input type="hidden" name="schoolid" value="TEST_SCHOOL_0001">
+</form>
+</body>
+</html>

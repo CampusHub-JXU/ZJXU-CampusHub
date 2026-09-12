@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jxu_campus_hub/core/auth/cas_auth_broker.dart';
+import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/shared/widgets/external_url_launcher.dart';
 import 'package:jxu_campus_hub/shared/widgets/unified_auth_protected_webview_page.dart';
 import 'package:jxu_campus_hub/shared/widgets/webview_page.dart';
@@ -38,11 +39,17 @@ void main() {
 
   tearDown(() {
     debugResetExternalUrlLauncher();
+    UnifiedAuthService.instance.debugReset();
   });
 
   testWidgets(
     'protected page retries network preparation and uses selected URL',
     (tester) async {
+      // 有本地会话时，网络未知失败给「重试」而不是登录引导。
+      UnifiedAuthService.instance.debugSetSession(
+        active: true,
+        account: '2024001',
+      );
       var calls = 0;
       const proxyUrl = 'https://webvpn.zjxu.edu.cn/https/example/#/form';
       await tester.pumpWidget(
@@ -93,31 +100,158 @@ void main() {
     expect(find.byType(WebViewPage), findsNothing);
   });
 
-  group('detectWebViewQuickFillKind', () {
+  testWidgets(
+    'prepare returning a CAS login URL stays on native auth guidance',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: UnifiedAuthProtectedWebViewPage(
+            title: '校园卡账单',
+            url: 'https://mobilehall.zjxu.edu.cn/webroot/decision/view/form',
+            serviceUrl: CasService.campusCardStatus.serviceUrl,
+            autoPromptLogin: false,
+            prepareAuthenticatedUrl: () async =>
+                'https://newca.zjxu.edu.cn/cas/login'
+                '?service=https%3A%2F%2Fmobilehall.zjxu.edu.cn',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 绝不把学校 CAS 的 H5 登录页交给用户，也不出现一卡通快速填充。
+      expect(find.text('需要统一认证后继续'), findsOneWidget);
+      expect(find.byType(WebViewPage), findsNothing);
+      expect(find.text('一键填充'), findsNothing);
+      expect(find.text('一卡通快速填充'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'prepare returning a webvpn-proxied CAS login URL is blocked too',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: UnifiedAuthProtectedWebViewPage(
+            title: '校园卡账单',
+            url: 'https://mobilehall.zjxu.edu.cn/webroot/decision/view/form',
+            serviceUrl: CasService.campusCardStatus.serviceUrl,
+            autoPromptLogin: false,
+            prepareAuthenticatedUrl: () async =>
+                'https://webvpn.zjxu.edu.cn/https/'
+                '77726476706e69737468656265737421fafc4b85692a62486b468ca88d1b203b'
+                '/cas/login?service=https%3A%2F%2Fmobilehall.zjxu.edu.cn',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('需要统一认证后继续'), findsOneWidget);
+      expect(find.byType(WebViewPage), findsNothing);
+      expect(find.text('一键填充'), findsNothing);
+    },
+  );
+
+  testWidgets('protected page mounts webview without quick fill', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: UnifiedAuthProtectedWebViewPage(
+          title: '校园卡账单',
+          url: 'https://mobilehall.zjxu.edu.cn/webroot/decision/view/form',
+          serviceUrl: CasService.campusCardStatus.serviceUrl,
+          autoPromptLogin: false,
+          prepareAuthenticatedUrl: () async =>
+              'https://mobilehall.zjxu.edu.cn/webroot/decision/view/form?op=h5',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final webView = tester.widget<WebViewPage>(find.byType(WebViewPage));
+    expect(webView.enableLoginQuickFill, isFalse);
+    expect(find.text('一键填充'), findsNothing);
+    expect(find.text('一卡通快速填充'), findsNothing);
+  });
+
+  group('isZhengfangQuickFillTarget', () {
     test('detects zhengfang login page', () {
       expect(
-        detectWebViewQuickFillKind(
+        isZhengfangQuickFillTarget(
           'https://jwzx.zjxu.edu.cn/jwglxt/xtgl/login_slogin.html',
         ),
-        WebViewQuickFillKind.zhengfang,
+        isTrue,
       );
     });
 
-    test('detects unified auth login page', () {
+    test('never treats unified auth CAS pages as quick fill targets', () {
       expect(
-        detectWebViewQuickFillKind(
+        isZhengfangQuickFillTarget(
           'https://newca.zjxu.edu.cn/cas/login?service=test',
         ),
-        WebViewQuickFillKind.unifiedAuth,
+        isFalse,
+      );
+      expect(
+        isZhengfangQuickFillTarget(
+          'https://webvpn.zjxu.edu.cn/https/'
+          '77726476706e69737468656265737421fafc4b85692a62486b468ca88d1b203b'
+          '/cas/login?service=test',
+        ),
+        isFalse,
       );
     });
 
     test('ignores non-login pages', () {
       expect(
-        detectWebViewQuickFillKind(
+        isZhengfangQuickFillTarget(
           'https://jwzx.zjxu.edu.cn/jwglxt/xtgl/index_initMenu.html?jsdm=xs',
         ),
-        isNull,
+        isFalse,
+      );
+    });
+  });
+
+  group('isWebViewCasLoginEntryUrl', () {
+    test('detects direct newca CAS login entry', () {
+      expect(
+        isWebViewCasLoginEntryUrl(
+          'https://newca.zjxu.edu.cn/cas/login?service=test',
+        ),
+        isTrue,
+      );
+    });
+
+    test('detects webvpn-proxied CAS login entry', () {
+      expect(
+        isWebViewCasLoginEntryUrl(
+          'https://webvpn.zjxu.edu.cn/https/'
+          '77726476706e69737468656265737421fafc4b85692a62486b468ca88d1b203b'
+          '/cas/login?service=https%3A%2F%2Fmobilehall.zjxu.edu.cn',
+        ),
+        isTrue,
+      );
+    });
+
+    test('keeps business pages and CAS client callbacks clear', () {
+      expect(
+        isWebViewCasLoginEntryUrl(
+          'https://mobilehall.zjxu.edu.cn/webroot/decision/view/form?op=h5',
+        ),
+        isFalse,
+      );
+      expect(
+        isWebViewCasLoginEntryUrl(
+          'https://newca.zjxu.edu.cn/casClient/login/ydd',
+        ),
+        isFalse,
+      );
+      expect(
+        isWebViewCasLoginEntryUrl(
+          'https://webvpn.zjxu.edu.cn/https/'
+          '77726476706e69737468656265737421fafc4b85692a62486b468ca88d1b203b'
+          '/weixin/main.jsp',
+        ),
+        isFalse,
       );
     });
   });

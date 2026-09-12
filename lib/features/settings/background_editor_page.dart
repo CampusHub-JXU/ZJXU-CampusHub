@@ -63,9 +63,8 @@ class _BackgroundEditorPageState extends State<BackgroundEditorPage> {
   }
 
   void _confirm() {
-    Navigator.of(context).pop(
-      BackgroundEditorResult(alignment: _alignment, scale: _scale),
-    );
+    Navigator.of(context)
+        .pop(BackgroundEditorResult(alignment: _alignment, scale: _scale));
   }
 
   @override

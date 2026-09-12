@@ -18,6 +18,10 @@ const _cmsCallback =
 final _casLogin = Uri.https('newca.zjxu.edu.cn', '/cas/login', {
   'service': _cmsCallback,
 }).toString();
+const _proxiedCasLogin =
+    'https://webvpn.zjxu.edu.cn/https/'
+    '77726476706e69737468656265737421fafc4b85692a62486b468ca88d1b203b'
+    '/cas/login?service=https%3A%2F%2Fjwc.zjxu.edu.cn%2Flist.jsp';
 
 class _FakeInAppWebViewPlatform extends InAppWebViewPlatform {
   @override
@@ -166,6 +170,89 @@ void main() {
     expect(find.text('暂时无法连接服务，请切换网络后重试'), findsOneWidget);
     expect(find.text('需要统一认证后继续'), findsNothing);
     expect(UnifiedAuthService.instance.isLoggedIn, isTrue);
+  });
+
+  testWidgets('network unknown without session guides login instead of error', (
+    tester,
+  ) async {
+    CasAuthBroker.debugGetResourceOverride =
+        (
+          url, {
+          dio,
+          needsLogin,
+          cancelToken,
+          Duration? timeout,
+          deadline,
+        }) async {
+          throw DioException(
+            requestOptions: RequestOptions(path: url),
+            type: DioExceptionType.connectionError,
+          );
+        };
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: UnifiedAuthProtectedWebViewPage(
+          title: '通知',
+          url: _resource,
+          warmUpAsResource: true,
+          autoPromptLogin: false,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    // 预热网络失败但本地无会话：给原生登录引导，而不是「切换网络」错误页。
+    expect(find.text('需要统一认证后继续'), findsOneWidget);
+    expect(find.text('暂时无法连接服务，请切换网络后重试'), findsNothing);
+  });
+
+  testWidgets('webvpn-proxied CAS bounce rewarms without showing the H5 page', (
+    tester,
+  ) async {
+    UnifiedAuthService.instance.debugSetSession(
+      active: true,
+      account: '2024001',
+    );
+    final urls = <String>[];
+    CasAuthBroker.debugGetResourceOverride =
+        (
+          url, {
+          dio,
+          needsLogin,
+          cancelToken,
+          Duration? timeout,
+          deadline,
+        }) async {
+          urls.add(url);
+          return _ok(url);
+        };
+
+    final key = GlobalKey<UnifiedAuthProtectedWebViewPageState>();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: UnifiedAuthProtectedWebViewPage(
+          key: key,
+          title: '通知',
+          url: _resource,
+          warmUpAsResource: true,
+          autoPromptLogin: false,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(WebViewPage), findsOneWidget);
+
+    await key.currentState!.debugOnCasLoginEntry(_proxiedCasLogin);
+    await tester.pump();
+    await tester.pump();
+
+    expect(urls, [_resource, _resource]);
+    expect(find.byType(WebViewPage), findsOneWidget);
+    expect(key.currentState!.debugWebViewUrl, _resource);
+    expect(key.currentState!.debugWebViewUrl, isNot(contains('/cas/login')));
+    expect(find.text('需要统一认证后继续'), findsNothing);
   });
 
   testWidgets('dispose cancels warmup and ignores a late success', (

@@ -27,6 +27,7 @@ import '../features/shuati/shuati_webview_page.dart';
 import '../features/settings/settings_page.dart';
 import '../features/settings/about_page.dart';
 import '../features/settings/appearance_page.dart';
+import '../features/settings/personalization_page.dart';
 import '../features/settings/background_editor_page.dart';
 import '../features/settings/desktop_background_page.dart';
 import '../features/home/home_surface_scene.dart';
@@ -185,11 +186,11 @@ final GoRouter appRouter = GoRouter(
     _appRoute(
       path: '/appearance',
       name: 'appearance',
-        builder: (context, state) => AppearancePage(
-          homeSceneBuilder: (context) => const HomeSurfaceScene(
-            presentation: ExampleCampusSnapshot.presentation,
-          ),
+      builder: (context, state) => AppearancePage(
+        homeSceneBuilder: (context) => const HomeSurfaceScene(
+          presentation: ExampleCampusSnapshot.presentation,
         ),
+      ),
     ),
     GoRoute(
       path: '/theme',
@@ -201,10 +202,14 @@ final GoRouter appRouter = GoRouter(
       name: 'theme-settings',
       redirect: (context, state) => '/appearance',
     ),
-    GoRoute(
+    _appRoute(
       path: '/personalization',
       name: 'personalization',
-      redirect: (context, state) => '/appearance',
+      builder: (context, state) => PersonalizationPage(
+        homeSceneBuilder: (context) => const HomeSurfaceScene(
+          presentation: ExampleCampusSnapshot.presentation,
+        ),
+      ),
     ),
     _appRoute(
       path: '/background-editor',
