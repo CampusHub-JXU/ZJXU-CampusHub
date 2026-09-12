@@ -1,4 +1,3 @@
-import '../auth/cas_auth_broker.dart';
 import '../config/app_config.dart';
 import '../epay100/epay100_gateway.dart';
 import 'campus_action.dart';
@@ -87,10 +86,10 @@ class CampusActionRegistry {
       title: '电费充值',
       target: WechatActionTarget(HeadlessEpay100Gateway.rechargeUrl),
     ),
-    CampusAction(
+    const CampusAction(
       id: CampusActionIds.libraryOpen,
       title: '图书馆',
-      target: WechatActionTarget(CasService.librarySso.serviceUrl),
+      target: RouteActionTarget('library'),
     ),
     const CampusAction(
       id: CampusActionIds.noticeInbox,
