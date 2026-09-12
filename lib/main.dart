@@ -20,6 +20,9 @@ import 'core/shortcut/app_shortcut_service.dart';
 import 'features/second_classroom/second_classroom_subscription_service.dart';
 import 'features/home/widget/campus_widget_sync.dart';
 
+/// Release 构建下为 true；用编译期常量替代 kDebugMode，避免额外导入 foundation。
+const bool _isProductBuild = bool.fromEnvironment('dart.vm.product');
+
 void _handleNotificationPayload(String payload) {
   if (payload == 'dorm-electricity') {
     appRouter.goNamed('dorm-electricity');
@@ -52,7 +55,12 @@ Future<void> main() async {
       FlutterError.onError = (details) {
         AppLogger.instance.ui(
           LogLevel.error,
-          'Flutter 框架异常',
+          // Debug 下带上诊断详情：FlutterErrorDetails 里含
+          // 「The relevant error-causing widget was: <file:line>」，
+          // 定位布局/构建期断言时必须靠它（Release 保持精简）。
+          _isProductBuild
+              ? 'Flutter 框架异常'
+              : 'Flutter 框架异常 | ${details.toString()}',
           error: details.exception,
           stackTrace: details.stack,
           force: true,
