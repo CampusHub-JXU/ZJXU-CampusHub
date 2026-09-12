@@ -19,6 +19,7 @@ class ProtectedWebEntryPreparer {
   static Future<String> prepare({
     required String targetUrl,
     required String serviceUrl,
+    bool forceWebVpn = false,
     String gatewayTimeoutMessage = '网关暂时无法连接',
     String authTimeoutMessage = '统一认证暂时无法连接',
   }) async {
@@ -32,6 +33,7 @@ class ProtectedWebEntryPreparer {
         .ensureWebVpnGatewaySessionResult(
           syncWebViewCookies: true,
           targetUrl: targetUrl,
+          forceWebVpn: forceWebVpn,
         );
     if (gateway.ready == false) throw const CasAuthExpiredException();
     if (gateway.ready == null) throw TimeoutException(gatewayTimeoutMessage);

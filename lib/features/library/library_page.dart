@@ -32,6 +32,9 @@ class LibraryPage extends StatelessWidget {
     return ProtectedWebEntryPreparer.prepare(
       targetUrl: libraryUrl,
       serviceUrl: CasService.librarySso.serviceUrl,
+      // 设备日志：libapp 直连探测 302「可达」，但 WebView 直连必被断开
+      // （net::ERR_CONNECTION_CLOSED），所以图书馆固定走 WebVPN 代理。
+      forceWebVpn: true,
       gatewayTimeoutMessage: '图书馆网关暂时无法连接',
       authTimeoutMessage: '图书馆认证暂时无法连接',
     );

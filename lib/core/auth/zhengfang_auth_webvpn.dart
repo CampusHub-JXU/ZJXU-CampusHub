@@ -292,6 +292,7 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
   Future<WebVpnGatewayEnsureResult> ensureWebVpnGatewaySessionResult({
     bool syncWebViewCookies = true,
     String? targetUrl,
+    bool forceWebVpn = false,
   }) async {
     await DioClient.instance.ensureInitialized();
 
@@ -299,19 +300,29 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
     // - 直连可达 → 切回直连模式，无需 WebVPN 网关会话，直接返回 true。
     // - WebVPN 可达 → 切换 WebVPN 并建立网关会话。
     // - 两者均不可达 → 返回 null，网络异常不代表会话失效。
-    final mode = await ConnectModeResolver.instance.resolve(
+    //
+    // [forceWebVpn] 跳过「直连可达即返回」：部分目标（如 libapp）直连探测能
+    // 拿到 302，但 WebView 里直连会被服务端断开（net::ERR_CONNECTION_CLOSED），
+    // 这类入口必须走 WebVPN 代理。
+    var mode = await ConnectModeResolver.instance.resolve(
       targetUrl: targetUrl,
     );
-    if (mode == ZhengfangMode.direct) {
-      if (_mode != ZhengfangMode.direct) {
-        setMode(ZhengfangMode.direct);
+    if (!forceWebVpn) {
+      if (mode == ZhengfangMode.direct) {
+        if (_mode != ZhengfangMode.direct) {
+          setMode(ZhengfangMode.direct);
+        }
+        return WebVpnGatewayEnsureResult(ready: true, selectedMode: mode);
       }
-      return WebVpnGatewayEnsureResult(ready: true, selectedMode: mode);
+      if (mode != ZhengfangMode.webVpn) {
+        AppLogger.instance.auth(
+          LogLevel.warn,
+          'WebVPN 网关会话不可用：直连与 WebVPN 均不可达',
+        );
+        return const WebVpnGatewayEnsureResult(ready: null);
+      }
     }
-    if (mode != ZhengfangMode.webVpn) {
-      AppLogger.instance.auth(LogLevel.warn, 'WebVPN 网关会话不可用：直连与 WebVPN 均不可达');
-      return const WebVpnGatewayEnsureResult(ready: null);
-    }
+    mode = ZhengfangMode.webVpn;
     setMode(ZhengfangMode.webVpn);
 
     final unifiedAuthActive = await UnifiedAuthService.instance.validateSession(
