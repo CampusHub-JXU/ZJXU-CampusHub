@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../core/shortcut/app_shortcut_service.dart';
 import '../../shared/widgets/external_url_launcher.dart';
@@ -27,6 +26,9 @@ class _ShuatiWebViewPageState extends State<ShuatiWebViewPage> {
   bool _canWebViewGoBack = false;
   String? _errorMessage;
 
+  static const _doubleBackWindow = Duration(milliseconds: 450);
+  DateTime? _lastBackPressedAt;
+
   Future<void> _reload() async {
     final controller = _controller;
     if (controller == null) return;
@@ -38,6 +40,19 @@ class _ShuatiWebViewPageState extends State<ShuatiWebViewPage> {
   }
 
   Future<void> _handleBackPressed() async {
+    // PRD §37/§38：双击返回直接回首页，取代独立 Home 按钮。
+    final now = DateTime.now();
+    final isDoubleTap =
+        _lastBackPressedAt != null &&
+        now.difference(_lastBackPressedAt!) < _doubleBackWindow;
+    _lastBackPressedAt = now;
+    if (isDoubleTap) {
+      _lastBackPressedAt = null;
+      if (mounted) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
+      return;
+    }
     final controller = _controller;
     if (controller != null && await controller.canGoBack()) {
       await controller.goBack();
@@ -92,7 +107,7 @@ class _ShuatiWebViewPageState extends State<ShuatiWebViewPage> {
   @override
   Widget build(BuildContext context) {
     final routeCanPop = Navigator.of(context).canPop();
-    final leadingButtonCount = routeCanPop ? 2 : 1;
+    final leadingButtonCount = routeCanPop ? 1 : 0;
     final isAndroid = Theme.of(context).platform == TargetPlatform.android;
 
     return PopScope<void>(
@@ -104,24 +119,20 @@ class _ShuatiWebViewPageState extends State<ShuatiWebViewPage> {
       child: Scaffold(
         appBar: AppAppBar(
           title: const Text('刷题助手'),
-          automaticallyImplyLeading: false,
-          leadingWidth: leadingButtonCount * 48,
-          leading: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (routeCanPop)
-                IconButton(
-                  icon: const Icon(Icons.arrow_back_rounded),
-                  tooltip: '返回',
-                  onPressed: _handleBackPressed,
-                ),
-              IconButton(
-                icon: const Icon(Icons.home_outlined),
-                tooltip: '返回主页',
-                onPressed: () => context.goNamed('home'),
-              ),
-            ],
-          ),
+          automaticallyImplyLeading: !routeCanPop,
+          leadingWidth: routeCanPop ? leadingButtonCount * 48 : null,
+          leading: routeCanPop
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back_rounded),
+                      tooltip: '返回',
+                      onPressed: _handleBackPressed,
+                    ),
+                  ],
+                )
+              : null,
           actions: [
             IconButton(
               icon: const Icon(Icons.refresh_rounded),

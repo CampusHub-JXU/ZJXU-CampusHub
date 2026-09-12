@@ -235,12 +235,16 @@ class _WebViewPageState extends State<WebViewPage> {
   }
 
   void _returnToCampusHome() {
-    final onHome = widget.onHomePressed;
-    if (onHome != null) {
-      onHome();
+    // PRD §37/§38：双击返回等效旧 Home 按钮。优先路由出栈，保留 shell 与首页
+    // 现有元素树；`goNamed('home')` 会重建 shell 分支，把首页子树搬到新的父
+    // 节点下，实测触发 InheritedNotifier 断言（framework.dart notifyClients）
+    // 与 RawTooltipState 多 ticker 异常。
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      navigator.popUntil((route) => route.isFirst);
       return;
     }
-    Navigator.of(context).popUntil((route) => route.isFirst);
+    widget.onHomePressed?.call();
   }
 
   Future<void> _refreshWebViewBackState([

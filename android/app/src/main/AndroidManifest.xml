@@ -33,6 +33,14 @@
               android:name="android.app.shortcuts"
               android:resource="@xml/shortcuts"
               />
+            <!-- 自定义 scheme 统一由 CampusDeepLinkService / ShortcutChannelHandler
+                 解析后派发（PRD §8：只允许已注册 Action，禁止外部直接携带 URL /
+                 Route / Component）。关闭 Flutter 默认 deep link 转发，否则
+                 go_router 会直接把 jxucampushub://action/<id> 当成 location 处理，
+                 报 GoException: no routes for location。 -->
+            <meta-data
+              android:name="flutter_deeplinking_enabled"
+              android:value="false" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
