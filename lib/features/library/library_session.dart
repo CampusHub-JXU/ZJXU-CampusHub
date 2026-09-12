@@ -33,8 +33,8 @@ class LibrarySession {
   Future<void> captureFrom(InAppWebViewController controller) =>
       _capture(controller);
 
-  static const int _maxAttempts = 8;
-  static const Duration _retryInterval = Duration(milliseconds: 700);
+  static const int _maxAttempts = 40;
+  static const Duration _retryInterval = Duration(milliseconds: 1500);
 
   Future<void> _capture(InAppWebViewController controller) async {
     for (var attempt = 1; attempt <= _maxAttempts; attempt++) {
@@ -47,7 +47,7 @@ class LibrarySession {
         final token = LibraryTokenReader.cleanToken(raw);
         if (token.isNotEmpty) {
           _accessToken = token;
-          AppLogger.instance.storage(
+          AppLogger.instance.webview(
             LogLevel.info,
             '图书馆令牌已缓存（长度 ${token.length}）',
           );
@@ -60,7 +60,7 @@ class LibrarySession {
         await Future<void>.delayed(_retryInterval);
       }
     }
-    AppLogger.instance.storage(LogLevel.warn, '未从图书馆页面读到令牌（可能未登录）');
+    AppLogger.instance.webview(LogLevel.warn, '未从图书馆页面读到令牌（可能未登录）');
   }
 
   @visibleForTesting

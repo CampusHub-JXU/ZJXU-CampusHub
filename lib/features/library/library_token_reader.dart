@@ -20,7 +20,13 @@ class LibraryTokenReader {
   static final LibraryTokenReader instance = LibraryTokenReader._();
 
   /// 读取超时：超时按「未登录」处理，不阻塞页面。
-  static const Duration timeout = Duration(seconds: 15);
+  static const Duration timeout = Duration(seconds: 30);
+
+  /// `onLoadStop` 之后 SPA 才把 Parse 用户对象落到 localStorage（设备实测
+  /// 2026-09-12：load stop 那一刻读为空，WebVPN 下首屏更慢），因此读空后
+  /// 带退避重试若干次。
+  static const int _loadStopAttempts = 10;
+  static const Duration _loadStopRetryInterval = Duration(milliseconds: 1500);
 
   /// 测试替身。
   @visibleForTesting
@@ -49,30 +55,41 @@ class LibraryTokenReader {
           transparentBackground: true,
         ),
         onLoadStop: (controller, url) async {
-          try {
-            final raw = await controller.evaluateJavascript(source: readScript);
-            final token = cleanToken(raw);
-            finish(token.isEmpty ? null : token);
-          } catch (error) {
-            AppLogger.instance.storage(
-              LogLevel.warn,
-              '图书馆令牌读取失败',
-              error: error,
-            );
-            finish(null);
+          for (var attempt = 1; attempt <= _loadStopAttempts; attempt++) {
+            if (completer.isCompleted) return;
+            try {
+              final raw = await controller.evaluateJavascript(
+                source: readScript,
+              );
+              final token = cleanToken(raw);
+              if (token.isNotEmpty) {
+                finish(token);
+                return;
+              }
+            } catch (error) {
+              AppLogger.instance.webview(
+                LogLevel.warn,
+                '图书馆令牌读取失败',
+                error: error,
+              );
+            }
+            if (attempt < _loadStopAttempts) {
+              await Future<void>.delayed(_loadStopRetryInterval);
+            }
           }
+          finish(null);
         },
       );
       await webview.run();
       return await completer.future.timeout(
         timeout,
         onTimeout: () {
-          AppLogger.instance.storage(LogLevel.warn, '图书馆令牌读取超时');
+          AppLogger.instance.webview(LogLevel.warn, '图书馆令牌读取超时');
           return null;
         },
       );
     } catch (error) {
-      AppLogger.instance.storage(LogLevel.warn, '图书馆令牌读取异常', error: error);
+      AppLogger.instance.webview(LogLevel.warn, '图书馆令牌读取异常', error: error);
       return null;
     } finally {
       final created = webview;
