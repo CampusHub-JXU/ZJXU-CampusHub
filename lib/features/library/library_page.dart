@@ -54,6 +54,7 @@ class LibraryPage extends StatelessWidget {
       serviceUrl: CasService.librarySso.serviceUrl,
       prepareAuthenticatedUrl: prepareEntry,
       loginDescription: authLoginDescription,
+      enableLoginQuickFill: true,
       showWebViewBottomBackButton: true,
       onHomePressed: () => context.goNamed('home'),
     );

@@ -112,6 +112,16 @@ void main() {
       );
     });
 
+    test('detects library login page as unified auth quick fill', () {
+      expect(
+        detectWebViewQuickFillKind(
+          'https://webvpn.zjxu.edu.cn/https/77726476706e69737468656265737421fcfe439d3720264a74109ce29d51367b2b47/'
+          '#!/User/Index/login?forward=%2FContent%2FIndex%2Findex',
+        ),
+        WebViewQuickFillKind.unifiedAuth,
+      );
+    });
+
     test('ignores non-login pages', () {
       expect(
         detectWebViewQuickFillKind(
