@@ -126,5 +126,10 @@ class CampusActionRegistry {
       title: '嘉大微生活',
       target: RouteActionTarget('micro-life'),
     ),
+    const CampusAction(
+      id: CampusActionIds.physicalTestOpen,
+      title: '体测成绩',
+      target: RouteActionTarget('physical-test'),
+    ),
   ];
 }

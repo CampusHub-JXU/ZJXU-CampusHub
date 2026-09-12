@@ -36,6 +36,7 @@ void main() {
         70,
         75,
         80,
+        85,
       ]),
     );
     expect(library.title, '图书馆');
@@ -46,5 +47,10 @@ void main() {
     expect(secondClassroom.primaryActionId, CampusActionIds.secondClassroomOpen);
     expect(changxing.primaryActionId, CampusActionIds.changxingJiadaOpen);
     expect(changxing.accentColor, const Color(0xFF2EA567));
+    final physicalTest = entries.firstWhere(
+      (entry) => entry.id == 'physical-test',
+    );
+    expect(physicalTest.title, '体测成绩');
+    expect(physicalTest.primaryActionId, CampusActionIds.physicalTestOpen);
   });
 }

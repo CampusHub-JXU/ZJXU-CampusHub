@@ -176,5 +176,14 @@ class AppFeaturesConfig {
       primaryActionId: 'one-stop-service.open',
       sortOrder: 80,
     ),
+    const FeatureEntryDefinition(
+      id: 'physical-test',
+      title: '体测成绩',
+      subtitle: '体质测试成绩与预约（WebVPN 访问）',
+      icon: Icons.fitness_center_outlined,
+      accentColor: Color(0xFF00838F),
+      primaryActionId: 'physical-test.open',
+      sortOrder: 85,
+    ),
   ];
 }

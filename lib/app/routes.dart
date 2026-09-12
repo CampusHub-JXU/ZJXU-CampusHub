@@ -17,6 +17,7 @@ import '../features/library/library_borrows_page.dart';
 import '../features/library/library_page.dart';
 import '../features/micro_life/micro_life_page.dart';
 import '../features/one_stop_service/one_stop_service_page.dart';
+import '../features/physical_test/physical_test_page.dart';
 import '../features/notice/notice_list_page.dart';
 import '../features/sjjx_notice/sjjx_notice_list_page.dart';
 import '../features/service_hall/service_hall_page.dart';
@@ -164,6 +165,11 @@ final GoRouter appRouter = GoRouter(
       path: '/one-stop-service',
       name: 'one-stop-service',
       builder: (context, state) => const OneStopServicePage(),
+    ),
+    _appRoute(
+      path: '/physical-test',
+      name: 'physical-test',
+      builder: (context, state) => const PhysicalTestPage(),
     ),
     _appRoute(
       path: '/second-classroom',

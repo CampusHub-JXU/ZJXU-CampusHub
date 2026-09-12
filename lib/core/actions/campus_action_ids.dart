@@ -30,4 +30,5 @@ abstract final class CampusActionIds {
 
   static const oneStopServiceOpen = 'one-stop-service.open';
   static const microLifeOpen = 'micro-life.open';
+  static const physicalTestOpen = 'physical-test.open';
 }
