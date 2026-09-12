@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 桌面校园卡片专用色（浅色）：温润浅灰底 + 极淡品牌暖调，炭灰文字，酒红强调 -->
+<resources>
+    <color name="campus_widget_bg">#F5F1EE</color>
+    <color name="campus_widget_stroke">#1F000000</color>
+    <color name="campus_widget_divider">#1A000000</color>
+    <color name="campus_widget_text_primary">#2B2422</color>
+    <color name="campus_widget_text_secondary">#5F5651</color>
+    <color name="campus_widget_text_tertiary">#756B65</color>
+    <color name="campus_widget_accent">#8B1A2D</color>
+</resources>

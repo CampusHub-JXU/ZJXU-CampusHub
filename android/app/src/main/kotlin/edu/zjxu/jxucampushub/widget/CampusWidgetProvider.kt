@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
 import edu.zjxu.jxucampushub.MainActivity
@@ -48,6 +49,38 @@ object CampusWidgetStore {
     private const val KEY_GENERATED_AT = "generated_at"
     private const val STALE_AFTER_MS = 6L * 60L * 60L * 1000L
 
+    private const val HERO_COURSE_SP = 20f
+    private const val HERO_COURSE_COMPACT_SP = 17f
+
+    /**
+     * 组件可用尺寸（dp）。
+     *
+     * 只用同一次上报的 [AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH] /
+     * [AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT] 下界；MIN_WIDTH 配 MAX_HEIGHT
+     * 的方向语义不同，混用会把宽矮实例误判成高实例。
+     */
+    private data class WidgetSize(val widthDp: Int, val heightDp: Int) {
+        /** 矮尺寸（≈2 行高）：只保留主课程与时间，其余行让位。 */
+        val isCompact: Boolean get() = heightDp < COMPACT_HEIGHT_DP
+
+        /** 高尺寸（≈4 行高及以上）：才展开今日课程 / 考试 / 通知等多行信息。 */
+        val isRoomy: Boolean get() = heightDp >= ROOMY_HEIGHT_DP
+
+        /** 今日课程最多行数：极高尺寸才从 2 行升到 3 行。 */
+        val maxTodayRows: Int
+            get() = when {
+                !isRoomy -> 0
+                heightDp >= 300 -> 3
+                else -> 2
+            }
+
+        private companion object {
+            // Launcher 单元高约 70n-30 dp：2 行 ≈ 110、3 行 ≈ 180、4 行 ≈ 250、5 行 ≈ 320。
+            const val COMPACT_HEIGHT_DP = 150
+            const val ROOMY_HEIGHT_DP = 250
+        }
+    }
+
     fun store(context: Context, snapshotJson: String) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
@@ -85,15 +118,22 @@ object CampusWidgetStore {
             return
         }
 
+        // 传统 launcher options 给出横竖屏范围：竖屏窄而高，横屏宽而矮。
         val options = manager.getAppWidgetOptions(widgetId)
-        val minWidth = options.getInt(
-            AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH,
-            180,
+        val landscape = context.resources.configuration.orientation ==
+            android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        val size = WidgetSize(
+            widthDp = options.getInt(if (landscape)
+                AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH else
+                AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 180),
+            heightDp = options.getInt(if (landscape)
+                AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT else
+                AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 220),
         )
 
         views.setViewVisibility(
             R.id.widget_header,
-            if (minWidth >= 210) View.VISIBLE else View.GONE,
+            if (!size.isCompact && size.widthDp >= 210) View.VISIBLE else View.GONE,
         )
         views.setTextViewText(R.id.widget_header, json.text("weekLabel"))
 
@@ -105,17 +145,28 @@ object CampusWidgetStore {
             R.id.widget_hero_course,
             heroCourse.ifBlank { "今天没课" },
         )
+        // 每次更新显式写入字号：RemoteViews 复用视图，紧凑尺寸缩到 17sp 后
+        // 若恢复正常尺寸不写回，旧字号会残留。
+        views.setTextViewTextSize(
+            R.id.widget_hero_course,
+            TypedValue.COMPLEX_UNIT_SP,
+            if (size.isCompact) HERO_COURSE_COMPACT_SP else HERO_COURSE_SP,
+        )
+        // 时间优先：紧凑尺寸只保留主课程时间，没有时间才退回地点。
+        val heroTime = json.text("heroTimeText")
+        val heroLocation = json.text("heroLocationText")
         views.setTextViewText(
             R.id.widget_hero_meta,
-            buildMeta(
-                json.text("heroTimeText"),
-                json.text("heroLocationText"),
-            ),
+            if (size.isCompact) {
+                heroTime.ifBlank { heroLocation }
+            } else {
+                buildMeta(heroTime, heroLocation)
+            },
         )
 
-        renderToday(views, json.optJSONArray("todayCourses"), minWidth)
-        renderAssets(views, json, minWidth)
-        renderExtras(views, json, minWidth)
+        renderToday(views, json.optJSONArray("todayCourses"), size)
+        renderAssets(views, json, size)
+        renderExtras(views, json, size)
 
         val generatedAt = prefs.getLong(KEY_GENERATED_AT, 0L)
         val stale = generatedAt > 0L &&
@@ -143,10 +194,10 @@ object CampusWidgetStore {
     private fun renderToday(
         views: RemoteViews,
         today: org.json.JSONArray?,
-        minWidth: Int,
+        size: WidgetSize,
     ) {
-        val show = minWidth >= 300 && (today?.length() ?: 0) > 0
-        if (!show) {
+        val maxRows = if (size.widthDp >= 300) size.maxTodayRows else 0
+        if (maxRows == 0 || today == null || today.length() == 0) {
             views.setViewVisibility(R.id.widget_today_container, View.GONE)
             return
         }
@@ -157,7 +208,7 @@ object CampusWidgetStore {
             R.id.widget_today_3,
         )
         for (i in rowIds.indices) {
-            val row = today?.optJSONObject(i)
+            val row = if (i < maxRows) today.optJSONObject(i) else null
             if (row == null) {
                 views.setViewVisibility(rowIds[i], View.GONE)
                 continue
@@ -170,35 +221,38 @@ object CampusWidgetStore {
         }
     }
 
-    private fun renderAssets(views: RemoteViews, json: JSONObject, minWidth: Int) {
-        val show = minWidth >= 230 &&
+    private fun renderAssets(views: RemoteViews, json: JSONObject, size: WidgetSize) {
+        val show = !size.isCompact &&
+            size.widthDp >= 230 &&
             (json.optBoolean("hasCampusCardData") || json.optBoolean("hasElectricityData"))
         if (!show) {
             views.setViewVisibility(R.id.widget_assets, View.GONE)
             return
         }
         views.setViewVisibility(R.id.widget_assets, View.VISIBLE)
+        val balance = json.text("campusCardBalance")
         views.setTextViewText(
             R.id.widget_balance,
-            if (json.optBoolean("hasCampusCardData")) {
-                "一卡通 ${json.text("campusCardBalance")}"
+            if (json.optBoolean("hasCampusCardData") && balance.isNotBlank()) {
+                "一卡通 ${withUnit(balance, "元")}"
             } else {
                 ""
             },
         )
+        val electricity = json.text("dormElectricity")
         views.setTextViewText(
             R.id.widget_electricity,
-            if (json.optBoolean("hasElectricityData")) {
-                "电费 ${json.text("dormElectricity")}"
+            if (json.optBoolean("hasElectricityData") && electricity.isNotBlank()) {
+                "电费 ${withUnit(electricity, "度")}"
             } else {
                 ""
             },
         )
     }
 
-    private fun renderExtras(views: RemoteViews, json: JSONObject, minWidth: Int) {
+    private fun renderExtras(views: RemoteViews, json: JSONObject, size: WidgetSize) {
         val examName = json.text("nextExamCourseName")
-        val showExam = minWidth >= 300 && examName.isNotBlank()
+        val showExam = size.isRoomy && size.widthDp >= 300 && examName.isNotBlank()
         if (showExam) {
             views.setViewVisibility(R.id.widget_exam, View.VISIBLE)
             views.setTextViewText(
@@ -213,7 +267,7 @@ object CampusWidgetStore {
         }
 
         val unread = json.optInt("unreadNoticeCount", 0)
-        val showNotice = minWidth >= 300 && unread > 0
+        val showNotice = size.isRoomy && size.widthDp >= 300 && unread > 0
         views.setViewVisibility(
             R.id.widget_notice,
             if (showNotice) View.VISIBLE else View.GONE,
@@ -240,6 +294,16 @@ object CampusWidgetStore {
             .filter { it.isNotBlank() }
             .joinToString(" · ")
     }
+
+    /**
+     * 只在纯数字后补单位；已带单位（¥ / 元 / 度 等）或非数字文本原样返回，
+     * 避免「¥32.50 元」这类重复标注。
+     */
+    private fun withUnit(value: String, unit: String): String {
+        return if (PURE_NUMBER.matches(value)) "$value $unit" else value
+    }
+
+    private val PURE_NUMBER = Regex("-?\\d+(\\.\\d+)?")
 
     private fun bindClicks(context: Context, views: RemoteViews) {
         bindClick(context, views, R.id.widget_hero, "schedule.today")

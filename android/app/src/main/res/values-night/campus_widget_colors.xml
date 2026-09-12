@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 桌面校园卡片专用色（深色）：暖炭灰底，提亮文字与强调红保证对比 -->
+<resources>
+    <color name="campus_widget_bg">#292422</color>
+    <color name="campus_widget_stroke">#24FFFFFF</color>
+    <color name="campus_widget_divider">#1FFFFFFF</color>
+    <color name="campus_widget_text_primary">#F0EAE6</color>
+    <color name="campus_widget_text_secondary">#C0B6AF</color>
+    <color name="campus_widget_text_tertiary">#9A9089</color>
+    <color name="campus_widget_accent">#E08C95</color>
+</resources>
