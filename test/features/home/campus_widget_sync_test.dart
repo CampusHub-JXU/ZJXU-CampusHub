@@ -36,7 +36,8 @@ void main() {
     await pumpEventQueue();
 
     expect(pushes, hasLength(1));
-    final snapshot = pushes.single;
+    final snapshot =
+        pushes.single['snapshot'] as Map<Object?, Object?>? ?? const {};
     expect(snapshot.keys, contains('generatedAt'));
     expect(snapshot.keys, isNot(contains('cookie')));
     expect(snapshot.keys, isNot(contains('token')));

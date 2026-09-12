@@ -1,5 +1,7 @@
 import 'package:flutter/services.dart';
 
+import '../logging/app_logger.dart';
+
 /// 桌面组件原生桥（PRD §13）。
 ///
 /// 只接受「无凭据」的展示投影：`CampusSnapshot → WidgetProjection` 之后才进入
@@ -11,14 +13,21 @@ class CampusWidgetBridge {
 
   static const _channel = MethodChannel('edu.zjxu.jxucampushub/widget');
 
-  /// 推送展示投影到原生组件状态。
+  /// 推送展示投影到原生桌面组件状态。
+  ///
+  /// 原生侧读取的是 `snapshot` 参数（`call.argument("snapshot")`），因此这里必须
+  /// 包装成 `{'snapshot': {...}}`；直接传投影 map 会让原生拿不到数据并抛
+  /// `invalid_args`（此前的静默失败即由此产生）。
   Future<void> pushSnapshot(Map<String, Object?> projection) async {
     try {
-      await _channel.invokeMethod<void>('pushSnapshot', projection);
+      await _channel.invokeMethod<void>('pushSnapshot', <String, Object?>{
+        'snapshot': projection,
+      });
     } on MissingPluginException {
-      // 无原生组件（旧设备/单元测试）：忽略。
-    } on PlatformException {
-      // 组件更新失败不影响 App 主流程。
+      // 原生组件不可用（旧设备/单元测试），不阻断。
+    } on PlatformException catch (error) {
+      // 推送失败不影响 App 主流程，但要留下可诊断的记录。
+      AppLogger.instance.warn('桌面组件投影推送失败：${error.message}');
     }
   }
 
