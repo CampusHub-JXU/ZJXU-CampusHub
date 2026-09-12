@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 桌面组件配置页：三个显示开关 + 恢复默认 / 保存。
+     草稿语义见 CampusWidgetConfigActivity：只有保存才写盘。 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/campus_widget_config_title"
+        android:textSize="16sp"
+        android:textStyle="bold" />
+
+    <Switch
+        android:id="@+id/campus_widget_config_show_balance"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="@string/campus_widget_config_show_balance" />
+
+    <Switch
+        android:id="@+id/campus_widget_config_show_electricity"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="@string/campus_widget_config_show_electricity" />
+
+    <Switch
+        android:id="@+id/campus_widget_config_show_notice"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="@string/campus_widget_config_show_notice" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:gravity="end"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/campus_widget_config_restore_default"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/campus_widget_config_restore_default" />
+
+        <Button
+            android:id="@+id/campus_widget_config_save"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="@string/campus_widget_config_save" />
+    </LinearLayout>
+</LinearLayout>

@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="campus_widget_description">嘉大校园桌面组件</string>
+    <string name="campus_widget_config_title">组件显示内容</string>
+    <string name="campus_widget_config_show_balance">显示一卡通余额</string>
+    <string name="campus_widget_config_show_electricity">显示宿舍电费</string>
+    <string name="campus_widget_config_show_notice">显示未读通知</string>
+    <string name="campus_widget_config_restore_default">恢复默认</string>
+    <string name="campus_widget_config_save">保存</string>
 </resources>

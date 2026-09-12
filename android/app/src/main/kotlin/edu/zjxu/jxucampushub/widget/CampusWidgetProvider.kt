@@ -41,6 +41,13 @@ class CampusWidgetProvider : AppWidgetProvider() {
     ) {
         CampusWidgetStore.update(context, appWidgetManager, appWidgetId)
     }
+
+    /** 实例被删除时清理它的独立配置，避免复用同一 id 时串配置。 */
+    override fun onDeleted(context: Context, appWidgetIds: IntArray) {
+        for (widgetId in appWidgetIds) {
+            CampusWidgetConfigStore.clear(context, widgetId)
+        }
+    }
 }
 
 object CampusWidgetStore {
@@ -165,8 +172,10 @@ object CampusWidgetStore {
         )
 
         renderToday(views, json.optJSONArray("todayCourses"), size)
-        renderAssets(views, json, size)
-        renderExtras(views, json, size)
+        // 每实例显示开关（配置页写入）：只影响该实例的还款/电费/通知条目。
+        val config = CampusWidgetConfigStore.load(context, widgetId)
+        renderAssets(views, json, size, config)
+        renderExtras(views, json, size, config)
 
         val generatedAt = prefs.getLong(KEY_GENERATED_AT, 0L)
         val stale = generatedAt > 0L &&
@@ -221,36 +230,58 @@ object CampusWidgetStore {
         }
     }
 
-    private fun renderAssets(views: RemoteViews, json: JSONObject, size: WidgetSize) {
-        val show = !size.isCompact &&
-            size.widthDp >= 230 &&
-            (json.optBoolean("hasCampusCardData") || json.optBoolean("hasElectricityData"))
+    private fun renderAssets(
+        views: RemoteViews,
+        json: JSONObject,
+        size: WidgetSize,
+        config: CampusWidgetConfigStore.Config,
+    ) {
+        val hasBalance =
+            config.showBalance && json.optBoolean("hasCampusCardData") &&
+                json.text("campusCardBalance").isNotBlank()
+        val hasElectricity =
+            config.showElectricity && json.optBoolean("hasElectricityData") &&
+                json.text("dormElectricity").isNotBlank()
+        val show = !size.isCompact && size.widthDp >= 230 &&
+            (hasBalance || hasElectricity)
         if (!show) {
             views.setViewVisibility(R.id.widget_assets, View.GONE)
             return
         }
         views.setViewVisibility(R.id.widget_assets, View.VISIBLE)
-        val balance = json.text("campusCardBalance")
+        // 单项关闭时隐藏该子视图（weight 行会让另一项占满整行），而不是留空位。
+        views.setViewVisibility(
+            R.id.widget_balance,
+            if (hasBalance) View.VISIBLE else View.GONE,
+        )
         views.setTextViewText(
             R.id.widget_balance,
-            if (json.optBoolean("hasCampusCardData") && balance.isNotBlank()) {
-                "一卡通 ${withUnit(balance, "元")}"
+            if (hasBalance) {
+                "一卡通 ${withUnit(json.text("campusCardBalance"), "元")}"
             } else {
                 ""
             },
         )
-        val electricity = json.text("dormElectricity")
+        views.setViewVisibility(
+            R.id.widget_electricity,
+            if (hasElectricity) View.VISIBLE else View.GONE,
+        )
         views.setTextViewText(
             R.id.widget_electricity,
-            if (json.optBoolean("hasElectricityData") && electricity.isNotBlank()) {
-                "电费 ${withUnit(electricity, "度")}"
+            if (hasElectricity) {
+                "电费 ${withUnit(json.text("dormElectricity"), "度")}"
             } else {
                 ""
             },
         )
     }
 
-    private fun renderExtras(views: RemoteViews, json: JSONObject, size: WidgetSize) {
+    private fun renderExtras(
+        views: RemoteViews,
+        json: JSONObject,
+        size: WidgetSize,
+        config: CampusWidgetConfigStore.Config,
+    ) {
         val examName = json.text("nextExamCourseName")
         val showExam = size.isRoomy && size.widthDp >= 300 && examName.isNotBlank()
         if (showExam) {
@@ -267,7 +298,10 @@ object CampusWidgetStore {
         }
 
         val unread = json.optInt("unreadNoticeCount", 0)
-        val showNotice = size.isRoomy && size.widthDp >= 300 && unread > 0
+        // 通知受实例开关控制；过期提示（stale）是数据新鲜度信息，
+        // 不受该开关影响，仍在 update() 末尾独立渲染。
+        val showNotice = config.showNotice && size.isRoomy &&
+            size.widthDp >= 300 && unread > 0
         views.setViewVisibility(
             R.id.widget_notice,
             if (showNotice) View.VISIBLE else View.GONE,

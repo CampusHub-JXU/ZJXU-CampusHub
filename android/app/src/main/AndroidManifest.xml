@@ -60,6 +60,16 @@
                     android:host="shortcut" />
             </intent-filter>
         </activity>
+        <!-- 桌面组件配置页：每个 appWidgetId 独立设置显示内容。
+             exported 供 launcher 拉起，仅提供开关读写，不涉及凭据。 -->
+        <activity
+            android:name=".widget.CampusWidgetConfigActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.DeviceDefault.Dialog">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
         <receiver
             android:name=".widget.CampusWidgetProvider"
             android:exported="false"
