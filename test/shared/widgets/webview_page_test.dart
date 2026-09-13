@@ -256,6 +256,113 @@ void main() {
     });
   });
 
+  group('isSsoIntermediateLandingUrl', () {
+    test('detects direct newca CAS oauth landings', () {
+      // cas/login 本身也按中间跳转页对待：入口判定在前，这里只兜底。
+      expect(
+        isSsoIntermediateLandingUrl(
+          'https://newca.zjxu.edu.cn/cas/login?service=test',
+        ),
+        isTrue,
+      );
+      expect(
+        isSsoIntermediateLandingUrl(
+          'https://newca.zjxu.edu.cn/cas/oauth/forward/st-token',
+        ),
+        isTrue,
+      );
+      expect(
+        isSsoIntermediateLandingUrl(
+          'https://newca.zjxu.edu.cn/cas/oauth2.0/authorize?client_id=x',
+        ),
+        isTrue,
+      );
+    });
+
+    test('detects dingtalk authorization hosts', () {
+      expect(
+        isSsoIntermediateLandingUrl(
+          'https://login.dingtalk.com/oauth2/auth?redirect_uri=x',
+        ),
+        isTrue,
+      );
+      expect(
+        isSsoIntermediateLandingUrl('https://oapi.dingtalk.com/connect/oauth2'),
+        isTrue,
+      );
+      expect(isSsoIntermediateLandingUrl('https://dingtalk.com/'), isTrue);
+    });
+
+    test('detects webvpn-proxied CAS oauth landings', () {
+      expect(
+        isSsoIntermediateLandingUrl(
+          'https://webvpn.zjxu.edu.cn/https/'
+          '77726476706e69737468656265737421fef2569f267e725a661dc7a99c406d362a'
+          '/cas/login?service=test',
+        ),
+        isTrue,
+      );
+      expect(
+        isSsoIntermediateLandingUrl(
+          'https://webvpn.zjxu.edu.cn/https/'
+          '77726476706e69737468656265737421fef2569f267e725a661dc7a99c406d362a'
+          '/cas/oauth/forward/st-token',
+        ),
+        isTrue,
+      );
+      expect(
+        isSsoIntermediateLandingUrl(
+          'https://webvpn.zjxu.edu.cn/https/'
+          '77726476706e69737468656265737421fef2569f267e725a661dc7a99c406d362a'
+          '/cas/oauth2.0/profile',
+        ),
+        isTrue,
+      );
+    });
+
+    test('detects library sso ticket-consumer landings', () {
+      // ssoFromDingDing 是 ticket 消费入口：ticket 落地后接着跳 CAS
+      // oauth/forward，属于 SSO 链中间页，不是业务页。
+      expect(
+        isSsoIntermediateLandingUrl(
+          'https://libapp.zjxu.edu.cn/Info/Thirdparty/ssoFromDingDing'
+          '?ticket=ST-1',
+        ),
+        isTrue,
+      );
+      expect(
+        isSsoIntermediateLandingUrl(
+          'https://webvpn.zjxu.edu.cn/https/'
+          '77726476706e69737468656265737421fcfe439d3720264a74109ce29d51367b2b47'
+          '/Info/Thirdparty/ssoFromDingDing?ticket=ST-1',
+        ),
+        isTrue,
+      );
+    });
+
+    test('keeps ordinary business pages and the proxied site root clear', () {
+      expect(
+        isSsoIntermediateLandingUrl(
+          'https://mobilehall.zjxu.edu.cn/webroot/decision/view/form?op=h5',
+        ),
+        isFalse,
+      );
+      // 图书馆站点根（直连与 WebVPN 代理形态）都是业务页，不是 SSO 中间跳转。
+      expect(
+        isSsoIntermediateLandingUrl('https://libapp.zjxu.edu.cn/'),
+        isFalse,
+      );
+      expect(
+        isSsoIntermediateLandingUrl(
+          'https://webvpn.zjxu.edu.cn/https/'
+          '77726476706e69737468656265737421fcfe439d3720264a74109ce29d51367b2b47/',
+        ),
+        isFalse,
+      );
+      expect(isSsoIntermediateLandingUrl(''), isFalse);
+    });
+  });
+
   group('isServiceHallHomeUrl', () {
     test('detects service hall homepage urls', () {
       expect(

@@ -19,6 +19,12 @@ import 'package:jxu_campus_hub/shared/widgets/webview_page.dart';
 
 import '../../helpers/test_setup.dart';
 
+/// prepare 现在返回 WebVPN 代理后的站点根（ssoFromDingDing 只当 CAS
+/// service，不再是 WebView 入口）。
+String get _proxiedSiteRoot =>
+    ZhengfangAuth.instance.buildWebVpnProxyUrl(LibraryPage.libraryUrl);
+
+/// 旧入口：代理后的 ssoFromDingDing，WebView 不得再打开它。
 String get _proxiedSsoEntry => ZhengfangAuth.instance.buildWebVpnProxyUrl(
   CasService.librarySso.serviceUrl,
 );
@@ -206,7 +212,7 @@ void main() {
   });
 
   testWidgets('library page uses dedicated unified auth entry', (tester) async {
-    LibraryPage.debugPrepareEntryOverride = () async => _proxiedSsoEntry;
+    LibraryPage.debugPrepareEntryOverride = () async => _proxiedSiteRoot;
     await tester.pumpWidget(const MaterialApp(home: LibraryPage()));
 
     final page = tester.widget<UnifiedAuthProtectedWebViewPage>(
@@ -229,12 +235,12 @@ void main() {
     expect(page.emulateDingTalkEnvironment, isFalse);
   });
 
-  testWidgets('图书馆 WebView 打开 CAS 入口且不启用任何快速填充', (tester) async {
+  testWidgets('图书馆 WebView 打开代理站点根且不启用任何快速填充', (tester) async {
     UnifiedAuthService.instance.debugSetSession(
       active: true,
       account: '2024001',
     );
-    LibraryPage.debugPrepareEntryOverride = () async => _proxiedSsoEntry;
+    LibraryPage.debugPrepareEntryOverride = () async => _proxiedSiteRoot;
     UnifiedAuthService.instance.debugSyncCookiesToWebViewForUrlOverride = (
       _,
     ) async {};
@@ -244,8 +250,10 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
 
     final webView = tester.widget<WebViewPage>(find.byType(WebViewPage));
-    // 入口是注册的 CAS service（经 WebVPN 代理），不是站点资源根。
-    expect(webView.url, _proxiedSsoEntry);
+    // 入口是 WebVPN 代理后的站点根：ssoFromDingDing 在 WebView 里会死循环
+    // （CAS oauth/forward 的钉钉 OAuth 永远走不完），不得作为入口。
+    expect(webView.url, _proxiedSiteRoot);
+    expect(webView.url, isNot(_proxiedSsoEntry));
     // 不提供「一卡通快速填充」，也不模拟钉钉环境。
     expect(webView.enableLoginQuickFill, isFalse);
     expect(webView.emulateDingTalkEnvironment, isFalse);
@@ -256,7 +264,7 @@ void main() {
       active: true,
       account: '2024001',
     );
-    LibraryPage.debugPrepareEntryOverride = () async => _proxiedSsoEntry;
+    LibraryPage.debugPrepareEntryOverride = () async => _proxiedSiteRoot;
     UnifiedAuthService.instance.debugSyncCookiesToWebViewForUrlOverride = (
       _,
     ) async {};
@@ -278,7 +286,8 @@ void main() {
     final state = tester.state<UnifiedAuthProtectedWebViewPageState>(
       find.byType(UnifiedAuthProtectedWebViewPage),
     );
-    expect(state.debugWebViewUrl, _proxiedSsoEntry);
+    expect(state.debugWebViewUrl, _proxiedSiteRoot);
+    expect(state.debugWebViewUrl, isNot(_proxiedSsoEntry));
     expect(state.debugWebViewUrl, isNot(contains('/cas/login')));
     expect(find.text('一键填充'), findsNothing);
     expect(find.text('一卡通快速填充'), findsNothing);
@@ -297,12 +306,13 @@ void main() {
     expect(find.byType(InAppWebView), findsNothing);
     expect(find.byType(WebViewPage), findsNothing);
 
-    pending.complete(_proxiedSsoEntry);
+    pending.complete(_proxiedSiteRoot);
     await tester.pump();
     await tester.pump();
 
     final webView = tester.widget<WebViewPage>(find.byType(WebViewPage));
-    expect(webView.url, _proxiedSsoEntry);
+    expect(webView.url, _proxiedSiteRoot);
+    expect(webView.url, isNot(_proxiedSsoEntry));
     expect(webView.enableLoginQuickFill, isFalse);
   });
 
@@ -369,7 +379,7 @@ void main() {
     var prepareCalls = 0;
     LibraryPage.debugPrepareEntryOverride = () async {
       prepareCalls++;
-      return _proxiedSsoEntry;
+      return _proxiedSiteRoot;
     };
 
     await tester.pumpWidget(const MaterialApp(home: LibraryPage()));
@@ -475,8 +485,10 @@ void main() {
       ]);
       expect(validatedServices, isNot(contains(LibraryPage.libraryUrl)));
       expect(ZhengfangAuth.instance.mode, ZhengfangMode.webVpn);
-      // WebView 打开的是 WebVPN 代理后的 CAS 入口。
-      expect(url, _proxiedSsoEntry);
+      // WebView 打开的是 WebVPN 代理后的站点根，绝不是 ssoFromDingDing
+      // （它作为 WebView 入口会在 CAS oauth/forward 死循环）。
+      expect(url, _proxiedSiteRoot);
+      expect(url, isNot(_proxiedSsoEntry));
       // service URL 是 ticket 消费者而不是业务资源：业务会话由 ensure 的
       // ticket 回调建立，绝不再对它跑一次 getResource（真实日志里那次
       // 「统一认证登录已失效」误判的来源）。

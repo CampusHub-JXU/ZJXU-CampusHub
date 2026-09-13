@@ -472,7 +472,11 @@ class UnifiedAuthProtectedWebViewPageState
       return;
     }
 
-    _resyncing = false;
+    // SSO 中间跳转页（oauth/forward、CAS oauth2、钉钉授权页）落地不能重置
+    // bounce 计数，否则「一次自动重试」被无限重新武装。
+    if (!isSsoIntermediateLandingUrl(currentUrl)) {
+      _resyncing = false;
+    }
     final callback = widget.onLoadStop;
     if (callback != null) {
       try {

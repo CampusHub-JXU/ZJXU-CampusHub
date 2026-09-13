@@ -335,4 +335,111 @@ void main() {
     expect(find.text('一卡通快速填充'), findsNothing);
     expect(find.text('一键填充'), findsNothing);
   });
+
+  testWidgets('oauth/forward landing does not re-arm the one-retry contract', (
+    tester,
+  ) async {
+    var prepareCalls = 0;
+    final key = GlobalKey<UnifiedAuthProtectedWebViewPageState>();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: UnifiedAuthProtectedWebViewPage(
+          key: key,
+          title: '校园卡账单',
+          url: _businessUrl,
+          serviceUrl: CasService.campusCardStatus.serviceUrl,
+          preserveSessionOnAuthBounce: true,
+          autoPromptLogin: false,
+          prepareAuthenticatedUrl: () async {
+            prepareCalls++;
+            return _businessUrl;
+          },
+        ),
+      ),
+    );
+    await _pumpUntilSettled(tester);
+    expect(find.byType(WebViewPage), findsOneWidget);
+    expect(prepareCalls, 1);
+
+    // 第一次 CAS bounce：重跑 prepare 后恢复业务入口，进入重试中状态。
+    expect(
+      await _invokeShouldOverrideUrlLoading(tester, _directCasUrl),
+      NavigationActionPolicy.CANCEL,
+    );
+    await _pumpUntilSettled(tester);
+    expect(prepareCalls, 2);
+    expect(find.byType(WebViewPage), findsOneWidget);
+
+    // SSO 中间跳转页落地（oauth/forward）：既非 CAS 登录入口也非业务页，
+    // 不得重置 bounce 计数——否则「一次自动重试」被无限重新武装。
+    final loadStop = _boundParams(tester).onLoadStop;
+    expect(loadStop, isNotNull);
+    loadStop!(
+      _testController(),
+      WebUri('https://newca.zjxu.edu.cn/cas/oauth/forward/st-token'),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    // 第二次 bounce：有界终止——不再重跑 prepare，停在原生认证视图。
+    expect(
+      await _invokeShouldOverrideUrlLoading(tester, _directCasUrl),
+      NavigationActionPolicy.CANCEL,
+    );
+    await _pumpUntilSettled(tester);
+    expect(prepareCalls, 2);
+    expect(find.byType(WebViewPage), findsNothing);
+    expect(find.byType(InAppWebView), findsNothing);
+    expect(find.text('需要统一认证后继续'), findsOneWidget);
+    // preserveSessionOnAuthBounce：全局会话不被清。
+    expect(UnifiedAuthService.instance.isLoggedIn, isTrue);
+  });
+
+  testWidgets(
+    'ordinary business landings still re-arm the one-retry contract',
+    (tester) async {
+      var prepareCalls = 0;
+      final key = GlobalKey<UnifiedAuthProtectedWebViewPageState>();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: UnifiedAuthProtectedWebViewPage(
+            key: key,
+            title: '校园卡账单',
+            url: _businessUrl,
+            serviceUrl: CasService.campusCardStatus.serviceUrl,
+            autoPromptLogin: false,
+            prepareAuthenticatedUrl: () async {
+              prepareCalls++;
+              return _businessUrl;
+            },
+          ),
+        ),
+      );
+      await _pumpUntilSettled(tester);
+      expect(prepareCalls, 1);
+
+      expect(
+        await _invokeShouldOverrideUrlLoading(tester, _directCasUrl),
+        NavigationActionPolicy.CANCEL,
+      );
+      await _pumpUntilSettled(tester);
+      expect(prepareCalls, 2);
+
+      // 普通业务页落地是有效进展：bounce 计数归零（既有行为保持不变）。
+      final loadStop = _boundParams(tester).onLoadStop;
+      expect(loadStop, isNotNull);
+      loadStop!(_testController(), WebUri(_businessUrl));
+      await tester.pump();
+      await tester.pump();
+
+      // 再次 bounce 仍允许自动重试一次：业务落地重新武装了重试契约。
+      expect(
+        await _invokeShouldOverrideUrlLoading(tester, _directCasUrl),
+        NavigationActionPolicy.CANCEL,
+      );
+      await _pumpUntilSettled(tester);
+      expect(prepareCalls, 3);
+      expect(find.byType(WebViewPage), findsOneWidget);
+    },
+  );
 }

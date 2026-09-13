@@ -31,6 +31,48 @@ bool isWebViewCasLoginEntryUrl(String currentUrl) {
   return uri.path.toLowerCase().contains('/cas/login');
 }
 
+/// SSO 中间跳转页判定：CAS oauth 系落地页、图书馆 ticket 消费入口与钉钉授权页。
+///
+/// 这些页面不是 CAS 登录入口（见 [isWebViewCasLoginEntryUrl]），也不是
+/// 业务页，而是 SSO 链路的中间跳转（CAS `oauth/forward/<token>`、
+/// `/oauth2.0/…`、图书馆 `ssoFromDingDing` 的 ticket 消费跳转、钉钉
+/// `dd.runtime` 授权）。受保护 WebView 落到它们时不能重置 bounce 计数，
+/// 否则「一次自动重试」契约被无限重新武装——图书馆 SSO 链在这些页之间
+/// 无限回跳的根因之一（2026-09-13 设备实测）。判定范围：
+/// - `newca.zjxu.edu.cn` 上 `/cas/`、`/oauth2/`、`/oauth/` 开头的路径；
+/// - `libapp.zjxu.edu.cn` 上的 `Info/Thirdparty/ssoFromDingDing`：ticket
+///   消费后落到 CAS `oauth/forward`，本身是 SSO 链一环而非业务页；
+/// - 任意 `dingtalk.com` 主机（`login.dingtalk.com`、`oapi.dingtalk.com` 等，
+///   WebVPN 不代理外网域，只认直连形态）；
+/// - WebVPN 代理形态（`webvpn.zjxu.edu.cn`）：代理内层路径包含同样标记
+///   （内层路径跟在加密主机段之后，只能按 contains 判定）。
+bool isSsoIntermediateLandingUrl(String currentUrl) {
+  final raw = currentUrl.trim();
+  if (raw.isEmpty) return false;
+
+  final uri = Uri.tryParse(raw);
+  if (uri == null) return false;
+
+  const casMarkers = <String>['/cas/', '/oauth2/', '/oauth/'];
+  const librarySsoEntryPath = '/info/thirdparty/ssofromdingding';
+  final host = uri.host.toLowerCase();
+  final path = uri.path.toLowerCase();
+
+  if (host == 'newca.zjxu.edu.cn') {
+    return casMarkers.any(path.startsWith);
+  }
+  if (host == 'libapp.zjxu.edu.cn') {
+    return path.startsWith(librarySsoEntryPath);
+  }
+  if (host == 'dingtalk.com' || host.endsWith('.dingtalk.com')) {
+    return true;
+  }
+  if (host == 'webvpn.zjxu.edu.cn') {
+    return casMarkers.any(path.contains) || path.contains(librarySsoEntryPath);
+  }
+  return false;
+}
+
 /// 教务（正方）登录页判定：快速填充只保留教务表单。
 ///
 /// 统一认证 / 一卡通 CAS 登录页（含 WebVPN 代理形态）不得识别为快速填充
