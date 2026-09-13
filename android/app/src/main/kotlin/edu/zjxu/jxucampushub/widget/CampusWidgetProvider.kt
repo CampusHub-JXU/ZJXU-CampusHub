@@ -8,12 +8,14 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.util.SizeF
 import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
 import edu.zjxu.jxucampushub.MainActivity
 import edu.zjxu.jxucampushub.R
 import org.json.JSONObject
+import kotlin.math.roundToInt
 
 /**
  * 校园桌面组件（PRD 0.7.0 §12/§13）。
@@ -33,19 +35,24 @@ class CampusWidgetProvider : AppWidgetProvider() {
         }
     }
 
+    /**
+     * 尺寸变化回调。回调携带的 [newOptions] 是本次事件最权威的尺寸来源，
+     * manager 里存的 options 在部分 OEM 桌面会滞后一步，必须原样传入渲染。
+     */
     override fun onAppWidgetOptionsChanged(
         context: Context,
         appWidgetManager: AppWidgetManager,
         appWidgetId: Int,
         newOptions: android.os.Bundle?,
     ) {
-        CampusWidgetStore.update(context, appWidgetManager, appWidgetId)
+        CampusWidgetStore.update(context, appWidgetManager, appWidgetId, newOptions)
     }
 
-    /** 实例被删除时清理它的独立配置，避免复用同一 id 时串配置。 */
+    /** 实例被删除时清理它的独立配置与尺寸持久化，避免复用同一 id 时串配置。 */
     override fun onDeleted(context: Context, appWidgetIds: IntArray) {
         for (widgetId in appWidgetIds) {
             CampusWidgetConfigStore.clear(context, widgetId)
+            CampusWidgetStore.clearInstanceState(context, widgetId)
         }
     }
 }
@@ -54,17 +61,19 @@ object CampusWidgetStore {
     private const val PREFS = "campus_widget"
     private const val KEY_SNAPSHOT = "snapshot"
     private const val KEY_GENERATED_AT = "generated_at"
+    private const val KEY_SIZE_W_PREFIX = "size_w_"
+    private const val KEY_SIZE_H_PREFIX = "size_h_"
+    private const val DEFAULT_WIDTH_DP = 180
+    private const val DEFAULT_HEIGHT_DP = 220
     private const val STALE_AFTER_MS = 6L * 60L * 60L * 1000L
 
     private const val HERO_COURSE_SP = 20f
     private const val HERO_COURSE_COMPACT_SP = 17f
 
     /**
-     * 组件可用尺寸（dp）。
-     *
-     * 只用同一次上报的 [AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH] /
-     * [AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT] 下界；MIN_WIDTH 配 MAX_HEIGHT
-     * 的方向语义不同，混用会把宽矮实例误判成高实例。
+     * 组件可用尺寸（dp），来源优先级见 [resolveSize]：API 31+ 精确尺寸 →
+     * 传统方向范围键 → 上次可信尺寸。范围键必须同一次上报配对：MIN_WIDTH 配
+     * MAX_HEIGHT，方向语义不同，混用会把宽矮实例误判成高实例。
      */
     private data class WidgetSize(val widthDp: Int, val heightDp: Int) {
         /** 矮尺寸（≈2 行高）：只保留主课程与时间，其余行让位。 */
@@ -83,7 +92,9 @@ object CampusWidgetStore {
 
         private companion object {
             // Launcher 单元高约 70n-30 dp：2 行 ≈ 110、3 行 ≈ 180、4 行 ≈ 250、5 行 ≈ 320。
-            const val COMPACT_HEIGHT_DP = 150
+            // 非紧凑可见栈（根内边距 + 头部 + 主课程 + 资产行）至少 ≈162dp，
+            // 150–164dp 落不下，一律按紧凑渲染，故阈值取 165。
+            const val COMPACT_HEIGHT_DP = 165
             const val ROOMY_HEIGHT_DP = 250
         }
     }
@@ -107,7 +118,29 @@ object CampusWidgetStore {
         }
     }
 
-    fun update(context: Context, manager: AppWidgetManager, widgetId: Int) {
+    /** 实例被删除时清掉该 id 的尺寸持久化；widget id 会被复用，不得继承旧尺寸。 */
+    fun clearInstanceState(context: Context, widgetId: Int) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .remove(sizeKey(KEY_SIZE_W_PREFIX, widgetId))
+            .remove(sizeKey(KEY_SIZE_H_PREFIX, widgetId))
+            .apply()
+    }
+
+    /**
+     * 渲染一个实例。
+     *
+     * 回调（onAppWidgetOptionsChanged）携带的 [newOptions] 是本次事件最权威的
+     * 尺寸来源，manager 里存的 options 在部分 OEM 桌面会滞后一步；无新尺寸
+     * （onUpdate / 数据刷新）时回落到上次可信尺寸，避免按过期末寸渲染，
+     * 见 [resolveSize]。
+     */
+    fun update(
+        context: Context,
+        manager: AppWidgetManager,
+        widgetId: Int,
+        newOptions: android.os.Bundle? = null,
+    ) {
         val views = RemoteViews(context.packageName, R.layout.campus_widget)
         bindClicks(context, views)
 
@@ -125,18 +158,7 @@ object CampusWidgetStore {
             return
         }
 
-        // 传统 launcher options 给出横竖屏范围：竖屏窄而高，横屏宽而矮。
-        val options = manager.getAppWidgetOptions(widgetId)
-        val landscape = context.resources.configuration.orientation ==
-            android.content.res.Configuration.ORIENTATION_LANDSCAPE
-        val size = WidgetSize(
-            widthDp = options.getInt(if (landscape)
-                AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH else
-                AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 180),
-            heightDp = options.getInt(if (landscape)
-                AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT else
-                AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 220),
-        )
+        val size = resolveSize(context, manager, widgetId, newOptions)
 
         views.setViewVisibility(
             R.id.widget_header,
@@ -190,6 +212,127 @@ object CampusWidgetStore {
 
         manager.updateAppWidget(widgetId, views)
     }
+
+    /**
+     * 解析本次渲染应使用的尺寸（dp）。
+     *
+     * 优先级：本次事件携带的 newOptions（最权威）→ 上次可信尺寸（最近一次
+     * resize 事件的真实尺寸，数据刷新按它保持形态）→ manager options（仅在
+     * 尚无持久化时首次播种；部分 OEM 桌面该值滞后于 resize 手势，不能盖掉
+     * 已有可信尺寸）→ 默认值。只有 newOptions 与 manager 播种会回写持久化。
+     */
+    private fun resolveSize(
+        context: Context,
+        manager: AppWidgetManager,
+        widgetId: Int,
+        newOptions: android.os.Bundle?,
+    ): WidgetSize {
+        val landscape = context.resources.configuration.orientation ==
+            android.content.res.Configuration.ORIENTATION_LANDSCAPE
+
+        if (newOptions != null) {
+            sizeFromBundle(newOptions, landscape)?.let {
+                persistLastKnownSize(context, widgetId, it)
+                return it
+            }
+        }
+        lastKnownSize(context, widgetId)?.let { return it }
+        sizeFromBundle(manager.getAppWidgetOptions(widgetId), landscape)?.let {
+            persistLastKnownSize(context, widgetId, it)
+            return it
+        }
+        return WidgetSize(DEFAULT_WIDTH_DP, DEFAULT_HEIGHT_DP)
+    }
+
+    /** 单个 options 包内先取 API 31+ 精确尺寸，再退传统方向范围键。 */
+    private fun sizeFromBundle(
+        options: android.os.Bundle,
+        landscape: Boolean,
+    ): WidgetSize? {
+        api31SizesFromBundle(options, landscape)?.let { return it }
+        return legacySizeFromBundle(options, landscape)
+    }
+
+    /**
+     * API 31+ 桌面经 [AppWidgetManager.OPTION_APPWIDGET_SIZES] 上报的精确尺寸，
+     * 单位已是 dp，列表顺序为 [竖屏, 横屏]。解析失败一律视为来源缺失（回落
+     * 传统键），不因反序列化异常中断渲染。
+     */
+    @Suppress("DEPRECATION")
+    private fun api31SizesFromBundle(
+        options: android.os.Bundle,
+        landscape: Boolean,
+    ): WidgetSize? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return null
+        if (!options.containsKey(AppWidgetManager.OPTION_APPWIDGET_SIZES)) return null
+        val raw = runCatching {
+            options.getSerializable(AppWidgetManager.OPTION_APPWIDGET_SIZES)
+        }.getOrNull() as? List<*> ?: return null
+        val sizeFs = raw.filterIsInstance<SizeF>()
+        // 文档顺序为 [竖屏, 横屏]；按宽高比挑选当前方向项，方向标注异常时退首项。
+        val picked = sizeFs.firstOrNull { aspectMatches(it, landscape) }
+            ?: sizeFs.firstOrNull()
+            ?: return null
+        return WidgetSize(
+            widthDp = picked.width.roundToInt(),
+            heightDp = picked.height.roundToInt(),
+        )
+    }
+
+    private fun aspectMatches(size: SizeF, landscape: Boolean): Boolean {
+        return if (landscape) size.width > size.height else size.width <= size.height
+    }
+
+    /**
+     * 传统 launcher options 给出横竖屏范围：竖屏窄而高，横屏宽而矮。
+     * 竖屏取 MIN_WIDTH + MAX_HEIGHT，横屏取 MAX_WIDTH + MIN_HEIGHT。
+     * 用 containsKey 判存在性，0/负值视同缺席，不得当作可信尺寸渲染或持久化。
+     */
+    private fun legacySizeFromBundle(
+        options: android.os.Bundle,
+        landscape: Boolean,
+    ): WidgetSize? {
+        val widthKey = if (landscape) {
+            AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH
+        } else {
+            AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH
+        }
+        val heightKey = if (landscape) {
+            AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT
+        } else {
+            AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT
+        }
+        if (!options.containsKey(widthKey) || !options.containsKey(heightKey)) return null
+        val width = options.getInt(widthKey, 0)
+        val height = options.getInt(heightKey, 0)
+        if (width <= 0 || height <= 0) return null
+        return WidgetSize(widthDp = width, heightDp = height)
+    }
+
+    /**
+     * 上次可信尺寸（仅由实时来源回写）。只有实时来源全部无果时才读：
+     * options 缺键的桌面上，数据刷新（refreshAll）靠它保持既有形态。
+     */
+    private fun lastKnownSize(context: Context, widgetId: Int): WidgetSize? {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val wKey = sizeKey(KEY_SIZE_W_PREFIX, widgetId)
+        val hKey = sizeKey(KEY_SIZE_H_PREFIX, widgetId)
+        if (!prefs.contains(wKey) || !prefs.contains(hKey)) return null
+        val width = prefs.getInt(wKey, 0)
+        val height = prefs.getInt(hKey, 0)
+        if (width <= 0 || height <= 0) return null
+        return WidgetSize(width, height)
+    }
+
+    private fun persistLastKnownSize(context: Context, widgetId: Int, size: WidgetSize) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putInt(sizeKey(KEY_SIZE_W_PREFIX, widgetId), size.widthDp)
+            .putInt(sizeKey(KEY_SIZE_H_PREFIX, widgetId), size.heightDp)
+            .apply()
+    }
+
+    private fun sizeKey(prefix: String, widgetId: Int): String = "$prefix$widgetId"
 
     private val hiddenIds = intArrayOf(
         R.id.widget_header,
