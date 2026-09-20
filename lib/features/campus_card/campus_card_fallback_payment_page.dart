@@ -152,7 +152,7 @@ class _CampusCardFallbackPaymentPageState
       if (mounted) {
         setState(() {
           _loading = false;
-          _error = '请先登录统一认证';
+          _error = '请先登录一卡通';
         });
       }
     } else if (mounted) {
@@ -169,7 +169,7 @@ class _CampusCardFallbackPaymentPageState
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = '请先登录统一认证';
+        _error = '请先登录一卡通';
       });
       return;
     }
@@ -188,7 +188,7 @@ class _CampusCardFallbackPaymentPageState
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = '请先登录统一认证';
+        _error = '请先登录一卡通';
       });
       return;
     }
@@ -199,7 +199,7 @@ class _CampusCardFallbackPaymentPageState
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = '请先登录统一认证';
+        _error = '请先登录一卡通';
       });
       return;
     }
@@ -207,7 +207,7 @@ class _CampusCardFallbackPaymentPageState
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = '登录凭据与当前账号不一致，请重新登录统一认证';
+        _error = '登录凭据与当前账号不一致，请重新登录一卡通';
       });
       return;
     }
@@ -239,7 +239,7 @@ class _CampusCardFallbackPaymentPageState
       setState(() {
         _loading = false;
         _qrCode = null;
-        _error = '请先登录统一认证';
+        _error = '请先登录一卡通';
       });
       return;
     }
@@ -391,7 +391,7 @@ class _CampusCardFallbackPaymentPageState
       setState(() {
         _loading = false;
         _qrCode = null;
-        _error = '请先登录统一认证';
+        _error = '请先登录一卡通';
       });
       return;
     }

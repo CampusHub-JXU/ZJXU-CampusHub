@@ -314,7 +314,7 @@ void main() {
 
       expect(find.text('需完成一卡通认证'), findsNothing);
       expect(find.byType(AuthRequiredView), findsOneWidget);
-      expect(find.text('需要统一认证后继续'), findsOneWidget);
+      expect(find.text('需要登录一卡通后继续'), findsOneWidget);
     });
   });
 }

@@ -502,8 +502,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(AuthRequiredView), findsOneWidget);
-      expect(find.text('需要统一认证后继续'), findsOneWidget);
-      expect(find.text('登录统一认证'), findsOneWidget);
+      expect(find.text('需要登录一卡通后继续'), findsOneWidget);
+      expect(find.text('登录一卡通'), findsOneWidget);
     });
 
     testWidgets('10. official entry vs old entry isolation: 官方与旧入口隔离', (
@@ -724,7 +724,7 @@ void main() {
 
       // 码被清空，显示未登录提示
       expect(find.byType(QrImageView), findsNothing);
-      expect(find.text('请先登录统一认证'), findsOneWidget);
+      expect(find.text('请先登录一卡通'), findsOneWidget);
     });
 
     testWidgets('16. old fallback security: 当前登录 B 而本地凭据为 A 时，绝不用 A 的凭据出码', (
@@ -758,7 +758,7 @@ void main() {
       // 绝不渲染任何二维码
       expect(find.byType(QrImageView), findsNothing);
       // 给出明确的重新登录提示
-      expect(find.text('登录凭据与当前账号不一致，请重新登录统一认证'), findsOneWidget);
+      expect(find.text('登录凭据与当前账号不一致，请重新登录一卡通'), findsOneWidget);
     });
 
     testWidgets('17. old fallback security: 同账号 logout→login，旧在途出码响应不被应用', (
@@ -819,7 +819,7 @@ void main() {
       // 登出
       await UnifiedAuthService.instance.markLoggedOut();
       await tester.pumpAndSettle();
-      expect(find.text('请先登录统一认证'), findsOneWidget);
+      expect(find.text('请先登录一卡通'), findsOneWidget);
 
       // 同账号 A 重新登录（登出已清内存态与持久会话；落盘 + restoreSession
       // 真实身份变化 null→A → 触发会话通知）
@@ -886,7 +886,7 @@ void main() {
         // 认证在途期间登出
         await UnifiedAuthService.instance.markLoggedOut();
         await tester.pumpAndSettle();
-        expect(find.text('请先登录统一认证'), findsOneWidget);
+        expect(find.text('请先登录一卡通'), findsOneWidget);
 
         // 认证响应此时才返回：guard 拦截，后续 QueryAccInfoH/GetQRCode 零发送
         authGate.complete(

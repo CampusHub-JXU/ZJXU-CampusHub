@@ -24,6 +24,7 @@ class _DormElectricityPageState extends State<DormElectricityPage>
   final _service = DormElectricityService.instance;
   double? _electricity;
   bool _loading = true;
+  bool _refreshing = false;
   bool _hasConfig = false;
   bool _requiresUnifiedAuth = false;
   bool _alertEnabled = false;
@@ -71,9 +72,12 @@ class _DormElectricityPageState extends State<DormElectricityPage>
     super.dispose();
   }
 
-  Future<void> _load({bool forceRefresh = false}) async {
+  /// [blocking] 为 true 时用整页加载态覆盖内容（首次加载 / 切换寝室）；
+  /// 为 false 时保留当前内容，仅由调用方自己的按钮/下拉指示器表达进度
+  /// （手动刷新 + 下拉刷新）。
+  Future<void> _load({bool forceRefresh = false, bool blocking = true}) async {
     if (!mounted) return;
-    setState(() => _loading = true);
+    if (blocking) setState(() => _loading = true);
     _hasConfig = await _service.hasRoomConfig();
     _alertEnabled = await _service.getAlertEnabled();
     _alertThreshold = await _service.getAlertThreshold();
@@ -116,7 +120,20 @@ class _DormElectricityPageState extends State<DormElectricityPage>
       _error = null;
     }
     if (!mounted) return;
-    setState(() => _loading = false);
+    setState(() {
+      if (blocking) _loading = false;
+    });
+  }
+
+  /// 手动/下拉刷新：不覆盖内容，只点亮按钮或下拉指示器。
+  Future<void> _refresh() async {
+    if (_refreshing) return;
+    setState(() => _refreshing = true);
+    try {
+      await _load(forceRefresh: true, blocking: false);
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
+    }
   }
 
   Future<void> _showLowElectricityNotification({
@@ -193,7 +210,7 @@ class _DormElectricityPageState extends State<DormElectricityPage>
           : !_hasConfig
           ? _buildNoConfig(context)
           : RefreshIndicator(
-              onRefresh: () => _load(forceRefresh: true),
+              onRefresh: _refresh,
               child: _buildContent(context, cs),
             ),
     );
@@ -398,10 +415,31 @@ class _DormElectricityPageState extends State<DormElectricityPage>
         const SizedBox(height: 14),
         SizedBox(
           width: double.infinity,
-          child: FilledButton.tonalIcon(
+          child: FilledButton.icon(
+            onPressed: _refresh,
+            icon: _refreshing
+                ? SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: cs.onPrimary,
+                    ),
+                  )
+                : const Icon(Icons.refresh_rounded, size: 18),
+            label: Text(_refreshing ? '正在刷新' : '刷新电量'),
+          ),
+        ),
+        const SizedBox(height: 2),
+        Center(
+          child: TextButton.icon(
             onPressed: _openRecharge,
-            icon: const Icon(Icons.account_balance_wallet_outlined, size: 18),
+            icon: const Icon(Icons.account_balance_wallet_outlined, size: 16),
             label: const Text('去微信充值'),
+            style: TextButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              foregroundColor: dim,
+            ),
           ),
         ),
       ],
@@ -417,35 +455,46 @@ class _DormElectricityPageState extends State<DormElectricityPage>
   // ── Error Banner ───────────────────────────────────────────────────────────
 
   Widget _buildErrorBanner(BuildContext context, ColorScheme cs) {
+    // 登录态缺失时统一提示「电费获取失败」，把动作交给下方登录按钮；
+    // 其余错误保留服务侧的具体原因。
+    final message = _requiresUnifiedAuth
+        ? '电费获取失败，登录一卡通后重试'
+        : switch (_error) {
+            '数据解析失败' => '数据解析失败，请刷新重试',
+            final value? => value,
+            _ => '请确认已连接校园网络',
+          };
+    // 中性容器 + 错误色图标表达异常；图标、文案、按钮同处一行并垂直居中，
+    // 上下左右使用对称内边距，避免参差的行高与不居中的图标。
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: cs.errorContainer,
+        color: cs.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.6)),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Icon(Icons.wifi_off_outlined, size: 18, color: cs.onErrorContainer),
+          Icon(Icons.wifi_off_outlined, size: 18, color: cs.error),
           const SizedBox(width: 10),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(switch (_error) {
-                  '数据解析失败' => '数据解析失败，请刷新重试',
-                  final message? => message,
-                  _ => '请确认已连接校园网络',
-                }, style: TextStyle(fontSize: 13, color: cs.onErrorContainer)),
-                if (_requiresUnifiedAuth) ...[
-                  const SizedBox(height: 8),
-                  FilledButton.tonal(
-                    onPressed: _loginAndRetry,
-                    child: const Text('登录统一认证后重试'),
-                  ),
-                ],
-              ],
+            child: Text(
+              message,
+              style: TextStyle(fontSize: 13, height: 1.35, color: cs.onSurface),
             ),
           ),
+          if (_requiresUnifiedAuth) ...[
+            const SizedBox(width: 12),
+            FilledButton.tonal(
+              onPressed: _loginAndRetry,
+              style: FilledButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+              ),
+              child: const Text('登录'),
+            ),
+          ],
         ],
       ),
     );
@@ -454,8 +503,8 @@ class _DormElectricityPageState extends State<DormElectricityPage>
   Future<void> _loginAndRetry() async {
     final loggedIn = await showUnifiedAuthLoginModal(
       context,
-      title: '登录统一认证',
-      description: '登录后在后台完成电费认证，当前页面仍保持原生界面',
+      title: '登录一卡通',
+      description: '登录一卡通后在后台完成电费认证，当前页面仍保持原生界面',
     );
     if (!mounted || !loggedIn) return;
 

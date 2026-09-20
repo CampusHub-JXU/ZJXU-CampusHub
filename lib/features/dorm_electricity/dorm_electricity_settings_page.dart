@@ -701,7 +701,7 @@ class _DormElectricitySettingsPageState
                     child: FilledButton.icon(
                       onPressed: _loginAndRetry,
                       icon: const Icon(Icons.login_rounded),
-                      label: const Text('登录统一认证后重试'),
+                      label: const Text('登录'),
                     ),
                   ),
               ],
@@ -798,8 +798,8 @@ class _DormElectricitySettingsPageState
   Future<void> _loginAndRetry() async {
     final loggedIn = await showUnifiedAuthLoginModal(
       context,
-      title: '登录统一认证',
-      description: '登录后在后台完成电费认证，当前页面仍保持原生界面',
+      title: '登录一卡通',
+      description: '登录一卡通后在后台完成电费认证，当前页面仍保持原生界面',
       barrierDismissible: true,
     );
     if (!mounted || !loggedIn) return;

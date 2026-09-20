@@ -315,7 +315,9 @@ class _CampusCardPaymentPageState extends State<CampusCardPaymentPage>
           title: '官方付款码',
           url: EpayPaymentCodeService.officialUrl,
           warmUpAsResource: true,
-          loginDescription: '统一认证登录后可直接进入官方付款码',
+          loginDescription: '登录一卡通后可直接进入官方付款码',
+          authRequiredTitle: '需要登录一卡通后继续',
+          authRequiredButtonLabel: '登录一卡通',
           showWebViewBottomBackButton: true,
           emulateDingTalkEnvironment: false,
         ),
@@ -336,8 +338,8 @@ class _CampusCardPaymentPageState extends State<CampusCardPaymentPage>
   Future<void> _handleLogin() async {
     final loggedIn = await showUnifiedAuthLoginModal(
       context,
-      title: '登录统一认证',
-      description: '登录后可出示一卡通付款码',
+      title: '登录一卡通',
+      description: '登录一卡通后可出示付款码',
     );
     if (loggedIn && mounted) _fetchCode();
   }
@@ -371,9 +373,9 @@ class _CampusCardPaymentPageState extends State<CampusCardPaymentPage>
   Widget _buildBody(ThemeData theme, ColorScheme colorScheme) {
     if (_needsAuth) {
       return AuthRequiredView(
-        title: '需要统一认证后继续',
-        message: '登录统一认证后可出示一卡通付款码',
-        buttonLabel: '登录统一认证',
+        title: '需要登录一卡通后继续',
+        message: '登录一卡通后可出示付款码',
+        buttonLabel: '登录一卡通',
         icon: Icons.account_balance_outlined,
         onAction: _handleLogin,
       );
