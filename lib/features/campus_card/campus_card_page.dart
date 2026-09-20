@@ -123,6 +123,14 @@ class _CampusCardPageState extends State<CampusCardPage> {
             const SizedBox(height: AppSpacing.lg),
             _buildActionTile(
               context,
+              icon: Icons.qr_code_2_outlined,
+              title: '付款码',
+              subtitle: '出示一卡通二维码快速付款',
+              onTap: _openPaymentCodePage,
+            ),
+            const SizedBox(height: AppSpacing.md),
+            _buildActionTile(
+              context,
               icon: Icons.receipt_long_outlined,
               title: '账单',
               subtitle: '查看校园卡消费明细',
@@ -135,6 +143,24 @@ class _CampusCardPageState extends State<CampusCardPage> {
               title: '充值',
               subtitle: '在微信服务号内完成充值',
               onTap: _openRechargePage,
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _refreshBalance,
+                icon: _balanceLoading
+                    ? SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Theme.of(context).colorScheme.onPrimary,
+                        ),
+                      )
+                    : const Icon(Icons.refresh_rounded, size: 18),
+                label: Text(_balanceLoading ? '正在刷新' : '刷新余额'),
+              ),
             ),
           ],
         ),
@@ -299,6 +325,10 @@ class _CampusCardPageState extends State<CampusCardPage> {
 
   // ── WebView ─────────────────────────────────────────────────────────────
 
+  Future<void> _openPaymentCodePage() async {
+    await context.pushNamed('campus-card-payment');
+  }
+
   Future<void> _openCampusCardWebView({required String title}) async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -307,6 +337,8 @@ class _CampusCardPageState extends State<CampusCardPage> {
           url: CampusCardService.statusPageUrl,
           serviceUrl: CampusCardService.statusPageCasServiceUrl,
           loginDescription: '账号为校园一卡通号，校外网络自动通过 WebVPN 访问',
+          authRequiredTitle: '需要登录一卡通后继续',
+          authRequiredButtonLabel: '登录一卡通',
           prepareAuthenticatedUrl: CampusCardService.instance.prepareStatusPage,
           onHomePressed: () => context.goNamed('home'),
         ),

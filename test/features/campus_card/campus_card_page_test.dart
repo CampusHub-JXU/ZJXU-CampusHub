@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 
 import 'package:jxu_campus_hub/app/app_bootstrap_controller.dart';
 import 'package:jxu_campus_hub/core/config/app_config.dart';
+import 'package:jxu_campus_hub/core/theme/app_theme_builder.dart';
 import 'package:jxu_campus_hub/features/campus_card/campus_card_page.dart';
 import 'package:jxu_campus_hub/features/campus_card/campus_card_service.dart';
 import 'package:jxu_campus_hub/shared/widgets/unified_auth_protected_webview_page.dart';
@@ -230,6 +232,84 @@ void main() {
 
     expect(find.text('复制失败'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('payment code tile opens the payment page', (tester) async {
+    final router = GoRouter(
+      initialLocation: '/campus-card',
+      routes: [
+        GoRoute(
+          path: '/campus-card',
+          name: 'campus-card',
+          builder: (context, state) => const CampusCardPage(),
+        ),
+        GoRoute(
+          path: '/campus-card-payment',
+          name: 'campus-card-payment',
+          builder: (context, state) => const Scaffold(body: Text('付款码占位页')),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    expect(find.text('付款码'), findsOneWidget);
+    await tester.tap(find.text('付款码'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('付款码占位页'), findsOneWidget);
+  });
+
+  testWidgets('bottom refresh button queries the balance again', (
+    tester,
+  ) async {
+    var calls = 0;
+    CampusCardService.instance.debugBalanceFetcher = () async {
+      calls++;
+      return 88.0;
+    };
+
+    await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('刷新余额'), findsOneWidget);
+    await tester.ensureVisible(find.text('刷新余额'));
+    await tester.tap(find.text('刷新余额'));
+    await tester.pumpAndSettle();
+
+    expect(calls, 1);
+    expect(find.text('校园卡余额已刷新'), findsOneWidget);
+  });
+
+  testWidgets('bottom refresh button follows the theme seed', (tester) async {
+    Future<Color?> buttonColorFor(Color seed) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppThemeBuilder.light(seed),
+          home: const CampusCardPage(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final material = tester.widget<Material>(
+        find
+            .descendant(
+              of: find.widgetWithText(FilledButton, '刷新余额'),
+              matching: find.byType(Material),
+            )
+            .first,
+      );
+      return material.color;
+    }
+
+    final red = await buttonColorFor(const Color(0xFFB3261E));
+    final green = await buttonColorFor(const Color(0xFF2E7D32));
+
+    // 按钮底色跟随主题 seed，而不是写死的品牌色。
+    expect(red, isNotNull);
+    expect(green, isNotNull);
+    expect(red, isNot(green));
   });
 
   testWidgets('balance exception shows failure and allows another refresh', (

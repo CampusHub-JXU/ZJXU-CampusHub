@@ -31,6 +31,8 @@ class UnifiedAuthProtectedWebViewPage extends StatefulWidget {
     this.warmUpAsResource = false,
     this.preserveSessionOnAuthBounce = false,
     this.prepareAuthenticatedUrl,
+    this.authRequiredTitle = '需要统一认证后继续',
+    this.authRequiredButtonLabel = '登录统一认证',
   });
 
   final String title;
@@ -64,6 +66,13 @@ class UnifiedAuthProtectedWebViewPage extends StatefulWidget {
 
   /// Establish gateway and business cookies before selecting a network URL.
   final Future<String> Function()? prepareAuthenticatedUrl;
+
+  /// 落到 CAS 登录入口时原生 [AuthRequiredView] 的标题 / 按钮文案。
+  ///
+  /// 默认保持「统一认证」口径；一卡通（付款码 / 账单）等业务流程可传入
+  /// 「一卡通」用词，保持同一业务内的登录提示一致。
+  final String authRequiredTitle;
+  final String authRequiredButtonLabel;
 
   @override
   State<UnifiedAuthProtectedWebViewPage> createState() =>
@@ -552,9 +561,9 @@ class UnifiedAuthProtectedWebViewPageState
 
     return _buildScaffold(
       AuthRequiredView(
-        title: '需要统一认证后继续',
+        title: widget.authRequiredTitle,
         message: widget.loginDescription,
-        buttonLabel: '登录统一认证',
+        buttonLabel: widget.authRequiredButtonLabel,
         onAction: () => _presentLoginPrompt(force: true),
         icon: Icons.account_balance_outlined,
       ),
