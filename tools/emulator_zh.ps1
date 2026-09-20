@@ -143,6 +143,49 @@ function Set-ChinaTimezone {
     }
 }
 
+function Sync-DeviceClock {
+    param(
+        [string]$AdbExe
+    )
+
+    Write-Host ""
+    Write-Host "校准模拟器时钟..." -ForegroundColor Green
+
+    # Quick Boot 快照会恢复旧的 guest 时钟，而本脚本已关闭 auto_time，开发机也
+    # 常常拿不到网络时间。时钟落后会让新签发的 *.zjxu.edu.cn 证书被判为
+    # 「尚未生效」，统一认证 / 教务等所有 HTTPS 请求都会以 TLS 握手失败告终。
+    $hostEpoch = [int64](
+        (Get-Date).ToUniversalTime() - [datetime]'1970-01-01'
+    ).TotalSeconds
+    $deviceRaw = (& $AdbExe shell date +%s 2>$null | Select-Object -First 1)
+    $deviceEpoch = [int64]0
+    [void][int64]::TryParse("$deviceRaw".Trim(), [ref]$deviceEpoch)
+
+    $skew = [int64]::MaxValue
+    if ($deviceEpoch -gt 0) {
+        $skew = $hostEpoch - $deviceEpoch
+        if ($skew -lt 0) { $skew = -$skew }
+    }
+
+    if ($skew -le 120) {
+        Write-Host "  时钟已对齐（偏差 ${skew}s），跳过。" -ForegroundColor White
+        return
+    }
+
+    Write-Host "  检测到时钟偏差 ${skew}s，写入本机时间..." -ForegroundColor Yellow
+    $cst = (Get-Date).ToUniversalTime().AddHours(8)
+    $stamp = $cst.ToString('MMddHHmmyyyy.ss')
+
+    # 修改系统时间需要 root；emulator 镜像一般可直接 adb root，失败也不阻断启动。
+    & $AdbExe root 2>$null | Out-Null
+    Start-Sleep -Seconds 2
+    & $AdbExe shell date $stamp 2>$null | Out-Null
+    Start-Sleep -Seconds 1
+
+    $currentTime = & $AdbExe shell date
+    Write-Host "  当前时间: $currentTime" -ForegroundColor White
+}
+
 function Add-NativeWindowControls {
     param(
         [int]$ProcessId
@@ -221,8 +264,9 @@ if ($deviceLines | Where-Object { $_ -notmatch '^emulator-' }) {
 }
 
 if ($deviceLines | Where-Object { $_ -match '^emulator-' }) {
-    Write-Host "检测到模拟器已在线，唤醒屏幕并跳过启动。" -ForegroundColor Yellow
+    Write-Host "检测到模拟器已在线，唤醒屏幕并校准时钟。" -ForegroundColor Yellow
     & $AdbPath shell input keyevent KEYCODE_WAKEUP 2>$null
+    Sync-DeviceClock -AdbExe $AdbPath
     Get-Process -Name qemu-system-x86_64 -ErrorAction SilentlyContinue |
         Where-Object { $_.MainWindowHandle -ne 0 } |
         ForEach-Object { Add-NativeWindowControls -ProcessId $_.Id | Out-Null }
@@ -280,6 +324,7 @@ if ($attempt -ge $maxAttempts) {
 }
 
 Set-ChinaTimezone -AdbExe $AdbPath
+Sync-DeviceClock -AdbExe $AdbPath
 
 Write-Host ""
 Write-Host "模拟器已就绪，可以开始 Flutter 开发了!" -ForegroundColor Cyan
