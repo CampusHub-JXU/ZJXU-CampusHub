@@ -72,18 +72,26 @@ class DioClient {
     }
 
     await NetworkSettings.instance.ensureInitialized();
+    // 路径解析保持原样（含测试环境未注册 path_provider 时抛错的既有行为），
+    // 只替换存储后端。
     final zhengfangCookieDir = await _resolveCookieDirectoryPath(
       _zhengfangCookieFolderName,
     );
     final unifiedAuthCookieDir = await _resolveCookieDirectoryPath(
       _unifiedAuthCookieFolderName,
     );
+    final Storage zhengfangCookieStorage = debugUseMemoryCookieStorage
+        ? _InMemoryCookieStorage()
+        : FileStorage(zhengfangCookieDir);
+    final Storage unifiedAuthCookieStorage = debugUseMemoryCookieStorage
+        ? _InMemoryCookieStorage()
+        : FileStorage(unifiedAuthCookieDir);
     _zhengfangCookieJar = PersistCookieJar(
-      storage: FileStorage(zhengfangCookieDir),
+      storage: zhengfangCookieStorage,
       persistSession: true,
     );
     _unifiedAuthCookieJar = PersistCookieJar(
-      storage: FileStorage(unifiedAuthCookieDir),
+      storage: unifiedAuthCookieStorage,
       persistSession: true,
     );
     _zhengfangDio = _createDio(
@@ -251,6 +259,14 @@ class DioClient {
   @visibleForTesting
   Future<String> Function(String folderName)? debugCookieDirectoryPathProvider;
 
+  /// 测试钩子：用内存 Cookie 存储替代文件存储。
+  ///
+  /// widget 测试运行在 fake-async 区内，`PersistCookieJar` 的读盘 future 不会
+  /// 完成，导致请求卡在 CookieManager 拦截器、`pumpAndSettle` 超时（CI 上
+  /// library 页面测试即因此常年变红）。测试统一置 true 后不再触碰文件系统。
+  @visibleForTesting
+  bool debugUseMemoryCookieStorage = false;
+
   @visibleForTesting
   void debugReset() {
     _removeProxyModeListener();
@@ -260,5 +276,33 @@ class DioClient {
     _unifiedAuthDio = null;
     _initFuture = null;
     debugCookieDirectoryPathProvider = null;
+    debugUseMemoryCookieStorage = false;
+  }
+}
+
+/// 纯内存 Cookie 存储（仅测试路径使用）。
+///
+/// `cookie_jar` 只提供 `FileStorage`；widget 测试的 fake-async 区内它的读盘
+/// future 永不完成，请求会卡在 CookieManager 拦截器。这里给出零 I/O 实现。
+class _InMemoryCookieStorage extends Storage {
+  final Map<String, String> _values = <String, String>{};
+
+  @override
+  Future<void> init(bool persistSession, bool ignoreExpires) async {}
+
+  @override
+  Future<String?> read(String key) async => _values[key];
+
+  @override
+  Future<void> write(String key, String value) async => _values[key] = value;
+
+  @override
+  Future<void> delete(String key) async => _values.remove(key);
+
+  @override
+  Future<void> deleteAll(List<String> keys) async {
+    for (final key in keys) {
+      _values.remove(key);
+    }
   }
 }

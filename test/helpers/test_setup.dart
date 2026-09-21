@@ -47,6 +47,10 @@ Future<void> resetTestEnvironment() async {
   ConnectModeResolver.instance.debugReset();
   NetworkSettings.instance.debugReset();
   DioClient.instance.debugReset();
+  // widget 测试跑在 fake-async 区：文件 Cookie 存储的读盘不会完成，请求会卡在
+  // CookieManager 拦截器里（adapter 收不到请求 + pumpAndSettle 超时）。统一改用
+  // 内存存储，避免测试依赖真实文件 I/O。
+  DioClient.instance.debugUseMemoryCookieStorage = true;
   AppLogger.instance.debugReset();
   AppShortcutService.instance.debugReset();
   UpdateService.instance.debugReset();
