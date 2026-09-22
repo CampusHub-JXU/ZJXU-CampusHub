@@ -21,6 +21,7 @@ class DioClient {
   Dio? _zhengfangDio;
   Dio? _unifiedAuthDio;
   Future<void>? _initFuture;
+  Future<void>? _reloadFuture;
   VoidCallback? _proxyModeListener;
 
   PersistCookieJar get cookieJar => zhengfangCookieJar;
@@ -104,6 +105,70 @@ class DioClient {
     );
     _listenProxyModeOnce();
   }
+
+  /// 重新从磁盘加载两个持久 Cookie jar 的内存缓存。
+  ///
+  /// **调用条件（生命周期协调器）**：在**新一轮网络同步开始之前**调用，用于
+  /// 吸收其它 isolate / 进程对同一 cookie 目录的合法改动（登录、登出、换号），
+  /// 避免本轮请求带着旧身份的内存 cookie 发出。
+  ///
+  /// 行为：先 [ensureInitialized]，再对两个已存在的 [PersistCookieJar] 只清空
+  /// 内存 `hostCookies` / `domainCookies` 并 `forceInit()` 重读 `.index` /
+  /// `.domains`；之后的 `loadForRequest` 会按 host 懒加载磁盘文件。**不**删除
+  /// 任何磁盘 cookie 文件，**不**替换 jar / Dio 对象，也不关闭 adapter（其它
+  /// client 已捕获现有 jar / interceptor）。
+  ///
+  /// 同 isolate 并发调用会合并到同一轮 reload；该轮失败后引用被清理，下次调用
+  /// 可重试。异常一律向上抛出，调用方本轮应停止后续同步，不得保留旧身份继续
+  /// 发请求。
+  ///
+  /// **边界（不得夸大）**：这不是跨 isolate 原子事务，也不保证本轮开始前已经
+  /// 在途的响应不会写回 cookie；因此不能声称全局 cookie 竞争已消除。
+  Future<void> reloadPersistedCookies() async {
+    final existing = _reloadFuture;
+    if (existing != null) return existing;
+
+    final future = _reloadPersistedCookiesInternal();
+    _reloadFuture = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_reloadFuture, future)) {
+        _reloadFuture = null;
+      }
+    }
+  }
+
+  Future<void> _reloadPersistedCookiesInternal() async {
+    await ensureInitialized();
+    final jars = <PersistCookieJar>[
+      ?_zhengfangCookieJar,
+      ?_unifiedAuthCookieJar,
+    ];
+    for (final jar in jars) {
+      await reloadPersistedCookieJar(jar);
+    }
+  }
+
+  /// 生产与测试共用的单 jar reload 实现：先清空内存 `hostCookies` /
+  /// `domainCookies`，再 `forceInit()` 重读 `.index` / `.domains`。
+  ///
+  /// `PersistCookieJar.forceInit` 只重读 `.index` / `.domains`，**不会**清空
+  /// `hostCookies`；当 `.domains` 文件缺失时也**不会**清空 `domainCookies`。
+  /// 因此必须在此显式清空，否则会保留已被外部合法删除的旧身份 cookie。
+  @visibleForTesting
+  static Future<void> reloadPersistedCookieJar(PersistCookieJar jar) async {
+    jar.hostCookies.clear();
+    jar.domainCookies.clear();
+    final beforeInit = debugBeforeForceInit;
+    if (beforeInit != null) await beforeInit(jar);
+    await jar.forceInit();
+  }
+
+  /// 测试注入：在清空内存之后、`forceInit()` 之前执行，用于验证并发合并与
+  /// 失败可重试；生产路径不设置时无副作用。
+  @visibleForTesting
+  static Future<void> Function(PersistCookieJar jar)? debugBeforeForceInit;
 
   void applyProxyMode() {
     final zhengfangClient = _zhengfangDio;
@@ -275,6 +340,8 @@ class DioClient {
     _zhengfangDio = null;
     _unifiedAuthDio = null;
     _initFuture = null;
+    _reloadFuture = null;
+    debugBeforeForceInit = null;
     debugCookieDirectoryPathProvider = null;
     debugUseMemoryCookieStorage = false;
   }
