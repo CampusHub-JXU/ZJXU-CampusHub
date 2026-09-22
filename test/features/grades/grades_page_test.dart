@@ -171,4 +171,41 @@ void main() {
     expect(allItem, isNotNull);
     expect(allItem!.label, '全部学期');
   });
+
+  Future<void> pumpLoginView(
+    WidgetTester tester, {
+    required bool automaticLoginPaused,
+  }) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: buildGradesLoginView(
+            automaticLoginPaused: automaticLoginPaused,
+            onAction: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+  }
+
+  testWidgets('paused automatic login shows manual-login guidance', (
+    tester,
+  ) async {
+    await pumpLoginView(tester, automaticLoginPaused: true);
+
+    expect(find.text('需要手动登录'), findsOneWidget);
+    expect(find.textContaining('自动登录已暂停'), findsOneWidget);
+    expect(find.text('登录教务系统'), findsOneWidget);
+    expect(find.text('登录后查看成绩'), findsNothing);
+  });
+
+  testWidgets('not paused keeps the original login guidance', (tester) async {
+    await pumpLoginView(tester, automaticLoginPaused: false);
+
+    expect(find.text('登录后查看成绩'), findsOneWidget);
+    expect(find.textContaining('成绩查询依赖教务系统会话'), findsOneWidget);
+    expect(find.text('登录教务系统'), findsOneWidget);
+    expect(find.text('需要手动登录'), findsNothing);
+  });
 }

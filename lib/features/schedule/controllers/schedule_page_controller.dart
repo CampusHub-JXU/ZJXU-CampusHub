@@ -11,12 +11,22 @@ import '../schedule_term_context.dart';
 import '../schedule_week_view_model.dart';
 import '../widgets/schedule_grid.dart';
 
+typedef ScheduleSnapshotLoader = Future<ScheduleLoadResult> Function({
+  ScheduleTermContext? termContext,
+  String? studentId,
+  bool forceRefresh,
+});
+
 class SchedulePageController extends ChangeNotifier {
-  SchedulePageController({required this._loggedIn})
-    : _termContext = ScheduleService.instance.getCurrentTermContext(),
-      _displayWeek = ScheduleService.instance.getCurrentWeek() {
+  SchedulePageController({
+    required this._loggedIn,
+    @visibleForTesting this._loader,
+  }) : _termContext = ScheduleService.instance.getCurrentTermContext(),
+       _displayWeek = ScheduleService.instance.getCurrentWeek() {
     _term = _termContext.term;
   }
+
+  final ScheduleSnapshotLoader? _loader;
 
   bool _loggedIn;
   bool _loading = false;
@@ -28,6 +38,9 @@ class SchedulePageController extends ChangeNotifier {
   late int _term;
   int _displayWeek;
   DateTime? _scheduleUpdatedAt;
+
+  /// 最近一次教务过期是否由「自动登录已暂停」触发；仅影响未登录引导文案。
+  bool _automaticLoginPaused = false;
 
   /// 用户手动切换过学期后不再自动识别，避免覆盖用户的选择。
   bool _termOverridden = false;
@@ -45,6 +58,7 @@ class SchedulePageController extends ChangeNotifier {
   bool get loading => _loading;
   String? get error => _error;
   String? get infoMessage => _infoMessage;
+  bool get automaticLoginPaused => _automaticLoginPaused;
   List<CourseEntry> get courses => _courses;
   List<CourseChangeRule> get courseChangeRules => _courseChangeRules;
   List<CourseChangeNotice> get courseChangeNotices =>
@@ -76,6 +90,8 @@ class SchedulePageController extends ChangeNotifier {
     _loggedIn = loggedIn;
     if (!loggedIn) {
       _infoMessage = _courses.isNotEmpty ? '登录状态已失效，请重新登录教务' : null;
+      // 暂停标记由随后的加载结果重新写入；普通登出保持非暂停文案。
+      _automaticLoginPaused = false;
     }
     notifyListeners();
   }
@@ -138,10 +154,12 @@ class SchedulePageController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final result = await ScheduleService.instance.loadScheduleSnapshot(
+      final loader = _loader ?? ScheduleService.instance.loadScheduleSnapshot;
+      final result = await loader(
         termContext: _termOverridden ? activeTermContext : null,
         forceRefresh: forceRefresh,
       );
+      _automaticLoginPaused = result.automaticLoginPaused;
 
       _adoptTermContextIfNeeded(result);
       _infoMessage = null;
@@ -186,6 +204,8 @@ class SchedulePageController extends ChangeNotifier {
     _loggedIn = true;
     _error = null;
     _infoMessage = null;
+    // 手动登录成功即重新武装自动登录，清除暂停文案。
+    _automaticLoginPaused = false;
     notifyListeners();
   }
 

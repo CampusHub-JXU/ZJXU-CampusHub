@@ -27,6 +27,9 @@ class _ExamPageState extends State<ExamPage> {
   bool _loginPromptShown = false;
   bool _loginPromptInFlight = false;
 
+  /// 最近一次教务过期是否由「自动登录已暂停」触发；仅影响未登录引导文案。
+  bool _automaticLoginPaused = false;
+
   @override
   void initState() {
     super.initState();
@@ -78,6 +81,8 @@ class _ExamPageState extends State<ExamPage> {
       _loggedIn = nextLoggedIn;
       if (!nextLoggedIn) {
         _error = _exams.isEmpty ? null : '登录状态已失效，请重新登录后刷新考试信息';
+        // 暂停标记由随后的过期异常分支重新写入；普通登出保持非暂停文案。
+        _automaticLoginPaused = false;
       }
     });
 
@@ -99,9 +104,12 @@ class _ExamPageState extends State<ExamPage> {
         forceRefresh: forceRefresh,
       );
       if (mounted) setState(() => _exams = exams);
-    } on ExamAuthExpiredException {
+    } on ExamAuthExpiredException catch (e) {
       if (!mounted) return;
-      setState(() => _error = '登录状态已过期，请重新登录');
+      setState(() {
+        _error = '登录状态已过期，请重新登录';
+        _automaticLoginPaused = e.automaticLoginPaused;
+      });
       NetworkErrorToast.show(context, ExamAuthExpiredException());
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -121,6 +129,8 @@ class _ExamPageState extends State<ExamPage> {
     setState(() {
       _loggedIn = true;
       _error = null;
+      // 手动登录成功即重新武装自动登录，清除暂停文案。
+      _automaticLoginPaused = false;
     });
     _fetchExams();
   }
@@ -161,12 +171,9 @@ class _ExamPageState extends State<ExamPage> {
     );
   }
 
-  Widget _buildLoginBody() => AuthRequiredView(
-    title: '登录后查看考试安排',
-    message: '考试信息依赖教务系统会话，登录后即可同步考试时间与地点。',
-    buttonLabel: '登录教务系统',
+  Widget _buildLoginBody() => buildExamLoginView(
+    automaticLoginPaused: _automaticLoginPaused,
     onAction: () => _presentLoginPrompt(force: true),
-    icon: Icons.quiz_outlined,
   );
 
   Widget _buildExamBody() {
@@ -254,6 +261,24 @@ class _ExamPageState extends State<ExamPage> {
     );
   }
 }
+
+/// 未登录引导视图；[automaticLoginPaused] 为 true 时切换为「需要手动登录」文案。
+///
+/// 独立函数便于在测试中直接验证两种文案（页面未登录态会自动拉起登录弹窗，
+/// 不便整体 pump）。
+@visibleForTesting
+Widget buildExamLoginView({
+  required bool automaticLoginPaused,
+  required VoidCallback onAction,
+}) => AuthRequiredView(
+  title: automaticLoginPaused ? '需要手动登录' : '登录后查看考试安排',
+  message: automaticLoginPaused
+      ? '自动登录已暂停（多次登录失败），请手动登录一次；登录成功后会自动重新开启自动登录。'
+      : '考试信息依赖教务系统会话，登录后即可同步考试时间与地点。',
+  buttonLabel: '登录教务系统',
+  onAction: onAction,
+  icon: Icons.quiz_outlined,
+);
 
 // ── Countdown Card (upcoming exams) ───────────────────────────────────────
 

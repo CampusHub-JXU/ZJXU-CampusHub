@@ -90,4 +90,41 @@ void main() {
     expect(find.text('胡亚楠'), findsWidgets);
     expect(find.text('教室：铭德楼468'), findsOneWidget);
   });
+
+  Future<void> pumpLoginView(
+    WidgetTester tester, {
+    required bool automaticLoginPaused,
+  }) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: buildScheduleLoginView(
+            automaticLoginPaused: automaticLoginPaused,
+            onAction: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+  }
+
+  testWidgets('paused automatic login shows manual-login guidance', (
+    tester,
+  ) async {
+    await pumpLoginView(tester, automaticLoginPaused: true);
+
+    expect(find.text('需要手动登录'), findsOneWidget);
+    expect(find.textContaining('自动登录已暂停'), findsOneWidget);
+    expect(find.text('登录教务系统'), findsOneWidget);
+    expect(find.text('登录后查看课表'), findsNothing);
+  });
+
+  testWidgets('not paused keeps the original login guidance', (tester) async {
+    await pumpLoginView(tester, automaticLoginPaused: false);
+
+    expect(find.text('登录后查看课表'), findsOneWidget);
+    expect(find.textContaining('课表刷新依赖教务系统会话'), findsOneWidget);
+    expect(find.text('登录教务系统'), findsOneWidget);
+    expect(find.text('需要手动登录'), findsNothing);
+  });
 }

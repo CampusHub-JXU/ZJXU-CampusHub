@@ -42,6 +42,9 @@ class _GradesPageState extends State<GradesPage>
   bool _loginPromptShown = false;
   bool _loginPromptInFlight = false;
 
+  /// 最近一次教务过期是否由「自动登录已暂停」触发；仅影响未登录引导文案。
+  bool _automaticLoginPaused = false;
+
   String? _selectedTermKey;
 
   final _searchController = TextEditingController();
@@ -94,6 +97,8 @@ class _GradesPageState extends State<GradesPage>
       _loggedIn = nextLoggedIn;
       if (!nextLoggedIn) {
         _error = _grades.isEmpty ? null : '登录状态已失效，请重新登录后刷新成绩';
+        // 暂停标记由随后的过期异常分支重新写入；普通登出保持非暂停文案。
+        _automaticLoginPaused = false;
       }
     });
 
@@ -121,11 +126,12 @@ class _GradesPageState extends State<GradesPage>
         _ensureSelectedTerm();
         _staggerController.forward(from: 0);
       }
-    } on GradesAuthExpiredException {
+    } on GradesAuthExpiredException catch (e) {
       if (!mounted) return;
       setState(() {
         _loggedIn = false;
         _error = _grades.isEmpty ? null : '登录状态已失效，请重新登录后刷新成绩';
+        _automaticLoginPaused = e.automaticLoginPaused;
       });
       NetworkErrorToast.show(context, const GradesAuthExpiredException());
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -149,6 +155,8 @@ class _GradesPageState extends State<GradesPage>
     setState(() {
       _loggedIn = true;
       _error = null;
+      // 手动登录成功即重新武装自动登录，清除暂停文案。
+      _automaticLoginPaused = false;
     });
     _fetchGrades(forceRefresh: true);
   }
@@ -276,12 +284,9 @@ class _GradesPageState extends State<GradesPage>
     );
   }
 
-  Widget _buildLoginBody() => AuthRequiredView(
-    title: '登录后查看成绩',
-    message: '成绩查询依赖教务系统会话，登录后即可同步最新成绩。',
-    buttonLabel: '登录教务系统',
+  Widget _buildLoginBody() => buildGradesLoginView(
+    automaticLoginPaused: _automaticLoginPaused,
     onAction: () => _presentLoginPrompt(force: true),
-    icon: Icons.school_outlined,
   );
 
   Widget _buildGradesBody() {
@@ -534,3 +539,18 @@ class _Divider extends StatelessWidget {
     );
   }
 }
+
+/// 未登录引导视图；[automaticLoginPaused] 为 true 时切换为「需要手动登录」文案。
+@visibleForTesting
+Widget buildGradesLoginView({
+  required bool automaticLoginPaused,
+  required VoidCallback onAction,
+}) => AuthRequiredView(
+  title: automaticLoginPaused ? '需要手动登录' : '登录后查看成绩',
+  message: automaticLoginPaused
+      ? '自动登录已暂停（多次登录失败），请手动登录一次；登录成功后会自动重新开启自动登录。'
+      : '成绩查询依赖教务系统会话，登录后即可同步最新成绩。',
+  buttonLabel: '登录教务系统',
+  onAction: onAction,
+  icon: Icons.school_outlined,
+);

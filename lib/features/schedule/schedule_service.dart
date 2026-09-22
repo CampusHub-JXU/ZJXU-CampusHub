@@ -30,7 +30,12 @@ class ScheduleRequestException implements Exception {
 }
 
 class ScheduleAuthExpiredException extends ScheduleRequestException {
-  const ScheduleAuthExpiredException() : super('登录状态已过期，请重新登录');
+  const ScheduleAuthExpiredException({this.automaticLoginPaused = false})
+    : super('登录状态已过期，请重新登录');
+
+  /// 自动登录是否因连续身份失败被暂停。为 true 时页面应提示用户手动登录
+  /// 一次（登录成功后会由登录控件重新武装自动登录）。
+  final bool automaticLoginPaused;
 }
 
 class ScheduleLoadResult {
@@ -41,6 +46,7 @@ class ScheduleLoadResult {
     this.usedCache = false,
     this.didRefresh = false,
     this.effectiveTermContext,
+    this.automaticLoginPaused = false,
   });
 
   final ScheduleCacheSnapshot? snapshot;
@@ -52,6 +58,9 @@ class ScheduleLoadResult {
   /// 自动识别发生学期回退时，实际展示课表的学期上下文；
   /// null 表示与请求时的学期一致。
   final ScheduleTermContext? effectiveTermContext;
+
+  /// 本次 require 登录是否由「自动登录已暂停」触发；仅影响未登录引导文案。
+  final bool automaticLoginPaused;
 
   bool get hasData => snapshot?.hasData ?? false;
 }
@@ -179,6 +188,8 @@ class ScheduleService {
       usedCache: true,
       didRefresh: fallback.didRefresh,
       effectiveTermContext: previousContext,
+      automaticLoginPaused:
+          result.automaticLoginPaused || fallback.automaticLoginPaused,
       message: requiresLogin
           ? '当前学期暂无课表，已显示上一学期课表，刷新需要重新登录教务'
           : '当前学期暂无课表，已显示上一学期课表',
@@ -720,9 +731,13 @@ class ScheduleService {
           scheduleUpdatedAt: DateTime.now(),
         );
         didRefresh = true;
-      } on ScheduleAuthExpiredException {
+      } on ScheduleAuthExpiredException catch (error) {
         await ZhengfangAuth.instance.markLoggedOut();
-        return _buildAuthExpiredResult(existingSnapshot, nextSnapshot);
+        return _buildAuthExpiredResult(
+          existingSnapshot,
+          nextSnapshot,
+          automaticLoginPaused: error.automaticLoginPaused,
+        );
       } on ScheduleRequestException catch (error) {
         if (!existingSnapshot.hasData) {
           return ScheduleLoadResult(message: error.message);
@@ -772,7 +787,7 @@ class ScheduleService {
           warnings.add('有$unappliedCount条调课提醒未在当前课表体现');
         }
         didRefresh = true;
-      } on ScheduleAuthExpiredException {
+      } on ScheduleAuthExpiredException catch (error) {
         await ZhengfangAuth.instance.markLoggedOut();
         if (didRefresh) {
           await _persistSnapshot(nextSnapshot);
@@ -784,6 +799,7 @@ class ScheduleService {
           requiresLogin: true,
           usedCache: (nextSnapshot.hasData || existingSnapshot.hasData),
           didRefresh: didRefresh,
+          automaticLoginPaused: error.automaticLoginPaused,
           message: '教务登录已过期，调课提醒继续使用缓存',
         );
       } on ScheduleRequestException {
@@ -814,8 +830,9 @@ class ScheduleService {
 
   ScheduleLoadResult _buildAuthExpiredResult(
     ScheduleCacheSnapshot existingSnapshot,
-    ScheduleCacheSnapshot updatedSnapshot,
-  ) {
+    ScheduleCacheSnapshot updatedSnapshot, {
+    bool automaticLoginPaused = false,
+  }) {
     final visibleUpdatedSnapshot = _snapshotForDisplay(updatedSnapshot);
     final visibleExistingSnapshot = _snapshotForDisplay(existingSnapshot);
     final snapshot = visibleUpdatedSnapshot.hasData
@@ -827,12 +844,14 @@ class ScheduleService {
         snapshot: snapshot,
         requiresLogin: true,
         usedCache: true,
+        automaticLoginPaused: automaticLoginPaused,
         message: '教务登录已过期，显示的是本地缓存课表',
       );
     }
 
-    return const ScheduleLoadResult(
+    return ScheduleLoadResult(
       requiresLogin: true,
+      automaticLoginPaused: automaticLoginPaused,
       message: '教务登录已过期，请重新登录',
     );
   }
