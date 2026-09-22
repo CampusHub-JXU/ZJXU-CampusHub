@@ -87,3 +87,7 @@ docs/agents/session-databases.md
 /.workbuddy/
 /captcha.png
 .gradle/
+.slim/deepwork/
+packages/**/build/
+packages/**/android/.gradle/
+packages/**/.cxx/

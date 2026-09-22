@@ -1,0 +1,6 @@
+# 统一行尾：索引与工作树都用 LF，消除 core.autocrlf 带来的 CRLF 警告与无意义 diff。
+* text=auto eol=lf
+
+# Windows 批处理对 LF 敏感（goto/label），保持 CRLF。
+*.bat text eol=crlf
+*.cmd text eol=crlf
