@@ -21845,3 +21845,66 @@ proprietary programs.  If your program is a subroutine library, you may
 consider it more useful to permit linking proprietary applications with the
 library.  If this is what you want to do, use the GNU Lesser General
 Public License instead of this License.
+
+==============================================================================
+JXU-CampusHub — local CAPTCHA OCR plugin (`packages/campus_captcha_ocr`)
+==============================================================================
+
+The local offline CAPTCHA OCR plugin bundles and/or uses the third-party
+components listed below. The project itself remains All Rights Reserved (see
+LICENSE); these notices cover the third-party material only. The same texts
+and provenance ship inside the plugin at
+packages/campus_captcha_ocr/THIRD_PARTY_NOTICES.md and in the APK assets under
+android/src/main/assets/captcha_ocr/.
+
+1) ddddocr OCR model (common_old.onnx)
+   Source:        https://github.com/sml2h3/ddddocr
+   Version:       1.6.1
+   File:          ddddocr/common_old.onnx (in ddddocr-1.6.1-py3-none-any.whl)
+   Wheel SHA-256: c7c70f4ae2d0335440ae8b272eea48c9f6888ecef46785fe2311f0c97a133935
+   Bundled file:  android/src/main/assets/captcha_ocr/common_old.onnx
+   Bundled size:  13606051 bytes
+   Bundled SHA-256: b8f2ad9cbc1f2e3922a6cb9459e30824e7e2467f3fb4fd61420640e34ea0bf68
+   Git blob SHA-1:  8ce4807e1e68c3fa5c1344d281cc7d1623a020cc
+   License:       MIT (as declared by the ddddocr project and wheel metadata)
+   Note: the upstream LICENSE carries a placeholder copyright line
+   "Copyright © 2022 <copyright holders>" and defines no model-specific license;
+   the ONNX weight is distributed under the wheel-level MIT notice only.
+
+   The MIT License (MIT)
+   Copyright © 2022 <copyright holders>
+
+   Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the “Software”), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+   The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+   THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+2) ONNX Runtime — Android
+   Source:        https://github.com/microsoft/onnxruntime
+   Version:       1.30.0
+   Maven:         com.microsoft.onnxruntime:onnxruntime-android:1.30.0
+   License:       MIT, Copyright (c) Microsoft Corporation
+   Notices:       android/src/main/assets/captcha_ocr/THIRD_PARTY_NOTICES-onnxruntime.txt
+
+   MIT License
+
+   Copyright (c) Microsoft Corporation
+
+   Permission is hereby granted, free of charge, to any person obtaining a copy
+   of this software and associated documentation files (the "Software"), to deal
+   in the Software without restriction, including without limitation the rights
+   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+   copies of the Software, and to permit persons to whom the Software is
+   furnished to do so, subject to the following conditions:
+
+   The above copyright notice and this permission notice shall be included in all
+   copies or substantial portions of the Software.
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   SOFTWARE.

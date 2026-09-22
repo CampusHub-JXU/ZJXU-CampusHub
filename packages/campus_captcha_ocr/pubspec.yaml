@@ -1,0 +1,24 @@
+name: campus_captcha_ocr
+description: Android-only, local (offline) CAPTCHA OCR bridge powered by the bundled ddddocr common_old.onnx model (ONNX Runtime).
+version: 0.1.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.13.0
+  flutter: ">=3.44.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: edu.zjxu.campus_captcha_ocr
+        pluginClass: CampusCaptchaOcrPlugin

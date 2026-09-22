@@ -1,0 +1,52 @@
+group = "edu.zjxu.campus_captcha_ocr"
+version = "0.1.0"
+
+buildscript {
+    repositories {
+        // Aliyun mirrors for China — FIRST so google()/mavenCentral() are only
+        // fallbacks; skipped in CI (set CI=true in workflow).
+        if (System.getenv("CI") != "true") {
+            maven { url "https://maven.aliyun.com/repository/google" }
+            maven { url "https://maven.aliyun.com/repository/public" }
+        }
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        // Keep in lockstep with android/settings.gradle.kts baseline
+        // (AGP 8.11.1 / Kotlin 2.2.20) to avoid pulling a newer toolchain.
+        classpath "com.android.tools.build:gradle:8.11.1"
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:2.2.20"
+    }
+}
+
+apply plugin: "com.android.library"
+apply plugin: "kotlin-android"
+
+android {
+    namespace = "edu.zjxu.campus_captcha_ocr"
+    compileSdk = flutter.compileSdkVersion
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = JavaVersion.VERSION_17.toString()
+    }
+
+    defaultConfig {
+        minSdk = 24
+    }
+}
+
+dependencies {
+    // Sole on-device captcha engine: ddddocr common_old.onnx (bundled asset) run
+    // by the static CPU ONNX Runtime. Replaces the previous bundled ML Kit
+    // text-recognition runtime entirely (replace, not stack).
+    implementation "com.microsoft.onnxruntime:onnxruntime-android:1.30.0"
+
+    testImplementation "junit:junit:4.13.2"
+}
