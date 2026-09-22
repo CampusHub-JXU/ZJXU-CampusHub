@@ -206,22 +206,6 @@ class SettingsPage extends StatelessWidget {
           _GroupCard(
             children: [
               _SettingsRow(
-                icon: Icons.school_outlined,
-                title: '教务系统',
-                subtitle: '登录状态与课表、成绩数据来源',
-                trailing: _chevron(context),
-                onTap: () => context.pushNamed('academic-service'),
-              ),
-              const _Hairline(),
-              _SettingsRow(
-                icon: Icons.verified_user_outlined,
-                title: '统一认证',
-                subtitle: '统一认证（含一卡通）登录状态',
-                trailing: _chevron(context),
-                onTap: () => context.pushNamed('unified-auth-login'),
-              ),
-              const _Hairline(),
-              _SettingsRow(
                 icon: Icons.cleaning_services_outlined,
                 title: '清除离线缓存',
                 subtitle: '清空目录与资源缓存，不影响登录状态',

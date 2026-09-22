@@ -34,8 +34,9 @@ void main() {
 
     await tester.scrollUntilVisible(find.text('账户与数据'), 300);
     expect(find.text('账户与数据'), findsOneWidget);
-    expect(find.text('教务系统'), findsOneWidget);
-    expect(find.text('统一认证'), findsOneWidget);
+    // 入口已去重：账户与数据分组不再承载教务/统一认证入口。
+    expect(find.text('教务系统'), findsNothing);
+    expect(find.text('统一认证'), findsNothing);
 
     await tester.scrollUntilVisible(find.text('应用'), 300);
     expect(find.text('应用'), findsOneWidget);

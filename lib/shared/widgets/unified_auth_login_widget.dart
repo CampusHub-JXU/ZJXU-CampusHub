@@ -5,10 +5,14 @@ import 'dart:ui' as ui;
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
-import '../../core/theme/app_design_tokens.dart';
-
+import '../../core/auth/auth_failure.dart';
+import '../../core/auth/auth_operation_coordinator.dart';
+import '../../core/auth/auth_recovery_state_store.dart';
+import '../../core/auth/captcha_challenge.dart';
 import '../../core/auth/credential_store.dart';
 import '../../core/auth/unified_auth.dart';
+import '../../core/logging/app_logger.dart';
+import '../../core/theme/app_design_tokens.dart';
 
 enum UnifiedAuthMode { direct }
 
@@ -17,6 +21,19 @@ typedef LoginCredentialSaver = Future<void> Function(
   String username,
   String password,
 );
+typedef LoginCredentialClearer = Future<void> Function();
+
+/// 「记住账号并自动登录」勾选后启用该域自动恢复（可注入，默认走协调器）。
+typedef LoginAutoLoginEnabler = Future<AuthRecoveryEnableResult> Function(
+  String account,
+);
+
+/// 登录成功且自动恢复已启用时记录一次成功（可注入，默认走协调器）。
+typedef LoginAutoLoginSuccessRecorder = Future<void> Function();
+
+/// 未勾选时关闭该域自动恢复（可注入，默认走协调器）。
+typedef LoginAutoLoginDisabler = Future<void> Function();
+
 typedef LoginSessionPreflight = Future<bool> Function();
 typedef LoginCaptchaLoader = Future<Uint8List> Function();
 typedef LoginSubmitHandler = Future<String?> Function(
@@ -24,6 +41,18 @@ typedef LoginSubmitHandler = Future<String?> Function(
   String password,
   String captcha,
 );
+typedef UnifiedAuthChallengeLoader = Future<CaptchaChallenge> Function({
+  CancelToken? cancelToken,
+});
+typedef UnifiedAuthChallengeSubmitHandler =
+    Future<UnifiedAuthLoginResult> Function({
+      required String challengeId,
+      required String username,
+      required String password,
+      required String captcha,
+      CancelToken? cancelToken,
+    });
+typedef UnifiedAuthChallengeInvalidator = void Function(String challengeId);
 
 class UnifiedAuthLoginWidget extends StatefulWidget {
   const UnifiedAuthLoginWidget({
@@ -34,9 +63,16 @@ class UnifiedAuthLoginWidget extends StatefulWidget {
     this.description = '账号为校园一卡通号',
     this.loadSavedCredentials,
     this.saveCredentials,
+    this.clearCredentials,
+    this.enableAutoLogin,
+    this.recordAutoLoginSuccess,
+    this.disableAutoLogin,
     this.sessionPreflight,
     this.captchaLoader,
     this.loginHandler,
+    this.challengeLoader,
+    this.challengeSubmitter,
+    this.challengeInvalidator,
     this.showHeader = true,
     this.padding = const EdgeInsets.all(24),
   });
@@ -47,9 +83,16 @@ class UnifiedAuthLoginWidget extends StatefulWidget {
   final String description;
   final LoginCredentialLoader? loadSavedCredentials;
   final LoginCredentialSaver? saveCredentials;
+  final LoginCredentialClearer? clearCredentials;
+  final LoginAutoLoginEnabler? enableAutoLogin;
+  final LoginAutoLoginSuccessRecorder? recordAutoLoginSuccess;
+  final LoginAutoLoginDisabler? disableAutoLogin;
   final LoginSessionPreflight? sessionPreflight;
   final LoginCaptchaLoader? captchaLoader;
   final LoginSubmitHandler? loginHandler;
+  final UnifiedAuthChallengeLoader? challengeLoader;
+  final UnifiedAuthChallengeSubmitHandler? challengeSubmitter;
+  final UnifiedAuthChallengeInvalidator? challengeInvalidator;
   final bool showHeader;
   final EdgeInsetsGeometry padding;
 
@@ -66,10 +109,17 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
   final _captchaFocusNode = FocusNode();
 
   Uint8List? _captchaBytes;
+  String? _challengeId;
+  int _captchaRequestId = 0;
+  int _syntheticChallengeCounter = 0;
   bool _loading = false;
   bool _captchaLoading = false;
   CancelToken? _captchaCancelToken;
+  CancelToken? _loginCancelToken;
   bool _obscurePassword = true;
+
+  /// 「记住账号并自动登录」勾选状态：仅本次会话有效，重新打开默认勾选。
+  bool _rememberAccount = true;
   String? _error;
 
   static const _proxyHint = '请求超时，请切换网络后重试；如使用代理或 VPN，请检查其设置';
@@ -78,6 +128,16 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
   void initState() {
     super.initState();
     _refreshCaptcha(prepare: true);
+  }
+
+  void _invalidateChallenge(String? challengeId) {
+    if (challengeId == null) return;
+    final invalidator = widget.challengeInvalidator;
+    if (invalidator != null) {
+      invalidator(challengeId);
+      return;
+    }
+    UnifiedAuthService.instance.invalidateChallenge(challengeId: challengeId);
   }
 
   Future<bool> _preparePrimaryLoginMode(CancelToken token) async {
@@ -91,7 +151,10 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
       return true;
     }
 
-    if (widget.loginHandler != null && widget.captchaLoader != null) {
+    if (widget.challengeLoader != null || widget.captchaLoader != null) {
+      return false;
+    }
+    if (widget.loginHandler != null || widget.challengeSubmitter != null) {
       return false;
     }
 
@@ -118,17 +181,29 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
   }) async {
     if (_captchaLoading || _loading) return;
     final previousError = preserveError ? _error : null;
+    final requestId = ++_captchaRequestId;
     final token = CancelToken();
+    _captchaCancelToken?.cancel('New captcha requested');
     _captchaCancelToken = token;
+
+    final oldChallengeId = _challengeId;
+    _invalidateChallenge(oldChallengeId);
+
+    // 真实 challenge 一旦由 service 建立就记录 id：若结果最终被丢弃
+    //（超时 / 刷新 / 切阶段 / 销毁 / 解码失败），必须按 id 失效，避免 service
+    // 侧遗留活动 challenge。synthetic 注入分支不产生 service challenge。
+    String? armedChallengeId;
+
     setState(() {
       _captchaLoading = true;
       _captchaBytes = null;
+      _challengeId = null;
       _error = previousError;
     });
     _captchaCtrl.clear();
     try {
-      final bytes =
-          await Future.any<Uint8List?>([
+      final challengeResult =
+          await Future.any<({Uint8List bytes, String id})?>([
             (() async {
               if (prepare) {
                 await _loadSaved(token);
@@ -136,11 +211,37 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
                 if (await _preparePrimaryLoginMode(token)) return null;
               }
               if (token.isCancelled) throw token.cancelError!;
-              return await widget.captchaLoader?.call() ??
-                  await UnifiedAuthService.instance.fetchCaptcha(
+              if (widget.challengeLoader != null) {
+                final ch = await widget.challengeLoader!(cancelToken: token);
+                if (!mounted ||
+                    requestId != _captchaRequestId ||
+                    token.isCancelled) {
+                  _invalidateChallenge(ch.id);
+                } else {
+                  armedChallengeId = ch.id;
+                }
+                return (bytes: ch.bytes, id: ch.id);
+              }
+              if (widget.captchaLoader != null) {
+                final bytes = await widget.captchaLoader!();
+                return (
+                  bytes: bytes,
+                  id: 'synthetic-challenge-${++_syntheticChallengeCounter}',
+                );
+              }
+              final ch = await UnifiedAuthService.instance
+                  .prepareCaptchaChallenge(
                     serviceUrl: widget.serviceUrl,
                     cancelToken: token,
                   );
+              if (!mounted ||
+                  requestId != _captchaRequestId ||
+                  token.isCancelled) {
+                _invalidateChallenge(ch.id);
+              } else {
+                armedChallengeId = ch.id;
+              }
+              return (bytes: ch.bytes, id: ch.id);
             })(),
             token.whenCancel.then((error) => throw error),
           ]).timeout(
@@ -150,39 +251,56 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
               throw TimeoutException('Captcha preparation timed out');
             },
           );
-      if (!mounted || token.isCancelled) return;
-      if (bytes == null) {
+      if (!mounted || requestId != _captchaRequestId || token.isCancelled) {
+        return;
+      }
+      if (challengeResult == null) {
         widget.onLoginSuccess();
         return;
       }
-      final codec = await ui.instantiateImageCodec(bytes);
+      final codec = await ui.instantiateImageCodec(challengeResult.bytes);
       codec.dispose();
-      if (!mounted || token.isCancelled) return;
+      if (!mounted || requestId != _captchaRequestId || token.isCancelled) {
+        return;
+      }
       setState(() {
-        _captchaBytes = bytes;
+        _captchaBytes = challengeResult.bytes;
+        _challengeId = challengeResult.id;
         _error = previousError;
       });
+      armedChallengeId = null;
     } on UnifiedAuthCaptchaException catch (error) {
-      if (!mounted) return;
+      if (!mounted || requestId != _captchaRequestId) return;
       setState(() {
         _captchaBytes = null;
+        _challengeId = null;
         _error = error.message;
       });
     } on DioException catch (e) {
-      if (!mounted) return;
+      if (!mounted || requestId != _captchaRequestId) return;
+      if (e.type == DioExceptionType.cancel && e.error is! TimeoutException) {
+        return;
+      }
       setState(() {
         _captchaBytes = null;
+        _challengeId = null;
         _error = _friendlyNetworkMessage(e, fallback: '验证码加载失败，请点击重试');
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || requestId != _captchaRequestId) return;
       setState(() {
         _captchaBytes = null;
+        _challengeId = null;
         _error = _friendlyNetworkMessage(error, fallback: '验证码加载失败，请点击重试');
       });
     } finally {
+      if (armedChallengeId != null) {
+        _invalidateChallenge(armedChallengeId);
+      }
       token.cancel('Captcha loading finished');
-      if (mounted) setState(() => _captchaLoading = false);
+      if (mounted && requestId == _captchaRequestId) {
+        setState(() => _captchaLoading = false);
+      }
     }
   }
 
@@ -207,7 +325,12 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
   }
 
   Future<void> _login() async {
-    if (_loading || _captchaLoading || _captchaBytes == null) return;
+    if (_loading ||
+        _captchaLoading ||
+        _captchaBytes == null ||
+        _challengeId == null) {
+      return;
+    }
     final username = _usernameCtrl.text.trim();
     final password = _passwordCtrl.text;
     final captcha = _captchaCtrl.text.trim();
@@ -216,17 +339,55 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
       return;
     }
 
+    final challengeId = _challengeId!;
+    final token = CancelToken();
+    _loginCancelToken = token;
+
     setState(() {
       _loading = true;
       _error = null;
     });
 
     try {
+      if (widget.challengeSubmitter != null) {
+        final result = await widget.challengeSubmitter!(
+          challengeId: challengeId,
+          username: username,
+          password: password,
+          captcha: captcha,
+          cancelToken: token,
+        );
+        if (!mounted || token.isCancelled) return;
+        switch (result) {
+          case UnifiedAuthLoginSuccess():
+            await _applyAutoLoginPreference(
+              username: username,
+              password: password,
+            );
+            if (!mounted) return;
+            widget.onLoginSuccess();
+          case UnifiedAuthLoginFailure(:final message, :final kind):
+            final displayMessage = kind == AuthFailureKind.staleOperation
+                ? (message.isNotEmpty ? message : '验证码已失效，请刷新后重试')
+                : (message.isNotEmpty ? message : '登录失败，请重试');
+            setState(() {
+              _loading = false;
+              _error = displayMessage;
+            });
+            _captchaCtrl.clear();
+            await _refreshCaptcha(preserveError: true);
+        }
+        return;
+      }
+
       if (widget.loginHandler != null) {
         final message = await widget.loginHandler!(username, password, captcha);
-        if (!mounted) return;
+        if (!mounted || token.isCancelled) return;
         if (message == null) {
-          await widget.saveCredentials?.call(username, password);
+          await _applyAutoLoginPreference(
+            username: username,
+            password: password,
+          );
           if (!mounted) return;
           widget.onLoginSuccess();
           return;
@@ -241,27 +402,30 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
         return;
       }
 
-      final result = await UnifiedAuthService.instance.login(
-        username,
-        password,
-        captcha,
-        serviceUrl: widget.serviceUrl,
+      final result = await UnifiedAuthService.instance.submitCaptchaChallenge(
+        challengeId: challengeId,
+        username: username,
+        password: password,
+        captcha: captcha,
+        cancelToken: token,
       );
-      if (!mounted) return;
+      if (!mounted || token.isCancelled) return;
 
       switch (result) {
         case UnifiedAuthLoginSuccess():
-          await (widget.saveCredentials?.call(username, password) ??
-              CredentialStore.instance.saveUnifiedAuthCredentials(
-                username,
-                password,
-              ));
+          await _applyAutoLoginPreference(
+            username: username,
+            password: password,
+          );
           if (!mounted) return;
           widget.onLoginSuccess();
-        case UnifiedAuthLoginFailure(:final message):
+        case UnifiedAuthLoginFailure(:final message, :final kind):
+          final displayMessage = kind == AuthFailureKind.staleOperation
+              ? (message.isNotEmpty ? message : '验证码已失效，请刷新后重试')
+              : (message.isNotEmpty ? message : '登录失败，请重试');
           setState(() {
             _loading = false;
-            _error = message;
+            _error = displayMessage;
           });
           _captchaCtrl.clear();
           await _refreshCaptcha(preserveError: true);
@@ -273,13 +437,94 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
         _error = _friendlyNetworkMessage(error, fallback: '登录未完成，请重试');
       });
     } finally {
+      token.cancel('Login finished');
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// 登录成功后按勾选状态分叉：勾选则保存凭据并启用自动恢复，未勾选则清除
+  /// 凭据并关闭自动恢复。**任何自动恢复侧的失败都不得影响登录成功本身**，
+  /// 只记录日志（不打印凭据）。
+  Future<void> _applyAutoLoginPreference({
+    required String username,
+    required String password,
+  }) async {
+    if (_rememberAccount) {
+      try {
+        await (widget.saveCredentials?.call(username, password) ??
+            CredentialStore.instance.saveUnifiedAuthCredentials(
+              username,
+              password,
+            ));
+      } catch (error, stackTrace) {
+        _logAutoLoginFailure('保存统一认证凭据失败', error, stackTrace);
+      }
+
+      final AuthRecoveryEnableResult enableResult;
+      try {
+        enableResult =
+            await (widget.enableAutoLogin?.call(username) ??
+                AuthOperationCoordinator.instance.enableAutomaticRecovery(
+                  AuthRecoveryDomain.cas,
+                  expectedAccount: username,
+                ));
+      } catch (error, stackTrace) {
+        _logAutoLoginFailure('启用统一认证自动登录失败', error, stackTrace);
+        return;
+      }
+      if (enableResult != AuthRecoveryEnableResult.enabled) {
+        AppLogger.instance.auth(
+          LogLevel.warn,
+          '统一认证自动登录未启用（${enableResult.name}），登录成功不受影响',
+        );
+        return;
+      }
+
+      try {
+        await (widget.recordAutoLoginSuccess?.call() ??
+            AuthOperationCoordinator.instance.recordSuccess(
+              AuthRecoveryDomain.cas,
+            ));
+      } catch (error, stackTrace) {
+        _logAutoLoginFailure('记录统一认证登录成功失败', error, stackTrace);
+      }
+      return;
+    }
+
+    try {
+      await (widget.clearCredentials?.call() ??
+          CredentialStore.instance.clearUnifiedAuthCredentials());
+    } catch (error, stackTrace) {
+      _logAutoLoginFailure('清除统一认证凭据失败', error, stackTrace);
+    }
+    try {
+      await (widget.disableAutoLogin?.call() ??
+          AuthOperationCoordinator.instance.disableAutomaticRecovery(
+            AuthRecoveryDomain.cas,
+          ));
+    } catch (error, stackTrace) {
+      _logAutoLoginFailure('关闭统一认证自动登录失败', error, stackTrace);
+    }
+  }
+
+  void _logAutoLoginFailure(
+    String message,
+    Object error,
+    StackTrace stackTrace,
+  ) {
+    AppLogger.instance.auth(
+      LogLevel.warn,
+      message,
+      error: error,
+      stackTrace: stackTrace,
+    );
   }
 
   @override
   void dispose() {
     _captchaCancelToken?.cancel('Login page closed');
+    _loginCancelToken?.cancel('Login page closed');
+    _invalidateChallenge(_challengeId);
     _usernameCtrl.dispose();
     _passwordCtrl.dispose();
     _captchaCtrl.dispose();
@@ -362,9 +607,16 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
               style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
             ),
           ),
-          const SizedBox(height: 18),
+          _buildRememberAccountTile(cs),
+          const SizedBox(height: 6),
           FilledButton(
-            onPressed: (_loading || _captchaBytes == null) ? null : _login,
+            onPressed:
+                (_loading ||
+                    _captchaLoading ||
+                    _captchaBytes == null ||
+                    _challengeId == null)
+                ? null
+                : _login,
             child: _loading
                 ? SizedBox(
                     height: 20,
@@ -386,6 +638,56 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  /// 「记住账号并自动登录」勾选行。使用紧凑自定义行而非 [CheckboxListTile]：
+  /// 主/副标题两行文本在窄屏（含 600 高的最小测试视口）下不会把表单顶出可视区。
+  Widget _buildRememberAccountTile(ColorScheme cs) {
+    return MergeSemantics(
+      child: InkWell(
+        onTap: () => setState(() => _rememberAccount = !_rememberAccount),
+        borderRadius: AppRadius.inputBorder,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 36,
+                height: 36,
+                child: Checkbox(
+                  value: _rememberAccount,
+                  onChanged: (value) =>
+                      setState(() => _rememberAccount = value ?? false),
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '记住账号并自动登录',
+                      style: TextStyle(fontSize: 14, color: cs.onSurface),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '自动登录并自动刷新数据；不勾选则不保存密码',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -434,7 +736,7 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
                         filterQuality: FilterQuality.high,
                       ),
                     )
-                  : _error != null
+                  : (_error != null && !_captchaLoading)
                   ? Icon(Icons.refresh, color: cs.error, size: 24)
                   : const Center(
                       child: CircularProgressIndicator(strokeWidth: 2),
