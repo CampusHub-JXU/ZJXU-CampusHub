@@ -127,13 +127,9 @@ Future<void> main() async {
         _handleNotificationPayload(pending);
       }
       AppBootstrapController.instance.scheduleWarmUpAfterFirstFrame();
-      await BackgroundTaskService.instance.initialize(
-        callbackDispatcher: appBackgroundTaskDispatcher,
-      );
-      // 注册各 feature 的周期性后台任务（原 initialize 内置的 dorm/二课注册）。
-      await scheduleFeatureBackgroundTasks();
 
-      // Check electricity on app resume (foreground) for timely notifications.
+      // 前台生命周期兜底必须先于后台初始化安装：后台初始化 / 注册失败
+      // 时仍能在 resumed 时执行前台检查。
       final lifecycleListener = AppLifecycleListener(
         onStateChange: (state) {
           if (state == AppLifecycleState.resumed) {
@@ -145,6 +141,15 @@ Future<void> main() async {
       // Keep listener alive for app lifetime.
       // ignore: unused_local_variable
       lifecycleListener;
+
+      // 初始化失败时 helper 降级返回 false，不会在未初始化的 WorkManager
+      // 上继续注册，也不会向上抛出破坏启动；各 feature 注册项内部逐项
+      // 隔离异常。
+      await initializeAndScheduleBackgroundTasks(
+        initialize: () => BackgroundTaskService.instance.initialize(
+          callbackDispatcher: appBackgroundTaskDispatcher,
+        ),
+      );
     },
     (error, stackTrace) {
       AppLogger.instance.log(

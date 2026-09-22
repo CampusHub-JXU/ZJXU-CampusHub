@@ -9,6 +9,7 @@ import 'dart:ui';
 
 import 'package:workmanager/workmanager.dart';
 
+import '../core/logging/app_logger.dart';
 import '../core/notice/notice_sync_service.dart';
 import '../core/notice/notice_sync_store.dart';
 import '../features/dorm_electricity/dorm_electricity_background.dart';
@@ -34,22 +35,107 @@ void appBackgroundTaskDispatcher() {
   });
 }
 
+/// 单项后台任务异常隔离：捕获并记录后继续，绝不让单个任务失败中断
+/// 同批次其它任务的注册 / 检查。
+Future<void> _runIsolated(String label, Future<void> Function() action) async {
+  try {
+    await action();
+  } catch (error, stackTrace) {
+    AppLogger.instance.log(
+      LogLevel.warn,
+      LogCategory.bootstrap,
+      '后台任务「$label」失败，已隔离继续',
+      error: error,
+      stackTrace: stackTrace,
+    );
+  }
+}
+
+/// 初始化 WorkManager 并注册各 feature 周期任务。
+///
+/// 初始化失败时降级返回 false，且**不再**调用 [schedule]——未初始化的
+/// WorkManager 上注册会抛平台异常。本函数不向上抛出：调用方（main）的
+/// 前台生命周期兜底与后续启动流程不依赖后台注册成功。
+Future<bool> initializeAndScheduleBackgroundTasks({
+  required Future<void> Function() initialize,
+  Future<void> Function()? schedule,
+}) async {
+  try {
+    await initialize();
+  } catch (error, stackTrace) {
+    AppLogger.instance.log(
+      LogLevel.warn,
+      LogCategory.bootstrap,
+      '后台任务调度初始化失败，跳过周期任务注册',
+      error: error,
+      stackTrace: stackTrace,
+    );
+    return false;
+  }
+  await (schedule ?? scheduleFeatureBackgroundTasks)();
+  return true;
+}
+
 /// 注册所有 feature 的周期性后台任务（app 启动时调用）。
-Future<void> scheduleFeatureBackgroundTasks() async {
-  await DormElectricityBackground.instance.ensureScheduled();
-  await SecondClassroomBackground.instance.ensureScheduled();
-  await NoticeBackground.instance.ensureScheduled();
+///
+/// 逐项隔离：某个 feature 注册失败（平台通道异常等）不回滚、不中断
+/// 其余 feature 的注册。
+Future<void> scheduleFeatureBackgroundTasks({
+  Future<void> Function()? scheduleDormElectricity,
+  Future<void> Function()? scheduleSecondClassroom,
+  Future<void> Function()? scheduleNotice,
+}) async {
+  await _runIsolated(
+    '电费周期任务注册',
+    scheduleDormElectricity ??
+        DormElectricityBackground.instance.ensureScheduled,
+  );
+  await _runIsolated(
+    '第二课堂周期任务注册',
+    scheduleSecondClassroom ??
+        SecondClassroomBackground.instance.ensureScheduled,
+  );
+  await _runIsolated(
+    '教务处通知周期任务注册',
+    scheduleNotice ?? NoticeBackground.instance.ensureScheduled,
+  );
 }
 
 /// 前台兜底检查 — app resumed 时调用，等价于原
 /// BackgroundTaskService.foregroundCheckAndNotify() 的完整语义。
-Future<void> runForegroundBackgroundChecks() async {
-  await SecondClassroomBackground.instance.runMonitor();
-  await DormElectricityBackground.instance.foregroundCheck();
-  // 教务处通知：先无条件重载磁盘状态（后台 isolate 写盘后的红点正确性
-  // 不依赖网络同步、也不受节流影响），再自动补查（资格领取自动防抖）。
-  await NoticeSyncStore.instance.reload();
-  await NoticeSyncService.instance.sync(
-    trigger: NoticeSyncTrigger.foregroundAuto,
+///
+/// 先无条件重载通知磁盘状态（后台 isolate 写盘后的红点正确性不依赖
+/// 网络、也不受节流影响）；重载本身失败同样隔离，不阻断后续检查。
+/// 二课监控 / 电费刷新 / 通知补查相互独立，在重载尝试之后并行执行，
+/// 任何一项异常都不会丢掉其它项的更新。
+Future<void> runForegroundBackgroundChecks({
+  Future<void> Function()? reloadNoticeState,
+  Future<void> Function()? runSecondClassroomMonitor,
+  Future<void> Function()? checkDormElectricity,
+  Future<void> Function()? syncNotice,
+}) async {
+  await _runIsolated(
+    '通知磁盘状态重载',
+    reloadNoticeState ?? NoticeSyncStore.instance.reload,
   );
+
+  await Future.wait<void>([
+    _runIsolated(
+      '第二课堂招募监控',
+      runSecondClassroomMonitor ??
+          SecondClassroomBackground.instance.runMonitor,
+    ),
+    _runIsolated(
+      '电费前台检查',
+      checkDormElectricity ??
+          DormElectricityBackground.instance.foregroundCheck,
+    ),
+    _runIsolated(
+      '教务处通知补查',
+      syncNotice ??
+          () => NoticeSyncService.instance.sync(
+            trigger: NoticeSyncTrigger.foregroundAuto,
+          ),
+    ),
+  ]);
 }
