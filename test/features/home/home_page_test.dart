@@ -1,16 +1,22 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:jxu_campus_hub/app/app_bootstrap_controller.dart';
+import 'package:jxu_campus_hub/core/auth/auth_session_persistence.dart';
+import 'package:jxu_campus_hub/core/auth/credential_store.dart';
+import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
+import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
+import 'package:jxu_campus_hub/core/cache/private_cache_store.dart';
 import 'package:jxu_campus_hub/core/notice/notice_model.dart';
 import 'package:jxu_campus_hub/core/notice/notice_sync_store.dart';
 import 'package:jxu_campus_hub/core/semester/semester_calendar.dart';
+import 'package:jxu_campus_hub/core/system_surface/campus_data_change_bus.dart';
 import 'package:jxu_campus_hub/core/theme/personalization_controller.dart';
 import 'package:jxu_campus_hub/core/theme/widgets/home_background_layer.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_card.dart';
@@ -36,11 +42,17 @@ void main() {
   setUp(() async {
     final now = DateTime.now();
     SharedPreferences.setMockInitialValues({});
+    FlutterSecureStorage.setMockInitialValues({});
+    AuthSessionPersistence.instance
+      ..debugReset()
+      ..debugDisableFileLock = true;
     AppBootstrapController.instance.debugReset();
     CampusCardService.instance.debugSetCachedBalance(null);
     DormElectricityService.instance.debugReset();
     ExamService.instance.debugReset();
     GradesService.instance.debugReset();
+    UnifiedAuthService.instance.debugReset();
+    ZhengfangAuth.instance.debugReset();
     SemesterCalendar.instance.semesterStartDate.value = DateTime(
       now.year,
       now.month,
@@ -49,6 +61,7 @@ void main() {
     HomeZoneController.instance.updateZone(0);
     await ScheduleService.instance.debugClearCache();
     CampusWidgetSync.instance.debugSetDebounce(Duration.zero);
+    CampusDataChangeBus.instance.debugReset();
   });
 
   tearDown(() {
@@ -108,7 +121,23 @@ void main() {
       'dorm_epay_room_id': 'room',
     });
 
-    CampusCardService.instance.debugSetCachedBalance(23.5, updatedAt: now);
+    UnifiedAuthService.instance.debugSetSession(
+      active: true,
+      account: 'casuser',
+    );
+    await CredentialStore.instance.saveUnifiedAuthSession('casuser');
+    final cardEpoch = (await AuthSessionPersistence.instance.read(
+      CredentialSessionDomain.unified,
+    )).epoch;
+    await SecureStoragePrivateCacheStore(CampusCardService.cacheKey).write(
+      PrivateCacheEnvelope(
+        owner: 'casuser',
+        updatedAt: now,
+        epoch: cardEpoch,
+        payload: 23.5,
+      ),
+    );
+    await CampusCardService.instance.restoreBalance();
     // 把开学日固定为今天，避免假期窗口运行时"明天"落在第 1 周之前。
     await SemesterCalendar.instance.setSemesterStartDate(now);
     DormElectricityService.instance.debugSetCachedElectricity(
@@ -231,6 +260,12 @@ void main() {
     final now = DateTime.now();
     final tomorrow = now.add(const Duration(days: 1));
 
+    SharedPreferences.setMockInitialValues({
+      'dorm_epay_area_id': 'area',
+      'dorm_epay_building_id': 'building',
+      'dorm_epay_floor_id': 'floor',
+      'dorm_epay_room_id': 'room',
+    });
     DormElectricityService.instance.debugSetCachedElectricity(
       3.2,
       updatedAt: now,
@@ -284,22 +319,36 @@ void main() {
         '${tomorrowDate.month.toString().padLeft(2, '0')}-'
         '${tomorrowDate.day.toString().padLeft(2, '0')}';
 
-    SharedPreferences.setMockInitialValues({
-      'exam_cached_data': jsonEncode([
-        {
-          'kcmc': '微观经济学',
-          'kssj': '($dateText) 09:00-11:00',
-          'cdmc': '1教302',
-          'cdxqmc': '梁林校区',
-          'zwh': '12',
-          'ksmc': '期末考试',
-          'kkxy': '经济学院',
-          'cxbj': '',
-          'xnmc': '2026-2027',
-          'xqmmc': '1',
-        },
-      ]),
-    });
+    ZhengfangAuth.instance.debugSetSession(
+      active: true,
+      studentId: '2025000001',
+    );
+    await CredentialStore.instance.saveZhengfangSession('2025000001');
+    final epoch = (await AuthSessionPersistence.instance.read(
+      CredentialSessionDomain.academic,
+    )).epoch;
+    final store = SharedPreferencesPrivateCacheStore(ExamService.cacheKey);
+    await store.write(
+      PrivateCacheEnvelope(
+        owner: '2025000001',
+        updatedAt: now,
+        epoch: epoch,
+        payload: [
+          {
+            'kcmc': '微观经济学',
+            'kssj': '($dateText) 09:00-11:00',
+            'cdmc': '1教302',
+            'cdxqmc': '梁林校区',
+            'zwh': '12',
+            'ksmc': '期末考试',
+            'kkxy': '经济学院',
+            'cxbj': '',
+            'xnmc': '2026-2027',
+            'xqmmc': '1',
+          },
+        ],
+      ),
+    );
     await ExamService.instance.restoreCache();
     await SemesterCalendar.instance.setSemesterStartDate(now);
     ScheduleService.instance.debugSetSnapshot(
@@ -349,9 +398,9 @@ void main() {
           body: Center(
             child: HomeEventBanner(
               alert: const HomeAlertPresentation(
-                kind: HomeAlertKind.lowBalance,
-                message: '校园卡余额 ¥5，余额偏低，建议尽快充值',
-                routeName: 'campus-card',
+                kind: HomeAlertKind.lowElectricity,
+                message: '宿舍剩余 5 度，电量偏低，建议及时充值',
+                routeName: 'dorm-electricity',
               ),
               onTap: () => tapped++,
             ),
@@ -360,8 +409,8 @@ void main() {
       ),
     );
 
-    expect(find.text('校园卡余额 ¥5，余额偏低，建议尽快充值'), findsOneWidget);
-    await tester.tap(find.text('校园卡余额 ¥5，余额偏低，建议尽快充值'));
+    expect(find.text('宿舍剩余 5 度，电量偏低，建议及时充值'), findsOneWidget);
+    await tester.tap(find.text('宿舍剩余 5 度，电量偏低，建议及时充值'));
     await tester.pump();
     expect(tapped, 1);
   });
@@ -668,6 +717,118 @@ void main() {
       expect(find.byType(HomeBackgroundLayer), findsNothing);
     },
   );
+
+  testWidgets('campus data bus re-adopts memory cache without a new fetch', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    AppBootstrapController.instance.debugSetPhase(
+      AppBootstrapPhase.localStateReady,
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('42 度'), findsNothing);
+
+    final bus = CampusDataChangeBus.instance;
+    final revisionBefore = bus.revision.value;
+
+    // 数据写入点只更新内存缓存并 ping 总线；首页应从缓存采纳，不发网络。
+    DormElectricityService.instance.debugSetCachedElectricity(
+      42,
+      updatedAt: DateTime.now(),
+    );
+    bus.notifyChanged();
+    await tester.pump();
+
+    expect(bus.revision.value, revisionBefore + 1);
+    expect(find.text('42 度'), findsOneWidget);
+    // 若走了网络会在 fake-async 区挂起并弹出错误，这里断言没有额外请求副作用。
+    expect(find.byType(SnackBar), findsNothing);
+
+    // 广播回调不再回写总线：没有 notify → fetch → notify 循环。
+    await tester.pump();
+    await tester.pump();
+    expect(bus.revision.value, revisionBefore + 1);
+  });
+
+  testWidgets('campus data bus projects cache and drops it when cache clears', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    AppBootstrapController.instance.debugSetPhase(
+      AppBootstrapPhase.localStateReady,
+    );
+    await tester.pump();
+    await tester.pump();
+
+    DormElectricityService.instance.debugSetCachedElectricity(
+      42,
+      updatedAt: DateTime.now(),
+    );
+    CampusDataChangeBus.instance.notifyChanged();
+    await tester.pump();
+    expect(find.text('42 度'), findsOneWidget);
+
+    // 清空内存缓存后再广播：投影立刻回到占位符，证明只读缓存而非重新拉取。
+    DormElectricityService.instance.debugSetCachedElectricity(null);
+    CampusDataChangeBus.instance.notifyChanged();
+    await tester.pump();
+
+    expect(find.text('42 度'), findsNothing);
+    expect(find.text('--'), findsNWidgets(2));
+    expect(find.byType(SnackBar), findsNothing);
+  });
+
+  testWidgets(
+    'campus data bus update before hydrate is ignored until hydrate',
+    (tester) async {
+      DormElectricityService.instance.debugSetCachedElectricity(
+        42,
+        updatedAt: DateTime.now(),
+      );
+
+      await tester.pumpWidget(const MaterialApp(home: HomePage()));
+      // 尚未 hydrate：广播被跳过，不提前采纳半截缓存。
+      CampusDataChangeBus.instance.notifyChanged();
+      await tester.pump();
+      expect(find.text('42 度'), findsNothing);
+      expect(find.text('--'), findsNWidgets(2));
+
+      AppBootstrapController.instance.debugSetPhase(
+        AppBootstrapPhase.localStateReady,
+      );
+      await tester.pump();
+      await tester.pump();
+
+      // hydrate 完成后同一广播即可被采纳（内存缓存仍在）。
+      CampusDataChangeBus.instance.notifyChanged();
+      await tester.pump();
+      expect(find.text('42 度'), findsOneWidget);
+    },
+  );
+
+  testWidgets('campus data bus listener is detached on dispose', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    AppBootstrapController.instance.debugSetPhase(
+      AppBootstrapPhase.localStateReady,
+    );
+    await tester.pump();
+    await tester.pump();
+
+    await tester.pumpWidget(const MaterialApp(home: SizedBox.shrink()));
+
+    DormElectricityService.instance.debugSetCachedElectricity(
+      42,
+      updatedAt: DateTime.now(),
+    );
+    CampusDataChangeBus.instance.notifyChanged();
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+  });
 }
 
 /// 1×1 透明 PNG，给 Image.file 一条真实可读路径。

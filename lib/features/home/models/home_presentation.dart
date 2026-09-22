@@ -57,7 +57,14 @@ class HomeHeroPresentation {
 }
 
 /// 事件横幅类型。仅在真正需要用户处理时出现，平时整块消失。
-enum HomeAlertKind { examSoon, lowElectricity, lowBalance }
+enum HomeAlertKind {
+  examSoon,
+  lowElectricity,
+
+  /// 已停用：校园卡低余额不再触发首页强调，resolver 不会产生该类型；
+  /// 保留枚举值仅为兼容既有构造与测试。
+  lowBalance,
+}
 
 /// 单条事件提醒：图标 + 文案 + 可选跳转。
 class HomeAlertPresentation {
@@ -94,7 +101,8 @@ class HomeStatusPresentation {
   final bool hasCampusCardData;
   final bool hasElectricityData;
 
-  /// 余额 ≤ ¥20 时触发（数据缺失时不判定）。
+  /// 保留兼容字段，恒为 false：校园卡低余额不再触发首页强调
+  /// （资产行红字与事件横幅均已停用）。
   final bool lowBalance;
 
   /// 电量 ≤ 10 度时触发（数据缺失时不判定）。

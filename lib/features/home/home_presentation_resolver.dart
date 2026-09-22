@@ -4,8 +4,10 @@ import '../schedule/schedule_service.dart';
 import 'models/home_presentation.dart';
 import 'models/home_snapshot.dart';
 
-/// 事件提醒阈值：余额 ≤ ¥20 / 电量 ≤ 10 度视为需要提醒。
-const _lowBalanceThreshold = 20.0;
+/// 事件提醒阈值：电量 ≤ 10 度视为需要提醒。
+///
+/// 校园卡低余额不再参与首页强调（横幅与资产行红字均已停用），
+/// 阈值常量一并删除。
 const _lowElectricityThreshold = 10.0;
 
 /// 次日预览（开学首日/明天）最多展示的课程条数。
@@ -439,8 +441,10 @@ HomeHeroPresentation _resolveHero({
   );
 }
 
-/// 事件提醒（最多一条，优先级：考试 > 低电量 > 低余额）。
-/// 考试已是 Hero 时不重复提醒；余额/电费为 '--' 时不判定。
+/// 事件提醒（最多一条，优先级：考试 > 低电量）。
+/// 考试已是 Hero 时不重复提醒；电费为 '--' 时不判定。
+/// 校园卡低余额不再产生提醒（[HomeStatusPresentation.lowBalance] 恒为
+/// false，低余额不触发任何首页强调）。
 HomeAlertPresentation? _resolveAlert({
   required HomeSnapshot snapshot,
   required DateTime today,
@@ -470,15 +474,6 @@ HomeAlertPresentation? _resolveAlert({
     );
   }
 
-  final balanceValue = double.tryParse(snapshot.campusCardBalance);
-  if (balanceValue != null && balanceValue <= _lowBalanceThreshold) {
-    return HomeAlertPresentation(
-      kind: HomeAlertKind.lowBalance,
-      message: '校园卡余额 ¥${snapshot.campusCardBalance}，余额偏低，建议尽快充值',
-      routeName: 'campus-card',
-    );
-  }
-
   return null;
 }
 
@@ -490,7 +485,8 @@ HomeStatusPresentation _resolveStatus(HomeSnapshot snapshot) {
     dormElectricity: snapshot.dormElectricity,
     hasCampusCardData: balanceValue != null,
     hasElectricityData: electricityValue != null,
-    lowBalance: balanceValue != null && balanceValue <= _lowBalanceThreshold,
+    // 字段保留兼容构造，但首页不再对低余额做强调（红字 / 横幅均不触发）。
+    lowBalance: false,
     lowElectricity:
         electricityValue != null &&
         electricityValue <= _lowElectricityThreshold,

@@ -7,8 +7,8 @@ import '../models/home_presentation.dart';
 ///
 /// 直接坐在页面背景上，无卡片底、无边框、无按钮——付款码 / 充值动作
 /// 收敛到功能区瓦片与对应页面。层级靠 typography 建立且刻意低于 Hero：
-/// 数值 18sp w600 只做「顺手扫一眼」的次级信息。低余额 / 低电量时以
-/// error 圆点 + error 数值双通道达意。
+/// 数值 18sp w600 只做「顺手扫一眼」的次级信息。只有低电量以 error
+/// 圆点 + error 数值双通道达意；校园卡余额（含低余额）一律用常规色。
 class HomeAssetStrip extends StatelessWidget {
   const HomeAssetStrip({
     super.key,
@@ -43,7 +43,8 @@ class HomeAssetStrip extends StatelessWidget {
             value: status.hasCampusCardData
                 ? '¥${status.campusCardBalance}'
                 : '--',
-            isLow: status.lowBalance,
+            // 低余额不再强调：校园卡恒定 false，数值用常规色。
+            isLow: false,
             hasData: status.hasCampusCardData,
             semanticsLabel: status.hasCampusCardData
                 ? '校园卡余额 ¥${status.campusCardBalance}'
@@ -88,7 +89,7 @@ class HomeAssetStrip extends StatelessWidget {
   }) {
     final cs = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    // 数值异常（低余额 / 低电量）用 error 色；未获取（'--'）降为次级灰。
+    // 数值异常只有低电量用 error 色；未获取（'--'）降为次级灰。
     final valueColor = !hasData
         ? secondaryTextColor
         : isLow

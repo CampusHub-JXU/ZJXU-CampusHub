@@ -9,6 +9,7 @@ import '../../core/auth/zhengfang_auth.dart';
 import '../../core/notice/notice_model.dart';
 import '../../core/notice/notice_sync_store.dart';
 import '../../core/semester/semester_calendar.dart';
+import '../../core/system_surface/campus_data_change_bus.dart';
 import '../../core/theme/app_design_tokens.dart';
 import '../../core/theme/app_theme_controller.dart';
 import '../../core/theme/personalization_controller.dart';
@@ -99,6 +100,7 @@ class _HomePageState extends State<HomePage> {
     );
     NoticeSyncStore.instance.inboxHead.addListener(_onNoticeHeadChanged);
     _noticeHead = NoticeSyncStore.instance.inboxHead.value;
+    CampusDataChangeBus.instance.revision.addListener(_onCampusDataChanged);
     _scrollController.addListener(_onScrollChanged);
     HomeZoneController.instance
       ..scrollToTop = _scrollToTop
@@ -117,6 +119,7 @@ class _HomePageState extends State<HomePage> {
       _onAvailableReleaseChanged,
     );
     NoticeSyncStore.instance.inboxHead.removeListener(_onNoticeHeadChanged);
+    CampusDataChangeBus.instance.revision.removeListener(_onCampusDataChanged);
     _scrollController.removeListener(_onScrollChanged);
     HomeZoneController.instance
       ..scrollToTop = null
@@ -190,14 +193,30 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _applyRestoredState() {
-    final data = _snapshotCoordinator.restore(DateTime.now());
+    _adoptRestoreData(_snapshotCoordinator.restore(DateTime.now()));
+    CampusWidgetSync.instance.requestSync();
+  }
+
+  /// 把协调器的内存缓存投影采纳进首页状态（不发网络）。
+  void _adoptRestoreData(HomeRestoreData data) {
     _scheduleSnapshot = data.scheduleSnapshot;
     _hasScheduleCache = data.hasScheduleCache;
     _courseLoggedIn = data.courseLoggedIn;
     _campusCardBalance = data.campusCardBalance;
     _dormElectricity = data.dormElectricity;
     _nextExam = data.nextExam;
-    CampusWidgetSync.instance.requestSync();
+  }
+
+  /// 任一校园数据缓存变化（课表/成绩/考试/校园卡/电费写入点 ping 总线）。
+  ///
+  /// 只从内存缓存重新采纳投影并重建，**不**再发 fetch/网络：否则
+  /// notify → fetch → notify 会成环。bootstrap 本地状态恢复前直接跳过，
+  /// 交给既有 hydrate 时序，避免用半截缓存覆盖。
+  void _onCampusDataChanged() {
+    if (!mounted || !_hasHydratedBootstrapState) return;
+    setState(() {
+      _adoptRestoreData(_snapshotCoordinator.restore(DateTime.now()));
+    });
   }
 
   Future<void> _refreshDeferredContent() async {

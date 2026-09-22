@@ -306,15 +306,13 @@ void main() {
       expect(safe.status.lowElectricity, isFalse);
     });
 
-    test('低余额（≤¥20）触发提醒', () {
+    test('低余额（≤¥20）不再触发提醒，状态字段恒为 false', () {
       final snapshot = buildSnapshot(campusCardBalance: '18.5');
 
       final presentation = resolveHomePresentation(snapshot);
 
-      expect(presentation.alert!.kind, HomeAlertKind.lowBalance);
-      expect(presentation.alert!.message, contains('余额偏低'));
-      expect(presentation.alert!.routeName, 'campus-card');
-      expect(presentation.status.lowBalance, isTrue);
+      expect(presentation.alert, isNull);
+      expect(presentation.status.lowBalance, isFalse);
     });
 
     test('数据缺失（--）不触发提醒且状态条无数据', () {
@@ -329,7 +327,7 @@ void main() {
       expect(presentation.status.lowElectricity, isFalse);
     });
 
-    test('事件提醒优先级：考试 > 低电量 > 低余额', () {
+    test('事件提醒优先级：考试 > 低电量', () {
       final today = DateTime(2026, 9, 15);
       final tomorrow = DateTime(2026, 9, 16);
       // 今天仍有课，考试进不了 Hero，才能以事件提醒出现。
@@ -343,15 +341,19 @@ void main() {
       );
       expect(withExam.alert!.kind, HomeAlertKind.examSoon);
 
-      final withLowAssets = resolveHomePresentation(
+      final withLowElectricity = resolveHomePresentation(
         buildSnapshot(dormElectricity: '3.2', campusCardBalance: '5'),
       );
-      expect(withLowAssets.alert!.kind, HomeAlertKind.lowElectricity);
+      expect(withLowElectricity.alert!.kind, HomeAlertKind.lowElectricity);
+    });
 
-      final withLowBalance = resolveHomePresentation(
+    test('低余额不触发提醒（即使电量正常、无考试）', () {
+      final presentation = resolveHomePresentation(
         buildSnapshot(campusCardBalance: '5'),
       );
-      expect(withLowBalance.alert!.kind, HomeAlertKind.lowBalance);
+
+      expect(presentation.alert, isNull);
+      expect(presentation.status.lowBalance, isFalse);
     });
   });
 
