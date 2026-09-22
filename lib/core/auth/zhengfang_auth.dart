@@ -13,12 +13,19 @@ import '../network/cookie_interceptor.dart';
 import '../network/dio_client.dart';
 import '../network/network_settings.dart';
 import '../network/proxy_mode.dart';
+import 'auth_failure.dart';
+import 'auth_operation_coordinator.dart';
+import 'auth_recovery_state_store.dart';
+import 'auth_session_persistence.dart';
+import 'captcha_challenge.dart';
 import 'credential_store.dart';
 import 'connect_mode_resolver.dart';
+import 'isolated_auth_session.dart';
 import 'unified_auth.dart';
 
 part 'zhengfang_auth_webvpn.dart';
 part 'zhengfang_auth_direct.dart';
+part 'zhengfang_auth_challenge.dart';
 
 bool isZhengfangGatewayLoginUrl(String currentUrl) {
   final raw = currentUrl.trim();
@@ -112,13 +119,25 @@ enum ZhengfangMode {
   webVpn,
 }
 
-sealed class LoginResult {}
+sealed class LoginResult {
+  const LoginResult();
+}
 
-class LoginSuccess extends LoginResult {}
+class LoginSuccess extends LoginResult {
+  const LoginSuccess({this.receipt});
+
+  /// 自动恢复路径下**真实**提交产出的 typed receipt；人工登录或已有可信
+  /// 会话短路成功均为 null（短路绝不在自动路径伪造提交）。
+  final SessionCommitResult? receipt;
+}
 
 class LoginFailure extends LoginResult {
   final String message;
-  LoginFailure(this.message);
+
+  /// 失败分类；默认 [AuthFailureKind.unknown]，不得被当作密码错误或自动重试。
+  final AuthFailureKind kind;
+
+  LoginFailure(this.message, {this.kind = AuthFailureKind.unknown});
 }
 
 /// Thrown when captcha loading fails due to network or server issues.
@@ -128,6 +147,33 @@ class CaptchaException implements Exception {
 
   @override
   String toString() => message;
+}
+
+/// 教务验证码事务私有快照：绑定**独立网络会话**（isolated jar/dio）+ 表单
+/// 上下文（csrftoken/模式），提交时只使用它，禁止重新 fetch。
+class _ZhengfangChallengeContext {
+  const _ZhengfangChallengeContext({
+    required this.mode,
+    required this.baseUrl,
+    required this.loginPageUrl,
+    required this.origin,
+    required this.csrfToken,
+    required this.timestampMs,
+    required this.session,
+    required this.expectedEpoch,
+  });
+
+  final ZhengfangMode mode;
+  final String baseUrl;
+  final String loginPageUrl;
+  final String origin;
+  final String csrfToken;
+  final int timestampMs;
+  final IsolatedAuthSession session;
+
+  /// prepare 时捕获的持久会话 epoch；提交必须使用它做条件提交，
+  /// **不得**在提交时重新读取当前 epoch。
+  final int expectedEpoch;
 }
 
 class ZhengfangAuth extends ChangeNotifier {
@@ -168,7 +214,6 @@ class ZhengfangAuth extends ChangeNotifier {
   static const _webVpnCasPath = '/login';
   static const webVpnGatewayLoginUrl = '$_webVpnBase$_webVpnCasPath';
 
-  String? _cachedCsrfToken;
   bool _contextIndicatesLoggedIn = false;
 
   ZhengfangMode _mode = ZhengfangMode.direct;
@@ -177,6 +222,36 @@ class ZhengfangAuth extends ChangeNotifier {
   bool _sessionActive = false;
   bool _webVpnSessionActive = false;
   String? currentStudentId;
+
+  /// 身份修订号：login/logout/切账号/恢复时递增，供调用方丢弃过期结果。
+  int _sessionRevision = 0;
+
+  /// 对外只读身份修订号，供其他模块判定账号/epoch 是否变化；
+  /// 不改变 [notifyListeners] 契约。
+  int get sessionRevision => _sessionRevision;
+
+  final CaptchaChallengeStore<_ZhengfangChallengeContext> _captchaChallenges =
+      CaptchaChallengeStore<_ZhengfangChallengeContext>();
+
+  void _touchSessionRevision() => _sessionRevision++;
+
+  /// 同状态不 bump、不 notify；空白身份不视为已登录。
+  void _applySessionIdentity({required bool active, String? studentId}) {
+    final trimmed = studentId?.trim();
+    final nextActive = active && trimmed != null && trimmed.isNotEmpty;
+    final nextStudentId = nextActive ? trimmed : null;
+    if (_sessionActive == nextActive && currentStudentId == nextStudentId) {
+      return;
+    }
+    _touchSessionRevision();
+    _sessionActive = nextActive;
+    currentStudentId = nextStudentId;
+    if (!nextActive) {
+      _contextIndicatesLoggedIn = false;
+    }
+    // 身份变化：已备好的验证码事务立即失效。
+    _captchaChallenges.invalidate();
+  }
 
   Dio get _dio => _mode == ZhengfangMode.webVpn
       ? DioClient.instance.unifiedAuthDio
@@ -191,10 +266,18 @@ class ZhengfangAuth extends ChangeNotifier {
   PersistCookieJar get _webVpnCookieJar =>
       DioClient.instance.unifiedAuthCookieJar;
 
+  Dio _dioFor(ZhengfangMode mode) => mode == ZhengfangMode.webVpn
+      ? DioClient.instance.unifiedAuthDio
+      : DioClient.instance.dio;
+
+  PersistCookieJar _cookieJarFor(ZhengfangMode mode) =>
+      mode == ZhengfangMode.webVpn ? _webVpnCookieJar : _cookieJar;
+
   void _notifyAuthListeners() => notifyListeners();
 
-  Dio _createProxyFallbackDio() {
-    final baseOptions = _dio.options;
+  Dio _createProxyFallbackDio([ZhengfangMode? mode]) {
+    final effectiveMode = mode ?? _mode;
+    final baseOptions = _dioFor(effectiveMode).options;
     final client = Dio(
       BaseOptions(
         baseUrl: baseOptions.baseUrl,
@@ -207,9 +290,7 @@ class ZhengfangAuth extends ChangeNotifier {
       ),
     );
     client.interceptors.add(
-      buildCookieInterceptor(
-        _mode == ZhengfangMode.webVpn ? _webVpnCookieJar : _cookieJar,
-      ),
+      buildCookieInterceptor(_cookieJarFor(effectiveMode)),
     );
     applyProxyModeToDio(client, ignoreSystemProxy: false);
     return client;
@@ -224,8 +305,12 @@ class ZhengfangAuth extends ChangeNotifier {
 
   Future<Response<T>> _sendWithProxyFallback<T>({
     required String label,
-    required Future<Response<T>> Function(Dio dio) request,
+    required Future<Response<T>> Function(Dio dio, CancelToken token) request,
+    CancelToken? cancelToken,
+    ZhengfangMode? mode,
   }) async {
+    final effectiveMode = mode ?? _mode;
+    final dio = _dioFor(effectiveMode);
     Uri? requestUri;
     // ponytail: overlapping sends on the same Dio can clobber requestUri.
     final capture = InterceptorsWrapper(
@@ -235,18 +320,24 @@ class ZhengfangAuth extends ChangeNotifier {
       },
     );
 
-    Future<Response<T>> send(Dio dio) async {
-      dio.interceptors.add(capture);
+    Future<Response<T>> send(Dio client) async {
+      if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+      final token = CancelToken();
+      unawaited(cancelToken?.whenCancel.then((error) => token.cancel(error)));
+      client.interceptors.add(capture);
       try {
-        return await request(dio);
+        return await request(client, token);
       } finally {
-        dio.interceptors.remove(capture);
+        client.interceptors.remove(capture);
+        // Future.timeout/cancel 必须同时取消底层请求，避免 socket 悬挂。
+        token.cancel('zhengfang request finished');
       }
     }
 
     try {
-      return await send(_dio);
+      return await send(dio);
     } catch (error) {
+      if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
       if (!_shouldRetryWithSystemProxyForAny(error)) rethrow;
       final target = requestUri ?? _uriFromError(error);
       if (target == null || await resolveHttpProxyForUri(target) == null) {
@@ -257,7 +348,7 @@ class ZhengfangAuth extends ChangeNotifier {
         LogLevel.warn,
         '$label 直连失败（$reason），尝试通过 HTTP_PROXY 环境代理重试',
       );
-      final fallbackDio = _createProxyFallbackDio();
+      final fallbackDio = _createProxyFallbackDio(effectiveMode);
       try {
         return await send(fallbackDio);
       } finally {
@@ -271,16 +362,20 @@ class ZhengfangAuth extends ChangeNotifier {
     return null;
   }
 
-  String get _baseUrl => _mode == ZhengfangMode.direct
+  String _baseUrlFor(ZhengfangMode mode) => mode == ZhengfangMode.direct
       ? _directBase
       : '$_webVpnBase$_webVpnJwglxtPrefix';
 
-  String get _loginPageUrl => _mode == ZhengfangMode.direct
+  String _loginPageUrlFor(ZhengfangMode mode) => mode == ZhengfangMode.direct
       ? '$_directOrigin$_directLoginPath'
       : '$_webVpnBase$_webVpnLoginPath';
 
-  String get _origin =>
-      _mode == ZhengfangMode.direct ? _directOrigin : _webVpnBase;
+  String _originFor(ZhengfangMode mode) =>
+      mode == ZhengfangMode.direct ? _directOrigin : _webVpnBase;
+
+  String get _baseUrl => _baseUrlFor(_mode);
+
+  String get _loginPageUrl => _loginPageUrlFor(_mode);
 
   String get academicServiceUrl => buildPortalUrl(
     '/xtgl/index_initMenu.html',

@@ -5,6 +5,56 @@ import 'dart:typed_data';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:pointycastle/export.dart';
 
+/// 会话持久化域。
+enum CredentialSessionDomain { unified, academic }
+
+/// 单条持久会话状态。**不含密码**；`epoch` 是持久身份纪元，用于条件提交。
+class CredentialSessionEnvelope {
+  const CredentialSessionEnvelope({
+    this.account,
+    this.active = false,
+    this.epoch = 0,
+  });
+
+  final String? account;
+  final bool active;
+  final int epoch;
+
+  CredentialSessionEnvelope copyWith({
+    String? account,
+    bool clearAccount = false,
+    bool? active,
+    int? epoch,
+  }) {
+    return CredentialSessionEnvelope(
+      account: clearAccount ? null : (account ?? this.account),
+      active: active ?? this.active,
+      epoch: epoch ?? this.epoch,
+    );
+  }
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'account': account,
+    'active': active,
+    'epoch': epoch,
+  };
+
+  static CredentialSessionEnvelope? tryParse(String raw) {
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return null;
+      final epoch = decoded['epoch'];
+      return CredentialSessionEnvelope(
+        account: decoded['account']?.toString(),
+        active: decoded['active'] == true,
+        epoch: epoch is int ? epoch : 0,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
 class CredentialStore {
   CredentialStore._();
   static final CredentialStore instance = CredentialStore._();
@@ -17,11 +67,16 @@ class CredentialStore {
   static const _keyCredentialEncryptionKey = 'zjxu_credential_encryption_key';
   static const _encryptedValuePrefix = 'enc:';
 
-  // Session metadata keys
-  static const _keyZfStudentId = 'zjxu_zf_student_id';
-  static const _keyZfSessionActive = 'zjxu_zf_session_active';
-  static const _keyUaAccount = 'zjxu_ua_account';
-  static const _keyUaSessionActive = 'zjxu_ua_session_active';
+  // Session metadata: 单条 envelope（单 key 一次写入），避免 account/active
+  // 两条 key 分开写时 logout 与 commit 交错写回旧身份。
+  static const _keyZfSession = 'zjxu_zf_session_v2';
+  static const _keyUaSession = 'zjxu_ua_session_v2';
+
+  // 旧版多 key 仅用于一次性迁移读取，迁移后删除。
+  static const _keyZfStudentIdLegacy = 'zjxu_zf_student_id';
+  static const _keyZfSessionActiveLegacy = 'zjxu_zf_session_active';
+  static const _keyUaAccountLegacy = 'zjxu_ua_account';
+  static const _keyUaSessionActiveLegacy = 'zjxu_ua_session_active';
 
   Future<void> saveCredentials(String username, String password) async {
     await _writePair(_keyUsername, username, _keyPassword, password);
@@ -55,40 +110,115 @@ class CredentialStore {
     await _clearPair(_keyUnifiedUsername, _keyUnifiedPassword);
   }
 
+  // ── Session envelope（v2 单 key） ─────────────────────────────────────────
+
+  /// 读取某域的 session envelope。损坏时 **fail closed** 为未激活（epoch 归零），
+  /// 不猜测、不复活；旧版多 key 会在缺失 v2 key 时迁移一次。
+  Future<CredentialSessionEnvelope> readSessionEnvelope(
+    CredentialSessionDomain domain,
+  ) async {
+    final key = _sessionKey(domain);
+    final raw = await _storage.read(key: key);
+    if (raw != null) {
+      return CredentialSessionEnvelope.tryParse(raw) ??
+          const CredentialSessionEnvelope();
+    }
+    return _migrateLegacySession(domain);
+  }
+
+  /// 单 key 原子写入整个 envelope。凭据/密码不在此处，加密格式不受影响。
+  Future<void> writeSessionEnvelope(
+    CredentialSessionDomain domain,
+    CredentialSessionEnvelope envelope,
+  ) async {
+    await _storage.write(
+      key: _sessionKey(domain),
+      value: jsonEncode(envelope.toJson()),
+    );
+  }
+
+  String _sessionKey(CredentialSessionDomain domain) =>
+      domain == CredentialSessionDomain.unified ? _keyUaSession : _keyZfSession;
+
+  Future<CredentialSessionEnvelope> _migrateLegacySession(
+    CredentialSessionDomain domain,
+  ) async {
+    final isUnified = domain == CredentialSessionDomain.unified;
+    final accountKey = isUnified ? _keyUaAccountLegacy : _keyZfStudentIdLegacy;
+    final activeKey = isUnified
+        ? _keyUaSessionActiveLegacy
+        : _keyZfSessionActiveLegacy;
+
+    final account = await _storage.read(key: accountKey);
+    final active = await _storage.read(key: activeKey);
+    final hasLegacy = account != null || active != null;
+    final envelope =
+        (active == '1' && account != null && account.trim().isNotEmpty)
+        ? CredentialSessionEnvelope(account: account, active: true)
+        : const CredentialSessionEnvelope();
+    if (hasLegacy) {
+      await writeSessionEnvelope(domain, envelope);
+      await _storage.delete(key: accountKey);
+      await _storage.delete(key: activeKey);
+    }
+    return envelope;
+  }
+
   // ── Zhengfang session persistence ──────────────────────────────────────────
 
+  /// 兼容入口：无条件提交并推进 envelope epoch（单 key 写入）。
   Future<void> saveZhengfangSession(String studentId) async {
-    await _storage.write(key: _keyZfStudentId, value: studentId);
-    await _storage.write(key: _keyZfSessionActive, value: '1');
+    final current = await readSessionEnvelope(CredentialSessionDomain.academic);
+    await writeSessionEnvelope(
+      CredentialSessionDomain.academic,
+      CredentialSessionEnvelope(
+        account: studentId,
+        active: true,
+        epoch: current.epoch + 1,
+      ),
+    );
   }
 
   Future<String?> loadZhengfangSession() async {
-    final active = await _storage.read(key: _keyZfSessionActive);
-    if (active != '1') return null;
-    return _storage.read(key: _keyZfStudentId);
+    final envelope = await readSessionEnvelope(
+      CredentialSessionDomain.academic,
+    );
+    return envelope.active ? envelope.account : null;
   }
 
   Future<void> clearZhengfangSession() async {
-    await _storage.delete(key: _keyZfStudentId);
-    await _storage.delete(key: _keyZfSessionActive);
+    final current = await readSessionEnvelope(CredentialSessionDomain.academic);
+    await writeSessionEnvelope(
+      CredentialSessionDomain.academic,
+      CredentialSessionEnvelope(epoch: current.epoch + 1),
+    );
   }
 
   // ── Unified Auth session persistence ───────────────────────────────────────
 
   Future<void> saveUnifiedAuthSession(String account) async {
-    await _storage.write(key: _keyUaAccount, value: account);
-    await _storage.write(key: _keyUaSessionActive, value: '1');
+    final current = await readSessionEnvelope(CredentialSessionDomain.unified);
+    await writeSessionEnvelope(
+      CredentialSessionDomain.unified,
+      CredentialSessionEnvelope(
+        account: account,
+        active: true,
+        epoch: current.epoch + 1,
+      ),
+    );
   }
 
   Future<String?> loadUnifiedAuthSession() async {
-    final active = await _storage.read(key: _keyUaSessionActive);
-    if (active != '1') return null;
-    return _storage.read(key: _keyUaAccount);
+    final envelope = await readSessionEnvelope(CredentialSessionDomain.unified);
+    return envelope.active ? envelope.account : null;
   }
 
   Future<void> clearUnifiedAuthSession() async {
-    await _storage.delete(key: _keyUaAccount);
-    await _storage.delete(key: _keyUaSessionActive);
+    final current = await readSessionEnvelope(CredentialSessionDomain.unified);
+    await writeSessionEnvelope(
+      CredentialSessionDomain.unified,
+      CredentialSessionEnvelope(epoch: current.epoch + 1),
+    );
   }
 
   Future<void> _writePair(

@@ -161,9 +161,10 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
     try {
       final response = await _sendWithProxyFallback<String>(
         label: '教务会话校验',
-        request: (dio) => dio.get<String>(
+        request: (dio, token) => dio.get<String>(
           indexUrl,
           queryParameters: {'jsdm': 'xs'},
+          cancelToken: token,
           options: Options(
             responseType: ResponseType.plain,
             followRedirects: false,
@@ -187,7 +188,7 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
 
       if (redirectedToLogin || loginPageReturned) {
         AppLogger.instance.auth(LogLevel.warn, '教务会话已失效，自动标记为未登录');
-        markLoggedOut();
+        await markLoggedOut();
         return false;
       }
 
@@ -216,8 +217,9 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
     try {
       final response = await _sendWithProxyFallback<String>(
         label: 'WebVPN 目标会话校验',
-        request: (dio) => dio.get<String>(
+        request: (dio, token) => dio.get<String>(
           probeUrl,
+          cancelToken: token,
           options: Options(
             responseType: ResponseType.plain,
             followRedirects: false,
@@ -340,8 +342,9 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
     try {
       final response = await _sendWithProxyFallback<String>(
         label: 'WebVPN 网关会话校验',
-        request: (dio) => dio.get<String>(
+        request: (dio, token) => dio.get<String>(
           ZhengfangAuth.webVpnGatewayLoginUrl,
+          cancelToken: token,
           options: Options(
             responseType: ResponseType.plain,
             followRedirects: true,
@@ -406,8 +409,9 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
 
     final retryResp = await _sendWithProxyFallback<String>(
       label: 'WebVPN 目标会话二次校验',
-      request: (dio) => dio.get<String>(
+      request: (dio, token) => dio.get<String>(
         probeUrl,
+        cancelToken: token,
         options: Options(
           responseType: ResponseType.plain,
           followRedirects: true,

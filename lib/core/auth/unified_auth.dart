@@ -13,7 +13,15 @@ import '../network/cookie_interceptor.dart';
 import '../network/dio_client.dart';
 import '../network/network_settings.dart';
 import '../network/proxy_mode.dart';
+import 'auth_failure.dart';
+import 'auth_operation_coordinator.dart';
+import 'auth_recovery_state_store.dart';
+import 'auth_session_persistence.dart';
+import 'captcha_challenge.dart';
 import 'credential_store.dart';
+import 'isolated_auth_session.dart';
+
+part 'unified_auth_challenge.dart';
 
 bool isUnifiedAuthLoginEntryUrl(String currentUrl) {
   final raw = currentUrl.trim();
@@ -83,14 +91,25 @@ bool looksLikeUnifiedAuthLoginHtml(String html) {
       normalizedHtml.contains('统一身份认证');
 }
 
-sealed class UnifiedAuthLoginResult {}
+sealed class UnifiedAuthLoginResult {
+  const UnifiedAuthLoginResult();
+}
 
-class UnifiedAuthLoginSuccess extends UnifiedAuthLoginResult {}
+class UnifiedAuthLoginSuccess extends UnifiedAuthLoginResult {
+  const UnifiedAuthLoginSuccess({this.receipt});
+
+  /// 自动恢复路径下**真实**提交产出的 typed receipt；人工登录或已有可信
+  /// cookie 短路成功均为 null（短路绝不在自动路径伪造提交）。
+  final SessionCommitResult? receipt;
+}
 
 class UnifiedAuthLoginFailure extends UnifiedAuthLoginResult {
-  UnifiedAuthLoginFailure(this.message);
+  UnifiedAuthLoginFailure(this.message, {this.kind = AuthFailureKind.unknown});
 
   final String message;
+
+  /// 失败分类；默认 [AuthFailureKind.unknown]，不得被当作密码错误或自动重试。
+  final AuthFailureKind kind;
 }
 
 class UnifiedAuthCaptchaException implements Exception {
@@ -125,6 +144,29 @@ class _UnifiedAuthLoginContext {
   final Uri actionUri;
 }
 
+/// 验证码事务私有快照：绑定**独立网络会话**（isolated jar/dio）与表单字段，
+/// 提交时只使用这一份，禁止重新初始化。
+class _UnifiedAuthChallengeContext {
+  const _UnifiedAuthChallengeContext({
+    required this.serviceUrl,
+    required this.lt,
+    required this.execution,
+    required this.actionUri,
+    required this.session,
+    required this.expectedEpoch,
+  });
+
+  final String serviceUrl;
+  final String lt;
+  final String execution;
+  final Uri actionUri;
+  final IsolatedAuthSession session;
+
+  /// prepare 时捕获的持久会话 epoch；提交必须使用它做条件提交，
+  /// **不得**在提交时重新读取当前 epoch（否则跨 isolate 撤销会被绕过）。
+  final int expectedEpoch;
+}
+
 class UnifiedAuthService extends ChangeNotifier {
   UnifiedAuthService._();
   static final UnifiedAuthService instance = UnifiedAuthService._();
@@ -143,14 +185,24 @@ class UnifiedAuthService extends ChangeNotifier {
   Dio get _dio => DioClient.instance.unifiedAuthDio;
   PersistCookieJar get _cookieJar => DioClient.instance.unifiedAuthCookieJar;
 
-  _UnifiedAuthLoginContext? _cachedContext;
   bool _sessionActive = false;
   String? currentAccount;
 
   /// 身份修订号：login/logout 时递增，供 restore/validate 丢弃过期结果。
   int _sessionRevision = 0;
 
+  /// 对外只读身份修订号，供其他模块（如私人缓存、自动恢复）判定账号/epoch
+  /// 是否变化；只增不减，不改变 [notifyListeners] 契约。
+  int get sessionRevision => _sessionRevision;
+
+  final CaptchaChallengeStore<_UnifiedAuthChallengeContext> _captchaChallenges =
+      CaptchaChallengeStore<_UnifiedAuthChallengeContext>();
+
   void _touchSessionRevision() => _sessionRevision++;
+
+  /// 供 part 扩展在登录提交成功后触发通知（extension 不能直接调用
+  /// protected 的 [notifyListeners]）。
+  void _notifyLoginSuccess() => notifyListeners();
 
   /// 同状态不 bump；空白账号不得写成已登录。
   void _applySessionIdentity({required bool active, String? account}) {
@@ -161,7 +213,8 @@ class UnifiedAuthService extends ChangeNotifier {
     _touchSessionRevision();
     _sessionActive = nextActive;
     currentAccount = nextAccount;
-    if (!nextActive) _cachedContext = null;
+    // 身份变化：已备好的验证码事务立即失效（单次提交 + 旧 revision 丢弃）。
+    _captchaChallenges.invalidate();
   }
 
   Future<void>? _cookieSyncFuture;
@@ -292,10 +345,22 @@ class UnifiedAuthService extends ChangeNotifier {
       if (!isLoggedIn) return null;
 
       final wasSessionActive = _sessionActive;
-      _applySessionIdentity(active: true, account: currentAccount);
-      if (currentAccount != null) {
-        await CredentialStore.instance.saveUnifiedAuthSession(currentAccount!);
+      final account = currentAccount;
+      if (account != null) {
+        // 条件提交：持久 epoch 已变（logout/换号）则拒绝写回旧身份。
+        final expectedEpoch = await AuthSessionPersistence.instance.readEpoch(
+          CredentialSessionDomain.unified,
+        );
+        if (revisionAtStart != _sessionRevision) return null;
+        final committed = await AuthSessionPersistence.instance.commit(
+          CredentialSessionDomain.unified,
+          account: account,
+          expectedEpoch: expectedEpoch,
+        );
+        if (revisionAtStart != _sessionRevision) return null;
+        if (committed == null) return null;
       }
+      _applySessionIdentity(active: true, account: account);
       if (revisionAtStart != _sessionRevision) return null;
       if (_sessionValidationSyncWebViewCookies['$serviceUrl#$revisionAtStart'] ==
           true) {
@@ -419,48 +484,16 @@ class UnifiedAuthService extends ChangeNotifier {
     String serviceUrl = defaultServiceUrl,
     CancelToken? cancelToken,
   }) async {
-    await DioClient.instance.ensureInitialized();
-    if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+    // 兼容包装：走 challenge 事务准备，手动 UI 只消费图片字节。
     try {
-      await _ensureLoginContext(serviceUrl, cancelToken: cancelToken);
+      final challenge = await prepareCaptchaChallenge(
+        serviceUrl: serviceUrl,
+        cancelToken: cancelToken,
+      );
+      return challenge.bytes;
     } on UnifiedAuthIncompleteSessionException catch (error) {
       throw UnifiedAuthCaptchaException(error.message);
     }
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final referer = _buildLoginUri(serviceUrl).toString();
-    final captchaUri = Uri.parse('$_newcaOrigin/cas/captcha.html?t=$timestamp');
-    final resp = await _sendWithProxyFallback<List<int>>(
-      label: '统一认证验证码',
-      cancelToken: cancelToken,
-      request: (dio, token) => dio.getUri<List<int>>(
-        captchaUri,
-        cancelToken: token,
-        options: Options(
-          responseType: ResponseType.bytes,
-          headers: {'Referer': referer},
-        ),
-      ),
-    );
-
-    final contentType = resp.headers.value('content-type') ?? '';
-    if (contentType.contains('text/html')) {
-      AppLogger.instance.auth(LogLevel.warn, '统一认证验证码返回 HTML，可能服务不可用');
-      throw UnifiedAuthCaptchaException('统一认证验证码加载失败，请稍后重试');
-    }
-
-    final bytes = resp.data;
-    if (bytes == null || bytes.isEmpty) {
-      throw UnifiedAuthCaptchaException('统一认证验证码为空，请刷新后重试');
-    }
-
-    final data = Uint8List.fromList(bytes);
-    if (!_isValidImage(data)) {
-      AppLogger.instance.auth(LogLevel.warn, '统一认证验证码数据非有效图片');
-      throw UnifiedAuthCaptchaException('统一认证验证码无效，请刷新后重试');
-    }
-
-    AppLogger.instance.auth(LogLevel.info, '统一认证验证码获取成功, ${data.length} 字节');
-    return data;
   }
 
   Future<UnifiedAuthLoginResult> login(
@@ -468,80 +501,44 @@ class UnifiedAuthService extends ChangeNotifier {
     String password,
     String captcha, {
     String serviceUrl = defaultServiceUrl,
+    String? challengeId,
+    CancelToken? cancelToken,
   }) async {
-    try {
-      await DioClient.instance.ensureInitialized();
-      final context = await _ensureLoginContext(serviceUrl);
-      if (context.lt.isEmpty || context.execution.isEmpty) {
-        // 空上下文只允许已知身份同账号短路，不得把输入学号绑到旧 session。
-        if (isLoggedIn && currentAccount == username) {
-          AppLogger.instance.auth(LogLevel.info, '统一认证已有有效 session，跳过登录');
-          return UnifiedAuthLoginSuccess();
-        }
-        AppLogger.instance.auth(LogLevel.warn, '统一认证初始化上下文缺失');
-        return UnifiedAuthLoginFailure('统一认证初始化失败，请刷新验证码后重试');
-      }
-
-      final encryptedPassword = AuthCrypto.instance.encryptPassword(password);
-      final referer = _buildLoginUri(serviceUrl).toString();
-      final response = await _sendWithProxyFallback<String>(
-        label: '统一认证登录',
-        request: (dio, token) => dio.postUri<String>(
-          context.actionUri,
-          cancelToken: token,
-          data: {
-            'username': username,
-            'password': encryptedPassword,
-            'veriyCode': captcha,
-            'lt': context.lt,
-            'execution': context.execution,
-            '_eventId': 'submit',
-          },
-          options: Options(
-            contentType: 'application/x-www-form-urlencoded',
-            responseType: ResponseType.plain,
-            followRedirects: false,
-            validateStatus: (status) => status != null && status < 1000,
-            headers: {'Referer': referer, 'Origin': _newcaOrigin},
-          ),
-        ),
+    if (challengeId != null) {
+      return submitCaptchaChallenge(
+        challengeId: challengeId,
+        username: username,
+        password: password,
+        captcha: captcha,
+        cancelToken: cancelToken,
       );
-
-      final location = response.headers.value('location') ?? '';
-      final html = response.data ?? '';
-      if (isLoginSuccess(response.statusCode, location, html)) {
-        await _followRedirectChain(context.actionUri, location);
-        unawaited(_syncCookiesToWebViewSafely());
-        _applySessionIdentity(active: true, account: username);
-        _cachedContext = null;
-        await CredentialStore.instance.saveUnifiedAuthSession(username);
-        AppLogger.instance.auth(LogLevel.info, '统一认证登录成功，已同步 WebView Cookie');
-        notifyListeners();
-        return UnifiedAuthLoginSuccess();
-      }
-
-      _cachedContext = null;
-      final msg = extractLoginFailureMessage(html);
-      AppLogger.instance.auth(LogLevel.warn, '统一认证登录失败: $msg');
-      return UnifiedAuthLoginFailure(msg);
-    } on UnifiedAuthIncompleteSessionException catch (error) {
-      _cachedContext = null;
-      AppLogger.instance.auth(LogLevel.warn, error.message);
-      return UnifiedAuthLoginFailure(error.message);
-    } on DioException catch (error) {
-      _cachedContext = null;
-      AppLogger.instance.auth(
-        LogLevel.error,
-        '统一认证登录网络异常: ${error.type} ${error.message}',
-      );
-      return UnifiedAuthLoginFailure('统一认证网络异常：${error.message}');
-    } catch (error) {
-      _cachedContext = null;
-      return UnifiedAuthLoginFailure('统一认证登录失败：$error');
     }
+    // 兼容路径：只引用「当前」challenge（由 fetchCaptcha/prepare 发出），
+    // 绝不重新初始化上下文。没有当前 challenge 即视为过期。
+    if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+    final revisionAtStart = _sessionRevision;
+    final attempt = _captchaChallenges.consumeCurrent(
+      accountRevision: revisionAtStart,
+    );
+    if (attempt == null) {
+      return UnifiedAuthLoginFailure(
+        '验证码已失效，请刷新后重试',
+        kind: AuthFailureKind.staleOperation,
+      );
+    }
+    return _submitUnifiedLogin(
+      context: attempt.context,
+      username: username,
+      password: password,
+      captcha: captcha,
+      revisionAtStart: revisionAtStart,
+      attemptGeneration: attempt.generation,
+      cancelToken: cancelToken,
+    );
   }
 
   Future<void> syncCookiesToWebView() async {
+    debugWebViewCookieSyncCalls++;
     final existing = _cookieSyncFuture;
     if (existing != null) {
       await existing;
@@ -605,10 +602,15 @@ class UnifiedAuthService extends ChangeNotifier {
     _touchSessionRevision();
     _sessionActive = false;
     currentAccount = null;
-    _cachedContext = null;
+
+    _captchaChallenges.invalidate();
     notifyListeners();
     try {
-      await CredentialStore.instance.clearUnifiedAuthSession();
+      // 持久撤销：写 inactive 并推进 epoch，使任何携带旧 epoch 的迟到登录
+      // 提交（AuthSessionPersistence.commit）被拒绝，不会复活旧身份。
+      await AuthSessionPersistence.instance.revoke(
+        CredentialSessionDomain.unified,
+      );
     } catch (error, stackTrace) {
       AppLogger.instance.auth(
         LogLevel.warn,
@@ -689,22 +691,13 @@ class UnifiedAuthService extends ChangeNotifier {
     );
   }
 
-  Future<_UnifiedAuthLoginContext> _ensureLoginContext(
-    String serviceUrl, {
-    CancelToken? cancelToken,
-  }) async {
-    final context = _cachedContext;
-    if (context != null && context.serviceUrl == serviceUrl) {
-      final hasForm = context.lt.isNotEmpty && context.execution.isNotEmpty;
-      if (isLoggedIn || hasForm) return context;
-    }
-    return _refreshLoginContext(serviceUrl, cancelToken: cancelToken);
-  }
-
   Future<_UnifiedAuthLoginContext> _refreshLoginContext(
     String serviceUrl, {
     CancelToken? cancelToken,
   }) async {
+    // 重新获取登录页会刷新 lt/execution；任何已备好的验证码事务立即失效，
+    // 防止「图片与表单上下文不匹配」的提交（提交前禁止偷偷 refetch）。
+    _captchaChallenges.invalidate();
     if (isLoggedIn) {
       return _UnifiedAuthLoginContext(
         serviceUrl: serviceUrl,
@@ -792,7 +785,7 @@ class UnifiedAuthService extends ChangeNotifier {
         execution: execution,
         actionUri: _resolveUri(loginUri, action),
       );
-      _cachedContext = context;
+
       return context;
     }
 
@@ -806,7 +799,7 @@ class UnifiedAuthService extends ChangeNotifier {
       execution: execution,
       actionUri: _resolveUri(loginUri, action),
     );
-    _cachedContext = context;
+
     return context;
   }
 
@@ -952,25 +945,18 @@ class UnifiedAuthService extends ChangeNotifier {
   @visibleForTesting
   Future<String?> Function()? debugSessionMetadataLoader;
 
+  /// 测试用：真实发起 WebView cookie 同步的次数。自动恢复路径必须保持 0
+  /// （`syncWebViewCookies: false`），人工登录默认仍会同步。
+  @visibleForTesting
+  int debugWebViewCookieSyncCalls = 0;
+
   @visibleForTesting
   void debugSetSession({required bool active, String? account}) {
     _applySessionIdentity(active: active, account: account);
   }
 
   @visibleForTesting
-  void debugSeedEstablishedLoginContext({String? serviceUrl}) {
-    final url = serviceUrl ?? defaultServiceUrl;
-    _cachedContext = _UnifiedAuthLoginContext(
-      serviceUrl: url,
-      lt: '',
-      execution: '',
-      actionUri: _buildLoginUri(url),
-    );
-  }
-
-  @visibleForTesting
   void debugReset() {
-    _cachedContext = null;
     _sessionActive = false;
     currentAccount = null;
     _sessionRevision = 0;
@@ -978,9 +964,11 @@ class UnifiedAuthService extends ChangeNotifier {
     _cookieSyncFuture = null;
     _sessionValidationFutures.clear();
     _sessionValidationSyncWebViewCookies.clear();
+    _captchaChallenges.invalidate();
     debugSessionValidator = null;
     debugSessionMetadataLoader = null;
     debugProxyFallbackAdapter = null;
     debugSyncCookiesToWebViewForUrlOverride = null;
+    debugWebViewCookieSyncCalls = 0;
   }
 }

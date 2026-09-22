@@ -7,6 +7,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:jxu_campus_hub/core/auth/auth_failure.dart';
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/core/network/dio_client.dart';
 import 'package:jxu_campus_hub/core/network/network_settings.dart';
@@ -131,6 +132,7 @@ void main() {
       final adapter = _RecordingZhengfangAdapter();
       DioClient.instance.dio.httpClientAdapter = adapter;
 
+      await auth.fetchCaptcha();
       final result = await auth.login('2024001', 'password123', '2468');
 
       expect(result, isA<LoginSuccess>());
@@ -141,6 +143,7 @@ void main() {
         adapter.requestLog,
         equals([
           'GET /jwglxt/xtgl/login_slogin.html',
+          'GET /jwglxt/kaptcha',
           'GET /jwglxt/xtgl/login_getPublicKey.html',
           'POST /jwglxt/xtgl/login_slogin.html',
         ]),
@@ -154,6 +157,7 @@ void main() {
       final adapter = _RecordingZhengfangAdapter(forceCaptchaFailure: true);
       DioClient.instance.dio.httpClientAdapter = adapter;
 
+      await auth.fetchCaptcha();
       final result = await auth.login('2024001', 'password123', '2468');
 
       expect(result, isA<LoginFailure>());
@@ -163,7 +167,7 @@ void main() {
     });
 
     test(
-      'keeps an authenticated session when login entry redirects to index',
+      'unknown existing session is not bound to the input account',
       () async {
         await DioClient.instance.ensureInitialized();
         auth.setMode(ZhengfangMode.direct);
@@ -171,14 +175,42 @@ void main() {
         final adapter = _RecordingZhengfangAdapter(existingSession: true);
         DioClient.instance.dio.httpClientAdapter = adapter;
 
+        await auth.fetchCaptcha();
         final result = await auth.login('2024001', 'password123', '2468');
 
-        expect(result, isA<LoginSuccess>());
-        expect(auth.isLoggedIn, isTrue);
+        // 首页跳转只证明会话有效，不证明学号：必须失败且不写身份。
+        expect(result, isA<LoginFailure>());
+        expect((result as LoginFailure).kind, AuthFailureKind.protocolChanged);
+        expect(auth.isLoggedIn, isFalse);
+        expect(auth.currentStudentId, isNull);
         expect(adapter.logoutCount, 0);
         expect(
           adapter.requestLog,
-          equals(['GET /jwglxt/xtgl/login_slogin.html']),
+          equals(['GET /jwglxt/xtgl/login_slogin.html', 'GET /jwglxt/kaptcha']),
+        );
+      },
+    );
+
+    test(
+      'existing session short-circuits only for trusted same account',
+      () async {
+        await DioClient.instance.ensureInitialized();
+        auth.setMode(ZhengfangMode.direct);
+        // 可信身份来源：恢复/先前真实登录写入的学生号。
+        auth.debugSetSession(active: true, studentId: '2024001');
+
+        final adapter = _RecordingZhengfangAdapter(existingSession: true);
+        DioClient.instance.dio.httpClientAdapter = adapter;
+
+        await auth.fetchCaptcha();
+        final result = await auth.login('2024001', 'password123', '2468');
+
+        expect(result, isA<LoginSuccess>());
+        expect(auth.currentStudentId, '2024001');
+        expect(adapter.logoutCount, 0);
+        expect(
+          adapter.requestLog,
+          equals(['GET /jwglxt/xtgl/login_slogin.html', 'GET /jwglxt/kaptcha']),
         );
       },
     );
@@ -241,6 +273,25 @@ class _RecordingZhengfangAdapter implements HttpClientAdapter {
         200,
         headers: <String, List<String>>{
           Headers.contentTypeHeader: <String>['application/json'],
+        },
+      );
+    }
+
+    if (path.endsWith('/kaptcha')) {
+      return ResponseBody.fromBytes(
+        Uint8List.fromList(<int>[
+          0x89,
+          0x50,
+          0x4E,
+          0x47,
+          0x0D,
+          0x0A,
+          0x1A,
+          0x0A,
+        ]),
+        200,
+        headers: <String, List<String>>{
+          Headers.contentTypeHeader: <String>['image/png'],
         },
       );
     }

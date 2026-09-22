@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jxu_campus_hub/core/auth/auth_failure.dart';
 import 'package:jxu_campus_hub/core/auth/credential_store.dart';
 import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/core/network/dio_client.dart';
@@ -613,17 +614,8 @@ void main() {
       },
     );
 
-    test('login 空上下文：已知身份同账号可成功，不得把 A 改成输入的 B', () async {
+    test('login 无当前 challenge：拒绝为过期且不绑定输入账号', () async {
       UnifiedAuthService.instance.debugSetSession(active: true, account: 'A');
-      UnifiedAuthService.instance.debugSeedEstablishedLoginContext();
-
-      final sameAccount = await UnifiedAuthService.instance.login(
-        'A',
-        'unused',
-        'unused',
-      );
-      expect(sameAccount, isA<UnifiedAuthLoginSuccess>());
-      expect(UnifiedAuthService.instance.currentAccount, 'A');
 
       final switched = await UnifiedAuthService.instance.login(
         'B',
@@ -631,13 +623,17 @@ void main() {
         'unused',
       );
       expect(switched, isA<UnifiedAuthLoginFailure>());
+      expect(
+        (switched as UnifiedAuthLoginFailure).kind,
+        AuthFailureKind.staleOperation,
+      );
+      // 未重新初始化上下文、未改写身份，也未把输入账号绑到旧 session。
       expect(UnifiedAuthService.instance.currentAccount, 'A');
       expect(UnifiedAuthService.instance.isLoggedIn, isTrue);
     });
 
-    test('login 空上下文等待期间迟到 restore 不得覆盖新身份', () async {
+    test('login 无当前 challenge 等待 restore 时迟到 restore 不得覆盖新身份', () async {
       UnifiedAuthService.instance.debugSetSession(active: true, account: 'A');
-      UnifiedAuthService.instance.debugSeedEstablishedLoginContext();
 
       final started = Completer<void>();
       final loadGate = Completer<void>();
