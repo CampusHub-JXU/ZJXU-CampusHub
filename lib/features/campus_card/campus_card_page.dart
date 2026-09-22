@@ -11,6 +11,7 @@ import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_card.dart';
 import '../../shared/widgets/app_icon_badge.dart';
 import '../../shared/widgets/app_tile_surface.dart';
+import '../../shared/widgets/login_shell.dart';
 import '../../shared/widgets/unified_auth_protected_webview_page.dart';
 import 'campus_card_service.dart';
 
@@ -183,6 +184,26 @@ class _CampusCardPageState extends State<CampusCardPage> {
               '${lastUpdated.minute.toString().padLeft(2, '0')} 更新'
         : '暂未获取余额';
 
+    final failure = CampusCardService.instance.lastBalanceFailure;
+    final (failureMessage, failureIcon, isAuthExpired) = switch (failure) {
+      BalanceFailureKind.serviceUnavailable => (
+        '一卡通服务暂时不可用，请稍后重试',
+        Icons.info_outline_rounded,
+        false,
+      ),
+      BalanceFailureKind.authExpired => (
+        '登录已失效，请重新登录统一认证',
+        Icons.lock_outline_rounded,
+        true,
+      ),
+      BalanceFailureKind.network => (
+        '网络不可用，请检查网络后重试',
+        Icons.wifi_off_rounded,
+        false,
+      ),
+      BalanceFailureKind.none => (null, null, false),
+    };
+
     return AppCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -237,16 +258,41 @@ class _CampusCardPageState extends State<CampusCardPage> {
             ],
           ),
           const SizedBox(height: AppSpacing.md),
-          if (balance == null)
+          if (balance == null) ...[
+            if (failureMessage != null && failureIcon != null) ...[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Icon(failureIcon, size: 14, color: cs.onSurfaceVariant),
+                  const SizedBox(width: AppSpacing.xs),
+                  Expanded(
+                    child: Text(
+                      failureMessage,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.sm),
+            ],
             SizedBox(
               width: double.infinity,
-              child: FilledButton.tonalIcon(
-                onPressed: _balanceLoading ? null : _refreshBalance,
-                icon: const Icon(Icons.touch_app_outlined, size: 18),
-                label: Text(_balanceLoading ? '正在查询余额' : '点击查询余额'),
-              ),
-            )
-          else
+              child: isAuthExpired
+                  ? FilledButton.tonalIcon(
+                      onPressed: _balanceLoading ? null : _handleLogin,
+                      icon: const Icon(Icons.login_rounded, size: 18),
+                      label: const Text('重新登录'),
+                    )
+                  : FilledButton.tonalIcon(
+                      onPressed: _balanceLoading ? null : _refreshBalance,
+                      icon: const Icon(Icons.touch_app_outlined, size: 18),
+                      label: Text(_balanceLoading ? '正在查询余额' : '点击查询余额'),
+                    ),
+            ),
+          ] else
             Row(
               children: [
                 Icon(Icons.schedule, size: 13, color: cs.onSurfaceVariant),
@@ -349,6 +395,17 @@ class _CampusCardPageState extends State<CampusCardPage> {
     setState(() {});
   }
 
+  Future<void> _handleLogin() async {
+    final loggedIn = await showUnifiedAuthLoginModal(
+      context,
+      title: '登录统一认证',
+      description: '登录后可查询校园卡余额',
+    );
+    if (loggedIn && mounted) {
+      _refreshBalance();
+    }
+  }
+
   Future<void> _refreshBalance({bool showFeedback = true}) async {
     if (_balanceLoading) return;
     setState(() => _balanceLoading = true);
@@ -374,17 +431,27 @@ class _CampusCardPageState extends State<CampusCardPage> {
 
     final messenger = ScaffoldMessenger.of(context);
     messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(
-          balance == null
-              ? (CampusCardService.instance.cachedBalance == null
-                    ? '余额查询失败，请检查网络或登录状态后重试'
-                    : '刷新失败，仍显示上次余额，请切换网络后重试')
-              : '校园卡余额已刷新',
-        ),
-      ),
-    );
+    final cached = CampusCardService.instance.cachedBalance;
+    final failure = CampusCardService.instance.lastBalanceFailure;
+    final String message;
+    if (balance != null) {
+      message = '校园卡余额已刷新';
+    } else if (cached != null) {
+      message = switch (failure) {
+        BalanceFailureKind.serviceUnavailable => '刷新失败，仍显示上次余额，请稍后重试',
+        BalanceFailureKind.authExpired => '登录已失效，请重新登录统一认证',
+        BalanceFailureKind.network => '刷新失败，仍显示上次余额，请切换网络后重试',
+        BalanceFailureKind.none => '刷新失败，仍显示上次余额，请切换网络后重试',
+      };
+    } else {
+      message = switch (failure) {
+        BalanceFailureKind.serviceUnavailable => '一卡通服务暂时不可用，请稍后重试',
+        BalanceFailureKind.authExpired => '登录已失效，请重新登录统一认证',
+        BalanceFailureKind.network => '网络不可用，请检查网络后重试',
+        BalanceFailureKind.none => '余额查询失败，请检查网络或登录状态后重试',
+      };
+    }
+    messenger.showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _openRechargePage() async {

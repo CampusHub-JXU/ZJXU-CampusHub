@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -6,6 +5,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:jxu_campus_hub/app/app_bootstrap_controller.dart';
+import 'package:jxu_campus_hub/core/auth/auth_session_persistence.dart';
+import 'package:jxu_campus_hub/core/auth/credential_store.dart';
+import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
+import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
+import 'package:jxu_campus_hub/core/cache/private_cache_store.dart';
 import 'package:jxu_campus_hub/core/notice/notice_model.dart';
 import 'package:jxu_campus_hub/core/notice/notice_sync_store.dart';
 import 'package:jxu_campus_hub/core/semester/semester_calendar.dart';
@@ -426,32 +430,62 @@ Future<void> _seedRichHomeState() async {
     'dorm_epay_building_id': 'building',
     'dorm_epay_floor_id': 'floor',
     'dorm_epay_room_id': 'room',
-    'exam_cached_data': jsonEncode([
-      {
-        'kcmc': '微观经济学',
-        'kssj': '($examDateText) 09:00-11:00',
-        'cdmc': '1教302',
-        'cdxqmc': '梁林校区',
-        'zwh': '12',
-        'ksmc': '期末考试',
-        'kkxy': '经济学院',
-        'cxbj': '',
-        'xnmc': '2026-2027',
-        'xqmmc': '1',
-      },
-    ]),
-    'grades_cached_data': jsonEncode([
-      {'kcmc': '高等数学 B', 'cj': '92', 'bfzcj': '92', 'jd': '4.0', 'xf': '4.5'},
-      {'kcmc': '数据结构', 'cj': '88', 'bfzcj': '88', 'jd': '3.7', 'xf': '4.0'},
-      {'kcmc': '大学英语', 'cj': '85', 'bfzcj': '85', 'jd': '3.5', 'xf': '3.0'},
-    ]),
-    // restoreCache 要求 json 与时间戳同时存在才恢复。
-    'grades_cached_at': now.millisecondsSinceEpoch,
   });
+  ZhengfangAuth.instance.debugSetSession(active: true, studentId: '2025000001');
+  await CredentialStore.instance.saveZhengfangSession('2025000001');
+  final academicEpoch = (await AuthSessionPersistence.instance.read(
+    CredentialSessionDomain.academic,
+  )).epoch;
+  await SharedPreferencesPrivateCacheStore(ExamService.cacheKey).write(
+    PrivateCacheEnvelope(
+      owner: '2025000001',
+      updatedAt: now,
+      epoch: academicEpoch,
+      payload: [
+        {
+          'kcmc': '微观经济学',
+          'kssj': '($examDateText) 09:00-11:00',
+          'cdmc': '1教302',
+          'cdxqmc': '梁林校区',
+          'zwh': '12',
+          'ksmc': '期末考试',
+          'kkxy': '经济学院',
+          'cxbj': '',
+          'xnmc': '2026-2027',
+          'xqmmc': '1',
+        },
+      ],
+    ),
+  );
+  await SharedPreferencesPrivateCacheStore(GradesService.cacheKey).write(
+    PrivateCacheEnvelope(
+      owner: '2025000001',
+      updatedAt: now,
+      epoch: academicEpoch,
+      payload: [
+        {'kcmc': '高等数学 B', 'cj': '92', 'bfzcj': '92', 'jd': '4.0', 'xf': '4.5'},
+        {'kcmc': '数据结构', 'cj': '88', 'bfzcj': '88', 'jd': '3.7', 'xf': '4.0'},
+        {'kcmc': '大学英语', 'cj': '85', 'bfzcj': '85', 'jd': '3.5', 'xf': '3.0'},
+      ],
+    ),
+  );
   await ExamService.instance.restoreCache();
   await GradesService.instance.restoreCache();
 
-  CampusCardService.instance.debugSetCachedBalance(38.2, updatedAt: now);
+  UnifiedAuthService.instance.debugSetSession(active: true, account: 'casuser');
+  await CredentialStore.instance.saveUnifiedAuthSession('casuser');
+  final cardEpoch = (await AuthSessionPersistence.instance.read(
+    CredentialSessionDomain.unified,
+  )).epoch;
+  await SecureStoragePrivateCacheStore(CampusCardService.cacheKey).write(
+    PrivateCacheEnvelope(
+      owner: 'casuser',
+      updatedAt: now,
+      epoch: cardEpoch,
+      payload: 38.2,
+    ),
+  );
+  await CampusCardService.instance.restoreBalance();
   DormElectricityService.instance.debugSetCachedElectricity(
     27.4,
     updatedAt: now,
@@ -522,7 +556,20 @@ Future<void> _seedBreakHomeState() async {
     'dorm_epay_room_id': 'room',
   });
 
-  CampusCardService.instance.debugSetCachedBalance(38.2, updatedAt: now);
+  UnifiedAuthService.instance.debugSetSession(active: true, account: 'casuser');
+  await CredentialStore.instance.saveUnifiedAuthSession('casuser');
+  final cardEpoch = (await AuthSessionPersistence.instance.read(
+    CredentialSessionDomain.unified,
+  )).epoch;
+  await SecureStoragePrivateCacheStore(CampusCardService.cacheKey).write(
+    PrivateCacheEnvelope(
+      owner: 'casuser',
+      updatedAt: now,
+      epoch: cardEpoch,
+      payload: 38.2,
+    ),
+  );
+  await CampusCardService.instance.restoreBalance();
   DormElectricityService.instance.debugSetCachedElectricity(
     27.4,
     updatedAt: now,

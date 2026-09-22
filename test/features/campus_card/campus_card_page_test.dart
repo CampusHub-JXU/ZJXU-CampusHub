@@ -1,13 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:jxu_campus_hub/app/app_bootstrap_controller.dart';
+import 'package:jxu_campus_hub/core/auth/auth_session_persistence.dart';
+import 'package:jxu_campus_hub/core/auth/credential_store.dart';
+import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
+import 'package:jxu_campus_hub/core/cache/private_cache_store.dart';
 import 'package:jxu_campus_hub/core/config/app_config.dart';
+import 'package:jxu_campus_hub/core/epay100/epay100_gateway.dart';
 import 'package:jxu_campus_hub/core/theme/app_theme_builder.dart';
 import 'package:jxu_campus_hub/features/campus_card/campus_card_page.dart';
 import 'package:jxu_campus_hub/features/campus_card/campus_card_service.dart';
+import 'package:jxu_campus_hub/shared/widgets/login_shell.dart';
 import 'package:jxu_campus_hub/shared/widgets/unified_auth_protected_webview_page.dart';
 
 void main() {
@@ -15,14 +22,38 @@ void main() {
 
   const shortcutChannel = MethodChannel('edu.zjxu.jxucampushub/shortcut');
 
-  setUp(() {
+  setUp(() async {
+    FlutterSecureStorage.setMockInitialValues({});
+    AuthSessionPersistence.instance
+      ..debugReset()
+      ..debugDisableFileLock = true;
+    UnifiedAuthService.instance.debugReset();
     AppBootstrapController.instance.debugReset();
     CampusCardPage.debugAutoRefreshTriggered = false;
     CampusCardService.instance.debugBalanceFetcher = null;
-    CampusCardService.instance.debugSetCachedBalance(
-      23.5,
-      updatedAt: DateTime(2026, 4, 10, 8, 0),
+    // 明确 CAS 身份：owner 缓存只在有明确账号时可见。
+    UnifiedAuthService.instance.debugSetSession(
+      active: true,
+      account: 'casuser',
     );
+    await CredentialStore.instance.saveUnifiedAuthSession('casuser');
+    final epoch = (await AuthSessionPersistence.instance.read(
+      CredentialSessionDomain.unified,
+    )).epoch;
+    await SecureStoragePrivateCacheStore(CampusCardService.cacheKey).write(
+      PrivateCacheEnvelope(
+        owner: 'casuser',
+        updatedAt: DateTime(2026, 4, 10, 8, 0),
+        epoch: epoch,
+        payload: 23.5,
+      ),
+    );
+    await CampusCardService.instance.restoreBalance();
+    // setUp 的 restore 已建立内存 epoch；清空 auth 持久化同域串行链，避免
+    // 真实 async 建立的链跨入 widget fake-async 区导致后续锁调用挂起。
+    AuthSessionPersistence.instance
+      ..debugReset()
+      ..debugDisableFileLock = true;
   });
 
   tearDown(() async {
@@ -330,6 +361,161 @@ void main() {
     await tester.pumpAndSettle();
     expect(calls, 2);
     expect(tester.takeException(), isNull);
+  });
+
+  group('balance card failure states and retry', () {
+    testWidgets(
+      'serviceUnavailable with null balance shows prompt and retry entry',
+      (tester) async {
+        CampusCardService.instance.debugSetCachedBalance(null);
+        CampusCardService.instance.debugSetLastBalanceFailure(
+          BalanceFailureKind.serviceUnavailable,
+        );
+
+        var refreshCalls = 0;
+        CampusCardService.instance.debugBalanceFetcher = () async {
+          refreshCalls++;
+          return 52.0;
+        };
+
+        await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+        await tester.pumpAndSettle();
+
+        expect(find.text('一卡通服务暂时不可用，请稍后重试'), findsOneWidget);
+        expect(find.text('点击查询余额'), findsOneWidget);
+
+        // 点击卡片内查询余额按钮重试
+        await tester.tap(find.text('点击查询余额'));
+        await tester.pumpAndSettle();
+
+        expect(refreshCalls, 1);
+        expect(find.text('52.00'), findsOneWidget);
+        expect(find.text('一卡通服务暂时不可用，请稍后重试'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'auto-refresh failure with EpayGatewayException updates card to serviceUnavailable',
+      (tester) async {
+        CampusCardService.instance.debugSetCachedBalance(null);
+        CampusCardService.instance.debugBalanceFetcher = () async {
+          throw const EpayGatewayException('ERR4995');
+        };
+        AppBootstrapController.instance.debugSetPhase(
+          AppBootstrapPhase.localStateReady,
+        );
+
+        await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+        await tester.pumpAndSettle();
+
+        expect(find.text('一卡通服务暂时不可用，请稍后重试'), findsOneWidget);
+        expect(find.text('点击查询余额'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'authExpired with null balance shows prompt and opens unified auth modal',
+      (tester) async {
+        CampusCardService.instance.debugSetCachedBalance(null);
+        CampusCardService.instance.debugSetLastBalanceFailure(
+          BalanceFailureKind.authExpired,
+        );
+        CampusCardService.instance.debugBalanceFetcher = () async {
+          throw const EpaySessionUnavailableException('会话已失效');
+        };
+
+        await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+        await tester.pumpAndSettle();
+
+        expect(find.text('登录已失效，请重新登录统一认证'), findsOneWidget);
+        expect(find.text('重新登录'), findsOneWidget);
+
+        // 点击重新登录唤起统一认证登录弹窗
+        await tester.tap(find.text('重新登录'));
+        await tester.pump();
+
+        expect(find.byType(LoginShell), findsOneWidget);
+        expect(find.text('登录统一认证'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'network failure with null balance shows network prompt and retry',
+      (tester) async {
+        CampusCardService.instance.debugSetCachedBalance(null);
+        CampusCardService.instance.debugSetLastBalanceFailure(
+          BalanceFailureKind.network,
+        );
+
+        var retryCalled = false;
+        CampusCardService.instance.debugBalanceFetcher = () async {
+          retryCalled = true;
+          return 66.0;
+        };
+
+        await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+        await tester.pumpAndSettle();
+
+        expect(find.text('网络不可用，请检查网络后重试'), findsOneWidget);
+        expect(find.text('点击查询余额'), findsOneWidget);
+
+        await tester.tap(find.text('点击查询余额'));
+        await tester.pumpAndSettle();
+
+        expect(retryCalled, isTrue);
+        expect(find.text('66.00'), findsOneWidget);
+        expect(find.text('网络不可用，请检查网络后重试'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'serviceUnavailable with existing balance preserves balance display',
+      (tester) async {
+        CampusCardService.instance.debugBalanceFetcher = () async {
+          throw const EpayGatewayException(
+            'MH904接口：HTTP接口[open.ykt.getBalance]网络繁忙，请稍后再试',
+          );
+        };
+
+        await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+        await tester.pumpAndSettle();
+
+        // 原有缓存余额正常显示
+        expect(find.text('23.50'), findsOneWidget);
+
+        // 刷新失败时保留旧余额并显示提示
+        await tester.tap(find.byTooltip('刷新余额'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('23.50'), findsOneWidget);
+        expect(find.text('刷新失败，仍显示上次余额，请稍后重试'), findsOneWidget);
+        expect(CampusCardService.instance.cachedBalance, 23.5);
+      },
+    );
+
+    testWidgets('obscure toggle toggles between balance text and mask', (
+      tester,
+    ) async {
+      await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+      await tester.pumpAndSettle();
+
+      expect(find.text('23.50'), findsOneWidget);
+      expect(find.text('****'), findsNothing);
+
+      // 隐藏余额
+      await tester.tap(find.byTooltip('隐藏余额'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('****'), findsOneWidget);
+      expect(find.text('23.50'), findsNothing);
+
+      // 显示余额
+      await tester.tap(find.byTooltip('显示余额'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('23.50'), findsOneWidget);
+      expect(find.text('****'), findsNothing);
+    });
   });
 
   group('bootstrap-aware balance refresh', () {
