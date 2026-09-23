@@ -35,9 +35,26 @@ class ScheduleInfoBanner extends StatelessWidget {
         width: double.infinity,
         borderRadius: BorderRadius.circular(AppRadius.input),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Text(
-          parts.join(' · '),
-          style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              Icons.info_outline_rounded,
+              size: 15,
+              color: cs.onSurfaceVariant,
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Text(
+                parts.join(' · '),
+                style: TextStyle(
+                  fontSize: 12,
+                  height: 1.4,
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

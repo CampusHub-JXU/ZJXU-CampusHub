@@ -135,28 +135,39 @@ class ScheduleGrid extends StatelessWidget {
             Expanded(
               child: SingleChildScrollView(
                 physics: const ClampingScrollPhysics(),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    ScheduleSlotColumn(
-                      slotColumnWidth: scheduleGridSlotColumnWidth,
-                    ),
-                    for (int day = 1; day <= 7; day++)
-                      RepaintBoundary(
-                        child: _DayColumn(
-                          currentWeekCourses: weekViewModel
-                              .coursesForDay(day)
-                              .currentWeekCourses,
-                          otherWeekCourses: weekViewModel
-                              .coursesForDay(day)
-                              .otherWeekCourses,
-                          colorFor: (name, isCurrentWeek) =>
-                              _colorForCourse(name, isCurrentWeek, cs, isDark),
-                          dayColumnWidth: dayColumnWidth,
-                          displayWeek: currentWeek,
-                        ),
+                child: CustomPaint(
+                  // 极淡的节次横线（含节次列竖分隔线），只画在网格底层，
+                  // 不参与内容布局；深浅色统一用 outlineVariant 低透明度。
+                  painter: _SlotGridLinePainter(
+                    color: cs.outlineVariant.withValues(alpha: 0.32),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ScheduleSlotColumn(
+                        slotColumnWidth: scheduleGridSlotColumnWidth,
                       ),
-                  ],
+                      for (int day = 1; day <= 7; day++)
+                        RepaintBoundary(
+                          child: _DayColumn(
+                            currentWeekCourses: weekViewModel
+                                .coursesForDay(day)
+                                .currentWeekCourses,
+                            otherWeekCourses: weekViewModel
+                                .coursesForDay(day)
+                                .otherWeekCourses,
+                            colorFor: (name, isCurrentWeek) => _colorForCourse(
+                              name,
+                              isCurrentWeek,
+                              cs,
+                              isDark,
+                            ),
+                            dayColumnWidth: dayColumnWidth,
+                            displayWeek: currentWeek,
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -418,4 +429,33 @@ class _PlacedCourse {
   final double left;
   final double width;
   final int span;
+}
+
+/// 课表网格底层的节次分隔线：每节一条横线 + 节次列右侧一条竖线。
+/// 纯装饰、不参与布局，透明度取 outlineVariant 低值，避免与课程块抢层级。
+class _SlotGridLinePainter extends CustomPainter {
+  const _SlotGridLinePainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 0.6;
+    for (var i = 1; i < scheduleSlotCount; i++) {
+      final y = i * scheduleGridSlotHeight;
+      if (y >= size.height) break;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
+    canvas.drawLine(
+      Offset(scheduleGridSlotColumnWidth, 0),
+      Offset(scheduleGridSlotColumnWidth, size.height),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_SlotGridLinePainter oldDelegate) =>
+      oldDelegate.color != color;
 }

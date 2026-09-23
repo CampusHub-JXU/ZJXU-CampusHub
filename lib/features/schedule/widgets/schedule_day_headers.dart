@@ -30,8 +30,17 @@ class ScheduleDayHeaders extends StatelessWidget {
     final weekStartDate = SemesterCalendar.instance.weekStartFor(currentWeek);
 
     return Container(
-      color: cs.surfaceContainerLowest,
-      padding: const EdgeInsets.fromLTRB(0, 6, 0, 6),
+      // 头部与课表网格之间用一条发丝线分层，日期/周次层级更清晰。
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerLowest,
+        border: Border(
+          bottom: BorderSide(
+            color: cs.outlineVariant.withValues(alpha: 0.35),
+            width: 0.7,
+          ),
+        ),
+      ),
+      padding: const EdgeInsets.fromLTRB(0, 8, 0, 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -46,7 +55,7 @@ class ScheduleDayHeaders extends StatelessWidget {
                     '$scheduleTermLabelPrefix$currentWeek$scheduleWeekLabelSuffix',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontSize: 11,
+                      fontSize: 12,
                       fontWeight: FontWeight.w700,
                       color: cs.onSurface,
                     ),
@@ -60,7 +69,7 @@ class ScheduleDayHeaders extends StatelessWidget {
                       ? scheduleNotStartedLabel
                       : scheduleNonCurrentWeekLabel,
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
+                  style: TextStyle(fontSize: 10.5, color: cs.onSurfaceVariant),
                 ),
               ],
             ),
@@ -78,7 +87,7 @@ class ScheduleDayHeaders extends StatelessWidget {
                     children: [
                       Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
+                          horizontal: 8,
                           vertical: 4,
                         ),
                         decoration: BoxDecoration(

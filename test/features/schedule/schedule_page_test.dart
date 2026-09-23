@@ -224,4 +224,61 @@ void main() {
     expect(find.text('登录教务系统'), findsOneWidget);
     expect(find.text('需要手动登录'), findsNothing);
   });
+
+  testWidgets('schedule grid fits 360px screen at 1.5x text without overflow', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 780);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final termContext = ScheduleTermContext.current();
+    ZhengfangAuth.instance.debugSetSession(
+      active: true,
+      studentId: '2025000001',
+    );
+    ScheduleService.instance.debugSetSnapshot(
+      cachedSnapshotFor('2025000001', '大字号下的课程名称', termContext),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MediaQuery(
+          data: MediaQueryData.fromView(tester.view)
+              .copyWith(textScaler: const TextScaler.linear(1.5)),
+          child: const SchedulePage(),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.text('大字号下的课程名称'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('tapping a course cell opens the detail sheet', (tester) async {
+    final termContext = ScheduleTermContext.current();
+    ZhengfangAuth.instance.debugSetSession(
+      active: true,
+      studentId: '2025000001',
+    );
+    ScheduleService.instance.debugSetSnapshot(
+      cachedSnapshotFor('2025000001', '点选课程详情', termContext),
+    );
+
+    await tester.pumpWidget(const MaterialApp(home: SchedulePage()));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    await tester.tap(find.text('点选课程详情'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.textContaining('教师：'), findsOneWidget);
+    expect(find.textContaining('教室：101'), findsOneWidget);
+    expect(find.textContaining('节次：第 1 - 2 节'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }

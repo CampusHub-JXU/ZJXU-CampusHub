@@ -166,6 +166,7 @@ class _SchedulePageState extends State<SchedulePage> {
     if (_controller.courses.isEmpty) {
       return AppEmptyView(
         title: '暂无课表数据',
+        message: '当前学期暂无课程安排，可在右上角切换学期查看',
         icon: Icons.calendar_month_outlined,
         actionLabel: _controller.loggedIn ? '刷新课表' : null,
         onAction: _controller.loggedIn ? _refreshScheduleOrLogin : null,

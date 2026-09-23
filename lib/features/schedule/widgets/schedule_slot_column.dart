@@ -25,15 +25,26 @@ class ScheduleSlotColumn extends StatelessWidget {
                   '${i + 1}',
                   style: TextStyle(
                     fontSize: 14,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w700,
                     color: cs.onSurface,
                   ),
                 ),
                 const SizedBox(height: 2),
-                Text(
-                  '${ScheduleSlotTimes.startTime(i + 1)}\n${ScheduleSlotTimes.endTime(i + 1)}',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 9, color: cs.onSurfaceVariant),
+                // 大字号下时间整体等比缩小，保持一列节次整齐可读。
+                SizedBox(
+                  width: slotColumnWidth - 6,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      '${ScheduleSlotTimes.startTime(i + 1)}\n${ScheduleSlotTimes.endTime(i + 1)}',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 9.5,
+                        height: 1.35,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
