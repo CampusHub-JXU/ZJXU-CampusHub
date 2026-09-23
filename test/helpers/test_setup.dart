@@ -11,6 +11,7 @@ import 'package:jxu_campus_hub/core/auth/connect_mode_resolver.dart';
 import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/core/calendar/calendar_event_ledger_store.dart';
+import 'package:jxu_campus_hub/core/calendar/calendar_sync_control.dart';
 import 'package:jxu_campus_hub/core/network/dio_client.dart';
 import 'package:jxu_campus_hub/core/logging/app_logger.dart';
 import 'package:jxu_campus_hub/core/profile/user_profile_controller.dart';
@@ -55,6 +56,7 @@ Future<void> resetTestEnvironment() async {
     ..debugDisableFileLock = true;
   ConnectModeResolver.instance.debugReset();
   CalendarEventLedgerStore.instance.debugReset();
+  CalendarSyncControl.instance.debugReset();
   NetworkSettings.instance.debugReset();
   DioClient.instance.debugReset();
   // widget 测试跑在 fake-async 区：文件 Cookie 存储的读盘不会完成，请求会卡在

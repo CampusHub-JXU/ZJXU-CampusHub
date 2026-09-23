@@ -511,6 +511,53 @@ class CalendarEventLedgerStore {
     );
   });
 
+  /// 把原生 `queryOwnedEvents` 已核验的 opaqueId → eventId 写回**其原批次**。
+  ///
+  /// 只用于崩溃恢复 / 关闭清理前的 pending 补记（阶段 2 的受约束恢复路径）：
+  /// - **不检查 activeBatch**，因此对旧 generation 批次同样生效；
+  /// - **不晋升 active**，不改变批次顺序，不放宽 [commitBatch] 的迟到结果守卫；
+  /// - 只更新目标批次中**当前仍为 pending** 的项；已提交且 eventId 不同的项
+  ///   不会被覆盖（provider 查询只针对 pending，正常不会出现）；
+  /// - 未知 owner / generation / opaqueId 一律忽略并返回 0（幂等）。
+  ///
+  /// 返回实际写回的条数；调用方必须只在拿到真实 provider 查询结果后才调用。
+  Future<int> recordRecoveredIds({
+    required String ownerKey,
+    required String generation,
+    required Map<String, int> eventIds,
+  }) => _serialize(() async {
+    await _ensureLoadedLocked();
+    if (eventIds.isEmpty) return 0;
+
+    final owners = _copyOwners();
+    final batches = owners[ownerKey];
+    if (batches == null) return 0;
+    final index = batches.indexWhere((batch) => batch.generation == generation);
+    if (index < 0) return 0;
+
+    final batch = batches[index];
+    final nextEntries = Map<String, CalendarEventLedgerEntry>.of(batch.entries);
+    var recovered = 0;
+    for (final item in eventIds.entries) {
+      if (item.value <= 0) continue;
+      final entry = nextEntries[item.key];
+      if (entry == null) continue;
+      // 已提交且 eventId 不同：不覆盖既有归属。
+      if (!entry.isPending) continue;
+      nextEntries[item.key] = entry.withEventId(item.value);
+      recovered++;
+    }
+    if (recovered == 0) return 0;
+
+    final updatedBatches = <CalendarEventLedgerBatch>[...batches];
+    updatedBatches[index] = batch.copyWith(
+      entries: Map<String, CalendarEventLedgerEntry>.unmodifiable(nextEntries),
+    );
+    owners[ownerKey] = updatedBatches;
+    await _persistLocked(CalendarEventLedgerSnapshot(owners: owners));
+    return recovered;
+  });
+
   /// 逐项移除已确认清理成功的归属（删除成功的 eventId 对应项）。
   ///
   /// 只移除 [opaqueIds] 中的项；失败/未确认的项保留在账本里供下次复核。
