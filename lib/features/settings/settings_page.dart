@@ -5,7 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../core/auth/zhengfang_auth.dart';
 import '../../core/cache/json_cache_store.dart';
+import '../../core/calendar/calendar_sync_channel.dart';
+import '../../core/calendar/calendar_sync_control.dart';
+import '../../core/calendar/calendar_sync_models.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/notification/app_notification_service.dart';
 import '../../core/profile/user_profile_controller.dart';
@@ -183,9 +187,20 @@ class SettingsPage extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Text(
-            '设置会立即生效。',
+            '学期设置会立即生效。',
             style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
           ),
+          if (Theme.of(context).platform == TargetPlatform.android) ...[
+            const SizedBox(height: 24),
+            const _SectionHeader('课表日历'),
+            const SizedBox(height: 8),
+            const _CalendarSyncCard(),
+            const SizedBox(height: 8),
+            Text(
+              '课表仅在应用前台写入系统日历；课前 10 分钟由系统日历提醒（非精确闹钟）。',
+              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+            ),
+          ],
           const SizedBox(height: 24),
           const _SectionHeader('桌面与后台'),
           const SizedBox(height: 8),
@@ -723,5 +738,363 @@ class _CurrentTermTileState extends State<_CurrentTermTile> {
         ],
       ),
     );
+  }
+}
+
+/// 「课表日历」分组的开关卡片（仅 Android，由调用方按平台隐藏）。
+///
+/// 机械复用小节样式：开关行 + 关闭确认 AlertDialog + SnackBar 反馈。
+/// 状态机、权限、日历解析与清理全部由 core 的 [CalendarSyncControl] /
+/// [CalendarSyncChannel] 承担；本组件不读取课表、不生成事件、不展示学号。
+class _CalendarSyncCard extends StatefulWidget {
+  const _CalendarSyncCard();
+
+  @override
+  State<_CalendarSyncCard> createState() => _CalendarSyncCardState();
+}
+
+/// 首次开启时用户选择的目标日历类型。
+enum _CalendarSyncTarget {
+  /// 本应用专属本地日历（[CalendarSyncControl.enable] 不传 calendarId）。
+  local,
+
+  /// 用户从系统可写日历中显式选择。
+  existing,
+}
+
+class _CalendarSyncCardState extends State<_CalendarSyncCard> {
+  CalendarSyncControl get _control => CalendarSyncControl.instance;
+
+  /// 有开启/清理请求在途：期间忽略重复点击，避免重复原生调用。
+  bool _busy = false;
+
+  int? _residualCount;
+  bool _residualLoading = false;
+  bool _residualFailed = false;
+  Set<CalendarSyncCleanupResidualReason> _residualReasons =
+      const <CalendarSyncCleanupResidualReason>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _control.addListener(_handleControlChanged);
+    unawaited(
+      _control.load().then((_) {
+        if (!mounted) return;
+        setState(() {});
+        if (_control.state == CalendarSyncControlState.cleanupPending) {
+          unawaited(_refreshResidualCount());
+        }
+      }),
+    );
+  }
+
+  @override
+  void dispose() {
+    _control.removeListener(_handleControlChanged);
+    super.dispose();
+  }
+
+  void _handleControlChanged() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  Future<void> _refreshResidualCount() async {
+    setState(() {
+      _residualLoading = true;
+      _residualFailed = false;
+    });
+    try {
+      final count = await _control.residualCount();
+      if (!mounted) return;
+      setState(() {
+        _residualCount = count;
+        _residualLoading = false;
+      });
+    } on CalendarSyncException {
+      if (!mounted) return;
+      setState(() {
+        _residualLoading = false;
+        _residualFailed = true;
+      });
+    }
+  }
+
+  String get _subtitle => switch (_control.state) {
+    CalendarSyncControlState.off => '将课表写入系统日历；仅前台同步，课前 10 分钟提醒',
+    CalendarSyncControlState.enabled => '已开启；前台校验课表后同步',
+    CalendarSyncControlState.paused => '已暂停：当前账号与绑定账号不一致，重新开启将绑定当前账号',
+    CalendarSyncControlState.cleanupPending => '清理未完成，完成清理后才能重新开启',
+  };
+
+  String _residualSubtitle() {
+    final String countLabel;
+    if (_residualFailed) {
+      countLabel = '残留数量统计失败';
+    } else if (_residualCount == null) {
+      countLabel = _residualLoading ? '正在统计残留…' : '残留数量未知';
+    } else {
+      countLabel = '仍有 $_residualCount 条事件残留';
+    }
+    final reasons = _describeResidualReasons(_residualReasons);
+    return reasons.isEmpty ? '$countLabel，可重试删除' : '$countLabel（$reasons）';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = _control.state;
+    return _GroupCard(
+      children: [
+        _SwitchRow(
+          icon: Icons.event_available_outlined,
+          title: '课表日历同步',
+          subtitle: _subtitle,
+          value: state == CalendarSyncControlState.enabled,
+          onToggle: (value) {
+            if (_busy) return;
+            unawaited(value ? _requestEnable() : _requestDisable());
+          },
+        ),
+        if (state == CalendarSyncControlState.cleanupPending) ...[
+          const _Hairline(),
+          _SettingsRow(
+            icon: Icons.delete_sweep_outlined,
+            title: '清理未完成',
+            subtitle: _residualSubtitle(),
+            trailing: TextButton(
+              onPressed: _busy ? null : () => unawaited(_runCleanup()),
+              child: const Text('重试清理'),
+            ),
+            onTap: _busy ? null : () => unawaited(_runCleanup()),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// 开关打开：先用**当前**已验证身份校验，再让用户选择目标日历。
+  Future<void> _requestEnable() async {
+    final auth = ZhengfangAuth.instance;
+    final studentId = auth.currentStudentId?.trim() ?? '';
+    if (!auth.isLoggedIn || studentId.isEmpty) {
+      _showSnack('请先登录教务系统，再开启课表日历同步');
+      return;
+    }
+    if (_control.state == CalendarSyncControlState.cleanupPending) {
+      _showSnack('存在未完成的清理，请先点击「重试清理」');
+      return;
+    }
+
+    setState(() => _busy = true);
+    try {
+      final target = await _askCalendarTarget();
+      if (!mounted || target == null) return;
+      if (target == _CalendarSyncTarget.existing) {
+        await _enableWithExistingCalendar(studentId);
+        return;
+      }
+      await _enable(studentId: studentId, calendarId: null);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// 开关关闭：先确认，再尝试删除全部历史账号/学期由本应用创建的事件。
+  Future<void> _requestDisable() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('关闭课表日历同步'),
+        content: const Text(
+          '将尝试删除本应用在全部历史账号与学期写入系统日历的事件，不会影响其他应用或系统日历中的其他事件。\n\n'
+          '部分事件可能已被移动或删除失败，届时会显示残留数量与原因，可稍后重试。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('关闭并清理'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await _runCleanup();
+  }
+
+  /// 关闭 / 重试清理共用：调用 core 的 [CalendarSyncControl.disableAndCleanup]，
+  /// 无登录也能执行；有残留时如实显示数量与原因，绝不假称已关闭。
+  Future<void> _runCleanup() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final result = await _control.disableAndCleanup();
+      if (!mounted) return;
+      setState(() {
+        _residualCount = result.residualCount;
+        _residualReasons = result.residualReasons;
+        _residualFailed = false;
+      });
+      _showSnack(_cleanupMessage(result));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<_CalendarSyncTarget?> _askCalendarTarget() {
+    return showDialog<_CalendarSyncTarget>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('开启课表日历同步'),
+        content: const Text(
+          '将把课表写入系统日历，仅在应用前台同步；课前 10 分钟由系统日历提醒（非精确闹钟）。\n\n'
+          '推荐使用本应用的专属本地日历；部分系统日历应用可能不显示它，也可以改选其他可写日历。\n\n'
+          '手动编辑已写入的事件后，下一次课表同步会覆盖这些修改。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(_CalendarSyncTarget.existing),
+            child: const Text('选择其他日历'),
+          ),
+          TextButton(
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(_CalendarSyncTarget.local),
+            child: const Text('使用专属本地日历'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 用户明确点击「选择其他日历」后才申请权限并列出可写日历；
+  /// 权限拒绝、读取失败、列表为空、用户取消都安全返回，不开启同步。
+  Future<void> _enableWithExistingCalendar(String studentId) async {
+    final channel = defaultCalendarSyncChannel;
+    final granted =
+        await channel.checkPermissions() || await channel.requestPermissions();
+    if (!mounted) return;
+    if (!granted) {
+      _showSnack('未获得日历读写权限，已取消');
+      return;
+    }
+
+    final List<CalendarSyncWritableCalendar> calendars;
+    try {
+      calendars = await channel.listWritableCalendars();
+    } on CalendarSyncException {
+      if (!mounted) return;
+      _showSnack('读取系统日历失败，请稍后重试');
+      return;
+    }
+    if (!mounted) return;
+    if (calendars.isEmpty) {
+      _showSnack('没有可写入的系统日历');
+      return;
+    }
+
+    final picked = await _askCalendar(calendars);
+    if (!mounted || picked == null) return;
+    await _enable(studentId: studentId, calendarId: picked.id);
+  }
+
+  Future<CalendarSyncWritableCalendar?> _askCalendar(
+    List<CalendarSyncWritableCalendar> calendars,
+  ) {
+    return showDialog<CalendarSyncWritableCalendar>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('选择目标日历'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              for (final calendar in calendars)
+                ListTile(
+                  title: Text(calendar.displayName),
+                  subtitle: calendar.accountName == null
+                      ? null
+                      : Text(calendar.accountName!),
+                  onTap: () => Navigator.of(dialogContext).pop(calendar),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('取消'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _enable({
+    required String studentId,
+    required int? calendarId,
+  }) async {
+    final result = await _control.enable(
+      ownerKey: studentId,
+      calendarId: calendarId,
+      revision: ZhengfangAuth.instance.sessionRevision,
+    );
+    if (!mounted) return;
+    if (result.enabled) {
+      _showSnack('课表日历同步已开启，前台校验课表后同步');
+      return;
+    }
+    if (result.blockedByCleanup) {
+      _showSnack('存在未完成的清理，请先点击「重试清理」');
+      return;
+    }
+    _showSnack(
+      result.failure?.kind == CalendarSyncFailureKind.permissionDenied
+          ? '未获得日历读写权限，同步未开启'
+          : '开启失败，请稍后重试',
+    );
+  }
+
+  String _cleanupMessage(CalendarSyncCleanupResult result) {
+    if (result.isComplete) return '已关闭课表日历同步并清理全部事件';
+    final reasons = _describeResidualReasons(result.residualReasons);
+    if (result.residualCount > 0) {
+      return reasons.isEmpty
+          ? '仍有 ${result.residualCount} 条事件未清理，可重试'
+          : '仍有 ${result.residualCount} 条事件未清理（$reasons），可重试';
+    }
+    return reasons.isEmpty ? '清理未完成，请重试' : '清理未完成（$reasons），请重试';
+  }
+
+  static String _describeResidualReasons(
+    Set<CalendarSyncCleanupResidualReason> reasons,
+  ) {
+    if (reasons.isEmpty) return '';
+    return reasons
+        .map(
+          (reason) => switch (reason) {
+            CalendarSyncCleanupResidualReason.notDeleted => '部分事件未删除或已被移动',
+            CalendarSyncCleanupResidualReason.permissionDenied => '日历权限被拒绝',
+            CalendarSyncCleanupResidualReason.calendarUnavailable => '目标日历不可用',
+            CalendarSyncCleanupResidualReason.platformFailure => '系统日历调用失败',
+            CalendarSyncCleanupResidualReason.pendingUnreconciled =>
+              '部分写入结果未确认',
+          },
+        )
+        .join('、');
+  }
+
+  void _showSnack(String message) {
+    ScaffoldMessenger.maybeOf(context)
+        ?.showSnackBar(SnackBar(content: Text(message)));
   }
 }

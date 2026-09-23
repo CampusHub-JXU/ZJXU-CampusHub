@@ -558,6 +558,50 @@ class CalendarEventLedgerStore {
     return recovered;
   });
 
+  /// 受约束地把已提交事件的原 eventId 重绑定为 provider 实查的新 eventId。
+  ///
+  /// 仅用于「同 opaqueId 的事件被系统删除后又以新 id 重建」：原生 upsert 返回了
+  /// 新 eventId，而账本仍存旧 id，若不回写会导致关闭清理残留。
+  ///
+  /// 约束（CAS）：必须同时满足 owner + generation + opaqueId，且该条当前
+  /// eventId 恰为 [expectedOldEventId]，才写入 [providerVerifiedNewEventId]；
+  /// 任一不符返回 false，调用方必须 fail closed。不晋升 active、不改批次顺序、
+  /// 不放宽 [commitBatch] 守卫。
+  Future<bool> reassignEventId({
+    required String ownerKey,
+    required String generation,
+    required String opaqueId,
+    required int expectedOldEventId,
+    required int providerVerifiedNewEventId,
+  }) => _serialize(() async {
+    await _ensureLoadedLocked();
+    if (expectedOldEventId <= 0 || providerVerifiedNewEventId <= 0) {
+      return false;
+    }
+    if (expectedOldEventId == providerVerifiedNewEventId) return true;
+
+    final owners = _copyOwners();
+    final batches = owners[ownerKey];
+    if (batches == null) return false;
+    final index = batches.indexWhere((batch) => batch.generation == generation);
+    if (index < 0) return false;
+
+    final batch = batches[index];
+    final entry = batch.entries[opaqueId];
+    if (entry == null) return false;
+    if (entry.eventId != expectedOldEventId) return false;
+
+    final nextEntries = Map<String, CalendarEventLedgerEntry>.of(batch.entries);
+    nextEntries[opaqueId] = entry.withEventId(providerVerifiedNewEventId);
+    final updatedBatches = <CalendarEventLedgerBatch>[...batches];
+    updatedBatches[index] = batch.copyWith(
+      entries: Map<String, CalendarEventLedgerEntry>.unmodifiable(nextEntries),
+    );
+    owners[ownerKey] = updatedBatches;
+    await _persistLocked(CalendarEventLedgerSnapshot(owners: owners));
+    return true;
+  });
+
   /// 逐项移除已确认清理成功的归属（删除成功的 eventId 对应项）。
   ///
   /// 只移除 [opaqueIds] 中的项；失败/未确认的项保留在账本里供下次复核。

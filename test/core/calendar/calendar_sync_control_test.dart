@@ -17,6 +17,7 @@ class _FakeChannel implements CalendarSyncChannel {
   int requestCalls = 0;
   int createCalendarCalls = 0;
   final List<String> calls = <String>[];
+  final List<CalendarSyncOwnedEvent> deletedEvents = <CalendarSyncOwnedEvent>[];
 
   CalendarSyncLocalCalendar localCalendar = const CalendarSyncLocalCalendar(
     id: 42,
@@ -99,6 +100,7 @@ class _FakeChannel implements CalendarSyncChannel {
     calls.add('deleteOwnedEventsByIds');
     final handler = onDelete;
     if (handler == null) {
+      deletedEvents.addAll(events);
       return Future<CalendarSyncDeleteResult>.value(
         CalendarSyncDeleteResult(
           deletedIds: <int>[for (final event in events) event.eventId],
@@ -705,6 +707,102 @@ void main() {
       expect(result.deletedCount, 2);
       expect(result.residualCount, 0);
       expect((await env.ledger.reload()).isEmpty, isTrue);
+    });
+
+    test('uses the provider-queried new eventId before deleting', () async {
+      final env = build();
+      await env.control.enable(ownerKey: 'A', calendarId: 7);
+      final batch = await env.ledger.beginPendingBatch(
+        ownerKey: 'A',
+        calendarId: 7,
+        plans: <CalendarSyncEventPlan>[plan(1)],
+      );
+      await env.ledger.commitBatch(
+        ownerKey: 'A',
+        generation: batch.generation,
+        eventIds: <String, int>{opaqueId(1): 101},
+      );
+      // 用户手删后同 opaqueId 以新 id 重建：provider 查回 999。
+      env.channel.onQuery = ({required calendarId, opaqueIds}) async =>
+          <CalendarSyncOwnedEvent>[owned(1, 999)];
+
+      final result = await env.control.disableAndCleanup();
+
+      expect(result.isComplete, isTrue);
+      expect(result.deletedCount, 1);
+      expect(env.channel.deletedEvents.single.eventId, 999);
+      expect(env.channel.deletedEvents.single.opaqueId, opaqueId(1));
+      expect((await env.ledger.reload()).isEmpty, isTrue);
+    });
+
+    test('query failure keeps residual and never deletes', () async {
+      final env = build();
+      await env.control.enable(ownerKey: 'A', calendarId: 7);
+      final batch = await env.ledger.beginPendingBatch(
+        ownerKey: 'A',
+        calendarId: 7,
+        plans: <CalendarSyncEventPlan>[plan(1)],
+      );
+      await env.ledger.commitBatch(
+        ownerKey: 'A',
+        generation: batch.generation,
+        eventIds: <String, int>{opaqueId(1): 101},
+      );
+      env.channel.onQuery = ({required calendarId, opaqueIds}) async =>
+          throw failure(CalendarSyncFailureKind.permissionDenied);
+
+      final result = await env.control.disableAndCleanup();
+
+      expect(result.failureKind, CalendarSyncFailureKind.permissionDenied);
+      expect(result.residualCount, 1);
+      expect(env.channel.deletedEvents, isEmpty);
+      expect(env.channel.calls, isNot(contains('deleteOwnedEventsByIds')));
+      expect(
+        (await env.ledger.reload())
+            .batchesFor('A')
+            .single
+            .entries[opaqueId(1)]
+            ?.eventId,
+        101,
+      );
+    });
+
+    test('provider no longer owns the event -> notDeleted residual', () async {
+      final env = build();
+      await env.control.enable(ownerKey: 'A', calendarId: 7);
+      final batch = await env.ledger.beginPendingBatch(
+        ownerKey: 'A',
+        calendarId: 7,
+        plans: <CalendarSyncEventPlan>[plan(1)],
+      );
+      await env.ledger.commitBatch(
+        ownerKey: 'A',
+        generation: batch.generation,
+        eventIds: <String, int>{opaqueId(1): 101},
+      );
+      // provider 查不到（已被移动/手删），删除按 0 行 notDeleted。
+      env.channel.onDelete = ({required calendarId, required events}) async =>
+          const CalendarSyncDeleteResult(
+            deletedIds: <int>[],
+            notDeletedIds: <int>[101],
+          );
+
+      final result = await env.control.disableAndCleanup();
+
+      expect(result.isComplete, isFalse);
+      expect(result.residualCount, 1);
+      expect(
+        result.residualReasons,
+        contains(CalendarSyncCleanupResidualReason.notDeleted),
+      );
+      expect(
+        (await env.ledger.reload())
+            .batchesFor('A')
+            .single
+            .entries[opaqueId(1)]
+            ?.eventId,
+        101,
+      );
     });
   });
 

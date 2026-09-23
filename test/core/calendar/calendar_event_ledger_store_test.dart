@@ -630,6 +630,140 @@ void main() {
     });
   });
 
+  group('reassignEventId (constrained rebind)', () {
+    test('rebinds a committed entry with matching expected old id', () async {
+      final store = CalendarEventLedgerStore.debugNew();
+      final batch = await store.beginPendingBatch(
+        ownerKey: 'owner-a',
+        calendarId: 7,
+        plans: <CalendarSyncEventPlan>[plan(1), plan(2)],
+      );
+      await store.commitBatch(
+        ownerKey: 'owner-a',
+        generation: batch.generation,
+        eventIds: <String, int>{opaqueId(1): 101, opaqueId(2): 102},
+      );
+
+      expect(
+        await store.reassignEventId(
+          ownerKey: 'owner-a',
+          generation: batch.generation,
+          opaqueId: opaqueId(1),
+          expectedOldEventId: 101,
+          providerVerifiedNewEventId: 777,
+        ),
+        isTrue,
+      );
+
+      final snapshot = await store.reload();
+      final entry = snapshot.batchesFor('owner-a').single;
+      expect(entry.entries[opaqueId(1)]?.eventId, 777);
+      expect(entry.entries[opaqueId(2)]?.eventId, 102);
+    });
+
+    test(
+      'rejects mismatched expected id / unknown target without writing',
+      () async {
+        final store = CalendarEventLedgerStore.debugNew();
+        final batch = await store.beginPendingBatch(
+          ownerKey: 'owner-a',
+          calendarId: 7,
+          plans: <CalendarSyncEventPlan>[plan(1)],
+        );
+        await store.commitBatch(
+          ownerKey: 'owner-a',
+          generation: batch.generation,
+          eventIds: <String, int>{opaqueId(1): 101},
+        );
+
+        Future<bool> attempt({
+          String ownerKey = 'owner-a',
+          String? generation,
+          String? opaque,
+          int expectedOld = 101,
+          int newId = 777,
+        }) => store.reassignEventId(
+          ownerKey: ownerKey,
+          generation: generation ?? batch.generation,
+          opaqueId: opaque ?? opaqueId(1),
+          expectedOldEventId: expectedOld,
+          providerVerifiedNewEventId: newId,
+        );
+
+        expect(await attempt(expectedOld: 999), isFalse);
+        expect(await attempt(generation: 'missing-generation'), isFalse);
+        expect(await attempt(ownerKey: 'nobody'), isFalse);
+        expect(await attempt(opaque: opaqueId(9)), isFalse);
+        expect(await attempt(newId: 0), isFalse);
+
+        final snapshot = await store.reload();
+        expect(
+          snapshot.batchesFor('owner-a').single.entries[opaqueId(1)]?.eventId,
+          101,
+        );
+      },
+    );
+
+    test(
+      'works for an old generation and does not relax the commit guard',
+      () async {
+        final store = CalendarEventLedgerStore.debugNew();
+        final old = await store.beginPendingBatch(
+          ownerKey: 'owner-a',
+          calendarId: 7,
+          plans: <CalendarSyncEventPlan>[plan(1)],
+          generation: 'gen-old',
+        );
+        await store.commitBatch(
+          ownerKey: 'owner-a',
+          generation: old.generation,
+          eventIds: <String, int>{opaqueId(1): 101},
+        );
+        await store.beginPendingBatch(
+          ownerKey: 'owner-a',
+          calendarId: 7,
+          plans: <CalendarSyncEventPlan>[plan(2)],
+          generation: 'gen-new',
+        );
+
+        expect(
+          await store.reassignEventId(
+            ownerKey: 'owner-a',
+            generation: 'gen-old',
+            opaqueId: opaqueId(1),
+            expectedOldEventId: 101,
+            providerVerifiedNewEventId: 555,
+          ),
+          isTrue,
+        );
+        expect(
+          (await store.reload())
+              .batchesFor('owner-a')
+              .firstWhere((batch) => batch.generation == 'gen-old')
+              .entries[opaqueId(1)]
+              ?.eventId,
+          555,
+        );
+
+        // 旧代仍不能通过 commitBatch 写入（未晋升 active、守卫未放宽）。
+        final late = await store.commitBatch(
+          ownerKey: 'owner-a',
+          generation: 'gen-old',
+          eventIds: <String, int>{opaqueId(1): 999},
+        );
+        expect(late.status, CalendarEventLedgerCommitStatus.staleGeneration);
+        expect(
+          (await store.reload())
+              .batchesFor('owner-a')
+              .firstWhere((batch) => batch.generation == 'gen-old')
+              .entries[opaqueId(1)]
+              ?.eventId,
+          555,
+        );
+      },
+    );
+  });
+
   test('reload on an empty store returns the empty snapshot', () async {
     final store = CalendarEventLedgerStore.debugNew();
 

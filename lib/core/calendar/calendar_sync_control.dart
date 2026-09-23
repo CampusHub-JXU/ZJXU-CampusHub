@@ -547,10 +547,12 @@ class CalendarSyncControl extends ChangeNotifier {
   /// 关闭同步并清理本 App 写入的全部事件。
   ///
   /// 顺序：先原子阻断未来写入（[cleanupPending] + 推进 generation）→ 复核全部
-  /// pending → 遍历**全部** owner / 日历批次逐项删除（精确
-  /// calendarId + opaqueId + eventId）→ 只对确认删除的项 `removeEntries`。
-  /// notDeleted / 权限拒绝 / 日历被移 / pending 无法复核都保留账本并汇总残留原因；
-  /// 只有账本清空且无失败才回到 [off]。重复调用安全（[off] 且账本为空直接返回完成）。
+  /// pending → 遍历**全部** owner / 日历批次，删除前按 `calendarId + opaqueIds`
+  /// 用 [CalendarSyncChannel.queryOwnedEvents] 核对 provider 当前 eventId（用户手删
+  /// 后同 opaqueId 事件可能以新 id 重建），使用查回的新 id 精确删除 → 只对确认
+  /// 删除的项 `removeEntries`。查询失败 / notDeleted / 权限拒绝 / 日历被移 /
+  /// pending 无法复核都保留账本并汇总残留原因；只有账本清空且无失败才回到
+  /// [off]。重复调用安全（[off] 且账本为空直接返回完成）。
   Future<CalendarSyncCleanupResult> disableAndCleanup() async {
     await _serialize(_ensureLoadedLocked);
 
@@ -659,6 +661,40 @@ class CalendarSyncControl extends ChangeNotifier {
           .toList();
       if (committed.isEmpty) continue;
 
+      // 删除前按 calendarId + opaqueIds 核对 provider 当前 eventId：用户手删后
+      // 同 opaqueId 事件可能以新 id 重建，直接用账本旧 id 会残留。
+      final Map<String, int> providerEventIds;
+      try {
+        final queried = await _channel.queryOwnedEvents(
+          calendarId: batch.calendarId,
+          opaqueIds: <String>[for (final entry in committed) entry.opaqueId],
+        );
+        providerEventIds = <String, int>{
+          for (final event in queried) event.opaqueId: event.eventId,
+        };
+      } on CalendarSyncException catch (error) {
+        // 查询失败（含权限拒绝）：保留全部残留，绝不删除、绝不假称清干净。
+        failureKind ??= error.kind;
+        failedBatchCount++;
+        reasons.add(_residualFor(error.kind));
+        continue;
+      }
+      if (!_isCurrent(generation)) {
+        final remaining = await _tryResidualCount();
+        return CalendarSyncCleanupResult(
+          deletedCount: deletedCount,
+          residualCount: remaining ?? 0,
+          failedBatchCount: failedBatchCount,
+          residualReasons: reasons,
+          failureKind:
+              failureKind ??
+              (remaining == null
+                  ? CalendarSyncFailureKind.ledgerUnavailable
+                  : null),
+          aborted: true,
+        );
+      }
+
       for (final chunk in _chunk(
         committed,
         CalendarSyncProtocol.maxBatchEvents,
@@ -679,17 +715,22 @@ class CalendarSyncControl extends ChangeNotifier {
           );
         }
 
+        // 优先使用 provider 查回的当前 id；未查回时回退账本 id——原生删除的
+        // selection 同时限定 _id + calendar_id + CUSTOM_APP_PACKAGE +
+        // CUSTOM_APP_URI，命中 0 行按 notDeleted，绝不会误删别的行。
+        final requested = <CalendarSyncOwnedEvent>[
+          for (final entry in chunk)
+            CalendarSyncOwnedEvent(
+              opaqueId: entry.opaqueId,
+              eventId: providerEventIds[entry.opaqueId] ?? entry.eventId!,
+            ),
+        ];
+
         final CalendarSyncDeleteResult result;
         try {
           result = await _channel.deleteOwnedEventsByIds(
             calendarId: batch.calendarId,
-            events: <CalendarSyncOwnedEvent>[
-              for (final entry in chunk)
-                CalendarSyncOwnedEvent(
-                  opaqueId: entry.opaqueId,
-                  eventId: entry.eventId!,
-                ),
-            ],
+            events: requested,
           );
         } on CalendarSyncException catch (error) {
           failureKind ??= error.kind;
@@ -700,8 +741,9 @@ class CalendarSyncControl extends ChangeNotifier {
 
         final deletedEventIds = result.deletedIds.toSet();
         final deletedOpaqueIds = <String>[
-          for (final entry in chunk)
-            if (deletedEventIds.contains(entry.eventId)) entry.opaqueId,
+          for (var index = 0; index < chunk.length; index++)
+            if (deletedEventIds.contains(requested[index].eventId))
+              chunk[index].opaqueId,
         ];
         if (deletedOpaqueIds.isNotEmpty) {
           try {

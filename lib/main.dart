@@ -7,6 +7,7 @@ import 'app/app.dart';
 import 'app/app_action_dispatcher.dart';
 import 'app/app_bootstrap_controller.dart';
 import 'app/background_task_dispatcher.dart';
+import 'app/calendar_sync_coordinator.dart';
 import 'app/routes.dart';
 import 'core/auth/connect_mode_resolver.dart';
 import 'core/deep_link/campus_deep_link_service.dart';
@@ -84,6 +85,9 @@ Future<void> main() async {
       await AppBootstrapController.instance.prepareForFirstFrame();
       ConnectModeResolver.instance.start();
       runApp(JXUCampusHubApp());
+      // 课表系统日历同步：仅主引擎前台协调器，监听必须早于暖启动数据变化，
+      // 以便身份/课表恢复后立即评估；不注册后台引擎、不触发自动登录。
+      CalendarSyncCoordinator.instance.start();
       unawaited(
         AppShortcutService.instance.initialize(
           navigationReady: AppBootstrapController.instance.navigationReady,
@@ -133,8 +137,15 @@ Future<void> main() async {
       final lifecycleListener = AppLifecycleListener(
         onStateChange: (state) {
           if (state == AppLifecycleState.resumed) {
+            CalendarSyncCoordinator.instance.onAppResumed();
             unawaited(runForegroundBackgroundChecks());
             CampusWidgetSync.instance.requestSync();
+          } else if (state == AppLifecycleState.inactive ||
+              state == AppLifecycleState.paused ||
+              state == AppLifecycleState.hidden) {
+            // 退到后台/失焦：禁止启动新的日历写入（在途轮次在下一个 await
+            // 边界失效）。
+            CalendarSyncCoordinator.instance.onAppInactive();
           }
         },
       );
