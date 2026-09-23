@@ -109,6 +109,12 @@ extension ZhengfangAuthDirectExtension on ZhengfangAuth {
   }
 
   Future<void> markLoggedOut() async {
+    _clearSessionInMemory();
+    await _revokeDurableAcademicSession();
+  }
+
+  /// 仅收敛内存会话态并通知页面，不做持久撤销。
+  void _clearSessionInMemory() {
     _touchSessionRevision();
     _sessionActive = false;
     currentStudentId = null;
@@ -116,6 +122,9 @@ extension ZhengfangAuthDirectExtension on ZhengfangAuth {
     _contextIndicatesLoggedIn = false;
     _captchaChallenges.invalidate();
     _notifyAuthListeners();
+  }
+
+  Future<void> _revokeDurableAcademicSession() async {
     try {
       await AuthSessionPersistence.instance.revoke(
         CredentialSessionDomain.academic,
@@ -128,6 +137,99 @@ extension ZhengfangAuthDirectExtension on ZhengfangAuth {
         stackTrace: stackTrace,
       );
     }
+  }
+
+  /// 读取教务域持久 epoch；读失败返回 `-1`（无可信 epoch）。
+  ///
+  /// 供 guard/validateSession 绑定**请求发起时**的持久身份，绝不把读失败当成
+  /// 「可无条件撤销」的理由。
+  Future<int> durableAcademicEpochOrUnknown() async {
+    try {
+      return await AuthSessionPersistence.instance.readEpoch(
+        CredentialSessionDomain.academic,
+      );
+    } catch (error, stackTrace) {
+      AppLogger.instance.auth(
+        LogLevel.warn,
+        '教务会话持久 epoch 读取失败',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return -1;
+    }
+  }
+
+  /// 仅当内存会话仍是 [revision] 且账号仍为 [account] 时收敛本地态。
+  ///
+  /// 不触碰持久 envelope。已处于登出态时 no-op（不无谓推进 revision）。
+  bool clearSessionIfCurrent({required int revision, String? account}) {
+    if (_sessionRevision != revision) return false;
+    if ((currentStudentId?.trim() ?? '') != (account?.trim() ?? '')) {
+      return false;
+    }
+    if (!_sessionActive && currentStudentId == null) return false;
+    _clearSessionInMemory();
+    return true;
+  }
+
+  /// 条件撤销：仅当持久 envelope 仍**精确等于** [account]+[expectedEpoch]
+  /// 时，才在同一域锁内写 inactive 并推进 epoch（`revokeIfCurrent` 原子 CAS）。
+  ///
+  /// 内存侧仅当 [revision]/[account] 仍当前时收敛。任何 await 后都复核，
+  /// 因此期间切入的新会话（B 或同账号重登）既不会被撤销，也不会被误清。
+  /// 返回是否真正撤销了持久会话。
+  Future<bool> revokeSessionIfCurrent({
+    required int revision,
+    required String account,
+    required int expectedEpoch,
+  }) async {
+    final expected = account.trim();
+    if (expected.isEmpty || expectedEpoch < 0) return false;
+    if (_sessionRevision != revision) return false;
+    if ((currentStudentId?.trim() ?? '') != expected) return false;
+
+    bool revoked;
+    try {
+      revoked = await AuthSessionPersistence.instance.revokeIfCurrent(
+        CredentialSessionDomain.academic,
+        account: expected,
+        epoch: expectedEpoch,
+      );
+    } catch (error, stackTrace) {
+      AppLogger.instance.auth(
+        LogLevel.warn,
+        '教务会话条件撤销失败',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return false;
+    }
+    // 撤销后只有同 revision/account 仍当前时才清本地，绝不误清后来者。
+    if (revoked &&
+        _sessionRevision == revision &&
+        (currentStudentId?.trim() ?? '') == expected) {
+      _clearSessionInMemory();
+    }
+    return revoked;
+  }
+
+  /// 收尾一次已失效的旧会话：有可信账号 + epoch 时走持久条件撤销；
+  /// 否则（无账号 / 无可信 epoch / 读失败）至多条件清旧内存，绝不无条件 revoke。
+  Future<bool> revokeExpiredSessionIfCurrent({
+    required int revision,
+    String? account,
+    required int expectedEpoch,
+  }) async {
+    final owner = account?.trim() ?? '';
+    if (owner.isEmpty || expectedEpoch < 0) {
+      clearSessionIfCurrent(revision: revision, account: account);
+      return false;
+    }
+    return revokeSessionIfCurrent(
+      revision: revision,
+      account: owner,
+      expectedEpoch: expectedEpoch,
+    );
   }
 
   Future<void> restoreSession() async {
@@ -311,8 +413,16 @@ extension ZhengfangAuthDirectExtension on ZhengfangAuth {
   }
 
   @visibleForTesting
-  void debugSetSession({required bool active, String? studentId}) {
-    _applySessionIdentity(active: active, studentId: studentId);
+  void debugSetSession({
+    required bool active,
+    String? studentId,
+    bool forceRevision = false,
+  }) {
+    _applySessionIdentity(
+      active: active,
+      studentId: studentId,
+      forceRevision: forceRevision,
+    );
     if (!active) {
       _contextIndicatesLoggedIn = false;
     }

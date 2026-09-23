@@ -16,13 +16,15 @@ class _MemoryBackend implements AuthSessionEnvelopeBackend {
     CredentialSessionEnvelope envelope,
   )?
   beforeWrite;
+  Future<void> Function(CredentialSessionDomain domain)? beforeRead;
 
   int writeCount = 0;
 
   @override
-  Future<CredentialSessionEnvelope> read(
-    CredentialSessionDomain domain,
-  ) async => data[domain] ?? const CredentialSessionEnvelope();
+  Future<CredentialSessionEnvelope> read(CredentialSessionDomain domain) async {
+    await beforeRead?.call(domain);
+    return data[domain] ?? const CredentialSessionEnvelope();
+  }
 
   @override
   Future<void> write(
@@ -358,6 +360,56 @@ void main() {
         isFalse,
       );
     });
+
+    test(
+      'blocked durable read: a concurrent B commit wins and revoke is a no-op',
+      () async {
+        final stale = await persistence.commit(
+          CredentialSessionDomain.academic,
+          account: 'A',
+          expectedEpoch: 0,
+        ); // A/epoch1
+        expect(stale, isNotNull);
+
+        final other = AuthSessionPersistence.debugNew(
+          backend: backend,
+          directoryProvider: () async => dir,
+        );
+        final gate = Completer<void>();
+        var gated = false;
+        backend.beforeRead = (domain) async {
+          if (!gated) {
+            gated = true;
+            await gate.future;
+          }
+        };
+
+        // 撤销先进入并阻塞在「读 durable envelope」。
+        final revokeFuture = persistence.revokeIfCurrent(
+          CredentialSessionDomain.academic,
+          account: stale!.account,
+          epoch: stale.epoch,
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+
+        // 读盘阻塞期间，B 的提交胜出（更新 epoch）。
+        final bCommitted = await other.commit(
+          CredentialSessionDomain.academic,
+          account: 'B',
+          expectedEpoch: stale.epoch,
+        );
+        expect(bCommitted, isNotNull);
+
+        gate.complete();
+        expect(await revokeFuture, isFalse, reason: '读到 B 后必须拒绝撤销');
+
+        final envelope = await persistence.read(
+          CredentialSessionDomain.academic,
+        );
+        expect(envelope.active, isTrue, reason: 'B 的 disk envelope 必须保留');
+        expect(envelope.account, 'B');
+      },
+    );
   });
 
   group(

@@ -236,11 +236,22 @@ class ZhengfangAuth extends ChangeNotifier {
   void _touchSessionRevision() => _sessionRevision++;
 
   /// 同状态不 bump、不 notify；空白身份不视为已登录。
-  void _applySessionIdentity({required bool active, String? studentId}) {
+  ///
+  /// [forceRevision] 供「成功提交了一次新会话」的调用方使用：即使 active/account
+  /// 与当前完全相同（同账号重登），也必须推进 [sessionRevision]，让此前捕获旧
+  /// revision 的在途结果（含 guard 的旧失效响应）失效，绝不允许旧响应进入新会话。
+  /// 普通重复状态通知保持默认 false（不 bump）。
+  void _applySessionIdentity({
+    required bool active,
+    String? studentId,
+    bool forceRevision = false,
+  }) {
     final trimmed = studentId?.trim();
     final nextActive = active && trimmed != null && trimmed.isNotEmpty;
     final nextStudentId = nextActive ? trimmed : null;
-    if (_sessionActive == nextActive && currentStudentId == nextStudentId) {
+    final unchanged =
+        _sessionActive == nextActive && currentStudentId == nextStudentId;
+    if (unchanged && !forceRevision) {
       return;
     }
     _touchSessionRevision();

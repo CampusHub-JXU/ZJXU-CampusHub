@@ -1,13 +1,26 @@
+import 'dart:async';
 import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:jxu_campus_hub/core/auth/auth_session_persistence.dart';
 import 'package:jxu_campus_hub/core/auth/connect_mode_resolver.dart';
+import 'package:jxu_campus_hub/core/auth/credential_store.dart';
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/core/network/dio_client.dart';
 import 'package:jxu_campus_hub/core/network/network_settings.dart';
+
+import '../../helpers/mock_http_client_adapter.dart';
+
+/// 严格命中 [looksLikeZhengfangLoginHtml] 的正方登录页 fixture。
+const String _loginHtml =
+    '<html><form action="/jwglxt/xtgl/login_slogin.html">'
+    '<input id="yhm" name="yhm" />'
+    '<input id="mm" name="mm" />'
+    '</form></html>';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -138,4 +151,62 @@ void main() {
       expect(ZhengfangAuth.instance.isLoggedIn, isTrue);
     },
   );
+
+  group('validateSession 的 owner/revision 边界', () {
+    test('探测命中失效且会话未变：返回 false 并登出', () async {
+      await DioClient.instance.ensureInitialized();
+      final adapter = MockHttpClientAdapter()
+        ..register('GET', '/jwglxt/xtgl/index_initMenu.html', (options) async {
+          return ResponseBody.fromString(
+            _loginHtml,
+            200,
+            headers: <String, List<String>>{
+              Headers.contentTypeHeader: <String>['text/html; charset=utf-8'],
+            },
+          );
+        });
+      DioClient.instance.dio.httpClientAdapter = adapter;
+      ZhengfangAuth.instance.debugSetSession(active: true, studentId: 'A');
+      // 真实已登录会话必有匹配的持久 envelope，条件撤销才能命中。
+      final committed = await AuthSessionPersistence.instance.commit(
+        CredentialSessionDomain.academic,
+        account: 'A',
+        expectedEpoch: 0,
+      );
+      expect(committed, isNotNull);
+
+      final result = await ZhengfangAuth.instance.validateSession();
+
+      expect(result, isFalse);
+      expect(ZhengfangAuth.instance.isLoggedIn, isFalse);
+    });
+
+    test('探测期间切号到 B：旧失效响应不登出 B，返回 null', () async {
+      await DioClient.instance.ensureInitialized();
+      final gate = Completer<void>();
+      final adapter = MockHttpClientAdapter()
+        ..register('GET', '/jwglxt/xtgl/index_initMenu.html', (options) async {
+          await gate.future;
+          return ResponseBody.fromString(
+            _loginHtml,
+            200,
+            headers: <String, List<String>>{
+              Headers.contentTypeHeader: <String>['text/html; charset=utf-8'],
+            },
+          );
+        });
+      DioClient.instance.dio.httpClientAdapter = adapter;
+      ZhengfangAuth.instance.debugSetSession(active: true, studentId: 'A');
+
+      final pending = ZhengfangAuth.instance.validateSession();
+      await Future<void>.delayed(Duration.zero);
+      ZhengfangAuth.instance.debugSetSession(active: true, studentId: 'B');
+      gate.complete();
+
+      final result = await pending;
+      expect(result, isNull, reason: '会话已变化时不下失效结论');
+      expect(ZhengfangAuth.instance.isLoggedIn, isTrue);
+      expect(ZhengfangAuth.instance.currentStudentId, 'B');
+    });
+  });
 }

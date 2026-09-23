@@ -63,7 +63,8 @@ class _FakeRecognizer implements CaptchaRecognizer {
 
 /// CAS（统一认证）最小假传输：登录页 / 验证码 / 登录提交。
 class _FakeCasAdapter extends MockHttpClientAdapter {
-  _FakeCasAdapter() {    register('GET', '/cas/login', (options) async {
+  _FakeCasAdapter() {
+    register('GET', '/cas/login', (options) async {
       return ResponseBody.fromString(
         '<html><form id="fm1" action="/cas/login">'
         '<input type="hidden" name="lt" value="LT-1" />'
@@ -155,6 +156,7 @@ void main() {
     AuthRecoveryStateStore.instance.debugReset();
     AuthOperationCoordinator.instance.debugReset();
     AcademicAuthGuard.debugAutomaticLoginOverride = null;
+    AcademicAuthGuard.debugAutomaticLoginReceiptOverride = null;
     // 恢复会话一律失败，确保 guard 走到自动登录分支。
     ConnectModeResolver.instance.directReachabilityChecker = () async => false;
     ConnectModeResolver.instance.webVpnReachabilityChecker = () async => false;
@@ -176,6 +178,7 @@ void main() {
 
   tearDown(() async {
     AcademicAuthGuard.debugAutomaticLoginOverride = null;
+    AcademicAuthGuard.debugAutomaticLoginReceiptOverride = null;
     service.debugReset();
     UnifiedAuthService.instance.debugReset();
     ZhengfangAuth.instance.debugReset();
@@ -227,11 +230,42 @@ void main() {
     expect(envelope.account, 'A');
     expect(envelope.epoch, epochBefore + 1, reason: '唯一提交点只 merge/推进一次');
     expect(
-      (await AuthRecoveryStateStore.instance.read(
-        AuthRecoveryDomain.cas,
-      )).activeAttempt,
+      (await AuthRecoveryStateStore.instance.read(AuthRecoveryDomain.cas))
+          .activeAttempt,
       isNull,
     );
+  });
+
+  test('attemptWithReceipt 暴露真实提交 receipt（CAS）', () async {
+    final adapter = _FakeCasAdapter();
+    DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
+    await CredentialStore.instance.saveUnifiedAuthCredentials('A', 'pw');
+    await enableCasOptIn();
+
+    final result = await service.attemptWithReceipt(AuthRecoveryDomain.cas);
+
+    expect(result.outcome, AutomaticLoginOutcome.committed);
+    expect(result.receipt, isNotNull, reason: 'committed 必须带真实 receipt');
+    expect(result.receipt!.account, 'A');
+    final envelope = await CredentialStore.instance.readSessionEnvelope(
+      CredentialSessionDomain.unified,
+    );
+    expect(envelope.active, isTrue);
+    expect(envelope.epoch, result.receipt!.epoch);
+  });
+
+  test('attemptWithReceipt 非提交终态不携带 receipt', () async {
+    final adapter = _FakeCasAdapter();
+    DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
+    recognizer = _FakeRecognizer(answer: null);
+    service = AutomaticLoginService.debugNew(recognizer: recognizer);
+    await CredentialStore.instance.saveUnifiedAuthCredentials('A', 'pw');
+    await enableCasOptIn();
+
+    final result = await service.attemptWithReceipt(AuthRecoveryDomain.cas);
+
+    expect(result.outcome, AutomaticLoginOutcome.failed);
+    expect(result.receipt, isNull, reason: '无真实提交不得携带 receipt');
   });
 
   test('OCR 返回 null：按域固定长度只识别一次并瞬时退避，不涨身份失败', () async {
@@ -326,10 +360,26 @@ void main() {
 
   group('AcademicAuthGuard 触发', () {
     test('自动登录提交成功后重试原请求一次', () async {
-      AcademicAuthGuard.debugAutomaticLoginOverride =
+      AcademicAuthGuard.debugAutomaticLoginReceiptOverride =
           (domain, {String? expectedAccount}) async {
             expect(domain, AuthRecoveryDomain.academic);
-            return AutomaticLoginOutcome.committed;
+            final epoch = await AuthSessionPersistence.instance.readEpoch(
+              CredentialSessionDomain.academic,
+            );
+            final receipt = await AuthSessionPersistence.instance.commit(
+              CredentialSessionDomain.academic,
+              account: '2025000001',
+              expectedEpoch: epoch,
+            );
+            ZhengfangAuth.instance.debugSetSession(
+              active: true,
+              studentId: '2025000001',
+              forceRevision: true,
+            );
+            return AutomaticLoginAttemptResult(
+              outcome: AutomaticLoginOutcome.committed,
+              receipt: receipt,
+            );
           };
       var calls = 0;
       final resp = await AcademicAuthGuard.guardRequest<Map<String, dynamic>>(
@@ -344,9 +394,10 @@ void main() {
     });
 
     test('manualRequired 抛出可区分的过期异常且不重试', () async {
-      AcademicAuthGuard.debugAutomaticLoginOverride =
-          (domain, {String? expectedAccount}) async =>
-              AutomaticLoginOutcome.manualRequired;
+      AcademicAuthGuard.debugAutomaticLoginOverride = (
+        domain, {
+        String? expectedAccount,
+      }) async => AutomaticLoginOutcome.manualRequired;
       var calls = 0;
 
       await expectLater(
@@ -368,9 +419,10 @@ void main() {
     });
 
     test('自定义过期异常在 manualRequired 时走可区分类型', () async {
-      AcademicAuthGuard.debugAutomaticLoginOverride =
-          (domain, {String? expectedAccount}) async =>
-              AutomaticLoginOutcome.manualRequired;
+      AcademicAuthGuard.debugAutomaticLoginOverride = (
+        domain, {
+        String? expectedAccount,
+      }) async => AutomaticLoginOutcome.manualRequired;
 
       await expectLater(
         AcademicAuthGuard.guardRequest<Map<String, dynamic>>(

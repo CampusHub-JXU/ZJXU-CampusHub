@@ -50,6 +50,22 @@ class _AutomaticExchangeResult {
   final bool ocrUnrecognized;
 }
 
+/// 一次静默自动登录尝试的**带来源结果**。
+///
+/// [AutomaticLoginOutcome.committed] 只有在 [receipt] 非空时才是可信提交：
+/// receipt 是唯一提交点（真实 challenge 的 typed ticket commit）产出的
+/// account+epoch 句柄，调用方必须用它证明「这次提交确实发生了」，而不是
+/// 用「同 owner 的最新 revision」推断。
+class AutomaticLoginAttemptResult {
+  const AutomaticLoginAttemptResult({required this.outcome, this.receipt});
+
+  final AutomaticLoginOutcome outcome;
+
+  /// 真实提交产出的 typed 句柄；无提交（含 OCR 未识别、失败、暂停、
+  /// ticket 被拒）一律为 null。
+  final SessionCommitResult? receipt;
+}
+
 /// 静默自动登录服务（前台单 isolate）。
 ///
 /// 读已保存凭据 → prepare challenge → 本地 OCR → 把 ticket 交给真实 challenge
@@ -75,10 +91,8 @@ class AutomaticLoginService {
   static AutomaticLoginService debugNew({
     AuthOperationCoordinator? coordinator,
     CaptchaRecognizer? recognizer,
-  }) => AutomaticLoginService._(
-    coordinator: coordinator,
-    recognizer: recognizer,
-  );
+  }) =>
+      AutomaticLoginService._(coordinator: coordinator, recognizer: recognizer);
 
   final AuthOperationCoordinator _coordinator;
   final CaptchaRecognizer _recognizer;
@@ -94,39 +108,67 @@ class AutomaticLoginService {
   /// 教务（正方）验证码固定 6 位。
   static const int academicCaptchaLength = 6;
 
-  /// 尝试一次静默自动登录。异常一律隔离为 [AutomaticLoginOutcome.failed]，
-  /// 绝不向调用方抛出（guard/bootstrap 触发点不得因此中断）。
+  /// 尝试一次静默自动登录，只返回结果枚举（兼容既有调用方）。
+  ///
+  /// 需要证明「真实提交」的调用方（如 [AcademicAuthGuard]）必须改用
+  /// [attemptWithReceipt]，用 receipt 的 account+epoch 归属本次提交。
   Future<AutomaticLoginOutcome> attempt(
+    AuthRecoveryDomain domain, {
+    String? expectedAccount,
+    CancelToken? cancelToken,
+  }) async {
+    final result = await attemptWithReceipt(
+      domain,
+      expectedAccount: expectedAccount,
+      cancelToken: cancelToken,
+    );
+    return result.outcome;
+  }
+
+  /// 尝试一次静默自动登录，返回结果枚举 + 真实提交 receipt（若有）。
+  ///
+  /// receipt 直接取自 [AuthOperationCoordinator.runAutomatic] 的
+  /// `outcome.receipt`（唯一提交点的 typed 句柄），**不做**任何第二次提交；
+  /// 只有 `decision == committed` 时才附带 receipt，其余终态一律 null。
+  /// 异常一律隔离为 [AutomaticLoginOutcome.failed]，绝不向调用方抛出。
+  Future<AutomaticLoginAttemptResult> attemptWithReceipt(
     AuthRecoveryDomain domain, {
     String? expectedAccount,
     CancelToken? cancelToken,
   }) async {
     try {
       final credentials = await _loadCredentials(domain);
-      if (credentials == null) return AutomaticLoginOutcome.notEligible;
+      if (credentials == null) {
+        return const AutomaticLoginAttemptResult(
+          outcome: AutomaticLoginOutcome.notEligible,
+        );
+      }
       final account = credentials.$1.trim();
       final password = credentials.$2;
       if (account.isEmpty || password.isEmpty) {
-        return AutomaticLoginOutcome.notEligible;
+        return const AutomaticLoginAttemptResult(
+          outcome: AutomaticLoginOutcome.notEligible,
+        );
       }
       final expected = expectedAccount?.trim();
       if (expected != null && expected.isNotEmpty && expected != account) {
-        return AutomaticLoginOutcome.notEligible;
+        return const AutomaticLoginAttemptResult(
+          outcome: AutomaticLoginOutcome.notEligible,
+        );
       }
 
-      final outcome = await _coordinator
-          .runAutomatic<_AutomaticExchangeResult>(
-            domain: domain,
-            account: account,
-            exchange: (ticket, token) => _exchange(
-              domain,
-              account: account,
-              password: password,
-              ticket: ticket,
-              token: token,
-            ),
-            receiptOf: (value) => value.receipt,
-          );
+      final outcome = await _coordinator.runAutomatic<_AutomaticExchangeResult>(
+        domain: domain,
+        account: account,
+        exchange: (ticket, token) => _exchange(
+          domain,
+          account: account,
+          password: password,
+          ticket: ticket,
+          token: token,
+        ),
+        receiptOf: (value) => value.receipt,
+      );
 
       if (outcome.decision == AuthRecoveryDecision.exchangeFailed) {
         // 所有终态失败都是瞬时失败：只推进 1/2/5 分钟退避阶梯，绝不累计
@@ -138,7 +180,12 @@ class AutomaticLoginService {
               : AuthFailureClassifier.fromTransport(outcome.error),
         );
       }
-      return _mapDecision(outcome.decision);
+      return AutomaticLoginAttemptResult(
+        outcome: _mapDecision(outcome.decision),
+        receipt: outcome.decision == AuthRecoveryDecision.committed
+            ? outcome.receipt
+            : null,
+      );
     } catch (error, stackTrace) {
       AppLogger.instance.auth(
         LogLevel.warn,
@@ -146,7 +193,9 @@ class AutomaticLoginService {
         error: error,
         stackTrace: stackTrace,
       );
-      return AutomaticLoginOutcome.failed;
+      return const AutomaticLoginAttemptResult(
+        outcome: AutomaticLoginOutcome.failed,
+      );
     }
   }
 
@@ -166,17 +215,16 @@ class AutomaticLoginService {
         if (captcha == null) {
           return const _AutomaticExchangeResult(ocrUnrecognized: true);
         }
-        final result = await UnifiedAuthService.instance
-            .submitCaptchaChallenge(
-              challengeId: challenge.id,
-              username: account,
-              password: password,
-              captcha: captcha,
-              cancelToken: token,
-              recoveryTicket: ticket,
-              // 自动路径显式禁止 WebView cookie 同步。
-              syncWebViewCookies: false,
-            );
+        final result = await UnifiedAuthService.instance.submitCaptchaChallenge(
+          challengeId: challenge.id,
+          username: account,
+          password: password,
+          captcha: captcha,
+          cancelToken: token,
+          recoveryTicket: ticket,
+          // 自动路径显式禁止 WebView cookie 同步。
+          syncWebViewCookies: false,
+        );
         return _AutomaticExchangeResult(
           receipt: result is UnifiedAuthLoginSuccess ? result.receipt : null,
         );
@@ -218,24 +266,24 @@ class AutomaticLoginService {
       switch (domain) {
         AuthRecoveryDomain.cas =>
           CredentialStore.instance.loadUnifiedAuthCredentials(),
-        AuthRecoveryDomain.academic => CredentialStore.instance.loadCredentials(),
+        AuthRecoveryDomain.academic =>
+          CredentialStore.instance.loadCredentials(),
       };
 
-  AutomaticLoginOutcome _mapDecision(AuthRecoveryDecision decision) =>
-      switch (decision) {
-        AuthRecoveryDecision.committed => AutomaticLoginOutcome.committed,
-        AuthRecoveryDecision.manualRequired =>
-          AutomaticLoginOutcome.manualRequired,
-        AuthRecoveryDecision.cooldown ||
-        AuthRecoveryDecision.manualHoldActive => AutomaticLoginOutcome.cooldown,
-        AuthRecoveryDecision.busy => AutomaticLoginOutcome.busy,
-        AuthRecoveryDecision.disabled ||
-        AuthRecoveryDecision.revoked ||
-        AuthRecoveryDecision.accountMismatch =>
-          AutomaticLoginOutcome.notEligible,
-        AuthRecoveryDecision.proceed ||
-        AuthRecoveryDecision.exchangeFailed ||
-        AuthRecoveryDecision.ticketRejected ||
-        AuthRecoveryDecision.aborted => AutomaticLoginOutcome.failed,
-      };
+  AutomaticLoginOutcome _mapDecision(
+    AuthRecoveryDecision decision,
+  ) => switch (decision) {
+    AuthRecoveryDecision.committed => AutomaticLoginOutcome.committed,
+    AuthRecoveryDecision.manualRequired => AutomaticLoginOutcome.manualRequired,
+    AuthRecoveryDecision.cooldown ||
+    AuthRecoveryDecision.manualHoldActive => AutomaticLoginOutcome.cooldown,
+    AuthRecoveryDecision.busy => AutomaticLoginOutcome.busy,
+    AuthRecoveryDecision.disabled ||
+    AuthRecoveryDecision.revoked ||
+    AuthRecoveryDecision.accountMismatch => AutomaticLoginOutcome.notEligible,
+    AuthRecoveryDecision.proceed ||
+    AuthRecoveryDecision.exchangeFailed ||
+    AuthRecoveryDecision.ticketRejected ||
+    AuthRecoveryDecision.aborted => AutomaticLoginOutcome.failed,
+  };
 }

@@ -15,6 +15,7 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
     if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
     final mode = _mode;
     final revisionAtStart = _sessionRevision;
+    final accountAtStart = currentStudentId;
     // prepare 时固定持久 epoch：提交必须用它做条件提交。
     final expectedEpoch = await AuthSessionPersistence.instance.readEpoch(
       CredentialSessionDomain.academic,
@@ -34,6 +35,8 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
       session,
       mode,
       expectedEpoch: expectedEpoch,
+      revisionAtStart: revisionAtStart,
+      accountAtStart: accountAtStart,
       cancelToken: cancelToken,
     );
     if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
@@ -90,10 +93,7 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
     }
     if (recoveryTicket != null &&
         !_recoveryTicketMatchesInput(recoveryTicket, username)) {
-      return LoginFailure(
-        '登录状态已变化，请重试',
-        kind: AuthFailureKind.staleOperation,
-      );
+      return LoginFailure('登录状态已变化，请重试', kind: AuthFailureKind.staleOperation);
     }
     return _performLogin(
       context: attempt.context,
@@ -108,10 +108,7 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
   }
 
   /// 自动票据必须属于教务域且账号与本次登录输入一致；否则不得提交。
-  bool _recoveryTicketMatchesInput(
-    AuthRecoveryTicket ticket,
-    String username,
-  ) {
+  bool _recoveryTicketMatchesInput(AuthRecoveryTicket ticket, String username) {
     if (ticket.domain != AuthRecoveryDomain.academic) return false;
     final trimmed = username.trim();
     return trimmed.isNotEmpty && ticket.account == trimmed;
@@ -149,6 +146,8 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
     IsolatedAuthSession session,
     ZhengfangMode mode, {
     required int expectedEpoch,
+    required int revisionAtStart,
+    required String? accountAtStart,
     CancelToken? cancelToken,
   }) async {
     final loginPageUrl = _loginPageUrlFor(mode);
@@ -169,7 +168,13 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
     final location = pageResp.headers.value('location') ?? '';
     if (isZhengfangGatewayLoginUrl(location)) {
       AppLogger.instance.auth(LogLevel.warn, '检测到 WebVPN 登录页重定向，当前认证已过期');
-      await markLoggedOut();
+      // 绑定发起时 revision/账号/epoch：探测期间切号/重登后，旧失效响应
+      // 不得登出新会话；只用持久 CAS 条件撤销。
+      await revokeExpiredSessionIfCurrent(
+        revision: revisionAtStart,
+        account: accountAtStart,
+        expectedEpoch: expectedEpoch,
+      );
       throw CaptchaException('WebVPN 认证已过期，请重新登录');
     }
 
@@ -408,7 +413,13 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
             kind: AuthFailureKind.staleOperation,
           );
         }
-        _applySessionIdentity(active: true, studentId: username);
+        // 成功提交了一次新会话：同账号重登也必须推进 sessionRevision，
+        // 使旧 guard/旧提交的迟到结果失效，绝不允许旧响应进入新会话。
+        _applySessionIdentity(
+          active: true,
+          studentId: username,
+          forceRevision: true,
+        );
 
         AppLogger.instance.auth(
           LogLevel.info,

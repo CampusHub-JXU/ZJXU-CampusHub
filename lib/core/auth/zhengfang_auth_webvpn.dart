@@ -150,10 +150,22 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
   /// 校验教务会话是否仍然有效。
   /// 返回:
   /// - `true`: 会话有效
-  /// - `false`: 会话失效（会自动标记登出）
-  /// - `null`: 校验请求失败（网络异常），不变更当前登录态
-  Future<bool?> validateSession() async {
+  /// - `false`: 会话失效（[revokeOnInvalid] 为 true 时按发起时 epoch 条件撤销）
+  /// - `null`: 校验请求失败（网络异常），或探测期间会话已变化（不下结论）
+  ///
+  /// [revokeOnInvalid] 为 false 时是**无登出副作用探测**：guard 的恢复链路用它
+  /// 只判定会话是否失效，不撤销任何会话，从而能继续走一次 OCR 自动登录。
+  Future<bool?> validateSession({bool revokeOnInvalid = true}) async {
     if (!_sessionActive) return false;
+
+    // 绑定发起时的 owner + revision + 持久 epoch：探测期间切号/同账号重登后，
+    // 本次失效响应属于旧 owner，必须 fail closed，绝不登出新会话。
+    final revisionAtStart = _sessionRevision;
+    final accountAtStart = currentStudentId;
+    // 无副作用探测（guard 路径）不需要 epoch，避免多余的持久读。
+    final epochAtStart = revokeOnInvalid
+        ? await durableAcademicEpochOrUnknown()
+        : -1;
 
     await DioClient.instance.ensureInitialized();
     final indexUrl = '$_baseUrl/xtgl/index_initMenu.html';
@@ -187,8 +199,20 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
           statusCode == 200 && looksLikeZhengfangLoginHtml(html);
 
       if (redirectedToLogin || loginPageReturned) {
-        AppLogger.instance.auth(LogLevel.warn, '教务会话已失效，自动标记为未登录');
-        await markLoggedOut();
+        if (_sessionRevision != revisionAtStart) {
+          AppLogger.instance.auth(LogLevel.warn, '教务会话校验命中失效，但期间会话已变化，跳过登出');
+          return null;
+        }
+        if (!revokeOnInvalid) {
+          // guard 的无副作用探测：只报告失效，撤销留给 guard 的终态条件撤销。
+          return false;
+        }
+        AppLogger.instance.auth(LogLevel.warn, '教务会话已失效，条件撤销');
+        await revokeExpiredSessionIfCurrent(
+          revision: revisionAtStart,
+          account: accountAtStart,
+          expectedEpoch: epochAtStart,
+        );
         return false;
       }
 
@@ -212,6 +236,7 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
   /// - `null`: 校验失败（网络异常），不下结论
   Future<bool?> validateWebVpnProxySession(String targetUrl) async {
     await DioClient.instance.ensureInitialized();
+    final revisionAtStart = _sessionRevision;
     final probeUrl = buildWebVpnProxyUrl(targetUrl);
 
     try {
@@ -256,7 +281,7 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
           } catch (_) {}
         }
         AppLogger.instance.auth(LogLevel.warn, 'WebVPN 目标会话已失效: $probeUrl');
-        markWebVpnLoggedOut();
+        _markWebVpnLoggedOutIfCurrent(revisionAtStart);
         return false;
       }
 
@@ -297,6 +322,9 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
     bool forceWebVpn = false,
   }) async {
     await DioClient.instance.ensureInitialized();
+    // 绑定发起时 revision：网关探测期间切号/重登后，旧失效响应不得清掉新会话
+    // 的 WebVPN 标记。
+    final revisionAtStart = _sessionRevision;
 
     // FR-1: 不再无条件切换为 WebVPN。先探测连接模式：
     // - 直连可达 → 切回直连模式，无需 WebVPN 网关会话，直接返回 true。
@@ -331,7 +359,7 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
     );
     if (unifiedAuthActive != true) {
       if (unifiedAuthActive == false) {
-        markWebVpnLoggedOut();
+        _markWebVpnLoggedOutIfCurrent(revisionAtStart);
       }
       return WebVpnGatewayEnsureResult(
         ready: unifiedAuthActive,
@@ -358,7 +386,7 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
       final realUrl = response.realUri.toString();
       if (_looksLikeWebVpnAuthResponse(realUrl, html)) {
         AppLogger.instance.auth(LogLevel.warn, 'WebVPN 网关会话恢复后仍命中登录页');
-        markWebVpnLoggedOut();
+        _markWebVpnLoggedOutIfCurrent(revisionAtStart);
         return WebVpnGatewayEnsureResult(ready: false, selectedMode: mode);
       }
 
@@ -377,6 +405,13 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
       AppLogger.instance.auth(LogLevel.warn, 'WebVPN 网关会话校验失败（未知异常）: $e');
       return WebVpnGatewayEnsureResult(ready: null, selectedMode: mode);
     }
+  }
+
+  /// 仅当会话 revision 仍是发起探测时的值时清除 WebVPN 标记，避免旧失效
+  /// 响应清掉后来居上的新会话状态。
+  void _markWebVpnLoggedOutIfCurrent(int revisionAtStart) {
+    if (_sessionRevision != revisionAtStart) return;
+    markWebVpnLoggedOut();
   }
 
   bool _looksLikeWebVpnAuthResponse(String url, String html) {

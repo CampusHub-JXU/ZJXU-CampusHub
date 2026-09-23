@@ -605,6 +605,281 @@ void main() {
       expect(auth.isLoggedIn, isFalse);
     },
   );
+
+  // ── P1：成功提交的同账号重登必须推进 revision 并通知页面 ──
+
+  test('active A 成功再提交同账号（不先 inactive）：revision 前进并通知页面', () async {
+    DioClient.instance.dio.httpClientAdapter = _ChallengeZfAdapter();
+    auth.debugSetSession(active: true, studentId: '2024001');
+    final revisionBefore = auth.sessionRevision;
+    var notifications = 0;
+    void listener() => notifications++;
+    auth.addListener(listener);
+    addTearDown(() => auth.removeListener(listener));
+
+    final challenge = await auth.prepareCaptchaChallenge();
+    final result = await auth.submitCaptchaChallenge(
+      challengeId: challenge.id,
+      username: '2024001',
+      password: 'pw',
+      captcha: '1',
+    );
+
+    expect(result, isA<LoginSuccess>());
+    expect(auth.isLoggedIn, isTrue);
+    expect(auth.currentStudentId, '2024001');
+    expect(
+      auth.sessionRevision,
+      greaterThan(revisionBefore),
+      reason: '同账号重登成功必须推进 revision，使旧在途结果失效',
+    );
+    expect(notifications, greaterThan(0), reason: '成功提交必须通知页面');
+  });
+
+  test('同账号真实重登推进 revision 后，旧在途提交被丢弃且不撤销新会话', () async {
+    final firstPostGate = Completer<void>();
+    var postCount = 0;
+    final adapter = _ChallengeZfAdapter(
+      beforePost: () async {
+        postCount++;
+        if (postCount == 1) await firstPostGate.future;
+      },
+    );
+    DioClient.instance.dio.httpClientAdapter = adapter;
+    auth.debugSetSession(active: true, studentId: '2024001');
+
+    final first = await auth.prepareCaptchaChallenge();
+    final pending = auth.submitCaptchaChallenge(
+      challengeId: first.id,
+      username: '2024001',
+      password: 'pw',
+      captcha: '1',
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    // 同账号真实重登：不先 inactive，直接成功提交一个新会话。
+    final second = await auth.prepareCaptchaChallenge();
+    final relogin = await auth.submitCaptchaChallenge(
+      challengeId: second.id,
+      username: '2024001',
+      password: 'pw',
+      captcha: '2',
+    );
+    expect(relogin, isA<LoginSuccess>());
+    final revisionAfterRelogin = auth.sessionRevision;
+
+    firstPostGate.complete();
+    final result = await pending;
+    expect((result as LoginFailure).kind, AuthFailureKind.staleOperation);
+    expect(auth.isLoggedIn, isTrue);
+    expect(auth.currentStudentId, '2024001');
+    expect(
+      auth.sessionRevision,
+      revisionAfterRelogin,
+      reason: '旧在途提交不得撤销或改写新会话',
+    );
+  });
+
+  test('revokeSessionIfCurrent 仅在 revision+account+epoch 全匹配时条件撤销', () async {
+    auth.debugSetSession(active: true, studentId: 'A');
+    final revision = auth.sessionRevision;
+    final receipt = await AuthSessionPersistence.instance.commit(
+      CredentialSessionDomain.academic,
+      account: 'A',
+      expectedEpoch: 0,
+    );
+    expect(receipt, isNotNull);
+
+    expect(
+      await auth.revokeSessionIfCurrent(
+        revision: revision,
+        account: 'B',
+        expectedEpoch: receipt!.epoch,
+      ),
+      isFalse,
+      reason: '账号不匹配不得撤销',
+    );
+    expect(auth.isLoggedIn, isTrue);
+
+    expect(
+      await auth.revokeSessionIfCurrent(
+        revision: revision - 1,
+        account: 'A',
+        expectedEpoch: receipt.epoch,
+      ),
+      isFalse,
+      reason: 'revision 不匹配不得撤销',
+    );
+    expect(auth.isLoggedIn, isTrue);
+
+    expect(
+      await auth.revokeSessionIfCurrent(
+        revision: revision,
+        account: 'A',
+        expectedEpoch: receipt.epoch - 1,
+      ),
+      isFalse,
+      reason: 'epoch 不匹配不得撤销',
+    );
+    expect(auth.isLoggedIn, isTrue);
+    expect(
+      (await CredentialStore.instance.readSessionEnvelope(
+        CredentialSessionDomain.academic,
+      )).active,
+      isTrue,
+    );
+
+    expect(
+      await auth.revokeSessionIfCurrent(
+        revision: revision,
+        account: 'A',
+        expectedEpoch: receipt.epoch,
+      ),
+      isTrue,
+    );
+    expect(auth.isLoggedIn, isFalse);
+    expect(
+      (await CredentialStore.instance.readSessionEnvelope(
+        CredentialSessionDomain.academic,
+      )).active,
+      isFalse,
+    );
+  });
+
+  test('同账号重登推进 epoch：旧撤销 no-op，内存与 disk envelope 保留', () async {
+    auth.debugSetSession(active: true, studentId: 'A');
+    final revision = auth.sessionRevision;
+    final stale = await AuthSessionPersistence.instance.commit(
+      CredentialSessionDomain.academic,
+      account: 'A',
+      expectedEpoch: 0,
+    );
+    final newer = await AuthSessionPersistence.instance.commit(
+      CredentialSessionDomain.academic,
+      account: 'A',
+      expectedEpoch: stale!.epoch,
+    );
+    expect(newer, isNotNull);
+
+    final revoked = await auth.revokeSessionIfCurrent(
+      revision: revision,
+      account: 'A',
+      expectedEpoch: stale.epoch,
+    );
+    expect(revoked, isFalse);
+    expect(auth.isLoggedIn, isTrue, reason: '内存 A 不得被误清');
+    final envelope = await CredentialStore.instance.readSessionEnvelope(
+      CredentialSessionDomain.academic,
+    );
+    expect(envelope.active, isTrue);
+    expect(envelope.account, 'A');
+    expect(envelope.epoch, newer!.epoch);
+  });
+
+  test('跨 isolate 换号 B：旧撤销 no-op，B 的 disk envelope 保留', () async {
+    auth.debugSetSession(active: true, studentId: 'A');
+    final revision = auth.sessionRevision;
+    final stale = await AuthSessionPersistence.instance.commit(
+      CredentialSessionDomain.academic,
+      account: 'A',
+      expectedEpoch: 0,
+    );
+    // 模拟跨 isolate B 提交（本 isolate 内存仍是 A）。
+    final bReceipt = await AuthSessionPersistence.instance.commit(
+      CredentialSessionDomain.academic,
+      account: 'B',
+      expectedEpoch: stale!.epoch,
+    );
+    expect(bReceipt, isNotNull);
+
+    final revoked = await auth.revokeSessionIfCurrent(
+      revision: revision,
+      account: 'A',
+      expectedEpoch: stale.epoch,
+    );
+    expect(revoked, isFalse, reason: '不得撤销属于别的账号的持久会话');
+    final envelope = await CredentialStore.instance.readSessionEnvelope(
+      CredentialSessionDomain.academic,
+    );
+    expect(envelope.active, isTrue);
+    expect(envelope.account, 'B');
+  });
+
+  test('无可信 epoch：revokeExpiredSessionIfCurrent 只条件清旧内存，不持久撤销', () async {
+    auth.debugSetSession(active: true, studentId: 'A');
+    final revision = auth.sessionRevision;
+    final committed = await AuthSessionPersistence.instance.commit(
+      CredentialSessionDomain.academic,
+      account: 'A',
+      expectedEpoch: 0,
+    );
+    expect(committed, isNotNull);
+
+    final revoked = await auth.revokeExpiredSessionIfCurrent(
+      revision: revision,
+      account: 'A',
+      expectedEpoch: -1,
+    );
+    expect(revoked, isFalse);
+    expect(auth.isLoggedIn, isFalse, reason: '无可信 epoch 时至多条件清旧内存');
+    final envelope = await CredentialStore.instance.readSessionEnvelope(
+      CredentialSessionDomain.academic,
+    );
+    expect(envelope.active, isTrue, reason: '绝不无条件持久 revoke');
+    expect(envelope.account, 'A');
+  });
+
+  test('无账号：revokeExpiredSessionIfCurrent 不持久撤销，也不误清当前会话', () async {
+    auth.debugSetSession(active: true, studentId: 'A');
+    final revision = auth.sessionRevision;
+    final committed = await AuthSessionPersistence.instance.commit(
+      CredentialSessionDomain.academic,
+      account: 'A',
+      expectedEpoch: 0,
+    );
+    expect(committed, isNotNull);
+
+    final revoked = await auth.revokeExpiredSessionIfCurrent(
+      revision: revision,
+      account: null,
+      expectedEpoch: committed!.epoch,
+    );
+    expect(revoked, isFalse);
+    // account null 与当前 A 不符：不得误清。
+    expect(auth.isLoggedIn, isTrue);
+    expect(
+      (await CredentialStore.instance.readSessionEnvelope(
+        CredentialSessionDomain.academic,
+      )).active,
+      isTrue,
+    );
+  });
+
+  test('prepare 期间切号：WebVPN 网关失效响应不登出新会话', () async {
+    final gate = Completer<void>();
+    final adapter = MockHttpClientAdapter()
+      ..register('GET', '/jwglxt/xtgl/login_slogin.html', (options) async {
+        await gate.future;
+        return ResponseBody.fromString(
+          '',
+          302,
+          headers: <String, List<String>>{
+            'location': <String>['https://webvpn.zjxu.edu.cn/login'],
+          },
+        );
+      });
+    DioClient.instance.dio.httpClientAdapter = adapter;
+    auth.debugSetSession(active: true, studentId: 'A');
+
+    final pending = auth.prepareCaptchaChallenge();
+    await Future<void>.delayed(Duration.zero);
+    auth.debugSetSession(active: true, studentId: 'B');
+    gate.complete();
+
+    await expectLater(pending, throwsA(isA<CaptchaException>()));
+    expect(auth.isLoggedIn, isTrue);
+    expect(auth.currentStudentId, 'B');
+  });
 }
 
 /// 访问登录入口却重定向到首页的适配器：用于验证未知会话不得绑定输入账号。
