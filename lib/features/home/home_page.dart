@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/app_bootstrap_controller.dart';
+import '../../core/auth/unified_auth.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/notice/notice_model.dart';
 import '../../core/notice/notice_sync_store.dart';
@@ -69,6 +70,11 @@ class _HomePageState extends State<HomePage> {
   bool _hasAvailableUpdate = false;
   bool _hasHydratedBootstrapState = false;
 
+  /// 认证上下文世代：统一认证 / 教务任一身份通知即推进。私有刷新在 await
+  /// 前捕获它，返回后不一致说明期间发生过登录 / 登出 / 换号 / 同号重登
+  /// （后者 `sessionRevision` 可能不增），结果一律不得写回展示。
+  int _authGeneration = 0;
+
   /// 教务处通知载荷：Hero 角标、校园公告区块共用（后台 isolate 写盘后
   /// 由 store.reload 经此 ValueNotifier 回流刷新）。
   NoticeInboxHead _noticeHead = NoticeInboxHead.empty;
@@ -94,6 +100,7 @@ class _HomePageState extends State<HomePage> {
       _onSemesterStartChanged,
     );
     ZhengfangAuth.instance.addListener(_onAcademicAuthChanged);
+    UnifiedAuthService.instance.addListener(_onUnifiedAuthChanged);
     _bootstrapController.phase.addListener(_onBootstrapPhaseChanged);
     UpdateChecker.instance.availableRelease.addListener(
       _onAvailableReleaseChanged,
@@ -114,6 +121,7 @@ class _HomePageState extends State<HomePage> {
       _onSemesterStartChanged,
     );
     ZhengfangAuth.instance.removeListener(_onAcademicAuthChanged);
+    UnifiedAuthService.instance.removeListener(_onUnifiedAuthChanged);
     _bootstrapController.phase.removeListener(_onBootstrapPhaseChanged);
     UpdateChecker.instance.availableRelease.removeListener(
       _onAvailableReleaseChanged,
@@ -166,9 +174,36 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  /// 统一认证身份变化（登录 / 登出 / 换号 / 同号重登）：推进认证世代作废
+  /// 在途私有刷新结果，并同步按当前 owner 重新采纳内存投影——校园卡余额
+  /// 带 CAS 归属校验，登出 / 换号后立即回落占位符，不保留上一身份的内容。
+  void _onUnifiedAuthChanged() {
+    if (!mounted) return;
+    _authGeneration++;
+    _reAdoptPrivateProjection();
+  }
+
+  /// 教务身份变化：与统一认证同一路径重新采纳投影（考试 / 课表带学号
+  /// 归属校验），并保持既有「刷新下一节课」行为。
   void _onAcademicAuthChanged() {
-    if (!mounted || !_isBootstrapReady) return;
-    _refreshNextCourse();
+    if (!mounted) return;
+    _authGeneration++;
+    _reAdoptPrivateProjection();
+    if (_isBootstrapReady) {
+      _refreshNextCourse();
+    }
+  }
+
+  /// 认证身份变化后同步重新采纳内存投影（不发网络）。
+  ///
+  /// bootstrap 本地状态恢复前不采纳，避免用半截缓存覆盖既有 hydrate 时序；
+  /// 采纳来源 [CampusSnapshotCoordinator.restore] 本身按当前 owner 归属
+  /// 过滤，登出 / 换号只会得到空值；电费不是私有数据，保持原值。
+  void _reAdoptPrivateProjection() {
+    if (!mounted || !_hasHydratedBootstrapState) return;
+    setState(() {
+      _adoptRestoreData(_snapshotCoordinator.restore(DateTime.now()));
+    });
   }
 
   void _onSemesterStartChanged() {
@@ -232,9 +267,10 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _refreshNextCourse() async {
     if (!_isBootstrapReady) return;
+    final authGuard = _authGeneration;
     try {
       final result = await _snapshotCoordinator.refreshSchedule();
-      if (!mounted) return;
+      if (!mounted || authGuard != _authGeneration) return;
 
       setState(() {
         _scheduleSnapshot = result.snapshot;
@@ -242,7 +278,7 @@ class _HomePageState extends State<HomePage> {
         _courseLoggedIn = result.courseLoggedIn;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || authGuard != _authGeneration) return;
       // 网络失败时保留已有缓存快照，仅同步登录态。
       setState(() {
         _courseLoggedIn = _snapshotCoordinator.courseLoggedInForCache(
@@ -260,14 +296,15 @@ class _HomePageState extends State<HomePage> {
       });
       return;
     }
+    final authGuard = _authGeneration;
     try {
       final text = await _snapshotCoordinator.fetchCampusCardBalanceText();
-      if (!mounted) return;
+      if (!mounted || authGuard != _authGeneration) return;
       setState(() {
         _campusCardBalance = text;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || authGuard != _authGeneration) return;
       NetworkErrorToast.show(context, e);
     }
   }
@@ -295,6 +332,7 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _refreshExam() async {
     if (!_isBootstrapReady) return;
+    final authGuard = _authGeneration;
     final cached = _snapshotCoordinator.cachedNextExam;
     if (cached != null && mounted) {
       setState(() {
@@ -304,12 +342,12 @@ class _HomePageState extends State<HomePage> {
     if (!_snapshotCoordinator.isAcademicLoggedIn) return;
     try {
       final next = await _snapshotCoordinator.fetchNextExam();
-      if (!mounted) return;
+      if (!mounted || authGuard != _authGeneration) return;
       setState(() {
         _nextExam = next;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || authGuard != _authGeneration) return;
       NetworkErrorToast.show(context, e);
     }
   }

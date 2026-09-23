@@ -12,8 +12,13 @@ import 'exam_model.dart';
 import 'exam_service.dart';
 import '../../shared/widgets/app_app_bar.dart';
 
+typedef ExamFetcher = Future<List<ExamEntry>> Function({bool forceRefresh});
+
 class ExamPage extends StatefulWidget {
-  const ExamPage({super.key});
+  const ExamPage({super.key, this.fetchExams});
+
+  /// 测试注入点：默认走 [ExamService.instance.fetchExams]。
+  final ExamFetcher? fetchExams;
 
   @override
   State<ExamPage> createState() => _ExamPageState();
@@ -30,11 +35,30 @@ class _ExamPageState extends State<ExamPage> {
   /// 最近一次教务过期是否由「自动登录已暂停」触发；仅影响未登录引导文案。
   bool _automaticLoginPaused = false;
 
+  /// 页面状态归属的教务账号（学号）；账号变化（含登出）即清空页面数据，
+  /// 绝不让上一个账号的考试残留给下一个账号看到。
+  String? _identityOwner;
+
+  /// 状态归属账号对应的 auth 身份修订号；同账号重登也会推进该值，
+  /// 用于作废重登前发起的在途抓取。
+  int _identityRevision = 0;
+
+  /// 页面内抓取代际：身份变化或发起新抓取时递增，只接纳最新一代结果。
+  int _fetchGeneration = 0;
+
+  static String? _normalizeOwner(String? raw) {
+    final trimmed = raw?.trim();
+    return (trimmed == null || trimmed.isEmpty) ? null : trimmed;
+  }
+
   @override
   void initState() {
     super.initState();
-    _loggedIn = ZhengfangAuth.instance.isLoggedIn;
-    ZhengfangAuth.instance.addListener(_handleAuthChanged);
+    final auth = ZhengfangAuth.instance;
+    _loggedIn = auth.isLoggedIn;
+    _identityOwner = _loggedIn ? _normalizeOwner(auth.currentStudentId) : null;
+    _identityRevision = auth.sessionRevision;
+    auth.addListener(_handleAuthChanged);
     if (_loggedIn) {
       _loadCachedThenFetch();
     } else {
@@ -73,40 +97,126 @@ class _ExamPageState extends State<ExamPage> {
     super.dispose();
   }
 
-  void _handleAuthChanged() {
-    final nextLoggedIn = ZhengfangAuth.instance.isLoggedIn;
-    if (!mounted || nextLoggedIn == _loggedIn) return;
+  /// 只接纳「最新一代 + 身份仍与抓取发起时一致」的抓取结果。
+  bool _acceptFetchResult(int generation, String owner, int revision) {
+    if (!mounted || generation != _fetchGeneration) return false;
+    final auth = ZhengfangAuth.instance;
+    return _loggedIn &&
+        _identityOwner == owner &&
+        _identityRevision == revision &&
+        auth.isLoggedIn &&
+        auth.sessionRevision == revision &&
+        _normalizeOwner(auth.currentStudentId) == owner;
+  }
 
+  void _handleAuthChanged() {
+    if (!mounted) return;
+    final auth = ZhengfangAuth.instance;
+    final nextLoggedIn = auth.isLoggedIn;
+    final nextOwner = nextLoggedIn
+        ? _normalizeOwner(auth.currentStudentId)
+        : null;
+    final nextRevision = auth.sessionRevision;
+    final loginChanged = nextLoggedIn != _loggedIn;
+    final ownerChanged = nextOwner != _identityOwner;
+    final revisionChanged = nextRevision != _identityRevision;
+    if (!loginChanged && !ownerChanged && !revisionChanged) return;
+
+    if (nextOwner == null) {
+      _applySignedOut(nextRevision);
+      return;
+    }
+    if (ownerChanged) {
+      _applyOwnerChanged(nextOwner, nextRevision);
+      return;
+    }
+    _applySameOwnerRelogin(nextRevision);
+  }
+
+  /// 登出 / 会话失效：页面不得继续持有上一个账号的考试。
+  ///
+  /// 此处不推进 [_fetchGeneration]：随后到达的过期异常仍属于刚结束的这次
+  /// 未登录引导（用于还原「自动登录已暂停」文案），而它的数据结果会因
+  /// 身份不匹配被 [_acceptFetchResult] 拒绝。
+  void _applySignedOut(int revision) {
     setState(() {
-      _loggedIn = nextLoggedIn;
-      if (!nextLoggedIn) {
-        _error = _exams.isEmpty ? null : '登录状态已失效，请重新登录后刷新考试信息';
-        // 暂停标记由随后的过期异常分支重新写入；普通登出保持非暂停文案。
-        _automaticLoginPaused = false;
-      }
+      _loggedIn = false;
+      _identityOwner = null;
+      _identityRevision = revision;
+      _exams = [];
+      _loading = false;
+      _error = null;
+      // 暂停标记由随后的过期异常分支重新写入；普通登出保持非暂停文案。
+      _automaticLoginPaused = false;
     });
 
-    if (!nextLoggedIn) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        unawaited(_presentLoginPrompt(force: true));
-      });
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(_presentLoginPrompt(force: true));
+    });
+  }
+
+  /// 账号切换（A→B 或登出后重新登录为他人）：清空旧账号数据并拉取新数据。
+  void _applyOwnerChanged(String owner, int revision) {
+    setState(() {
+      _loggedIn = true;
+      _identityOwner = owner;
+      _identityRevision = revision;
+      _fetchGeneration++;
+      _exams = [];
+      _loading = false;
+      _error = null;
+      _automaticLoginPaused = false;
+    });
+    unawaited(_fetchExams());
+  }
+
+  /// 同账号重登：账号未变，已展示数据仍属于该账号，保留以避免闪空；
+  /// 但身份修订已推进，重登前的在途结果一律作废，并主动刷新。
+  void _applySameOwnerRelogin(int revision) {
+    setState(() {
+      _loggedIn = true;
+      _identityRevision = revision;
+      _fetchGeneration++;
+      _error = null;
+      _automaticLoginPaused = false;
+    });
+    unawaited(_fetchExams(forceRefresh: true));
   }
 
   Future<void> _fetchExams({bool forceRefresh = false}) async {
+    final auth = ZhengfangAuth.instance;
+    final owner = _normalizeOwner(auth.currentStudentId);
+    if (!auth.isLoggedIn || owner == null || owner != _identityOwner) {
+      // 身份未就绪或已被切换：不发起抓取，等身份同步完成后再刷新。
+      return;
+    }
+    final revision = auth.sessionRevision;
+    final generation = ++_fetchGeneration;
+    final hasExistingData = _exams.isNotEmpty;
+
     setState(() {
       _loading = _exams.isEmpty; // Only show spinner if no cached data
       _error = null;
     });
     try {
-      final exams = await ExamService.instance.fetchExams(
-        forceRefresh: forceRefresh,
-      );
-      if (mounted) setState(() => _exams = exams);
+      final exams =
+          await (widget.fetchExams?.call(forceRefresh: forceRefresh) ??
+              ExamService.instance.fetchExams(forceRefresh: forceRefresh));
+      if (!_acceptFetchResult(generation, owner, revision)) return;
+      setState(() => _exams = exams);
     } on ExamAuthExpiredException catch (e) {
+      // 过期结果只对「发起时的身份」有效：换号/重登后的迟到过期不得影响
+      // 新会话的引导文案。
       if (!mounted) return;
+      if (generation != _fetchGeneration) return;
+      // 会话过期即身份不可信：清空旧账号数据并回到未登录引导。
       setState(() {
+        _loggedIn = false;
+        _identityOwner = null;
+        _identityRevision = ZhengfangAuth.instance.sessionRevision;
+        _exams = [];
+        _loading = false;
         _error = '登录状态已过期，请重新登录';
         _automaticLoginPaused = e.automaticLoginPaused;
       });
@@ -116,23 +226,52 @@ class _ExamPageState extends State<ExamPage> {
         unawaited(_presentLoginPrompt(force: true));
       });
     } catch (e) {
-      if (mounted) {
+      if (!mounted) return;
+      if (!_acceptFetchResult(generation, owner, revision)) return;
+      if (hasExistingData) {
+        // 同账号既有数据仍然有效：保留展示，只用 toast 提示本次失败。
+        NetworkErrorToast.show(context, e);
+      } else {
         setState(() => _error = '获取考试信息失败：$e');
         NetworkErrorToast.show(context, e);
       }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && generation == _fetchGeneration) {
+        setState(() => _loading = false);
+      }
     }
   }
 
   void _onLoginSuccess() {
+    final auth = ZhengfangAuth.instance;
+    final owner = auth.isLoggedIn
+        ? _normalizeOwner(auth.currentStudentId)
+        : null;
+    if (owner == null) {
+      // 登录模态声称成功但身份不完整：按通用身份同步处理，不伪造已登录。
+      _handleAuthChanged();
+      return;
+    }
+    final revision = auth.sessionRevision;
+    final ownerChanged = owner != _identityOwner;
+    // 身份通知回调可能已为同一身份发起刷新，避免重复请求。
+    final alreadyRefreshing = !ownerChanged && _loading;
     setState(() {
       _loggedIn = true;
+      _identityOwner = owner;
+      _identityRevision = revision;
       _error = null;
       // 手动登录成功即重新武装自动登录，清除暂停文案。
       _automaticLoginPaused = false;
+      if (ownerChanged) {
+        _fetchGeneration++;
+        _exams = [];
+        _loading = false;
+      }
     });
-    _fetchExams();
+    if (!alreadyRefreshing) {
+      unawaited(_fetchExams(forceRefresh: true));
+    }
   }
 
   Future<void> _presentLoginPrompt({bool force = false}) async {

@@ -42,6 +42,17 @@ class _GradesPageState extends State<GradesPage>
   bool _loginPromptShown = false;
   bool _loginPromptInFlight = false;
 
+  /// 当前页面状态归属的教务账号；账号变化（含登出）即清空页面敏感状态，
+  /// 绝不让上一个账号的成绩残留给下一个账号看到。
+  String? _identityOwner;
+
+  /// 状态归属账号对应的 auth 身份修订号；同账号重登也会推进该值，
+  /// 用于作废重登前发起的在途请求。
+  int _identityRevision = 0;
+
+  /// 页面内请求代数：身份变化或发起新请求时递增，只接纳最新一代结果。
+  int _fetchGeneration = 0;
+
   /// 最近一次教务过期是否由「自动登录已暂停」触发；仅影响未登录引导文案。
   bool _automaticLoginPaused = false;
 
@@ -56,8 +67,11 @@ class _GradesPageState extends State<GradesPage>
   void initState() {
     super.initState();
     _searchController.addListener(_onSearchChanged);
-    _loggedIn = ZhengfangAuth.instance.isLoggedIn;
-    ZhengfangAuth.instance.addListener(_handleAuthChanged);
+    final auth = ZhengfangAuth.instance;
+    _loggedIn = auth.isLoggedIn;
+    _identityOwner = _loggedIn ? _normalizeOwner(auth.currentStudentId) : null;
+    _identityRevision = auth.sessionRevision;
+    auth.addListener(_handleAuthChanged);
 
     _staggerController = AnimationController(
       duration: const Duration(milliseconds: 420),
@@ -89,29 +103,117 @@ class _GradesPageState extends State<GradesPage>
     setState(() => _query = nextQuery);
   }
 
-  void _handleAuthChanged() {
-    final nextLoggedIn = ZhengfangAuth.instance.isLoggedIn;
-    if (!mounted || nextLoggedIn == _loggedIn) return;
+  String? _normalizeOwner(String? raw) {
+    final trimmed = raw?.trim();
+    if (trimmed == null || trimmed.isEmpty) return null;
+    return trimmed;
+  }
 
-    setState(() {
-      _loggedIn = nextLoggedIn;
-      if (!nextLoggedIn) {
-        _error = _grades.isEmpty ? null : '登录状态已失效，请重新登录后刷新成绩';
-        // 暂停标记由随后的过期异常分支重新写入；普通登出保持非暂停文案。
-        _automaticLoginPaused = false;
-      }
-    });
-
-    if (!nextLoggedIn) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        unawaited(_presentLoginPrompt(force: true));
-      });
+  /// 清空与具体账号绑定的页面状态：成绩、学期选择、搜索词与入场动画。
+  ///
+  /// 仅在身份归属发生变化时调用；同账号刷新失败仍保留既有数据。
+  void _clearIdentityBoundState() {
+    _grades = const [];
+    _selectedTermKey = null;
+    _query = '';
+    _error = null;
+    _loading = false;
+    _staggerController.reset();
+    if (_searchController.text.isNotEmpty) {
+      // _query 已归零，listener 不会重复 setState。
+      _searchController.clear();
     }
   }
 
+  /// 只接纳「最新一代 + 身份仍与请求发起时一致」的请求结果。
+  bool _acceptFetchResult(int generation, String owner, int revision) {
+    if (!mounted || generation != _fetchGeneration) return false;
+    final auth = ZhengfangAuth.instance;
+    return _loggedIn &&
+        _identityOwner == owner &&
+        _identityRevision == revision &&
+        auth.isLoggedIn &&
+        auth.sessionRevision == revision &&
+        _normalizeOwner(auth.currentStudentId) == owner;
+  }
+
+  void _handleAuthChanged() {
+    if (!mounted) return;
+    final auth = ZhengfangAuth.instance;
+    final nextLoggedIn = auth.isLoggedIn;
+    final nextOwner = nextLoggedIn
+        ? _normalizeOwner(auth.currentStudentId)
+        : null;
+    final nextRevision = auth.sessionRevision;
+    final loginChanged = nextLoggedIn != _loggedIn;
+    final ownerChanged = nextOwner != _identityOwner;
+    final revisionChanged = nextRevision != _identityRevision;
+    if (!loginChanged && !ownerChanged && !revisionChanged) return;
+
+    if (nextOwner == null) {
+      _applySignedOut(nextRevision);
+      return;
+    }
+    if (ownerChanged) {
+      _applyOwnerChanged(nextOwner, nextRevision);
+      return;
+    }
+    _applySameOwnerRelogin(nextRevision);
+  }
+
+  /// 登出 / 会话失效：页面不得继续持有上一个账号的成绩。
+  void _applySignedOut(int revision) {
+    setState(() {
+      _loggedIn = false;
+      _identityOwner = null;
+      _identityRevision = revision;
+      _fetchGeneration++;
+      _clearIdentityBoundState();
+      // 暂停标记由随后的过期异常分支重新写入；普通登出保持非暂停文案。
+      _automaticLoginPaused = false;
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(_presentLoginPrompt(force: true));
+    });
+  }
+
+  /// 账号切换（A→B 或登出后重新登录为他人）：清空旧账号状态并拉取新账号数据。
+  void _applyOwnerChanged(String owner, int revision) {
+    setState(() {
+      _loggedIn = true;
+      _identityOwner = owner;
+      _identityRevision = revision;
+      _fetchGeneration++;
+      _clearIdentityBoundState();
+      _automaticLoginPaused = false;
+    });
+    unawaited(_fetchGrades());
+  }
+
+  /// 同账号重登：账号未变，已展示数据仍属于该账号，保留以避免闪空；
+  /// 但身份修订已推进，重登前的在途结果一律作废，并主动刷新。
+  void _applySameOwnerRelogin(int revision) {
+    setState(() {
+      _loggedIn = true;
+      _identityRevision = revision;
+      _fetchGeneration++;
+      _error = null;
+      _automaticLoginPaused = false;
+    });
+    unawaited(_fetchGrades(forceRefresh: true));
+  }
+
   Future<void> _fetchGrades({bool forceRefresh = false}) async {
-    final studentId = ZhengfangAuth.instance.currentStudentId ?? '';
+    final auth = ZhengfangAuth.instance;
+    final owner = _normalizeOwner(auth.currentStudentId);
+    if (!auth.isLoggedIn || owner == null || owner != _identityOwner) {
+      // 身份未就绪或已被切换：不发起请求，等身份同步完成后再刷新。
+      return;
+    }
+    final revision = auth.sessionRevision;
+    final generation = ++_fetchGeneration;
     final hasExistingData = _grades.isNotEmpty;
     setState(() {
       _loading = true;
@@ -120,14 +222,15 @@ class _GradesPageState extends State<GradesPage>
     try {
       final fetchGrades =
           widget.fetchGrades ?? GradesService.instance.fetchGrades;
-      final grades = await fetchGrades(studentId, forceRefresh: forceRefresh);
-      if (mounted) {
-        setState(() => _grades = grades);
-        _ensureSelectedTerm();
-        _staggerController.forward(from: 0);
-      }
+      final grades = await fetchGrades(owner, forceRefresh: forceRefresh);
+      if (!_acceptFetchResult(generation, owner, revision)) return;
+      setState(() => _grades = grades);
+      _ensureSelectedTerm();
+      _staggerController.forward(from: 0);
     } on GradesAuthExpiredException catch (e) {
+      // 过期结果只对「发起时的身份」有效；换号/重登后的迟到过期不得影响新会话。
       if (!mounted) return;
+      if (!_acceptFetchResult(generation, owner, revision)) return;
       setState(() {
         _loggedIn = false;
         _error = _grades.isEmpty ? null : '登录状态已失效，请重新登录后刷新成绩';
@@ -140,6 +243,7 @@ class _GradesPageState extends State<GradesPage>
       });
     } catch (e) {
       if (!mounted) return;
+      if (!_acceptFetchResult(generation, owner, revision)) return;
       if (hasExistingData) {
         NetworkErrorToast.show(context, e);
       } else {
@@ -147,18 +251,41 @@ class _GradesPageState extends State<GradesPage>
         NetworkErrorToast.show(context, e);
       }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && generation == _fetchGeneration) {
+        setState(() => _loading = false);
+      }
     }
   }
 
   void _onLoginSuccess() {
+    final auth = ZhengfangAuth.instance;
+    final owner = auth.isLoggedIn
+        ? _normalizeOwner(auth.currentStudentId)
+        : null;
+    if (owner == null) {
+      // 登录模态声称成功但身份不完整：按通用身份同步处理，不伪造已登录。
+      _handleAuthChanged();
+      return;
+    }
+    final revision = auth.sessionRevision;
+    final ownerChanged = owner != _identityOwner;
+    // 身份通知回调可能已为同一身份发起刷新，避免重复请求。
+    final alreadyRefreshing = !ownerChanged && _loading;
     setState(() {
       _loggedIn = true;
+      _identityOwner = owner;
+      _identityRevision = revision;
       _error = null;
       // 手动登录成功即重新武装自动登录，清除暂停文案。
       _automaticLoginPaused = false;
+      if (ownerChanged) {
+        _fetchGeneration++;
+        _clearIdentityBoundState();
+      }
     });
-    _fetchGrades(forceRefresh: true);
+    if (!alreadyRefreshing) {
+      unawaited(_fetchGrades(forceRefresh: true));
+    }
   }
 
   Future<void> _presentLoginPrompt({bool force = false}) async {

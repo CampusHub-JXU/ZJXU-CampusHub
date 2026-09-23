@@ -144,10 +144,7 @@ void main() {
       42,
       updatedAt: now,
     );
-    ZhengfangAuth.instance.debugSetSession(
-      active: true,
-      studentId: studentId,
-    );
+    ZhengfangAuth.instance.debugSetSession(active: true, studentId: studentId);
     ScheduleService.instance.debugSetSnapshot(
       ScheduleCacheSnapshot(
         studentId: studentId,
@@ -841,6 +838,222 @@ void main() {
 
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('mounted home drops prior owner private projection on logout', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    final tomorrow = now.add(const Duration(days: 1));
+
+    SharedPreferences.setMockInitialValues({
+      'dorm_epay_area_id': 'area',
+      'dorm_epay_building_id': 'building',
+      'dorm_epay_floor_id': 'floor',
+      'dorm_epay_room_id': 'room',
+    });
+    DormElectricityService.instance.debugSetCachedElectricity(
+      42,
+      updatedAt: now,
+    );
+    await _seedPrivateProjection(
+      now: now,
+      account: 'casuser',
+      studentId: '2025000001',
+      balance: 23.5,
+      examDate: tomorrow,
+    );
+    await SemesterCalendar.instance.setSemesterStartDate(now);
+    ScheduleService.instance.debugSetSnapshot(
+      _scheduleSnapshotFor(
+        studentId: '2025000001',
+        now: now,
+        weekday: tomorrow.weekday,
+        courseName: '线性代数',
+      ),
+    );
+
+    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    AppBootstrapController.instance.debugSetPhase(
+      AppBootstrapPhase.localStateReady,
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('¥23.5'), findsOneWidget);
+    expect(find.text('明天考试'), findsOneWidget);
+    expect(find.text('微观经济学'), findsOneWidget);
+    expect(find.text('线性代数'), findsOneWidget);
+    expect(find.text('42 度'), findsOneWidget);
+
+    // 在别处登出统一认证：挂载中的首页必须同步按当前 owner 重新采纳投影，
+    // 余额带 CAS 归属校验 → 立即回落占位符，不保留上一身份的副本。
+    UnifiedAuthService.instance.debugSetSession(active: false, account: null);
+    UnifiedAuthService.instance.notifyListeners();
+    await tester.pump();
+
+    expect(find.text('¥23.5'), findsNothing);
+    expect(find.text('--'), findsOneWidget);
+    // 电费不是私有数据：不随身份登出清空。
+    expect(find.text('42 度'), findsOneWidget);
+    // 教务身份未变：考试 / 课表仍属当前 owner，保持展示。
+    expect(find.text('明天考试'), findsOneWidget);
+
+    // 在别处登出教务：考试与课表投影一并回落，Hero 回到未登录态。
+    ZhengfangAuth.instance.debugSetSession(active: false);
+    ZhengfangAuth.instance.notifyListeners();
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('明天考试'), findsNothing);
+    expect(find.text('微观经济学'), findsNothing);
+    expect(find.text('线性代数'), findsNothing);
+    expect(find.text('登录后查看课程'), findsOneWidget);
+    expect(find.text('42 度'), findsOneWidget);
+  });
+
+  testWidgets('mounted home re-adopts projection for the new owner on switch', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    final tomorrow = now.add(const Duration(days: 1));
+
+    await _seedPrivateProjection(
+      now: now,
+      account: 'casuser',
+      studentId: '2025000001',
+      balance: 23.5,
+      examDate: tomorrow,
+    );
+    await SemesterCalendar.instance.setSemesterStartDate(now);
+    ScheduleService.instance.debugSetSnapshot(
+      _scheduleSnapshotFor(
+        studentId: '2025000001',
+        now: now,
+        weekday: tomorrow.weekday,
+        courseName: '线性代数',
+      ),
+    );
+    ScheduleService.instance.debugSetSnapshot(
+      _scheduleSnapshotFor(
+        studentId: '2025000002',
+        now: now,
+        weekday: tomorrow.weekday,
+        courseName: '高等数学 B',
+      ),
+    );
+
+    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    AppBootstrapController.instance.debugSetPhase(
+      AppBootstrapPhase.localStateReady,
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('¥23.5'), findsOneWidget);
+    expect(find.text('微观经济学'), findsOneWidget);
+    expect(find.text('线性代数'), findsOneWidget);
+
+    // 切换到另一个统一认证账号：上一账号余额立即回落占位符。
+    UnifiedAuthService.instance.debugSetSession(
+      active: true,
+      account: 'casuser2',
+    );
+    UnifiedAuthService.instance.notifyListeners();
+    await tester.pump();
+
+    expect(find.text('¥23.5'), findsNothing);
+
+    // 切换到另一个教务学号：上一学号的考试消失，投影改为新学号自己的缓存。
+    ZhengfangAuth.instance.debugSetSession(
+      active: true,
+      studentId: '2025000002',
+    );
+    ZhengfangAuth.instance.notifyListeners();
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('微观经济学'), findsNothing);
+    expect(find.text('明天考试'), findsNothing);
+    expect(find.text('线性代数'), findsNothing);
+    expect(find.text('高等数学 B'), findsOneWidget);
+    expect(find.text('今天没课 · 下一节'), findsOneWidget);
+  });
+
+  testWidgets('same-account unified relogin notify drops cached balance', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    final tomorrow = now.add(const Duration(days: 1));
+
+    await _seedPrivateProjection(
+      now: now,
+      account: 'casuser',
+      studentId: '2025000001',
+      balance: 23.5,
+      examDate: tomorrow,
+    );
+
+    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    AppBootstrapController.instance.debugSetPhase(
+      AppBootstrapPhase.localStateReady,
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('¥23.5'), findsOneWidget);
+
+    // 同账号重登：身份与 revision 都不变，只有 notify（真实登录成功路径）；
+    // 重登会销毁 epay 会话，首页不得继续展示重登前的余额副本。
+    final revisionBefore = UnifiedAuthService.instance.sessionRevision;
+    UnifiedAuthService.instance.debugSetSession(
+      active: true,
+      account: 'casuser',
+    );
+    UnifiedAuthService.instance.notifyListeners();
+    await tester.pump();
+
+    expect(UnifiedAuthService.instance.sessionRevision, revisionBefore);
+    expect(find.text('¥23.5'), findsNothing);
+    expect(find.text('--'), findsNWidgets(2));
+  });
+
+  testWidgets(
+    'late prior-owner balance response cannot restore stale content after logout',
+    (tester) async {
+      UnifiedAuthService.instance.debugSetSession(
+        active: true,
+        account: 'casuser',
+      );
+      await CredentialStore.instance.saveUnifiedAuthSession('casuser');
+
+      final pending = Completer<double?>();
+      CampusCardService.instance.debugBalanceFetcher = () => pending.future;
+      addTearDown(() => CampusCardService.instance.debugBalanceFetcher = null);
+
+      await tester.pumpWidget(const MaterialApp(home: HomePage()));
+      AppBootstrapController.instance.debugSetPhase(
+        AppBootstrapPhase.localStateReady,
+      );
+      await tester.pump();
+      await tester.pump();
+
+      // 余额查询仍在途：资产行保持占位符。
+      expect(find.text('--'), findsNWidgets(2));
+
+      // 登出后旧 owner 的响应才到达：认证世代已推进，结果一律不得写回。
+      UnifiedAuthService.instance.debugSetSession(active: false, account: null);
+      UnifiedAuthService.instance.notifyListeners();
+      await tester.pump();
+
+      pending.complete(23.5);
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('¥23.5'), findsNothing);
+      expect(find.text('--'), findsNWidgets(2));
+      expect(find.byType(SnackBar), findsNothing);
+    },
+  );
 }
 
 /// 1×1 透明 PNG，给 Image.file 一条真实可读路径。
@@ -942,4 +1155,89 @@ DateTime _nextMonday(DateTime today) {
   final delta = (DateTime.monday - today.weekday) % 7;
   final next = today.add(Duration(days: delta == 0 ? 7 : delta));
   return DateTime(next.year, next.month, next.day);
+}
+
+/// 写入 owner 明确的统一认证 / 教务持久身份与私有缓存，并让服务恢复进内存：
+/// 首页 hydrate 后即可展示「上一身份」的余额与考试投影。
+Future<void> _seedPrivateProjection({
+  required DateTime now,
+  required String account,
+  required String studentId,
+  required double balance,
+  required DateTime examDate,
+}) async {
+  UnifiedAuthService.instance.debugSetSession(active: true, account: account);
+  await CredentialStore.instance.saveUnifiedAuthSession(account);
+  final cardEpoch = (await AuthSessionPersistence.instance.read(
+    CredentialSessionDomain.unified,
+  )).epoch;
+  await SecureStoragePrivateCacheStore(CampusCardService.cacheKey).write(
+    PrivateCacheEnvelope(
+      owner: account,
+      updatedAt: now,
+      epoch: cardEpoch,
+      payload: balance,
+    ),
+  );
+  await CampusCardService.instance.restoreBalance();
+
+  ZhengfangAuth.instance.debugSetSession(active: true, studentId: studentId);
+  await CredentialStore.instance.saveZhengfangSession(studentId);
+  final examEpoch = (await AuthSessionPersistence.instance.read(
+    CredentialSessionDomain.academic,
+  )).epoch;
+  final dateText =
+      '${examDate.year}-'
+      '${examDate.month.toString().padLeft(2, '0')}-'
+      '${examDate.day.toString().padLeft(2, '0')}';
+  await SharedPreferencesPrivateCacheStore(ExamService.cacheKey).write(
+    PrivateCacheEnvelope(
+      owner: studentId,
+      updatedAt: now,
+      epoch: examEpoch,
+      payload: [
+        {
+          'kcmc': '微观经济学',
+          'kssj': '($dateText) 09:00-11:00',
+          'cdmc': '1教302',
+          'cdxqmc': '梁林校区',
+          'zwh': '12',
+          'ksmc': '期末考试',
+          'kkxy': '经济学院',
+          'cxbj': '',
+          'xnmc': '2026-2027',
+          'xqmmc': '1',
+        },
+      ],
+    ),
+  );
+  await ExamService.instance.restoreCache();
+}
+
+/// 指定学号、指定星期几的一门课快照（时间戳取 [now]，视为刚刷新）。
+ScheduleCacheSnapshot _scheduleSnapshotFor({
+  required String studentId,
+  required DateTime now,
+  required int weekday,
+  required String courseName,
+}) {
+  return ScheduleCacheSnapshot(
+    studentId: studentId,
+    termContext: ScheduleTermContext.current(now),
+    courses: [
+      CourseEntry(
+        courseName: courseName,
+        teacherName: '张老师',
+        weekday: weekday,
+        startLesson: 1,
+        endLesson: 1,
+        weekRange: '1-2周',
+        classroom: 'A101',
+        campus: '梁林校区',
+        typeSymbol: '',
+      ),
+    ],
+    scheduleUpdatedAt: now,
+    changeRulesUpdatedAt: now,
+  );
 }
