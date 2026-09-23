@@ -545,12 +545,13 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
         children: [
           if (widget.showHeader) ...[
             const SizedBox(height: 24),
-            Icon(Icons.account_balance_outlined, size: 64, color: cs.primary),
-            const SizedBox(height: 16),
+            Icon(Icons.account_balance_outlined, size: 56, color: cs.primary),
+            const SizedBox(height: 14),
             Text(
               widget.title,
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleLarge,
+              style: Theme.of(context).textTheme.titleLarge
+                  ?.copyWith(fontWeight: FontWeight.w700, letterSpacing: -0.2),
             ),
             const SizedBox(height: 8),
             Text(
@@ -559,7 +560,7 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
               style: Theme.of(context).textTheme.bodyMedium
                   ?.copyWith(color: cs.onSurfaceVariant),
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 28),
           ],
 
           TextField(
@@ -577,7 +578,7 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
             controller: _passwordCtrl,
             focusNode: _passwordFocusNode,
             decoration: InputDecoration(
-              hintText: '密码',
+              hintText: '一卡通密码',
               prefixIcon: const Icon(Icons.lock_outline),
               suffixIcon: IconButton(
                 tooltip: _obscurePassword ? '显示密码' : '隐藏密码',
@@ -603,7 +604,7 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
           Padding(
             padding: const EdgeInsets.only(left: 4),
             child: Text(
-              _captchaLoading ? '正在准备验证码...' : '点击右侧验证码刷新',
+              _captchaLoading ? '正在准备验证码...' : '可手动输入，点击图片可换一张',
               style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
             ),
           ),
@@ -631,12 +632,37 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
 
           if (_error != null) ...[
             const SizedBox(height: 12),
-            Text(
-              _error!,
-              style: TextStyle(color: cs.error, fontSize: 13),
-              textAlign: TextAlign.center,
-            ),
+            _buildErrorBanner(cs),
           ],
+        ],
+      ),
+    );
+  }
+
+  /// 错误提示横幅：图标 + 单段文案，errorContainer 底色分层，
+  /// 比裸居中红字更易读；文案本身保持调用方语义不变。
+  Widget _buildErrorBanner(ColorScheme cs) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: cs.errorContainer,
+        borderRadius: AppRadius.chipBorder,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.error_outline, size: 16, color: cs.onErrorContainer),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _error!,
+              style: TextStyle(
+                color: cs.onErrorContainer,
+                fontSize: 13,
+                height: 1.4,
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -650,12 +676,12 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
         onTap: () => setState(() => _rememberAccount = !_rememberAccount),
         borderRadius: AppRadius.inputBorder,
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 2),
+          padding: const EdgeInsets.symmetric(vertical: 4),
           child: Row(
             children: [
               SizedBox(
-                width: 36,
-                height: 36,
+                width: 40,
+                height: 40,
                 child: Checkbox(
                   value: _rememberAccount,
                   onChanged: (value) =>
@@ -709,38 +735,43 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
           ),
         ),
         const SizedBox(width: 12),
-        GestureDetector(
-          onTap: (_captchaLoading || _loading) ? null : _refreshCaptcha,
-          child: Container(
+        Semantics(
+          button: true,
+          label: '刷新验证码',
+          child: SizedBox(
             width: 140,
             height: 72,
-            decoration: BoxDecoration(
+            child: Material(
               color: Colors.white,
-              borderRadius: AppRadius.inputBorder,
-              border: Border.all(
-                color: cs.outlineVariant.withValues(alpha: 0.5),
-                width: 0.8,
+              shape: RoundedRectangleBorder(
+                borderRadius: AppRadius.inputBorder,
+                side: BorderSide(
+                  color: cs.outlineVariant.withValues(alpha: 0.5),
+                  width: 0.8,
+                ),
               ),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(15),
-              child: _captchaBytes != null
-                  ? Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 4,
-                        vertical: 6,
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: (_captchaLoading || _loading) ? null : _refreshCaptcha,
+                excludeFromSemantics: true,
+                child: _captchaBytes != null
+                    ? Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 4,
+                          vertical: 6,
+                        ),
+                        child: Image.memory(
+                          _captchaBytes!,
+                          fit: BoxFit.contain,
+                          filterQuality: FilterQuality.high,
+                        ),
+                      )
+                    : (_error != null && !_captchaLoading)
+                    ? Icon(Icons.refresh, color: cs.error, size: 24)
+                    : const Center(
+                        child: CircularProgressIndicator(strokeWidth: 2),
                       ),
-                      child: Image.memory(
-                        _captchaBytes!,
-                        fit: BoxFit.contain,
-                        filterQuality: FilterQuality.high,
-                      ),
-                    )
-                  : (_error != null && !_captchaLoading)
-                  ? Icon(Icons.refresh, color: cs.error, size: 24)
-                  : const Center(
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
+              ),
             ),
           ),
         ),

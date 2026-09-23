@@ -910,4 +910,42 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  // ── 错误横幅与验证码可点语义（UI 呈现） ─────────────────────────────
+
+  testWidgets('validation failure renders the inline error banner', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildChallengeSubject(
+        challengeLoader: ({cancelToken}) async => challenge('challenge-banner'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.error_outline), findsNothing);
+
+    // 已预填账号密码，仅验证码为空 → 校验错误进入横幅。
+    await tester.tap(find.widgetWithText(FilledButton, '登录教务系统'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('请填写学号、密码和验证码'), findsOneWidget);
+    expect(find.byIcon(Icons.error_outline), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('captcha block exposes a labeled refresh button', (tester) async {
+    final handle = tester.ensureSemantics();
+
+    await tester.pumpWidget(
+      buildChallengeSubject(
+        challengeLoader: ({cancelToken}) async =>
+            challenge('challenge-semantics'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.bySemanticsLabel('刷新验证码'), findsOneWidget);
+    handle.dispose();
+  });
 }

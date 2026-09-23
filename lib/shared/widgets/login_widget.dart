@@ -118,6 +118,9 @@ class _LoginWidgetState extends State<LoginWidget> {
   final _usernameCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   final _captchaCtrl = TextEditingController();
+  final _usernameFocusNode = FocusNode();
+  final _passwordFocusNode = FocusNode();
+  final _captchaFocusNode = FocusNode();
 
   Uint8List? _captchaBytes;
   String? _challengeId;
@@ -616,6 +619,9 @@ class _LoginWidgetState extends State<LoginWidget> {
     _usernameCtrl.dispose();
     _passwordCtrl.dispose();
     _captchaCtrl.dispose();
+    _usernameFocusNode.dispose();
+    _passwordFocusNode.dispose();
+    _captchaFocusNode.dispose();
     super.dispose();
   }
 
@@ -633,16 +639,17 @@ class _LoginWidgetState extends State<LoginWidget> {
               _mode == ZhengfangMode.direct
                   ? Icons.school_outlined
                   : Icons.vpn_lock_outlined,
-              size: 64,
+              size: 56,
               color: colorScheme.primary,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             Text(
               '登录教务系统',
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleLarge,
+              style: Theme.of(context).textTheme.titleLarge
+                  ?.copyWith(fontWeight: FontWeight.w700, letterSpacing: -0.2),
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 28),
           ],
           if (_stage == _AcademicLoginStage.detecting ||
               _stage == _AcademicLoginStage.preparingAcademic)
@@ -659,12 +666,41 @@ class _LoginWidgetState extends State<LoginWidget> {
             ),
           if (_error != null) ...[
             const SizedBox(height: 12),
-            Text(
-              _error!,
-              style: TextStyle(color: colorScheme.error, fontSize: 13),
-              textAlign: TextAlign.center,
-            ),
+            _buildErrorBanner(colorScheme),
           ],
+        ],
+      ),
+    );
+  }
+
+  /// 错误提示横幅：图标 + 单段文案，浅/深色均用 errorContainer 底色分层，
+  /// 比裸居中红字更易读；文案本身保持调用方语义不变。
+  Widget _buildErrorBanner(ColorScheme colorScheme) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: colorScheme.errorContainer,
+        borderRadius: AppRadius.chipBorder,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.error_outline,
+            size: 16,
+            color: colorScheme.onErrorContainer,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _error!,
+              style: TextStyle(
+                color: colorScheme.onErrorContainer,
+                fontSize: 13,
+                height: 1.4,
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -729,16 +765,19 @@ class _LoginWidgetState extends State<LoginWidget> {
         ],
         TextField(
           controller: _usernameCtrl,
+          focusNode: _usernameFocusNode,
           decoration: const InputDecoration(
             hintText: '学号',
             prefixIcon: Icon(Icons.person_outline),
           ),
           keyboardType: TextInputType.number,
           textInputAction: TextInputAction.next,
+          onSubmitted: (_) => _passwordFocusNode.requestFocus(),
         ),
         const SizedBox(height: 12),
         TextField(
           controller: _passwordCtrl,
+          focusNode: _passwordFocusNode,
           decoration: InputDecoration(
             hintText: '教务系统密码',
             prefixIcon: const Icon(Icons.lock_outline),
@@ -758,6 +797,7 @@ class _LoginWidgetState extends State<LoginWidget> {
           ),
           obscureText: _obscurePassword,
           textInputAction: TextInputAction.next,
+          onSubmitted: (_) => _captchaFocusNode.requestFocus(),
         ),
         const SizedBox(height: 12),
         _buildCaptchaRow(colorScheme),
@@ -767,7 +807,7 @@ class _LoginWidgetState extends State<LoginWidget> {
           child: Text(
             (_captchaLoading || _captchaBytes == null)
                 ? '正在准备教务验证码...'
-                : '点击右侧验证码刷新',
+                : '可手动输入，点击图片可换一张',
             style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12),
           ),
         ),
@@ -835,12 +875,12 @@ class _LoginWidgetState extends State<LoginWidget> {
         onTap: () => setState(() => _rememberAccount = !_rememberAccount),
         borderRadius: AppRadius.inputBorder,
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 2),
+          padding: const EdgeInsets.symmetric(vertical: 4),
           child: Row(
             children: [
               SizedBox(
-                width: 36,
-                height: 36,
+                width: 40,
+                height: 40,
                 child: Checkbox(
                   value: _rememberAccount,
                   onChanged: (value) =>
@@ -887,6 +927,7 @@ class _LoginWidgetState extends State<LoginWidget> {
         Expanded(
           child: TextField(
             controller: _captchaCtrl,
+            focusNode: _captchaFocusNode,
             decoration: const InputDecoration(
               hintText: '教务验证码',
               prefixIcon: Icon(Icons.shield_outlined),
@@ -896,38 +937,43 @@ class _LoginWidgetState extends State<LoginWidget> {
           ),
         ),
         const SizedBox(width: 12),
-        GestureDetector(
-          onTap: (_loading || _captchaLoading) ? null : _refreshCaptcha,
-          child: Container(
+        Semantics(
+          button: true,
+          label: '刷新验证码',
+          child: SizedBox(
             width: 140,
             height: 72,
-            decoration: BoxDecoration(
+            child: Material(
               color: Colors.white,
-              borderRadius: AppRadius.inputBorder,
-              border: Border.all(
-                color: colorScheme.outlineVariant.withValues(alpha: 0.5),
-                width: 0.8,
+              shape: RoundedRectangleBorder(
+                borderRadius: AppRadius.inputBorder,
+                side: BorderSide(
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+                  width: 0.8,
+                ),
               ),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(15),
-              child: _captchaBytes != null
-                  ? Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 4,
-                        vertical: 6,
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: (_loading || _captchaLoading) ? null : _refreshCaptcha,
+                excludeFromSemantics: true,
+                child: _captchaBytes != null
+                    ? Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 4,
+                          vertical: 6,
+                        ),
+                        child: Image.memory(
+                          _captchaBytes!,
+                          fit: BoxFit.contain,
+                          filterQuality: FilterQuality.high,
+                        ),
+                      )
+                    : (_error != null && !_captchaLoading)
+                    ? Icon(Icons.refresh, color: colorScheme.error, size: 24)
+                    : const Center(
+                        child: CircularProgressIndicator(strokeWidth: 2),
                       ),
-                      child: Image.memory(
-                        _captchaBytes!,
-                        fit: BoxFit.contain,
-                        filterQuality: FilterQuality.high,
-                      ),
-                    )
-                  : (_error != null && !_captchaLoading)
-                  ? Icon(Icons.refresh, color: colorScheme.error, size: 24)
-                  : const Center(
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
+              ),
             ),
           ),
         ),

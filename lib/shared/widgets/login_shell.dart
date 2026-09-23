@@ -2,13 +2,16 @@ import 'package:flutter/material.dart';
 
 import '../../core/auth/unified_auth.dart';
 import '../../core/theme/app_design_tokens.dart';
+import 'app_surface_style.dart';
 import 'login_widget.dart';
 import 'unified_auth_login_widget.dart';
 
 // 输入框与登录按钮与全局内容面同档圆角（16，AppRadius.input）。
 final BorderRadius _kInputRadius = AppRadius.inputBorder;
-const double _kHorizontalMargin = 16;
-const double _kFormCardRadius = 28;
+const double _kHorizontalMargin = AppSpacing.pageMargin;
+
+// 表单卡走「悬浮面」档圆角（28，AppRadius.floating），与弹层同档。
+const double _kFormCardRadius = AppRadius.floating;
 
 class LoginShell extends StatelessWidget {
   const LoginShell({
@@ -28,6 +31,16 @@ class LoginShell extends StatelessWidget {
   final VoidCallback? onClose;
   final bool topSafeArea;
 
+  /// 徽标左侧的小图标：按认证域区分（教务 / 统一认证），强化两套凭据的
+  /// 视觉分离；未识别的文案回退为通用锁形。
+  IconData? get _badgeIcon {
+    final text = badgeText;
+    if (text == null) return null;
+    if (text.contains('教务')) return Icons.school_outlined;
+    if (text.contains('统一认证')) return Icons.shield_outlined;
+    return Icons.lock_outline;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -36,19 +49,19 @@ class LoginShell extends StatelessWidget {
     final keyboardVisible = keyboardInset > 0;
     final isDark = theme.brightness == Brightness.dark;
     final pageBackground = theme.scaffoldBackgroundColor;
-    final formSurface = colorScheme.surfaceContainerLowest;
+    // 表单卡面与 AppCard / AppTileSurface 共用平色配方：
+    // 深色 surfaceContainerLow + 单层落底柔影，浅色 surfaceContainerLowest
+    // 零投影（不做描边，分层交给色调对比与柔影）。
+    final formSurface = appSurfaceColor(
+      cs: colorScheme,
+      isDark: isDark,
+      glassEnabled: false,
+      tintAlpha: 1,
+    );
+    final formShadow = appSurfaceShadows(isDark: isDark);
     final inputFill = colorScheme.surfaceContainerHighest;
     final inputBorder = BorderSide(color: colorScheme.outlineVariant);
     final focusBorder = colorScheme.primary;
-    final formShadow = isDark
-        ? <BoxShadow>[]
-        : [
-            BoxShadow(
-              color: colorScheme.shadow.withValues(alpha: 0.05),
-              blurRadius: 24,
-              offset: const Offset(0, 10),
-            ),
-          ];
 
     return Material(
       color: pageBackground,
@@ -139,15 +152,14 @@ class LoginShell extends StatelessWidget {
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 420),
                       child: Container(
-                        decoration: BoxDecoration(
+                        decoration: ShapeDecoration(
                           color: formSurface,
-                          borderRadius: BorderRadius.circular(_kFormCardRadius),
-                          border: Border.all(
-                            color: colorScheme.outlineVariant.withValues(
-                              alpha: isDark ? 0.42 : 1,
+                          shape: const RoundedSuperellipseBorder(
+                            borderRadius: BorderRadius.all(
+                              Radius.circular(_kFormCardRadius),
                             ),
                           ),
-                          boxShadow: formShadow,
+                          shadows: formShadow,
                         ),
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(24, 22, 24, 20),
@@ -172,13 +184,24 @@ class LoginShell extends StatelessWidget {
                                             999,
                                           ),
                                         ),
-                                        child: Text(
-                                          badgeText!,
-                                          style: theme.textTheme.labelLarge
-                                              ?.copyWith(
-                                                color: colorScheme.primary,
-                                                fontWeight: FontWeight.w700,
-                                              ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              _badgeIcon,
+                                              size: 14,
+                                              color: colorScheme.primary,
+                                            ),
+                                            const SizedBox(width: 5),
+                                            Text(
+                                              badgeText!,
+                                              style: theme.textTheme.labelLarge
+                                                  ?.copyWith(
+                                                    color: colorScheme.primary,
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                            ),
+                                          ],
                                         ),
                                       ),
                                     const Spacer(),
@@ -207,7 +230,7 @@ class LoginShell extends StatelessWidget {
                                   letterSpacing: -0.3,
                                 ),
                               ),
-                              const SizedBox(height: 10),
+                              const SizedBox(height: AppSpacing.sm),
                               Text(
                                 description,
                                 style: theme.textTheme.bodyMedium?.copyWith(

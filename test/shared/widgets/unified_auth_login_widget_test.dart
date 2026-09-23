@@ -1265,4 +1265,77 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  // ── 凭据分离与 UI 呈现 ─────────────────────────────────────────────
+
+  testWidgets('password hint keeps unified auth credential distinct', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UnifiedAuthLoginWidget(
+            onLoginSuccess: () {},
+            loadSavedCredentials: () async => ('', ''),
+            sessionPreflight: () async => false,
+            captchaLoader: () async => tinyPng(),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('一卡通账号'), findsOneWidget);
+    expect(find.text('一卡通密码'), findsOneWidget);
+    expect(find.text('教务系统密码'), findsNothing);
+  });
+
+  testWidgets('validation failure renders the inline error banner', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UnifiedAuthLoginWidget(
+            onLoginSuccess: () {},
+            loadSavedCredentials: () async => ('', ''),
+            sessionPreflight: () async => false,
+            captchaLoader: () async => tinyPng(),
+            loginHandler: (_, _, _) async => null,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.error_outline), findsNothing);
+
+    await tester.tap(find.text('登录'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('请填写账号、密码和验证码'), findsOneWidget);
+    expect(find.byIcon(Icons.error_outline), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('captcha block exposes a labeled refresh button', (tester) async {
+    final handle = tester.ensureSemantics();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UnifiedAuthLoginWidget(
+            onLoginSuccess: () {},
+            loadSavedCredentials: () async => ('', ''),
+            sessionPreflight: () async => false,
+            captchaLoader: () async => tinyPng(),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.bySemanticsLabel('刷新验证码'), findsOneWidget);
+    handle.dispose();
+  });
 }
