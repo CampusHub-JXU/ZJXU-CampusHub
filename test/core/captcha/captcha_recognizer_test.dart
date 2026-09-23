@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/core/captcha/captcha_recognizer.dart';
+import 'package:jxu_campus_hub/core/logging/app_logger.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -316,6 +317,32 @@ void main() {
     );
   });
 
+  test(
+    'logs only the exception type when a generic exception escapes',
+    () async {
+      const sentinel = 'Ab12Cd';
+      AppLogger.instance.debugReset();
+
+      final recognizer = MethodChannelCaptchaRecognizer(
+        channel: _ThrowingMethodChannel(
+          _LeakyException('codec failed while decoding $sentinel'),
+        ),
+      );
+
+      expect(await recognizer.recognize(image(), expectedLength: 6), isNull);
+
+      final warnings = AppLogger.instance.entries
+          .where((entry) => entry.level == LogLevel.warn)
+          .map((entry) => entry.formatted)
+          .join('\n');
+      expect(warnings, isNotEmpty);
+      // 只暴露稳定异常类型；异常文本/答案一律不得进日志。
+      expect(warnings, contains('_LeakyException'));
+      expect(warnings.contains(sentinel), isFalse);
+      expect(warnings.contains('codec failed while decoding'), isFalse);
+    },
+  );
+
   test('returns null on timeout and ignores the late native result', () async {
     final completer = Completer<Object?>();
     setHandler((_) => completer.future);
@@ -332,4 +359,27 @@ void main() {
     ]);
     await Future<void>.delayed(Duration.zero);
   });
+}
+
+/// 模拟方法通道抛出的非平台异常（例如编解码失败）。
+class _ThrowingMethodChannel extends MethodChannel {
+  _ThrowingMethodChannel(this.exception)
+    : super(MethodChannelCaptchaRecognizer.channelName);
+
+  final Object exception;
+
+  @override
+  Future<T?> invokeMethod<T>(String method, [dynamic arguments]) async {
+    throw exception;
+  }
+}
+
+/// 文本携带敏感哨兵的异常：一旦 `toString()` 进日志即被测试断言捕获。
+class _LeakyException implements Exception {
+  _LeakyException(this.detail);
+
+  final String detail;
+
+  @override
+  String toString() => 'LeakyException: $detail';
 }

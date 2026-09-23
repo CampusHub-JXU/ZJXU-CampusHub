@@ -96,7 +96,9 @@ class MethodChannelCaptchaRecognizer implements CaptchaRecognizer {
       _logDegrade('验证码识别平台异常: ${error.code}');
       return null;
     } on Exception catch (error) {
-      _logDegrade('验证码识别失败: $error');
+      // 只记录稳定的异常类型，不写 error.toString()：平台/编解码异常的文本
+      // 可能携带识别答案或图片细节，日志只保留失败类别用于排障。
+      _logDegrade('验证码识别失败: ${error.runtimeType}');
       return null;
     }
   }
