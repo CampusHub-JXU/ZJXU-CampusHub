@@ -15,7 +15,19 @@ import '../../core/logging/app_logger.dart';
 import '../../core/network/dio_client.dart';
 import '../../core/system_surface/campus_data_change_bus.dart';
 
-enum BalanceFailureKind { none, authExpired, serviceUnavailable, network }
+/// 余额查询失败类型。
+///
+/// - [authRequired]：当前**没有**可用的统一认证身份（或本域没有可用持久身份），
+///   尚未发起任何请求；与 [authExpired] 区分。
+/// - [authExpired]：共享网关明确报告会话失效（`EpaySessionUnavailableException`）。
+/// - [serviceUnavailable] / [network]：业务 / 传输失败，**不代表**登录失效。
+enum BalanceFailureKind {
+  none,
+  authRequired,
+  authExpired,
+  serviceUnavailable,
+  network,
+}
 
 class CampusCardService {
   CampusCardService._() {
@@ -57,9 +69,19 @@ class CampusCardService {
   _BalanceInFlight? _inFlight;
   int _latestGeneration = 0;
 
+  /// 身份上下文世代：统一认证通知 / 已观测 durable epoch 更换 / fail-closed
+  /// 时递增，普通请求分配（[_latestGeneration]）不影响它。用于 await 边界判断
+  /// 「捕获的身份上下文是否仍然有效」，避免并发抓取互相误伤。
+  int _identityEpoch = 0;
+
   /// 测试注入：restore 读取持久 epoch 之后、获取同域锁之前的屏障。
   @visibleForTesting
   Future<void> Function()? debugRestoreBarrier;
+
+  /// 测试注入：durable session 读取返回之后、采纳结果之前的屏障
+  /// （验证读取期间身份变化时迟到读取不被采纳）。
+  @visibleForTesting
+  Future<void> Function()? debugDurableReadBarrier;
 
   /// 统一认证身份修订号：登录 / 登出 / 换号 / 恢复时递增，异步期间发生
   /// 变化的旧结果一律丢弃。仅进程内有效。
@@ -81,12 +103,22 @@ class CampusCardService {
     return (account == null || account.isEmpty) ? null : account;
   }
 
-  /// 统一认证只在身份变化时 notify；直接清空内存缓存，getter 另有归属
-  /// 校验兜底。
+  /// 统一认证 identity 发生变化时 notify：清内存缓存，并**前推本地
+  /// generation**作废所有在途请求——同账号重登时 `sessionRevision` 可能不增，
+  /// 只有本地世代号能保证旧请求不被复用、迟到结果（含 error）不污染新会话。
   void _onUnifiedAuthChanged() {
+    _identityEpoch++;
+    _invalidateInFlightRequests();
     _clearMemoryCache();
     _validEpoch = null;
     _lastBalanceFailure = BalanceFailureKind.none;
+  }
+
+  /// 递增本地 generation 并丢弃 inflight 引用：已发起请求立即失效，新请求
+  /// 不得复用旧 future（旧 future 的 whenComplete 也不会清掉新 inflight）。
+  void _invalidateInFlightRequests() {
+    _latestGeneration++;
+    _inFlight = null;
   }
 
   void _clearMemoryCache() {
@@ -96,12 +128,55 @@ class CampusCardService {
     _cachedEpoch = null;
   }
 
-  /// 记录当前 durable epoch；与已采纳记录 epoch 不一致即失效内存缓存。
+  /// 记录当前 durable epoch；识别到纪元更换（跨 isolate 登出/重登、同账号
+  /// 重登）即失效内存缓存并作废在途请求，避免旧结果复活。
   void _observeDurableEpoch(int epoch) {
-    if (_cachedEpoch != null && _cachedEpoch != epoch) {
+    if (_validEpoch != null && _validEpoch != epoch) {
+      _identityEpoch++;
+      _clearMemoryCache();
+      _invalidateInFlightRequests();
+    } else if (_cachedEpoch != null && _cachedEpoch != epoch) {
       _clearMemoryCache();
     }
     _validEpoch = epoch;
+  }
+
+  /// 持久身份缺失 / 不匹配时的 fail-closed：仅当捕获的账号 / revision /
+  /// 身份世代 / generation 仍是当前上下文时，清掉**当前**内存余额与有效
+  /// epoch、作废在途请求，并标记 authRequired。不删磁盘缓存（可能属于其他
+  /// 身份 / 纪元），不做全局登出，也不臆测 authExpired。
+  void _failClosedAuthRequired({
+    required String account,
+    required int revision,
+    required int identityEpoch,
+    required int generation,
+  }) {
+    if (_currentAccount != account) return;
+    if (_authRevision != revision) return;
+    if (_identityEpoch != identityEpoch) return;
+    if (_latestGeneration != generation) return;
+    _identityEpoch++;
+    _clearMemoryCache();
+    _validEpoch = null;
+    _invalidateInFlightRequests();
+    _lastBalanceFailure = BalanceFailureKind.authRequired;
+  }
+
+  /// 采纳一次 durable session 读取结果前的守卫：捕获的账号 / revision /
+  /// 身份世代必须仍是当前上下文；读到的 epoch 早于已观测 epoch 说明读取
+  /// 已过期（期间纪元被推进），一律丢弃。
+  bool _canAdoptDurableRead({
+    required String account,
+    required int revision,
+    required int identityEpoch,
+    required int durableEpoch,
+  }) {
+    if (_identityEpoch != identityEpoch) return false;
+    if (_authRevision != revision) return false;
+    if (_currentAccount != account) return false;
+    final observed = _validEpoch;
+    if (observed != null && durableEpoch < observed) return false;
+    return true;
   }
 
   /// owner 为 null 时禁止展示；归属与当前 CAS 账号不一致、或 epoch 已不是
@@ -119,7 +194,13 @@ class CampusCardService {
 
   DateTime? get updatedAt => _lastUpdated;
 
-  BalanceFailureKind get lastBalanceFailure => _lastBalanceFailure;
+  /// 最近一次余额查询的失败类型。没有明确统一认证身份时**按当前身份派生**
+  /// 为 [BalanceFailureKind.authRequired]（页面首次 build 即可读到，无需先点
+  /// 一次查询）；有身份时返回最近一次请求记录的失败（成功 / 身份变化后为
+  /// [BalanceFailureKind.none]）。
+  BalanceFailureKind get lastBalanceFailure => _currentAccount == null
+      ? BalanceFailureKind.authRequired
+      : _lastBalanceFailure;
 
   bool get isStale {
     if (_cachedBalance == null) return true;
@@ -203,8 +284,30 @@ class CampusCardService {
     final current = _currentAccount;
     if (current == null) return;
 
+    // 在 await 之前固定身份修订号 / 身份世代 / generation：读取期间同账号
+    // 重登可能只 notify 不升 revision，迟到的读取 / 空结果不得覆盖新身份字段。
+    final revisionAtRead = _authRevision;
+    final identityEpochAtRead = _identityEpoch;
+    final generationAtRead = _latestGeneration;
     final durable = await _readDurableSession(current);
-    if (durable == null) return;
+    await debugDurableReadBarrier?.call();
+    if (durable == null) {
+      _failClosedAuthRequired(
+        account: current,
+        revision: revisionAtRead,
+        identityEpoch: identityEpochAtRead,
+        generation: generationAtRead,
+      );
+      return;
+    }
+    if (!_canAdoptDurableRead(
+      account: current,
+      revision: revisionAtRead,
+      identityEpoch: identityEpochAtRead,
+      durableEpoch: durable.epoch,
+    )) {
+      return;
+    }
     final capturedEpoch = durable.epoch;
     _observeDurableEpoch(capturedEpoch);
     final capturedRevision = _authRevision;
@@ -256,12 +359,36 @@ class CampusCardService {
 
   Future<double?> fetchBalance({bool forceRefresh = false}) async {
     final owner = _currentAccount;
-    // 没有明确 CAS owner：零请求、不读不写任何 owner 数据。
+    // 没有明确 CAS owner：零请求、不读不写任何 owner 数据；失败状态由
+    // [lastBalanceFailure] 按当前身份派生出 authRequired。
     if (owner == null) return null;
 
-    // 请求开始即固定持久身份（active + 账号 + epoch）。
+    // 请求开始即固定持久身份（active + 账号 + epoch）与身份世代：读取期间
+    // 身份 / 纪元变化时，迟到的读取结果一律不得采纳。
+    final revisionAtRead = _authRevision;
+    final identityEpochAtRead = _identityEpoch;
+    final generationAtRead = _latestGeneration;
     final durable = await _readDurableSession(owner);
-    if (durable == null) return null;
+    await debugDurableReadBarrier?.call();
+    if (durable == null) {
+      // 持久身份缺失 / 不匹配：仅对捕获身份 fail-closed 清当前内存缓存与
+      // valid epoch、作废在途请求；不删磁盘缓存、不全局登出。
+      _failClosedAuthRequired(
+        account: owner,
+        revision: revisionAtRead,
+        identityEpoch: identityEpochAtRead,
+        generation: generationAtRead,
+      );
+      return null;
+    }
+    if (!_canAdoptDurableRead(
+      account: owner,
+      revision: revisionAtRead,
+      identityEpoch: identityEpochAtRead,
+      durableEpoch: durable.epoch,
+    )) {
+      return null;
+    }
     _observeDurableEpoch(durable.epoch);
     final guard = _BalanceGuard(
       account: owner,
@@ -275,8 +402,9 @@ class CampusCardService {
     }
 
     final existing = _inFlight;
-    if (existing != null && existing.request.generation == _latestGeneration) {
-      // 同一最新请求直接共享；force 不被较旧的非 force 请求短路。
+    if (existing != null && _isRequestCurrent(existing.request)) {
+      // 同一最新请求直接共享（账号 / revision / generation / 已观测 epoch
+      // 全部一致）；force 不被较旧的非 force 请求短路。
       if (!forceRefresh || existing.request.force) return existing.future;
     }
 
@@ -318,10 +446,10 @@ class CampusCardService {
         }
         return null;
       } on EpaySessionUnavailableException {
-        _lastBalanceFailure = BalanceFailureKind.authExpired;
+        _recordBalanceFailure(request, BalanceFailureKind.authExpired);
         return _clearCachedBalanceIfCurrent(request);
       } on EpayGatewayException catch (error, stackTrace) {
-        _lastBalanceFailure = BalanceFailureKind.serviceUnavailable;
+        _recordBalanceFailure(request, BalanceFailureKind.serviceUnavailable);
         AppLogger.instance.network(
           LogLevel.warn,
           '校园卡余额刷新失败，保留上次余额',
@@ -330,7 +458,7 @@ class CampusCardService {
         );
         return null;
       } catch (error, stackTrace) {
-        _lastBalanceFailure = BalanceFailureKind.network;
+        _recordBalanceFailure(request, BalanceFailureKind.network);
         AppLogger.instance.network(
           LogLevel.warn,
           '校园卡余额刷新失败，保留上次余额',
@@ -353,11 +481,11 @@ class CampusCardService {
       }
       return balance;
     } on EpaySessionUnavailableException {
-      _lastBalanceFailure = BalanceFailureKind.authExpired;
+      _recordBalanceFailure(request, BalanceFailureKind.authExpired);
       // 明确会话失效：只在该请求仍是当前 owner / epoch / generation 时清理。
       return _clearCachedBalanceIfCurrent(request);
     } on EpayGatewayException catch (error, stackTrace) {
-      _lastBalanceFailure = BalanceFailureKind.serviceUnavailable;
+      _recordBalanceFailure(request, BalanceFailureKind.serviceUnavailable);
       AppLogger.instance.network(
         LogLevel.warn,
         '校园卡余额刷新失败，保留上次余额',
@@ -366,7 +494,7 @@ class CampusCardService {
       );
       return null;
     } catch (error, stackTrace) {
-      _lastBalanceFailure = BalanceFailureKind.network;
+      _recordBalanceFailure(request, BalanceFailureKind.network);
       AppLogger.instance.network(
         LogLevel.warn,
         '校园卡余额刷新失败，保留上次余额',
@@ -412,10 +540,22 @@ class CampusCardService {
     return true;
   }
 
+  /// 请求是否仍是当前上下文：账号 / revision / generation / 已观测 durable
+  /// epoch 必须全部一致。任一项变化（登出、换号、同账号重登、跨 isolate
+  /// 纪元更换、持久身份 fail-closed）都视为不能再复用 / 采纳其结果。
   bool _isRequestCurrent(_BalanceRequest request) {
     if (request.generation != _latestGeneration) return false;
     if (request.guard.revision != _authRevision) return false;
-    return request.guard.account == _currentAccount;
+    if (request.guard.account != _currentAccount) return false;
+    if (request.guard.durableEpoch != _validEpoch) return false;
+    return true;
+  }
+
+  /// 仅当请求仍是当前 owner / revision / generation / 已观测 epoch 时才记录
+  /// 失败：登出 / 换号 / 纪元更换后迟到的失败不得覆盖新身份的失败状态。
+  void _recordBalanceFailure(_BalanceRequest request, BalanceFailureKind kind) {
+    if (!_isRequestCurrent(request)) return;
+    _lastBalanceFailure = kind;
   }
 
   /// 余额经共享 [Epay100Gateway]（与电费、付款码同一隐藏会话）在 epay100
@@ -516,14 +656,21 @@ class CampusCardService {
     _lastBalanceFailure = kind;
   }
 
+  /// 测试注入：直接触发统一认证 identity 通知处理（模拟同账号重登时
+  /// `sessionRevision` 不增、只有通知的路径）。
+  @visibleForTesting
+  void debugHandleUnifiedAuthChanged() => _onUnifiedAuthChanged();
+
   @visibleForTesting
   void debugReset() {
     _clearMemoryCache();
     _validEpoch = null;
     _inFlight = null;
     _latestGeneration = 0;
+    _identityEpoch = 0;
     _lastBalanceFailure = BalanceFailureKind.none;
     debugRestoreBarrier = null;
+    debugDurableReadBarrier = null;
     debugBalanceFetcher = null;
     debugGateway = null;
   }

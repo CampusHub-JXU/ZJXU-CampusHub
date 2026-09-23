@@ -408,6 +408,29 @@ void main() {
       expect(service.lastBalanceFailure, BalanceFailureKind.none);
       expect(service.cachedBalance, 50.0);
     });
+
+    test(
+      'ERR4995 and ERR4998 stay serviceUnavailable and keep cached balance',
+      () async {
+        service.updateCachedBalance(23.5);
+        final updatedAt = service.lastUpdated;
+
+        for (final code in const ['ERR4995', 'ERR4998']) {
+          service.debugGateway = _FakeGateway(
+            error: EpayGatewayException(code),
+          );
+
+          expect(await service.fetchBalance(forceRefresh: true), isNull);
+          expect(
+            service.lastBalanceFailure,
+            BalanceFailureKind.serviceUnavailable,
+            reason: code,
+          );
+          expect(service.cachedBalance, 23.5, reason: code);
+        }
+        expect(service.lastUpdated, updatedAt);
+      },
+    );
   });
 
   group('campus card owner gating', () {
@@ -432,6 +455,260 @@ void main() {
       expect(await service.fetchBalance(forceRefresh: true), isNull);
       expect(gateway.calls, isEmpty);
     });
+
+    test(
+      'no CAS owner reports authRequired on first screen with zero requests',
+      () async {
+        final gateway = _FakeGateway(body: _balanceEnvelope(50));
+        service.debugGateway = gateway;
+
+        // 首次 build：未点击、未 fetch，页面即刻可读到 authRequired。
+        expect(service.lastBalanceFailure, BalanceFailureKind.authRequired);
+
+        expect(await service.fetchBalance(), isNull);
+        expect(await service.fetchBalance(forceRefresh: true), isNull);
+
+        expect(service.lastBalanceFailure, BalanceFailureKind.authRequired);
+        expect(gateway.calls, isEmpty);
+        expect(service.cachedBalance, isNull);
+        expect(service.lastUpdated, isNull);
+        final store = SecureStoragePrivateCacheStore(
+          CampusCardService.cacheKey,
+        );
+        expect(await store.read(), isNull);
+      },
+    );
+
+    test(
+      'missing durable session reports authRequired without calling gateway',
+      () async {
+        // 内存身份存在但本域没有可用持久身份（如已撤销 / 尚未落盘）。
+        UnifiedAuthService.instance.debugSetSession(active: true, account: 'A');
+        final gateway = _FakeGateway(body: _balanceEnvelope(50));
+        service.debugGateway = gateway;
+
+        await service.restoreBalance();
+        expect(service.lastBalanceFailure, BalanceFailureKind.authRequired);
+
+        expect(await service.fetchBalance(forceRefresh: true), isNull);
+        expect(service.lastBalanceFailure, BalanceFailureKind.authRequired);
+        expect(gateway.calls, isEmpty);
+        expect(service.cachedBalance, isNull);
+      },
+    );
+
+    test(
+      'late gateway failure from an old account does not mark the new account',
+      () async {
+        await loginUnified('A');
+        final gateway = _CompleterGateway(
+          error: const EpayGatewayException('ERR4995'),
+        );
+        service.debugGateway = gateway;
+
+        final future = service.fetchBalance(forceRefresh: true);
+        await gateway.started.future;
+
+        // 请求完成前换号：旧请求的失败不得成为 B 的失败状态。
+        await loginUnified('B');
+        expect(service.lastBalanceFailure, BalanceFailureKind.none);
+
+        gateway.release.complete();
+
+        expect(await future, isNull);
+        expect(service.lastBalanceFailure, BalanceFailureKind.none);
+        expect(service.cachedBalance, isNull);
+      },
+    );
+
+    test(
+      'logout surfaces authRequired immediately and drops late failures',
+      () async {
+        await loginUnified('A');
+        service.updateCachedBalance(23.5);
+        expect(service.lastBalanceFailure, BalanceFailureKind.none);
+
+        final gateway = _CompleterGateway(
+          error: const EpayGatewayException('一卡通网关暂时无法响应，请稍后重试'),
+        );
+        service.debugGateway = gateway;
+        final future = service.fetchBalance(forceRefresh: true);
+        await gateway.started.future;
+
+        await UnifiedAuthService.instance.markLoggedOut();
+
+        expect(service.lastBalanceFailure, BalanceFailureKind.authRequired);
+        expect(service.cachedBalance, isNull);
+
+        gateway.release.complete();
+
+        // 登出后迟到的旧失败不得覆盖「需要重新登录」状态。
+        expect(await future, isNull);
+        expect(service.lastBalanceFailure, BalanceFailureKind.authRequired);
+        expect(service.cachedBalance, isNull);
+      },
+    );
+
+    test(
+      'same-account re-auth notification invalidates the old request and reuse',
+      () async {
+        await loginUnified('A');
+        final oldGateway = _CompleterGateway(
+          error: const EpayGatewayException('ERR4995'),
+        );
+        service.debugGateway = oldGateway;
+        final oldFuture = service.fetchBalance(forceRefresh: true);
+        await oldGateway.started.future;
+
+        // 同账号重登会 notify，但 sessionRevision 可能不变：只有本地
+        // generation 能阻止旧请求被复用、旧 error 污染新会话。
+        service.debugHandleUnifiedAuthChanged();
+
+        final newGateway = _FakeGateway(body: _balanceEnvelope(66));
+        service.debugGateway = newGateway;
+        final newFuture = service.fetchBalance(forceRefresh: true);
+        // 若复用了旧 future，这里会快速失败（新网关收不到请求）。
+        await waitFor(() => newGateway.calls.isNotEmpty);
+        expect(await newFuture, 66);
+        expect(newGateway.calls, hasLength(1));
+
+        oldGateway.release.complete();
+
+        expect(await oldFuture, isNull);
+        expect(service.lastBalanceFailure, BalanceFailureKind.none);
+        expect(service.cachedBalance, 66);
+      },
+    );
+
+    test(
+      'late error cannot pollute a new session that re-observed the same epoch',
+      () async {
+        final epoch = await loginUnified('A');
+        await seedEnvelope(
+          owner: 'A',
+          epoch: epoch,
+          savedAt: DateTime.now(),
+          payload: 36.8,
+        );
+        await service.restoreBalance();
+        expect(service.cachedBalance, 36.8);
+
+        final gateway = _CompleterGateway(
+          error: const EpayGatewayException('ERR4995'),
+        );
+        service.debugGateway = gateway;
+        final future = service.fetchBalance(forceRefresh: true);
+        await gateway.started.future;
+
+        // 同账号重登：notification 必须前推 generation。
+        service.debugHandleUnifiedAuthChanged();
+        // 新会话重新采纳同一 epoch 的磁盘缓存（未分配新请求）。
+        await service.restoreBalance();
+        expect(service.cachedBalance, 36.8);
+
+        gateway.release.complete();
+
+        expect(await future, isNull);
+        expect(service.lastBalanceFailure, BalanceFailureKind.none);
+        expect(service.cachedBalance, 36.8);
+      },
+    );
+
+    test(
+      'durable revoke fail-closes the memory balance without touching disk',
+      () async {
+        await loginUnified('A');
+        // 其他身份的磁盘记录必须保留（不删他人缓存）。
+        await seedEnvelope(owner: 'B', epoch: 3, savedAt: DateTime.now());
+        service.updateCachedBalance(23.5);
+        expect(service.cachedBalance, 23.5);
+
+        await AuthSessionPersistence.instance.revoke(
+          CredentialSessionDomain.unified,
+        );
+
+        // restore 立即 fail-closed：内存余额 / valid epoch 清空。
+        await service.restoreBalance();
+        expect(service.cachedBalance, isNull);
+        expect(service.lastUpdated, isNull);
+
+        // fetch 同样 fail-closed：零请求、authRequired。
+        final gateway = _FakeGateway(body: _balanceEnvelope(50));
+        service.debugGateway = gateway;
+        expect(await service.fetchBalance(forceRefresh: true), isNull);
+        expect(service.cachedBalance, isNull);
+        expect(service.lastBalanceFailure, BalanceFailureKind.authRequired);
+        expect(gateway.calls, isEmpty);
+
+        final store = SecureStoragePrivateCacheStore(
+          CampusCardService.cacheKey,
+        );
+        expect((await store.read())?.owner, 'B');
+      },
+    );
+
+    test(
+      'late durable read after re-auth is not adopted and issues no request',
+      () async {
+        await loginUnified('A');
+        final gateway = _FakeGateway(body: _balanceEnvelope(50));
+        service.debugGateway = gateway;
+
+        service.debugDurableReadBarrier = () async {
+          service.debugDurableReadBarrier = null;
+          // 旧读取返回后、采纳前发生同账号重登（revision 与 epoch 都推进）。
+          await UnifiedAuthService.instance.markLoggedOut();
+          await CredentialStore.instance.saveUnifiedAuthSession('A');
+          UnifiedAuthService.instance.debugSetSession(
+            active: true,
+            account: 'A',
+          );
+        };
+
+        expect(await service.fetchBalance(forceRefresh: true), isNull);
+        expect(gateway.calls, isEmpty);
+        expect(service.cachedBalance, isNull);
+        expect(service.lastBalanceFailure, BalanceFailureKind.none);
+
+        // 新身份仍可基于自己的 durable 会话重新抓取。
+        expect(await service.fetchBalance(forceRefresh: true), 50);
+        expect(service.cachedBalance, 50);
+      },
+    );
+
+    test(
+      'late null durable read cannot fail-close a newer session cache',
+      () async {
+        await loginUnified('A');
+        await AuthSessionPersistence.instance.revoke(
+          CredentialSessionDomain.unified,
+        );
+
+        service.debugDurableReadBarrier = () async {
+          service.debugDurableReadBarrier = null;
+          // 读取期间同账号重新建立持久身份（epoch 推进）并采纳其私有缓存；
+          // 迟到的旧 null 结果不得清掉新会话的余额 / valid epoch。
+          await CredentialStore.instance.saveUnifiedAuthSession('A');
+          final epoch = (await AuthSessionPersistence.instance.read(
+            CredentialSessionDomain.unified,
+          )).epoch;
+          await SecureStoragePrivateCacheStore(CampusCardService.cacheKey)
+              .write(
+                PrivateCacheEnvelope(
+                  owner: 'A',
+                  updatedAt: DateTime.now(),
+                  epoch: epoch,
+                  payload: 88.8,
+                ),
+              );
+          await service.restoreBalance();
+        };
+
+        expect(await service.fetchBalance(forceRefresh: true), isNull);
+        expect(service.cachedBalance, 88.8);
+        expect(service.lastBalanceFailure, BalanceFailureKind.none);
+      },
+    );
 
     test('owner-less in-memory balance is not visible', () {
       service.debugSetCachedBalance(23.5, updatedAt: DateTime.now());
@@ -485,6 +762,8 @@ void main() {
         gateway.release.complete();
 
         expect(await future, isNull);
+        // 旧请求的会话失效错误不得写成 B 的失败状态（B 尚未失败过）。
+        expect(service.lastBalanceFailure, BalanceFailureKind.none);
         expect(service.cachedBalance, 22.0);
       },
     );
