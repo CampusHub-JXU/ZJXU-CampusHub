@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
@@ -281,4 +282,42 @@ void main() {
     expect(find.textContaining('节次：第 1 - 2 节'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'course cell exposes a semantics tap action that opens the sheet',
+    (tester) async {
+      final handle = tester.ensureSemantics();
+      final termContext = ScheduleTermContext.current();
+      ZhengfangAuth.instance.debugSetSession(
+        active: true,
+        studentId: '2025000001',
+      );
+      ScheduleService.instance.debugSetSnapshot(
+        cachedSnapshotFor('2025000001', '语义点选课程详情', termContext),
+      );
+
+      await tester.pumpWidget(const MaterialApp(home: SchedulePage()));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      final cellNode = find.semantics.byLabel('语义点选课程详情，101');
+      expect(cellNode.evaluate(), hasLength(1));
+      expect(
+        cellNode.evaluate().single.getSemanticsData().hasAction(
+          SemanticsAction.tap,
+        ),
+        isTrue,
+      );
+
+      // 语义 tap 必须与真实点击等价，打开同一个课程详情弹层。
+      tester.semantics.tap(cellNode);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.textContaining('教师：'), findsOneWidget);
+      expect(find.textContaining('教室：101'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      handle.dispose();
+    },
+  );
 }

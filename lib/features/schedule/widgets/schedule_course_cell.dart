@@ -160,9 +160,13 @@ class ScheduleCourseCell extends StatelessWidget {
 
     return Semantics(
       button: true,
+      // 内层 InkWell 关闭了自身语义，这里补上等价的 tap 动作，避免无障碍
+      // 服务只播报课程名却无法激活；同时排除子文本语义，保持单节点播报。
+      excludeSemantics: true,
       label:
           '${course.courseName}，'
           '${course.classroom.isEmpty ? scheduleUnknownText : course.classroom}',
+      onTap: () => _showCourseDetail(context),
       child: SizedBox(
         width: dayColumnWidth,
         height: cellHeight,
