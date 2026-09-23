@@ -97,13 +97,17 @@ class HomeAssetStrip extends StatelessWidget {
         : primaryTextColor;
     return Semantics(
       button: true,
+      // 内层 InkWell 关闭自身语义，这里补上等价的 tap 动作，避免无障碍
+      // 服务只播报余额却无法激活；同时排除子文本语义，保持单节点播报。
       label: semanticsLabel,
       excludeSemantics: true,
+      onTap: onTap,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
           onTap: onTap,
+          excludeFromSemantics: true,
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: 64),
             child: Padding(
