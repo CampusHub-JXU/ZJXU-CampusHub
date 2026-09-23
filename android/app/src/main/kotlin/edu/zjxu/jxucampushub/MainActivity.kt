@@ -2,6 +2,7 @@ package edu.zjxu.jxucampushub
 
 import android.content.Intent
 import android.os.Bundle
+import edu.zjxu.jxucampushub.platform.calendar.CalendarSyncChannelHandler
 import edu.zjxu.jxucampushub.platform.deeplink.DeepLinkChannelHandler
 import edu.zjxu.jxucampushub.platform.download.DownloadChannelHandler
 import edu.zjxu.jxucampushub.platform.shortcut.ShortcutChannelHandler
@@ -17,6 +18,7 @@ import io.flutter.embedding.engine.FlutterEngine
 class MainActivity : FlutterActivity() {
     private val shortcutHandler = ShortcutChannelHandler(this)
     private val deepLinkHandler = DeepLinkChannelHandler()
+    private val calendarHandler = CalendarSyncChannelHandler(this)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -35,6 +37,17 @@ class MainActivity : FlutterActivity() {
         WidgetChannelHandler(this).register(messenger)
         DownloadChannelHandler(this).register(messenger)
         SystemSettingsChannelHandler(this).register(messenger)
+        calendarHandler.register(messenger)
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        // 先让日历通道回填挂起结果，再交回 super 保留其他插件的权限回调行为。
+        calendarHandler.onRequestPermissionsResult(requestCode, grantResults)
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
     }
 
     override fun onNewIntent(intent: Intent) {

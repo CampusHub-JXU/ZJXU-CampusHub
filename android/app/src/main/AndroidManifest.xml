@@ -5,6 +5,9 @@
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <!-- 课表系统日历同步：运行时申请，仅用于写入/清理本 App 独占的本地日历事件。 -->
+    <uses-permission android:name="android.permission.READ_CALENDAR"/>
+    <uses-permission android:name="android.permission.WRITE_CALENDAR"/>
     <uses-permission android:name="com.android.launcher.permission.INSTALL_SHORTCUT"/>
 
     <application
