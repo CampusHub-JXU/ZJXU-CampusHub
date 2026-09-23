@@ -32,8 +32,10 @@ class _SchedulePageState extends State<SchedulePage> {
   @override
   void initState() {
     super.initState();
+    final auth = ZhengfangAuth.instance;
     _controller = SchedulePageController(
-      loggedIn: ZhengfangAuth.instance.isLoggedIn,
+      loggedIn: auth.isLoggedIn,
+      studentId: auth.currentStudentId,
     );
     _weekPageController = PageController(
       initialPage: _controller.displayWeek - 1,
@@ -62,12 +64,19 @@ class _SchedulePageState extends State<SchedulePage> {
   }
 
   void _handleAuthChanged() {
-    final nextLoggedIn = ZhengfangAuth.instance.isLoggedIn;
-    if (!mounted || nextLoggedIn == _controller.loggedIn) return;
+    if (!mounted) return;
+    final auth = ZhengfangAuth.instance;
+    final nextLoggedIn = auth.isLoggedIn;
+    final becameLoggedOut = _controller.loggedIn && !nextLoggedIn;
 
-    _controller.updateLoggedIn(nextLoggedIn);
+    // 身份（含 A→B 且 isLoggedIn 一直为 true 的切换）变化必须传给
+    // controller，否则旧账号课表会留在页面上；同身份重复通知是 no-op。
+    _controller.updateLoggedIn(
+      nextLoggedIn,
+      studentId: nextLoggedIn ? auth.currentStudentId : null,
+    );
 
-    if (!nextLoggedIn) {
+    if (becameLoggedOut) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         unawaited(_presentLoginPrompt(force: true));
@@ -91,7 +100,12 @@ class _SchedulePageState extends State<SchedulePage> {
   }
 
   void _onLoginSuccess() {
-    _controller.onLoginSuccess();
+    // 弹窗/路由报告成功但教务身份尚未就绪时，控制器会清空旧 owner 并返回
+    // false：这里不得把它当作成功刷新，也绝不带旧 owner 发起请求。
+    final accepted = _controller.onLoginSuccess(
+      studentId: ZhengfangAuth.instance.currentStudentId,
+    );
+    if (!accepted) return;
     unawaited(_controller.fetchSchedule(forceRefresh: true));
   }
 

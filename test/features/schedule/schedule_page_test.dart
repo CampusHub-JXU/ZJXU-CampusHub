@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/core/semester/semester_calendar.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_cache_snapshot.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_model.dart';
@@ -9,20 +9,46 @@ import 'package:jxu_campus_hub/features/schedule/schedule_page.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_term_context.dart';
 
+import '../../helpers/test_setup.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() async {
+    await resetTestEnvironment();
     final today = DateTime.now();
-    SharedPreferences.setMockInitialValues({});
     SemesterCalendar.instance.semesterStartDate.value = DateTime(
       today.year,
       today.month,
       today.day,
     );
-    await ScheduleService.instance.restoreCache();
-    await ScheduleService.instance.debugClearCache();
   });
+
+  ScheduleCacheSnapshot cachedSnapshotFor(
+    String studentId,
+    String courseName,
+    ScheduleTermContext termContext,
+  ) {
+    return ScheduleCacheSnapshot(
+      studentId: studentId,
+      termContext: termContext,
+      courses: [
+        CourseEntry(
+          courseName: courseName,
+          teacherName: '教师',
+          weekday: 1,
+          startLesson: 1,
+          endLesson: 2,
+          weekRange: '1-18周',
+          classroom: '101',
+          campus: '梁林校区',
+          typeSymbol: '',
+        ),
+      ],
+      scheduleUpdatedAt: DateTime.now(),
+      changeRulesUpdatedAt: DateTime.now(),
+    );
+  }
 
   testWidgets('shows course change reminders above the schedule grid', (
     tester,
@@ -30,6 +56,10 @@ void main() {
     final now = DateTime.now();
     final termContext = ScheduleTermContext.current(now);
 
+    ZhengfangAuth.instance.debugSetSession(
+      active: true,
+      studentId: '2025000001',
+    );
     ScheduleService.instance.debugSetSnapshot(
       ScheduleCacheSnapshot(
         studentId: '2025000001',
@@ -81,14 +111,81 @@ void main() {
     expect(find.byTooltip('调课提醒'), findsOneWidget);
     expect(find.text('已根据这些提醒自动修正课表显示'), findsNothing);
 
+    // 页面在登录态下会保留一个后台刷新（顶部线性进度条持续动画），
+    // 因此用固定时长 pump 完成弹层入场，而不是 pumpAndSettle。
     await tester.tap(find.byTooltip('调课提醒'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.text('调课提醒'), findsOneWidget);
     expect(find.text('AI+创新创业基础'), findsWidgets);
     expect(find.textContaining('第5周 周四 第8-9节 -> 第5周 周五 第8-9节'), findsOneWidget);
     expect(find.text('胡亚楠'), findsWidgets);
     expect(find.text('教室：铭德楼468'), findsOneWidget);
+  });
+
+  testWidgets('switching accounts replaces the visible schedule immediately', (
+    tester,
+  ) async {
+    final termContext = ScheduleTermContext.current();
+    ZhengfangAuth.instance.debugSetSession(
+      active: true,
+      studentId: '2025000001',
+    );
+    ScheduleService.instance.debugSetSnapshot(
+      cachedSnapshotFor('2025000001', 'A班专属课程', termContext),
+    );
+    ScheduleService.instance.debugSetSnapshot(
+      cachedSnapshotFor('2025000002', 'B班专属课程', termContext),
+    );
+
+    await tester.pumpWidget(const MaterialApp(home: SchedulePage()));
+    await tester.pump();
+    expect(find.text('A班专属课程'), findsWidgets);
+    expect(find.text('B班专属课程'), findsNothing);
+
+    // 切账号必须让页面收到身份通知（debugSetSession 只改状态不通知）。
+    await ZhengfangAuth.instance.markLoggedOut();
+    ZhengfangAuth.instance.debugSetSession(
+      active: true,
+      studentId: '2025000002',
+    );
+    await ZhengfangAuth.instance.markLoggedIn();
+    await tester.pump();
+
+    expect(find.text('B班专属课程'), findsWidgets);
+    expect(find.text('A班专属课程'), findsNothing);
+  });
+
+  testWidgets('switching terms from the menu shows the selected term cache', (
+    tester,
+  ) async {
+    final current = ScheduleTermContext.current();
+    final other = current.copyWith(term: current.term == 3 ? 12 : 3);
+    ZhengfangAuth.instance.debugSetSession(
+      active: true,
+      studentId: '2025000001',
+    );
+    ScheduleService.instance.debugSetSnapshot(
+      cachedSnapshotFor('2025000001', '本学期专属课程', current),
+    );
+    ScheduleService.instance.debugSetSnapshot(
+      cachedSnapshotFor('2025000001', '另一学期专属课程', other),
+    );
+
+    await tester.pumpWidget(const MaterialApp(home: SchedulePage()));
+    await tester.pump();
+    expect(find.text('本学期专属课程'), findsWidgets);
+
+    await tester.tap(find.byTooltip('切换学期'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.text(other.term == 12 ? '第二学期' : '第一学期'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.text('另一学期专属课程'), findsWidgets);
+    expect(find.text('本学期专属课程'), findsNothing);
   });
 
   Future<void> pumpLoginView(

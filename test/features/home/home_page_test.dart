@@ -144,6 +144,10 @@ void main() {
       42,
       updatedAt: now,
     );
+    ZhengfangAuth.instance.debugSetSession(
+      active: true,
+      studentId: studentId,
+    );
     ScheduleService.instance.debugSetSnapshot(
       ScheduleCacheSnapshot(
         studentId: studentId,
@@ -197,6 +201,10 @@ void main() {
     final countdownDays = semesterStart.difference(today).inDays;
 
     await SemesterCalendar.instance.setSemesterStartDate(semesterStart);
+    ZhengfangAuth.instance.debugSetSession(
+      active: true,
+      studentId: '2025000001',
+    );
     ScheduleService.instance.debugSetSnapshot(
       ScheduleCacheSnapshot(
         studentId: '2025000001',
@@ -271,6 +279,10 @@ void main() {
       updatedAt: now,
     );
     await SemesterCalendar.instance.setSemesterStartDate(now);
+    ZhengfangAuth.instance.debugSetSession(
+      active: true,
+      studentId: '2025000001',
+    );
     ScheduleService.instance.debugSetSnapshot(
       ScheduleCacheSnapshot(
         studentId: '2025000001',
