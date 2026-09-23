@@ -5,6 +5,7 @@ import android.os.Bundle
 import edu.zjxu.jxucampushub.platform.deeplink.DeepLinkChannelHandler
 import edu.zjxu.jxucampushub.platform.download.DownloadChannelHandler
 import edu.zjxu.jxucampushub.platform.shortcut.ShortcutChannelHandler
+import edu.zjxu.jxucampushub.platform.system_settings.SystemSettingsChannelHandler
 import edu.zjxu.jxucampushub.platform.wechat.WeChatChannelHandler
 import edu.zjxu.jxucampushub.platform.widget.WidgetChannelHandler
 import io.flutter.embedding.android.FlutterActivity
@@ -33,6 +34,7 @@ class MainActivity : FlutterActivity() {
         deepLinkHandler.register(messenger)
         WidgetChannelHandler(this).register(messenger)
         DownloadChannelHandler(this).register(messenger)
+        SystemSettingsChannelHandler(this).register(messenger)
     }
 
     override fun onNewIntent(intent: Intent) {
