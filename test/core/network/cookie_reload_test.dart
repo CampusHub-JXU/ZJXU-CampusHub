@@ -142,11 +142,12 @@ void main() {
       final writer = jarAt(cookieDir);
       await writeHostCookie(writer, probeUri, 'host_token', 'KEEP');
 
-      Set<String> diskFiles() => Directory(cookieDir)
-          .listSync(recursive: true)
-          .whereType<File>()
-          .map((f) => f.path)
-          .toSet();
+      Set<String> diskFiles() =>
+          Directory(cookieDir)
+              .listSync(recursive: true)
+              .whereType<File>()
+              .map((f) => f.path)
+              .toSet();
 
       final before = diskFiles();
       expect(before, isNotEmpty);
@@ -179,8 +180,9 @@ void main() {
       NetworkSettings.instance.debugReset();
       DioClient.instance.debugReset();
       baseDir = await Directory.systemTemp.createTemp('dio_reload_');
-      DioClient.instance.debugCookieDirectoryPathProvider = (folderName) async =>
-          dirFor(folderName);
+      DioClient.instance.debugCookieDirectoryPathProvider = (
+        folderName,
+      ) async => dirFor(folderName);
     });
 
     tearDown(() async {
@@ -229,11 +231,11 @@ void main() {
         );
         expect(identical(dio, DioClient.instance.dio), isTrue);
         expect(dio.interceptors.length, interceptorCount);
+        expect(await cookieNames(zhengfangJar, probeUri), contains('zf_token'));
         expect(
-          await cookieNames(zhengfangJar, probeUri),
-          contains('zf_token'),
+          await cookieNames(unifiedJar, unifiedProbeUri),
+          contains('uni_token'),
         );
-        expect(await cookieNames(unifiedJar, unifiedProbeUri), contains('uni_token'));
 
         // 现有 Dio 的 CookieManager 拦截器仍读同一个 jar → 请求头带新 cookie。
         String? cookieHeader;
@@ -270,37 +272,41 @@ void main() {
       expect(() => DioClient.instance.dio, returnsNormally);
     });
 
-    test('concurrent reloads share one pass; a failed reload can be retried', () async {
-      await DioClient.instance.ensureInitialized();
+    test(
+      'concurrent reloads share one pass; a failed reload can be retried',
+      () async {
+        await DioClient.instance.ensureInitialized();
 
-      var hookCalls = 0;
-      final gate = Completer<void>();
-      DioClient.debugBeforeForceInit = (jar) async {
-        hookCalls++;
-        await gate.future;
-      };
+        var hookCalls = 0;
+        final gate = Completer<void>();
+        DioClient.debugBeforeForceInit = (jar) async {
+          hookCalls++;
+          await gate.future;
+        };
 
-      // 同 isolate 并发两次：应合并为一轮（两个 jar 各一次 hook）。
-      final first = DioClient.instance.reloadPersistedCookies();
-      final second = DioClient.instance.reloadPersistedCookies();
-      gate.complete();
-      await Future.wait(<Future<void>>[first, second]);
-      expect(hookCalls, 2);
+        // 同 isolate 并发两次：应合并为一轮（两个 jar 各一次 hook）。
+        final first = DioClient.instance.reloadPersistedCookies();
+        final second = DioClient.instance.reloadPersistedCookies();
+        gate.complete();
+        await Future.wait(<Future<void>>[first, second]);
+        expect(hookCalls, 2);
 
-      // 合并仅限在途：完成后再调一次会开新一轮。
-      await DioClient.instance.reloadPersistedCookies();
-      expect(hookCalls, 4);
+        // 合并仅限在途：完成后再调一次会开新一轮。
+        await DioClient.instance.reloadPersistedCookies();
+        expect(hookCalls, 4);
 
-      // 任一 jar 失败 → 向上抛出（不吞错假成功），且引用清理后可重试。
-      DioClient.debugBeforeForceInit = (jar) async => throw StateError('boom');
-      await expectLater(
-        DioClient.instance.reloadPersistedCookies(),
-        throwsA(isA<StateError>()),
-      );
+        // 任一 jar 失败 → 向上抛出（不吞错假成功），且引用清理后可重试。
+        DioClient.debugBeforeForceInit = (jar) async =>
+            throw StateError('boom');
+        await expectLater(
+          DioClient.instance.reloadPersistedCookies(),
+          throwsA(isA<StateError>()),
+        );
 
-      DioClient.debugBeforeForceInit = null;
-      await DioClient.instance.reloadPersistedCookies();
-      expect(DioClient.debugBeforeForceInit, isNull);
-    });
+        DioClient.debugBeforeForceInit = null;
+        await DioClient.instance.reloadPersistedCookies();
+        expect(DioClient.debugBeforeForceInit, isNull);
+      },
+    );
   });
 }

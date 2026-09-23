@@ -135,10 +135,7 @@ extension UnifiedAuthChallengeExtension on UnifiedAuthService {
   }
 
   /// 自动票据必须属于 CAS 域且账号与本次登录输入一致；否则不得提交。
-  bool _recoveryTicketMatchesInput(
-    AuthRecoveryTicket ticket,
-    String username,
-  ) {
+  bool _recoveryTicketMatchesInput(AuthRecoveryTicket ticket, String username) {
     if (ticket.domain != AuthRecoveryDomain.cas) return false;
     final trimmed = username.trim();
     return trimmed.isNotEmpty && ticket.account == trimmed;

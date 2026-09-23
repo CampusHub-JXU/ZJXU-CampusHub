@@ -84,9 +84,10 @@ void main() {
       );
       await resetTestEnvironment();
       // 暖启动后的静默自动登录默认被替换为 no-op，避免测试触发真实登录链路。
-      AppBootstrapController.instance.debugAutomaticLoginAttemptOverride =
-          (domain, {String? expectedAccount}) async =>
-              AutomaticLoginOutcome.notEligible;
+      AppBootstrapController.instance.debugAutomaticLoginAttemptOverride = (
+        domain, {
+        String? expectedAccount,
+      }) async => AutomaticLoginOutcome.notEligible;
     });
 
     const allSteps = <String>[

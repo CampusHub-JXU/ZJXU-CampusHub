@@ -806,24 +806,23 @@ void main() {
     );
   });
 
-  testWidgets(
-    'serviceUnavailable failure never suggests re-login',
-    (tester) async {
-      CampusCardService.instance.debugSetCachedBalance(null);
-      CampusCardService.instance.debugSetLastBalanceFailure(
-        BalanceFailureKind.serviceUnavailable,
-      );
+  testWidgets('serviceUnavailable failure never suggests re-login', (
+    tester,
+  ) async {
+    CampusCardService.instance.debugSetCachedBalance(null);
+    CampusCardService.instance.debugSetLastBalanceFailure(
+      BalanceFailureKind.serviceUnavailable,
+    );
 
-      await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
-      await tester.pumpAndSettle();
+    await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+    await tester.pumpAndSettle();
 
-      // 服务不可用是可重试故障：只给重试入口，不引导重新登录。
-      expect(find.text('一卡通服务暂时不可用，请稍后重试'), findsOneWidget);
-      expect(find.text('点击查询余额'), findsOneWidget);
-      expect(find.text('登录统一认证'), findsNothing);
-      expect(find.text('重新登录'), findsNothing);
-    },
-  );
+    // 服务不可用是可重试故障：只给重试入口，不引导重新登录。
+    expect(find.text('一卡通服务暂时不可用，请稍后重试'), findsOneWidget);
+    expect(find.text('点击查询余额'), findsOneWidget);
+    expect(find.text('登录统一认证'), findsNothing);
+    expect(find.text('重新登录'), findsNothing);
+  });
 
   testWidgets('network failure never suggests re-login', (tester) async {
     CampusCardService.instance.debugSetCachedBalance(null);

@@ -216,10 +216,7 @@ class AppBootstrapController {
         AuthRecoveryDomain.cas => UnifiedAuthService.instance.currentAccount,
         AuthRecoveryDomain.academic => ZhengfangAuth.instance.currentStudentId,
       };
-      final outcome = await attempt(
-        domain,
-        expectedAccount: expectedAccount,
-      );
+      final outcome = await attempt(domain, expectedAccount: expectedAccount);
       AppLogger.instance.log(
         LogLevel.info,
         LogCategory.general,
