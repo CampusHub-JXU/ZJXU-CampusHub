@@ -600,14 +600,17 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
           ),
           const SizedBox(height: 12),
           _buildCaptchaRow(cs),
-          const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.only(left: 4),
-            child: Text(
-              _captchaLoading ? '正在准备验证码...' : '可手动输入，点击图片可换一张',
-              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+          // 就绪后整条帮助行隐藏，不留空白 Padding/SizedBox。
+          if (_captchaLoading) ...[
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.only(left: 4),
+              child: Text(
+                '正在准备验证码...',
+                style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+              ),
             ),
-          ),
+          ],
           _buildRememberAccountTile(cs),
           const SizedBox(height: 6),
           FilledButton(
@@ -738,6 +741,9 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
         Semantics(
           button: true,
           label: '刷新验证码',
+          // 内层 InkWell 关闭了自身语义，这里补上等价的 tap 动作（含加载态
+          // 禁用分支），避免无障碍服务只播报按钮却无法激活刷新。
+          onTap: (_captchaLoading || _loading) ? null : _refreshCaptcha,
           child: SizedBox(
             width: 140,
             height: 72,

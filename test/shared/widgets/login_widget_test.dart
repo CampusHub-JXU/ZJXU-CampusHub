@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jxu_campus_hub/core/auth/auth_failure.dart';
 import 'package:jxu_campus_hub/core/auth/auth_operation_coordinator.dart';
@@ -936,16 +937,99 @@ void main() {
 
   testWidgets('captcha block exposes a labeled refresh button', (tester) async {
     final handle = tester.ensureSemantics();
+    var challengeLoads = 0;
 
     await tester.pumpWidget(
       buildChallengeSubject(
-        challengeLoader: ({cancelToken}) async =>
-            challenge('challenge-semantics'),
+        challengeLoader: ({cancelToken}) async {
+          challengeLoads += 1;
+          return challenge('challenge-semantics');
+        },
       ),
     );
     await tester.pumpAndSettle();
 
     expect(find.bySemanticsLabel('刷新验证码'), findsOneWidget);
+
+    // 外层 Semantics 必须与 InkWell 暴露同一个 tap 动作（InkWell 已关闭语义）。
+    final refreshNode = find.semantics.byLabel('刷新验证码');
+    expect(refreshNode.evaluate(), hasLength(1));
+    expect(
+      refreshNode.evaluate().single.getSemanticsData().hasAction(
+        SemanticsAction.tap,
+      ),
+      isTrue,
+    );
+
+    // 语义 tap 必须等价于真实点击，触发同一刷新行为。
+    tester.semantics.tap(refreshNode);
+    await tester.pumpAndSettle();
+    expect(challengeLoads, 2);
+    expect(tester.takeException(), isNull);
     handle.dispose();
+  });
+
+  testWidgets('captcha refresh exposes no tap action while loading', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    final pending = Completer<CaptchaChallenge>();
+
+    await tester.pumpWidget(
+      buildChallengeSubject(challengeLoader: ({cancelToken}) => pending.future),
+    );
+    // 首屏仍在「正在准备验证码」状态，进度动画不会停止，不能用 pumpAndSettle。
+    await tester.pump();
+    await tester.pump();
+
+    // 加载中保留进度提示（帮助行只保留这一条文案）。
+    expect(find.text('正在准备教务验证码...'), findsOneWidget);
+    expect(find.text('可手动输入，点击图片可换一张'), findsNothing);
+
+    final loadingNode = find.semantics.byLabel('刷新验证码');
+    expect(loadingNode.evaluate(), hasLength(1));
+    expect(
+      loadingNode.evaluate().single.getSemanticsData().hasAction(
+        SemanticsAction.tap,
+      ),
+      isFalse,
+    );
+
+    // 收尾：完成挂起的 challenge，退出加载态并避免遗留超时计时器。
+    pending.complete(challenge('challenge-semantics-loading'));
+    await tester.pumpAndSettle();
+    expect(
+      find.semantics
+          .byLabel('刷新验证码')
+          .evaluate()
+          .single
+          .getSemanticsData()
+          .hasAction(SemanticsAction.tap),
+      isTrue,
+    );
+    handle.dispose();
+  });
+
+  testWidgets('captcha helper copy is removed once the challenge is ready', (
+    tester,
+  ) async {
+    final pending = Completer<CaptchaChallenge>();
+
+    await tester.pumpWidget(
+      buildChallengeSubject(challengeLoader: ({cancelToken}) => pending.future),
+    );
+    // 首屏仍在准备验证码，进度动画不会停止，不能用 pumpAndSettle。
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('正在准备教务验证码...'), findsOneWidget);
+
+    pending.complete(challenge('challenge-helper-ready'));
+    await tester.pumpAndSettle();
+
+    // 就绪后帮助行整体隐藏：冗余提示与准备中文案都不再渲染。
+    expect(find.text('正在准备教务验证码...'), findsNothing);
+    expect(find.text('可手动输入，点击图片可换一张'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 }
