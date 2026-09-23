@@ -215,6 +215,15 @@ class _CampusCardPageState extends State<CampusCardPage> {
       BalanceFailureKind.network => ('网络不可用，请检查网络后重试', Icons.wifi_off_rounded),
       BalanceFailureKind.none => (null, null),
     };
+    // 只有「明确认证失效」用警示底色；网络 / 服务不可用保持中性提示，
+    // 不得把可重试的故障渲染成需要重新登录。
+    final failureIsSerious = failure == BalanceFailureKind.authExpired;
+    final failureTone = failureIsSerious
+        ? cs.onErrorContainer
+        : cs.onSurfaceVariant;
+    final failureBackground = failureIsSerious
+        ? cs.errorContainer
+        : cs.surfaceContainerHighest;
 
     return AppCard(
       child: Column(
@@ -224,9 +233,11 @@ class _CampusCardPageState extends State<CampusCardPage> {
             children: [
               Icon(Icons.credit_card_outlined, size: 18, color: cs.primary),
               const SizedBox(width: AppSpacing.sm),
-              Text(
-                '校园卡余额',
-                style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+              Flexible(
+                child: Text(
+                  '校园卡余额',
+                  style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+                ),
               ),
               const Spacer(),
               IconButton(
@@ -240,53 +251,74 @@ class _CampusCardPageState extends State<CampusCardPage> {
                 iconSize: 20,
                 color: cs.onSurfaceVariant,
                 visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
               ),
             ],
           ),
           const SizedBox(height: AppSpacing.xs),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                '¥',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w500,
-                  color: cs.onSurfaceVariant,
-                ),
+          // 大字号 / 窄屏下金额整体等比缩小，不挤压换行。
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text(
+                    '¥',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w500,
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.xs),
+                  Text(
+                    _obscured ? '****' : balanceText,
+                    style: TextStyle(
+                      fontSize: 40,
+                      fontWeight: FontWeight.w600,
+                      color: cs.onSurface,
+                      letterSpacing: -1,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: AppSpacing.xs),
-              Text(
-                _obscured ? '****' : balanceText,
-                style: TextStyle(
-                  fontSize: 40,
-                  fontWeight: FontWeight.w600,
-                  color: cs.onSurface,
-                  letterSpacing: -1,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
-              ),
-            ],
+            ),
           ),
           const SizedBox(height: AppSpacing.md),
           if (balance == null) ...[
             if (failureMessage != null && failureIcon != null) ...[
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Icon(failureIcon, size: 14, color: cs.onSurfaceVariant),
-                  const SizedBox(width: AppSpacing.xs),
-                  Expanded(
-                    child: Text(
-                      failureMessage,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: cs.onSurfaceVariant,
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: failureBackground,
+                  borderRadius: AppRadius.chipBorder,
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(failureIcon, size: 14, color: failureTone),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: Text(
+                        failureMessage,
+                        style: TextStyle(
+                          fontSize: 12,
+                          height: 1.4,
+                          color: failureTone,
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
               const SizedBox(height: AppSpacing.sm),
             ],
@@ -315,9 +347,11 @@ class _CampusCardPageState extends State<CampusCardPage> {
               children: [
                 Icon(Icons.schedule, size: 13, color: cs.onSurfaceVariant),
                 const SizedBox(width: AppSpacing.xs),
-                Text(
-                  timeText,
-                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                Flexible(
+                  child: Text(
+                    timeText,
+                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                  ),
                 ),
               ],
             ),

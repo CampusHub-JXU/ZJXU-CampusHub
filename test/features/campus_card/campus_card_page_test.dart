@@ -777,6 +777,69 @@ void main() {
       },
     );
   });
+
+  group('narrow screen and large text', () {
+    testWidgets(
+      'balance card fits 360px screen at 1.5x text without overflow',
+      (tester) async {
+        tester.view.physicalSize = const Size(360, 780);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: MediaQuery(
+              data: MediaQueryData.fromView(tester.view)
+                  .copyWith(textScaler: const TextScaler.linear(1.5)),
+              child: const CampusCardPage(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('23.50'), findsOneWidget);
+        expect(find.text('校园卡余额'), findsOneWidget);
+        expect(find.text('付款码'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  });
+
+  testWidgets(
+    'serviceUnavailable failure never suggests re-login',
+    (tester) async {
+      CampusCardService.instance.debugSetCachedBalance(null);
+      CampusCardService.instance.debugSetLastBalanceFailure(
+        BalanceFailureKind.serviceUnavailable,
+      );
+
+      await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+      await tester.pumpAndSettle();
+
+      // 服务不可用是可重试故障：只给重试入口，不引导重新登录。
+      expect(find.text('一卡通服务暂时不可用，请稍后重试'), findsOneWidget);
+      expect(find.text('点击查询余额'), findsOneWidget);
+      expect(find.text('登录统一认证'), findsNothing);
+      expect(find.text('重新登录'), findsNothing);
+    },
+  );
+
+  testWidgets('network failure never suggests re-login', (tester) async {
+    CampusCardService.instance.debugSetCachedBalance(null);
+    CampusCardService.instance.debugSetLastBalanceFailure(
+      BalanceFailureKind.network,
+    );
+
+    await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+    await tester.pumpAndSettle();
+
+    // 网络不可用同理，绝不误提示登录失效。
+    expect(find.text('网络不可用，请检查网络后重试'), findsOneWidget);
+    expect(find.text('点击查询余额'), findsOneWidget);
+    expect(find.text('登录统一认证'), findsNothing);
+    expect(find.text('重新登录'), findsNothing);
+  });
 }
 
 List<String> _mockClipboard({bool throwOnSet = false}) {
