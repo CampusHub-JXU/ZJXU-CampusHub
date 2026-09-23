@@ -320,6 +320,37 @@ void main() {
     await renderPage(tester, 'page_settings_light', const SettingsPage());
   });
 
+  // 设置页整页形态（高视口一次呈现全部分组）：分组层级、脚注节奏、
+  // 版本行与手机限宽基线。
+  previewTest('page_settings_full_light', (tester) async {
+    await renderPage(
+      tester,
+      'page_settings_full_light',
+      const SettingsPage(),
+      logicalSize: const Size(412, 1800),
+    );
+  });
+
+  previewTest('page_settings_full_dark', (tester) async {
+    await renderPage(
+      tester,
+      'page_settings_full_dark',
+      const SettingsPage(),
+      brightness: Brightness.dark,
+      logicalSize: const Size(412, 1800),
+    );
+  });
+
+  // 宽屏限宽形态：内容列居中限宽（SettingsPage 内容最大宽度），两侧留白。
+  previewTest('page_settings_wide_light', (tester) async {
+    await renderPage(
+      tester,
+      'page_settings_wide_light',
+      const SettingsPage(),
+      logicalSize: const Size(900, 1400),
+    );
+  });
+
   previewTest('page_appearance_light', (tester) async {
     await renderPage(tester, 'page_appearance_light', const AppearancePage());
   });

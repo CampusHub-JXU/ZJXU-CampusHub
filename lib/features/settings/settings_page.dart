@@ -28,6 +28,9 @@ import '../../shared/widgets/update_dialog.dart';
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
 
+  /// 宽屏（平板 / 折叠屏展开）下内容列限宽居中；手机宽度不受影响。
+  static const double _contentMaxWidth = 640;
+
   String _formatLogLevel(LogLevel level) {
     return switch (level) {
       LogLevel.debug => 'Debug',
@@ -94,20 +97,25 @@ class SettingsPage extends StatelessWidget {
     final messenger = ScaffoldMessenger.maybeOf(context);
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('清除离线缓存'),
-        content: const Text('将清空课表、目录等离线缓存，不影响登录状态与个性化设置。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('清除'),
-          ),
-        ],
-      ),
+      builder: (dialogContext) {
+        final cs = Theme.of(dialogContext).colorScheme;
+        return AlertDialog(
+          title: const Text('清除离线缓存'),
+          content: const Text('将清除目录等临时缓存，不影响登录状态、课表缓存与个性化设置。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('取消'),
+            ),
+            // 确认按钮是不可撤销动作，用错误色与「取消」拉开层级。
+            TextButton(
+              style: TextButton.styleFrom(foregroundColor: cs.error),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('清除'),
+            ),
+          ],
+        );
+      },
     );
     if (confirmed != true) return;
     await JsonCacheStore.instance.clearAll();
@@ -120,313 +128,320 @@ class SettingsPage extends StatelessWidget {
 
     return Scaffold(
       appBar: AppAppBar(title: const Text('设置')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-        children: [
-          const _SectionHeader('外观'),
-          const SizedBox(height: 8),
-          _GroupCard(
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: _contentMaxWidth),
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
             children: [
-              _SettingsRow(
-                icon: Icons.palette_outlined,
-                title: '主题与色彩',
-                subtitle: '深浅模式、强调色与字体大小',
-                trailing: _chevron(context),
-                onTap: () => context.pushNamed('appearance'),
-              ),
-              const _Hairline(),
-              _SettingsRow(
-                icon: Icons.auto_awesome_outlined,
-                title: '个性化',
-                subtitle: '背景、动态效果与材质显示',
-                trailing: _chevron(context),
-                onTap: () => context.pushNamed('personalization'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          const _SectionHeader('校园'),
-          const SizedBox(height: 8),
-          ValueListenableBuilder<DateTime>(
-            valueListenable: SemesterCalendar.instance.semesterStartDate,
-            child: const _CurrentTermTile(),
-            builder: (context, semesterStartDate, child) {
-              return _GroupCard(
+              const _SectionHeader('外观'),
+              const SizedBox(height: 8),
+              _GroupCard(
                 children: [
-                  ?child,
-                  const _Hairline(),
-                  const _EnrollmentYearRow(),
+                  _SettingsRow(
+                    icon: Icons.palette_outlined,
+                    title: '主题与色彩',
+                    subtitle: '深浅模式、强调色与字体大小',
+                    trailing: _chevron(context),
+                    onTap: () => context.pushNamed('appearance'),
+                  ),
                   const _Hairline(),
                   _SettingsRow(
-                    icon: Icons.edit_calendar_outlined,
-                    title: '当前学期开学日',
-                    subtitle: '${_formatDate(semesterStartDate)}（用于周次与下一节课计算）',
+                    icon: Icons.auto_awesome_outlined,
+                    title: '个性化',
+                    subtitle: '背景、动态效果与材质显示',
                     trailing: _chevron(context),
-                    onTap: () async {
-                      await _pickSemesterStartDate(context, semesterStartDate);
-                    },
-                  ),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(0, 0, 12, 10),
-                      child: TextButton(
-                        onPressed: () async {
-                          await SemesterCalendar.instance
-                              .resetSemesterStartDate();
-                        },
-                        child: Text(
-                          '恢复默认（${_formatDate(SemesterCalendar.defaultSemesterStartFor(DateTime.now()))}）',
-                        ),
-                      ),
-                    ),
+                    onTap: () => context.pushNamed('personalization'),
                   ),
                 ],
-              );
-            },
-          ),
-          const SizedBox(height: 16),
-          Text(
-            '学期设置会立即生效。',
-            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-          ),
-          if (Theme.of(context).platform == TargetPlatform.android) ...[
-            const SizedBox(height: 24),
-            const _SectionHeader('课表日历'),
-            const SizedBox(height: 8),
-            const _CalendarSyncCard(),
-            const SizedBox(height: 8),
-            Text(
-              '课表仅在应用前台写入系统日历；课前 10 分钟由系统日历提醒（非精确闹钟）。',
-              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-            ),
-          ],
-          const SizedBox(height: 24),
-          const _SectionHeader('桌面与后台'),
-          const SizedBox(height: 8),
-          _GroupCard(
-            children: [
-              _SettingsRow(
-                icon: Icons.widgets_outlined,
-                title: '桌面与后台',
-                subtitle: '桌面组件、快捷方式、通知权限与后台运行说明',
-                trailing: _chevron(context),
-                onTap: () => context.pushNamed('desktop-background'),
               ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          const _SectionHeader('账户与数据'),
-          const SizedBox(height: 8),
-          _GroupCard(
-            children: [
-              _SettingsRow(
-                icon: Icons.cleaning_services_outlined,
-                title: '清除离线缓存',
-                subtitle: '清空目录与资源缓存，不影响登录状态',
-                trailing: _chevron(context),
-                onTap: () => _clearOfflineCache(context),
+              const SizedBox(height: 24),
+              const _SectionHeader('校园'),
+              const SizedBox(height: 8),
+              ValueListenableBuilder<DateTime>(
+                valueListenable: SemesterCalendar.instance.semesterStartDate,
+                child: const _CurrentTermTile(),
+                builder: (context, semesterStartDate, child) {
+                  return _GroupCard(
+                    children: [
+                      ?child,
+                      const _Hairline(),
+                      const _EnrollmentYearRow(),
+                      const _Hairline(),
+                      _SettingsRow(
+                        icon: Icons.edit_calendar_outlined,
+                        title: '当前学期开学日',
+                        subtitle:
+                            '${_formatDate(semesterStartDate)}（用于周次与下一节课计算）',
+                        trailing: _chevron(context),
+                        onTap: () async {
+                          await _pickSemesterStartDate(
+                            context,
+                            semesterStartDate,
+                          );
+                        },
+                      ),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(0, 0, 12, 10),
+                          child: TextButton(
+                            onPressed: () async {
+                              await SemesterCalendar.instance
+                                  .resetSemesterStartDate();
+                            },
+                            child: Text(
+                              '恢复默认（${_formatDate(SemesterCalendar.defaultSemesterStartFor(DateTime.now()))}）',
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          const _SectionHeader('应用'),
-          const SizedBox(height: 8),
-          FutureBuilder<PackageInfo>(
-            future: PackageInfo.fromPlatform(),
-            builder: (context, snapshot) {
-              final version = snapshot.hasData
-                  ? '当前版本 v${snapshot.data!.version}+${snapshot.data!.buildNumber}'
-                  : '查看当前版本信息';
-              return ValueListenableBuilder<AppRelease?>(
-                valueListenable: UpdateChecker.instance.availableRelease,
-                builder: (context, release, child) {
-                  return ValueListenableBuilder<bool>(
-                    valueListenable: UpdateChecker.instance.isChecking,
-                    builder: (context, isChecking, child) {
-                      final subtitle = release != null
-                          ? '发现新版本 v${release.version}'
-                          : UpdateChecker.instance.isUpdateEnabled
-                          ? version
-                          : '当前版本暂未开放在线更新';
-                      return _GroupCard(
-                        children: [
-                          _SettingsRow(
-                            icon: Icons.system_update_outlined,
-                            title: '检查更新',
-                            subtitle: subtitle,
-                            trailing: isChecking
-                                ? const SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : Icon(
-                                    release != null
-                                        ? Icons.new_releases_outlined
-                                        : Icons.chevron_right,
-                                    size: 20,
-                                    color: release != null
-                                        ? cs.primary
-                                        : cs.onSurfaceVariant,
-                                  ),
-                            onTap: isChecking
-                                ? null
-                                : () {
-                                    _checkForUpdate(context);
-                                  },
-                          ),
-                          const _Hairline(),
-                          _SettingsRow(
-                            icon: Icons.info_outline,
-                            title: '关于',
-                            subtitle: '开发者与发布页',
-                            trailing: _chevron(context),
-                            onTap: () => context.pushNamed('about'),
-                          ),
-                        ],
+              const SizedBox(height: 8),
+              const _SectionCaption('学期设置会立即生效。'),
+              if (Theme.of(context).platform == TargetPlatform.android) ...[
+                const SizedBox(height: 24),
+                const _SectionHeader('课表日历'),
+                const SizedBox(height: 8),
+                const _CalendarSyncCard(),
+                const SizedBox(height: 8),
+                const _SectionCaption('课表仅在应用前台写入系统日历；课前 10 分钟由系统日历提醒（非精确闹钟）。'),
+              ],
+              const SizedBox(height: 24),
+              const _SectionHeader('桌面与后台'),
+              const SizedBox(height: 8),
+              _GroupCard(
+                children: [
+                  _SettingsRow(
+                    icon: Icons.widgets_outlined,
+                    title: '桌面与后台',
+                    subtitle: '桌面组件、快捷方式、通知权限与后台运行说明',
+                    trailing: _chevron(context),
+                    onTap: () => context.pushNamed('desktop-background'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              const _SectionHeader('账户与数据'),
+              const SizedBox(height: 8),
+              _GroupCard(
+                children: [
+                  _SettingsRow(
+                    icon: Icons.cleaning_services_outlined,
+                    title: '清除离线缓存',
+                    subtitle: '清除目录等临时缓存，不影响登录和课表',
+                    trailing: _chevron(context),
+                    onTap: () => _clearOfflineCache(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              const _SectionHeader('应用'),
+              const SizedBox(height: 8),
+              FutureBuilder<PackageInfo>(
+                future: PackageInfo.fromPlatform(),
+                builder: (context, snapshot) {
+                  final version = snapshot.hasData
+                      ? '当前版本 v${snapshot.data!.version}+${snapshot.data!.buildNumber}'
+                      : '正在读取版本信息…';
+                  return ValueListenableBuilder<AppRelease?>(
+                    valueListenable: UpdateChecker.instance.availableRelease,
+                    builder: (context, release, child) {
+                      return ValueListenableBuilder<bool>(
+                        valueListenable: UpdateChecker.instance.isChecking,
+                        builder: (context, isChecking, child) {
+                          final subtitle = release != null
+                              ? '发现新版本 v${release.version}'
+                              : UpdateChecker.instance.isUpdateEnabled
+                              ? version
+                              : '当前版本暂未开放在线更新';
+                          return _GroupCard(
+                            children: [
+                              _SettingsRow(
+                                icon: Icons.system_update_outlined,
+                                title: '检查更新',
+                                subtitle: subtitle,
+                                emphasizeSubtitle: release != null,
+                                trailing: isChecking
+                                    ? const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : Icon(
+                                        release != null
+                                            ? Icons.new_releases_outlined
+                                            : Icons.chevron_right,
+                                        size: 20,
+                                        color: release != null
+                                            ? cs.primary
+                                            : cs.onSurfaceVariant,
+                                      ),
+                                onTap: isChecking
+                                    ? null
+                                    : () {
+                                        _checkForUpdate(context);
+                                      },
+                              ),
+                              const _Hairline(),
+                              _SettingsRow(
+                                icon: Icons.info_outline,
+                                title: '关于',
+                                subtitle: '开发者与发布页',
+                                trailing: _chevron(context),
+                                onTap: () => context.pushNamed('about'),
+                              ),
+                            ],
+                          );
+                        },
                       );
                     },
                   );
                 },
-              );
-            },
-          ),
-          const SizedBox(height: 24),
-          FutureBuilder<PackageInfo>(
-            future: PackageInfo.fromPlatform(),
-            builder: (context, snapshot) {
-              final version = snapshot.hasData
-                  ? 'v${snapshot.data!.version}+${snapshot.data!.buildNumber}'
-                  : '';
-              return Center(
-                child: Text(
-                  '嘉兴大学 $version',
-                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-                ),
-              );
-            },
-          ),
-          if (kDebugMode) ...[
-            const SizedBox(height: 16),
-            const _SectionHeader('调试'),
-            const SizedBox(height: 8),
-            ValueListenableBuilder<bool>(
-              valueListenable: AppLogger.instance.loggingEnabled,
-              builder: (context, loggingEnabled, child) {
-                return ValueListenableBuilder<LogConfig>(
-                  valueListenable: AppLogger.instance.config,
-                  builder: (context, logConfig, _) {
-                    return _GroupCard(
-                      children: [
-                        _SwitchRow(
-                          icon: Icons.bug_report_outlined,
-                          title: '调试日志',
-                          subtitle: '开启后记录调试期日志和异常',
-                          value: loggingEnabled,
-                          onToggle: (value) {
-                            AppLogger.instance.setEnabled(value);
-                          },
-                        ),
-                        const _Hairline(),
-                        _SettingsRow(
-                          icon: Icons.format_list_bulleted_outlined,
-                          title: '最低日志级别',
-                          subtitle: _formatLogLevel(logConfig.minimumLevel),
-                          trailing: AppDropdown<LogLevel>(
-                            value: logConfig.minimumLevel,
-                            onChanged: (value) {
-                              if (value == null) return;
-                              AppLogger.instance.updateConfig(
-                                logConfig.copyWith(minimumLevel: value),
-                              );
-                            },
-                            items: LogLevel.values
-                                .map(
-                                  (level) => AppDropdownItem(
-                                    value: level,
-                                    label: _formatLogLevel(level),
-                                  ),
-                                )
-                                .toList(),
-                          ),
-                        ),
-                        const _Hairline(),
-                        _SwitchRow(
-                          icon: Icons.public_outlined,
-                          title: 'WebView 生命周期日志',
-                          subtitle: '页面加载、跳转和白屏探测细节',
-                          value: logConfig.webviewLifecycleEnabled,
-                          onToggle: (value) {
-                            AppLogger.instance.updateConfig(
-                              logConfig.copyWith(
-                                webviewLifecycleEnabled: value,
+              ),
+              const SizedBox(height: 24),
+              FutureBuilder<PackageInfo>(
+                future: PackageInfo.fromPlatform(),
+                builder: (context, snapshot) {
+                  final version = snapshot.hasData
+                      ? 'v${snapshot.data!.version}+${snapshot.data!.buildNumber}'
+                      : null;
+                  return Center(
+                    child: _SectionCaption(
+                      version == null ? '嘉兴大学' : '嘉兴大学 $version',
+                    ),
+                  );
+                },
+              ),
+              if (kDebugMode) ...[
+                const SizedBox(height: 16),
+                const _SectionHeader('调试'),
+                const SizedBox(height: 8),
+                ValueListenableBuilder<bool>(
+                  valueListenable: AppLogger.instance.loggingEnabled,
+                  builder: (context, loggingEnabled, child) {
+                    return ValueListenableBuilder<LogConfig>(
+                      valueListenable: AppLogger.instance.config,
+                      builder: (context, logConfig, _) {
+                        return _GroupCard(
+                          children: [
+                            _SwitchRow(
+                              icon: Icons.bug_report_outlined,
+                              title: '调试日志',
+                              subtitle: '开启后记录调试期日志和异常',
+                              value: loggingEnabled,
+                              onToggle: (value) {
+                                AppLogger.instance.setEnabled(value);
+                              },
+                            ),
+                            const _Hairline(),
+                            _SettingsRow(
+                              icon: Icons.format_list_bulleted_outlined,
+                              title: '最低日志级别',
+                              subtitle: _formatLogLevel(logConfig.minimumLevel),
+                              trailing: AppDropdown<LogLevel>(
+                                value: logConfig.minimumLevel,
+                                onChanged: (value) {
+                                  if (value == null) return;
+                                  AppLogger.instance.updateConfig(
+                                    logConfig.copyWith(minimumLevel: value),
+                                  );
+                                },
+                                items: LogLevel.values
+                                    .map(
+                                      (level) => AppDropdownItem(
+                                        value: level,
+                                        label: _formatLogLevel(level),
+                                      ),
+                                    )
+                                    .toList(),
                               ),
-                            );
-                          },
-                        ),
-                        const _Hairline(),
-                        _SwitchRow(
-                          icon: Icons.code_outlined,
-                          title: 'WebView 控制台日志',
-                          subtitle: '记录页面 console warning/error',
-                          value: logConfig.webviewConsoleEnabled,
-                          onToggle: (value) {
-                            AppLogger.instance.updateConfig(
-                              logConfig.copyWith(webviewConsoleEnabled: value),
-                            );
-                          },
-                        ),
-                        const _Hairline(),
-                        _SwitchRow(
-                          icon: Icons.wifi_outlined,
-                          title: '网络详细日志',
-                          subtitle: '记录请求和响应细节，噪音较大',
-                          value: logConfig.networkVerboseEnabled,
-                          onToggle: (value) {
-                            AppLogger.instance.updateConfig(
-                              logConfig.copyWith(networkVerboseEnabled: value),
-                            );
-                          },
-                        ),
-                        const _Hairline(),
-                        _SettingsRow(
-                          icon: Icons.notifications_outlined,
-                          title: '通知测试',
-                          subtitle: '发送一条本地测试通知',
-                          trailing: Icon(
-                            Icons.send_outlined,
-                            size: 20,
-                            color: cs.onSurfaceVariant,
-                          ),
-                          onTap: () {
-                            AppNotificationService.instance.showNotification(
-                              id: 999,
-                              title: '测试通知',
-                              body:
-                                  '这是一条来自开发模式的测试通知，${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}',
-                              payload: 'test',
-                            );
-                          },
-                        ),
-                        const _Hairline(),
-                        _SettingsRow(
-                          icon: Icons.notifications_active_outlined,
-                          title: '推送令牌',
-                          subtitle: '查看 FCM 推送注册状态',
-                          trailing: _chevron(context),
-                          onTap: () => context.pushNamed('push-debug'),
-                        ),
-                      ],
+                            ),
+                            const _Hairline(),
+                            _SwitchRow(
+                              icon: Icons.public_outlined,
+                              title: 'WebView 生命周期日志',
+                              subtitle: '页面加载、跳转和白屏探测细节',
+                              value: logConfig.webviewLifecycleEnabled,
+                              onToggle: (value) {
+                                AppLogger.instance.updateConfig(
+                                  logConfig.copyWith(
+                                    webviewLifecycleEnabled: value,
+                                  ),
+                                );
+                              },
+                            ),
+                            const _Hairline(),
+                            _SwitchRow(
+                              icon: Icons.code_outlined,
+                              title: 'WebView 控制台日志',
+                              subtitle: '记录页面 console warning/error',
+                              value: logConfig.webviewConsoleEnabled,
+                              onToggle: (value) {
+                                AppLogger.instance.updateConfig(
+                                  logConfig.copyWith(
+                                    webviewConsoleEnabled: value,
+                                  ),
+                                );
+                              },
+                            ),
+                            const _Hairline(),
+                            _SwitchRow(
+                              icon: Icons.wifi_outlined,
+                              title: '网络详细日志',
+                              subtitle: '记录请求和响应细节，噪音较大',
+                              value: logConfig.networkVerboseEnabled,
+                              onToggle: (value) {
+                                AppLogger.instance.updateConfig(
+                                  logConfig.copyWith(
+                                    networkVerboseEnabled: value,
+                                  ),
+                                );
+                              },
+                            ),
+                            const _Hairline(),
+                            _SettingsRow(
+                              icon: Icons.notifications_outlined,
+                              title: '通知测试',
+                              subtitle: '发送一条本地测试通知',
+                              trailing: Icon(
+                                Icons.send_outlined,
+                                size: 20,
+                                color: cs.onSurfaceVariant,
+                              ),
+                              onTap: () {
+                                AppNotificationService.instance.showNotification(
+                                  id: 999,
+                                  title: '测试通知',
+                                  body:
+                                      '这是一条来自开发模式的测试通知，${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}',
+                                  payload: 'test',
+                                );
+                              },
+                            ),
+                            const _Hairline(),
+                            _SettingsRow(
+                              icon: Icons.notifications_active_outlined,
+                              title: '推送令牌',
+                              subtitle: '查看 FCM 推送注册状态',
+                              trailing: _chevron(context),
+                              onTap: () => context.pushNamed('push-debug'),
+                            ),
+                          ],
+                        );
+                      },
                     );
                   },
-                );
-              },
-            ),
-          ],
-        ],
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -441,6 +456,7 @@ class SettingsPage extends StatelessWidget {
 }
 
 /// 分组小节标题：13/w600/onSurfaceVariant（Apple Settings 式小节标签）。
+/// 以 header 语义暴露，读屏按小节跳转时可识别。
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader(this.title);
 
@@ -449,13 +465,35 @@ class _SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    return Semantics(
+      header: true,
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: cs.onSurfaceVariant,
+          letterSpacing: 0.6,
+        ),
+      ),
+    );
+  }
+}
+
+/// 小节脚注：12px/1.4 弱化色，紧贴卡片说明边界条件与副作用。
+class _SectionCaption extends StatelessWidget {
+  const _SectionCaption(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
     return Text(
-      title,
+      text,
       style: TextStyle(
-        fontSize: 13,
-        fontWeight: FontWeight.w600,
-        color: cs.onSurfaceVariant,
-        letterSpacing: 0.2,
+        fontSize: 12,
+        height: 1.4,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
       ),
     );
   }
@@ -497,6 +535,10 @@ class _Hairline extends StatelessWidget {
 }
 
 /// 设置行：图标徽标 + 标题/副标题 + 右侧控件（chevron / Switch / Dropdown）。
+///
+/// 整行合并为单一语义节点（标题/副标题/尾部控件一并朗读）；可点击行以
+/// 按钮语义暴露点击动作。[emphasizeSubtitle] 把「发现新版本」这类需要
+/// 用户注意的副标题提到主题色。
 class _SettingsRow extends StatelessWidget {
   const _SettingsRow({
     required this.icon,
@@ -504,6 +546,7 @@ class _SettingsRow extends StatelessWidget {
     this.subtitle,
     this.trailing,
     this.onTap,
+    this.emphasizeSubtitle = false,
   });
 
   final IconData icon;
@@ -511,53 +554,69 @@ class _SettingsRow extends StatelessWidget {
   final String? subtitle;
   final Widget? trailing;
   final VoidCallback? onTap;
+  final bool emphasizeSubtitle;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-          child: Row(
-            children: [
-              AppIconBadge(
-                icon: icon,
-                accentColor: cs.primary,
-                size: AppIconBadgeSize.small,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: cs.onSurface,
-                        height: 1.2,
-                      ),
-                    ),
-                    if (subtitle != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle!,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: cs.onSurfaceVariant,
-                          height: 1.3,
+    final tappable = onTap != null;
+    return Semantics(
+      button: tappable ? true : null,
+      enabled: tappable ? true : null,
+      child: MergeSemantics(
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              child: Row(
+                children: [
+                  AppIconBadge(
+                    icon: icon,
+                    accentColor: cs.primary,
+                    size: AppIconBadgeSize.small,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: cs.onSurface,
+                            height: 1.2,
+                          ),
                         ),
-                      ),
-                    ],
+                        if (subtitle != null) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            subtitle!,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: emphasizeSubtitle
+                                  ? FontWeight.w600
+                                  : FontWeight.w400,
+                              color: emphasizeSubtitle
+                                  ? cs.primary
+                                  : cs.onSurfaceVariant,
+                              height: 1.3,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  if (trailing != null) ...[
+                    const SizedBox(width: 12),
+                    trailing!,
                   ],
-                ),
+                ],
               ),
-              if (trailing != null) ...[const SizedBox(width: 12), trailing!],
-            ],
+            ),
           ),
         ),
       ),
@@ -566,6 +625,7 @@ class _SettingsRow extends StatelessWidget {
 }
 
 /// 开关行：延续 SwitchListTile 的「点行即切换」语义，样式并入平色行。
+/// [enabled] 为 false 时整行与开关一起置灰不可用（如原生调用在途）。
 class _SwitchRow extends StatelessWidget {
   const _SwitchRow({
     required this.icon,
@@ -573,6 +633,7 @@ class _SwitchRow extends StatelessWidget {
     required this.value,
     required this.onToggle,
     this.subtitle,
+    this.enabled = true,
   });
 
   final IconData icon;
@@ -580,6 +641,7 @@ class _SwitchRow extends StatelessWidget {
   final String? subtitle;
   final bool value;
   final ValueChanged<bool> onToggle;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
@@ -587,8 +649,11 @@ class _SwitchRow extends StatelessWidget {
       icon: icon,
       title: title,
       subtitle: subtitle,
-      trailing: Switch.adaptive(value: value, onChanged: onToggle),
-      onTap: () => onToggle(!value),
+      trailing: Switch.adaptive(
+        value: value,
+        onChanged: enabled ? onToggle : null,
+      ),
+      onTap: enabled ? () => onToggle(!value) : null,
     );
   }
 }
@@ -684,7 +749,6 @@ class _CurrentTermTileState extends State<_CurrentTermTile> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final term = _resolved ?? ScheduleTermContext.current();
     final subtitle = _loading
         ? '正在从教务系统识别…'
@@ -692,51 +756,18 @@ class _CurrentTermTileState extends State<_CurrentTermTile> {
         ? '已从教务系统自动识别'
         : '按日期推算（未登录或教务不可达）';
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      child: Row(
-        children: [
-          AppIconBadge(
-            icon: Icons.school_outlined,
-            accentColor: cs.primary,
-            size: AppIconBadgeSize.small,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '当前学年学期',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: cs.onSurface,
-                    height: 1.2,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '${_termLabel(term)} · $subtitle',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: cs.onSurfaceVariant,
-                    height: 1.3,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (_loading) ...[
-            const SizedBox(width: 12),
-            const SizedBox(
+    // 只读信息行：无点击语义，识别中在行尾给一个轻量进度指示。
+    return _SettingsRow(
+      icon: Icons.school_outlined,
+      title: '当前学年学期',
+      subtitle: '${_termLabel(term)} · $subtitle',
+      trailing: _loading
+          ? const SizedBox(
               width: 16,
               height: 16,
               child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-          ],
-        ],
-      ),
+            )
+          : null,
     );
   }
 }
@@ -851,6 +882,8 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
           title: '课表日历同步',
           subtitle: _subtitle,
           value: state == CalendarSyncControlState.enabled,
+          // 开启/清理请求在途：整行置灰，避免重复触发原生调用。
+          enabled: !_busy,
           onToggle: (value) {
             if (_busy) return;
             unawaited(value ? _requestEnable() : _requestDisable());
