@@ -310,8 +310,10 @@ extension ZhengfangAuthDirectExtension on ZhengfangAuth {
   Future<void> _clearWebViewCookiesForUri(
     CookieManager cookieManager,
     Uri uri,
-    List<io.Cookie> cookies,
-  ) async {
+    List<io.Cookie> cookies, {
+    bool Function()? isIdentityCurrent,
+    bool strict = false,
+  }) async {
     if (cookies.isEmpty) return;
 
     final rootUrls = <String>{
@@ -321,6 +323,7 @@ extension ZhengfangAuthDirectExtension on ZhengfangAuth {
     final normalizedPath = (uri.path.isEmpty ? '/' : uri.path).trim();
 
     for (final cookie in cookies) {
+      if (isIdentityCurrent != null && !isIdentityCurrent()) return;
       final domain = (cookie.domain ?? '').trim();
       final targetDomain = domain.isNotEmpty ? domain : uri.host;
       final normalizedDomain = targetDomain.replaceFirst(RegExp(r'^\.'), '');
@@ -335,6 +338,7 @@ extension ZhengfangAuthDirectExtension on ZhengfangAuth {
 
       for (final rootUrl in rootUrls) {
         for (final candidate in domainCandidates) {
+          if (isIdentityCurrent != null && !isIdentityCurrent()) return;
           try {
             await cookieManager.deleteCookie(
               url: WebUri(rootUrl),
@@ -342,7 +346,13 @@ extension ZhengfangAuthDirectExtension on ZhengfangAuth {
               domain: candidate,
               path: '/',
             );
-          } catch (_) {}
+          } catch (_) {
+            if (strict) {
+              throw AcademicCookieSyncException(
+                '清理旧 WebView Cookie 失败: ${uri.host}${uri.path}',
+              );
+            }
+          }
           try {
             await cookieManager.deleteCookie(
               url: WebUri(rootUrl),
@@ -350,7 +360,13 @@ extension ZhengfangAuthDirectExtension on ZhengfangAuth {
               domain: candidate,
               path: targetPath,
             );
-          } catch (_) {}
+          } catch (_) {
+            if (strict) {
+              throw AcademicCookieSyncException(
+                '清理旧 WebView Cookie 失败: ${uri.host}${uri.path}',
+              );
+            }
+          }
         }
       }
     }

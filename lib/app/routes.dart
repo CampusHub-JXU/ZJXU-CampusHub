@@ -43,6 +43,7 @@ import '../features/changxing_jiada/changxing_jiada_model.dart';
 import '../core/auth/unified_auth.dart';
 import '../shared/widgets/unified_auth_protected_webview_page.dart';
 import '../shared/widgets/webview_page.dart';
+import '../shared/widgets/zhengfang_protected_webview_page.dart';
 
 int? _parseOptionalId(GoRouterState state) {
   final text = state.uri.queryParameters['id']?.trim() ?? '';
@@ -332,6 +333,13 @@ Widget buildExternalWebViewPage(BuildContext context, GoRouterState state) {
   final extra = Map<String, dynamic>.from(
     (state.extra as Map?) ?? const <String, dynamic>{},
   );
+  if (extra['academicEntry'] == true) {
+    // 教务 H5 入口：headless 选路 + 一次性直连→WebVPN 兜底，不再是裸 WebView。
+    return AcademicWebEntryPage(
+      title: extra['title'] as String? ?? '教务系统',
+      onHomePressed: () => context.goNamed('home'),
+    );
+  }
   if (extra['requireUnifiedAuthProtection'] == true) {
     final warmUpAsResource = extra['warmUpAsResource'] == true;
     final url = extra['url'] as String? ?? '';

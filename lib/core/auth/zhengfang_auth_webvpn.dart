@@ -8,30 +8,163 @@ class WebVpnGatewayEnsureResult {
   final ZhengfangMode? selectedMode;
 }
 
+/// 受信教务入口业务会话探测结果（fail closed）。
+///
+/// 与旧的 `bool?` 不同，本类型区分「需要教务登录」与「需要统一认证登录」，
+/// 并强制把无法证明的情况归为 [unknown]，绝不 fail-open。
+enum AcademicEntrySessionStatus {
+  /// 有可证明的教务业务成功证据（本模式受信 origin 上的已认证教务页面）。
+  authenticated,
+
+  /// 明确落在教务（正方）登录入口 / 验证码页，需要教务登录。
+  academicLoginRequired,
+
+  /// 明确落在统一认证 / WebVPN 网关登录入口，需要统一认证登录。
+  unifiedLoginRequired,
+
+  /// 无法证明（未知状态 / 网络异常 / 跨域或不可识别的跳转 / 无成功签名的 200）。
+  unknown,
+}
+
+/// 严格模式同步 Cookie 失败（仅教务 H5 入口准备使用）。
+///
+/// 抛出本异常即表示调用方**不得**据此判定入口 Ready。
+class AcademicCookieSyncException implements Exception {
+  const AcademicCookieSyncException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => 'AcademicCookieSyncException: $message';
+}
+
+/// 统一认证 / WebVPN 网关登录入口（需要统一认证，不是教务登录）。
+bool _isUnifiedOrGatewayLoginLocation(String url) {
+  if (url.isEmpty) return false;
+  if (isZhengfangGatewayLoginUrl(url)) return true;
+  if (isUnifiedAuthLoginEntryUrl(url)) return true;
+  // WebVPN 代理域下的 CAS 登录同样属于统一认证（newca 域判定不覆盖代理）。
+  return url.toLowerCase().contains('/cas/login');
+}
+
+/// 教务（正方）登录入口 / 验证码页（需要教务登录）。
+bool _isAcademicLoginLocation(String url) {
+  final lower = url.trim().toLowerCase();
+  if (lower.isEmpty) return false;
+  return lower.contains('/xtgl/login_slogin.html') || lower.contains('kaptcha');
+}
+
+/// 是否为本模式受信 origin 上已知的教务已认证页面。
+bool _isAuthenticatedAcademicLocation(ZhengfangMode mode, String url) {
+  final uri = Uri.tryParse(url);
+  if (uri == null) return false;
+  final expectedHost = mode == ZhengfangMode.webVpn
+      ? Uri.parse(ZhengfangAuth._webVpnBase).host
+      : Uri.parse(ZhengfangAuth._directOrigin).host;
+  if (uri.host.toLowerCase() != expectedHost.toLowerCase()) return false;
+  return isZhengfangAuthenticatedUrl(url);
+}
+
+/// 200 响应体是否带正向的教务已认证页面签名。
+///
+/// 与 [ZhengfangAuth.isLoginSuccess] 对 200 响应的成功签名保持一致，不新增
+/// 任何未经验证的标记；无法证明时调用方必须按 unknown 处理。
+bool _looksLikeAuthenticatedAcademicHtml(String html) {
+  final lower = html.toLowerCase();
+  if (lower.isEmpty) return false;
+  return lower.contains('/xtgl/index_initmenu.html') ||
+      lower.contains('/xtgl/index_cxyhxxindex.html');
+}
+
 extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
-  /// 同步 WebVPN Cookie 到 WebView
+  /// 同步 WebVPN Cookie 到 WebView（按当前全局模式，保留旧调用契约）。
   Future<void> syncWebVpnCookiesToWebView() async {
     if (_mode != ZhengfangMode.webVpn) return;
+    await syncCookiesToWebViewForMode(ZhengfangMode.webVpn);
+  }
+
+  /// 同步直连教务系统 Cookie 到 WebView（按当前全局模式，保留旧调用契约）。
+  Future<void> syncDirectCookiesToWebView() async {
+    if (_mode != ZhengfangMode.direct) return;
+    await syncCookiesToWebViewForMode(ZhengfangMode.direct);
+  }
+
+  /// 按**显式 [mode]** 同步教务 Cookie 到 WebView，不读取 / 不修改全局
+  /// [_mode]，也不跨库复制 Cookie：直连用 `zhengfang` jar，WebVPN 用
+  /// `unifiedAuth` 网关 jar。
+  ///
+  /// [isIdentityCurrent] 会在每个 Cookie 写副作用前复核；返回 false 立即
+  /// 中止后续写入，避免把旧 owner 的 Cookie 写进新会话。
+  ///
+  /// [strict] 为 true 时是 **fail-closed** 模式（当前仅教务 H5 入口准备使用）：
+  /// 相关 Cookie 的读取 / 清理 / 写入 / 校验任何一步失败、身份在校验期间变化，
+  /// 或已认证会话读不到任何可同步 Cookie，都会抛
+  /// [AcademicCookieSyncException]，调用方不得据此判定 Ready。默认 false 保留
+  /// 旧的最佳努力语义（吞掉单个 URI 的失败并记日志）。
+  Future<void> syncCookiesToWebViewForMode(
+    ZhengfangMode mode, {
+    bool Function()? isIdentityCurrent,
+    bool strict = false,
+  }) async {
     await DioClient.instance.ensureInitialized();
 
     final cookieManager = CookieManager.instance();
-    final uris = [
-      Uri.parse('${ZhengfangAuth._webVpnBase}/'),
-      Uri.parse(_loginPageUrl),
-      Uri.parse(
-        '${ZhengfangAuth._webVpnBase}${ZhengfangAuth._webVpnJwglxtPrefix}/',
-      ),
-    ];
+    final cookieJar = _cookieJarFor(mode);
+    final uris = mode == ZhengfangMode.webVpn
+        ? [
+            Uri.parse('${ZhengfangAuth._webVpnBase}/'),
+            Uri.parse(_loginPageUrlFor(mode)),
+            Uri.parse(
+              '${ZhengfangAuth._webVpnBase}${ZhengfangAuth._webVpnJwglxtPrefix}/',
+            ),
+          ]
+        : [
+            Uri.parse('${ZhengfangAuth._directOrigin}/'),
+            Uri.parse(
+              '${ZhengfangAuth._directOrigin}${ZhengfangAuth._directLoginPath}',
+            ),
+            Uri.parse('${ZhengfangAuth._directBase}/'),
+            Uri.parse(
+              '${ZhengfangAuth._directOrigin}/jwglxt/xtgl/index_initMenu.html?jsdm=xs',
+            ),
+          ];
+
+    var loadedAnyCookie = false;
 
     for (final uri in uris) {
+      if (isIdentityCurrent != null && !isIdentityCurrent()) {
+        if (strict) {
+          throw const AcademicCookieSyncException('Cookie 同步期间身份已变化');
+        }
+        return;
+      }
       try {
-        final cookies = await _webVpnCookieJar.loadForRequest(uri);
-        // WebView may still hold an older HttpOnly WebVPN ticket. Android's
+        final cookies = await cookieJar.loadForRequest(uri);
+        if (cookies.isNotEmpty) loadedAnyCookie = true;
+        if (isIdentityCurrent != null && !isIdentityCurrent()) {
+          if (strict) {
+            throw const AcademicCookieSyncException('Cookie 同步期间身份已变化');
+          }
+          return;
+        }
+        // WebView may still hold an older HttpOnly session cookie. Android's
         // CookieManager does not reliably replace that cookie in-place, which
         // leaves Dio authenticated while the embedded page is redirected back
         // to login. Remove matching cookies before writing the current jar.
-        await _clearWebViewCookiesForUri(cookieManager, uri, cookies);
+        await _clearWebViewCookiesForUri(
+          cookieManager,
+          uri,
+          cookies,
+          isIdentityCurrent: isIdentityCurrent,
+          strict: strict,
+        );
         for (final cookie in cookies) {
+          if (isIdentityCurrent != null && !isIdentityCurrent()) {
+            if (strict) {
+              throw const AcademicCookieSyncException('Cookie 同步期间身份已变化');
+            }
+            return;
+          }
           final domain = (cookie.domain ?? '').trim();
           await cookieManager.setCookie(
             url: WebUri('${uri.scheme}://${uri.host}/'),
@@ -50,6 +183,12 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
         final syncedCookies = await cookieManager.getCookies(
           url: WebUri('${uri.scheme}://${uri.host}${uri.path}'),
         );
+        if (isIdentityCurrent != null && !isIdentityCurrent()) {
+          if (strict) {
+            throw const AcademicCookieSyncException('Cookie 同步期间身份已变化');
+          }
+          return;
+        }
         final expectedValues = {
           for (final cookie in cookies) cookie.name: cookie.value,
         };
@@ -60,63 +199,122 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
             .where((entry) => syncedValues[entry.key] != entry.value)
             .length;
         if (mismatchCount > 0) {
+          if (strict) {
+            throw AcademicCookieSyncException(
+              '教务 Cookie 同步校验不完整: ${uri.host}${uri.path} '
+              '($mismatchCount 项未更新)',
+            );
+          }
           AppLogger.instance.auth(
             LogLevel.warn,
-            'WebVPN Cookie 同步不完整: ${uri.host}${uri.path} '
+            '教务 Cookie 同步不完整: ${uri.host}${uri.path} '
             '($mismatchCount 项未更新)',
           );
         }
+      } on AcademicCookieSyncException {
+        // 严格模式主动抛出的异常不得被下面的通用 catch 吞掉。
+        rethrow;
       } catch (e) {
-        AppLogger.instance.auth(LogLevel.error, '同步 WebVPN Cookie 失败: $e');
+        if (strict) {
+          throw AcademicCookieSyncException(
+            '同步教务 Cookie 失败: ${uri.host}${uri.path}',
+          );
+        }
+        AppLogger.instance.auth(LogLevel.error, '同步教务 Cookie 失败: $e');
       }
+    }
+
+    if (strict && !loadedAnyCookie) {
+      throw const AcademicCookieSyncException('已认证会话未读到任何可同步的教务 Cookie');
     }
   }
 
-  /// 同步直连教务系统 Cookie 到 WebView
-  Future<void> syncDirectCookiesToWebView() async {
-    if (_mode != ZhengfangMode.direct) return;
+  /// 按显式 [mode] 探测**受信教务入口**的业务会话，不修改全局 [_mode]，
+  /// 不做任何登出 / 失效标记副作用。
+  ///
+  /// **fail closed**：只有拿到正向的教务已认证证据才返回
+  /// [AcademicEntrySessionStatus.authenticated]；任何跨域 / 任意 / 不可识别的
+  /// 跳转、无成功签名的 200、未知状态或网络异常一律返回
+  /// [AcademicEntrySessionStatus.unknown]，绝不据此判就绪。
+  /// 已知的统一认证 / WebVPN 网关登录归为
+  /// [AcademicEntrySessionStatus.unifiedLoginRequired]，已知的教务登录页归为
+  /// [AcademicEntrySessionStatus.academicLoginRequired]。
+  Future<AcademicEntrySessionStatus> probeTrustedEntrySession({
+    required ZhengfangMode mode,
+    required String requestUrl,
+    CancelToken? cancelToken,
+  }) async {
     await DioClient.instance.ensureInitialized();
+    final requestUri = Uri.tryParse(requestUrl);
+    if (requestUri == null) return AcademicEntrySessionStatus.unknown;
 
-    final cookieManager = CookieManager.instance();
-    final uris = [
-      Uri.parse('${ZhengfangAuth._directOrigin}/'),
-      Uri.parse(
-        '${ZhengfangAuth._directOrigin}${ZhengfangAuth._directLoginPath}',
-      ),
-      Uri.parse('${ZhengfangAuth._directBase}/'),
-      Uri.parse(
-        '${ZhengfangAuth._directOrigin}/jwglxt/xtgl/index_initMenu.html?jsdm=xs',
-      ),
-    ];
+    try {
+      final response = await _sendWithProxyFallback<String>(
+        label: '教务受信入口会话探测',
+        mode: mode,
+        cancelToken: cancelToken,
+        request: (dio, token) => dio.get<String>(
+          requestUrl,
+          cancelToken: token,
+          options: Options(
+            responseType: ResponseType.plain,
+            followRedirects: false,
+            validateStatus: (status) => status != null && status < 1000,
+            headers: {'Referer': _loginPageUrlFor(mode)},
+          ),
+        ),
+      );
 
-    for (final uri in uris) {
-      try {
-        final cookies = await _cookieJar.loadForRequest(uri);
-        await _clearWebViewCookiesForUri(cookieManager, uri, cookies);
-        for (final cookie in cookies) {
-          final domain = (cookie.domain ?? '').trim();
-          await cookieManager.setCookie(
-            url: WebUri('${uri.scheme}://${uri.host}/'),
-            name: cookie.name,
-            value: cookie.value,
-            domain: domain.isNotEmpty ? domain : uri.host,
-            path: (cookie.path ?? '').trim().isNotEmpty
-                ? cookie.path!.trim()
-                : '/',
-            isSecure: cookie.secure,
-            isHttpOnly: cookie.httpOnly,
-            expiresDate: cookie.expires?.millisecondsSinceEpoch,
-          );
-        }
-        final syncedCookies = await cookieManager.getCookies(
-          url: WebUri('${uri.scheme}://${uri.host}${uri.path}'),
-        );
-        if (syncedCookies.isEmpty) {
-          continue;
-        }
-      } catch (e) {
-        AppLogger.instance.auth(LogLevel.error, '同步教务系统 Cookie 失败: $e');
+      final status = response.statusCode ?? 0;
+      final location = response.headers.value('location') ?? '';
+      final html = response.data ?? '';
+      final resolvedLocation = location.isEmpty
+          ? requestUrl
+          : requestUri.resolve(location).toString();
+
+      // 明确落在统一认证 / WebVPN 网关登录：属于统一认证问题，不是教务登录。
+      if (_isUnifiedOrGatewayLoginLocation(resolvedLocation) ||
+          (status == 200 && looksLikeUnifiedAuthLoginHtml(html))) {
+        return AcademicEntrySessionStatus.unifiedLoginRequired;
       }
+      // 明确落在教务（正方）登录入口 / 验证码页：需要教务登录。
+      if (_isAcademicLoginLocation(resolvedLocation) ||
+          (status == 200 && looksLikeZhengfangLoginHtml(html))) {
+        return AcademicEntrySessionStatus.academicLoginRequired;
+      }
+
+      if (status == 302 || status == 303) {
+        // 只有落在本模式受信 origin、且是已知教务已认证页面的跳转才算就绪；
+        // 其它跳转（跨域 / 任意 / 不可识别）一律 unknown，绝不 fail-open。
+        // 该正向判定复用 [isZhengfangAuthenticatedUrl]（与登录成功解析一致）。
+        if (_isAuthenticatedAcademicLocation(mode, resolvedLocation)) {
+          return AcademicEntrySessionStatus.authenticated;
+        }
+        return AcademicEntrySessionStatus.unknown;
+      }
+      if (status == 200) {
+        // 200 未命中登录签名也不等于已登录：必须有正向已认证页面证据，否则
+        // 不得判就绪。证据与 [ZhengfangAuth.isLoginSuccess] 的成功签名一致。
+        if (_looksLikeAuthenticatedAcademicHtml(html)) {
+          return AcademicEntrySessionStatus.authenticated;
+        }
+        return AcademicEntrySessionStatus.unknown;
+      }
+      // 401/403：业务接口语义即未认证，判需要教务登录。
+      if (status == 401 || status == 403) {
+        return AcademicEntrySessionStatus.academicLoginRequired;
+      }
+      // 其它状态（5xx / 304 / 未知 3xx）：不判失效也不判就绪。
+      return AcademicEntrySessionStatus.unknown;
+    } on DioException catch (error) {
+      AppLogger.instance.auth(
+        LogLevel.warn,
+        '教务受信入口会话探测失败（网络异常）: ${error.type} ${error.message}',
+      );
+      return AcademicEntrySessionStatus.unknown;
+    } catch (error) {
+      AppLogger.instance.auth(LogLevel.warn, '教务受信入口会话探测失败（未知异常）: $error');
+      return AcademicEntrySessionStatus.unknown;
     }
   }
 
@@ -135,6 +333,28 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
     return {
       if (cookieHeader.isNotEmpty) 'Cookie': cookieHeader,
       'Referer': _loginPageUrl,
+    };
+  }
+
+  /// 按显式 [mode] 构造 WebView 初始请求头，不读取 / 不修改全局 [_mode]。
+  ///
+  /// [resolvedUrl] 必须是调用方按同一 [mode] 构造好的最终 URL（直连为原始
+  /// 地址，WebVPN 为代理地址）；本方法不再二次解析，避免依赖全局模式。
+  Future<Map<String, String>> buildWebViewHeadersForMode({
+    required ZhengfangMode mode,
+    required String resolvedUrl,
+  }) async {
+    await DioClient.instance.ensureInitialized();
+
+    final uri = Uri.parse(resolvedUrl);
+    final cookies = await _cookieJarFor(mode).loadForRequest(uri);
+    final cookieHeader = cookies
+        .map((cookie) => '${cookie.name}=${cookie.value}')
+        .join('; ');
+
+    return {
+      if (cookieHeader.isNotEmpty) 'Cookie': cookieHeader,
+      'Referer': _loginPageUrlFor(mode),
     };
   }
 
