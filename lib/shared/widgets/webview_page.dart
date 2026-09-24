@@ -26,6 +26,48 @@ typedef WebViewNavigationRequestCallback =
       InAppWebViewController controller,
       Uri uri,
     );
+
+/// 连接层（`onReceivedError`）主框架加载失败的不可变事实快照。
+///
+/// 只暴露判定所需的事实：触发失败的实际请求 URL、可空 HTTP 方法、可空主框架
+/// 标记与类型化连接层错误码。原始 `WebResourceError.description` 仅供内部日志，
+/// **不进本对象**——调用方不得基于原始文案做策略判断。
+@immutable
+class WebViewMainFrameLoadFailure {
+  const WebViewMainFrameLoadFailure({
+    required this.url,
+    required this.method,
+    required this.isForMainFrame,
+    required this.type,
+  });
+
+  /// 触发失败的实际请求 URL（原样，不做脱敏）。
+  final String url;
+
+  /// 请求方法（如 `GET` / `POST`）；平台未提供时为 null。
+  final String? method;
+
+  /// 是否主框架请求；平台未提供时为 null。
+  ///
+  /// 回调只在 `isForMainFrame == true` 时触发，因此这里通常为 `true`；保留原始
+  /// 可空值以如实暴露平台事实（不把 null 猜成 true）。
+  final bool? isForMainFrame;
+
+  /// 类型化连接层错误码。
+  final WebResourceErrorType type;
+}
+
+/// 主框架连接层加载失败回调。
+///
+/// 返回 `true` 表示调用方已接管该失败并抑制默认错误页；返回 `false` 或抛异常
+/// 时保留现有错误 UI（异常只记录脱敏日志）。
+///
+/// 本回调只是把连接层事实透出给上层策略：不证明失败发生在初始 GET 上，也不
+/// 追踪取消/重试；重试、幂等与取消策略由上层控制器决定。
+typedef WebViewMainFrameLoadFailureCallback = Future<bool> Function(
+  WebViewMainFrameLoadFailure failure,
+);
+
 typedef _WebViewPageSnapshot = ({
   String title,
   String readyState,
@@ -44,6 +86,7 @@ class WebViewPage extends StatefulWidget {
     this.initialHeaders = const {},
     this.onLoadStop,
     this.onNavigationRequest,
+    this.onMainFrameLoadFailure,
     this.enableLoginQuickFill = false,
     this.emulateDingTalkEnvironment = true,
     this.emulateWeChatEnvironment = false,
@@ -57,6 +100,12 @@ class WebViewPage extends StatefulWidget {
   final Map<String, String> initialHeaders;
   final WebViewLoadStopCallback? onLoadStop;
   final WebViewNavigationRequestCallback? onNavigationRequest;
+
+  /// 可选：连接层主框架加载失败透出（仅 `isForMainFrame == true` 触发）。
+  ///
+  /// 默认 null 时行为与历史一致（记录日志并展示默认错误页）。返回 `true` 的
+  /// 回调会抑制默认错误页；`onReceivedHttpError` **不**触发本回调。
+  final WebViewMainFrameLoadFailureCallback? onMainFrameLoadFailure;
   final bool enableLoginQuickFill;
   final bool emulateDingTalkEnvironment;
   final bool emulateWeChatEnvironment;
@@ -77,6 +126,10 @@ class _WebViewPageState extends State<WebViewPage> {
   bool _canGoBackInWebView = false;
   late String _currentUrl;
   InAppWebViewController? _controller;
+
+  /// 加载代际：每次 `onLoadStart` 推进，用于让跨 await 的失败处理识别「已被新的
+  /// 加载/导航取代」，避免过期结果驱动 UI 或销毁控制器。
+  int _loadGeneration = 0;
   (String, String)? _savedZhengfangCredentials;
   bool _quickFillAvailable = false;
   bool _quickFillBusy = false;
@@ -369,6 +422,58 @@ class _WebViewPageState extends State<WebViewPage> {
         'WebView console [${consoleMessage.messageLevel}] $_currentUrl :: $message',
       );
     }
+  }
+
+  /// 处理连接层主框架加载失败：记录原始诊断（description 只进日志），把不可变
+  /// 事实透出给可选回调，并按回调结果决定是否走默认错误页。
+  ///
+  /// 回调前捕获本地加载代际；回调 await 结束后若已 dispose 或被新的加载取代，
+  /// 不再 `setState` 或销毁控制器。未提供回调时同步走历史行为，时序不变。
+  Future<void> _handleMainFrameLoadFailure(
+    WebResourceRequest request,
+    WebResourceError error,
+  ) async {
+    final failure = WebViewMainFrameLoadFailure(
+      url: request.url.toString(),
+      method: request.method,
+      isForMainFrame: request.isForMainFrame,
+      type: error.type,
+    );
+
+    AppLogger.instance.webview(
+      LogLevel.error,
+      'WebView 加载失败: code=${error.type} desc=${error.description} url=${failure.url}',
+    );
+
+    final callback = widget.onMainFrameLoadFailure;
+    if (callback != null) {
+      final generation = _loadGeneration;
+      var handled = false;
+      try {
+        handled = await callback(failure);
+      } catch (callbackError, stackTrace) {
+        // 回调异常视为未接管：保留默认错误页；日志脱敏，不写 URL token。
+        AppLogger.instance.webview(
+          LogLevel.warn,
+          'WebView 主框架加载失败回调异常：${scrubSensitiveUrl(failure.url)}',
+          error: callbackError,
+          stackTrace: stackTrace,
+        );
+        handled = false;
+      }
+
+      // 回调期间页面可能已 dispose 或被新的加载取代：不再驱动 UI / 控制器。
+      if (!mounted || generation != _loadGeneration) return;
+      if (handled) return;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _hasError = true;
+      _canGoBackInWebView = false;
+      _controller = null;
+      _progress = 0;
+    });
   }
 
   Future<void> _handleDownload(DownloadStartRequest request) async {
@@ -669,6 +774,7 @@ class _WebViewPageState extends State<WebViewPage> {
                         );
                       },
                       onLoadStart: (_, url) {
+                        _loadGeneration++;
                         _trackCurrentUrl(url);
                         _logWebViewLifecycle(
                           'WebView load start: $_currentUrl',
@@ -791,18 +897,7 @@ class _WebViewPageState extends State<WebViewPage> {
                       onReceivedError: (_, request, error) {
                         if (!(request.isForMainFrame ?? false)) return;
 
-                        AppLogger.instance.webview(
-                          LogLevel.error,
-                          'WebView 加载失败: code=${error.type} desc=${error.description} url=${request.url}',
-                        );
-
-                        if (!mounted) return;
-                        setState(() {
-                          _hasError = true;
-                          _canGoBackInWebView = false;
-                          _controller = null;
-                          _progress = 0;
-                        });
+                        unawaited(_handleMainFrameLoadFailure(request, error));
                       },
                     ),
                   if (_progress < 1 && !_hasError)
