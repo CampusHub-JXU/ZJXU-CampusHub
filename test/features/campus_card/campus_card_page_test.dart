@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -14,6 +16,7 @@ import 'package:jxu_campus_hub/core/epay100/epay100_gateway.dart';
 import 'package:jxu_campus_hub/core/theme/app_theme_builder.dart';
 import 'package:jxu_campus_hub/features/campus_card/campus_card_page.dart';
 import 'package:jxu_campus_hub/features/campus_card/campus_card_service.dart';
+import 'package:jxu_campus_hub/shared/widgets/auth_required_view.dart';
 import 'package:jxu_campus_hub/shared/widgets/login_shell.dart';
 import 'package:jxu_campus_hub/shared/widgets/unified_auth_protected_webview_page.dart';
 
@@ -30,7 +33,10 @@ void main() {
     UnifiedAuthService.instance.debugReset();
     AppBootstrapController.instance.debugReset();
     CampusCardPage.debugAutoRefreshTriggered = false;
-    CampusCardService.instance.debugBalanceFetcher = null;
+    // 服务单例跨测试保留持久纪元 / 内存缓存 / 失败态：必须先清基线再重建
+    // 缓存，否则上一测试推进的 _validEpoch 会让后续 restore / fetch 被
+    // 「durableEpoch < observed」fail-closed 拒绝（余额消失、fetcher 不达）。
+    CampusCardService.instance.debugReset();
     // 明确 CAS 身份：owner 缓存只在有明确账号时可见。
     UnifiedAuthService.instance.debugSetSession(
       active: true,
@@ -360,6 +366,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('刷新失败，仍显示上次余额，请切换网络后重试'), findsOneWidget);
     expect(CampusCardService.instance.cachedBalance, 23.5);
+    // 未知网络失败既不清缓存，也不误升格成登录问题：内容与重试保持可用。
+    expect(find.text('23.50'), findsOneWidget);
+    expect(find.byType(AuthRequiredView), findsNothing);
+    expect(find.byType(LoginShell), findsNothing);
     await tester.tap(find.byTooltip('刷新余额'));
     await tester.pumpAndSettle();
     expect(calls, 2);
@@ -368,33 +378,20 @@ void main() {
 
   group('balance card failure states and retry', () {
     testWidgets(
-      'authRequired with no CAS session shows prompt without auto modal and CTA opens modal',
+      'unauthenticated entry shows the auth gate and auto-prompts the login modal once',
       (tester) async {
-        UnifiedAuthService.instance.debugSetSession(
-          active: false,
-          account: null,
-        );
-        CampusCardService.instance.debugBalanceFetcher = () async => 100.0;
+        _enterLoggedOutWorld();
+        var fetchCalls = 0;
+        CampusCardService.instance.debugBalanceFetcher = () async {
+          fetchCalls++;
+          return 100.0;
+        };
 
         await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
-        await tester.pumpAndSettle();
+        await _pumpLoginModal(tester);
 
-        // 初始首屏：正常展示无身份空态，不展示网络错误，不自动弹窗
-        expect(find.text('--'), findsOneWidget);
-        expect(find.text('请先登录统一认证，再查询校园卡余额'), findsOneWidget);
-        expect(find.text('登录统一认证'), findsOneWidget);
-        expect(find.text('重新登录'), findsNothing);
-        expect(find.text('点击查询余额'), findsNothing);
-        expect(find.byType(LoginShell), findsNothing);
-
-        // 点击卡片 CTA 唤起统一认证登录弹窗；为避免模态框内发起真实网络验证码请求，就地提供 session
-        UnifiedAuthService.instance.debugSetSession(
-          active: true,
-          account: 'casuser',
-        );
-        await tester.tap(find.text('登录统一认证'));
-        await tester.pump();
-
+        // 首屏未登录：整页登录门 + 一次性自动唤起原生登录弹窗，而不是先报错。
+        expect(find.byType(AuthRequiredView), findsOneWidget);
         expect(find.byType(LoginShell), findsOneWidget);
         expect(
           find.descendant(
@@ -403,80 +400,151 @@ void main() {
           ),
           findsOneWidget,
         );
+        // 未登录不发起任何余额查询，也不在后台自动登录。
+        expect(fetchCalls, 0);
+        expect(CampusCardPage.debugAutoRefreshTriggered, isFalse);
+
+        // 关闭弹窗后登录门保持可用。
+        await _closeLoginModal(tester);
+        expect(find.byType(LoginShell), findsNothing);
+        expect(find.byType(AuthRequiredView), findsOneWidget);
+        expect(find.widgetWithText(FilledButton, '登录统一认证'), findsOneWidget);
+
+        // 一次性窗口已关闭：认证通知与反复 rebuild 都不再自动弹窗。
+        UnifiedAuthService.instance.notifyListeners();
+        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump();
+        expect(find.byType(LoginShell), findsNothing);
+        expect(fetchCalls, 0);
       },
     );
 
     testWidgets(
-      'refreshing balance without CAS session provides auth feedback instead of network error',
+      'auth gate action opens the login modal and successful login flows to the normal page',
       (tester) async {
+        _enterLoggedOutWorld();
+        var fetchCalls = 0;
+        CampusCardService.instance.debugBalanceFetcher = () async {
+          fetchCalls++;
+          return 100.0;
+        };
+
+        await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+        await _pumpLoginModal(tester);
+        await _closeLoginModal(tester);
+
+        // 点击登录门按钮再次唤起统一认证登录弹窗。
+        await tester.tap(find.widgetWithText(FilledButton, '登录统一认证'));
+        await _pumpLoginModal(tester);
+        expect(find.byType(LoginShell), findsOneWidget);
+
+        // 模拟登录成功：更新登录态并广播认证通知（真实登录会通知），再以
+        // true 关闭弹窗。身份切换拉取与模态成功拉取必须合并成恰好一次。
         UnifiedAuthService.instance.debugSetSession(
-          active: false,
-          account: null,
+          active: true,
+          account: 'casuser',
+        );
+        UnifiedAuthService.instance.notifyListeners();
+        Navigator.of(
+          tester.element(find.byType(LoginShell)),
+          rootNavigator: true,
+        ).pop(true);
+        await tester.pumpAndSettle();
+
+        // 回到正常页面：余额卡与功能入口回来，并自动查询一次余额。
+        expect(find.byType(LoginShell), findsNothing);
+        expect(find.byType(AuthRequiredView), findsNothing);
+        expect(find.text('校园卡余额'), findsOneWidget);
+        expect(find.text('100.00'), findsOneWidget);
+        expect(find.text('付款码'), findsOneWidget);
+        expect(find.text('账单'), findsOneWidget);
+        expect(find.text('充值'), findsOneWidget);
+        expect(find.text('校园卡余额已刷新'), findsOneWidget);
+        expect(fetchCalls, 1);
+      },
+    );
+
+    testWidgets(
+      'one-shot login prompt waits until the bootstrap state is known',
+      (tester) async {
+        _enterLoggedOutWorld();
+        AppBootstrapController.instance.debugSetPhase(
+          AppBootstrapPhase.warming,
         );
 
         await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
         await tester.pumpAndSettle();
 
-        // 点击顶部刷新按钮：提示先登录统一认证，不给网络错误提示，不反复弹登录窗
-        await tester.tap(find.byTooltip('刷新余额'));
-        await tester.pumpAndSettle();
-
-        expect(
-          find.descendant(
-            of: find.byType(SnackBar),
-            matching: find.text('请先登录统一认证，再查询校园卡余额'),
-          ),
-          findsOneWidget,
-        );
-        expect(find.textContaining('网络'), findsNothing);
-        expect(find.textContaining('检查网络或登录状态'), findsNothing);
+        // 暖启动未完成（持久身份可能仍在恢复）：只显示登录门，不自动弹窗。
+        expect(find.byType(AuthRequiredView), findsOneWidget);
         expect(find.byType(LoginShell), findsNothing);
-        expect(find.text('--'), findsOneWidget);
 
-        // 点击底部刷新按钮：同样给出正确提示，不弹窗
-        await tester.ensureVisible(find.widgetWithText(FilledButton, '刷新余额'));
-        await tester.tap(
-          find.widgetWithText(FilledButton, '刷新余额'),
-          warnIfMissed: false,
+        // 暖启动完成并确认未登录后：post-frame 自动弹一次。
+        AppBootstrapController.instance.debugSetPhase(
+          AppBootstrapPhase.localStateReady,
         );
-        await tester.pumpAndSettle();
+        await _pumpLoginModal(tester);
+        expect(find.byType(LoginShell), findsOneWidget);
 
-        expect(
-          find.descendant(
-            of: find.byType(SnackBar),
-            matching: find.text('请先登录统一认证，再查询校园卡余额'),
-          ),
-          findsOneWidget,
-        );
-        expect(find.textContaining('网络'), findsNothing);
+        await _closeLoginModal(tester);
         expect(find.byType(LoginShell), findsNothing);
       },
     );
 
     testWidgets(
-      'cached balance is isolated when session is cleared and shows authRequired state',
+      'unauthenticated entry replaces query actions with the login gate and never queries',
       (tester) async {
-        // setUp 已为 'casuser' 建立 23.5 缓存；此时注销统一认证身份
-        UnifiedAuthService.instance.debugSetSession(
-          active: false,
-          account: null,
-        );
+        _enterLoggedOutWorld();
+        var fetchCalls = 0;
+        CampusCardService.instance.debugBalanceFetcher = () async {
+          fetchCalls++;
+          return 88.0;
+        };
 
         await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
-        await tester.pumpAndSettle();
+        await _pumpLoginModal(tester);
+        await _closeLoginModal(tester);
 
-        // 遵从 owner 隔离，不展示旧账号余额
+        // 登录门外没有查询入口：不再先报错，再让用户找隐藏的登录按钮。
+        expect(find.byTooltip('刷新余额'), findsNothing);
+        expect(find.widgetWithText(FilledButton, '刷新余额'), findsNothing);
+        expect(find.text('付款码'), findsNothing);
+        expect(find.text('账单'), findsNothing);
+        expect(find.text('充值'), findsNothing);
+        expect(find.text('--'), findsNothing);
+        expect(find.byType(SnackBar), findsNothing);
+        expect(find.textContaining('网络'), findsNothing);
+        expect(fetchCalls, 0);
+        expect(CampusCardPage.debugAutoRefreshTriggered, isFalse);
+        expect(find.byType(AuthRequiredView), findsOneWidget);
+        expect(find.byType(LoginShell), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'cached balance stays hidden behind the login gate when unauthenticated',
+      (tester) async {
+        // setUp 已为 'casuser' 建立 23.5 缓存；此时按未登录身份进入。
+        _enterLoggedOutWorld();
+
+        await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+        await _pumpLoginModal(tester);
+        await _closeLoginModal(tester);
+
+        // 遵从 owner 隔离，不展示旧账号余额，只给整页登录门。
         expect(find.text('23.50'), findsNothing);
-        expect(find.text('--'), findsOneWidget);
-        expect(find.text('请先登录统一认证，再查询校园卡余额'), findsOneWidget);
-        expect(find.text('登录统一认证'), findsOneWidget);
+        expect(find.text('--'), findsNothing);
+        expect(find.byType(AuthRequiredView), findsOneWidget);
+        expect(find.text('需要登录统一认证后继续'), findsOneWidget);
+        expect(find.widgetWithText(FilledButton, '登录统一认证'), findsOneWidget);
       },
     );
 
     testWidgets(
-      'page visible when session is logged out elsewhere immediately updates from authExpired to authRequired',
+      'page visible when session is logged out elsewhere re-gates to the login gate without auto-prompting',
       (tester) async {
-        // 先建立带 authExpired 的失效态页面
+        // 先建立带 authExpired 的失效态页面（此时仍已登录）
         CampusCardService.instance.debugSetCachedBalance(null);
         CampusCardService.instance.debugSetLastBalanceFailure(
           BalanceFailureKind.authExpired,
@@ -487,8 +555,10 @@ void main() {
 
         expect(find.text('登录已失效，请重新登录统一认证'), findsOneWidget);
         expect(find.text('重新登录'), findsOneWidget);
+        expect(find.byType(AuthRequiredView), findsNothing);
 
-        // 用户在别处登出（无 owner）：页面响应监听立即重绘为 authRequired，不能长留过期提示
+        // 用户在别处登出（无 owner）：页面立即重绘为整页登录门，不能长留
+        // 过期提示，也不自动弹登录窗。
         UnifiedAuthService.instance.debugSetSession(
           active: false,
           account: null,
@@ -496,16 +566,18 @@ void main() {
         UnifiedAuthService.instance.notifyListeners();
         await tester.pumpAndSettle();
 
+        expect(find.byType(AuthRequiredView), findsOneWidget);
+        expect(find.text('需要登录统一认证后继续'), findsOneWidget);
+        expect(find.widgetWithText(FilledButton, '登录统一认证'), findsOneWidget);
         expect(find.text('登录已失效，请重新登录统一认证'), findsNothing);
         expect(find.text('重新登录'), findsNothing);
-        expect(find.text('请先登录统一认证，再查询校园卡余额'), findsOneWidget);
-        expect(find.text('登录统一认证'), findsOneWidget);
-        expect(find.text('--'), findsOneWidget);
+        expect(find.text('--'), findsNothing);
+        expect(find.byType(LoginShell), findsNothing);
       },
     );
 
     testWidgets(
-      'page visible when user logs out elsewhere immediately removes cached balance from display',
+      'page visible when user logs out elsewhere removes cached balance and shows the login gate',
       (tester) async {
         // 初始已登录且有 23.5 缓存余额
         await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
@@ -521,30 +593,32 @@ void main() {
         UnifiedAuthService.instance.notifyListeners();
         await tester.pumpAndSettle();
 
-        // 页面立即重绘并移除旧余额展示，遵从 owner 隔离
+        // 立即移除旧余额展示并整页上锁，遵从 owner 隔离；登出不自动弹登录。
         expect(find.text('23.50'), findsNothing);
-        expect(find.text('--'), findsOneWidget);
-        expect(find.text('请先登录统一认证，再查询校园卡余额'), findsOneWidget);
-        expect(find.text('登录统一认证'), findsOneWidget);
+        expect(find.byType(AuthRequiredView), findsOneWidget);
+        expect(find.text('需要登录统一认证后继续'), findsOneWidget);
+        expect(find.widgetWithText(FilledButton, '登录统一认证'), findsOneWidget);
+        expect(find.byType(LoginShell), findsNothing);
       },
     );
 
     testWidgets(
-      'page visible when user logs in elsewhere immediately updates prompt state',
+      'login elsewhere while the auth gate is mounted pulls the balance immediately exactly once',
       (tester) async {
-        // 初始未登录
-        UnifiedAuthService.instance.debugSetSession(
-          active: false,
-          account: null,
-        );
+        // 初始未登录：一次性登录弹窗出现后手动关闭，登录门保持挂载。
+        _enterLoggedOutWorld();
+        var fetchCalls = 0;
+        CampusCardService.instance.debugBalanceFetcher = () async {
+          fetchCalls++;
+          return 42.5;
+        };
 
         await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
-        await tester.pumpAndSettle();
+        await _pumpLoginModal(tester);
+        await _closeLoginModal(tester);
+        expect(find.byType(AuthRequiredView), findsOneWidget);
 
-        expect(find.text('请先登录统一认证，再查询校园卡余额'), findsOneWidget);
-        expect(find.text('登录统一认证'), findsOneWidget);
-
-        // 用户在别处完成登录
+        // 用户在别处完成登录：无需任何点击，余额立刻拉取并展示。
         UnifiedAuthService.instance.debugSetSession(
           active: true,
           account: 'casuser',
@@ -552,10 +626,231 @@ void main() {
         UnifiedAuthService.instance.notifyListeners();
         await tester.pumpAndSettle();
 
-        // 页面重绘：未登录提示消失，变为可点击查询余额
-        expect(find.text('请先登录统一认证，再查询校园卡余额'), findsNothing);
-        expect(find.text('登录统一认证'), findsNothing);
-        expect(find.text('点击查询余额'), findsOneWidget);
+        // 登录门消失，余额直接就位；不自动弹窗，也只拉恰好一次。
+        expect(find.byType(AuthRequiredView), findsNothing);
+        expect(find.byType(LoginShell), findsNothing);
+        expect(find.text('需要登录统一认证后继续'), findsNothing);
+        expect(find.text('42.50'), findsOneWidget);
+        expect(find.text('点击查询余额'), findsNothing);
+        expect(find.text('校园卡余额已刷新'), findsOneWidget);
+        expect(fetchCalls, 1);
+      },
+    );
+
+    testWidgets(
+      'sign out then login with a different account never exposes the prior balance and pulls once',
+      (tester) async {
+        var fetchCalls = 0;
+        CampusCardService.instance.debugBalanceFetcher = () async {
+          fetchCalls++;
+          return 7.0;
+        };
+
+        // 初始已登录 'casuser' 且展示 23.5。
+        await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+        await tester.pumpAndSettle();
+        expect(find.text('23.50'), findsOneWidget);
+
+        // 登出：只上登录门，不发起任何查询。
+        UnifiedAuthService.instance.debugSetSession(
+          active: false,
+          account: null,
+        );
+        UnifiedAuthService.instance.notifyListeners();
+        await tester.pumpAndSettle();
+        expect(find.byType(AuthRequiredView), findsOneWidget);
+        expect(find.text('23.50'), findsNothing);
+        expect(fetchCalls, 0);
+
+        // 身份不完整（active 但无账号）：同样不得触发查询。
+        UnifiedAuthService.instance.debugSetSession(
+          active: true,
+          account: null,
+        );
+        UnifiedAuthService.instance.notifyListeners();
+        await tester.pumpAndSettle();
+        expect(fetchCalls, 0);
+
+        // 为新账号备好持久身份：服务端余额查询按持久 envelope 校验 owner。
+        await tester.runAsync(
+          () => CredentialStore.instance.saveUnifiedAuthSession('otheruser'),
+        );
+
+        // 换号登录：立即拉一次新 owner 的余额，绝不露出上一账号的 23.50。
+        UnifiedAuthService.instance.debugSetSession(
+          active: true,
+          account: 'otheruser',
+        );
+        UnifiedAuthService.instance.notifyListeners();
+        await tester.pumpAndSettle();
+
+        expect(find.text('7.00'), findsOneWidget);
+        expect(find.text('23.50'), findsNothing);
+        expect(find.text('--'), findsNothing);
+        expect(fetchCalls, 1);
+        expect(find.byType(AuthRequiredView), findsNothing);
+        expect(find.byType(LoginShell), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'a pending fetch from the old account drops late and the new account still gets exactly one automatic pull',
+      (tester) async {
+        final pendingA = Completer<double?>();
+        final pendingB = Completer<double?>();
+        var calls = 0;
+        CampusCardService.instance.debugBalanceFetcher = () {
+          calls++;
+          return calls == 1 ? pendingA.future : pendingB.future;
+        };
+
+        await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+        await tester.pumpAndSettle();
+        expect(find.text('23.50'), findsOneWidget);
+
+        // A（'casuser'）手动刷新：请求在途，服务端迟迟不返回。
+        await tester.tap(find.byTooltip('刷新余额'));
+        await tester.pump();
+        await tester.pump();
+        expect(calls, 1);
+
+        // B 换号登录（先备好 B 的持久身份）：新身份的拉取绝不能被 A 的在途
+        // 请求挡掉——排到旧请求结算后自动补拉。
+        await tester.runAsync(
+          () => CredentialStore.instance.saveUnifiedAuthSession('otheruser'),
+        );
+        UnifiedAuthService.instance.debugSetSession(
+          active: true,
+          account: 'otheruser',
+        );
+        UnifiedAuthService.instance.notifyListeners();
+        await tester.pump();
+        await tester.pump();
+
+        // A 仍在途：B 的补拉已排队、尚未发出，也不重复。
+        expect(calls, 1);
+        expect(find.text('23.50'), findsNothing);
+
+        // A 迟到返回旧账号的 99：结果与提示一律作废，绝不覆盖 B 的界面。
+        pendingA.complete(99.0);
+        await tester.pump();
+        await tester.pump();
+
+        // 旧请求结算后恰好自动补拉一次新身份的余额。
+        expect(calls, 2);
+        expect(find.text('99.00'), findsNothing);
+        expect(find.byType(SnackBar), findsNothing);
+
+        pendingB.complete(7.0);
+        await tester.pumpAndSettle();
+
+        expect(find.text('7.00'), findsOneWidget);
+        expect(find.text('99.00'), findsNothing);
+        expect(find.text('校园卡余额已刷新'), findsOneWidget);
+        expect(calls, 2);
+        expect(find.byType(AuthRequiredView), findsNothing);
+        expect(find.byType(LoginShell), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'same-account re-login that advances the session revision pulls the balance exactly once',
+      (tester) async {
+        var calls = 0;
+        CampusCardService.instance.debugBalanceFetcher = () async {
+          calls++;
+          return 58.0;
+        };
+
+        await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+        await tester.pumpAndSettle();
+        expect(find.text('23.50'), findsOneWidget);
+        expect(calls, 0);
+
+        // 同账号重登会推进 sessionRevision（登出 + 同号重登合成一次通知，
+        // 页面不经过登出中间态）：必须当作身份推进，自动重拉恰好一次。
+        final revisionBefore = UnifiedAuthService.instance.sessionRevision;
+        UnifiedAuthService.instance.debugSetSession(
+          active: false,
+          account: null,
+        );
+        UnifiedAuthService.instance.debugSetSession(
+          active: true,
+          account: 'casuser',
+        );
+        UnifiedAuthService.instance.notifyListeners();
+        expect(
+          UnifiedAuthService.instance.sessionRevision,
+          greaterThan(revisionBefore),
+        );
+        await tester.pumpAndSettle();
+
+        expect(calls, 1);
+        expect(find.text('58.00'), findsOneWidget);
+        expect(find.text('23.50'), findsNothing);
+        expect(find.byType(AuthRequiredView), findsNothing);
+        expect(find.byType(LoginShell), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'repeat auth notifications for the same account and revision never re-fetch',
+      (tester) async {
+        var calls = 0;
+        CampusCardService.instance.debugBalanceFetcher = () async {
+          calls++;
+          return 12.0;
+        };
+
+        await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+        await tester.pumpAndSettle();
+        expect(find.text('23.50'), findsOneWidget);
+        expect(calls, 0);
+
+        // 同账号同 revision 的重复认证通知：既不弹登录，也一次都不拉。
+        UnifiedAuthService.instance.notifyListeners();
+        UnifiedAuthService.instance.notifyListeners();
+        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump();
+
+        expect(calls, 0);
+        expect(CampusCardPage.debugAutoRefreshTriggered, isFalse);
+        expect(find.byType(AuthRequiredView), findsNothing);
+        expect(find.byType(LoginShell), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'a late result after sign-out never shows stale feedback on the auth gate',
+      (tester) async {
+        final pending = Completer<double?>();
+        CampusCardService.instance.debugBalanceFetcher = () => pending.future;
+
+        await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+        await tester.pumpAndSettle();
+
+        // 手动刷新在途时登出：登出本身不发起查询、也不排队拉取。
+        await tester.tap(find.byTooltip('刷新余额'));
+        await tester.pump();
+        await tester.pump();
+        UnifiedAuthService.instance.debugSetSession(
+          active: false,
+          account: null,
+        );
+        UnifiedAuthService.instance.notifyListeners();
+        await tester.pumpAndSettle();
+        expect(find.byType(AuthRequiredView), findsOneWidget);
+
+        // 旧请求迟到成功：既不露出旧账号余额，也不在登录门上弹过期提示。
+        pending.complete(99.0);
+        await tester.pumpAndSettle();
+        await tester.pump();
+
+        expect(find.text('99.00'), findsNothing);
+        expect(find.byType(SnackBar), findsNothing);
+        expect(find.byType(AuthRequiredView), findsOneWidget);
+        expect(find.byType(LoginShell), findsNothing);
       },
     );
 
@@ -605,6 +900,9 @@ void main() {
 
         expect(find.text('一卡通服务暂时不可用，请稍后重试'), findsOneWidget);
         expect(find.text('点击查询余额'), findsOneWidget);
+        // 网关瞬时故障不是登录问题：不上登录门，也不自动弹登录。
+        expect(find.byType(AuthRequiredView), findsNothing);
+        expect(find.byType(LoginShell), findsNothing);
       },
     );
 
@@ -822,6 +1120,8 @@ void main() {
     expect(find.text('点击查询余额'), findsOneWidget);
     expect(find.text('登录统一认证'), findsNothing);
     expect(find.text('重新登录'), findsNothing);
+    expect(find.byType(AuthRequiredView), findsNothing);
+    expect(find.byType(LoginShell), findsNothing);
   });
 
   testWidgets('network failure never suggests re-login', (tester) async {
@@ -838,7 +1138,30 @@ void main() {
     expect(find.text('点击查询余额'), findsOneWidget);
     expect(find.text('登录统一认证'), findsNothing);
     expect(find.text('重新登录'), findsNothing);
+    expect(find.byType(AuthRequiredView), findsNothing);
+    expect(find.byType(LoginShell), findsNothing);
   });
+}
+
+/// 未登录入场：登录弹窗里的 restoreSession 不得复活 setUp 写入的持久会话，
+/// 但保留持久 envelope，供模拟登录成功后的余额查询通过身份校验。同时把
+/// 暖启动标到已完成（真实页面进入时恒成立），让一次性登录引导可以决策。
+void _enterLoggedOutWorld() {
+  UnifiedAuthService.instance.debugSessionMetadataLoader = () async => null;
+  UnifiedAuthService.instance.debugSetSession(active: false, account: null);
+  AppBootstrapController.instance.debugSetPhase(AppBootstrapPhase.completed);
+}
+
+/// 登录弹窗内验证码准备在 FakeAsync 中挂起且带重复动画，不能 pumpAndSettle；
+/// 只推进两帧让 post-frame 排定的弹窗入场完成。
+Future<void> _pumpLoginModal(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 300));
+}
+
+Future<void> _closeLoginModal(WidgetTester tester) async {
+  await tester.tap(find.byTooltip('关闭'));
+  await tester.pumpAndSettle();
 }
 
 List<String> _mockClipboard({bool throwOnSet = false}) {
