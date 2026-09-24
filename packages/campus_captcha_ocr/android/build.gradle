@@ -39,6 +39,10 @@ android {
 
     defaultConfig {
         minSdk = 24
+        // Ship the ONNX Runtime keep rules to every consumer app; R8 is enabled
+        // by the Flutter Gradle plugin for release builds and would otherwise
+        // strip classes that ORT's JNI resolves by literal name.
+        consumerProguardFiles "consumer-rules.pro"
     }
 }
 
