@@ -1,6 +1,10 @@
-﻿import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+﻿import 'dart:convert';
+
+import 'package:dio/dio.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/core/network/dio_client.dart';
 import 'package:jxu_campus_hub/features/changxing_jiada/changxing_jiada_service.dart';
 
@@ -18,18 +22,35 @@ void main() {
   });
 
   test('changxing requests use unified auth dio', () async {
+    UnifiedAuthService.instance.debugSetSession(
+      active: true,
+      account: '20260001',
+    );
     await const FlutterSecureStorage().write(
-      key: 'zjxu_changxing_token',
-      value: 'test-token',
+      key: ChangxingJiadaService.tokenStorageKeyV2,
+      value: ChangxingJiadaService.encodeTokenEnvelope(
+        owner: '20260001',
+        token: 'test-token',
+      ),
     );
 
     final requestPath = Uri.parse(
       'https://zhx.zjxu.edu.cn/api/msg/getNoReadCount',
     ).path;
 
+    final sentTokens = <String?>[];
     final unifiedAdapter = MockHttpClientAdapter()
-      ..registerJson('GET', requestPath, {
-        'data': {'code': '20000', 'count': 3},
+      ..register('GET', requestPath, (options) async {
+        sentTokens.add(options.headers['token']?.toString());
+        return ResponseBody.fromString(
+          jsonEncode({
+            'data': {'code': '20000', 'count': 3},
+          }),
+          200,
+          headers: {
+            Headers.contentTypeHeader: ['application/json'],
+          },
+        );
       });
     final zhengfangAdapter = MockHttpClientAdapter();
 
@@ -41,5 +62,6 @@ void main() {
     expect(count, 3);
     expect(unifiedAdapter.requestLog, ['GET $requestPath']);
     expect(zhengfangAdapter.requestLog, isEmpty);
+    expect(sentTokens, ['test-token']);
   });
 }

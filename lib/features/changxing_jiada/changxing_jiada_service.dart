@@ -1,12 +1,12 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../core/auth/unified_auth.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/network/dio_client.dart';
 import 'changxing_jiada_model.dart';
+import 'changxing_jiada_token_binding.dart';
 
 class ChangxingAuthExpiredException implements Exception {
   ChangxingAuthExpiredException([this.message = '畅行嘉大登录已失效，请重新登录']);
@@ -41,45 +41,55 @@ class ChangxingSubmitRequest {
 }
 
 class ChangxingJiadaService {
-  ChangxingJiadaService._();
+  ChangxingJiadaService._() : _tokenBinding = ChangxingTokenBinding();
+
   static final ChangxingJiadaService instance = ChangxingJiadaService._();
 
   static const _baseUrl = 'https://zhx.zjxu.edu.cn/api';
   static const _casLoginUrl = 'https://zhx.zjxu.edu.cn/api/cas_wap_login';
   static const _unifiedAuthLoginUrl = 'https://newca.zjxu.edu.cn/cas/login';
-  static const _storage = FlutterSecureStorage();
-  static const _keyToken = 'zjxu_changxing_token';
 
-  String? _token;
-  bool _restored = false;
+  /// token 的 owner 绑定 / 持久化（fail closed），见 [ChangxingTokenBinding]。
+  final ChangxingTokenBinding _tokenBinding;
 
-  bool get hasToken => (_token ?? '').isNotEmpty;
+  bool get hasToken => _tokenBinding.hasToken;
 
-  Future<void> restoreSession() async {
-    if (_restored) return;
-    _token = await _storage.read(key: _keyToken);
-    _restored = true;
-  }
+  /// 读取归属当前统一认证账号的落盘 token；CAS 身份未就绪时不标记已恢复，
+  /// 页面在身份就绪后会再次调用，仍能绑定到正确 owner。
+  Future<void> restoreSession() => _tokenBinding.restore();
 
-  Future<void> _saveToken(String token) async {
-    _token = token;
-    await _storage.write(key: _keyToken, value: token);
-  }
+  Future<void> logout() => _tokenBinding.clear();
 
-  Future<void> _clearToken() async {
-    _token = null;
-    await _storage.delete(key: _keyToken);
-  }
+  /// 测试用：新存储 key（单条 JSON envelope）。
+  @visibleForTesting
+  static const tokenStorageKeyV2 = ChangxingTokenBinding.storageKeyV2;
 
-  Future<void> logout() async {
-    await _clearToken();
-  }
+  /// 测试用：旧的无 owner key（一律按不可用处理）。
+  @visibleForTesting
+  static const legacyTokenStorageKey = ChangxingTokenBinding.legacyStorageKey;
 
   /// 通过 CAS SSO 登录畅行嘉大。
   /// 前提：用户已通过 UnifiedAuthService 完成一卡通登录，且当前处于校园网环境。
+  /// 全程绑定发起时的 owner + `sessionRevision`：每个 await 边界之后复核，
+  /// 任一环节发现身份变化即放弃，且**绝不**把旧身份的 token 写入新会话。
   Future<void> loginViaCas() async {
+    final owner = _tokenBinding.currentOwner;
+    final revisionAtStart = UnifiedAuthService.instance.sessionRevision;
+    if (owner == null) {
+      // 没有可信的统一认证身份：token 无归属可绑，不发起无主 SSO。
+      throw ChangxingNeedUnifiedAuthException();
+    }
+
     await DioClient.instance.ensureInitialized();
     final dio = DioClient.instance.unifiedAuthDio;
+
+    void ensureIdentityCurrent() {
+      if (_tokenBinding.isCurrent(owner, revisionAtStart)) return;
+      AppLogger.instance.auth(LogLevel.warn, '畅行嘉大 CAS 登录放弃：统一认证身份或会话修订已变化');
+      throw ChangxingCasLoginException('登录状态已变化，请重试');
+    }
+
+    ensureIdentityCurrent();
 
     try {
       // 发起 CAS 登录并在同一条重定向链里提取 tokenId，避免预校验消耗 ticket。
@@ -102,6 +112,7 @@ class ChangxingJiadaService {
             responseType: ResponseType.plain,
           ),
         );
+        ensureIdentityCurrent();
 
         final statusCode = response.statusCode ?? 0;
         final location = response.headers.value('location') ?? '';
@@ -162,6 +173,7 @@ class ChangxingJiadaService {
           headers: {'token': '0'},
         ),
       );
+      ensureIdentityCurrent();
 
       final json = tokenResp.data ?? <String, dynamic>{};
       final data = json['data'] as Map<String, dynamic>? ?? {};
@@ -176,7 +188,16 @@ class ChangxingJiadaService {
         throw ChangxingCasLoginException('CAS 认证成功但未获取到 token');
       }
 
-      await _saveToken(jwtToken);
+      // 写入前最后一次复核：身份已变化则拒绝保存（含绑定 owner）。
+      final saved = await _tokenBinding.saveIfCurrent(
+        token: jwtToken,
+        owner: owner,
+        revision: revisionAtStart,
+      );
+      if (!saved) {
+        AppLogger.instance.auth(LogLevel.warn, '畅行嘉大 CAS 登录放弃：写入前身份已变化');
+        throw ChangxingCasLoginException('登录状态已变化，请重试');
+      }
       AppLogger.instance.auth(LogLevel.info, '畅行嘉大 CAS SSO 登录成功');
     } on DioException catch (e) {
       AppLogger.instance.auth(
@@ -299,19 +320,50 @@ class ChangxingJiadaService {
     String filePath,
     String fileName,
   ) async {
+    // 调用方发起时的身份：文件准备（`await`）前后、发送之前都必须复核，
+    // 绝不把 A 发起的附件以 B 的 token 发出。
+    final entryOwner = _tokenBinding.currentOwner;
+    final entryRevision = UnifiedAuthService.instance.sessionRevision;
+    if (entryOwner == null) {
+      throw ChangxingAuthExpiredException();
+    }
+
+    void ensureEntryIdentityCurrent() {
+      if (_tokenBinding.isCurrent(entryOwner, entryRevision)) return;
+      throw ChangxingAuthExpiredException('登录状态已变化，请重试');
+    }
+
     await DioClient.instance.ensureInitialized();
+    ensureEntryIdentityCurrent();
+
     await restoreSession();
-    final token = _token ?? '';
-    if (token.isEmpty) {
+    ensureEntryIdentityCurrent();
+    if (!_tokenBinding.isBindingCurrent(entryOwner, entryRevision)) {
+      throw ChangxingAuthExpiredException('登录状态已变化，请重试');
+    }
+    if (_tokenBinding.currentToken == null) {
       throw ChangxingAuthExpiredException();
     }
 
     final effectiveName = fileName.trim().isEmpty
         ? filePath.split(RegExp(r'[\\/]')).last
         : fileName.trim();
+    final multipartFile = await MultipartFile.fromFile(
+      filePath,
+      filename: effectiveName,
+    );
+
+    // 文件准备之后、发送之前：再次复核身份与绑定，并使用复核后的 token。
+    ensureEntryIdentityCurrent();
+    final token = _tokenBinding.currentToken;
+    if (token == null ||
+        !_tokenBinding.isBindingCurrent(entryOwner, entryRevision)) {
+      throw ChangxingAuthExpiredException('登录状态已变化，请重试');
+    }
+
     final formData = FormData.fromMap({
       'valiFace': 'false',
-      'file': await MultipartFile.fromFile(filePath, filename: effectiveName),
+      'file': multipartFile,
     });
 
     final response = await DioClient.instance.unifiedAuthDio
@@ -325,9 +377,14 @@ class ChangxingJiadaService {
         );
 
     final json = response.data ?? <String, dynamic>{};
+    // 迟到结果守卫：等待期间身份 / token 绑定已变化，响应不属于当前会话。
+    if (!_tokenBinding.isCurrent(entryOwner, entryRevision) ||
+        !_tokenBinding.isBindingCurrent(entryOwner, entryRevision)) {
+      throw ChangxingAuthExpiredException('登录状态已变化，请重试');
+    }
     final code = _extractCode(json);
     if (code == '500001') {
-      await _clearToken();
+      await _tokenBinding.clearIfCurrent(entryOwner, entryRevision);
       throw ChangxingAuthExpiredException(
         _extractMessage(json, fallback: '令牌错误，请重新登录'),
       );
@@ -608,11 +665,40 @@ class ChangxingJiadaService {
     String? contentType,
     Map<String, String>? query,
   }) async {
-    await DioClient.instance.ensureInitialized();
-    await restoreSession();
-    final token = _token ?? '';
-    if (requiresToken && token.isEmpty) {
+    // 调用方发起时的身份：必须在任何 await 之前捕获。A 发起的请求（含表单
+    // payload）在 ensureInitialized / restoreSession 期间身份切到 B 之后，
+    // 绝不允许以 B 的 token 继续发出。
+    final entryOwner = _tokenBinding.currentOwner;
+    final entryRevision = UnifiedAuthService.instance.sessionRevision;
+    final identityCaptured = requiresToken && entryOwner != null;
+
+    void ensureEntryIdentityCurrent() {
+      if (!identityCaptured) return;
+      if (_tokenBinding.isCurrent(entryOwner, entryRevision)) return;
+      throw ChangxingAuthExpiredException('登录状态已变化，请重试');
+    }
+
+    if (requiresToken && entryOwner == null) {
+      // 没有可验证的调用方身份：与无 token 路径同分类，直接视为会话失效。
       throw ChangxingAuthExpiredException();
+    }
+
+    await DioClient.instance.ensureInitialized();
+    ensureEntryIdentityCurrent();
+
+    await restoreSession();
+    ensureEntryIdentityCurrent();
+
+    final token = _tokenBinding.currentToken;
+    if (requiresToken && token == null) {
+      // 无 token / token 归属与当前 CAS 身份不一致 / 绑定 revision 已漂移
+      // 一律视为没有可用会话（分类保持原样）。
+      throw ChangxingAuthExpiredException();
+    }
+    if (identityCaptured &&
+        !_tokenBinding.isBindingCurrent(entryOwner, entryRevision)) {
+      // restore 恢复出来的绑定不属于调用方身份（恢复期间换号）。
+      throw ChangxingAuthExpiredException('登录状态已变化，请重试');
     }
 
     final uri = Uri.parse(
@@ -620,7 +706,15 @@ class ChangxingJiadaService {
     );
     final headers = <String, String>{};
     if (requiresToken) {
-      headers['token'] = token;
+      headers['token'] = token!;
+    }
+
+    // 发送前最后一次复核（URI / headers 构造是同步代码，无 await 间隙）：
+    // 身份或绑定任一变化都不得把 A 的 payload 以 B 的 token 发出。
+    ensureEntryIdentityCurrent();
+    if (identityCaptured &&
+        !_tokenBinding.isBindingCurrent(entryOwner, entryRevision)) {
+      throw ChangxingAuthExpiredException('登录状态已变化，请重试');
     }
 
     final response = await DioClient.instance.unifiedAuthDio
@@ -636,9 +730,18 @@ class ChangxingJiadaService {
         );
 
     final json = response.data ?? <String, dynamic>{};
+    // 迟到结果守卫：等待期间身份 / token 绑定已变化，响应不属于当前会话，
+    // 不得把旧身份数据返回给新会话；此后的 500001 也不得清掉新 token。
+    if (identityCaptured &&
+        (!_tokenBinding.isCurrent(entryOwner, entryRevision) ||
+            !_tokenBinding.isBindingCurrent(entryOwner, entryRevision))) {
+      throw ChangxingAuthExpiredException('登录状态已变化，请重试');
+    }
     final code = _extractCode(json);
     if (code == '500001') {
-      await _clearToken();
+      if (identityCaptured) {
+        await _tokenBinding.clearIfCurrent(entryOwner, entryRevision);
+      }
       throw ChangxingAuthExpiredException(
         _extractMessage(json, fallback: '令牌错误，请重新登录'),
       );
@@ -755,9 +858,21 @@ class ChangxingJiadaService {
         looksLikeUnifiedAuthLoginHtml(html);
   }
 
+  /// 测试用：以真实落盘格式（owner + token 单条 JSON）构造 envelope。
   @visibleForTesting
-  void debugReset() {
-    _token = null;
-    _restored = false;
-  }
+  static String encodeTokenEnvelope({
+    required String owner,
+    required String token,
+  }) => ChangxingTokenBinding.encodeEnvelope(owner: owner, token: token);
+
+  /// 测试用：当前内存绑定的 owner（无绑定 / 身份不符时为 null）。
+  @visibleForTesting
+  String? get debugBoundOwner => _tokenBinding.debugBoundOwner;
+
+  /// 测试用：当前内存绑定对应的 `sessionRevision`（供断言同账号重登）。
+  @visibleForTesting
+  int? get debugBoundRevision => _tokenBinding.debugBoundRevision;
+
+  @visibleForTesting
+  void debugReset() => _tokenBinding.debugReset();
 }
