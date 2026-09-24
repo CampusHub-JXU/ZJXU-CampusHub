@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/core/cache/json_cache_store.dart';
 import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_service.dart';
 import 'package:jxu_campus_hub/features/dorm_electricity/epay_electricity_gateway.dart';
@@ -20,6 +23,14 @@ class _FakeEpayElectricityGateway implements EpayElectricityGateway {
   final Map<String, List<Object>> responses = {};
   final List<_GatewayCall> calls = [];
 
+  /// 非 null 时，该方法的下一次调用先取走队首响应再挂起，直到 [releaseHold]。
+  String? holdMethod;
+  Completer<void>? _holdGate;
+
+  bool get holdReached => _holdGate != null;
+
+  void releaseHold() => _holdGate?.complete();
+
   void enqueue(String method, Object response) {
     responses.putIfAbsent(method, () => []).add(response);
   }
@@ -32,6 +43,13 @@ class _FakeEpayElectricityGateway implements EpayElectricityGateway {
       throw StateError('No fake response for $method');
     }
     final response = queue.removeAt(0);
+    if (holdMethod != null && method == holdMethod) {
+      holdMethod = null;
+      final gate = Completer<void>();
+      _holdGate = gate;
+      await gate.future;
+      _holdGate = null;
+    }
     if (response is Exception) throw response;
     return response as String;
   }
@@ -40,6 +58,8 @@ class _FakeEpayElectricityGateway implements EpayElectricityGateway {
   void debugReset() {
     responses.clear();
     calls.clear();
+    holdMethod = null;
+    _holdGate = null;
   }
 
   @override
@@ -49,6 +69,28 @@ class _FakeEpayElectricityGateway implements EpayElectricityGateway {
 String _success(Map<String, Object?> data) {
   return jsonEncode({'code': '200', 'msg': 'SUC0000', 'data': data});
 }
+
+/// 轮询等待异步链路推进（测试无 FakeAsync，用真实微任务 + 极短延迟）。
+Future<void> _waitUntil(bool Function() condition) async {
+  for (var i = 0; i < 200 && !condition(); i++) {
+    await Future<void>.delayed(const Duration(milliseconds: 1));
+  }
+  expect(condition(), isTrue, reason: '等待条件超时');
+}
+
+const _configA = DormRoomConfig(
+  areaId: '3',
+  buildingId: '114',
+  floorId: 'F00000',
+  roomId: '10720',
+);
+
+const _configB = DormRoomConfig(
+  areaId: '5',
+  buildingId: '220',
+  floorId: 'F2',
+  roomId: '22018',
+);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -70,6 +112,10 @@ void main() {
     cacheDirectory?.deleteSync(recursive: true);
     cacheDirectory = null;
   });
+
+  void loginAs(String account) {
+    UnifiedAuthService.instance.debugSetSession(active: true, account: account);
+  }
 
   test('fetchAreas maps epay100 area payload and sends adapter id', () async {
     final gateway = _FakeEpayElectricityGateway()
@@ -270,13 +316,8 @@ void main() {
   });
 
   test('fetchElectricity parses room balance and persists cache', () async {
-    const config = DormRoomConfig(
-      areaId: '3',
-      buildingId: '114',
-      floorId: 'F00000',
-      roomId: '10720',
-    );
-    await DormElectricityService.instance.saveRoomConfig(config);
+    loginAs('A');
+    await DormElectricityService.instance.saveRoomConfig(_configA);
     final gateway = _FakeEpayElectricityGateway()
       ..enqueue(
         'app.electric.getRoomBalance',
@@ -297,6 +338,9 @@ void main() {
     expect(DormElectricityService.instance.lastUpdated, isNotNull);
     expect(DormElectricityService.instance.lastError, isNull);
     expect(gateway.calls.single.data['L4_room_id'], '10720');
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getDouble('dorm_cached_electricity'), 42.5);
+    expect(prefs.getString(DormElectricityService.roomOwnerKey), 'A');
   });
 
   test('fetchAreas throws a friendly error for malformed RPC data', () async {
@@ -319,13 +363,8 @@ void main() {
   test(
     'session error returns stale cache and exposes login guidance',
     () async {
-      const config = DormRoomConfig(
-        areaId: '3',
-        buildingId: '114',
-        floorId: 'F00000',
-        roomId: '10720',
-      );
-      await DormElectricityService.instance.saveRoomConfig(config);
+      loginAs('A');
+      await DormElectricityService.instance.saveRoomConfig(_configA);
       DormElectricityService.instance.debugSetCachedElectricity(
         18.25,
         updatedAt: DateTime.now().subtract(const Duration(hours: 1)),
@@ -347,14 +386,8 @@ void main() {
   );
 
   test('gateway business error returns cache without login wording', () async {
-    await DormElectricityService.instance.saveRoomConfig(
-      const DormRoomConfig(
-        areaId: '3',
-        buildingId: '114',
-        floorId: 'F00000',
-        roomId: '10720',
-      ),
-    );
+    loginAs('A');
+    await DormElectricityService.instance.saveRoomConfig(_configA);
     DormElectricityService.instance.debugSetCachedElectricity(
       21.75,
       updatedAt: DateTime.now().subtract(const Duration(hours: 1)),
@@ -373,5 +406,139 @@ void main() {
     expect(value, 21.75);
     expect(DormElectricityService.instance.lastError, '电费网关错误: 系统维护中');
     expect(DormElectricityService.instance.lastError, isNot(contains('登录')));
+  });
+
+  test('late RPC from account A cannot overwrite account B session', () async {
+    loginAs('A');
+    await DormElectricityService.instance.saveRoomConfig(_configA);
+    final gateway = _FakeEpayElectricityGateway()
+      ..holdMethod = 'app.electric.getRoomBalance'
+      ..enqueue(
+        'app.electric.getRoomBalance',
+        _success({
+          'balance_list': [
+            {'id': '10720', 'name': 'HX4-111', 'balance': '77.70'},
+          ],
+        }),
+      );
+    DormElectricityService.instance.debugSetGateway(gateway);
+
+    final aFuture = DormElectricityService.instance.fetchElectricity(
+      forceRefresh: true,
+    );
+    await _waitUntil(() => gateway.holdReached);
+
+    // A 的请求还在途中就切换到 B，并由 B 显式重选寝室。
+    loginAs('B');
+    await DormElectricityService.instance.saveRoomConfig(_configB);
+    DormElectricityService.instance.debugSetCachedElectricity(
+      5.5,
+      updatedAt: DateTime.now(),
+    );
+
+    gateway.releaseHold();
+    expect(await aFuture, isNull);
+
+    final prefs = await SharedPreferences.getInstance();
+    // A 的迟到结果既不改 B 的内存缓存，也不落盘、不写通知总线。
+    expect(DormElectricityService.instance.cachedElectricity, 5.5);
+    expect(prefs.containsKey('dorm_cached_electricity'), isFalse);
+    expect(prefs.containsKey('dorm_cached_electricity_updated_at'), isFalse);
+    expect(DormElectricityService.instance.lastError, isNull);
+    expect(prefs.getString(DormElectricityService.roomOwnerKey), 'B');
+  });
+
+  test('B does not reuse the in-flight fetch future of account A', () async {
+    loginAs('A');
+    await DormElectricityService.instance.saveRoomConfig(_configA);
+    final gateway = _FakeEpayElectricityGateway()
+      ..holdMethod = 'app.electric.getRoomBalance'
+      ..enqueue(
+        'app.electric.getRoomBalance',
+        _success({
+          'balance_list': [
+            {'id': '10720', 'name': 'HX4-111', 'balance': '77.70'},
+          ],
+        }),
+      )
+      ..enqueue(
+        'app.electric.getRoomBalance',
+        _success({
+          'balance_list': [
+            {'id': '22018', 'name': 'PH-101', 'balance': '42.50'},
+          ],
+        }),
+      );
+    DormElectricityService.instance.debugSetGateway(gateway);
+
+    final aFuture = DormElectricityService.instance.fetchElectricity(
+      forceRefresh: true,
+    );
+    await _waitUntil(() => gateway.holdReached);
+
+    loginAs('B');
+    await DormElectricityService.instance.saveRoomConfig(_configB);
+    final bFuture = DormElectricityService.instance.fetchElectricity(
+      forceRefresh: true,
+    );
+    // 复用 A 的 future 就不会有第二次网关调用。
+    await _waitUntil(() => gateway.calls.length == 2);
+
+    gateway.releaseHold();
+    expect(await aFuture, isNull);
+    expect(await bFuture, 42.5);
+    expect(DormElectricityService.instance.cachedElectricity, 42.5);
+    expect(DormElectricityService.instance.lastError, isNull);
+  });
+
+  test(
+    'same-account re-login drops the old revision inflight result',
+    () async {
+      loginAs('A');
+      await DormElectricityService.instance.saveRoomConfig(_configA);
+      final gateway = _FakeEpayElectricityGateway()
+        ..holdMethod = 'app.electric.getRoomBalance'
+        ..enqueue(
+          'app.electric.getRoomBalance',
+          _success({
+            'balance_list': [
+              {'id': '10720', 'name': 'HX4-111', 'balance': '77.70'},
+            ],
+          }),
+        );
+      DormElectricityService.instance.debugSetGateway(gateway);
+
+      final first = DormElectricityService.instance.fetchElectricity(
+        forceRefresh: true,
+      );
+      await _waitUntil(() => gateway.holdReached);
+
+      // 同账号重登：revision 推进，旧 revision 的在途结果必须丢弃。
+      UnifiedAuthService.instance.debugSetSession(active: false);
+      loginAs('A');
+
+      gateway.releaseHold();
+      expect(await first, isNull);
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(DormElectricityService.instance.cachedElectricity, isNull);
+      expect(prefs.containsKey('dorm_cached_electricity'), isFalse);
+      expect(DormElectricityService.instance.lastError, isNull);
+    },
+  );
+
+  test('fetchElectricity never queries when logged out', () async {
+    loginAs('A');
+    await DormElectricityService.instance.saveRoomConfig(_configA);
+    UnifiedAuthService.instance.debugSetSession(active: false);
+    final gateway = _FakeEpayElectricityGateway();
+    DormElectricityService.instance.debugSetGateway(gateway);
+
+    final value = await DormElectricityService.instance.fetchElectricity(
+      forceRefresh: true,
+    );
+
+    expect(value, isNull);
+    expect(gateway.calls, isEmpty);
   });
 }

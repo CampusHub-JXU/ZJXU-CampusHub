@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/actions/campus_action_executor.dart';
+import '../../core/auth/unified_auth.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/notification/app_notification_service.dart';
 import 'dorm_electricity_service.dart';
@@ -11,6 +12,19 @@ import 'widgets/electricity_battery_header.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_empty_view.dart';
 import '../../shared/widgets/login_shell.dart';
+
+/// 页面当前绑定的统一认证身份（账号 + sessionRevision）；未登录 / 空白
+/// 账号一律账号 null，与服务 owner 判定保持一致。
+typedef _AuthIdentity = ({String? account, int revision});
+
+/// 一次加载 / 预警检查绑定的身份与代际：账号 + sessionRevision + 页面身份
+/// 代际 + 加载票据，四者任一变化都让旧请求的迟到结果作废。
+typedef _RequestCapture = ({
+  String? account,
+  int revision,
+  int generation,
+  int ticket,
+});
 
 class DormElectricityPage extends StatefulWidget {
   const DormElectricityPage({super.key});
@@ -35,11 +49,99 @@ class _DormElectricityPageState extends State<DormElectricityPage>
   AnimationController? _matrixBreathController;
   Animation<double>? _matrixBreathAnim;
 
+  /// 最近一次观察到的统一认证身份：仅用于识别真实的身份推进（登出 /
+  /// 换号 / 同号重登推进 sessionRevision），同一身份的重复通知不重复清空。
+  _AuthIdentity _lastAuthIdentity = (account: null, revision: 0);
+
+  /// 页面身份代际：每次认证身份变化推进一次。在途加载 / 预警检查捕获的
+  /// 代际不一致时，迟到结果一律不落 UI、不发通知。
+  int _identityGeneration = 0;
+
+  /// 加载票据：每次 [_load] 递增，只有最新一次加载可以提交 UI。
+  int _loadTicket = 0;
+
+  /// 刷新票据：身份变化 / 新刷新接管后，旧刷新的收尾不得清掉新点亮态。
+  int _refreshTicket = 0;
+
   @override
   void initState() {
     super.initState();
+    _lastAuthIdentity = _currentIdentity();
+    UnifiedAuthService.instance.addListener(_onAuthChanged);
     _ensureMatrixAnimations();
     _load(forceRefresh: true);
+  }
+
+  /// 当前已验证的统一认证身份；未登录 / 空白账号视为账号 null（fail closed）。
+  _AuthIdentity _currentIdentity() {
+    final auth = UnifiedAuthService.instance;
+    final account = auth.isLoggedIn ? auth.currentAccount?.trim() : null;
+    return (
+      account: (account == null || account.isEmpty) ? null : account,
+      revision: auth.sessionRevision,
+    );
+  }
+
+  /// 捕获一次加载 / 预警检查的身份与代际，并领取本次加载票据。
+  _RequestCapture _captureRequest() {
+    final identity = _currentIdentity();
+    return (
+      account: identity.account,
+      revision: identity.revision,
+      generation: _identityGeneration,
+      ticket: ++_loadTicket,
+    );
+  }
+
+  /// 捕获的身份是否仍是当前身份：页面挂载、代际未推进，且账号 +
+  /// sessionRevision 均未变化。不看加载票据，因此**同一身份**下更新的加载
+  /// 接管时，身份正确的低电量通知仍会下发（服务层已按同一身份判定预警），
+  /// 只拦真正的跨账号 / 跨 revision 迟到结果。
+  bool _isCaptureIdentityCurrent(_RequestCapture capture) {
+    if (!mounted) return false;
+    if (capture.generation != _identityGeneration) return false;
+    final identity = _currentIdentity();
+    return identity.account == capture.account &&
+        identity.revision == capture.revision;
+  }
+
+  /// 是否仍是当前这次加载：身份未变化，且没有被更新的加载接管。
+  bool _isCaptureCurrent(_RequestCapture capture) =>
+      _isCaptureIdentityCurrent(capture) && capture.ticket == _loadTicket;
+
+  /// 统一认证身份变化：同步清空旧身份的电量 / 配置 / 错误 / 预警视图（绝不
+  /// 出现旧账号值的过渡帧），并使在途请求全部作废；已验证的新身份刷新一次，
+  /// 登出 / 身份不完整只回落既有空态，不自动弹登录、不触 WebView。
+  void _onAuthChanged() {
+    final identity = _currentIdentity();
+    final previous = _lastAuthIdentity;
+    if (identity.account == previous.account &&
+        identity.revision == previous.revision) {
+      return;
+    }
+    _lastAuthIdentity = identity;
+    _identityGeneration++;
+    _loadTicket++;
+    _electricity = null;
+    _hasConfig = false;
+    _error = null;
+    _requiresUnifiedAuth = false;
+    _alertEnabled = false;
+    _alertThreshold = DormElectricityService.defaultAlertThreshold;
+    _refreshing = false;
+    _loading = identity.account != null;
+    if (!mounted) return;
+    setState(() {});
+    if (identity.account == null) return;
+    // 延到本次认证广播结束后再拉：服务侧监听器先清各自缓存，页面再按新
+    // 身份走 owner 门面刷新一次，不复用旧身份的迟到结果。
+    unawaited(Future<void>.microtask(_reloadForCurrentIdentity));
+  }
+
+  Future<void> _reloadForCurrentIdentity() async {
+    if (!mounted) return;
+    if (_currentIdentity().account == null) return;
+    await _load(forceRefresh: true);
   }
 
   void _ensureMatrixAnimations() {
@@ -67,6 +169,7 @@ class _DormElectricityPageState extends State<DormElectricityPage>
 
   @override
   void dispose() {
+    UnifiedAuthService.instance.removeListener(_onAuthChanged);
     _matrixFillController?.dispose();
     _matrixBreathController?.dispose();
     super.dispose();
@@ -75,64 +178,90 @@ class _DormElectricityPageState extends State<DormElectricityPage>
   /// [blocking] 为 true 时用整页加载态覆盖内容（首次加载 / 切换寝室）；
   /// 为 false 时保留当前内容，仅由调用方自己的按钮/下拉指示器表达进度
   /// （手动刷新 + 下拉刷新）。
+  ///
+  /// 每个 await 边界都复核捕获的账号 + sessionRevision + 页面代际：认证
+  /// 身份变化或出现更新的加载后，旧加载的迟到结果一律不落 UI、不发通知。
   Future<void> _load({bool forceRefresh = false, bool blocking = true}) async {
     if (!mounted) return;
+    final capture = _captureRequest();
     if (blocking) setState(() => _loading = true);
-    _hasConfig = await _service.hasRoomConfig();
-    _alertEnabled = await _service.getAlertEnabled();
-    _alertThreshold = await _service.getAlertThreshold();
-    if (!mounted) return;
-    if (_hasConfig) {
-      final oldValue = _electricity;
-      _electricity = await _service.fetchElectricity(
-        forceRefresh: forceRefresh,
+
+    final hasConfig = await _service.hasRoomConfig();
+    if (!_isCaptureCurrent(capture)) return;
+    final alertEnabled = await _service.getAlertEnabled();
+    if (!_isCaptureCurrent(capture)) return;
+    final alertThreshold = await _service.getAlertThreshold();
+    if (!_isCaptureCurrent(capture)) return;
+
+    if (!hasConfig) {
+      // 未配置 / 未登录 / 无主配置：回落到既有空态，不保留旧身份的任何
+      // 电量 / 错误 / 预警残留。
+      setState(() {
+        _hasConfig = false;
+        _electricity = null;
+        _requiresUnifiedAuth = false;
+        _error = null;
+        _alertEnabled = false;
+        _alertThreshold = DormElectricityService.defaultAlertThreshold;
+        if (blocking) _loading = false;
+      });
+      return;
+    }
+
+    _hasConfig = true;
+    _alertEnabled = alertEnabled;
+    _alertThreshold = alertThreshold;
+
+    final oldValue = _electricity;
+    final value = await _service.fetchElectricity(forceRefresh: forceRefresh);
+    if (!_isCaptureCurrent(capture)) return;
+    _electricity = value;
+    _error = _service.lastError;
+    _requiresUnifiedAuth = _service.requiresAuthentication;
+
+    // 查询失败（网关不健康）时跳过低电量预警，避免紧跟着再发一整轮
+    // RPC，把失败面翻倍。
+    if (forceRefresh && _error == null) {
+      await _service.checkAndAlert(
+        onAlert: ({required value, required threshold}) {
+          // 回调可能晚于身份推进：只有发起本次检查的身份仍有效才下发通知；
+          // 已交付到系统的通知无法撤回，这里只保证绝不带着旧身份发起。
+          if (!_isCaptureIdentityCurrent(capture)) return;
+          unawaited(
+            _showLowElectricityNotification(value: value, threshold: threshold),
+          );
+        },
       );
-      _error = _service.lastError;
-      _requiresUnifiedAuth = _service.requiresAuthentication;
-
-      // 查询失败（网关不健康）时跳过低电量预警，避免紧跟着再发一整轮
-      // RPC，把失败面翻倍。
-      if (forceRefresh && _error == null) {
-        await _service.checkAndAlert(
-          onAlert: ({required value, required threshold}) {
-            unawaited(
-              _showLowElectricityNotification(
-                value: value,
-                threshold: threshold,
-              ),
-            );
-          },
-        );
-      }
-
-      if (mounted) {
-        if (oldValue == null && _electricity != null) {
-          _ensureMatrixAnimations();
-          _matrixFillController?.forward(from: 0);
-        } else if (_electricity != oldValue) {
-          _ensureMatrixAnimations();
-          _matrixFillController?.forward(from: 0);
-        }
-      }
+      if (!_isCaptureCurrent(capture)) return;
     }
-    if (!_hasConfig) {
-      _requiresUnifiedAuth = false;
-      _error = null;
+
+    if (oldValue == null && _electricity != null) {
+      _ensureMatrixAnimations();
+      _matrixFillController?.forward(from: 0);
+    } else if (_electricity != oldValue) {
+      _ensureMatrixAnimations();
+      _matrixFillController?.forward(from: 0);
     }
-    if (!mounted) return;
+
     setState(() {
       if (blocking) _loading = false;
     });
   }
 
   /// 手动/下拉刷新：不覆盖内容，只点亮按钮或下拉指示器。
+  ///
+  /// 刷新自己持票：身份变化或被更新的刷新接管后，旧刷新的 finally 不得把
+  /// 新身份的「正在刷新」点亮态清掉。
   Future<void> _refresh() async {
     if (_refreshing) return;
+    final ticket = ++_refreshTicket;
     setState(() => _refreshing = true);
     try {
       await _load(forceRefresh: true, blocking: false);
     } finally {
-      if (mounted) setState(() => _refreshing = false);
+      if (mounted && ticket == _refreshTicket) {
+        setState(() => _refreshing = false);
+      }
     }
   }
 

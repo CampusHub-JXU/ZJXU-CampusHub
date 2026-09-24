@@ -18,6 +18,7 @@ import 'core/notification/app_notification_service.dart';
 import 'core/notification/background_task_service.dart';
 import 'core/push/push_service.dart';
 import 'core/shortcut/app_shortcut_service.dart';
+import 'features/dorm_electricity/dorm_electricity_background.dart';
 import 'features/second_classroom/second_classroom_subscription_service.dart';
 import 'features/home/widget/campus_widget_sync.dart';
 
@@ -88,6 +89,10 @@ Future<void> main() async {
       // 课表系统日历同步：仅主引擎前台协调器，监听必须早于暖启动数据变化，
       // 以便身份/课表恢复后立即评估；不注册后台引擎、不触发自动登录。
       CalendarSyncCoordinator.instance.start();
+      // 寝室电费身份对账：仅主引擎前台安装统一认证监听，登出 / 换号 /
+      // 同号重登时串行取消残留的每日提醒与周期任务；监听同样早于认证暖
+      // 启动。不注册后台引擎、不在 WorkManager isolate 调用。
+      DormElectricityBackground.instance.start();
       unawaited(
         AppShortcutService.instance.initialize(
           navigationReady: AppBootstrapController.instance.navigationReady,
