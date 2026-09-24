@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/semester/semester_calendar.dart';
@@ -16,8 +15,18 @@ import 'widgets/schedule_grid.dart';
 import 'widgets/schedule_info_banner.dart';
 import '../../shared/widgets/app_app_bar.dart';
 
+/// 教务登录弹层的呈现函数：返回 true 表示弹层内登录成功。
+typedef ScheduleLoginPromptPresenter = Future<bool> Function(
+  BuildContext context,
+);
+
 class SchedulePage extends StatefulWidget {
-  const SchedulePage({super.key});
+  const SchedulePage({super.key, @visibleForTesting this.loginPromptPresenter});
+
+  /// 测试注入点：替换教务登录弹层（默认走 shared 的
+  /// `showAcademicSystemLoginModal`）。生产路由不传该参数。
+  @visibleForTesting
+  final ScheduleLoginPromptPresenter? loginPromptPresenter;
 
   @override
   State<SchedulePage> createState() => _SchedulePageState();
@@ -90,17 +99,17 @@ class _SchedulePageState extends State<SchedulePage> {
 
   Future<void> _refreshScheduleOrLogin() async {
     if (!_controller.loggedIn) {
-      if (!mounted) return;
-      final loggedIn = await context.pushNamed<bool>('academic-system-login');
-      if (!mounted || loggedIn != true) return;
-      _onLoginSuccess();
+      // 未登录刷新（含错误重试）与登录引导共用同一个教务登录弹层：不再 push
+      // 独立的整页 `academic-system-login` 路由。一次性提示与在途去重仍由
+      // [_presentLoginPrompt] 的同名守卫承担，登录成功依旧先过身份核验。
+      await _presentLoginPrompt(force: true);
       return;
     }
     await _controller.fetchSchedule(forceRefresh: true);
   }
 
   void _onLoginSuccess() {
-    // 弹窗/路由报告成功但教务身份尚未就绪时，控制器会清空旧 owner 并返回
+    // 弹层报告成功但教务身份尚未就绪时，控制器会清空旧 owner 并返回
     // false：这里不得把它当作成功刷新，也绝不带旧 owner 发起请求。
     final accepted = _controller.onLoginSuccess(
       studentId: ZhengfangAuth.instance.currentStudentId,
@@ -115,7 +124,9 @@ class _SchedulePageState extends State<SchedulePage> {
 
     _loginPromptShown = true;
     _loginPromptInFlight = true;
-    final loggedIn = await showAcademicSystemLoginModal(context);
+    final ScheduleLoginPromptPresenter presenter =
+        widget.loginPromptPresenter ?? showAcademicSystemLoginModal;
+    final loggedIn = await presenter(context);
     _loginPromptInFlight = false;
     if (!mounted || !loggedIn) return;
     _onLoginSuccess();

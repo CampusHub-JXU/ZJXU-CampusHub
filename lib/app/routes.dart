@@ -7,7 +7,6 @@ import '../features/home/home_page.dart';
 import '../features/my/my_page.dart';
 import '../features/my/academic_service_page.dart';
 import '../features/my/unified_auth_login_page.dart';
-import '../features/my/academic_system_login_page.dart';
 import '../features/schedule/schedule_page.dart';
 import '../features/grades/grades_page.dart';
 import '../features/campus_card/campus_card_page.dart';
@@ -246,11 +245,6 @@ final GoRouter appRouter = GoRouter(
       path: '/unified-auth-login',
       name: 'unified-auth-login',
       builder: (context, state) => const UnifiedAuthLoginPage(),
-    ),
-    _appRoute(
-      path: '/academic-system-login',
-      name: 'academic-system-login',
-      builder: (context, state) => const AcademicSystemLoginPage(),
     ),
     _appRoute(
       path: '/academic-service',

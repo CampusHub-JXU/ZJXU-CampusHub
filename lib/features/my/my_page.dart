@@ -26,8 +26,19 @@ TextStyle _rowTitleStyle(ColorScheme cs) => TextStyle(
   color: cs.onSurface,
 );
 
+/// 弹出教务登录界面并解析「是否登录成功」，生产默认 [showAcademicSystemLoginModal]。
+///
+/// 真实 [LoginWidget] 无法离线驱动到登录成功，测试注入替代件以验证
+/// 「登录成功后自动继续一次进入门户」的接线。
+typedef AcademicLoginPrompt = Future<bool> Function(BuildContext context);
+
 class MyPage extends StatefulWidget {
-  const MyPage({super.key});
+  const MyPage({super.key, this.academicLoginPrompt});
+
+  /// 测试注入点：替换教务登录弹窗。为 null 时走生产弹窗
+  /// [showAcademicSystemLoginModal]，默认行为不变。
+  @visibleForTesting
+  final AcademicLoginPrompt? academicLoginPrompt;
 
   @override
   State<MyPage> createState() => _MyPageState();
@@ -150,10 +161,18 @@ class _MyPageState extends State<MyPage> {
     await _refreshStatus();
   }
 
-  Future<void> _loginAcademic() async {
-    await showAcademicSystemLoginModal(context);
-    if (!mounted) return;
-    await _refreshStatus();
+  /// 教务行动作：已登录直达 H5 门户；未登录先弹教务登录，登录成功后自动
+  /// 继续一次进入门户（只继续一次，不循环、不重复压栈）。
+  Future<void> _openAcademicAction() async {
+    if (!_academicLoggedIn) {
+      // 未登录先弹教务登录，登录成功后再进教务门户。
+      final prompt = widget.academicLoginPrompt ?? showAcademicSystemLoginModal;
+      final loggedIn = await prompt(context);
+      if (!mounted) return;
+      await _refreshStatus();
+      if (!mounted || !loggedIn) return;
+    }
+    await _openAcademicH5();
   }
 
   Future<void> _openAcademicH5() async {
@@ -297,13 +316,10 @@ class _MyPageState extends State<MyPage> {
                                   title: '教务系统',
                                   subtitle: _academicSubtitle(),
                                   subtitleKey: const Key('my_academic_status'),
-                                  trailing: _academicLoggedIn
-                                      ? _buildAcademicEnterButton(context)
-                                      : null,
                                   onTap: () => unawaited(
                                     _academicStatusUnknown
                                         ? _refreshStatus()
-                                        : _loginAcademic(),
+                                        : _openAcademicAction(),
                                   ),
                                 ),
                               ],
@@ -383,26 +399,9 @@ class _MyPageState extends State<MyPage> {
       color: cs.outlineVariant.withValues(alpha: 0.35),
     );
   }
-
-  /// 「进入」紧凑文字按钮：直达教务系统 H5 门户（不丢可达性）。
-  Widget _buildAcademicEnterButton(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return TextButton(
-      onPressed: () => unawaited(_openAcademicH5()),
-      style: TextButton.styleFrom(
-        foregroundColor: cs.primary,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        minimumSize: Size.zero,
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        visualDensity: VisualDensity.compact,
-        textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-      ),
-      child: const Text('进入'),
-    );
-  }
 }
 
-/// 分组卡内的 iOS Settings 式横排行：徽标 + 文字列 + 行尾状态与箭头。
+/// 分组卡内的 iOS Settings 式横排行：徽标 + 文字列 + 行尾箭头。
 ///
 /// 文字规格与首页功能瓦片一致（标题 15/w600、副标题 13），内容垂直居中；
 /// 涟漪经 [RoundedSuperellipseBorder] 裁剪，组内首末行只圆外侧角，
@@ -416,7 +415,6 @@ class _GroupRowTile extends StatelessWidget {
     required this.subtitle,
     required this.onTap,
     this.subtitleKey,
-    this.trailing,
   });
 
   /// 涟漪裁剪形状：组内首行只圆上角、末行只圆下角，单行组取整卡圆角。
@@ -427,7 +425,6 @@ class _GroupRowTile extends StatelessWidget {
   final String subtitle;
   final VoidCallback onTap;
   final Key? subtitleKey;
-  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -476,7 +473,6 @@ class _GroupRowTile extends StatelessWidget {
                   ],
                 ),
               ),
-              if (trailing != null) ...[const SizedBox(width: 4), trailing!],
               const SizedBox(width: 2),
               Icon(Icons.chevron_right, size: 20, color: cs.onSurfaceVariant),
             ],
