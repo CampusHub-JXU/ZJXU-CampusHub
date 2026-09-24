@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
@@ -6,7 +9,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:jxu_campus_hub/core/auth/auth_recovery_state_store.dart';
 import 'package:jxu_campus_hub/core/auth/auth_session_persistence.dart';
+import 'package:jxu_campus_hub/core/auth/credential_store.dart';
 import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/core/network/dio_client.dart';
@@ -15,6 +20,35 @@ import 'package:jxu_campus_hub/features/my/my_page.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';
 
 import '../../helpers/mock_http_client_adapter.dart';
+
+/// 推进「我的」页显式登出链直至自然结束（或 [until] 成立）。
+///
+/// widget 测试跑在 FakeAsync 区，`AuthRecoveryStateStore` 的文件 IO future
+/// 不会完成（同 `dorm_electricity_settings_page_test` 的 `_settleCatalog`），
+/// `pumpAndSettle` 会被拖到超时。这里用 `runAsync` 真实事件窗口放行磁盘
+/// 读写，再用假时时钟推进 best-effort 链的后续步骤。
+Future<void> _settleLogout(
+  WidgetTester tester, {
+  int rounds = 60,
+  bool Function()? until,
+}) async {
+  for (var i = 0; i < rounds; i++) {
+    if (until != null && until()) return;
+    await tester.runAsync<void>(
+      () => Future<void>.delayed(const Duration(milliseconds: 20)),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+}
+
+/// 登出链完成判定：两域「显式用户登出」都落账 + 两域会话都清掉。
+bool _logoutFullyDone() {
+  final store = AuthRecoveryStateStore.instance.debugSnapshot;
+  return store.recordFor(AuthRecoveryDomain.cas).revoked &&
+      store.recordFor(AuthRecoveryDomain.academic).revoked &&
+      !UnifiedAuthService.instance.isLoggedIn &&
+      !ZhengfangAuth.instance.isLoggedIn;
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -54,6 +88,35 @@ void main() {
     final adapter = MockHttpClientAdapter();
     DioClient.instance.dio.httpClientAdapter = adapter;
     return adapter;
+  }
+
+  /// 显式登出用例的公共现场：两行已登录（测活全绿）、离线网络/存储替身、
+  /// AuthRecoveryStateStore 真实文件 IO 的独立临时目录。
+  Future<void> initLogoutStage() async {
+    final adapter = await initAcademicLivenessMock();
+    adapter.register(
+      'GET',
+      '/jwglxt/xtgl/index_initMenu.html',
+      (options) async =>
+          ResponseBody.fromString('<html><body>教务首页</body></html>', 200),
+    );
+    UnifiedAuthService.instance.debugSetSession(
+      active: true,
+      account: '2025001',
+    );
+    UnifiedAuthService.instance.debugSessionValidator = (_) async => true;
+    ZhengfangAuth.instance.debugSetSession(active: true, studentId: '20250001');
+
+    final tempDir = Directory.systemTemp.createTempSync('my_page_logout_test');
+    addTearDown(() {
+      AuthRecoveryStateStore.instance.debugReset();
+      try {
+        tempDir.deleteSync(recursive: true);
+      } catch (_) {}
+    });
+    AuthRecoveryStateStore.instance.debugReset();
+    AuthRecoveryStateStore.instance.debugDirectoryProvider = () async =>
+        tempDir;
   }
 
   testWidgets(
@@ -298,7 +361,7 @@ void main() {
   );
 
   testWidgets(
-    'logged-out academic row prompts login then auto-continues into portal once',
+    'logged-out academic row prompts login then stays on my page after success',
     (tester) async {
       final adapter = await initAcademicLivenessMock();
       adapter.register(
@@ -344,20 +407,7 @@ void main() {
           GoRoute(
             path: '/portal',
             name: 'external-webview',
-            builder: (context, state) => Scaffold(
-              body: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text('教务系统门户'),
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('返回'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+            builder: (context, state) => const Scaffold(body: Text('教务系统门户')),
           ),
         ],
       );
@@ -380,17 +430,21 @@ void main() {
       await tester.tap(find.text('模拟登录成功'));
       await tester.pumpAndSettle();
 
-      // 登录成功后自动继续一次进入门户（栈内仅一个门户页）。
-      expect(find.text('登录教务系统'), findsNothing);
-      expect(find.text('教务系统门户', skipOffstage: false), findsOneWidget);
-      expect(loginPromptCount, 1);
-
-      await tester.tap(find.text('返回'));
-      await tester.pumpAndSettle();
-
-      // 返回后不循环：不再弹登录、不重复压栈进门户。
+      // 登录成功后留在「我的」页（真机手测反馈）：不再自动继续进教务门户。
       expect(find.text('登录教务系统'), findsNothing);
       expect(find.text('教务系统门户', skipOffstage: false), findsNothing);
+      expect(find.text('统一认证（含一卡通）'), findsOneWidget);
+      expect(loginPromptCount, 1);
+      // 两行状态已刷新：教务行转为已登录。
+      expect(
+        tester.widget<Text>(find.byKey(const Key('my_academic_status'))).data,
+        '已登录 · 课表未缓存',
+      );
+
+      // 已登录态导航不变：再点整行仍直达教务门户。
+      await tester.tap(find.text('教务系统'));
+      await tester.pumpAndSettle();
+      expect(find.text('教务系统门户', skipOffstage: false), findsOneWidget);
       expect(loginPromptCount, 1);
     },
   );
@@ -453,6 +507,564 @@ void main() {
         tester.widget<Text>(find.byKey(const Key('my_academic_status'))).data,
         '登录状态未知 · 点按重新校验',
       );
+    },
+  );
+
+  testWidgets('logout action is hidden when both rows are logged out', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: MyPage()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('我的'), findsOneWidget);
+    expect(find.byTooltip('退出登录'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'logout action is visible when either unified auth or academic is logged in',
+    (tester) async {
+      final adapter = await initAcademicLivenessMock();
+      adapter.register(
+        'GET',
+        '/jwglxt/xtgl/index_initMenu.html',
+        (options) async =>
+            ResponseBody.fromString('<html><body>教务首页</body></html>', 200),
+      );
+
+      // 仅教务已登录 → 显示登出入口。
+      ZhengfangAuth.instance.debugSetSession(
+        active: true,
+        studentId: '20250001',
+      );
+      await tester.pumpWidget(const MaterialApp(home: MyPage()));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('退出登录'), findsOneWidget);
+
+      // 仅统一认证已登录 → 同样显示。
+      ZhengfangAuth.instance.debugReset();
+      UnifiedAuthService.instance.debugSetSession(
+        active: true,
+        account: '2025001',
+      );
+      UnifiedAuthService.instance.debugSessionValidator = (_) async => true;
+      await tester.pumpWidget(const MaterialApp(home: MyPage()));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('退出登录'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'logout action renders without overflow on small screen at 1.5x text scale',
+    (tester) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      UnifiedAuthService.instance.debugSetSession(
+        active: true,
+        account: '2025001',
+      );
+      UnifiedAuthService.instance.debugSessionValidator = (_) async => true;
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: MediaQuery(
+            data: MediaQueryData(textScaler: TextScaler.linear(1.5)),
+            child: MyPage(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('我的'), findsOneWidget);
+      expect(find.byTooltip('退出登录'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('logout confirmation cancel keeps both sessions logged in', (
+    tester,
+  ) async {
+    UnifiedAuthService.instance.debugSetSession(
+      active: true,
+      account: '2025001',
+    );
+    UnifiedAuthService.instance.debugSessionValidator = (_) async => true;
+
+    await tester.pumpWidget(const MaterialApp(home: MyPage()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('退出登录'));
+    await tester.pumpAndSettle();
+
+    // 确认框：平实中文，确认=退出登录，取消=返回。
+    expect(find.text('退出登录'), findsNWidgets(2)); // 标题 + 确认按钮
+    expect(find.text('返回'), findsOneWidget);
+
+    await tester.tap(find.text('返回'));
+    await tester.pumpAndSettle();
+
+    // 取消 = 返回：不登出，会话保持。
+    expect(find.text('返回'), findsNothing);
+    expect(find.text('退出登录'), findsNothing); // 对话框关闭（tooltip 不算 Text）
+    expect(UnifiedAuthService.instance.isLoggedIn, isTrue);
+    expect(
+      tester.widget<Text>(find.byKey(const Key('my_campus_status'))).data,
+      '已登录',
+    );
+    expect(find.byTooltip('退出登录'), findsOneWidget);
+  });
+
+  testWidgets(
+    'logout confirmation records explicit user logout for both domains and '
+    'stays on my page',
+    (tester) async {
+      final adapter = await initAcademicLivenessMock();
+      adapter.register(
+        'GET',
+        '/jwglxt/xtgl/index_initMenu.html',
+        (options) async =>
+            ResponseBody.fromString('<html><body>教务首页</body></html>', 200),
+      );
+      UnifiedAuthService.instance.debugSetSession(
+        active: true,
+        account: '2025001',
+      );
+      UnifiedAuthService.instance.debugSessionValidator = (_) async => true;
+      ZhengfangAuth.instance.debugSetSession(
+        active: true,
+        studentId: '20250001',
+      );
+
+      // 显式登出会写自动恢复状态（AuthRecoveryStateStore，真实文件 IO）：
+      // 注入独立临时目录；文件 IO 的放行由 _settleLogout 的 runAsync 窗口负责。
+      final tempDir = Directory.systemTemp.createTempSync(
+        'my_page_logout_test',
+      );
+      addTearDown(() {
+        AuthRecoveryStateStore.instance.debugReset();
+        try {
+          tempDir.deleteSync(recursive: true);
+        } catch (_) {}
+      });
+      AuthRecoveryStateStore.instance.debugReset();
+      AuthRecoveryStateStore.instance.debugDirectoryProvider = () async =>
+          tempDir;
+
+      final router = GoRouter(
+        routes: [
+          GoRoute(
+            path: '/',
+            name: 'my',
+            builder: (context, state) => const MyPage(),
+          ),
+          GoRoute(
+            path: '/campus-card',
+            name: 'campus-card',
+            builder: (context, state) => const Scaffold(body: Text('校园卡一卡通页')),
+          ),
+          GoRoute(
+            path: '/portal',
+            name: 'external-webview',
+            builder: (context, state) => const Scaffold(body: Text('教务系统门户')),
+          ),
+        ],
+      );
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pumpAndSettle();
+
+      // 初始：两行已登录，登出入口可见。
+      expect(find.byTooltip('退出登录'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('退出登录'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, '退出登录'));
+      await tester.pump();
+      await _settleLogout(
+        tester,
+        until: () => find.byTooltip('退出登录').evaluate().isEmpty,
+      );
+      await tester.pumpAndSettle();
+
+      // 停留在「我的」页：不跳一卡通页、不进教务门户。
+      expect(find.text('统一认证（含一卡通）'), findsOneWidget);
+      expect(find.text('教务系统'), findsOneWidget);
+      expect(find.text('校园卡一卡通页', skipOffstage: false), findsNothing);
+      expect(find.text('教务系统门户', skipOffstage: false), findsNothing);
+      expect(find.text('退出登录'), findsNothing); // 确认框已关闭
+
+      // 两行状态刷新为未登录，登出入口隐藏。
+      expect(
+        tester.widget<Text>(find.byKey(const Key('my_campus_status'))).data,
+        '未登录',
+      );
+      expect(
+        tester.widget<Text>(find.byKey(const Key('my_academic_status'))).data,
+        '未登录 · 课表未缓存',
+      );
+      expect(find.byTooltip('退出登录'), findsNothing);
+
+      // 两个会话都已撤销。
+      expect(UnifiedAuthService.instance.isLoggedIn, isFalse);
+      expect(ZhengfangAuth.instance.isLoggedIn, isFalse);
+
+      // 两域都落了「显式用户登出」语义：revoked、关闭 opt-in、epoch 推进。
+      final casRecord = AuthRecoveryStateStore.instance.debugSnapshot.recordFor(
+        AuthRecoveryDomain.cas,
+      );
+      expect(casRecord.revoked, isTrue);
+      expect(casRecord.optIn, isFalse);
+      expect(casRecord.epoch, 1);
+      final academicRecord = AuthRecoveryStateStore.instance.debugSnapshot
+          .recordFor(AuthRecoveryDomain.academic);
+      expect(academicRecord.revoked, isTrue);
+      expect(academicRecord.optIn, isFalse);
+      expect(academicRecord.epoch, 1);
+    },
+  );
+
+  testWidgets(
+    'dispose mid-logout still completes both domain revocations and session '
+    'cleanups',
+    (tester) async {
+      await initLogoutStage();
+
+      var academicRecordHeld = false;
+      final release = Completer<void>();
+      final stepCalls = <LogoutStep, int>{};
+      Future<void> gate(LogoutStep step) async {
+        stepCalls[step] = (stepCalls[step] ?? 0) + 1;
+        if (step == LogoutStep.academicRecord) {
+          academicRecordHeld = true;
+          await release.future;
+        }
+      }
+
+      await tester.pumpWidget(MaterialApp(home: MyPage(logoutStepGate: gate)));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('退出登录'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, '退出登录'));
+      await _settleLogout(tester, until: () => academicRecordHeld);
+
+      // 登出进行到一半（统一认证域已记账、教务域记账挂起）时页面被销毁。
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+
+      release.complete();
+      await _settleLogout(tester, until: _logoutFullyDone);
+
+      // 四步效果与 mounted 无关：两域「显式用户登出」都落账、两会话都撤销，
+      // 绝不允许只撤销一域的半套登出。
+      final store = AuthRecoveryStateStore.instance.debugSnapshot;
+      expect(store.recordFor(AuthRecoveryDomain.cas).revoked, isTrue);
+      expect(store.recordFor(AuthRecoveryDomain.cas).epoch, 1);
+      expect(store.recordFor(AuthRecoveryDomain.academic).revoked, isTrue);
+      expect(store.recordFor(AuthRecoveryDomain.academic).epoch, 1);
+      expect(UnifiedAuthService.instance.isLoggedIn, isFalse);
+      expect(ZhengfangAuth.instance.isLoggedIn, isFalse);
+      expect(stepCalls[LogoutStep.casRecord], 1);
+      expect(stepCalls[LogoutStep.academicRecord], 1);
+      expect(stepCalls[LogoutStep.casSession], 1);
+      expect(stepCalls[LogoutStep.academicSession], 1);
+      // dispose 之后不得有 setState / context 崩溃。
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'duplicate logout interactions run each effect exactly once and row login '
+    'and navigation stay inert while logout is in flight',
+    (tester) async {
+      await initLogoutStage();
+
+      var academicRecordHeld = false;
+      final release = Completer<void>();
+      final stepCalls = <LogoutStep, int>{};
+      var academicPromptCount = 0;
+      Future<void> gate(LogoutStep step) async {
+        stepCalls[step] = (stepCalls[step] ?? 0) + 1;
+        if (step == LogoutStep.academicRecord) {
+          academicRecordHeld = true;
+          await release.future;
+        }
+      }
+
+      final router = GoRouter(
+        routes: [
+          GoRoute(
+            path: '/',
+            name: 'my',
+            builder: (context, state) => MyPage(
+              logoutStepGate: gate,
+              academicLoginPrompt: (context) async {
+                academicPromptCount++;
+                return true;
+              },
+            ),
+          ),
+          GoRoute(
+            path: '/campus-card',
+            name: 'campus-card',
+            builder: (context, state) => const Scaffold(body: Text('校园卡一卡通页')),
+          ),
+          GoRoute(
+            path: '/portal',
+            name: 'external-webview',
+            builder: (context, state) => const Scaffold(body: Text('教务系统门户')),
+          ),
+        ],
+      );
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pumpAndSettle();
+
+      // 重复点按（重建帧之前连点两次）：只弹一个确认框。
+      await tester.tap(find.byTooltip('退出登录'));
+      await tester.tap(find.byTooltip('退出登录'));
+      await tester.pumpAndSettle();
+      expect(find.text('返回'), findsOneWidget);
+      expect(find.text('退出登录'), findsNWidgets(2)); // 标题 + 确认按钮
+
+      await tester.tap(find.widgetWithText(TextButton, '退出登录'));
+      await _settleLogout(tester, until: () => academicRecordHeld);
+
+      // 登出进行中：再点登出按钮不弹二次确认、不跑第二遍登出。
+      await tester.tap(find.byTooltip('退出登录'));
+      await tester.pumpAndSettle();
+      expect(find.text('返回'), findsNothing);
+
+      // 登出进行中：两行点按不弹登录、不导航。
+      await tester.tap(find.text('统一认证（含一卡通）'));
+      await tester.pumpAndSettle();
+      expect(find.text('登录一卡通'), findsNothing);
+      expect(find.text('校园卡一卡通页', skipOffstage: false), findsNothing);
+
+      await tester.tap(find.text('教务系统'));
+      await tester.pumpAndSettle();
+      expect(academicPromptCount, 0);
+      expect(find.text('教务系统门户', skipOffstage: false), findsNothing);
+
+      release.complete();
+      await _settleLogout(tester, until: _logoutFullyDone);
+
+      // 每步效果恰好执行一次：重复交互没有造成第二遍登出（epoch 不叠到 2）。
+      expect(stepCalls[LogoutStep.casRecord], 1);
+      expect(stepCalls[LogoutStep.academicRecord], 1);
+      expect(stepCalls[LogoutStep.casSession], 1);
+      expect(stepCalls[LogoutStep.academicSession], 1);
+      final store = AuthRecoveryStateStore.instance.debugSnapshot;
+      expect(store.recordFor(AuthRecoveryDomain.cas).epoch, 1);
+      expect(store.recordFor(AuthRecoveryDomain.academic).epoch, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'a failed logout step is reported honestly with retry while later steps '
+    'still run',
+    (tester) async {
+      await initLogoutStage();
+
+      var failAcademicRecord = true;
+      final stepCalls = <LogoutStep, int>{};
+      Future<void> gate(LogoutStep step) async {
+        stepCalls[step] = (stepCalls[step] ?? 0) + 1;
+        if (step == LogoutStep.academicRecord && failAcademicRecord) {
+          throw Exception('模拟登出步骤失败');
+        }
+      }
+
+      await tester.pumpWidget(MaterialApp(home: MyPage(logoutStepGate: gate)));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('退出登录'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, '退出登录'));
+      await _settleLogout(
+        tester,
+        until: () => find.textContaining('退出登录未完全完成').evaluate().isNotEmpty,
+      );
+      // SnackBar 入场动画未结束时其动作按钮仍在屏外，直接 tap 会 miss；
+      // 先推进动画到落位再点「重试」。
+      await tester.pump(const Duration(milliseconds: 400));
+
+      // 失败绝不静默当作成功：如实提示「未完全完成」+ 可重试动作。
+      expect(find.textContaining('退出登录未完全完成'), findsOneWidget);
+      expect(find.text('重试'), findsOneWidget);
+
+      // 后续步骤仍 best-effort 走完：教务域记账失败，但两域会话照常撤销。
+      final store = AuthRecoveryStateStore.instance.debugSnapshot;
+      expect(store.recordFor(AuthRecoveryDomain.cas).revoked, isTrue);
+      expect(store.recordFor(AuthRecoveryDomain.academic).revoked, isFalse);
+      expect(UnifiedAuthService.instance.isLoggedIn, isFalse);
+      expect(ZhengfangAuth.instance.isLoggedIn, isFalse);
+
+      // 重试把失败的那步补上。
+      failAcademicRecord = false;
+      await tester.tap(find.text('重试'));
+      await _settleLogout(
+        tester,
+        until: () => AuthRecoveryStateStore.instance.debugSnapshot
+            .recordFor(AuthRecoveryDomain.academic)
+            .revoked,
+      );
+      await tester.pumpAndSettle();
+
+      // 重试成功后不再留着「未完全完成」的旧提示。
+      expect(find.textContaining('退出登录未完全完成'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'a newer login landing mid-logout is preserved instead of revoked',
+    (tester) async {
+      await initLogoutStage();
+
+      var academicRecordHeld = false;
+      final release = Completer<void>();
+      final stepCalls = <LogoutStep, int>{};
+      Future<void> gate(LogoutStep step) async {
+        stepCalls[step] = (stepCalls[step] ?? 0) + 1;
+        if (step == LogoutStep.academicRecord) {
+          academicRecordHeld = true;
+          await release.future;
+        }
+      }
+
+      await tester.pumpWidget(MaterialApp(home: MyPage(logoutStepGate: gate)));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('退出登录'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, '退出登录'));
+      await _settleLogout(tester, until: () => academicRecordHeld);
+
+      // 登出等待期间落成一次「同账号新登录」：内存身份与 revision 不变，
+      // 只有持久 epoch 前进——这正是只看 revision 会误杀的情形。
+      final epochBefore = await AuthSessionPersistence.instance.readEpoch(
+        CredentialSessionDomain.unified,
+      );
+      final commitResult = await AuthSessionPersistence.instance.commit(
+        CredentialSessionDomain.unified,
+        account: '2025001',
+        expectedEpoch: epochBefore,
+      );
+      expect(commitResult, isNotNull);
+
+      release.complete();
+      await _settleLogout(
+        tester,
+        until: () => find.textContaining('已保留新会话').evaluate().isNotEmpty,
+      );
+
+      // 新登录被保留：统一认证会话没被误撤销；教务域照常撤销。
+      expect(UnifiedAuthService.instance.isLoggedIn, isTrue);
+      expect(ZhengfangAuth.instance.isLoggedIn, isFalse);
+      expect(stepCalls[LogoutStep.casSession] ?? 0, 0); // 闸门前即判定变化 → 未进闸门
+      expect(stepCalls[LogoutStep.academicSession], 1);
+      expect(find.textContaining('已保留新会话'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'a newer login landing while the revoke gate is held is preserved '
+    '(identity is re-checked after the gate await)',
+    (tester) async {
+      await initLogoutStage();
+
+      var casSessionHeld = false;
+      final release = Completer<void>();
+      final stepCalls = <LogoutStep, int>{};
+      Future<void> gate(LogoutStep step) async {
+        stepCalls[step] = (stepCalls[step] ?? 0) + 1;
+        if (step == LogoutStep.casSession) {
+          casSessionHeld = true;
+          await release.future;
+        }
+      }
+
+      await tester.pumpWidget(MaterialApp(home: MyPage(logoutStepGate: gate)));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('退出登录'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, '退出登录'));
+      await _settleLogout(tester, until: () => casSessionHeld);
+
+      // 统一认证撤销已经过「闸门之前」的复核、正卡在闸门里；此刻落成一次
+      // 同账号新登录（只有持久 epoch 前进，内存 revision/身份不变）。若只在
+      // 闸门之前复核，放行后会无条件撤销这个新会话——必须被保留。
+      final epochBefore = await AuthSessionPersistence.instance.readEpoch(
+        CredentialSessionDomain.unified,
+      );
+      final commitResult = await AuthSessionPersistence.instance.commit(
+        CredentialSessionDomain.unified,
+        account: '2025001',
+        expectedEpoch: epochBefore,
+      );
+      expect(commitResult, isNotNull);
+
+      release.complete();
+      await _settleLogout(
+        tester,
+        until: () => find.textContaining('已保留新会话').evaluate().isNotEmpty,
+      );
+
+      // 闸门之后的复核拦住了旧退出：新登录被保留，教务域照常撤销。
+      expect(UnifiedAuthService.instance.isLoggedIn, isTrue);
+      expect(ZhengfangAuth.instance.isLoggedIn, isFalse);
+      expect(stepCalls[LogoutStep.casSession], 1); // 进了闸门但复核后跳过效果
+      expect(stepCalls[LogoutStep.academicSession], 1);
+      expect(find.textContaining('已保留新会话'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'dispose while the revoke gate is held still completes both domain '
+    'revocations after the gate is released',
+    (tester) async {
+      await initLogoutStage();
+
+      var casSessionHeld = false;
+      final release = Completer<void>();
+      final stepCalls = <LogoutStep, int>{};
+      Future<void> gate(LogoutStep step) async {
+        stepCalls[step] = (stepCalls[step] ?? 0) + 1;
+        if (step == LogoutStep.casSession) {
+          casSessionHeld = true;
+          await release.future;
+        }
+      }
+
+      await tester.pumpWidget(MaterialApp(home: MyPage(logoutStepGate: gate)));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('退出登录'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, '退出登录'));
+      await _settleLogout(tester, until: () => casSessionHeld);
+
+      // 已确认的持久撤销进行到会话撤销一半（正卡在统一认证撤销闸门）时销毁页面。
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+
+      release.complete();
+      await _settleLogout(tester, until: _logoutFullyDone);
+
+      // 撤销效果与 mounted 无关：两域都撤销，绝不允许停在半套登出。
+      final store = AuthRecoveryStateStore.instance.debugSnapshot;
+      expect(store.recordFor(AuthRecoveryDomain.cas).revoked, isTrue);
+      expect(store.recordFor(AuthRecoveryDomain.academic).revoked, isTrue);
+      expect(UnifiedAuthService.instance.isLoggedIn, isFalse);
+      expect(ZhengfangAuth.instance.isLoggedIn, isFalse);
+      expect(stepCalls[LogoutStep.casSession], 1);
+      expect(stepCalls[LogoutStep.academicSession], 1);
+      expect(tester.takeException(), isNull);
     },
   );
 }
