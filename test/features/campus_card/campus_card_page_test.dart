@@ -466,6 +466,110 @@ void main() {
     );
 
     testWidgets(
+      'login success from the auth gate pulls exactly once when the login '
+      'notification arrives without a ready account',
+      (tester) async {
+        _enterLoggedOutWorld();
+        var fetchCalls = 0;
+        CampusCardService.instance.debugBalanceFetcher = () async {
+          fetchCalls++;
+          return 100.0;
+        };
+
+        await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+        await _pumpLoginModal(tester);
+        await _closeLoginModal(tester);
+
+        // 点击登录门按钮再次唤起统一认证登录弹窗。
+        await tester.tap(find.widgetWithText(FilledButton, '登录统一认证'));
+        await _pumpLoginModal(tester);
+
+        // 登录进行中的认证通知先到、账号仍未就绪（identity.account 为 null）：
+        // _onAuthChanged 按「无明确 owner 不拉」跳过自动拉取。
+        UnifiedAuthService.instance.debugSetSession(
+          active: true,
+          account: null,
+        );
+        UnifiedAuthService.instance.notifyListeners();
+        await tester.pump();
+        // 账号随后就绪但没有第二次认证广播（登录事务内「先通知、后定型」的
+        // 时序）。此时以 true 关闭弹窗。
+        UnifiedAuthService.instance.debugSetSession(
+          active: true,
+          account: 'casuser',
+        );
+        Navigator.of(
+          tester.element(find.byType(LoginShell)),
+          rootNavigator: true,
+        ).pop(true);
+        await tester.pumpAndSettle();
+
+        // 登录成功收口必须恰好拉一次：既不因通知簿记漏拉成零拉取，
+        // 也不与 _onAuthChanged 路径双拉。
+        expect(fetchCalls, 1);
+        expect(find.text('100.00'), findsOneWidget);
+        expect(find.text('--'), findsNothing);
+        expect(find.text('校园卡余额已刷新'), findsOneWidget);
+        await tester.pump(const Duration(seconds: 1));
+        await tester.pump(const Duration(seconds: 1));
+        expect(fetchCalls, 1);
+      },
+    );
+
+    testWidgets(
+      'login success after a mid-modal identity notification pulls exactly '
+      'once after the modal settles',
+      (tester) async {
+        _enterLoggedOutWorld();
+        final pending = Completer<double>();
+        var fetchCalls = 0;
+        CampusCardService.instance.debugBalanceFetcher = () {
+          fetchCalls++;
+          return pending.future;
+        };
+
+        await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+        await _pumpLoginModal(tester);
+        await _closeLoginModal(tester);
+
+        await tester.tap(find.widgetWithText(FilledButton, '登录统一认证'));
+        await _pumpLoginModal(tester);
+
+        // 弹窗内登录成功的通知先到（身份推进、账号就绪）。
+        UnifiedAuthService.instance.debugSetSession(
+          active: true,
+          account: 'casuser',
+        );
+        UnifiedAuthService.instance.notifyListeners();
+        await tester.pump();
+        await tester.pump();
+        // 紧随其后的同身份重复认证通知：服务端监听器会清缓存并作废在途请求
+        // ——弹窗内提早发出的拉取结果会被丢弃，余额只剩 `--`（真机「登录后
+        // 余额不即时」的根因链）。
+        UnifiedAuthService.instance.notifyListeners();
+        await tester.pump();
+
+        Navigator.of(
+          tester.element(find.byType(LoginShell)),
+          rootNavigator: true,
+        ).pop(true);
+        await tester.pump();
+        await tester.pump();
+        await tester.pump();
+
+        // 拉取恰好一次，且发生在弹窗结算后，不被弹窗内的重复通知作废。
+        expect(fetchCalls, 1);
+        pending.complete(100.0);
+        await tester.pumpAndSettle();
+
+        expect(find.text('100.00'), findsOneWidget);
+        expect(find.text('--'), findsNothing);
+        expect(find.text('校园卡余额已刷新'), findsOneWidget);
+        expect(fetchCalls, 1);
+      },
+    );
+
+    testWidgets(
       'one-shot login prompt waits until the bootstrap state is known',
       (tester) async {
         _enterLoggedOutWorld();
@@ -822,6 +926,87 @@ void main() {
     );
 
     testWidgets(
+      'login notify without a ready account still settles exactly one pull after modal success',
+      (tester) async {
+        // 真机问题 1 的确定性复现：登录过程中先到一次「账号尚未就绪」的认证
+        // 通知（revision 已推进、账号为 null），身份随后就绪但不再另行通知，
+        // 登录弹窗此刻才返回 true。登录门→内容态完成切换后，余额拉取不得悬空。
+        _enterLoggedOutWorld();
+        var fetchCalls = 0;
+        CampusCardService.instance.debugBalanceFetcher = () async {
+          fetchCalls++;
+          return 31.0;
+        };
+
+        await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+        await _pumpLoginModal(tester);
+
+        // 通知到达时账号仍不可用：revision 已推进、currentAccount 为 null。
+        UnifiedAuthService.instance.debugSetSession(
+          active: true,
+          account: 'casuser',
+        );
+        UnifiedAuthService.instance.debugSetSession(
+          active: false,
+          account: null,
+        );
+        UnifiedAuthService.instance.notifyListeners();
+        await tester.pump();
+
+        // 身份随后静默就绪（写入方不另行通知），弹窗此刻才返回 true。
+        UnifiedAuthService.instance.debugSetSession(
+          active: true,
+          account: 'casuser',
+        );
+        Navigator.of(
+          tester.element(find.byType(LoginShell)),
+          rootNavigator: true,
+        ).pop(true);
+        await tester.pumpAndSettle();
+
+        // 登录成功必须恰好补上一次余额拉取，余额即时可见，无需再手点刷新。
+        expect(fetchCalls, 1);
+        expect(find.text('31.00'), findsOneWidget);
+        expect(find.text('--'), findsNothing);
+        expect(find.byType(AuthRequiredView), findsNothing);
+        expect(find.byType(LoginShell), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'modal success settles exactly one pull even when identity completed without any notification',
+      (tester) async {
+        // 同一根因的最纯形态：整个登录期间没有任何认证通知，身份在弹窗内
+        // 静默就绪后弹窗以 true 返回——登录成功本身必须成为拉取触发点。
+        _enterLoggedOutWorld();
+        var fetchCalls = 0;
+        CampusCardService.instance.debugBalanceFetcher = () async {
+          fetchCalls++;
+          return 19.5;
+        };
+
+        await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+        await _pumpLoginModal(tester);
+
+        UnifiedAuthService.instance.debugSetSession(
+          active: true,
+          account: 'casuser',
+        );
+        Navigator.of(
+          tester.element(find.byType(LoginShell)),
+          rootNavigator: true,
+        ).pop(true);
+        await tester.pumpAndSettle();
+
+        expect(fetchCalls, 1);
+        expect(find.text('19.50'), findsOneWidget);
+        expect(find.text('--'), findsNothing);
+        expect(find.byType(AuthRequiredView), findsNothing);
+        expect(find.byType(LoginShell), findsNothing);
+      },
+    );
+
+    testWidgets(
       'a late result after sign-out never shows stale feedback on the auth gate',
       (tester) async {
         final pending = Completer<double?>();
@@ -995,6 +1180,16 @@ void main() {
       expect(find.text('23.50'), findsOneWidget);
       expect(find.text('****'), findsNothing);
 
+      // 可见性开关与金额成组（贴着金额，不再浮在标签行右端），且保持
+      // 44x44 最小点按区域。
+      final toggle = find.byTooltip('隐藏余额');
+      final toggleSize = tester.getSize(toggle);
+      expect(toggleSize.width, greaterThanOrEqualTo(44));
+      expect(toggleSize.height, greaterThanOrEqualTo(44));
+      final toggleCenterY = tester.getCenter(toggle).dy;
+      final amountCenterY = tester.getCenter(find.text('23.50')).dy;
+      expect((toggleCenterY - amountCenterY).abs(), lessThan(24));
+
       // 隐藏余额
       await tester.tap(find.byTooltip('隐藏余额'));
       await tester.pumpAndSettle();
@@ -1008,6 +1203,28 @@ void main() {
 
       expect(find.text('23.50'), findsOneWidget);
       expect(find.text('****'), findsNothing);
+    });
+
+    testWidgets('visibility toggle is grouped inline with the balance amount', (
+      tester,
+    ) async {
+      await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+      await tester.pumpAndSettle();
+
+      final label = tester.getRect(find.text('校园卡余额'));
+      final amount = tester.getRect(find.text('23.50'));
+      final eye = tester.getRect(find.byTooltip('隐藏余额'));
+
+      // 不再漂在标签行末端：位于标签之下、紧贴金额右侧、与金额同高成组。
+      expect(eye.center.dy, greaterThan(label.bottom));
+      expect(eye.left, greaterThanOrEqualTo(amount.right));
+      expect(eye.left - amount.right, lessThanOrEqualTo(24));
+      expect(eye.center.dy, moreOrLessEquals(amount.center.dy, epsilon: 8));
+
+      // 保留 44x44 最小点按区域。
+      final size = tester.getSize(find.byTooltip('隐藏余额'));
+      expect(size.width, greaterThanOrEqualTo(44));
+      expect(size.height, greaterThanOrEqualTo(44));
     });
   });
 

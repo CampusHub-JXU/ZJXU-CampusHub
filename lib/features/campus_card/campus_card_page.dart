@@ -53,6 +53,18 @@ class _CampusCardPageState extends State<CampusCardPage> {
   /// 旧请求在途时排队到其结算后补拉的新身份请求（多次排队合并为一次）。
   ({bool showFeedback, bool forceRefresh})? _queuedRefresh;
 
+  /// 每成功排定一次登录后拉取即递增：[_handleLogin] 据此判断本次登录是否已
+  /// 被 [_onAuthChanged] 的身份推进拉取覆盖，保证两条路径合计恰好拉一次。
+  int _pullEpoch = 0;
+
+  /// 登录成功欠下的余额拉取：无论通知先来后来、账号何时就绪，登录最终保证
+  /// 恰好拉一次；弹窗进行中一律推迟到弹窗结算后才真正发出。
+  bool _pendingLoginPull = false;
+
+  /// 登录弹窗进行中深度（防嵌套）：期间所有登录拉取推迟——弹窗内的重复
+  /// 认证通知会作废在途请求，过早发出的拉取既白费触网又让余额悬空。
+  int _loginModalDepth = 0;
+
   @override
   void initState() {
     super.initState();
@@ -94,15 +106,29 @@ class _CampusCardPageState extends State<CampusCardPage> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     setState(() {});
-    // 身份推进（换号 / 同号重登推进 sessionRevision）：立即自动拉一次余额，
-    // 无需用户再点查询；登出、身份未知、同一 revision 的重复通知都不拉。
+    // 身份推进（换号 / 同号重登推进 sessionRevision）恰好欠一次登录拉取。
     // 用微任务延到本次通知广播结束再拉——服务端监听器会先清缓存、推进身份
     // 世代，拉取捕获到的才是新身份上下文。
     if (identity.account != null &&
         (identity.account != previous.account ||
             identity.revision != previous.revision)) {
-      unawaited(Future<void>.microtask(_pullBalanceAfterLogin));
+      _pendingLoginPull = true;
     }
+    // 收敛已欠下的登录拉取：同 revision 的重复通知不新欠、不重拉；登录
+    // 弹窗进行中一律推迟到弹窗结算；账号未就绪继续等下一次认证通知。
+    _settlePendingLoginPull();
+  }
+
+  /// 落实登录欠下的拉取：排定恰好一次。弹窗进行中推迟（弹窗内的重复认证
+  /// 通知会作废在途请求，拉取必须等弹窗结算后发出才活得下来）；账号未就绪
+  /// 则保持欠账，由后续认证通知继续收敛——绝不因通知顺序把拉取悬空。
+  void _settlePendingLoginPull() {
+    if (!_pendingLoginPull || !mounted) return;
+    if (_loginModalDepth > 0) return;
+    if (_currentIdentity().account == null) return;
+    _pendingLoginPull = false;
+    _pullEpoch++;
+    unawaited(Future<void>.microtask(_pullBalanceAfterLogin));
   }
 
   /// 登录后余额拉取入口：force 关闭，只在 owner 绑定缓存缺失 / 过期时触网
@@ -363,7 +389,46 @@ class _CampusCardPageState extends State<CampusCardPage> {
                   style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
                 ),
               ),
-              const Spacer(),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          // 大字号 / 窄屏下金额整体等比缩小，不挤压换行；可见性开关内联在
+          // 金额右侧、与金额同高成组，不再漂在标签行末端。
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Text(
+                        '¥',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w500,
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.xs),
+                      Text(
+                        _obscured ? '****' : balanceText,
+                        style: TextStyle(
+                          fontSize: 40,
+                          fontWeight: FontWeight.w600,
+                          color: cs.onSurface,
+                          letterSpacing: -1,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.xs),
               IconButton(
                 tooltip: _obscured ? '显示余额' : '隐藏余额',
                 onPressed: () => setState(() => _obscured = !_obscured),
@@ -374,44 +439,14 @@ class _CampusCardPageState extends State<CampusCardPage> {
                 ),
                 iconSize: 20,
                 color: cs.onSurfaceVariant,
-                visualDensity: VisualDensity.compact,
+                // 显式 standard density：compact 会把 44 约束盒缩水到 36，
+                // 最小点按区必须真实 ≥ 44x44。
+                visualDensity: VisualDensity.standard,
+                padding: EdgeInsets.zero,
+                alignment: Alignment.centerLeft,
                 constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
               ),
             ],
-          ),
-          const SizedBox(height: AppSpacing.xs),
-          // 大字号 / 窄屏下金额整体等比缩小，不挤压换行。
-          Align(
-            alignment: Alignment.centerLeft,
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
-                children: [
-                  Text(
-                    '¥',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w500,
-                      color: cs.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.xs),
-                  Text(
-                    _obscured ? '****' : balanceText,
-                    style: TextStyle(
-                      fontSize: 40,
-                      fontWeight: FontWeight.w600,
-                      color: cs.onSurface,
-                      letterSpacing: -1,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                    ),
-                  ),
-                ],
-              ),
-            ),
           ),
           const SizedBox(height: AppSpacing.md),
           if (balance == null) ...[
@@ -571,21 +606,29 @@ class _CampusCardPageState extends State<CampusCardPage> {
     setState(() {});
   }
 
-  /// 统一认证登录成功后的余额刷新入口：优先由 [_onAuthChanged] 的登录拉取
-  /// 覆盖；仅当模态期间身份完全未变（如 authExpired 重登）才显式拉一次。
+  /// 统一认证登录成功后的余额刷新入口：登录弹窗以 true 返回就是「已登录」的
+  /// 直接凭据，此刻起恰好欠一次并立即发出余额拉取（弹窗内的重复认证通知
+  /// 再也作废不了它）；期间 [_onAuthChanged] 的身份推进拉取（account+
+  /// sessionRevision）被弹窗推迟，也在这里收口成同一次——[_pullEpoch] 已
+  /// 推进（弹窗外已有拉取覆盖）才不重复。登录通知先来后来、账号何时就绪
+  /// 都不悬空。
   Future<void> _handleLogin() async {
-    final identityAtOpen = _currentIdentity();
-    final loggedIn = await showUnifiedAuthLoginModal(
-      context,
-      title: '登录统一认证',
-      description: '登录后可查询校园卡余额',
-    );
+    final pullEpochAtOpen = _pullEpoch;
+    _loginModalDepth++;
+    final bool loggedIn;
+    try {
+      loggedIn = await showUnifiedAuthLoginModal(
+        context,
+        title: '登录统一认证',
+        description: '登录后可查询校园卡余额',
+      );
+    } finally {
+      _loginModalDepth--;
+    }
     if (!loggedIn || !mounted) return;
-    // 期间身份已推进（含模态内登录成功 / 别处登录 / 同号重登推进 revision）时，
-    // _onAuthChanged 的登录拉取已经覆盖，这里不得重复拉；仅当身份完全未变
-    //（如 authExpired 重登）才显式拉一次。
-    if (_currentIdentity() != identityAtOpen) return;
-    unawaited(_pullBalanceAfterLogin());
+    if (_pullEpoch != pullEpochAtOpen) return;
+    _pendingLoginPull = true;
+    _settlePendingLoginPull();
   }
 
   /// 余额拉取调度：同身份在途请求去重；跨身份的新拉取排到旧请求结算后补拉
