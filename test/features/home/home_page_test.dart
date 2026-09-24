@@ -22,10 +22,12 @@ import 'package:jxu_campus_hub/core/theme/widgets/home_background_layer.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_card.dart';
 import 'package:jxu_campus_hub/features/campus_card/campus_card_service.dart';
 import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_service.dart';
+import 'package:jxu_campus_hub/features/dorm_electricity/epay_electricity_gateway.dart';
 import 'package:jxu_campus_hub/features/exam/exam_service.dart';
 import 'package:jxu_campus_hub/features/grades/grades_service.dart';
 import 'package:jxu_campus_hub/features/home/home_page.dart';
 import 'package:jxu_campus_hub/features/home/home_zone_controller.dart';
+import 'package:jxu_campus_hub/features/home/widget/campus_widget_projection.dart';
 import 'package:jxu_campus_hub/features/home/widget/campus_widget_sync.dart';
 import 'package:jxu_campus_hub/features/home/models/home_presentation.dart';
 import 'package:jxu_campus_hub/features/home/widgets/home_ambient_background.dart';
@@ -119,6 +121,9 @@ void main() {
       'dorm_epay_building_id': 'building',
       'dorm_epay_floor_id': 'floor',
       'dorm_epay_room_id': 'room',
+      // 房间配置 / 余额缓存都要求 owner 标记与当前统一认证账号一致，
+      // 否则首页按 fail closed 回落占位符。
+      DormElectricityService.roomOwnerKey: 'casuser',
     });
 
     UnifiedAuthService.instance.debugSetSession(
@@ -270,7 +275,13 @@ void main() {
       'dorm_epay_building_id': 'building',
       'dorm_epay_floor_id': 'floor',
       'dorm_epay_room_id': 'room',
+      DormElectricityService.roomOwnerKey: 'casuser',
     });
+    // 电费缓存与房间配置都归属当前统一认证账号，低电量投影才允许展示。
+    UnifiedAuthService.instance.debugSetSession(
+      active: true,
+      account: 'casuser',
+    );
     DormElectricityService.instance.debugSetCachedElectricity(
       3.2,
       updatedAt: now,
@@ -730,6 +741,11 @@ void main() {
   testWidgets('campus data bus re-adopts memory cache without a new fetch', (
     tester,
   ) async {
+    // 电费内存缓存按 owner 归属：先建立统一认证身份，注入值才可展示。
+    UnifiedAuthService.instance.debugSetSession(
+      active: true,
+      account: 'casuser',
+    );
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
     AppBootstrapController.instance.debugSetPhase(
       AppBootstrapPhase.localStateReady,
@@ -764,6 +780,10 @@ void main() {
   testWidgets('campus data bus projects cache and drops it when cache clears', (
     tester,
   ) async {
+    UnifiedAuthService.instance.debugSetSession(
+      active: true,
+      account: 'casuser',
+    );
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
     AppBootstrapController.instance.debugSetPhase(
       AppBootstrapPhase.localStateReady,
@@ -792,6 +812,10 @@ void main() {
   testWidgets(
     'campus data bus update before hydrate is ignored until hydrate',
     (tester) async {
+      UnifiedAuthService.instance.debugSetSession(
+        active: true,
+        account: 'casuser',
+      );
       DormElectricityService.instance.debugSetCachedElectricity(
         42,
         updatedAt: DateTime.now(),
@@ -850,17 +874,19 @@ void main() {
       'dorm_epay_building_id': 'building',
       'dorm_epay_floor_id': 'floor',
       'dorm_epay_room_id': 'room',
+      DormElectricityService.roomOwnerKey: 'casuser',
     });
-    DormElectricityService.instance.debugSetCachedElectricity(
-      42,
-      updatedAt: now,
-    );
     await _seedPrivateProjection(
       now: now,
       account: 'casuser',
       studentId: '2025000001',
       balance: 23.5,
       examDate: tomorrow,
+    );
+    // 身份就绪后再注入电费缓存：owner 归属当前统一认证账号，才允许展示。
+    DormElectricityService.instance.debugSetCachedElectricity(
+      42,
+      updatedAt: now,
     );
     await SemesterCalendar.instance.setSemesterStartDate(now);
     ScheduleService.instance.debugSetSnapshot(
@@ -886,15 +912,15 @@ void main() {
     expect(find.text('42 度'), findsOneWidget);
 
     // 在别处登出统一认证：挂载中的首页必须同步按当前 owner 重新采纳投影，
-    // 余额带 CAS 归属校验 → 立即回落占位符，不保留上一身份的副本。
+    // 余额与电费都带归属校验 → 立即回落占位符，不保留上一身份的副本。
     UnifiedAuthService.instance.debugSetSession(active: false, account: null);
     UnifiedAuthService.instance.notifyListeners();
     await tester.pump();
 
     expect(find.text('¥23.5'), findsNothing);
-    expect(find.text('--'), findsOneWidget);
-    // 电费不是私有数据：不随身份登出清空。
-    expect(find.text('42 度'), findsOneWidget);
+    expect(find.text('--'), findsNWidgets(2));
+    // 电费同为 owner 归属私有数据：随统一认证登出立即清空。
+    expect(find.text('42 度'), findsNothing);
     // 教务身份未变：考试 / 课表仍属当前 owner，保持展示。
     expect(find.text('明天考试'), findsOneWidget);
 
@@ -908,7 +934,8 @@ void main() {
     expect(find.text('微观经济学'), findsNothing);
     expect(find.text('线性代数'), findsNothing);
     expect(find.text('登录后查看课程'), findsOneWidget);
-    expect(find.text('42 度'), findsOneWidget);
+    expect(find.text('42 度'), findsNothing);
+    expect(find.text('--'), findsNWidgets(2));
   });
 
   testWidgets('mounted home re-adopts projection for the new owner on switch', (
@@ -1054,6 +1081,120 @@ void main() {
       expect(find.byType(SnackBar), findsNothing);
     },
   );
+
+  testWidgets(
+    'late prior-owner electricity response cannot leak into the new owner',
+    (tester) async {
+      final now = DateTime.now();
+
+      SharedPreferences.setMockInitialValues({
+        'dorm_epay_area_id': 'area',
+        'dorm_epay_building_id': 'building',
+        'dorm_epay_floor_id': 'floor',
+        'dorm_epay_room_id': 'room',
+        DormElectricityService.roomOwnerKey: 'casuserA',
+      });
+      await _seedCampusCardBalance(
+        now: now,
+        account: 'casuserA',
+        balance: 23.5,
+      );
+      // A 的旧缓存已超过 30 分钟刷新窗口：先按 A 展示低电量，同时必然触发
+      // 一次网络刷新（内存缓存已采纳，restoreCache 短路，不经过私有写队列）。
+      DormElectricityService.instance.debugSetCachedElectricity(
+        3.2,
+        updatedAt: now.subtract(const Duration(minutes: 31)),
+      );
+
+      // A 的刷新悬挂在网关里，保持 in-flight。
+      final pending = Completer<String>();
+      final gateway = _PendingElectricityGateway(pending);
+      DormElectricityService.instance.debugSetGateway(gateway);
+
+      await tester.pumpWidget(const MaterialApp(home: HomePage()));
+      AppBootstrapController.instance.debugSetPhase(
+        AppBootstrapPhase.localStateReady,
+      );
+      await tester.pump();
+      await _pumpUntil(tester, () => gateway.calls > 0);
+
+      expect(gateway.calls, 1);
+      // A 的过期低电量先展示：资产行 + 事件横幅。
+      expect(find.text('¥23.5'), findsOneWidget);
+      expect(find.text('3.20 度'), findsOneWidget);
+      expect(find.textContaining('电量偏低'), findsOneWidget);
+
+      // 换号到 B：上一账号电费与低电量横幅立即回落占位符。
+      UnifiedAuthService.instance.debugSetSession(
+        active: true,
+        account: 'casuserB',
+      );
+      UnifiedAuthService.instance.notifyListeners();
+      await tester.pump();
+
+      expect(find.text('¥23.5'), findsNothing);
+      expect(find.text('3.20 度'), findsNothing);
+      expect(find.textContaining('电量偏低'), findsNothing);
+      expect(find.text('--'), findsNWidgets(2));
+
+      // A 的迟到响应（同为低电量 3.2 度）此时才返回：不得写回展示、事件
+      // 横幅或桌面组件投影。
+      pending.complete(
+        '{"code":"200","msg":"SUC0000","data":{"balance_list":[{"id":"room","balance":"3.2"}]}}',
+      );
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      expect(DormElectricityService.instance.cachedElectricity, isNull);
+      expect(find.text('3.20 度'), findsNothing);
+      expect(find.textContaining('电量偏低'), findsNothing);
+      expect(find.text('--'), findsNWidgets(2));
+      expect(find.byType(SnackBar), findsNothing);
+
+      final projection = buildCampusWidgetProjection();
+      expect(projection.dormElectricity, '--');
+      expect(projection.hasElectricityData, isFalse);
+    },
+  );
+
+  testWidgets('legacy unowned dorm config never projects on home', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+
+    SharedPreferences.setMockInitialValues({
+      'dorm_epay_area_id': 'area',
+      'dorm_epay_building_id': 'building',
+      'dorm_epay_floor_id': 'floor',
+      'dorm_epay_room_id': 'room',
+      // 历史遗留数据：房间配置 / 余额都在，但没有 owner 标记。
+      'dorm_cached_electricity': 42.0,
+      'dorm_cached_electricity_updated_at': now.millisecondsSinceEpoch,
+    });
+    UnifiedAuthService.instance.debugSetSession(
+      active: true,
+      account: 'casuser',
+    );
+
+    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    AppBootstrapController.instance.debugSetPhase(
+      AppBootstrapPhase.localStateReady,
+    );
+    await tester.pump();
+    await tester.pump();
+
+    // 无 owner 标记的磁盘数据不得被采纳：服务内存缓存保持为空，首页资产行
+    // 与桌面组件投影都回落占位符（磁盘数据保留但不展示）。
+    expect(DormElectricityService.instance.cachedElectricity, isNull);
+    expect(DormElectricityService.instance.hasFreshCache, isFalse);
+    expect(find.text('42 度'), findsNothing);
+    expect(find.text('--'), findsNWidgets(2));
+
+    final projection = buildCampusWidgetProjection();
+    expect(projection.dormElectricity, '--');
+    expect(projection.hasElectricityData, isFalse);
+  });
 }
 
 /// 1×1 透明 PNG，给 Image.file 一条真实可读路径。
@@ -1240,4 +1381,60 @@ ScheduleCacheSnapshot _scheduleSnapshotFor({
     scheduleUpdatedAt: now,
     changeRulesUpdatedAt: now,
   );
+}
+
+/// 有界推进 pump：直到 [condition] 满足或达到 [maxPumps]（每次推进 10ms）。
+/// 避免依赖固定 pump 次数在 FakeAsync 下变得脆弱，同时保证永不无限等待。
+Future<void> _pumpUntil(
+  WidgetTester tester,
+  bool Function() condition, {
+  int maxPumps = 40,
+}) async {
+  for (var i = 0; i < maxPumps && !condition(); i++) {
+    await tester.pump(const Duration(milliseconds: 10));
+  }
+}
+
+/// 只写入校园卡余额的 owner 私有缓存并恢复进内存：hydrate 后余额走缓存
+/// 短路，不触发网络，让测试聚焦电费链路。
+Future<void> _seedCampusCardBalance({
+  required DateTime now,
+  required String account,
+  required double balance,
+}) async {
+  UnifiedAuthService.instance.debugSetSession(active: true, account: account);
+  await CredentialStore.instance.saveUnifiedAuthSession(account);
+  final cardEpoch = (await AuthSessionPersistence.instance.read(
+    CredentialSessionDomain.unified,
+  )).epoch;
+  await SecureStoragePrivateCacheStore(CampusCardService.cacheKey).write(
+    PrivateCacheEnvelope(
+      owner: account,
+      updatedAt: now,
+      epoch: cardEpoch,
+      payload: balance,
+    ),
+  );
+  await CampusCardService.instance.restoreBalance();
+}
+
+/// 悬挂的电费网关：`call` 直到测试显式 complete 才返回，用于制造
+/// 「A 在途刷新 → 换号到 B → A 迟到响应」的确定性竞态。
+class _PendingElectricityGateway implements Epay100Gateway {
+  _PendingElectricityGateway(this.pending);
+
+  final Completer<String> pending;
+  int calls = 0;
+
+  @override
+  Future<String> call(String method, Map<String, String> data) {
+    calls++;
+    return pending.future;
+  }
+
+  @override
+  Future<void> invalidate() async {}
+
+  @override
+  void debugReset() {}
 }

@@ -175,8 +175,9 @@ class _HomePageState extends State<HomePage> {
   }
 
   /// 统一认证身份变化（登录 / 登出 / 换号 / 同号重登）：推进认证世代作废
-  /// 在途私有刷新结果，并同步按当前 owner 重新采纳内存投影——校园卡余额
-  /// 带 CAS 归属校验，登出 / 换号后立即回落占位符，不保留上一身份的内容。
+  /// 在途私有刷新结果，并同步按当前 owner 重新采纳内存投影——校园卡余额与
+  /// 电费都带统一认证 owner 归属校验，登出 / 换号后立即回落占位符，
+  /// 不保留上一身份的内容。
   void _onUnifiedAuthChanged() {
     if (!mounted) return;
     _authGeneration++;
@@ -198,7 +199,8 @@ class _HomePageState extends State<HomePage> {
   ///
   /// bootstrap 本地状态恢复前不采纳，避免用半截缓存覆盖既有 hydrate 时序；
   /// 采纳来源 [CampusSnapshotCoordinator.restore] 本身按当前 owner 归属
-  /// 过滤，登出 / 换号只会得到空值；电费不是私有数据，保持原值。
+  /// 过滤（校园卡余额 / 电费 / 考试 / 课表都带 owner 校验），登出 / 换号只会
+  /// 得到空值，不保留上一身份的任何投影。
   void _reAdoptPrivateProjection() {
     if (!mounted || !_hasHydratedBootstrapState) return;
     setState(() {
@@ -309,10 +311,16 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  /// 电费刷新：房间配置 / 余额都按当前统一认证 owner 归属（无 owner 标记
+  /// 或归属他人时 `hasRoomConfig` 即为 false，直接回落占位符）。await 前捕获
+  /// 认证世代，房间配置与网络结果都只在世代未变时写回；登出 / 换号后迟到的
+  /// 旧 owner 结果一律丢弃。
   Future<void> _refreshDormElectricity() async {
     if (!_isBootstrapReady) return;
-    if (!await _snapshotCoordinator.hasElectricityRoomConfig()) {
-      if (!mounted) return;
+    final authGuard = _authGeneration;
+    final hasRoomConfig = await _snapshotCoordinator.hasElectricityRoomConfig();
+    if (!mounted || authGuard != _authGeneration) return;
+    if (!hasRoomConfig) {
       setState(() {
         _dormElectricity = '--';
       });
@@ -320,12 +328,12 @@ class _HomePageState extends State<HomePage> {
     }
     try {
       final text = await _snapshotCoordinator.fetchElectricityText();
-      if (!mounted) return;
+      if (!mounted || authGuard != _authGeneration) return;
       setState(() {
         _dormElectricity = text;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || authGuard != _authGeneration) return;
       NetworkErrorToast.show(context, e);
     }
   }

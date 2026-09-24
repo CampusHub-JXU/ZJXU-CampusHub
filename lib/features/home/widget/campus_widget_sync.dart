@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import '../../../core/auth/unified_auth.dart';
+import '../../../core/auth/zhengfang_auth.dart';
 import '../../../core/notice/notice_sync_store.dart';
 import '../../../core/semester/semester_calendar.dart';
 import '../../../core/system_surface/campus_data_change_bus.dart';
@@ -25,6 +27,9 @@ class CampusWidgetSync {
   ///
   /// 课表/成绩/考试/校园卡/电费在数据真正落库时由各自 service ping
   /// [CampusDataChangeBus]，这里统一消费；首页刷新路径也会显式 requestSync()。
+  /// 统一认证 / 教务身份变化同样重推一次：投影只读各 service 的 owner 归属
+  /// 校验结果（登出 / 换号后校园卡余额与电费立即回落占位符），不发起网络、
+  /// 不 ping 总线，因此不会形成 notify → fetch → notify 循环。
   void start() {
     if (_started) return;
     _started = true;
@@ -34,6 +39,8 @@ class CampusWidgetSync {
     PersonalizationController.instance.fullDayCoursesEnabled.addListener(
       requestSync,
     );
+    UnifiedAuthService.instance.addListener(requestSync);
+    ZhengfangAuth.instance.addListener(requestSync);
   }
 
   /// 请求一次（debounced）同步；从缓存读取，不触发网络。
