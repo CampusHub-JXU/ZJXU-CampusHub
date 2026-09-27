@@ -50,6 +50,10 @@ Future<AutomaticLoginAttemptResult> _commitAcademicSession(
 Response<T> _response<T>(int? statusCode, T? data) => Response<T>(
   requestOptions: RequestOptions(path: '/kbcx/xskbcx_cxXsKb.html'),
   statusCode: statusCode,
+  headers: Headers.fromMap({
+    if (statusCode == 302 || statusCode == 303)
+      'location': ['/jwglxt/xtgl/login_slogin.html'],
+  }),
   data: data,
 );
 
@@ -134,8 +138,12 @@ void main() {
   });
 
   group('isAuthExpiredResponse', () {
-    test('901 与既有 302/303/401/403 一律识别为认证过期', () {
-      for (final status in <int>[901, 302, 303, 401, 403]) {
+    test('901/401 与明确登录跳转识别为认证过期；403 不误判', () {
+      expect(
+        AcademicAuthGuard.isAuthExpiredResponse(_response(403, null)),
+        isFalse,
+      );
+      for (final status in <int>[901, 302, 303, 401]) {
         final response = _response<Map<String, dynamic>>(
           status,
           <String, dynamic>{'code': status},
@@ -301,7 +309,7 @@ void main() {
       adapter.registerText(
         'GET',
         '/jwglxt/xtgl/index_initMenu.html',
-        '<html><body>教务首页</body></html>',
+        '<html><a href="/xtgl/index_initMenu.html">教务首页</a></html>',
       );
       DioClient.instance.debugUseMemoryCookieStorage = true;
       // 内存存储仍会解析 cookie 目录路径，测试环境不注册 path_provider。
@@ -352,7 +360,7 @@ void main() {
         'GET',
         '/kbcx/xskbcx_cxXsKb.html',
         '{"error":"denied"}',
-        statusCode: 403,
+        statusCode: 901,
         headers: <String, List<String>>{
           Headers.contentTypeHeader: <String>['application/json'],
         },

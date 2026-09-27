@@ -95,13 +95,15 @@ class CampusSnapshotCoordinator {
   /// 有缓存时直接返回缓存文案；无缓存时发网络。
   String? cachedCampusCardBalanceText() {
     final cached = CampusCardService.instance.cachedBalance;
-    if (cached == null) return null;
+    if (cached == null || CampusCardService.instance.isStale) return null;
     return CampusCardService.instance.formatBalance(cached);
   }
 
   Future<String> fetchCampusCardBalanceText() async {
     final networkBalance = await CampusCardService.instance.fetchBalance();
-    return CampusCardService.instance.formatBalance(networkBalance);
+    return CampusCardService.instance.formatBalance(
+      networkBalance ?? CampusCardService.instance.cachedBalance,
+    );
   }
 
   Future<bool> hasElectricityRoomConfig() =>

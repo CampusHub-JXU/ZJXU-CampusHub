@@ -32,12 +32,45 @@ class AcademicAuthManualLoginRequiredException
     : super(automaticLoginPaused: true);
 }
 
+/// 恢复正在退避或等待人工验证码；保留同账号最后一次成功数据。
+class AcademicAuthRecoveryPendingException
+    extends AcademicAuthExpiredException {
+  const AcademicAuthRecoveryPendingException();
+
+  @override
+  String toString() => '正在恢复教务登录，稍后自动重试';
+}
+
+/// 与响应一起返回的身份凭据，只允许原会话或本次恢复的真实 receipt。
+class AcademicGuardedResponse<T> {
+  const AcademicGuardedResponse({
+    required this.response,
+    required this.account,
+    required this.revision,
+    required this.epoch,
+  });
+
+  final Response<T> response;
+  final String? account;
+  final int revision;
+  final int? epoch;
+}
+
+class _RecoveryLease {
+  const _RecoveryLease(this.account, this.revision, this.epoch);
+  final String? account;
+  final int revision;
+  final int? epoch;
+}
+
 /// 封装教务业务请求的"认证过期识别 + 会话恢复 + 自动重试一次"链路（PRD FR-2）。
 ///
 /// 供 exam/grades/schedule 等教务依赖模块复用，避免每个 service 各自重复
 /// 302/403/登录页重定向识别与 `markLoggedOut` 逻辑。
 class AcademicAuthGuard {
   const AcademicAuthGuard._();
+
+  static final _recoveries = <(String?, int, int?), Future<_RecoveryLease>>{};
 
   /// 测试注入：替换静默自动登录动作（默认走 [AutomaticLoginService.instance]）。
   ///
@@ -67,8 +100,8 @@ class AcademicAuthGuard {
   ///
   /// 语义与 [guardRequest] 内部判定完全一致，供教务依赖模块在自行处理
   /// 响应（如 `validateStatus < 1000` 把 901 作为正常响应返回）时复用：
-  /// - 状态码 901 / 302 / 303 / 401 / 403：业务接口不应出现这些状态，
-  ///   一律视为登录态失效（901 是教务未登录/会话失效的专用状态码）。
+  /// - 901 / 401，或 302 / 303 明确跳到已知登录入口：登录态失效。
+  ///   单独 403 属于权限/业务拒绝，未知重定向不触发登录或撤销。
   /// - 状态码 200 且响应体是严格命中的正方登录 HTML
   ///   （[looksLikeZhengfangLoginHtml]）：视为登录态失效。
   /// - 其他状态码 / 空响应 / 非字符串响应体：不是认证过期，绝不误判。
@@ -77,13 +110,14 @@ class AcademicAuthGuard {
   static bool isAuthExpiredResponse<T>(Response<T>? response) {
     if (response == null) return false;
     final code = response.statusCode ?? 0;
-    // 业务接口不应重定向；901/302/303/401/403 都视为登录态失效。
-    if (code == 901 ||
-        code == 302 ||
-        code == 303 ||
-        code == 401 ||
-        code == 403) {
-      return true;
+    if (code == 901 || code == 401) return true;
+    if (code == 302 || code == 303) {
+      final location = response.headers.value('location') ?? '';
+      final lower = location.toLowerCase();
+      return lower.contains('/xtgl/login_slogin.html') ||
+          lower.contains('kaptcha') ||
+          lower.contains('/cas/login') ||
+          isZhengfangGatewayLoginUrl(location);
     }
     if (code == 200) {
       final data = response.data;
@@ -114,97 +148,141 @@ class AcademicAuthGuard {
   static Future<Response<T>> guardRequest<T>({
     required Future<Response<T>> Function() request,
     Object authExpiredException = const AcademicAuthExpiredException(),
+  }) async => (await guardWithSession<T>(
+    request: request,
+    authExpiredException: authExpiredException,
+  )).response;
+
+  /// 只读业务的有界再查询，同时返回可用于私有缓存条件提交的身份版本。
+  static Future<AcademicGuardedResponse<T>> guardWithSession<T>({
+    required Future<Response<T>> Function() request,
+    Object authExpiredException = const AcademicAuthExpiredException(),
   }) async {
     final auth = ZhengfangAuth.instance;
-    final revisionAtStart = auth.sessionRevision;
-    final accountAtStart = auth.currentStudentId;
-    final epochAtStart = await auth.durableAcademicEpochOrUnknown();
-    // 持久 epoch 读取本身是异步边界：若期间已换号/重登，连首次业务请求
-    // 都不应再用新会话为旧 owner 发出。
-    if (!_isSessionCurrent(auth, revisionAtStart)) {
-      throw authExpiredException;
-    }
-
-    final resp = await _safeRequest(request);
-    if (!isAuthExpiredResponse<T>(resp)) return resp;
-
-    // 首个请求期间身份已变化：本失效响应属于旧 owner，fail closed。
-    if (!_isSessionCurrent(auth, revisionAtStart)) {
-      AppLogger.instance.auth(LogLevel.warn, '教务请求命中认证过期，但会话已变化，放弃恢复与撤销');
-      throw authExpiredException;
-    }
-
-    AppLogger.instance.auth(LogLevel.warn, '教务请求命中认证过期，尝试恢复会话后重试一次');
-    final recovered = await _attemptRecovery();
-
-    // 恢复探测期间身份已变化：本次失效响应/恢复结果属于旧 owner，不重试、
-    // 不 OCR、不撤销新会话，fail closed。
-    if (!_isSessionCurrent(auth, revisionAtStart)) {
-      AppLogger.instance.auth(LogLevel.warn, '会话恢复期间身份已变化，放弃重试、自动登录与撤销');
-      throw authExpiredException;
-    }
-
-    if (recovered) {
-      final retry = await _safeRequest(request);
-      if (!isAuthExpiredResponse<T>(retry)) return retry;
-      AppLogger.instance.auth(LogLevel.warn, '教务请求重试后仍命中认证过期，条件撤销');
-      await auth.revokeExpiredSessionIfCurrent(
-        revision: revisionAtStart,
-        account: accountAtStart,
-        expectedEpoch: epochAtStart,
+    final revision = auth.sessionRevision;
+    final account = auth.currentStudentId;
+    final epoch = await _knownEpoch(account);
+    if (!_isSessionCurrent(auth, revision)) throw authExpiredException;
+    final first = await _safeRequest(request);
+    if (!_isSessionCurrent(auth, revision)) throw authExpiredException;
+    var lease = _RecoveryLease(account, revision, epoch);
+    if (isAuthExpiredResponse(first)) {
+      final key = (account, revision, epoch);
+      final pending = _recoveries.putIfAbsent(
+        key,
+        () => _recover(lease, const AcademicAuthExpiredException()),
       );
-      throw authExpiredException;
+      try {
+        lease = await pending;
+      } on AcademicAuthRecoveryPendingException {
+        rethrow;
+      } on AcademicAuthExpiredException catch (error) {
+        if (error.automaticLoginPaused) {
+          throw _expiredExceptionFor(
+            authExpiredException,
+            AutomaticLoginOutcome.manualRequired,
+          );
+        }
+        throw authExpiredException;
+      } finally {
+        if (identical(_recoveries[key], pending)) _recoveries.remove(key);
+      }
+      if (!await _leaseIsCurrent(lease)) throw authExpiredException;
+      final retry = await _safeRequest(request);
+      if (!await _leaseIsCurrent(lease)) throw authExpiredException;
+      if (isAuthExpiredResponse(retry)) {
+        await auth.revokeExpiredSessionIfCurrent(
+          revision: lease.revision,
+          account: lease.account,
+          expectedEpoch: lease.epoch ?? -1,
+        );
+        throw authExpiredException;
+      }
+      return AcademicGuardedResponse(
+        response: retry,
+        account: lease.account,
+        revision: lease.revision,
+        epoch: lease.epoch,
+      );
     }
+    if (!await _leaseIsCurrent(lease)) throw authExpiredException;
+    return AcademicGuardedResponse(
+      response: first,
+      account: account,
+      revision: revision,
+      epoch: epoch,
+    );
+  }
 
-    // 会话恢复失败：前台静默尝试一次自动登录；只有真实 receipt 才重试原请求。
-    final revisionBeforeAutoLogin = auth.sessionRevision;
-    final attempt = await _attemptSilentAutomaticLogin(accountAtStart);
-    final outcome = attempt.outcome;
+  static Future<bool> _leaseIsCurrent(_RecoveryLease lease) async {
+    final auth = ZhengfangAuth.instance;
+    if (auth.sessionRevision != lease.revision ||
+        auth.currentStudentId != lease.account) {
+      return false;
+    }
+    final epoch = lease.epoch;
+    final account = lease.account;
+    if (epoch == null || epoch < 0 || account == null) return true;
+    final current = await AuthSessionPersistence.instance
+        .withCurrentSession<bool>(
+          CredentialSessionDomain.academic,
+          account: account,
+          expectedEpoch: epoch,
+          action: () async =>
+              auth.sessionRevision == lease.revision &&
+              auth.currentStudentId == account,
+        );
+    return current == true;
+  }
 
-    if (outcome == AutomaticLoginOutcome.committed) {
+  static Future<int> _knownEpoch(String? account) async {
+    try {
+      final session = await AuthSessionPersistence.instance.read(
+        CredentialSessionDomain.academic,
+      );
+      return session.active && session.account == account ? session.epoch : -1;
+    } catch (_) {
+      return -1;
+    }
+  }
+
+  static Future<_RecoveryLease> _recover(
+    _RecoveryLease start,
+    Object expired,
+  ) async {
+    final auth = ZhengfangAuth.instance;
+    final recovered = await _attemptRecovery();
+    if (!_isSessionCurrent(auth, start.revision)) throw expired;
+    if (recovered) return start;
+    final attempt = await _attemptSilentAutomaticLogin(start.account);
+    if (attempt.outcome == AutomaticLoginOutcome.committed) {
       final receipt = attempt.receipt;
+      final committedRevision = auth.sessionRevision;
       if (receipt == null ||
           !await _receiptProvesCurrentSession(
             receipt,
-            ownerAccount: accountAtStart,
-            revisionBeforeCommit: revisionBeforeAutoLogin,
+            ownerAccount: start.account,
+            revisionBeforeCommit: start.revision,
           )) {
-        // 无来源归属 / 旁路登录 / 身份已变：fail closed，不发无归属 retry，
-        // 也绝不撤销旁路登录。
-        AppLogger.instance.auth(
-          LogLevel.warn,
-          '自动登录 committed 无可信 receipt 归属，fail closed',
-        );
-        throw _expiredExceptionFor(authExpiredException, outcome);
+        throw expired;
       }
-      final revisionAfterCommit = auth.sessionRevision;
-      final retry = await _safeRequest(request);
-      // 重试期间或之后外部并发换号：fail closed，不撤销旁路登录。
-      if (!await _receiptProvesCurrentSession(
-        receipt,
-        ownerAccount: accountAtStart,
-        revisionBeforeCommit: revisionBeforeAutoLogin,
-      )) {
-        AppLogger.instance.auth(LogLevel.warn, '自动登录重试期间身份已变化，fail closed');
-        throw _expiredExceptionFor(authExpiredException, outcome);
-      }
-      if (!isAuthExpiredResponse<T>(retry)) return retry;
-      AppLogger.instance.auth(LogLevel.warn, '自动登录成功后重试仍命中认证过期，条件撤销本次 receipt');
-      await auth.revokeSessionIfCurrent(
-        revision: revisionAfterCommit,
-        account: receipt.account,
-        expectedEpoch: receipt.epoch,
-      );
-      throw _expiredExceptionFor(authExpiredException, outcome);
+      // 固定 receipt 对应的内存版本，后续旁路重登不得被接受。
+      if (auth.sessionRevision != committedRevision) throw expired;
+      return _RecoveryLease(receipt.account, committedRevision, receipt.epoch);
     }
-
-    // 非提交终态：仅在仍是请求发起时的 owner/epoch 时条件撤销，否则至多清旧内存。
+    if (!_isSessionCurrent(auth, start.revision)) throw expired;
+    if (attempt.outcome == AutomaticLoginOutcome.busy ||
+        attempt.outcome == AutomaticLoginOutcome.cooldown ||
+        attempt.outcome == AutomaticLoginOutcome.failed) {
+      // 暂时失败不能撤销另一条恢复事务，也不能清掉同账号最后成功快照。
+      throw const AcademicAuthRecoveryPendingException();
+    }
     await auth.revokeExpiredSessionIfCurrent(
-      revision: revisionAtStart,
-      account: accountAtStart,
-      expectedEpoch: epochAtStart,
+      revision: start.revision,
+      account: start.account,
+      expectedEpoch: start.epoch ?? -1,
     );
-    throw _expiredExceptionFor(authExpiredException, outcome);
+    throw _expiredExceptionFor(expired, attempt.outcome);
   }
 
   /// 会话 revision 是否仍等于发起时的值；任何身份变化都会推进 revision。
@@ -226,6 +304,7 @@ class AcademicAuthGuard {
     if (expected.isNotEmpty && receiptAccount != expected) return false;
     if ((auth.currentStudentId?.trim() ?? '') != receiptAccount) return false;
     if (auth.sessionRevision == revisionBeforeCommit) return false;
+    final capturedRevision = auth.sessionRevision;
     try {
       final current = await AuthSessionPersistence.instance
           .withCurrentSession<bool>(
@@ -234,7 +313,9 @@ class AcademicAuthGuard {
             expectedEpoch: receipt.epoch,
             action: () async => true,
           );
-      return current == true;
+      return current == true &&
+          auth.sessionRevision == capturedRevision &&
+          auth.currentStudentId?.trim() == receiptAccount;
     } catch (error, stackTrace) {
       AppLogger.instance.auth(
         LogLevel.warn,
@@ -305,10 +386,8 @@ class AcademicAuthGuard {
     try {
       return await request();
     } on DioException catch (e) {
-      // 业务接口配置 validateStatus < 1000，302/901 不会抛；但 403/网络异常
-      // 可能抛。仅当 DioException 携带明确认证过期状态（901/302/303/401/403
-      // 或 200 登录 HTML）时才封装为可识别的响应，其他非认证错误一律重抛，
-      // 不得吞掉。
+      // 仅将明确过期的 901/401、指向已知登录入口的 302/303 或 200 登录 HTML
+      // 封装为可识别响应；403、未知重定向及传输异常按原错误抛出。
       final response = e.response;
       if (response == null || !isAuthExpiredResponse(response)) rethrow;
       // Dio 抛出的 DioException.response 运行期类型是 Response<dynamic>，
@@ -329,11 +408,17 @@ class AcademicAuthGuard {
   static Future<bool> _attemptRecovery() async {
     try {
       final mode = await ConnectModeResolver.instance.resolve();
+      if (mode != null) ZhengfangAuth.instance.setMode(mode);
       if (mode == ZhengfangMode.webVpn) {
         final ok = await ZhengfangAuth.instance.ensureWebVpnGatewaySession(
           syncWebViewCookies: false,
         );
-        return ok == true;
+        if (ok != true) return false;
+        // 网关与教务是不同认证域，网关 ready 不能证明正方 Cookie 有效。
+        return await ZhengfangAuth.instance.validateSession(
+              revokeOnInvalid: false,
+            ) ==
+            true;
       }
       if (mode == ZhengfangMode.direct) {
         // 无登出副作用探测：撤销留给 guard 的终态条件撤销，探测本身不得

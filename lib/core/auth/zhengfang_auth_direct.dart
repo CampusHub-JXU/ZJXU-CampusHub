@@ -3,6 +3,7 @@ part of 'zhengfang_auth.dart';
 extension ZhengfangAuthDirectExtension on ZhengfangAuth {
   /// 设置连接模式
   void setMode(ZhengfangMode mode) {
+    if (_mode == mode) return;
     _mode = mode;
 
     _contextIndicatesLoggedIn = false;
@@ -233,8 +234,9 @@ extension ZhengfangAuthDirectExtension on ZhengfangAuth {
   }
 
   Future<void> restoreSession() async {
+    final revision = _sessionRevision;
     final studentId = await CredentialStore.instance.loadZhengfangSession();
-    if (studentId == null) return;
+    if (studentId == null || revision != _sessionRevision) return;
     final identityChanged = currentStudentId != studentId || !_sessionActive;
     _applySessionIdentity(active: true, studentId: studentId);
     if (identityChanged) _notifyAuthListeners();

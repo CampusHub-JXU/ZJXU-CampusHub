@@ -5,6 +5,8 @@ import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
+import '../logging/app_logger.dart';
+
 import 'auth_failure.dart';
 import 'auth_recovery_state_store.dart';
 import 'auth_session_persistence.dart';
@@ -151,6 +153,11 @@ class AuthOperationCoordinator {
     debugCredentialLoader = null;
     _runningExchanges.clear();
     _transientFailures.clear();
+    for (final timer in _manualTimers.values) {
+      timer.cancel();
+    }
+    _manualTimers.clear();
+    _manualHolders.clear();
   }
 
   // ── opt-in / 退出 / 失败 ──────────────────────────────────────────
@@ -245,6 +252,62 @@ class AuthOperationCoordinator {
   Future<void> endManualAttempt(AuthRecoveryDomain domain) =>
       _store.endManualHold(domain);
 
+  final _manualHolders = <AuthRecoveryDomain, int>{};
+  final _manualTimers = <AuthRecoveryDomain, Timer>{};
+
+  Duration _failureCooldown(AuthRecoveryDomain domain, Duration? specified) {
+    final failures = (_transientFailures[domain] ?? 0) + 1;
+    _transientFailures[domain] = failures;
+    return specified ?? AuthRecoveryStateStore.transientBackoffFor(failures);
+  }
+
+  /// 页面持有人工验证码期间续租；多个页面关闭其中一个不会释放另一个的窗口。
+  Future<void> Function() acquireManualAttempt(AuthRecoveryDomain domain) {
+    _manualHolders[domain] = (_manualHolders[domain] ?? 0) + 1;
+    unawaited(_persistManualHold(domain));
+    _manualTimers.putIfAbsent(
+      domain,
+      () => Timer.periodic(const Duration(minutes: 1), (_) {
+        unawaited(_persistManualHold(domain));
+      }),
+    );
+    var released = false;
+    return () async {
+      if (released) return;
+      released = true;
+      final remaining = (_manualHolders[domain] ?? 1) - 1;
+      if (remaining > 0) {
+        _manualHolders[domain] = remaining;
+      } else {
+        _manualHolders.remove(domain);
+        _manualTimers.remove(domain)?.cancel();
+        try {
+          await endManualAttempt(domain);
+        } catch (error, stackTrace) {
+          AppLogger.instance.auth(
+            LogLevel.warn,
+            '人工登录窗口释放失败，等待持久 TTL',
+            error: error,
+            stackTrace: stackTrace,
+          );
+        }
+      }
+    };
+  }
+
+  Future<void> _persistManualHold(AuthRecoveryDomain domain) async {
+    try {
+      await beginManualAttempt(domain);
+    } catch (error, stackTrace) {
+      AppLogger.instance.auth(
+        LogLevel.warn,
+        '人工登录窗口持久化失败，保留前台互斥',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+  }
+
   // ── 资格 / ticket ────────────────────────────────────────────────
 
   Future<AuthRecoveryDecision> automaticEligibility(
@@ -256,7 +319,11 @@ class AuthOperationCoordinator {
   Future<bool> verifyTicketForCommit(
     AuthRecoveryTicket ticket, {
     DateTime? now,
-  }) => _store.verifyTicket(ticket, now: now);
+  }) async {
+    if (_manualHolders.containsKey(ticket.domain)) return false;
+    final valid = await _store.verifyTicket(ticket, now: now);
+    return valid && !_manualHolders.containsKey(ticket.domain);
+  }
 
   /// 受约束的隔离会话提交：在**同一次状态锁内**重新校验 ticket，再做
   /// durable-epoch 条件提交，并把隔离 challenge 会话的 cookie 合并回 [target]。
@@ -278,16 +345,19 @@ class AuthOperationCoordinator {
     required IsolatedAuthSession session,
     required CookieJar target,
   }) async {
+    if (_manualHolders.containsKey(ticket.domain)) return null;
     if (_sessionDomainFor(ticket.domain) != sessionDomain) return null;
     return _store.withVerifiedTicket<SessionCommitResult?>(
       ticket,
-      action: () => AuthSessionPersistence.instance.commitWithIsolatedSession(
-        sessionDomain,
-        account: ticket.account,
-        expectedEpoch: expectedSessionEpoch,
-        session: session,
-        target: target,
-      ),
+      action: () => _manualHolders.containsKey(ticket.domain)
+          ? Future<SessionCommitResult?>.value()
+          : AuthSessionPersistence.instance.commitWithIsolatedSession(
+              sessionDomain,
+              account: ticket.account,
+              expectedEpoch: expectedSessionEpoch,
+              session: session,
+              target: target,
+            ),
     );
   }
 
@@ -315,9 +385,8 @@ class AuthOperationCoordinator {
   /// 则返回 [AuthRecoveryDecision.aborted]；且同 isolate 内在该交换真正结束前
   /// 不会再开始第二次交换（[busy]）。running 覆盖整个事务直到 ticket 完成。
   ///
-  /// 本方法记录的所有终态失败（timeout / 取消 / 传输错误 / 无 receipt）都是
-  /// **瞬时失败**：只退避，不累计身份失败。身份失败由调用方在明确判定
-  /// 凭据错误时经 [recordIdentityFailure] 单独上报。
+  /// timeout / 传输错误 / 无 receipt 按失败类型退避；明确凭据错误累计身份
+  /// 失败。调用方主动取消只清除本次 ticket，不记失败或冷却。
   ///
   /// **新不变量（重要）**：自动登录仅前台单 isolate 发起，workmanager 不发起
   /// CAS/教务登录。因此这里不做任何跨 isolate 互斥，只保证同 isolate 非重入。
@@ -333,6 +402,8 @@ class AuthOperationCoordinator {
     required Future<T> Function(AuthRecoveryTicket ticket, CancelToken token)
     exchange,
     required SessionCommitResult? Function(T value) receiptOf,
+    AuthFailureKind Function(T value)? failureOf,
+    CancelToken? callerCancelToken,
     Duration? recoveryCooldown,
     Duration exchangeDeadline = const Duration(seconds: 90),
     Duration? exchangeAbortAfter,
@@ -358,6 +429,11 @@ class AuthOperationCoordinator {
     }
 
     try {
+      if (callerCancelToken?.isCancelled ?? false) {
+        return const AuthAutomaticOutcome(
+          decision: AuthRecoveryDecision.aborted,
+        );
+      }
       final decision = await _eligibility(domain, account: account, now: now);
       if (decision != AuthRecoveryDecision.proceed) {
         return AuthAutomaticOutcome<T>(decision: decision);
@@ -383,7 +459,30 @@ class AuthOperationCoordinator {
         );
       }
 
+      Future<AuthAutomaticOutcome<T>> abortCaller() async {
+        await _store.clearTicket(domain, ticketId: ticket.id);
+        return AuthAutomaticOutcome<T>(
+          decision: AuthRecoveryDecision.aborted,
+          ticket: ticket,
+        );
+      }
+
+      if (callerCancelToken?.isCancelled ?? false) return await abortCaller();
+
       final cancelToken = CancelToken();
+      if (callerCancelToken != null) {
+        if (callerCancelToken.isCancelled) {
+          cancelToken.cancel('automatic caller cancelled');
+        } else {
+          unawaited(
+            callerCancelToken.whenCancel.then((_) {
+              if (!cancelToken.isCancelled) {
+                cancelToken.cancel('automatic caller cancelled');
+              }
+            }),
+          );
+        }
+      }
       Timer? deadlineTimer;
       if (exchangeDeadline > Duration.zero) {
         deadlineTimer = Timer(exchangeDeadline, () {
@@ -421,6 +520,7 @@ class AuthOperationCoordinator {
           },
         );
       } on _ExchangeAborted {
+        if (callerCancelToken?.isCancelled ?? false) return await abortCaller();
         await _store.completeAttempt(
           domain,
           ticketId: ticket.id,
@@ -428,7 +528,7 @@ class AuthOperationCoordinator {
           scope: AuthFailureScope.transient,
           failureKind: AuthFailureKind.timeout,
           now: now,
-          cooldown: recoveryCooldown,
+          cooldown: _failureCooldown(domain, recoveryCooldown),
         );
         return AuthAutomaticOutcome<T>(
           decision: AuthRecoveryDecision.aborted,
@@ -436,6 +536,7 @@ class AuthOperationCoordinator {
           error: const _ExchangeAborted(),
         );
       } catch (error) {
+        if (callerCancelToken?.isCancelled ?? false) return await abortCaller();
         await _store.completeAttempt(
           domain,
           ticketId: ticket.id,
@@ -443,7 +544,7 @@ class AuthOperationCoordinator {
           scope: AuthFailureScope.transient,
           failureKind: AuthFailureClassifier.fromTransport(error),
           now: now,
-          cooldown: recoveryCooldown,
+          cooldown: _failureCooldown(domain, recoveryCooldown),
         );
         if (rethrowExchangeErrors) rethrow;
         return AuthAutomaticOutcome<T>(
@@ -457,6 +558,8 @@ class AuthOperationCoordinator {
         }
       }
 
+      if (callerCancelToken?.isCancelled ?? false) return await abortCaller();
+
       // 唯一提交点是真实 challenge 提交（typed ticket commit）；这里只接受它
       // 产出的真实 receipt，绝不用 bool 代表「已提交」，也不再二次写 metadata。
       final receipt = receiptOf(value);
@@ -469,14 +572,22 @@ class AuthOperationCoordinator {
             ticket: ticket,
           );
         }
+        final kind = failureOf?.call(value) ?? AuthFailureKind.unknown;
+        final identityFailure = kind == AuthFailureKind.invalidCredentials;
+        final failures = (_transientFailures[domain] ?? 0) + 1;
+        if (!identityFailure) _transientFailures[domain] = failures;
         await _store.completeAttempt(
           domain,
           ticketId: ticket.id,
           success: false,
-          scope: AuthFailureScope.transient,
-          failureKind: AuthFailureKind.unknown,
+          scope: identityFailure
+              ? AuthFailureScope.identity
+              : AuthFailureScope.transient,
+          failureKind: kind,
           now: now,
-          cooldown: recoveryCooldown,
+          cooldown:
+              recoveryCooldown ??
+              AuthRecoveryStateStore.transientBackoffFor(failures),
         );
         return AuthAutomaticOutcome<T>(
           decision: AuthRecoveryDecision.exchangeFailed,
@@ -519,6 +630,7 @@ class AuthOperationCoordinator {
         success: true,
         scope: AuthFailureScope.transient,
       );
+      _transientFailures.remove(domain);
       return AuthAutomaticOutcome<T>(
         decision: AuthRecoveryDecision.committed,
         value: value,
@@ -538,6 +650,9 @@ class AuthOperationCoordinator {
     required String account,
     DateTime? now,
   }) async {
+    if (_manualHolders.containsKey(domain)) {
+      return AuthRecoveryDecision.manualHoldActive;
+    }
     final record = await _store.read(domain);
     final effectiveNow = now ?? DateTime.now();
     if (record.revoked) return AuthRecoveryDecision.revoked;

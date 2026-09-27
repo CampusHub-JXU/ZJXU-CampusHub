@@ -329,6 +329,15 @@ class UnifiedAuthService extends ChangeNotifier {
                 !looksLikeUnifiedAuthLoginHtml(html);
 
       if (!hasActiveSession) {
+        final explicitlyExpired =
+            statusCode == 401 ||
+            statusCode == 901 ||
+            (statusCode == 200 && looksLikeUnifiedAuthLoginHtml(html)) ||
+            ((statusCode == 302 || statusCode == 303) &&
+                isUnifiedAuthLoginEntryUrl(
+                  _resolveUri(loginUri, location).toString(),
+                ));
+        if (!explicitlyExpired) return null;
         if (revisionAtStart != _sessionRevision) return null;
         AppLogger.instance.auth(LogLevel.warn, '统一认证会话已失效，标记登出');
         await _markLoggedOutBestEffort();
@@ -344,30 +353,10 @@ class UnifiedAuthService extends ChangeNotifier {
       if (revisionAtStart != _sessionRevision) return null;
       if (!isLoggedIn) return null;
 
-      final wasSessionActive = _sessionActive;
-      final account = currentAccount;
-      if (account != null) {
-        // 条件提交：持久 epoch 已变（logout/换号）则拒绝写回旧身份。
-        final expectedEpoch = await AuthSessionPersistence.instance.readEpoch(
-          CredentialSessionDomain.unified,
-        );
-        if (revisionAtStart != _sessionRevision) return null;
-        final committed = await AuthSessionPersistence.instance.commit(
-          CredentialSessionDomain.unified,
-          account: account,
-          expectedEpoch: expectedEpoch,
-        );
-        if (revisionAtStart != _sessionRevision) return null;
-        if (committed == null) return null;
-      }
-      _applySessionIdentity(active: true, account: account);
-      if (revisionAtStart != _sessionRevision) return null;
+      // 探测不提交新身份纪元。只有真实登录交换才推进 epoch。
       if (_sessionValidationSyncWebViewCookies['$serviceUrl#$revisionAtStart'] ==
           true) {
         unawaited(_syncCookiesToWebViewSafely());
-      }
-      if (!wasSessionActive) {
-        notifyListeners();
       }
       return true;
     } on DioException catch (error) {

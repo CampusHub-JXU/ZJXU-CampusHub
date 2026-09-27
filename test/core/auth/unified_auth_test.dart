@@ -597,8 +597,8 @@ void main() {
         syncWebViewCookies: false,
       );
 
-      expect(result, isFalse);
-      expect(UnifiedAuthService.instance.isLoggedIn, isFalse);
+      expect(result, isNull);
+      expect(UnifiedAuthService.instance.isLoggedIn, isTrue);
     });
 
     test(

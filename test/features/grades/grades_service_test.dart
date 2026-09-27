@@ -140,16 +140,21 @@ void main() {
       expect(result.single.gpaPoints, 3.8);
     });
 
-    test('fetchGrades returns empty list when items absent', () async {
-      await loginAcademic('20250001');
-      final adapter = MockHttpClientAdapter()
-        ..registerJson('POST', endpoint, {'rows': []});
-      DioClient.instance.dio.httpClientAdapter = adapter;
+    test(
+      'unrecognized grades response cannot overwrite the last successful data',
+      () async {
+        await loginAcademic('20250001');
+        final adapter = MockHttpClientAdapter()
+          ..registerJson('POST', endpoint, {'rows': []});
+        DioClient.instance.dio.httpClientAdapter = adapter;
 
-      final result = await GradesService.instance.fetchGrades('20250001');
-
-      expect(result, isEmpty);
-    });
+        await expectLater(
+          GradesService.instance.fetchGrades('20250001'),
+          throwsA(isA<GradesRequestException>()),
+        );
+        expect(GradesService.instance.cachedGrades, isNull);
+      },
+    );
 
     test(
       'webvpn mode uses the authenticated cookie client and proxy URL',

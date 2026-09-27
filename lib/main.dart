@@ -8,6 +8,7 @@ import 'app/app_action_dispatcher.dart';
 import 'app/app_bootstrap_controller.dart';
 import 'app/background_task_dispatcher.dart';
 import 'app/calendar_sync_coordinator.dart';
+import 'app/campus_refresh_coordinator.dart';
 import 'app/routes.dart';
 import 'core/auth/connect_mode_resolver.dart';
 import 'core/deep_link/campus_deep_link_service.dart';
@@ -89,6 +90,7 @@ Future<void> main() async {
       // 课表系统日历同步：仅主引擎前台协调器，监听必须早于暖启动数据变化，
       // 以便身份/课表恢复后立即评估；不注册后台引擎、不触发自动登录。
       CalendarSyncCoordinator.instance.start();
+      CampusRefreshCoordinator.instance.start();
       // 寝室电费身份对账：仅主引擎前台安装统一认证监听，登出 / 换号 /
       // 同号重登时串行取消残留的每日提醒与周期任务；监听同样早于认证暖
       // 启动。不注册后台引擎、不在 WorkManager isolate 调用。
@@ -142,6 +144,7 @@ Future<void> main() async {
       final lifecycleListener = AppLifecycleListener(
         onStateChange: (state) {
           if (state == AppLifecycleState.resumed) {
+            CampusRefreshCoordinator.instance.setForeground(true);
             CalendarSyncCoordinator.instance.onAppResumed();
             unawaited(runForegroundBackgroundChecks());
             CampusWidgetSync.instance.requestSync();
@@ -151,6 +154,7 @@ Future<void> main() async {
             // 退到后台/失焦：禁止启动新的日历写入（在途轮次在下一个 await
             // 边界失效）。
             CalendarSyncCoordinator.instance.onAppInactive();
+            CampusRefreshCoordinator.instance.setForeground(false);
           }
         },
       );

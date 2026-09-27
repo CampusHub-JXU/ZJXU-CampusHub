@@ -168,13 +168,7 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
     final location = pageResp.headers.value('location') ?? '';
     if (isZhengfangGatewayLoginUrl(location)) {
       AppLogger.instance.auth(LogLevel.warn, '检测到 WebVPN 登录页重定向，当前认证已过期');
-      // 绑定发起时 revision/账号/epoch：探测期间切号/重登后，旧失效响应
-      // 不得登出新会话；只用持久 CAS 条件撤销。
-      await revokeExpiredSessionIfCurrent(
-        revision: revisionAtStart,
-        account: accountAtStart,
-        expectedEpoch: expectedEpoch,
-      );
+      // 网关掉线不能撤销独立的教务身份；交给路由准备与 CAS 恢复处理。
       throw CaptchaException('WebVPN 认证已过期，请重新登录');
     }
 

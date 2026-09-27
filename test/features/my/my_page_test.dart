@@ -97,8 +97,10 @@ void main() {
     adapter.register(
       'GET',
       '/jwglxt/xtgl/index_initMenu.html',
-      (options) async =>
-          ResponseBody.fromString('<html><body>教务首页</body></html>', 200),
+      (options) async => ResponseBody.fromString(
+        '<html><a href="/xtgl/index_initMenu.html">教务首页</a></html>',
+        200,
+      ),
     );
     UnifiedAuthService.instance.debugSetSession(
       active: true,
@@ -309,12 +311,14 @@ void main() {
     'logged-in academic row opens portal directly without enter button',
     (tester) async {
       final adapter = await initAcademicLivenessMock();
-      // 测活返回教务首页 HTML（非登录页）：会话有效。
+      // 测活返回已有正向认证标记，不能仅凭“不是登录页”认定成功。
       adapter.register(
         'GET',
         '/jwglxt/xtgl/index_initMenu.html',
-        (options) async =>
-            ResponseBody.fromString('<html><body>教务首页</body></html>', 200),
+        (options) async => ResponseBody.fromString(
+          '<html><a href="/xtgl/index_initMenu.html">教务首页</a></html>',
+          200,
+        ),
       );
       ZhengfangAuth.instance.debugSetSession(
         active: true,
@@ -367,8 +371,10 @@ void main() {
       adapter.register(
         'GET',
         '/jwglxt/xtgl/index_initMenu.html',
-        (options) async =>
-            ResponseBody.fromString('<html><body>教务首页</body></html>', 200),
+        (options) async => ResponseBody.fromString(
+          '<html><a href="/xtgl/index_initMenu.html">教务首页</a></html>',
+          200,
+        ),
       );
 
       var loginPromptCount = 0;

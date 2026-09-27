@@ -15,6 +15,10 @@ import 'exam_model.dart';
 
 class ExamService {
   ExamService._() {
+    _lastAuthIdentity = (
+      ZhengfangAuth.instance.currentStudentId,
+      ZhengfangAuth.instance.isLoggedIn,
+    );
     ZhengfangAuth.instance.addListener(_onAuthChanged);
   }
 
@@ -72,6 +76,8 @@ class ExamService {
     _lastAuthIdentity = identity;
     _clearMemoryCache();
     _validEpoch = null;
+    _inFlight = null;
+    _latestGeneration++;
   }
 
   void _clearMemoryCache() {
@@ -235,7 +241,10 @@ class ExamService {
     }
 
     final existing = _inFlight;
-    if (existing != null && existing.generation == _latestGeneration) {
+    if (existing != null &&
+        existing.generation == _latestGeneration &&
+        existing.revision == guard.revision &&
+        existing.owner == guard.owner) {
       // 同一最新请求直接共享；force 不被较旧的非 force 请求短路。
       if (!forceRefresh || existing.force) return existing.future;
     }
@@ -247,6 +256,8 @@ class ExamService {
       generation: generation,
     );
     final inFlight = _ExamInFlight(
+      revision: guard.revision,
+      owner: guard.owner,
       generation: generation,
       force: forceRefresh,
       future: future,
@@ -263,7 +274,6 @@ class ExamService {
     required int generation,
   }) async {
     await DioClient.instance.ensureInitialized();
-    final dio = ZhengfangAuth.instance.academicDio;
 
     // 与课表一致：优先以教务系统解析的当前学期为准，失败时按日期推算。
     final termContext =
@@ -274,39 +284,53 @@ class ExamService {
     final ts = DateTime.now().millisecondsSinceEpoch;
 
     try {
-      final resp = await AcademicAuthGuard.guardRequest<Map<String, dynamic>>(
-        authExpiredException: const ExamAuthExpiredException(),
-        request: () => dio.post<Map<String, dynamic>>(
-          ZhengfangAuth.instance.buildPortalUrl(
-            '/kwgl/kscx_cxXsksxxIndex.html',
-          ),
-          queryParameters: {
-            'doType': 'query',
-            'gnmkdm': 'N358105',
-            'su': resolvedId,
-          },
-          data:
-              'xnm=$academicYear&xqm=$term&ksmcdmb_id=&kch=&kc=&ksrq='
-              '&kkbm_id=&ksmc=&_search=false&nd=$ts'
-              '&queryModel.showCount=100&queryModel.currentPage=1'
-              '&queryModel.sortName=&queryModel.sortOrder=asc&time=0',
-          options: Options(
-            contentType: 'application/x-www-form-urlencoded',
-            headers: {
-              'Referer': ZhengfangAuth.instance.academicServiceUrl,
-              'X-Requested-With': 'XMLHttpRequest',
-            },
-          ),
-        ),
-      );
+      _ensureGuard(guard);
+      final guarded =
+          await AcademicAuthGuard.guardWithSession<Map<String, dynamic>>(
+            authExpiredException: const ExamAuthExpiredException(),
+            request: () =>
+                ZhengfangAuth.instance.academicDio.post<Map<String, dynamic>>(
+                  ZhengfangAuth.instance.buildPortalUrl(
+                    '/kwgl/kscx_cxXsksxxIndex.html',
+                  ),
+                  queryParameters: {
+                    'doType': 'query',
+                    'gnmkdm': 'N358105',
+                    'su': resolvedId,
+                  },
+                  data:
+                      'xnm=$academicYear&xqm=$term&ksmcdmb_id=&kch=&kc=&ksrq='
+                      '&kkbm_id=&ksmc=&_search=false&nd=$ts'
+                      '&queryModel.showCount=100&queryModel.currentPage=1'
+                      '&queryModel.sortName=&queryModel.sortOrder=asc&time=0',
+                  options: Options(
+                    contentType: 'application/x-www-form-urlencoded',
+                    headers: {
+                      'Referer': ZhengfangAuth.instance.academicServiceUrl,
+                      'X-Requested-With': 'XMLHttpRequest',
+                    },
+                  ),
+                ),
+          );
 
-      final items = resp.data?['items'] as List<dynamic>? ?? [];
+      final settledGuard = _ExamGuard(
+        revision: guarded.revision,
+        owner: resolvedId,
+        durableEpoch: guarded.epoch ?? -1,
+      );
+      if (guarded.account != resolvedId || guarded.epoch == null) {
+        throw const ExamAuthExpiredException();
+      }
+      final items = guarded.response.data?['items'];
+      if (guarded.response.statusCode != 200 || items is! List) {
+        throw const ExamRequestException('考试响应异常，保留上次成功数据');
+      }
       final exams =
           items.cast<Map<String, dynamic>>().map(ExamEntry.fromJson).toList()
             ..sort(_compareExams);
 
       // 内存身份 / 纪元变化必须丢弃；已被更新请求淘汰的旧结果不提交。
-      _ensureGuard(guard);
+      _ensureGuard(settledGuard);
       if (generation != _latestGeneration) return exams;
 
       final now = DateTime.now();
@@ -314,7 +338,7 @@ class ExamService {
           .withCurrentSession<bool>(
             CredentialSessionDomain.academic,
             account: resolvedId,
-            expectedEpoch: guard.durableEpoch,
+            expectedEpoch: settledGuard.durableEpoch,
             action: () async {
               // 锁内仅本地 cache IO，不反调 auth / 不发网络。
               if (generation != _latestGeneration) {
@@ -324,7 +348,7 @@ class ExamService {
                 PrivateCacheEnvelope(
                   owner: resolvedId,
                   updatedAt: now,
-                  epoch: guard.durableEpoch,
+                  epoch: settledGuard.durableEpoch,
                   payload: exams.map((e) => e.toJson()).toList(),
                 ),
               );
@@ -334,17 +358,20 @@ class ExamService {
 
       if (committed == null) throw const ExamAuthExpiredException();
       if (committed &&
-          _isGuardCurrent(guard) &&
+          _isGuardCurrent(settledGuard) &&
           generation == _latestGeneration) {
         _cachedExams = exams;
         _lastSavedAt = now;
         _cachedOwner = resolvedId;
-        _cachedEpoch = guard.durableEpoch;
-        _validEpoch = guard.durableEpoch;
+        _cachedEpoch = settledGuard.durableEpoch;
+        _validEpoch = settledGuard.durableEpoch;
         CampusDataChangeBus.instance.notifyChanged();
       }
       return exams;
     } on ExamAuthExpiredException {
+      rethrow;
+    } on AcademicAuthRecoveryPendingException {
+      // 临时恢复失败交给前台调度退避；保留现有缓存，不触发强制登录 UI。
       rethrow;
     } on AcademicAuthExpiredException catch (e) {
       // 自动登录被暂停（连续身份失败）时透传该语义，供页面区分「需要手动登录」。
@@ -414,11 +441,15 @@ class _ExamGuard {
 
 class _ExamInFlight {
   const _ExamInFlight({
+    required this.revision,
+    required this.owner,
     required this.generation,
     required this.force,
     required this.future,
   });
 
+  final int revision;
+  final String owner;
   final int generation;
   final bool force;
   final Future<List<ExamEntry>> future;

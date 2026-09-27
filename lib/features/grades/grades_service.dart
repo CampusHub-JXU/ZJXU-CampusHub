@@ -13,6 +13,10 @@ import 'grades_model.dart';
 
 class GradesService {
   GradesService._() {
+    _lastAuthIdentity = (
+      ZhengfangAuth.instance.currentStudentId,
+      ZhengfangAuth.instance.isLoggedIn,
+    );
     ZhengfangAuth.instance.addListener(_onAuthChanged);
   }
 
@@ -72,6 +76,8 @@ class GradesService {
     _lastAuthIdentity = identity;
     _clearMemoryCache();
     _validEpoch = null;
+    _inFlight = null;
+    _latestGeneration++;
   }
 
   void _clearMemoryCache() {
@@ -216,7 +222,10 @@ class GradesService {
     }
 
     final existing = _inFlight;
-    if (existing != null && existing.generation == _latestGeneration) {
+    if (existing != null &&
+        existing.generation == _latestGeneration &&
+        existing.revision == guard.revision &&
+        existing.owner == guard.owner) {
       // 同一最新请求直接共享；force 不被较旧的非 force 请求短路。
       if (!forceRefresh || existing.force) return existing.future;
     }
@@ -228,6 +237,8 @@ class GradesService {
       generation: generation,
     );
     final inFlight = _GradesInFlight(
+      revision: guard.revision,
+      owner: guard.owner,
       generation: generation,
       force: forceRefresh,
       future: future,
@@ -244,40 +255,55 @@ class GradesService {
     required int generation,
   }) async {
     await DioClient.instance.ensureInitialized();
-    final dio = ZhengfangAuth.instance.academicDio;
     final ts = DateTime.now().millisecondsSinceEpoch;
     try {
-      final resp = await AcademicAuthGuard.guardRequest<Map<String, dynamic>>(
-        authExpiredException: const GradesAuthExpiredException(),
-        request: () => dio.post<Map<String, dynamic>>(
-          ZhengfangAuth.instance.buildPortalUrl('/cjcx/cjcx_cxDgXscj.html'),
-          queryParameters: {
-            'doType': 'query',
-            'gnmkdm': 'N305005',
-            'su': owner,
-          },
-          data:
-              'xnm=&xqm=&_search=false&nd=$ts'
-              '&queryModel.showCount=100&queryModel.currentPage=1'
-              '&queryModel.sortName=&queryModel.sortOrder=asc&time=1',
-          options: Options(
-            contentType: 'application/x-www-form-urlencoded',
-            headers: {
-              'Referer': ZhengfangAuth.instance.academicServiceUrl,
-              'X-Requested-With': 'XMLHttpRequest',
-            },
-          ),
-        ),
-      );
+      _ensureGuard(guard);
+      final guarded =
+          await AcademicAuthGuard.guardWithSession<Map<String, dynamic>>(
+            authExpiredException: const GradesAuthExpiredException(),
+            request: () =>
+                ZhengfangAuth.instance.academicDio.post<Map<String, dynamic>>(
+                  ZhengfangAuth.instance.buildPortalUrl(
+                    '/cjcx/cjcx_cxDgXscj.html',
+                  ),
+                  queryParameters: {
+                    'doType': 'query',
+                    'gnmkdm': 'N305005',
+                    'su': owner,
+                  },
+                  data:
+                      'xnm=&xqm=&_search=false&nd=$ts'
+                      '&queryModel.showCount=100&queryModel.currentPage=1'
+                      '&queryModel.sortName=&queryModel.sortOrder=asc&time=1',
+                  options: Options(
+                    contentType: 'application/x-www-form-urlencoded',
+                    headers: {
+                      'Referer': ZhengfangAuth.instance.academicServiceUrl,
+                      'X-Requested-With': 'XMLHttpRequest',
+                    },
+                  ),
+                ),
+          );
 
-      final items = resp.data?['items'] as List<dynamic>? ?? [];
+      final settledGuard = _GradesGuard(
+        revision: guarded.revision,
+        owner: owner,
+        durableEpoch: guarded.epoch ?? -1,
+      );
+      if (guarded.account != owner || guarded.epoch == null) {
+        throw const GradesAuthExpiredException();
+      }
+      final items = guarded.response.data?['items'];
+      if (guarded.response.statusCode != 200 || items is! List) {
+        throw const GradesRequestException('成绩响应异常，保留上次成功数据');
+      }
       final grades = items
           .cast<Map<String, dynamic>>()
           .map(GradeEntry.fromJson)
           .toList();
 
       // 内存身份 / 纪元变化必须丢弃；已被更新请求淘汰的旧结果不提交。
-      _ensureGuard(guard);
+      _ensureGuard(settledGuard);
       if (generation != _latestGeneration) return grades;
 
       final now = DateTime.now();
@@ -285,7 +311,7 @@ class GradesService {
           .withCurrentSession<bool>(
             CredentialSessionDomain.academic,
             account: owner,
-            expectedEpoch: guard.durableEpoch,
+            expectedEpoch: settledGuard.durableEpoch,
             action: () async {
               // 锁内仅本地 cache IO，不反调 auth / 不发网络。
               if (generation != _latestGeneration) {
@@ -295,7 +321,7 @@ class GradesService {
                 PrivateCacheEnvelope(
                   owner: owner,
                   updatedAt: now,
-                  epoch: guard.durableEpoch,
+                  epoch: settledGuard.durableEpoch,
                   payload: grades.map((e) => e.toJson()).toList(),
                 ),
               );
@@ -307,17 +333,20 @@ class GradesService {
       if (committed == null) throw const GradesAuthExpiredException();
       // 写后内存身份 / generation 又变化：不 notify、不覆盖 memory。
       if (committed &&
-          _isGuardCurrent(guard) &&
+          _isGuardCurrent(settledGuard) &&
           generation == _latestGeneration) {
         _cachedGrades = grades;
         _lastSavedAt = now;
         _cachedOwner = owner;
-        _cachedEpoch = guard.durableEpoch;
-        _validEpoch = guard.durableEpoch;
+        _cachedEpoch = settledGuard.durableEpoch;
+        _validEpoch = settledGuard.durableEpoch;
         CampusDataChangeBus.instance.notifyChanged();
       }
       return grades;
     } on GradesAuthExpiredException {
+      rethrow;
+    } on AcademicAuthRecoveryPendingException {
+      // 临时恢复失败交给前台调度退避；保留现有缓存，不触发强制登录 UI。
       rethrow;
     } on AcademicAuthExpiredException catch (e) {
       // 自动登录被暂停（连续身份失败）时透传该语义，供页面区分「需要手动登录」。
@@ -378,11 +407,15 @@ class _GradesGuard {
 
 class _GradesInFlight {
   const _GradesInFlight({
+    required this.revision,
+    required this.owner,
     required this.generation,
     required this.force,
     required this.future,
   });
 
+  final int revision;
+  final String owner;
   final int generation;
   final bool force;
   final Future<List<GradeEntry>> future;

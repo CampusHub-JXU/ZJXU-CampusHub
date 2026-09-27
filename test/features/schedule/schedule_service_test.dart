@@ -1494,7 +1494,7 @@ void main() {
       },
     );
 
-    test('guard recovery advancing revision re-queries once under the settled revision', () async {
+    test('guard recovery advancing revision persists its receipt-proven retry without a third query', () async {
       const termContext = ScheduleTermContext(academicYear: 2025, term: 12);
       loginAs('20230001');
       var postCalls = 0;
@@ -1518,9 +1518,9 @@ void main() {
             );
           }
           if (postCalls == 2) {
-            // guard 重试返回的是「旧 revision」的响应，必须被丢弃。
+            // guard 重试绑定本次 receipt，可直接落盘。
             return ResponseBody.fromString(
-              jsonEncode(_scheduleJson([_courseJson('旧会话课程')])),
+              jsonEncode(_scheduleJson([_courseJson('新会话课程')])),
               200,
               headers: jsonHeaders,
             );
@@ -1540,7 +1540,7 @@ void main() {
       );
 
       expect(autoLoginCalls, 1);
-      expect(postCalls, 3, reason: '原始 POST + guard 重试 + 至多一次不带 guard 的新会话查询');
+      expect(postCalls, 2, reason: '原始 POST + receipt 证明的唯一重试');
       expect(result.didRefresh, isTrue);
       expect(result.snapshot?.courses.single.courseName, '新会话课程');
       expect(
@@ -1983,7 +1983,7 @@ void main() {
       },
     );
 
-    test('same-account re-login advancing revision rejects the old response and re-queries', () async {
+    test('same-account re-login advancing revision rejects the old response; the next caller queries the new session', () async {
       const termContext = ScheduleTermContext(academicYear: 2025, term: 12);
       loginAs('20230001');
       final revisionBefore = ZhengfangAuth.instance.sessionRevision;
@@ -2030,14 +2030,17 @@ void main() {
         ),
       );
 
-      final result = await future;
-      expect(postCalls, 2, reason: '旧响应不可盲收，必须在新 revision 下重新查询一次');
-      expect(result.snapshot?.courses.single.courseName, '新会话课程');
-      expect(
-        result.snapshot?.courses.any((course) => course.courseName == '旧会话课程'),
-        isFalse,
-        reason: '旧 revision 的响应不得展示',
+      final stale = await future;
+      expect(postCalls, 1, reason: '旁路登录没有本请求 receipt，禁止隐式重放');
+      expect(stale.didRefresh, isFalse);
+      expect(stale.snapshot, isNull);
+      final result = await ScheduleService.instance.loadScheduleSnapshot(
+        studentId: '20230001',
+        termContext: termContext,
+        forceRefresh: true,
       );
+      expect(postCalls, 2);
+      expect(result.snapshot?.courses.single.courseName, '新会话课程');
       await ScheduleService.instance.restoreCache();
       expect(
         ScheduleService.instance

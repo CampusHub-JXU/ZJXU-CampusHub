@@ -258,7 +258,7 @@ void main() {
     expect((await store.read(AuthRecoveryDomain.cas)).failureCount, 0);
     expect(
       (await store.read(AuthRecoveryDomain.cas)).cooldownUntil,
-      isNull,
+      isNotNull,
       reason: '瞬时/未知失败只退避，不计身份失败',
     );
   });
@@ -284,6 +284,7 @@ void main() {
           exchange: (_, _) async => throw StateError('boom'),
           receiptOf: (value) => value,
           rethrowExchangeErrors: true,
+          now: DateTime.now().add(const Duration(minutes: 6)),
         ),
         throwsA(isA<StateError>()),
       );
@@ -511,6 +512,7 @@ void main() {
         account: 'A',
         exchange: (ticket, _) => commitViaExchange(ticket),
         receiptOf: (value) => value,
+        now: DateTime.now().add(const Duration(minutes: 6)),
       );
       expect(third.decision, AuthRecoveryDecision.committed);
       expect(exchangeStarts, 1);

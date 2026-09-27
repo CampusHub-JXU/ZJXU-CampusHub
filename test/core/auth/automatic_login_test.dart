@@ -134,6 +134,9 @@ Response<Map<String, dynamic>> _redirectResponse() =>
     Response<Map<String, dynamic>>(
       requestOptions: RequestOptions(path: '/x'),
       statusCode: 302,
+      headers: Headers.fromMap({
+        'location': ['/jwglxt/xtgl/login_slogin.html'],
+      }),
       data: null,
     );
 
@@ -160,6 +163,8 @@ void main() {
     // 恢复会话一律失败，确保 guard 走到自动登录分支。
     ConnectModeResolver.instance.directReachabilityChecker = () async => false;
     ConnectModeResolver.instance.webVpnReachabilityChecker = () async => false;
+    ConnectModeResolver.instance.targetDirectReachabilityChecker = (_) async =>
+        true;
 
     lockDir = await Directory.systemTemp.createTemp('automatic_login_test_');
     AuthSessionPersistence.instance
@@ -337,7 +342,7 @@ void main() {
     expect(adapter.loginPosts, 0);
   });
 
-  test('同域并发第二次让位为 busy，只单飞一次交换', () async {
+  test('同域并发共享同一次交换与真实 receipt', () async {
     final adapter = _FakeCasAdapter();
     DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
     final gate = Completer<void>();
@@ -349,14 +354,137 @@ void main() {
     final first = service.attempt(AuthRecoveryDomain.cas);
     await recognizer.started.future;
 
-    final second = await service.attempt(AuthRecoveryDomain.cas);
-    expect(second, AutomaticLoginOutcome.busy);
+    final second = service.attempt(AuthRecoveryDomain.cas);
     expect(recognizer.lengths, <int>[4], reason: '第二次不得再发起识别');
 
     gate.complete();
     expect(await first, AutomaticLoginOutcome.committed);
+    expect(await second, AutomaticLoginOutcome.committed);
     expect(adapter.loginPosts, 1);
   });
+
+  for (final cancelFirst in <bool>[true, false]) {
+    test('取消${cancelFirst ? "首个" : "后加入的"}等待者不取消共享登录', () async {
+      final adapter = _FakeCasAdapter();
+      DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
+      final gate = Completer<void>();
+      recognizer = _FakeRecognizer(answer: '1234', gate: gate);
+      service = AutomaticLoginService.debugNew(recognizer: recognizer);
+      await CredentialStore.instance.saveUnifiedAuthCredentials('A', 'pw');
+      await enableCasOptIn();
+      final firstToken = CancelToken();
+      final secondToken = CancelToken();
+      final first = service.attemptWithReceipt(
+        AuthRecoveryDomain.cas,
+        cancelToken: firstToken,
+      );
+      await recognizer.started.future;
+      final second = service.attemptWithReceipt(
+        AuthRecoveryDomain.cas,
+        cancelToken: secondToken,
+      );
+      (cancelFirst ? firstToken : secondToken).cancel();
+      expect(
+        (await (cancelFirst ? first : second)).outcome,
+        AutomaticLoginOutcome.failed,
+      );
+      gate.complete();
+      final surviving = await (cancelFirst ? second : first);
+      expect(surviving.outcome, AutomaticLoginOutcome.committed);
+      expect(surviving.receipt, isNotNull);
+      expect(adapter.loginPosts, 1);
+      expect(recognizer.lengths, <int>[4]);
+    });
+  }
+
+  test('所有等待者取消后不提交迟到 OCR，也不记录冷却', () async {
+    final adapter = _FakeCasAdapter();
+    DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
+    final gate = Completer<void>();
+    recognizer = _FakeRecognizer(answer: '1234', gate: gate);
+    service = AutomaticLoginService.debugNew(recognizer: recognizer);
+    await CredentialStore.instance.saveUnifiedAuthCredentials('A', 'pw');
+    await enableCasOptIn();
+    final tokens = <CancelToken>[CancelToken(), CancelToken()];
+    final first = service.attempt(
+      AuthRecoveryDomain.cas,
+      cancelToken: tokens[0],
+    );
+    await recognizer.started.future;
+    final second = service.attempt(
+      AuthRecoveryDomain.cas,
+      cancelToken: tokens[1],
+    );
+    for (final token in tokens) {
+      token.cancel();
+    }
+    expect(await first, AutomaticLoginOutcome.failed);
+    expect(await second, AutomaticLoginOutcome.failed);
+    gate.complete();
+    // Exchange remains non-reentrant until the canceled OCR actually settles.
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    final record = await AuthRecoveryStateStore.instance.read(
+      AuthRecoveryDomain.cas,
+    );
+    expect(record.activeAttempt, isNull);
+    expect(record.cooldownUntil, isNull);
+    expect(record.failureCount, 0);
+    expect(adapter.loginPosts, 0);
+    expect(
+      await service.attempt(AuthRecoveryDomain.cas),
+      AutomaticLoginOutcome.committed,
+    );
+  });
+
+  test(
+    'server-confirmed password rejection increments identity failure once',
+    () async {
+      final adapter = _FakeCasAdapter();
+      adapter.registerText('POST', '/cas/login', '<html>用户名或密码错误</html>');
+      DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
+      await CredentialStore.instance.saveUnifiedAuthCredentials('A', 'pw');
+      await enableCasOptIn();
+      expect(
+        await service.attempt(AuthRecoveryDomain.cas),
+        AutomaticLoginOutcome.failed,
+      );
+      final record = await AuthRecoveryStateStore.instance.read(
+        AuthRecoveryDomain.cas,
+      );
+      expect(record.failureCount, 1);
+      expect(record.cooldownUntil, isNotNull);
+    },
+  );
+
+  test(
+    'leaving foreground cancels a held OCR and cannot submit its late answer',
+    () async {
+      final adapter = _FakeCasAdapter();
+      DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
+      final gate = Completer<void>();
+      recognizer = _FakeRecognizer(answer: '1234', gate: gate);
+      service = AutomaticLoginService.debugNew(recognizer: recognizer);
+      await CredentialStore.instance.saveUnifiedAuthCredentials('A', 'pw');
+      await enableCasOptIn();
+      final pending = service.attempt(AuthRecoveryDomain.cas);
+      await recognizer.started.future;
+      service.setForeground(false);
+      gate.complete();
+      expect(await pending, AutomaticLoginOutcome.failed);
+      expect(adapter.loginPosts, 0);
+      expect(UnifiedAuthService.instance.isLoggedIn, isFalse);
+      final record = await AuthRecoveryStateStore.instance.read(
+        AuthRecoveryDomain.cas,
+      );
+      expect(record.cooldownUntil, isNull);
+      expect(record.activeAttempt, isNull);
+      service.setForeground(true);
+      expect(
+        await service.attempt(AuthRecoveryDomain.cas),
+        AutomaticLoginOutcome.committed,
+      );
+    },
+  );
 
   group('AcademicAuthGuard 触发', () {
     test('自动登录提交成功后重试原请求一次', () async {

@@ -418,7 +418,10 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
       final loginPageReturned =
           statusCode == 200 && looksLikeZhengfangLoginHtml(html);
 
-      if (redirectedToLogin || loginPageReturned) {
+      if (redirectedToLogin ||
+          loginPageReturned ||
+          statusCode == 901 ||
+          statusCode == 401) {
         if (_sessionRevision != revisionAtStart) {
           AppLogger.instance.auth(LogLevel.warn, '教务会话校验命中失效，但期间会话已变化，跳过登出');
           return null;
@@ -436,7 +439,18 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
         return false;
       }
 
-      return true;
+      if (_sessionRevision != revisionAtStart) return null;
+      if (statusCode == 200 && _looksLikeAuthenticatedAcademicHtml(html)) {
+        return true;
+      }
+      if ((statusCode == 302 || statusCode == 303) &&
+          _isAuthenticatedAcademicLocation(
+            _mode,
+            Uri.parse(indexUrl).resolve(location).toString(),
+          )) {
+        return true;
+      }
+      return null;
     } on DioException catch (e) {
       AppLogger.instance.auth(
         LogLevel.warn,

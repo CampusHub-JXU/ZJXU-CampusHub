@@ -382,7 +382,7 @@ class ScheduleService {
     }
 
     try {
-      final raw = await _rawSchedulePost(
+      final raw = await _postScheduleQuery(
         studentId: studentId,
         year: context.academicYear,
         term: context.term,
@@ -432,19 +432,15 @@ class ScheduleService {
 
   /// 主课表查询 POST（当前学期课表）。
   ///
-  /// 认证链路：请求经 [AcademicAuthGuard.guardRequest] 执行，guard 闭包每次
+  /// 认证链路：请求经 [AcademicAuthGuard.guardWithSession] 执行，guard 闭包每次
   /// 调用都按当前直连/WebVPN 模式重建 URL 与 Referer；guard 最多做一次会话
   /// 恢复 / 静默自动登录与一次内部重试，终态 `markLoggedOut` 由 guard 内部
   /// 完成，本方法不重复标记。manualRequired 的 `automaticLoginPaused` 会透传
   /// 到 [ScheduleAuthExpiredException]。
   ///
-  /// 身份修订：guard 返回后若 [ZhengfangAuth.sessionRevision] 相比请求开始时
-  /// 变化，则**不**盲收旧响应（无法证明该响应属于当前账号）。仅当当前账号仍
-  /// 相同且 active 时，用一次不带 guard 的原始查询 POST 在新的 revision 下
-  /// 重新获取并校验，以该响应解析。再次身份变化 / 认证失效即拒绝，不再做额外
-  /// OCR、重试或重复副作用。
-  ///
-  /// 该额外 POST 仅用于本只读查询接口；服务端幂等性未在真实设备上证实。
+  /// 身份修订：只解析 guard 返回的、绑定已验证 account/revision 的响应。
+  /// 自动恢复后的重试使用真实 receipt 证明所属会话；外部重登、换号或登出
+  /// 造成身份变化则拒绝迟到响应，不在 guard 之后追加查询 POST。
   Future<List<CourseEntry>> fetchSchedule(
     String studentId,
     int year,
@@ -468,13 +464,15 @@ class ScheduleService {
       throw const ScheduleAuthExpiredException();
     }
 
-    Response<dynamic> guarded;
+    AcademicGuardedResponse<dynamic> guarded;
     try {
       guarded = await _guardedSchedulePost(
         studentId: studentId,
         year: year,
         term: term,
       );
+    } on AcademicAuthRecoveryPendingException {
+      rethrow;
     } on AcademicAuthExpiredException catch (error) {
       // guard 的 manualRequired 以 AcademicAuthExpiredException 子类抛出，
       // 透传暂停语义；guard 内部终态已 markLoggedOut，此处不再标记。
@@ -483,49 +481,25 @@ class ScheduleService {
       );
     }
 
-    final afterGuard = _currentIdentity();
-    if (afterGuard == null || afterGuard.owner != studentId) {
+    if (guarded.account != studentId ||
+        !_isIdentityCurrent(studentId, guarded.revision)) {
       throw const ScheduleAuthExpiredException();
     }
-    if (afterGuard.revision == startRevision) {
-      final courses = _parseScheduleCourses(guarded);
-      return (courses: courses, revision: startRevision);
-    }
-
-    // revision 变化（guard 自动登录/恢复或同账号重登）：旧响应不可盲收。
-    final retryRevision = afterGuard.revision;
-    final raw = await _rawSchedulePost(
-      studentId: studentId,
-      year: year,
-      term: term,
-    );
-    if (!_isIdentityCurrent(studentId, retryRevision)) {
-      throw const ScheduleAuthExpiredException();
-    }
-    final courses = _parseScheduleCourses(raw);
-    return (courses: courses, revision: retryRevision);
-  }
-
-  Future<Response<dynamic>> _guardedSchedulePost({
-    required String studentId,
-    required int year,
-    required int term,
-  }) {
-    return AcademicAuthGuard.guardRequest<dynamic>(
-      authExpiredException: const ScheduleAuthExpiredException(),
-      request: () =>
-          _postScheduleQuery(studentId: studentId, year: year, term: term),
+    return (
+      courses: _parseScheduleCourses(guarded.response),
+      revision: guarded.revision,
     );
   }
 
-  /// 不带 guard 的原始查询 POST，仅在 guard 后 revision 变化时用于有界再校验。
-  Future<Response<dynamic>> _rawSchedulePost({
+  Future<AcademicGuardedResponse<dynamic>> _guardedSchedulePost({
     required String studentId,
     required int year,
     required int term,
-  }) {
-    return _postScheduleQuery(studentId: studentId, year: year, term: term);
-  }
+  }) => AcademicAuthGuard.guardWithSession<dynamic>(
+    authExpiredException: const ScheduleAuthExpiredException(),
+    request: () =>
+        _postScheduleQuery(studentId: studentId, year: year, term: term),
+  );
 
   /// 每次调用都按当前模式重建 URL / Referer（guard 恢复可能切换直连/WebVPN）。
   Future<Response<dynamic>> _postScheduleQuery({

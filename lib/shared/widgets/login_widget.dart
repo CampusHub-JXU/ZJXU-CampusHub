@@ -146,6 +146,8 @@ class _LoginWidgetState extends State<LoginWidget> {
     _bootstrap();
   }
 
+  Future<void> Function()? _releaseManualAttempt;
+
   void _invalidateChallenge(String? challengeId) {
     if (challengeId == null) return;
     final invalidator = widget.challengeInvalidator;
@@ -157,6 +159,14 @@ class _LoginWidgetState extends State<LoginWidget> {
   }
 
   Future<void> _bootstrap() async {
+    final release = AuthOperationCoordinator.instance.acquireManualAttempt(
+      AuthRecoveryDomain.academic,
+    );
+    if (!mounted) {
+      await release();
+      return;
+    }
+    _releaseManualAttempt = release;
     await _loadSaved();
     if (!mounted) return;
     await _detectLoginPath();
@@ -613,6 +623,7 @@ class _LoginWidgetState extends State<LoginWidget> {
 
   @override
   void dispose() {
+    unawaited(_releaseManualAttempt?.call());
     _captchaCancelToken?.cancel('Login page closed');
     _loginCancelToken?.cancel('Login page closed');
     _invalidateChallenge(_challengeId);

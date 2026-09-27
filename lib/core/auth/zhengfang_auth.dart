@@ -393,6 +393,9 @@ class ZhengfangAuth extends ChangeNotifier {
     queryParameters: {'jsdm': 'xs'},
   );
 
+  static const directAcademicServiceUrl =
+      'https://jwzx.zjxu.edu.cn/jwglxt/xtgl/index_initMenu.html?jsdm=xs';
+
   String buildPortalUrl(String path, {Map<String, dynamic>? queryParameters}) {
     final normalizedPath = path.startsWith('/') ? path : '/$path';
     final uri = Uri.parse('$_baseUrl$normalizedPath');

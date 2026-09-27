@@ -127,7 +127,21 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
   @override
   void initState() {
     super.initState();
-    _refreshCaptcha(prepare: true);
+    _beginManualLogin();
+  }
+
+  Future<void> Function()? _releaseManualAttempt;
+
+  Future<void> _beginManualLogin() async {
+    final release = AuthOperationCoordinator.instance.acquireManualAttempt(
+      AuthRecoveryDomain.cas,
+    );
+    if (!mounted) {
+      await release();
+      return;
+    }
+    _releaseManualAttempt = release;
+    await _refreshCaptcha(prepare: true);
   }
 
   void _invalidateChallenge(String? challengeId) {
@@ -522,6 +536,7 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
 
   @override
   void dispose() {
+    unawaited(_releaseManualAttempt?.call());
     _captchaCancelToken?.cancel('Login page closed');
     _loginCancelToken?.cancel('Login page closed');
     _invalidateChallenge(_challengeId);

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
@@ -9,6 +11,7 @@ import 'auth_recovery_state_store.dart';
 import 'auth_session_persistence.dart';
 import 'captcha_challenge.dart';
 import 'credential_store.dart';
+import 'connect_mode_resolver.dart';
 import 'unified_auth.dart';
 import 'zhengfang_auth.dart';
 
@@ -42,12 +45,17 @@ enum AutomaticLoginOutcome {
 /// 自动登录层**不**自己做身份/metadata 提交，receipt 只能来自真实 challenge
 /// 提交里的 typed ticket commit；没有 receipt 一律不算成功。
 class _AutomaticExchangeResult {
-  const _AutomaticExchangeResult({this.receipt, this.ocrUnrecognized = false});
+  const _AutomaticExchangeResult({
+    this.receipt,
+    this.ocrUnrecognized = false,
+    this.failureKind = AuthFailureKind.unknown,
+  });
 
   final SessionCommitResult? receipt;
 
   /// OCR 未能给出答案：按瞬时失败退避（绝不猜、绝不重复识别）。
   final bool ocrUnrecognized;
+  final AuthFailureKind failureKind;
 }
 
 /// 一次静默自动登录尝试的**带来源结果**。
@@ -64,6 +72,13 @@ class AutomaticLoginAttemptResult {
   /// 真实提交产出的 typed 句柄；无提交（含 OCR 未识别、失败、暂停、
   /// ticket 被拒）一律为 null。
   final SessionCommitResult? receipt;
+}
+
+class _AutomaticLoginFlight {
+  final token = CancelToken();
+  late final Future<AutomaticLoginAttemptResult> result;
+  int waiters = 0;
+  bool settled = false;
 }
 
 /// 静默自动登录服务（前台单 isolate）。
@@ -97,10 +112,29 @@ class AutomaticLoginService {
   final AuthOperationCoordinator _coordinator;
   final CaptchaRecognizer _recognizer;
 
-  /// 本服务无可变状态（依赖均经 [debugNew] 注入）；与其它单例服务保持一致的
-  /// 复位入口，便于测试在 tearDown 统一调用。
+  final _pending =
+      <(AuthRecoveryDomain, String?, int, int), _AutomaticLoginFlight>{};
+  final _tokens = <CancelToken>{};
+  bool _foreground = true;
+
+  void setForeground(bool foreground) {
+    _foreground = foreground;
+    if (!foreground) {
+      _generation++;
+      for (final token in _tokens.toList()) {
+        token.cancel('application left foreground');
+      }
+    }
+  }
+
+  /// 取消未完成交换并复位前台状态，便于测试隔离。
   @visibleForTesting
-  void debugReset() {}
+  void debugReset() {
+    setForeground(false);
+    _pending.clear();
+    _tokens.clear();
+    _foreground = true;
+  }
 
   /// CAS（统一认证）验证码固定 4 位。
   static const int casCaptchaLength = 4;
@@ -135,9 +169,86 @@ class AutomaticLoginService {
     AuthRecoveryDomain domain, {
     String? expectedAccount,
     CancelToken? cancelToken,
+  }) {
+    if (!_foreground || (cancelToken?.isCancelled ?? false)) {
+      return Future.value(
+        const AutomaticLoginAttemptResult(
+          outcome: AutomaticLoginOutcome.failed,
+        ),
+      );
+    }
+    // 在首个 await 之前占位；身份变化后的请求不能加入旧登录事务。
+    final key = (
+      domain,
+      expectedAccount,
+      domain == AuthRecoveryDomain.cas
+          ? UnifiedAuthService.instance.sessionRevision
+          : ZhengfangAuth.instance.sessionRevision,
+      _generation,
+    );
+    final flight = _pending.putIfAbsent(key, () {
+      final flight = _AutomaticLoginFlight();
+      _tokens.add(flight.token);
+      flight.result =
+          _attempt(
+            domain,
+            expectedAccount: expectedAccount,
+            cancelToken: flight.token,
+          ).whenComplete(() {
+            flight.settled = true;
+            if (identical(_pending[key], flight)) _pending.remove(key);
+            _tokens.remove(flight.token);
+          });
+      return flight;
+    });
+    flight.waiters++;
+    final waiter = Completer<AutomaticLoginAttemptResult>();
+    var released = false;
+    void releaseWaiter() {
+      if (released) return;
+      released = true;
+      flight.waiters--;
+      if (flight.waiters == 0 && !flight.settled) {
+        if (identical(_pending[key], flight)) _pending.remove(key);
+        flight.token.cancel('all automatic callers cancelled');
+      }
+    }
+
+    unawaited(
+      flight.result.then((result) {
+        if (!waiter.isCompleted) {
+          waiter.complete(result);
+          releaseWaiter();
+        }
+      }),
+    );
+    if (cancelToken != null) {
+      unawaited(
+        cancelToken.whenCancel.then((_) {
+          if (!waiter.isCompleted) {
+            waiter.complete(
+              const AutomaticLoginAttemptResult(
+                outcome: AutomaticLoginOutcome.failed,
+              ),
+            );
+            releaseWaiter();
+          }
+        }),
+      );
+    }
+    return waiter.future;
+  }
+
+  int _generation = 0;
+
+  Future<AutomaticLoginAttemptResult> _attempt(
+    AuthRecoveryDomain domain, {
+    String? expectedAccount,
+    required CancelToken cancelToken,
   }) async {
     try {
       final credentials = await _loadCredentials(domain);
+      if (cancelToken.isCancelled) throw cancelToken.cancelError!;
       if (credentials == null) {
         return const AutomaticLoginAttemptResult(
           outcome: AutomaticLoginOutcome.notEligible,
@@ -168,18 +279,11 @@ class AutomaticLoginService {
           token: token,
         ),
         receiptOf: (value) => value.receipt,
+        failureOf: (value) => value.ocrUnrecognized
+            ? AuthFailureKind.captchaRejected
+            : value.failureKind,
+        callerCancelToken: cancelToken,
       );
-
-      if (outcome.decision == AuthRecoveryDecision.exchangeFailed) {
-        // 所有终态失败都是瞬时失败：只推进 1/2/5 分钟退避阶梯，绝不累计
-        // 身份失败计数（OCR 认错 ≠ 身份错）。
-        await _coordinator.recordTransientFailure(
-          domain,
-          kind: (outcome.value?.ocrUnrecognized ?? false)
-              ? AuthFailureKind.captchaRejected
-              : AuthFailureClassifier.fromTransport(outcome.error),
-        );
-      }
       return AutomaticLoginAttemptResult(
         outcome: _mapDecision(outcome.decision),
         receipt: outcome.decision == AuthRecoveryDecision.committed
@@ -227,8 +331,43 @@ class AutomaticLoginService {
         );
         return _AutomaticExchangeResult(
           receipt: result is UnifiedAuthLoginSuccess ? result.receipt : null,
+          failureKind: result is UnifiedAuthLoginFailure
+              ? result.kind
+              : AuthFailureKind.unknown,
         );
       case AuthRecoveryDomain.academic:
+        final auth = ZhengfangAuth.instance;
+        final mode = await ConnectModeResolver.instance.resolve(
+          targetUrl: ZhengfangAuth.directAcademicServiceUrl,
+        );
+        if (token.isCancelled) throw token.cancelError!;
+        if (mode == null) {
+          return const _AutomaticExchangeResult(
+            failureKind: AuthFailureKind.networkUnavailable,
+          );
+        }
+        auth.setMode(mode);
+        if (mode == ZhengfangMode.webVpn) {
+          var ready = await auth.ensureWebVpnGatewaySession(
+            syncWebViewCookies: false,
+          );
+          if (ready != true) {
+            await attemptWithReceipt(
+              AuthRecoveryDomain.cas,
+              expectedAccount: UnifiedAuthService.instance.currentAccount,
+              cancelToken: token,
+            );
+            if (token.isCancelled) throw token.cancelError!;
+            ready = await auth.ensureWebVpnGatewaySession(
+              syncWebViewCookies: false,
+            );
+          }
+          if (ready != true) {
+            return const _AutomaticExchangeResult(
+              failureKind: AuthFailureKind.networkUnavailable,
+            );
+          }
+        }
         final challenge = await ZhengfangAuth.instance.prepareCaptchaChallenge(
           cancelToken: token,
         );
@@ -246,6 +385,9 @@ class AutomaticLoginService {
         );
         return _AutomaticExchangeResult(
           receipt: result is LoginSuccess ? result.receipt : null,
+          failureKind: result is LoginFailure
+              ? result.kind
+              : AuthFailureKind.unknown,
         );
     }
   }
