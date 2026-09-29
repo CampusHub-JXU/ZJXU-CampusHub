@@ -92,4 +92,32 @@ void main() {
     expect(AppLogger.instance.entries.first.message, 'entry-5');
     expect(AppLogger.instance.entries.last.message, 'entry-504');
   });
+
+  test('auth trail records auth info+ even when logging is disabled', () {
+    AppLogger.instance.loggingEnabled.value = false;
+    AppLogger.instance.auth(LogLevel.debug, 'too-verbose');
+    AppLogger.instance.auth(
+      LogLevel.warn,
+      '教务登录失败 sid=2025000123 mm=secret',
+      error: 'password=pw',
+    );
+    AppLogger.instance.network(LogLevel.error, 'not-auth');
+
+    final trail = AppLogger.instance.authTrail;
+    expect(trail, hasLength(1));
+    expect(trail.single.message, isNot(contains('2025000123')));
+    expect(trail.single.message, contains('mm=[REDACTED]'));
+    expect(trail.single.error, 'password=[REDACTED]');
+    expect(AppLogger.instance.entries, isEmpty);
+    expect(AppLogger.instance.formatAuthTrail(), contains('[auth]'));
+  });
+
+  test('auth trail evicts oldest entries beyond capacity', () {
+    for (var i = 0; i < AppLogger.authTrailCapacity + 3; i++) {
+      AppLogger.instance.auth(LogLevel.info, 'trail-$i');
+    }
+    final trail = AppLogger.instance.authTrail;
+    expect(trail, hasLength(AppLogger.authTrailCapacity));
+    expect(trail.first.message, 'trail-3');
+  });
 }

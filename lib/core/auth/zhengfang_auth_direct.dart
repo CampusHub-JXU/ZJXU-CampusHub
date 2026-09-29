@@ -2,13 +2,19 @@ part of 'zhengfang_auth.dart';
 
 extension ZhengfangAuthDirectExtension on ZhengfangAuth {
   /// 设置连接模式
+  ///
+  /// 不再失效已备好的验证码事务：每个事务在 prepare 时显式绑定自己的模式
+  /// （独立会话 + 目标 jar），与全局模式无关；否则后台恢复/guard 切一次模式
+  /// 就会让用户正在填的验证码作废。事务提交成功后全局模式收敛到该事务的模式。
   void setMode(ZhengfangMode mode) {
-    if (_mode == mode) return;
-    _mode = mode;
+    if (!_adoptMode(mode)) return;
+    _notifyAuthListeners();
+  }
 
-    _contextIndicatesLoggedIn = false;
-    // 模式变化使已备好的验证码事务失效：图片/上下文可能来自另一模式。
-    _captchaChallenges.invalidate();
+  /// 只切换全局模式与 base URL，不通知；返回是否真的变化。
+  bool _adoptMode(ZhengfangMode mode) {
+    if (_mode == mode) return false;
+    _mode = mode;
     DioClient.instance.updateBaseUrl(_baseUrl);
     DioClient.instance
         .ensureInitialized()
@@ -18,7 +24,7 @@ extension ZhengfangAuthDirectExtension on ZhengfangAuth {
       LogLevel.info,
       '教务系统连接模式切换为: ${mode == ZhengfangMode.direct ? "直连" : "WebVPN"}',
     );
-    _notifyAuthListeners();
+    return true;
   }
 
   /// 兼容包装：手动 UI 只消费验证码图片字节；同时 arm 当前 challenge。
@@ -65,6 +71,7 @@ extension ZhengfangAuthDirectExtension on ZhengfangAuth {
       captcha: captcha,
       revisionAtStart: revisionAtStart,
       attemptGeneration: attempt.generation,
+      store: _captchaChallenges,
       cancelToken: cancelToken,
     );
   }
@@ -90,7 +97,7 @@ extension ZhengfangAuthDirectExtension on ZhengfangAuth {
     if (account == null || account.isEmpty) {
       _touchSessionRevision();
       _sessionActive = true;
-      _captchaChallenges.invalidate();
+      _invalidateAllChallenges();
       _notifyAuthListeners();
       return;
     }
@@ -120,8 +127,7 @@ extension ZhengfangAuthDirectExtension on ZhengfangAuth {
     _sessionActive = false;
     currentStudentId = null;
 
-    _contextIndicatesLoggedIn = false;
-    _captchaChallenges.invalidate();
+    _invalidateAllChallenges();
     _notifyAuthListeners();
   }
 
@@ -250,8 +256,7 @@ extension ZhengfangAuthDirectExtension on ZhengfangAuth {
     _sessionActive = false;
     currentStudentId = null;
 
-    _contextIndicatesLoggedIn = false;
-    _captchaChallenges.invalidate();
+    _invalidateAllChallenges();
     _notifyAuthListeners();
     try {
       await AuthSessionPersistence.instance.revoke(
@@ -441,18 +446,14 @@ extension ZhengfangAuthDirectExtension on ZhengfangAuth {
       studentId: studentId,
       forceRevision: forceRevision,
     );
-    if (!active) {
-      _contextIndicatesLoggedIn = false;
-    }
   }
 
   @visibleForTesting
   void debugReset() {
-    _contextIndicatesLoggedIn = false;
     _sessionActive = false;
     currentStudentId = null;
     _mode = ZhengfangMode.direct;
     _sessionRevision = 0;
-    _captchaChallenges.invalidate();
+    _invalidateAllChallenges();
   }
 }

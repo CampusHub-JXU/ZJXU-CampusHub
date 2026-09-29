@@ -350,6 +350,74 @@ void main() {
     expect(outcome.error, isA<StateError>());
   });
 
+  group('manual login preempts an in-flight automatic exchange', () {
+    Future<void> expectNoFailureRecorded() async {
+      final record = await store.read(AuthRecoveryDomain.cas);
+      expect(record.failureCount, 0);
+      expect(record.cooldownActiveAt(DateTime.now()), isFalse);
+      expect(record.activeAttempt, isNull);
+    }
+
+    test('throwing exchange is aborted without failure or cooldown', () async {
+      await enable();
+      final started = Completer<void>();
+      CancelToken? exchangeToken;
+      final pending = coordinator.runAutomatic<SessionCommitResult?>(
+        domain: AuthRecoveryDomain.cas,
+        account: 'A',
+        exchange: (ticket, token) {
+          exchangeToken = token;
+          final completer = Completer<SessionCommitResult?>();
+          token.whenCancel.then((error) {
+            if (!completer.isCompleted) completer.completeError(error);
+          });
+          started.complete();
+          return completer.future;
+        },
+        receiptOf: (value) => value,
+      );
+      await started.future;
+
+      final release = coordinator.acquireManualAttempt(AuthRecoveryDomain.cas);
+      final outcome = await pending;
+
+      expect(exchangeToken!.isCancelled, isTrue);
+      expect(outcome.decision, AuthRecoveryDecision.aborted);
+      await expectNoFailureRecorded();
+      await release();
+    });
+
+    test(
+      'exchange that swallows cancellation is still not a failure',
+      () async {
+        await enable();
+        final started = Completer<void>();
+        final pending = coordinator.runAutomatic<SessionCommitResult?>(
+          domain: AuthRecoveryDomain.cas,
+          account: 'A',
+          exchange: (ticket, token) async {
+            started.complete();
+            // 模拟真实 submit：取消被映射成 staleOperation 的 LoginFailure 返回。
+            await token.whenCancel;
+            return null;
+          },
+          receiptOf: (value) => value,
+          failureOf: (_) => AuthFailureKind.staleOperation,
+        );
+        await started.future;
+
+        final release = coordinator.acquireManualAttempt(
+          AuthRecoveryDomain.cas,
+        );
+        final outcome = await pending;
+
+        expect(outcome.decision, AuthRecoveryDecision.aborted);
+        await expectNoFailureRecorded();
+        await release();
+      },
+    );
+  });
+
   test(
     'commitIsolatedSessionForTicket re-verifies and commits conditionally',
     () async {

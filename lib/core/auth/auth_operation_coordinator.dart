@@ -50,6 +50,15 @@ enum AuthRecoveryDecision {
 }
 
 /// 取消不合作的交换到达 abort 窗口时抛出的内部信号。
+class _ExchangeHandle {
+  _ExchangeHandle(this.token);
+
+  final CancelToken token;
+
+  /// 被人工登录接管取消（区别于 deadline/调用方取消）。
+  bool preempted = false;
+}
+
 class _ExchangeAborted implements Exception {
   const _ExchangeAborted();
 
@@ -135,6 +144,11 @@ class AuthOperationCoordinator {
   /// 前台单 isolate 不变量 + `AuthFileLock` 短 RMW 收敛）。
   final Set<AuthRecoveryDomain> _runningExchanges = <AuthRecoveryDomain>{};
 
+  /// 正在运行的自动交换句柄；人工登录开始时据此**立即取消**在途自动交换，
+  /// 否则它会在后台继续 prepare/提交（最长 deadline 90s），顶掉用户的验证码。
+  final Map<AuthRecoveryDomain, _ExchangeHandle> _activeExchanges =
+      <AuthRecoveryDomain, _ExchangeHandle>{};
+
   /// 连续瞬时失败计数（前台单 isolate 内存态，不持久化），用于 1/2/5 分钟
   /// 退避阶梯；成功或凭据变更时清零。
   final Map<AuthRecoveryDomain, int> _transientFailures =
@@ -152,6 +166,7 @@ class AuthOperationCoordinator {
     debugDirectoryProvider = null;
     debugCredentialLoader = null;
     _runningExchanges.clear();
+    _activeExchanges.clear();
     _transientFailures.clear();
     for (final timer in _manualTimers.values) {
       timer.cancel();
@@ -262,8 +277,20 @@ class AuthOperationCoordinator {
   }
 
   /// 页面持有人工验证码期间续租；多个页面关闭其中一个不会释放另一个的窗口。
+  ///
+  /// 获取时若同域有在途自动交换，立即取消它（记为被人工接管：只清 ticket，
+  /// 不计失败、不冷却）。
   Future<void> Function() acquireManualAttempt(AuthRecoveryDomain domain) {
     _manualHolders[domain] = (_manualHolders[domain] ?? 0) + 1;
+    final active = _activeExchanges[domain];
+    if (active != null && !active.token.isCancelled) {
+      active.preempted = true;
+      active.token.cancel('manual login took over');
+      AppLogger.instance.auth(
+        LogLevel.info,
+        '人工登录开始，取消在途自动恢复（${domain.wireName}）',
+      );
+    }
     unawaited(_persistManualHold(domain));
     _manualTimers.putIfAbsent(
       domain,
@@ -470,6 +497,11 @@ class AuthOperationCoordinator {
       if (callerCancelToken?.isCancelled ?? false) return await abortCaller();
 
       final cancelToken = CancelToken();
+      final handle = _ExchangeHandle(cancelToken);
+      _activeExchanges[domain] = handle;
+      // 调用方取消或被人工接管：都只清 ticket，不计失败、不冷却。
+      bool abandoned() =>
+          handle.preempted || (callerCancelToken?.isCancelled ?? false);
       if (callerCancelToken != null) {
         if (callerCancelToken.isCancelled) {
           cancelToken.cancel('automatic caller cancelled');
@@ -503,6 +535,9 @@ class AuthOperationCoordinator {
           // 错误由下方 await/timeout 分支处理。
         } finally {
           deadlineTimer?.cancel();
+          if (identical(_activeExchanges[domain], handle)) {
+            _activeExchanges.remove(domain);
+          }
           exchangePending = false;
           releaseRunningIfSettled();
         }
@@ -520,7 +555,7 @@ class AuthOperationCoordinator {
           },
         );
       } on _ExchangeAborted {
-        if (callerCancelToken?.isCancelled ?? false) return await abortCaller();
+        if (abandoned()) return await abortCaller();
         await _store.completeAttempt(
           domain,
           ticketId: ticket.id,
@@ -536,7 +571,7 @@ class AuthOperationCoordinator {
           error: const _ExchangeAborted(),
         );
       } catch (error) {
-        if (callerCancelToken?.isCancelled ?? false) return await abortCaller();
+        if (abandoned()) return await abortCaller();
         await _store.completeAttempt(
           domain,
           ticketId: ticket.id,
@@ -563,6 +598,8 @@ class AuthOperationCoordinator {
       // 唯一提交点是真实 challenge 提交（typed ticket commit）；这里只接受它
       // 产出的真实 receipt，绝不用 bool 代表「已提交」，也不再二次写 metadata。
       final receipt = receiptOf(value);
+      // 被人工接管且没有真实提交：只清 ticket，不把「被取消」记成失败。
+      if (receipt == null && handle.preempted) return await abortCaller();
       if (receipt == null) {
         if (!await _store.verifyTicket(ticket, now: now)) {
           await _store.clearTicket(domain, ticketId: ticket.id);

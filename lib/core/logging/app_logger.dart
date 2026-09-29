@@ -123,6 +123,14 @@ class AppLogger {
 
   final ListQueue<LogEntry> _buffer = ListQueue<LogEntry>(_bufferCapacity);
 
+  /// 认证诊断轨迹容量：release 包也记录，只在内存（进程被杀即丢），不落盘。
+  static const int authTrailCapacity = 300;
+
+  /// 认证轨迹：不受 kDebugMode / 调试日志开关 / 最低级别影响，只收 auth 类
+  /// info 及以上，与主缓冲一样经 [_scrub] 脱敏，且不保留堆栈。用于 release
+  /// 真机复现登录问题后由用户手动复制导出。
+  final ListQueue<LogEntry> _authTrail = ListQueue<LogEntry>(authTrailCapacity);
+
   final ValueNotifier<bool> loggingEnabled = ValueNotifier<bool>(true);
   final ValueNotifier<LogConfig> config = ValueNotifier<LogConfig>(
     const LogConfig.defaults(),
@@ -204,6 +212,15 @@ class AppLogger {
 
   List<LogEntry> get entries => List<LogEntry>.unmodifiable(_buffer.toList());
 
+  List<LogEntry> get authTrail =>
+      List<LogEntry>.unmodifiable(_authTrail.toList());
+
+  /// 认证轨迹的纯文本导出（已脱敏）。
+  String formatAuthTrail() {
+    if (_authTrail.isEmpty) return '（本次启动后暂无认证日志）';
+    return _authTrail.map((entry) => entry.formatted).join('\n');
+  }
+
   void debug(String message) {
     log(LogLevel.debug, LogCategory.general, message);
   }
@@ -234,6 +251,9 @@ class AppLogger {
     StackTrace? stackTrace,
     bool force = false,
   }) {
+    if (category == LogCategory.auth && level.index >= LogLevel.info.index) {
+      _recordAuthTrail(level, message, error);
+    }
     if (!kDebugMode && !force) return;
     if (!loggingEnabled.value && !force) return;
 
@@ -258,6 +278,21 @@ class AppLogger {
 
     debugPrint(entry.formatted);
     _appendToFile(entry);
+  }
+
+  void _recordAuthTrail(LogLevel level, String message, Object? error) {
+    if (_authTrail.length >= authTrailCapacity) {
+      _authTrail.removeFirst();
+    }
+    _authTrail.addLast(
+      LogEntry(
+        timestamp: DateTime.now(),
+        level: level,
+        category: LogCategory.auth,
+        message: _scrub(message),
+        error: error == null ? null : _scrub('$error'),
+      ),
+    );
   }
 
   void auth(
@@ -474,6 +509,7 @@ class AppLogger {
   @visibleForTesting
   void debugReset() {
     _buffer.clear();
+    _authTrail.clear();
     loggingEnabled.value = true;
     config.value = const LogConfig.defaults();
     _logDir = null;

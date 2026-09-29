@@ -346,7 +346,8 @@ class AutomaticLoginService {
             failureKind: AuthFailureKind.networkUnavailable,
           );
         }
-        auth.setMode(mode);
+        // 不改全局模式：模式只绑定到本次 challenge，提交成功后才由
+        // ZhengfangAuth 收敛全局模式，避免打断用户正在进行的人工登录。
         if (mode == ZhengfangMode.webVpn) {
           var ready = await auth.ensureWebVpnGatewaySession(
             syncWebViewCookies: false,
@@ -368,8 +369,10 @@ class AutomaticLoginService {
             );
           }
         }
-        final challenge = await ZhengfangAuth.instance.prepareCaptchaChallenge(
+        final challenge = await auth.prepareCaptchaChallenge(
           cancelToken: token,
+          mode: mode,
+          automatic: true,
         );
         final captcha = await _recognize(challenge, academicCaptchaLength);
         if (captcha == null) {

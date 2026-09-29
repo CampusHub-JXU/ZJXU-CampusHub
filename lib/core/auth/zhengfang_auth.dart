@@ -161,8 +161,11 @@ class _ZhengfangChallengeContext {
     required this.timestampMs,
     required this.session,
     required this.expectedEpoch,
+    this.indicatesLoggedIn = false,
   });
 
+  /// 本事务**显式**绑定的连接模式：请求、cookie 源与提交目标 jar 都按它选，
+  /// 不读全局 [ZhengfangAuth.mode]；提交成功后全局模式收敛到它。
   final ZhengfangMode mode;
   final String baseUrl;
   final String loginPageUrl;
@@ -174,6 +177,10 @@ class _ZhengfangChallengeContext {
   /// prepare 时捕获的持久会话 epoch；提交必须使用它做条件提交，
   /// **不得**在提交时重新读取当前 epoch。
   final int expectedEpoch;
+
+  /// 登录入口直接跳首页（已有网络会话，未绑定身份）。只属于本事务，
+  /// 不再是跨事务共享的全局标志。
+  final bool indicatesLoggedIn;
 }
 
 class ZhengfangAuth extends ChangeNotifier {
@@ -214,8 +221,6 @@ class ZhengfangAuth extends ChangeNotifier {
   static const _webVpnCasPath = '/login';
   static const webVpnGatewayLoginUrl = '$_webVpnBase$_webVpnCasPath';
 
-  bool _contextIndicatesLoggedIn = false;
-
   ZhengfangMode _mode = ZhengfangMode.direct;
   ZhengfangMode get mode => _mode;
 
@@ -230,8 +235,23 @@ class ZhengfangAuth extends ChangeNotifier {
   /// 不改变 [notifyListeners] 契约。
   int get sessionRevision => _sessionRevision;
 
+  /// 验证码事务分两条互不干扰的通道：人工（登录页）与自动恢复（OCR）。
+  /// 过去共用一个单槽，自动恢复 arm 会顶掉用户正在看的验证码，表现为
+  /// 「验证码正常显示、提交却失败」。身份变化/登出仍同时失效两条通道。
   final CaptchaChallengeStore<_ZhengfangChallengeContext> _captchaChallenges =
       CaptchaChallengeStore<_ZhengfangChallengeContext>();
+  final CaptchaChallengeStore<_ZhengfangChallengeContext>
+  _automaticCaptchaChallenges =
+      CaptchaChallengeStore<_ZhengfangChallengeContext>();
+
+  CaptchaChallengeStore<_ZhengfangChallengeContext> _challengeStore({
+    required bool automatic,
+  }) => automatic ? _automaticCaptchaChallenges : _captchaChallenges;
+
+  void _invalidateAllChallenges() {
+    _captchaChallenges.invalidate();
+    _automaticCaptchaChallenges.invalidate();
+  }
 
   void _touchSessionRevision() => _sessionRevision++;
 
@@ -257,11 +277,8 @@ class ZhengfangAuth extends ChangeNotifier {
     _touchSessionRevision();
     _sessionActive = nextActive;
     currentStudentId = nextStudentId;
-    if (!nextActive) {
-      _contextIndicatesLoggedIn = false;
-    }
-    // 身份变化：已备好的验证码事务立即失效。
-    _captchaChallenges.invalidate();
+    // 身份变化：已备好的验证码事务（两条通道）立即失效。
+    _invalidateAllChallenges();
   }
 
   Dio get _dio => _mode == ZhengfangMode.webVpn

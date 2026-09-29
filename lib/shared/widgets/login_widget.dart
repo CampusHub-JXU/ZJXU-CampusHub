@@ -357,8 +357,10 @@ class _LoginWidgetState extends State<LoginWidget> {
                   id: 'synthetic-challenge-${++_syntheticChallengeCounter}',
                 );
               }
+              // 显式绑定本页探测出的模式：并发的后台恢复改全局模式不影响本事务。
               final ch = await ZhengfangAuth.instance.prepareCaptchaChallenge(
                 cancelToken: token,
+                mode: _mode,
               );
               if (!mounted ||
                   requestId != _captchaRequestId ||

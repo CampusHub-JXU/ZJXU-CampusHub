@@ -308,20 +308,49 @@ void main() {
     expect(notifications.length, 1);
   });
 
-  test('mode change after prepare invalidates the challenge', () async {
-    DioClient.instance.dio.httpClientAdapter = _ChallengeZfAdapter();
-    final challenge = await auth.prepareCaptchaChallenge();
+  test(
+    'global mode change after prepare keeps the challenge on its own mode',
+    () async {
+      // 后台恢复 / guard 并发切全局模式，不得让用户正在填的验证码作废；
+      // 事务按 prepare 时绑定的模式提交，成功后全局模式收敛回该模式。
+      final adapter = _ChallengeZfAdapter();
+      DioClient.instance.dio.httpClientAdapter = adapter;
+      final challenge = await auth.prepareCaptchaChallenge(
+        mode: ZhengfangMode.direct,
+      );
 
-    auth.setMode(ZhengfangMode.webVpn);
+      auth.setMode(ZhengfangMode.webVpn);
+      expect(auth.hasActiveCaptchaChallenge, isTrue);
+
+      final result = await auth.submitCaptchaChallenge(
+        challengeId: challenge.id,
+        username: '2024001',
+        password: 'pw',
+        captcha: '2468',
+      );
+      expect(result, isA<LoginSuccess>());
+      expect(adapter.sessionMismatches, 0);
+      expect(auth.isLoggedIn, isTrue);
+      expect(auth.mode, ZhengfangMode.direct);
+    },
+  );
+
+  test('automatic challenge lane does not replace the manual one', () async {
+    DioClient.instance.dio.httpClientAdapter = _ChallengeZfAdapter();
+    final manual = await auth.prepareCaptchaChallenge();
+
+    // 自动恢复在人工登录期间 arm 了自己的 challenge（旧实现单槽会顶掉人工）。
+    final automatic = await auth.prepareCaptchaChallenge(automatic: true);
+    expect(automatic.id, isNot(manual.id));
 
     final result = await auth.submitCaptchaChallenge(
-      challengeId: challenge.id,
+      challengeId: manual.id,
       username: '2024001',
       password: 'pw',
       captcha: '2468',
     );
-    expect((result as LoginFailure).kind, AuthFailureKind.staleOperation);
-    expect(auth.isLoggedIn, isFalse);
+    expect(result, isA<LoginSuccess>());
+    expect(auth.currentStudentId, '2024001');
   });
 
   test('captcha failure html classifies as captchaRejected', () async {

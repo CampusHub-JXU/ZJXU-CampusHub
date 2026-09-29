@@ -2,18 +2,26 @@ part of 'zhengfang_auth.dart';
 
 /// 教务验证码事务扩展。
 ///
-/// 每个 challenge 持有独立内存 CookieJar + 冻结 Dio，从当前模式对应 jar 或
-/// 当前 WebVPN 网关 cookie 快照初始化；登录表单与验证码图片都在该会话内
+/// 每个 challenge 持有独立内存 CookieJar + 冻结 Dio，从**本事务显式模式**
+/// 对应 jar 或 WebVPN 网关 cookie 快照初始化；登录表单与验证码图片都在该会话内
 /// 取得，提交只使用同一会话。成功后条件提交（epoch 校验）才把 cookie 合并
-/// 回共享 jar 并写 envelope。
+/// 回共享 jar 并写 envelope，全局模式随之收敛到本事务模式。
+///
+/// 人工与自动恢复各用一条 challenge 通道（`automatic`），互不顶替。
 extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
   /// 准备一次教务验证码事务：隔离会话 → 登录页上下文 → 验证码 → arm。
+  ///
+  /// [mode] 为空时取当前全局模式；自动恢复必须显式传入自己解析出的模式，
+  /// 不得为此修改全局模式。[automatic] 选择自动恢复通道。
   Future<CaptchaChallenge> prepareCaptchaChallenge({
     CancelToken? cancelToken,
+    ZhengfangMode? mode,
+    bool automatic = false,
   }) async {
     await DioClient.instance.ensureInitialized();
     if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
-    final mode = _mode;
+    final txMode = mode ?? _mode;
+    final store = _challengeStore(automatic: automatic);
     final revisionAtStart = _sessionRevision;
     final accountAtStart = currentStudentId;
     // prepare 时固定持久 epoch：提交必须用它做条件提交。
@@ -21,40 +29,40 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
       CredentialSessionDomain.academic,
     );
     if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
-    if (revisionAtStart != _sessionRevision || _mode != mode) {
+    if (revisionAtStart != _sessionRevision) {
       throw CaptchaException('登录上下文已过期，请重试');
     }
 
     final session = await IsolatedAuthSession.create(
-      sourceJar: _cookieJarFor(mode),
-      seedUris: _challengeSeedUris(mode),
-      template: _dioFor(mode),
+      sourceJar: _cookieJarFor(txMode),
+      seedUris: _challengeSeedUris(txMode),
+      template: _dioFor(txMode),
     );
 
     final context = await _buildChallengeContext(
       session,
-      mode,
+      txMode,
       expectedEpoch: expectedEpoch,
       revisionAtStart: revisionAtStart,
       accountAtStart: accountAtStart,
       cancelToken: cancelToken,
     );
     if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
-    if (revisionAtStart != _sessionRevision || _mode != mode) {
+    if (revisionAtStart != _sessionRevision) {
       throw CaptchaException('登录上下文已过期，请重试');
     }
 
     final bytes = await _fetchChallengeCaptcha(
       session,
-      mode,
+      txMode,
       cancelToken: cancelToken,
     );
     if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
-    if (revisionAtStart != _sessionRevision || _mode != mode) {
+    if (revisionAtStart != _sessionRevision) {
       throw CaptchaException('登录上下文已过期，请重试');
     }
 
-    return _captchaChallenges.arm(
+    return store.arm(
       domain: CaptchaChallengeDomain.zhengfang,
       accountRevision: _sessionRevision,
       bytes: bytes,
@@ -62,8 +70,9 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
     );
   }
 
-  /// 提交一次 challenge。单次提交；id 不匹配 / 过期 / 身份或模式变化一律
-  /// 返回 [AuthFailureKind.staleOperation]。
+  /// 提交一次 challenge。单次提交；id 不匹配 / 过期 / 身份变化 / 本通道被
+  /// 刷新或失效一律返回 [AuthFailureKind.staleOperation]。全局模式变化**不**
+  /// 使事务过期：事务按自己的模式提交。
   ///
   /// [recoveryTicket] 非空表示自动恢复路径：唯一提交点是
   /// [AuthOperationCoordinator.commitIsolatedSessionForTicket]，成功后把真实
@@ -78,11 +87,20 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
     AuthRecoveryTicket? recoveryTicket,
   }) async {
     final revisionAtStart = _sessionRevision;
-    final attempt = _captchaChallenges.consume(
+    // 通道由 challenge 自身决定（id 随机），提交方无需也不能指定通道。
+    final store = _captchaChallenges.challenge?.id == challengeId
+        ? _captchaChallenges
+        : _automaticCaptchaChallenges;
+    final attempt = store.consume(
       challengeId,
       accountRevision: revisionAtStart,
     );
     if (attempt == null) {
+      AppLogger.instance.auth(
+        LogLevel.warn,
+        '教务验证码事务不可用（${recoveryTicket != null ? "自动" : "人工"}提交：'
+        '已被刷新/失效/过期或身份变化）',
+      );
       return LoginFailure(
         '验证码已失效，请刷新后重试',
         kind: AuthFailureKind.staleOperation,
@@ -93,7 +111,7 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
     }
     if (recoveryTicket != null &&
         !_recoveryTicketMatchesInput(recoveryTicket, username)) {
-      return LoginFailure('登录状态已变化，请重试', kind: AuthFailureKind.staleOperation);
+      return _staleLoginFailure('自动票据与账号不符');
     }
     return _performLogin(
       context: attempt.context,
@@ -102,6 +120,7 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
       captcha: captcha,
       revisionAtStart: revisionAtStart,
       attemptGeneration: attempt.generation,
+      store: store,
       cancelToken: cancelToken,
       recoveryTicket: recoveryTicket,
     );
@@ -114,12 +133,22 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
     return trimmed.isNotEmpty && ticket.account == trimmed;
   }
 
-  /// 传 [challengeId] 时只失效该 id（不误清更新 widget 的新 challenge）。
-  void invalidateChallenge({String? challengeId}) =>
-      _captchaChallenges.invalidate(challengeId: challengeId);
+  /// 传 [challengeId] 时只失效该 id（不误清更新 widget 的新 challenge）；
+  /// 不传时只失效人工通道（页面刷新/关闭语义），不打断自动通道。
+  void invalidateChallenge({String? challengeId}) {
+    if (challengeId == null) {
+      _captchaChallenges.invalidate();
+      return;
+    }
+    if (!_captchaChallenges.invalidate(challengeId: challengeId)) {
+      _automaticCaptchaChallenges.invalidate(challengeId: challengeId);
+    }
+  }
 
   @visibleForTesting
-  bool get hasActiveCaptchaChallenge => _captchaChallenges.hasChallenge;
+  bool get hasActiveCaptchaChallenge =>
+      _captchaChallenges.hasChallenge ||
+      _automaticCaptchaChallenges.hasChallenge;
 
   List<Uri> _challengeSeedUris(ZhengfangMode mode) {
     if (mode == ZhengfangMode.webVpn) {
@@ -175,8 +204,7 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
     if (isLoginSuccess(statusCode, location, '')) {
       // 访问登录入口却被重定向到首页：只证明**网络会话**有效，不证明学生号。
       // 因此不写 active、不通知；身份只有在已有可信 currentStudentId 时才成立。
-      _contextIndicatesLoggedIn = true;
-      _captchaChallenges.invalidate();
+      // 该事实只记在本事务上下文里，不再写全局标志、不失效其它通道。
       AppLogger.instance.auth(LogLevel.info, '检测到教务已有有效会话（未凭跳转绑定身份）');
       return _ZhengfangChallengeContext(
         mode: mode,
@@ -187,13 +215,13 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
         timestampMs: DateTime.now().millisecondsSinceEpoch,
         session: session,
         expectedEpoch: expectedEpoch,
+        indicatesLoggedIn: true,
       );
     }
 
     final pageHtml = pageResp.data ?? '';
     final csrfToken = extractCsrfFromHtml(pageHtml);
 
-    _contextIndicatesLoggedIn = false;
     if (csrfToken.isEmpty) {
       AppLogger.instance.auth(LogLevel.warn, 'CSRF Token 为空，可能连接异常');
     }
@@ -271,23 +299,22 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
     required String captcha,
     required int revisionAtStart,
     required int? attemptGeneration,
+    required CaptchaChallengeStore<_ZhengfangChallengeContext> store,
     CancelToken? cancelToken,
     AuthRecoveryTicket? recoveryTicket,
   }) async {
     final mode = context.mode;
+    bool isStale() => _isLoginStale(revisionAtStart, attemptGeneration, store);
     try {
       if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
-      if (_isLoginStale(revisionAtStart, attemptGeneration, mode)) {
-        return LoginFailure(
-          '登录状态已变化，请重试',
-          kind: AuthFailureKind.staleOperation,
-        );
+      if (isStale()) {
+        return _staleLoginFailure('公钥请求前');
       }
 
       if (context.csrfToken.isEmpty) {
         // 空 CSRF 只允许「已有可信身份且与输入账号一致」短路；绝不在没有
         // 真实 POST 的情况下把调用方输入的学号绑定到未知 session。
-        if (_contextIndicatesLoggedIn &&
+        if (context.indicatesLoggedIn &&
             username.isNotEmpty &&
             currentStudentId == username) {
           AppLogger.instance.auth(LogLevel.info, '检测到教务有效会话且身份一致，跳过登录请求');
@@ -316,11 +343,8 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
         ),
       );
       if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
-      if (_isLoginStale(revisionAtStart, attemptGeneration, mode)) {
-        return LoginFailure(
-          '登录状态已变化，请重试',
-          kind: AuthFailureKind.staleOperation,
-        );
+      if (isStale()) {
+        return _staleLoginFailure('公钥请求后');
       }
 
       final publicKeyRedirect = keyResp.headers.value('location') ?? '';
@@ -365,11 +389,8 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
       );
 
       if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
-      if (_isLoginStale(revisionAtStart, attemptGeneration, mode)) {
-        return LoginFailure(
-          '登录状态已变化，请重试',
-          kind: AuthFailureKind.staleOperation,
-        );
+      if (isStale()) {
+        return _staleLoginFailure('登录响应后');
       }
 
       final location = loginResp.headers.value('location') ?? '';
@@ -390,22 +411,16 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
         );
         if (result == null) {
           // 别的提交（logout 或更新的登录）已胜出：绝不全局 revoke。
-          return LoginFailure(
-            '登录状态已变化，请重试',
-            kind: AuthFailureKind.staleOperation,
-          );
+          return _staleLoginFailure('条件提交未胜出');
         }
-        if (_isLoginStale(revisionAtStart, attemptGeneration, mode)) {
+        if (isStale()) {
           // 本提交已写入但已过期：只在 envelope 仍是本次提交时条件撤销。
           await AuthSessionPersistence.instance.revokeIfCurrent(
             CredentialSessionDomain.academic,
             account: result.account,
             epoch: result.epoch,
           );
-          return LoginFailure(
-            '登录状态已变化，请重试',
-            kind: AuthFailureKind.staleOperation,
-          );
+          return _staleLoginFailure('提交后身份已变化');
         }
         // 成功提交了一次新会话：同账号重登也必须推进 sessionRevision，
         // 使旧 guard/旧提交的迟到结果失效，绝不允许旧响应进入新会话。
@@ -414,6 +429,9 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
           studentId: username,
           forceRevision: true,
         );
+        // cookie 已提交到本事务模式对应的 jar：全局模式随之收敛，后续业务请求
+        // 才会走这套会话。
+        _adoptMode(mode);
 
         AppLogger.instance.auth(
           LogLevel.info,
@@ -429,11 +447,8 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
       AppLogger.instance.auth(LogLevel.warn, '教务系统登录失败: $msg');
       return LoginFailure(msg, kind: kind);
     } on DioException catch (e) {
-      if (_isLoginStale(revisionAtStart, attemptGeneration, mode)) {
-        return LoginFailure(
-          '登录状态已变化，请重试',
-          kind: AuthFailureKind.staleOperation,
-        );
+      if (isStale()) {
+        return _staleLoginFailure('网络异常时已过期');
       }
       AppLogger.instance.auth(
         LogLevel.error,
@@ -472,15 +487,20 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
     );
   }
 
+  /// 过期结果：必须丢弃；记录发生位置便于真机诊断（不含凭据）。
+  LoginFailure _staleLoginFailure(String where) {
+    AppLogger.instance.auth(LogLevel.warn, '教务登录结果已过期，丢弃（$where）');
+    return LoginFailure('登录状态已变化，请重试', kind: AuthFailureKind.staleOperation);
+  }
+
   bool _isLoginStale(
     int revisionAtStart,
     int? attemptGeneration,
-    ZhengfangMode mode,
+    CaptchaChallengeStore<_ZhengfangChallengeContext> store,
   ) {
     if (revisionAtStart != _sessionRevision) return true;
-    if (_mode != mode) return true;
     if (attemptGeneration != null &&
-        !_captchaChallenges.isAttemptCurrent(attemptGeneration)) {
+        !store.isAttemptCurrent(attemptGeneration)) {
       return true;
     }
     return false;

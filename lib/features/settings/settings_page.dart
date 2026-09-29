@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -62,6 +63,23 @@ class SettingsPage extends StatelessWidget {
     );
     if (picked == null) return;
     await SemesterCalendar.instance.setSemesterStartDate(picked);
+  }
+
+  /// 复制本次启动以来的认证诊断轨迹（内存、已脱敏），供 release 真机反馈。
+  Future<void> _copyAuthTrail(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    var copied = false;
+    try {
+      await Clipboard.setData(
+        ClipboardData(text: AppLogger.instance.formatAuthTrail()),
+      );
+      copied = true;
+    } on PlatformException {
+      copied = false;
+    }
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(copied ? '登录诊断日志已复制' : '复制失败')));
   }
 
   Future<void> _checkForUpdate(BuildContext context) async {
@@ -295,6 +313,14 @@ class SettingsPage extends StatelessWidget {
                                 subtitle: '开发者与发布页',
                                 trailing: _chevron(context),
                                 onTap: () => context.pushNamed('about'),
+                              ),
+                              const _Hairline(),
+                              _SettingsRow(
+                                icon: Icons.receipt_long_outlined,
+                                title: '复制登录诊断日志',
+                                subtitle: '登录异常时复现后复制，已脱敏，不含密码与验证码',
+                                trailing: _chevron(context),
+                                onTap: () => _copyAuthTrail(context),
                               ),
                             ],
                           );
