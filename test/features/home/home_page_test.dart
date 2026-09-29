@@ -94,6 +94,28 @@ void main() {
     expect(find.text('--'), findsNWidgets(2));
   });
 
+  testWidgets('tapping logged-out hero opens academic login prompt', (
+    tester,
+  ) async {
+    var promptCount = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomePage(
+          loginPromptPresenter: (_) async {
+            promptCount++;
+            return false;
+          },
+        ),
+      ),
+    );
+
+    expect(find.text('去登录'), findsOneWidget);
+    await tester.tap(find.text('登录后查看课程'));
+    await tester.pump();
+
+    expect(promptCount, 1);
+  });
+
   testWidgets('does not prompt unified auth login after bootstrap', (
     tester,
   ) async {

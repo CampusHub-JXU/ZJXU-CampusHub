@@ -22,6 +22,7 @@ class HomePrimaryStatusHero extends StatelessWidget {
     required this.onNotificationTap,
     this.unreadNoticeCount = 0,
     required this.onUpdateTap,
+    this.onLoginTap,
   });
 
   /// 官方校徽水印资源（矢量源件在 tools/brand/jxu_emblem.svg）。
@@ -46,6 +47,9 @@ class HomePrimaryStatusHero extends StatelessWidget {
   final int unreadNoticeCount;
   final VoidCallback? onUpdateTap;
 
+  /// 打开教务登录弹层；仅「登录后查看课程」态整块可点并显示「去登录」入口。
+  final VoidCallback? onLoginTap;
+
   /// 课程大字形态的 Hero：正在上课 / 下一节课(今天) / 下一节课(今天没课)。
   bool get _isCourseKind =>
       hero.kind == HomeHeroKind.currentCourse ||
@@ -56,6 +60,9 @@ class HomePrimaryStatusHero extends StatelessWidget {
   /// 但不渲染「查看课表」文字入口——入口由预览段落承担。
   bool get _isStatusHeroTappable =>
       onOpenSchedule != null && hero.kind == HomeHeroKind.beforeSemester;
+
+  bool get _isLoginHero =>
+      onLoginTap != null && hero.kind == HomeHeroKind.loggedOut;
 
   @override
   Widget build(BuildContext context) {
@@ -130,6 +137,7 @@ class HomePrimaryStatusHero extends StatelessWidget {
                   else
                     _buildStatusHero(
                       context,
+                      accentColor: accentColor,
                       primaryTextColor: primaryTextColor,
                       secondaryTextColor: secondaryTextColor,
                     ),
@@ -432,10 +440,11 @@ class HomePrimaryStatusHero extends StatelessWidget {
   /// 非课程类 Hero：headline 作大字，时间 / 课程名 / 地点作为副文案，
   /// 确保原有信息一项不丢。
   ///
-  /// 未开学倒计时态整块可点进课表（与下方「开学首日」预览同一动作），
-  /// 其余状态不承担跳转。
+  /// 未开学倒计时态整块可点进课表（与下方「开学首日」预览同一动作）；
+  /// 未登录态整块可点打开教务登录；其余状态不承担跳转。
   Widget _buildStatusHero(
     BuildContext context, {
+    required Color accentColor,
     required Color primaryTextColor,
     required Color secondaryTextColor,
   }) {
@@ -520,9 +529,42 @@ class HomePrimaryStatusHero extends StatelessWidget {
             ],
           ),
         ],
+        if (_isLoginHero) ...[
+          const SizedBox(height: 10),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '去登录',
+                  style: textTheme.titleSmall!.copyWith(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: accentColor,
+                  ),
+                ),
+                const SizedBox(width: 2),
+                Icon(Icons.chevron_right, size: 16, color: accentColor),
+              ],
+            ),
+          ),
+        ],
       ],
     );
 
+    if (_isLoginHero) {
+      return Semantics(
+        button: true,
+        label: '登录教务系统查看课程',
+        excludeSemantics: true,
+        child: InkWell(
+          onTap: onLoginTap,
+          borderRadius: BorderRadius.circular(12),
+          child: body,
+        ),
+      );
+    }
     if (!_isStatusHeroTappable) return body;
     return Semantics(
       button: true,

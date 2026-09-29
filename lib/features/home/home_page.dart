@@ -16,6 +16,7 @@ import '../../core/theme/app_theme_controller.dart';
 import '../../core/theme/personalization_controller.dart';
 import '../../core/theme/widgets/app_wallpaper_backdrop.dart';
 import '../../core/update/update_checker.dart';
+import '../../shared/widgets/login_shell.dart';
 import '../../shared/widgets/network_error_toast.dart';
 import '../../shared/widgets/update_dialog.dart';
 import '../exam/exam_model.dart';
@@ -42,8 +43,16 @@ import 'widget/campus_widget_sync.dart';
 /// 入口行已并入）。底部 dock 通过 [HomeZoneController] 做 ScrollSpy，
 /// 在 首页/功能 之间自动切换高亮。数据获取与刷新行为与旧版一致，
 /// 展示层由 [resolveHomePresentation]（纯函数）从 [HomeSnapshot] 派生。
+/// 教务登录弹层的呈现函数：返回 true 表示弹层内登录成功。
+typedef HomeLoginPromptPresenter = Future<bool> Function(BuildContext context);
+
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+  const HomePage({super.key, @visibleForTesting this.loginPromptPresenter});
+
+  /// 测试注入点：替换教务登录弹层（默认走 shared 的
+  /// `showAcademicSystemLoginModal`）。生产路由不传该参数。
+  @visibleForTesting
+  final HomeLoginPromptPresenter? loginPromptPresenter;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -539,6 +548,11 @@ class _HomePageState extends State<HomePage> {
       },
       onNotificationTap: () => context.pushNamed('notification-center'),
       onUpdateTap: _handleUpdateTap,
+      // 登录成功后由既有的教务身份监听刷新首页，这里无需再处理结果。
+      onLoginTap: () =>
+          (widget.loginPromptPresenter ?? showAcademicSystemLoginModal)(
+            context,
+          ),
     );
 
     final todayWidget = HomeTodaySection(
