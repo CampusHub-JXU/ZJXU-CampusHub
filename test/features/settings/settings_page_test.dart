@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:jxu_campus_hub/features/settings/settings_page.dart';
-import 'package:jxu_campus_hub/shared/widgets/app_card.dart';
+import 'package:jxu_campus_hub/shared/widgets/plain_list.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_dropdown.dart';
 
 import '../../helpers/pump_app.dart';
@@ -30,28 +30,29 @@ void main() {
     expect(find.text('检查更新'), findsOneWidget);
   });
 
-  testWidgets('按 外观/校园/桌面与后台/账户与数据/应用 分组', (tester) async {
+  testWidgets('按 外观/学期/课表与后台/其他 分组', (tester) async {
     await pumpPage(tester, const SettingsPage());
 
     expect(find.text('外观'), findsOneWidget);
-    expect(find.text('校园'), findsOneWidget);
+    expect(find.text('学期'), findsOneWidget);
 
-    await tester.scrollUntilVisible(find.text('账户与数据'), 300);
-    expect(find.text('账户与数据'), findsOneWidget);
-    // 入口已去重：账户与数据分组不再承载教务/统一认证入口。
+    await tester.scrollUntilVisible(find.text('课表与后台'), 300);
+    expect(find.text('课表与后台'), findsOneWidget);
+    // 账号入口只在「我的」页，设置页不重复承载。
     expect(find.text('教务系统'), findsNothing);
     expect(find.text('统一认证'), findsNothing);
 
-    await tester.scrollUntilVisible(find.text('应用'), 300);
-    expect(find.text('应用'), findsOneWidget);
-    expect(find.text('关于'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('其他'), 300);
+    expect(find.text('其他'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('关于与诊断'), 300);
+    expect(find.text('关于与诊断'), findsOneWidget);
   });
 
-  testWidgets('学期卡片展示自动识别的当前学年学期', (tester) async {
+  testWidgets('学期分组展示当前学期', (tester) async {
     await pumpPage(tester, const SettingsPage());
 
-    await tester.scrollUntilVisible(find.text('当前学年学期'), 300);
-    expect(find.text('当前学年学期'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('当前学期'), 300);
+    expect(find.text('当前学期'), findsOneWidget);
 
     // 未登录教务时无法在线识别，应回退为日期推算并明确标注来源。
     await tester.pumpAndSettle();
@@ -59,15 +60,14 @@ void main() {
     expect(find.textContaining('学年'), findsWidgets);
   });
 
-  testWidgets('我的年级下拉在自动跟随与手动年级间切换', (tester) async {
+  testWidgets('年级下拉在自动跟随与手动年级间切换', (tester) async {
     await pumpPage(tester, const SettingsPage());
 
-    await tester.scrollUntilVisible(find.text('我的年级'), 300);
-    expect(find.text('我的年级'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('年级'), 300);
+    expect(find.text('年级'), findsOneWidget);
 
-    // 默认「自动」；说明文案由行副标题承载，不再使用问号 tooltip。
+    // 默认「自动」，不再附带说明副标题。
     expect(find.text('自动'), findsOneWidget);
-    expect(find.text('默认跟随学号自动识别，仅用于过滤教务处公告，可能误判'), findsOneWidget);
 
     // 选择手动年级：写入持久化，按钮文案随选中项切换。
     await tester.tap(find.byType(AppDropdown<int>));
@@ -133,18 +133,18 @@ void main() {
     final handle = tester.ensureSemantics();
     await pumpPage(tester, const SettingsPage());
 
-    await tester.scrollUntilVisible(find.text('课表日历同步'), 300);
+    await tester.scrollUntilVisible(find.text('同步到系统日历'), 300);
 
     final toggleNode = ancestorWith(
       tester,
-      find.text('课表日历同步'),
+      find.text('同步到系统日历'),
       (data) => data.flagsCollection.isToggled != Tristate.none,
     );
     expect(toggleNode, isNotNull, reason: '开关行应暴露开/关状态');
 
     final tapNode = ancestorWith(
       tester,
-      find.text('课表日历同步'),
+      find.text('同步到系统日历'),
       (data) => data.hasAction(SemanticsAction.tap),
     );
     expect(tapNode, isNotNull, reason: '点行即切换，应暴露点击动作');
@@ -159,8 +159,11 @@ void main() {
 
     await pumpPage(tester, const SettingsPage());
 
-    // 内容列限宽 640，列表左右各留 16 内边距。
-    expect(tester.getSize(find.byType(AppCard).first).width, 608);
+    // 内容列限宽 640，列表左右各留 kPlainListGutter(20) 内边距。
+    expect(
+      tester.getSize(find.byType(PlainListGroup).first).width,
+      640 - 2 * kPlainListGutter,
+    );
   });
 
   testWidgets('清除离线缓存需二次确认，取消不执行', (tester) async {

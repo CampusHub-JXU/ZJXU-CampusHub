@@ -14,6 +14,10 @@ void main() {
   }
 
   testWidgets('真实 Home 组件渲染示例数据', (tester) async {
+    // 默认测试视口只有 800x600，会把 900 高的外框截断；按真实手机尺寸渲染。
+    tester.view.physicalSize = const Size(390, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     await tester.pumpWidget(
       wrap(
         const HomeSurfaceScene(

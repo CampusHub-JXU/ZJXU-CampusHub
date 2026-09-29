@@ -134,13 +134,16 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      expect(find.text('统一认证（含一卡通）'), findsOneWidget);
+      expect(find.text('统一认证'), findsOneWidget);
       expect(find.text('已登录'), findsNothing);
-      // 副标题呈现「未登录」，已去除行尾状态灯及右侧独立状态文案。
-      expect(find.text('未登录'), findsOneWidget);
       expect(
         tester.widget<Text>(find.byKey(const Key('my_campus_status'))).data,
-        '未登录',
+        '去登录',
+      );
+      // 无任何域已登录：顶部身份呈现「未登录」。
+      expect(
+        tester.widget<Text>(find.byKey(const Key('my_identity'))).data,
+        '嘉兴大学 · 未登录',
       );
     },
   );
@@ -158,7 +161,7 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(find.text('统一认证（含一卡通）'), findsOneWidget);
+    expect(find.text('统一认证'), findsOneWidget);
     // 副标题呈现「已登录」，已去除行尾状态灯及右侧独立状态文案。
     expect(find.text('已登录'), findsOneWidget);
     expect(
@@ -194,7 +197,7 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    await tester.tap(find.text('统一认证（含一卡通）'));
+    await tester.tap(find.text('统一认证'));
     await tester.pumpAndSettle();
 
     // 已登录点按直接进一卡通页，不再弹「重登模态自动关闭」的闪现。
@@ -223,7 +226,7 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      await tester.tap(find.text('统一认证（含一卡通）'));
+      await tester.tap(find.text('统一认证'));
       await tester.pumpAndSettle();
 
       // 未登录先弹统一认证登录，不直接进一卡通页。
@@ -233,25 +236,90 @@ void main() {
   );
 
   testWidgets(
-    'shows unknown state when liveness check fails with network error',
+    'keeps local session state and silently retries once when liveness '
+    'check is inconclusive (network error)',
     (tester) async {
       UnifiedAuthService.instance.debugSetSession(
         active: true,
         account: '2025001',
       );
-      // 校验请求本身失败（返回 null = 网络异常）：不能沿用「已登录」。
-      UnifiedAuthService.instance.debugSessionValidator = (_) async => null;
+      // 校验请求本身失败（返回 null = 网络异常，无法下结论）。
+      var validateCount = 0;
+      UnifiedAuthService.instance.debugSessionValidator = (_) async {
+        validateCount++;
+        return null;
+      };
 
       await tester.pumpWidget(const MaterialApp(home: MyPage()));
       await tester.pump();
       await tester.pump();
 
-      expect(find.text('已登录'), findsNothing);
-      expect(find.textContaining('登录状态未知'), findsOneWidget);
+      // 无法下结论：保持本地会话状态（已登录），不外露「未知」文案。
+      expect(validateCount, 1);
       expect(
         tester.widget<Text>(find.byKey(const Key('my_campus_status'))).data,
-        '登录状态未知 · 点按重新校验',
+        '已登录',
       );
+
+      // 5 秒后静默重试一次，再次调用测活。
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pump();
+      expect(validateCount, 2);
+      expect(
+        tester.widget<Text>(find.byKey(const Key('my_campus_status'))).data,
+        '已登录',
+      );
+
+      // 静默重试只发生一次，不会无限循环。
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pump();
+      expect(validateCount, 2);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'unknown campus status: tapping the row performs the normal logged-in '
+    'action instead of only re-validating',
+    (tester) async {
+      UnifiedAuthService.instance.debugSetSession(
+        active: true,
+        account: '2025001',
+      );
+      UnifiedAuthService.instance.debugSessionValidator = (_) async => null;
+
+      final router = GoRouter(
+        routes: [
+          GoRoute(
+            path: '/',
+            name: 'my',
+            builder: (context, state) => const MyPage(),
+          ),
+          GoRoute(
+            path: '/campus-card',
+            name: 'campus-card',
+            builder: (context, state) => const Scaffold(body: Text('校园卡一卡通页')),
+          ),
+        ],
+      );
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pump();
+      await tester.pump();
+
+      expect(
+        tester.widget<Text>(find.byKey(const Key('my_campus_status'))).data,
+        '已登录',
+      );
+
+      // 未知状态下点按整行执行正常动作（已登录 → 直达一卡通），不再「只重新校验」。
+      await tester.tap(find.text('统一认证'));
+      await tester.pumpAndSettle();
+      expect(find.text('校园卡一卡通页'), findsOneWidget);
+
+      // 冲掉可能仍挂起的静默重试计时器，确保不留待处理的 Timer。
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pump();
+      expect(tester.takeException(), isNull);
     },
   );
 
@@ -266,8 +334,8 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: MyPage()));
     await tester.pumpAndSettle();
 
-    expect(find.text('我的'), findsOneWidget);
-    expect(find.text('统一认证（含一卡通）'), findsOneWidget);
+    expect(find.byKey(const Key('my_identity')), findsOneWidget);
+    expect(find.text('统一认证'), findsOneWidget);
     expect(find.text('教务系统'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -290,7 +358,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('我的'), findsOneWidget);
+    expect(find.byKey(const Key('my_identity')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -303,7 +371,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('我的'), findsOneWidget);
+    expect(find.byKey(const Key('my_identity')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -351,7 +419,7 @@ void main() {
       // 已验证登录：副标题为「已登录」，且行尾不再有「进入」按钮。
       expect(
         tester.widget<Text>(find.byKey(const Key('my_academic_status'))).data,
-        '已登录 · 课表未缓存',
+        '已登录',
       );
       expect(find.text('进入'), findsNothing);
 
@@ -422,7 +490,7 @@ void main() {
 
       expect(
         tester.widget<Text>(find.byKey(const Key('my_academic_status'))).data,
-        '未登录 · 课表未缓存',
+        '去登录',
       );
 
       await tester.tap(find.text('教务系统'));
@@ -439,12 +507,12 @@ void main() {
       // 登录成功后留在「我的」页（真机手测反馈）：不再自动继续进教务门户。
       expect(find.text('登录教务系统'), findsNothing);
       expect(find.text('教务系统门户', skipOffstage: false), findsNothing);
-      expect(find.text('统一认证（含一卡通）'), findsOneWidget);
+      expect(find.text('统一认证'), findsOneWidget);
       expect(loginPromptCount, 1);
       // 两行状态已刷新：教务行转为已登录。
       expect(
         tester.widget<Text>(find.byKey(const Key('my_academic_status'))).data,
-        '已登录 · 课表未缓存',
+        '已登录',
       );
 
       // 已登录态导航不变：再点整行仍直达教务门户。
@@ -456,7 +524,8 @@ void main() {
   );
 
   testWidgets(
-    'unknown academic status row only re-validates without prompting or opening',
+    'unknown academic status keeps local state, silently retries once, and '
+    'tap performs the normal logged-in action instead of only re-validating',
     (tester) async {
       final adapter = await initAcademicLivenessMock();
       var probeCount = 0;
@@ -494,25 +563,26 @@ void main() {
       await tester.pumpWidget(MaterialApp.router(routerConfig: router));
       await tester.pumpAndSettle();
 
-      // 测活网络异常：登录状态未知。
+      // 测活网络异常（无法下结论）：保持本地会话状态（已登录），不外露「未知」。
       expect(
         tester.widget<Text>(find.byKey(const Key('my_academic_status'))).data,
-        '登录状态未知 · 点按重新校验',
+        '已登录',
       );
       expect(probeCount, 1);
 
+      // 未知状态下点按整行执行正常动作（已登录 → 直达门户），不再是「只重新校验」。
       await tester.tap(find.text('教务系统'));
       await tester.pumpAndSettle();
 
-      // 点按 = 重新校验：发出第二次测活，但不弹登录、不进门户。
-      expect(probeCount, 2);
       expect(loginPromptCount, 0);
       expect(find.text('登录教务系统'), findsNothing);
-      expect(find.text('教务系统门户', skipOffstage: false), findsNothing);
-      expect(
-        tester.widget<Text>(find.byKey(const Key('my_academic_status'))).data,
-        '登录状态未知 · 点按重新校验',
-      );
+      expect(find.text('教务系统门户', skipOffstage: false), findsOneWidget);
+
+      // 冲掉初始测活安排的静默重试计时器：再测活一次，之后不再循环。
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pump();
+      expect(probeCount, 2);
+      expect(tester.takeException(), isNull);
     },
   );
 
@@ -522,8 +592,8 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: MyPage()));
     await tester.pumpAndSettle();
 
-    expect(find.text('我的'), findsOneWidget);
-    expect(find.byTooltip('退出登录'), findsNothing);
+    expect(find.byKey(const Key('my_identity')), findsOneWidget);
+    expect(find.byKey(const Key('my_logout')), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -545,7 +615,7 @@ void main() {
       );
       await tester.pumpWidget(const MaterialApp(home: MyPage()));
       await tester.pumpAndSettle();
-      expect(find.byTooltip('退出登录'), findsOneWidget);
+      expect(find.byKey(const Key('my_logout')), findsOneWidget);
 
       // 仅统一认证已登录 → 同样显示。
       ZhengfangAuth.instance.debugReset();
@@ -556,7 +626,7 @@ void main() {
       UnifiedAuthService.instance.debugSessionValidator = (_) async => true;
       await tester.pumpWidget(const MaterialApp(home: MyPage()));
       await tester.pumpAndSettle();
-      expect(find.byTooltip('退出登录'), findsOneWidget);
+      expect(find.byKey(const Key('my_logout')), findsOneWidget);
     },
   );
 
@@ -583,8 +653,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('我的'), findsOneWidget);
-      expect(find.byTooltip('退出登录'), findsOneWidget);
+      expect(find.byKey(const Key('my_identity')), findsOneWidget);
+      expect(find.byKey(const Key('my_logout')), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -601,11 +671,12 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: MyPage()));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('退出登录'));
+    await tester.tap(find.byKey(const Key('my_logout')));
     await tester.pumpAndSettle();
 
     // 确认框：平实中文，确认=退出登录，取消=返回。
-    expect(find.text('退出登录'), findsNWidgets(2)); // 标题 + 确认按钮
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.widgetWithText(TextButton, '退出登录'), findsOneWidget);
     expect(find.text('返回'), findsOneWidget);
 
     await tester.tap(find.text('返回'));
@@ -613,13 +684,13 @@ void main() {
 
     // 取消 = 返回：不登出，会话保持。
     expect(find.text('返回'), findsNothing);
-    expect(find.text('退出登录'), findsNothing); // 对话框关闭（tooltip 不算 Text）
+    expect(find.byType(AlertDialog), findsNothing); // 对话框已关闭
     expect(UnifiedAuthService.instance.isLoggedIn, isTrue);
     expect(
       tester.widget<Text>(find.byKey(const Key('my_campus_status'))).data,
       '已登录',
     );
-    expect(find.byTooltip('退出登录'), findsOneWidget);
+    expect(find.byKey(const Key('my_logout')), findsOneWidget);
   });
 
   testWidgets(
@@ -681,20 +752,20 @@ void main() {
       await tester.pumpAndSettle();
 
       // 初始：两行已登录，登出入口可见。
-      expect(find.byTooltip('退出登录'), findsOneWidget);
+      expect(find.byKey(const Key('my_logout')), findsOneWidget);
 
-      await tester.tap(find.byTooltip('退出登录'));
+      await tester.tap(find.byKey(const Key('my_logout')));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(TextButton, '退出登录'));
       await tester.pump();
       await _settleLogout(
         tester,
-        until: () => find.byTooltip('退出登录').evaluate().isEmpty,
+        until: () => find.byKey(const Key('my_logout')).evaluate().isEmpty,
       );
       await tester.pumpAndSettle();
 
       // 停留在「我的」页：不跳一卡通页、不进教务门户。
-      expect(find.text('统一认证（含一卡通）'), findsOneWidget);
+      expect(find.text('统一认证'), findsOneWidget);
       expect(find.text('教务系统'), findsOneWidget);
       expect(find.text('校园卡一卡通页', skipOffstage: false), findsNothing);
       expect(find.text('教务系统门户', skipOffstage: false), findsNothing);
@@ -703,13 +774,13 @@ void main() {
       // 两行状态刷新为未登录，登出入口隐藏。
       expect(
         tester.widget<Text>(find.byKey(const Key('my_campus_status'))).data,
-        '未登录',
+        '去登录',
       );
       expect(
         tester.widget<Text>(find.byKey(const Key('my_academic_status'))).data,
-        '未登录 · 课表未缓存',
+        '去登录',
       );
-      expect(find.byTooltip('退出登录'), findsNothing);
+      expect(find.byKey(const Key('my_logout')), findsNothing);
 
       // 两个会话都已撤销。
       expect(UnifiedAuthService.instance.isLoggedIn, isFalse);
@@ -750,7 +821,7 @@ void main() {
       await tester.pumpWidget(MaterialApp(home: MyPage(logoutStepGate: gate)));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byTooltip('退出登录'));
+      await tester.tap(find.byKey(const Key('my_logout')));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(TextButton, '退出登录'));
       await _settleLogout(tester, until: () => academicRecordHeld);
@@ -827,22 +898,23 @@ void main() {
       await tester.pumpAndSettle();
 
       // 重复点按（重建帧之前连点两次）：只弹一个确认框。
-      await tester.tap(find.byTooltip('退出登录'));
-      await tester.tap(find.byTooltip('退出登录'));
+      await tester.tap(find.byKey(const Key('my_logout')));
+      await tester.tap(find.byKey(const Key('my_logout')));
       await tester.pumpAndSettle();
       expect(find.text('返回'), findsOneWidget);
-      expect(find.text('退出登录'), findsNWidgets(2)); // 标题 + 确认按钮
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.widgetWithText(TextButton, '退出登录'), findsOneWidget);
 
       await tester.tap(find.widgetWithText(TextButton, '退出登录'));
       await _settleLogout(tester, until: () => academicRecordHeld);
 
       // 登出进行中：再点登出按钮不弹二次确认、不跑第二遍登出。
-      await tester.tap(find.byTooltip('退出登录'));
+      await tester.tap(find.byKey(const Key('my_logout')));
       await tester.pumpAndSettle();
       expect(find.text('返回'), findsNothing);
 
       // 登出进行中：两行点按不弹登录、不导航。
-      await tester.tap(find.text('统一认证（含一卡通）'));
+      await tester.tap(find.text('统一认证'));
       await tester.pumpAndSettle();
       expect(find.text('登录一卡通'), findsNothing);
       expect(find.text('校园卡一卡通页', skipOffstage: false), findsNothing);
@@ -885,7 +957,7 @@ void main() {
       await tester.pumpWidget(MaterialApp(home: MyPage(logoutStepGate: gate)));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byTooltip('退出登录'));
+      await tester.tap(find.byKey(const Key('my_logout')));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(TextButton, '退出登录'));
       await _settleLogout(
@@ -943,7 +1015,7 @@ void main() {
       await tester.pumpWidget(MaterialApp(home: MyPage(logoutStepGate: gate)));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byTooltip('退出登录'));
+      await tester.tap(find.byKey(const Key('my_logout')));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(TextButton, '退出登录'));
       await _settleLogout(tester, until: () => academicRecordHeld);
@@ -996,7 +1068,7 @@ void main() {
       await tester.pumpWidget(MaterialApp(home: MyPage(logoutStepGate: gate)));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byTooltip('退出登录'));
+      await tester.tap(find.byKey(const Key('my_logout')));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(TextButton, '退出登录'));
       await _settleLogout(tester, until: () => casSessionHeld);
@@ -1050,7 +1122,7 @@ void main() {
       await tester.pumpWidget(MaterialApp(home: MyPage(logoutStepGate: gate)));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byTooltip('退出登录'));
+      await tester.tap(find.byKey(const Key('my_logout')));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(TextButton, '退出登录'));
       await _settleLogout(tester, until: () => casSessionHeld);

@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -17,13 +16,11 @@ import '../../core/profile/user_profile_controller.dart';
 import '../../core/semester/current_term_resolver.dart';
 import '../../core/semester/semester_calendar.dart';
 import '../../core/semester/schedule_term_context.dart';
-import '../../core/theme/app_design_tokens.dart';
 import '../../core/update/update_checker.dart';
 import '../../core/update/update_model.dart';
 import '../../shared/widgets/app_app_bar.dart';
-import '../../shared/widgets/app_card.dart';
 import '../../shared/widgets/app_dropdown.dart';
-import '../../shared/widgets/app_icon_badge.dart';
+import '../../shared/widgets/plain_list.dart';
 import '../../shared/widgets/update_dialog.dart';
 
 class SettingsPage extends StatelessWidget {
@@ -41,12 +38,7 @@ class SettingsPage extends StatelessWidget {
     };
   }
 
-  String _formatDate(DateTime date) {
-    final y = date.year.toString();
-    final m = date.month.toString().padLeft(2, '0');
-    final d = date.day.toString().padLeft(2, '0');
-    return '$y-$m-$d';
-  }
+  String _formatMonthDay(DateTime date) => '${date.month}月${date.day}日';
 
   Future<void> _pickSemesterStartDate(
     BuildContext context,
@@ -63,23 +55,6 @@ class SettingsPage extends StatelessWidget {
     );
     if (picked == null) return;
     await SemesterCalendar.instance.setSemesterStartDate(picked);
-  }
-
-  /// 复制本次启动以来的认证诊断轨迹（内存、已脱敏），供 release 真机反馈。
-  Future<void> _copyAuthTrail(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
-    var copied = false;
-    try {
-      await Clipboard.setData(
-        ClipboardData(text: AppLogger.instance.formatAuthTrail()),
-      );
-      copied = true;
-    } on PlatformException {
-      copied = false;
-    }
-    messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(copied ? '登录诊断日志已复制' : '复制失败')));
   }
 
   Future<void> _checkForUpdate(BuildContext context) async {
@@ -150,139 +125,111 @@ class SettingsPage extends StatelessWidget {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: _contentMaxWidth),
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+            padding: const EdgeInsets.fromLTRB(
+              kPlainListGutter,
+              8,
+              kPlainListGutter,
+              32,
+            ),
             children: [
-              const _SectionHeader('外观'),
-              const SizedBox(height: 8),
+              const PlainSectionHeader('外观'),
               _GroupCard(
                 children: [
                   _SettingsRow(
-                    icon: Icons.palette_outlined,
                     title: '主题与色彩',
-                    subtitle: '深浅模式、强调色与字体大小',
-                    trailing: _chevron(context),
                     onTap: () => context.pushNamed('appearance'),
                   ),
-                  const _Hairline(),
                   _SettingsRow(
-                    icon: Icons.auto_awesome_outlined,
                     title: '个性化',
-                    subtitle: '背景、动态效果与材质显示',
-                    trailing: _chevron(context),
                     onTap: () => context.pushNamed('personalization'),
                   ),
                 ],
               ),
-              const SizedBox(height: 24),
-              const _SectionHeader('校园'),
-              const SizedBox(height: 8),
-              ValueListenableBuilder<DateTime>(
-                valueListenable: SemesterCalendar.instance.semesterStartDate,
-                child: const _CurrentTermTile(),
-                builder: (context, semesterStartDate, child) {
-                  return _GroupCard(
-                    children: [
-                      ?child,
-                      const _Hairline(),
-                      const _EnrollmentYearRow(),
-                      const _Hairline(),
-                      _SettingsRow(
-                        icon: Icons.edit_calendar_outlined,
-                        title: '当前学期开学日',
-                        subtitle:
-                            '${_formatDate(semesterStartDate)}（用于周次与下一节课计算）',
-                        trailing: _chevron(context),
-                        onTap: () async {
-                          await _pickSemesterStartDate(
-                            context,
-                            semesterStartDate,
-                          );
-                        },
-                      ),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(0, 0, 12, 10),
-                          child: TextButton(
-                            onPressed: () async {
-                              await SemesterCalendar.instance
-                                  .resetSemesterStartDate();
-                            },
-                            child: Text(
-                              '恢复默认（${_formatDate(SemesterCalendar.defaultSemesterStartFor(DateTime.now()))}）',
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
-              const SizedBox(height: 8),
-              const _SectionCaption('学期设置会立即生效。'),
-              if (Theme.of(context).platform == TargetPlatform.android) ...[
-                const SizedBox(height: 24),
-                const _SectionHeader('课表日历'),
-                const SizedBox(height: 8),
-                const _CalendarSyncCard(),
-                const SizedBox(height: 8),
-                const _SectionCaption('课表仅在应用前台写入系统日历；课前 10 分钟由系统日历提醒（非精确闹钟）。'),
-              ],
-              const SizedBox(height: 24),
-              const _SectionHeader('桌面与后台'),
-              const SizedBox(height: 8),
+              const SizedBox(height: kPlainListGroupGap),
+              const PlainSectionHeader('学期'),
               _GroupCard(
                 children: [
+                  const _CurrentTermTile(),
+                  const _EnrollmentYearRow(),
+                  ValueListenableBuilder<DateTime>(
+                    valueListenable:
+                        SemesterCalendar.instance.semesterStartDate,
+                    builder: (context, semesterStartDate, _) {
+                      final defaultStart =
+                          SemesterCalendar.defaultSemesterStartFor(
+                            DateTime.now(),
+                          );
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _SettingsRow(
+                            title: '开学日',
+                            value: _formatMonthDay(semesterStartDate),
+                            showChevron: true,
+                            onTap: () async {
+                              await _pickSemesterStartDate(
+                                context,
+                                semesterStartDate,
+                              );
+                            },
+                          ),
+                          // 只在改过开学日时出现，避免常驻一个没用的按钮。
+                          if (!DateUtils.isSameDay(
+                            semesterStartDate,
+                            defaultStart,
+                          )) ...[
+                            _SettingsRow(
+                              title: '恢复默认开学日',
+                              value: _formatMonthDay(defaultStart),
+                              onTap: () async {
+                                await SemesterCalendar.instance
+                                    .resetSemesterStartDate();
+                              },
+                            ),
+                          ],
+                        ],
+                      );
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: kPlainListGroupGap),
+              const PlainSectionHeader('课表与后台'),
+              _GroupCard(
+                children: [
+                  if (Theme.of(context).platform == TargetPlatform.android)
+                    const _CalendarSyncCard(),
                   _SettingsRow(
-                    icon: Icons.widgets_outlined,
-                    title: '桌面与后台',
-                    subtitle: '桌面组件、快捷方式、通知权限与后台运行说明',
-                    trailing: _chevron(context),
+                    title: '桌面组件与后台',
                     onTap: () => context.pushNamed('desktop-background'),
                   ),
                 ],
               ),
-              const SizedBox(height: 24),
-              const _SectionHeader('账户与数据'),
-              const SizedBox(height: 8),
+              const SizedBox(height: kPlainListGroupGap),
+              const PlainSectionHeader('其他'),
               _GroupCard(
                 children: [
-                  _SettingsRow(
-                    icon: Icons.cleaning_services_outlined,
-                    title: '清除离线缓存',
-                    subtitle: '清除目录等临时缓存，不影响登录和课表',
-                    trailing: _chevron(context),
-                    onTap: () => _clearOfflineCache(context),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              const _SectionHeader('应用'),
-              const SizedBox(height: 8),
-              FutureBuilder<PackageInfo>(
-                future: PackageInfo.fromPlatform(),
-                builder: (context, snapshot) {
-                  final version = snapshot.hasData
-                      ? '当前版本 v${snapshot.data!.version}+${snapshot.data!.buildNumber}'
-                      : '正在读取版本信息…';
-                  return ValueListenableBuilder<AppRelease?>(
+                  ValueListenableBuilder<AppRelease?>(
                     valueListenable: UpdateChecker.instance.availableRelease,
-                    builder: (context, release, child) {
+                    builder: (context, release, _) {
                       return ValueListenableBuilder<bool>(
                         valueListenable: UpdateChecker.instance.isChecking,
-                        builder: (context, isChecking, child) {
-                          final subtitle = release != null
-                              ? '发现新版本 v${release.version}'
-                              : UpdateChecker.instance.isUpdateEnabled
-                              ? version
-                              : '当前版本暂未开放在线更新';
-                          return _GroupCard(
-                            children: [
-                              _SettingsRow(
-                                icon: Icons.system_update_outlined,
+                        builder: (context, isChecking, _) {
+                          return FutureBuilder<PackageInfo>(
+                            future: PackageInfo.fromPlatform(),
+                            builder: (context, snapshot) {
+                              final String? value;
+                              if (release != null) {
+                                value = '新版本 v${release.version}';
+                              } else if (snapshot.hasData) {
+                                value = 'v${snapshot.data!.version}';
+                              } else {
+                                value = null;
+                              }
+                              return _SettingsRow(
                                 title: '检查更新',
-                                subtitle: subtitle,
-                                emphasizeSubtitle: release != null,
+                                value: value,
+                                emphasizeValue: release != null,
                                 trailing: isChecking
                                     ? const SizedBox(
                                         width: 20,
@@ -291,63 +238,33 @@ class SettingsPage extends StatelessWidget {
                                           strokeWidth: 2,
                                         ),
                                       )
-                                    : Icon(
-                                        release != null
-                                            ? Icons.new_releases_outlined
-                                            : Icons.chevron_right,
-                                        size: 20,
-                                        color: release != null
-                                            ? cs.primary
-                                            : cs.onSurfaceVariant,
-                                      ),
+                                    : null,
+                                showChevron: false,
                                 onTap: isChecking
                                     ? null
                                     : () {
                                         _checkForUpdate(context);
                                       },
-                              ),
-                              const _Hairline(),
-                              _SettingsRow(
-                                icon: Icons.info_outline,
-                                title: '关于',
-                                subtitle: '开发者与发布页',
-                                trailing: _chevron(context),
-                                onTap: () => context.pushNamed('about'),
-                              ),
-                              const _Hairline(),
-                              _SettingsRow(
-                                icon: Icons.receipt_long_outlined,
-                                title: '复制登录诊断日志',
-                                subtitle: '登录异常时复现后复制，已脱敏，不含密码与验证码',
-                                trailing: _chevron(context),
-                                onTap: () => _copyAuthTrail(context),
-                              ),
-                            ],
+                              );
+                            },
                           );
                         },
                       );
                     },
-                  );
-                },
-              ),
-              const SizedBox(height: 24),
-              FutureBuilder<PackageInfo>(
-                future: PackageInfo.fromPlatform(),
-                builder: (context, snapshot) {
-                  final version = snapshot.hasData
-                      ? 'v${snapshot.data!.version}+${snapshot.data!.buildNumber}'
-                      : null;
-                  return Center(
-                    child: _SectionCaption(
-                      version == null ? '嘉兴大学' : '嘉兴大学 $version',
-                    ),
-                  );
-                },
+                  ),
+                  _SettingsRow(
+                    title: '清除离线缓存',
+                    onTap: () => _clearOfflineCache(context),
+                  ),
+                  _SettingsRow(
+                    title: '关于与诊断',
+                    onTap: () => context.pushNamed('about'),
+                  ),
+                ],
               ),
               if (kDebugMode) ...[
-                const SizedBox(height: 16),
-                const _SectionHeader('调试'),
-                const SizedBox(height: 8),
+                const SizedBox(height: kPlainListGroupGap),
+                const PlainSectionHeader('调试'),
                 ValueListenableBuilder<bool>(
                   valueListenable: AppLogger.instance.loggingEnabled,
                   builder: (context, loggingEnabled, child) {
@@ -357,7 +274,6 @@ class SettingsPage extends StatelessWidget {
                         return _GroupCard(
                           children: [
                             _SwitchRow(
-                              icon: Icons.bug_report_outlined,
                               title: '调试日志',
                               subtitle: '开启后记录调试期日志和异常',
                               value: loggingEnabled,
@@ -365,9 +281,7 @@ class SettingsPage extends StatelessWidget {
                                 AppLogger.instance.setEnabled(value);
                               },
                             ),
-                            const _Hairline(),
                             _SettingsRow(
-                              icon: Icons.format_list_bulleted_outlined,
                               title: '最低日志级别',
                               subtitle: _formatLogLevel(logConfig.minimumLevel),
                               trailing: AppDropdown<LogLevel>(
@@ -388,9 +302,7 @@ class SettingsPage extends StatelessWidget {
                                     .toList(),
                               ),
                             ),
-                            const _Hairline(),
                             _SwitchRow(
-                              icon: Icons.public_outlined,
                               title: 'WebView 生命周期日志',
                               subtitle: '页面加载、跳转和白屏探测细节',
                               value: logConfig.webviewLifecycleEnabled,
@@ -402,9 +314,7 @@ class SettingsPage extends StatelessWidget {
                                 );
                               },
                             ),
-                            const _Hairline(),
                             _SwitchRow(
-                              icon: Icons.code_outlined,
                               title: 'WebView 控制台日志',
                               subtitle: '记录页面 console warning/error',
                               value: logConfig.webviewConsoleEnabled,
@@ -416,9 +326,7 @@ class SettingsPage extends StatelessWidget {
                                 );
                               },
                             ),
-                            const _Hairline(),
                             _SwitchRow(
-                              icon: Icons.wifi_outlined,
                               title: '网络详细日志',
                               subtitle: '记录请求和响应细节，噪音较大',
                               value: logConfig.networkVerboseEnabled,
@@ -430,9 +338,7 @@ class SettingsPage extends StatelessWidget {
                                 );
                               },
                             ),
-                            const _Hairline(),
                             _SettingsRow(
-                              icon: Icons.notifications_outlined,
                               title: '通知测试',
                               subtitle: '发送一条本地测试通知',
                               trailing: Icon(
@@ -450,9 +356,7 @@ class SettingsPage extends StatelessWidget {
                                 );
                               },
                             ),
-                            const _Hairline(),
                             _SettingsRow(
-                              icon: Icons.notifications_active_outlined,
                               title: '推送令牌',
                               subtitle: '查看 FCM 推送注册状态',
                               trailing: _chevron(context),
@@ -481,171 +385,46 @@ class SettingsPage extends StatelessWidget {
   }
 }
 
-/// 分组小节标题：13/w600/onSurfaceVariant（Apple Settings 式小节标签）。
-/// 以 header 语义暴露，读屏按小节跳转时可识别。
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader(this.title);
-
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Semantics(
-      header: true,
-      child: Text(
-        title,
-        style: TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
-          color: cs.onSurfaceVariant,
-          letterSpacing: 0.6,
-        ),
-      ),
-    );
-  }
-}
-
-/// 小节脚注：12px/1.4 弱化色，紧贴卡片说明边界条件与副作用。
-class _SectionCaption extends StatelessWidget {
-  const _SectionCaption(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: TextStyle(
-        fontSize: 12,
-        height: 1.4,
-        color: Theme.of(context).colorScheme.onSurfaceVariant,
-      ),
-    );
-  }
-}
-
-/// 分组卡：AppCard 平色卡面 + 零内边距，内部行由 hairline 分隔。
+/// 分组卡片：[PlainListGroup] 的本页别名。
 class _GroupCard extends StatelessWidget {
   const _GroupCard({required this.children});
 
   final List<Widget> children;
 
   @override
-  Widget build(BuildContext context) {
-    return AppCard(
-      padding: EdgeInsets.zero,
-      child: ClipRRect(
-        borderRadius: AppRadius.cardBorder,
-        child: Column(mainAxisSize: MainAxisSize.min, children: children),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => PlainListGroup(children: children);
 }
 
-/// 组内 hairline 分隔线：outlineVariant @ 0.35，左缩进与行文字对齐。
-class _Hairline extends StatelessWidget {
-  const _Hairline();
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Divider(
-      height: 1,
-      thickness: 1,
-      // 行内边距 16 + 徽标 36 + 间距 12 = 文字起始位。
-      indent: 64,
-      color: cs.outlineVariant.withValues(alpha: 0.35),
-    );
-  }
-}
-
-/// 设置行：图标徽标 + 标题/副标题 + 右侧控件（chevron / Switch / Dropdown）。
-///
-/// 整行合并为单一语义节点（标题/副标题/尾部控件一并朗读）；可点击行以
-/// 按钮语义暴露点击动作。[emphasizeSubtitle] 把「发现新版本」这类需要
-/// 用户注意的副标题提到主题色。
+/// 设置行：[PlainListRow] 的本页别名，保持调用处简短。
 class _SettingsRow extends StatelessWidget {
   const _SettingsRow({
-    required this.icon,
     required this.title,
     this.subtitle,
+    this.value,
+    this.emphasizeValue = false,
     this.trailing,
     this.onTap,
-    this.emphasizeSubtitle = false,
+    this.showChevron,
   });
 
-  final IconData icon;
   final String title;
   final String? subtitle;
+  final String? value;
+  final bool emphasizeValue;
   final Widget? trailing;
   final VoidCallback? onTap;
-  final bool emphasizeSubtitle;
+  final bool? showChevron;
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final tappable = onTap != null;
-    return Semantics(
-      button: tappable ? true : null,
-      enabled: tappable ? true : null,
-      child: MergeSemantics(
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-              child: Row(
-                children: [
-                  AppIconBadge(
-                    icon: icon,
-                    accentColor: cs.primary,
-                    size: AppIconBadgeSize.small,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: cs.onSurface,
-                            height: 1.2,
-                          ),
-                        ),
-                        if (subtitle != null) ...[
-                          const SizedBox(height: 2),
-                          Text(
-                            subtitle!,
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: emphasizeSubtitle
-                                  ? FontWeight.w600
-                                  : FontWeight.w400,
-                              color: emphasizeSubtitle
-                                  ? cs.primary
-                                  : cs.onSurfaceVariant,
-                              height: 1.3,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  if (trailing != null) ...[
-                    const SizedBox(width: 12),
-                    trailing!,
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
+    return PlainListRow(
+      title: title,
+      subtitle: subtitle,
+      value: value,
+      emphasizeValue: emphasizeValue,
+      trailing: trailing,
+      onTap: onTap,
+      showChevron: showChevron,
     );
   }
 }
@@ -654,7 +433,6 @@ class _SettingsRow extends StatelessWidget {
 /// [enabled] 为 false 时整行与开关一起置灰不可用（如原生调用在途）。
 class _SwitchRow extends StatelessWidget {
   const _SwitchRow({
-    required this.icon,
     required this.title,
     required this.value,
     required this.onToggle,
@@ -662,7 +440,6 @@ class _SwitchRow extends StatelessWidget {
     this.enabled = true,
   });
 
-  final IconData icon;
   final String title;
   final String? subtitle;
   final bool value;
@@ -672,7 +449,6 @@ class _SwitchRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _SettingsRow(
-      icon: icon,
       title: title,
       subtitle: subtitle,
       trailing: Switch.adaptive(
@@ -716,9 +492,7 @@ class _EnrollmentYearRowState extends State<_EnrollmentYearRow> {
   @override
   Widget build(BuildContext context) {
     return _SettingsRow(
-      icon: Icons.badge_outlined,
-      title: '我的年级',
-      subtitle: '默认跟随学号自动识别，仅用于过滤教务处公告，可能误判',
+      title: '年级',
       trailing: AppDropdown<int>(
         value:
             UserProfileController.instance.manualEnrollmentYear.value ??
@@ -776,17 +550,14 @@ class _CurrentTermTileState extends State<_CurrentTermTile> {
   @override
   Widget build(BuildContext context) {
     final term = _resolved ?? ScheduleTermContext.current();
-    final subtitle = _loading
-        ? '正在从教务系统识别…'
-        : _resolved != null
-        ? '已从教务系统自动识别'
-        : '按日期推算（未登录或教务不可达）';
+    // 只在无法从教务识别时说明来源；识别成功是常态，不再注明。
+    final subtitle = !_loading && _resolved == null ? '按日期推算' : null;
 
     // 只读信息行：无点击语义，识别中在行尾给一个轻量进度指示。
     return _SettingsRow(
-      icon: Icons.school_outlined,
-      title: '当前学年学期',
-      subtitle: '${_termLabel(term)} · $subtitle',
+      title: '当前学期',
+      value: _termLabel(term),
+      subtitle: subtitle,
       trailing: _loading
           ? const SizedBox(
               width: 16,
@@ -878,9 +649,9 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
     }
   }
 
-  String get _subtitle => switch (_control.state) {
-    CalendarSyncControlState.off => '将课表写入系统日历；仅前台同步，课前 10 分钟提醒',
-    CalendarSyncControlState.enabled => '已开启；前台校验课表后同步',
+  String? get _subtitle => switch (_control.state) {
+    CalendarSyncControlState.off => null,
+    CalendarSyncControlState.enabled => null,
     CalendarSyncControlState.paused => '已暂停：当前账号与绑定账号不一致，重新开启将绑定当前账号',
     CalendarSyncControlState.cleanupPending => '清理未完成，完成清理后才能重新开启',
   };
@@ -901,11 +672,12 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
   @override
   Widget build(BuildContext context) {
     final state = _control.state;
-    return _GroupCard(
+    // 外层已在「课表与后台」分组卡片里，这里只排行，不再套卡片。
+    return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         _SwitchRow(
-          icon: Icons.event_available_outlined,
-          title: '课表日历同步',
+          title: '同步到系统日历',
           subtitle: _subtitle,
           value: state == CalendarSyncControlState.enabled,
           // 开启/清理请求在途：整行置灰，避免重复触发原生调用。
@@ -916,9 +688,7 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
           },
         ),
         if (state == CalendarSyncControlState.cleanupPending) ...[
-          const _Hairline(),
           _SettingsRow(
-            icon: Icons.delete_sweep_outlined,
             title: '清理未完成',
             subtitle: _residualSubtitle(),
             trailing: TextButton(

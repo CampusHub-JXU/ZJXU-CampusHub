@@ -14,7 +14,7 @@ import '../../core/system_surface/campus_data_change_bus.dart';
 import '../../core/theme/app_design_tokens.dart';
 import '../../core/theme/app_theme_controller.dart';
 import '../../core/theme/personalization_controller.dart';
-import '../../core/theme/widgets/home_background_layer.dart';
+import '../../core/theme/widgets/app_wallpaper_backdrop.dart';
 import '../../core/update/update_checker.dart';
 import '../../shared/widgets/network_error_toast.dart';
 import '../../shared/widgets/update_dialog.dart';
@@ -26,7 +26,6 @@ import 'home_presentation_resolver.dart';
 import 'home_zone_controller.dart';
 import 'models/home_presentation.dart';
 import 'models/home_snapshot.dart';
-import 'widgets/home_ambient_background.dart';
 import 'widgets/home_asset_strip.dart';
 import 'widgets/home_campus_notice_section.dart';
 import 'widgets/home_event_banner.dart';
@@ -82,6 +81,12 @@ class _HomePageState extends State<HomePage> {
   /// 浮动底栏（约 74 高）+ 12 间距 + 24 呼吸空间；SafeArea(bottom: false)
   /// 之下还需叠加真实底部安全区。
   static const double _bottomNavClearance = 110;
+
+  /// 首页左右留白：无框版式靠留白分区，比通用页边距更宽。
+  static const double _pageGutter = 24;
+
+  /// 首页主要段落之间的留白。
+  static const double _sectionGap = 36;
 
   /// 功能区段落顶部越过视口该比例线时，dock 高亮切到「功能」。
   static const double _zoneTriggerViewportFraction = 0.45;
@@ -481,7 +486,6 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final topInset = MediaQuery.paddingOf(context).top;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: (isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark)
           .copyWith(
@@ -496,108 +500,7 @@ class _HomePageState extends State<HomePage> {
         body: Stack(
           fit: StackFit.expand,
           children: [
-            ValueListenableBuilder<String?>(
-              valueListenable:
-                  PersonalizationController.instance.backgroundImagePath,
-              builder: (context, bgImagePath, _) {
-                return ValueListenableBuilder<bool>(
-                  valueListenable:
-                      PersonalizationController.instance.shaderEnabled,
-                  builder: (context, shaderEnabled, _) {
-                    if (bgImagePath != null) {
-                      return Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          HomeBackgroundLayer(path: bgImagePath),
-                          if (shaderEnabled) ...[
-                            // Hero 舞台氛围渐隐遮罩（Hero Fade Scrim）：
-                            // 顶部保留 Shader / 背景微光氛围并附带柔和 tint 保护，
-                            // 向下平滑过渡到纯净主题表面（scaffoldBackgroundColor），
-                            // 保证正文（课表列表、资产、公告）直接坐在稳定主题底色上。
-                            Positioned.fill(
-                              child: IgnorePointer(
-                                child: DecoratedBox(
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      begin: Alignment.topCenter,
-                                      end: Alignment.bottomCenter,
-                                      stops: const [0.0, 0.18, 0.36, 0.52, 1.0],
-                                      colors: [
-                                        Theme.of(context)
-                                            .scaffoldBackgroundColor
-                                            .withValues(
-                                              alpha: isDark ? 0.45 : 0.32,
-                                            ),
-                                        Theme.of(context)
-                                            .scaffoldBackgroundColor
-                                            .withValues(
-                                              alpha: isDark ? 0.52 : 0.40,
-                                            ),
-                                        Theme.of(context)
-                                            .scaffoldBackgroundColor
-                                            .withValues(
-                                              alpha: isDark ? 0.82 : 0.76,
-                                            ),
-                                        Theme.of(context)
-                                            .scaffoldBackgroundColor,
-                                        Theme.of(context)
-                                            .scaffoldBackgroundColor,
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            // 状态栏顶部柔和微羽化，保障极端高光壁纸下系统状态图标清晰可读
-                            if (topInset > 0)
-                              Positioned(
-                                top: 0,
-                                left: 0,
-                                right: 0,
-                                height: topInset + 8,
-                                child: IgnorePointer(
-                                  child: DecoratedBox(
-                                    decoration: BoxDecoration(
-                                      gradient: LinearGradient(
-                                        begin: Alignment.topCenter,
-                                        end: Alignment.bottomCenter,
-                                        colors: [
-                                          Theme.of(context).colorScheme.surface
-                                              .withValues(
-                                                alpha: isDark ? 0.38 : 0.28,
-                                              ),
-                                          Theme.of(context).colorScheme.surface
-                                              .withValues(alpha: 0.0),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                          ] else ...[
-                            // 禁用 Shader 保持原布局：纯壁纸形态在状态栏区域垫一层表面色保障图标可读
-                            if (topInset > 0)
-                              Positioned(
-                                top: 0,
-                                left: 0,
-                                right: 0,
-                                height: topInset,
-                                child: DecoratedBox(
-                                  decoration: BoxDecoration(
-                                    color: Theme.of(context).colorScheme.surface
-                                        .withValues(alpha: 0.94),
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ],
-                      );
-                    }
-                    return const HomeAmbientBackground();
-                  },
-                );
-              },
-            ),
+            const AppWallpaperBackdrop(),
             SafeArea(
               bottom: false,
               child: ValueListenableBuilder<HomeTextColorMode>(
@@ -659,9 +562,9 @@ class _HomePageState extends State<HomePage> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(
-              AppSpacing.pageMargin,
+              _pageGutter,
               AppSpacing.xl,
-              AppSpacing.pageMargin,
+              _pageGutter,
               0,
             ),
             child: Column(
@@ -669,7 +572,7 @@ class _HomePageState extends State<HomePage> {
               children: [
                 heroWidget,
                 if (presentation.alert != null) ...[
-                  const SizedBox(height: AppSpacing.md),
+                  const SizedBox(height: AppSpacing.xl),
                   HomeEventBanner(
                     alert: presentation.alert!,
                     onTap: () async {
@@ -683,9 +586,9 @@ class _HomePageState extends State<HomePage> {
                 // 今天列表（含次日预览与「Hero 大字首课 + 单行折叠摘要」
                 // 形态）优先于资产行：课程安排是第一屏价值最高的状态信息,
                 // 余额/电费次之。
-                const SizedBox(height: AppSpacing.md),
+                const SizedBox(height: _sectionGap),
                 todayWidget,
-                const SizedBox(height: AppSpacing.xl),
+                const SizedBox(height: _sectionGap),
                 assetWidget,
               ],
             ),
@@ -709,9 +612,9 @@ class _HomePageState extends State<HomePage> {
                   if (noticeVisible)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(
-                        AppSpacing.pageMargin,
-                        AppSpacing.md,
-                        AppSpacing.pageMargin,
+                        _pageGutter,
+                        _sectionGap,
+                        _pageGutter,
                         AppSpacing.sectionBreak,
                       ),
                       child: noticeWidget,
@@ -728,9 +631,9 @@ class _HomePageState extends State<HomePage> {
                       campusCardBalance: _campusCardBalance,
                       dormElectricity: _dormElectricity,
                       padding: EdgeInsets.fromLTRB(
-                        AppSpacing.pageMargin,
+                        _pageGutter,
                         0,
-                        AppSpacing.pageMargin,
+                        _pageGutter,
                         0,
                       ),
                     ),

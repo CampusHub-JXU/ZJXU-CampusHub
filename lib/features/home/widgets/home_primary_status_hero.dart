@@ -112,12 +112,13 @@ class HomePrimaryStatusHero extends StatelessWidget {
                     Text(
                       kickerText,
                       style: textTheme.labelMedium!.copyWith(
-                        fontSize: 13,
+                        fontSize: 14,
                         fontWeight: FontWeight.w600,
+                        letterSpacing: 0.5,
                         color: kickerColor,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 12),
                   ],
                   if (_isCourseKind)
                     _buildCourseHero(
@@ -315,8 +316,8 @@ class HomePrimaryStatusHero extends StatelessWidget {
         Text(
           hero.courseName ?? hero.headline,
           style: textTheme.headlineMedium!.copyWith(
-            fontSize: 30,
-            height: 1.15,
+            fontSize: 32,
+            height: 1.3,
             fontWeight: FontWeight.w700,
             color: primaryTextColor,
           ),
@@ -324,56 +325,33 @@ class HomePrimaryStatusHero extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
         ),
         if (timeLine != null && timeLine.isNotEmpty) ...[
-          const SizedBox(height: 6),
+          const SizedBox(height: 10),
           Text(
             timeLine,
             style: textTheme.titleMedium!.copyWith(
-              fontSize: 17,
+              fontSize: 18,
+              height: 1.5,
               fontWeight: FontWeight.w600,
               color: primaryTextColor,
             ),
           ),
         ],
-        if (hero.locationText != null || hero.lessonText != null) ...[
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              if (hero.locationText != null) ...[
-                Icon(
-                  Icons.location_on_outlined,
-                  size: 14,
-                  color: secondaryTextColor,
-                ),
-                const SizedBox(width: 4),
-                Flexible(
-                  child: Text(
-                    hero.locationText!,
-                    style: textTheme.bodyMedium!.copyWith(
-                      fontSize: 14,
-                      color: secondaryTextColor,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-              if (hero.lessonText != null) ...[
-                if (hero.locationText != null) const SizedBox(width: 12),
-                Icon(
-                  Icons.schedule_outlined,
-                  size: 14,
-                  color: secondaryTextColor,
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  hero.lessonText!,
-                  style: textTheme.bodyMedium!.copyWith(
-                    fontSize: 14,
-                    color: secondaryTextColor,
-                  ),
-                ),
-              ],
-            ],
+        if (hero.locationText != null) ...[
+          const SizedBox(height: 12),
+          _heroMetaLine(
+            context,
+            Icons.location_on_outlined,
+            hero.locationText!,
+            secondaryTextColor,
+          ),
+        ],
+        if (hero.lessonText != null) ...[
+          SizedBox(height: hero.locationText != null ? 8 : 12),
+          _heroMetaLine(
+            context,
+            Icons.schedule_outlined,
+            hero.lessonText!,
+            secondaryTextColor,
           ),
         ],
       ],
@@ -395,7 +373,7 @@ class HomePrimaryStatusHero extends StatelessWidget {
         else
           courseInfo,
         if (onOpenSchedule != null) ...[
-          const SizedBox(height: 6),
+          const SizedBox(height: 10),
           Semantics(
             button: true,
             label: '查看课表 ${hero.courseName ?? ''}',
@@ -423,6 +401,30 @@ class HomePrimaryStatusHero extends StatelessWidget {
             ),
           ),
         ],
+      ],
+    );
+  }
+
+  /// 课程 Hero 的地点 / 节次行：各占一行，避免挤在一起。
+  Widget _heroMetaLine(
+    BuildContext context,
+    IconData icon,
+    String text,
+    Color color,
+  ) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: color),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            text,
+            style: Theme.of(context).textTheme.bodyMedium!
+                .copyWith(fontSize: 15, height: 1.5, color: color),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
       ],
     );
   }

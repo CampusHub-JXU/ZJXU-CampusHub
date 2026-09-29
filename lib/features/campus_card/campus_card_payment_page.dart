@@ -306,6 +306,19 @@ class _CampusCardPaymentPageState extends State<CampusCardPaymentPage>
     });
   }
 
+  Future<void> _openResetPassword() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final result = await CampusActionExecutor.instance.execute(
+      context,
+      CampusActionIds.campusCardResetPassword,
+    );
+    if (!result.isSuccess) {
+      messenger.showSnackBar(
+        SnackBar(content: Text(result.message ?? '暂时无法打开重置密码页面')),
+      );
+    }
+  }
+
   void _openOfficialWebPage() {
     // 打开网页前清码
     _cancelTimerAndClearCode();
@@ -678,10 +691,7 @@ class _CampusCardPaymentPageState extends State<CampusCardPaymentPage>
               const SizedBox(height: 4),
               Center(
                 child: TextButton(
-                  onPressed: () => CampusActionExecutor.instance.execute(
-                    context,
-                    CampusActionIds.campusCardResetPassword,
-                  ),
+                  onPressed: _openResetPassword,
                   style: TextButton.styleFrom(
                     visualDensity: VisualDensity.compact,
                     foregroundColor: colorScheme.outline,

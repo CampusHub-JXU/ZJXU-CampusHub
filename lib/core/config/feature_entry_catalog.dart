@@ -60,6 +60,15 @@ class AppFeaturesConfig {
       sortOrder: 15,
     ),
     const FeatureEntryDefinition(
+      id: 'academic-web',
+      title: '教务系统',
+      subtitle: '正方教务网页版',
+      icon: Icons.account_balance_outlined,
+      accentColor: AppColors.primary,
+      primaryActionId: 'academic-web.open',
+      sortOrder: 17,
+    ),
+    const FeatureEntryDefinition(
       id: 'shuati-practice',
       title: '刷题助手',
       subtitle: '题库导入、错题重练、离线练习',

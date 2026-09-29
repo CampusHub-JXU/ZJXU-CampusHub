@@ -46,6 +46,16 @@ class CampusActionRegistry {
       title: '考试安排',
       target: RouteActionTarget('exam'),
     ),
+    // 受信教务 H5 入口：由 AcademicWebEntryPage 预检登录态与直连/WebVPN
+    // 选路，未登录时引导先登录；与「我的 › 教务系统」同一入口。
+    const CampusAction(
+      id: CampusActionIds.academicWebOpen,
+      title: '教务系统',
+      target: RouteActionTarget(
+        'external-webview',
+        extra: {'title': '教务系统', 'academicEntry': true},
+      ),
+    ),
     const CampusAction(
       id: CampusActionIds.shuatiOpen,
       title: '刷题助手',
@@ -74,7 +84,19 @@ class CampusActionRegistry {
     const CampusAction(
       id: CampusActionIds.campusCardResetPassword,
       title: '忘记密码',
-      target: ProtectedWebActionTarget(_resetPasswordUrl),
+      // 资源型 WebVPN 页面：走受保护 WebView 并预热业务 Cookie，
+      // 不能当 CAS service 传给 ensure；执行器尚未接入 ProtectedWebActionTarget。
+      target: RouteActionTarget(
+        'external-webview',
+        extra: <String, Object?>{
+          'title': '重置一卡通密码',
+          'url': _resetPasswordUrl,
+          'requireUnifiedAuthProtection': true,
+          'warmUpAsResource': true,
+          'loginDescription': '登录统一认证后可重置一卡通密码',
+          'showWebViewBottomBackButton': true,
+        },
+      ),
     ),
     const CampusAction(
       id: CampusActionIds.electricityOpen,

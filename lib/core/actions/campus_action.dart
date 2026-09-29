@@ -33,9 +33,12 @@ sealed class CampusActionTarget {
 }
 
 class RouteActionTarget extends CampusActionTarget {
-  const RouteActionTarget(this.routeName);
+  const RouteActionTarget(this.routeName, {this.extra});
 
   final String routeName;
+
+  /// 随路由传递的参数（如受信教务 H5 入口标记）。
+  final Map<String, Object?>? extra;
 }
 
 class WebActionTarget extends CampusActionTarget {

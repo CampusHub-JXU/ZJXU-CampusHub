@@ -32,47 +32,96 @@ class _NotificationCenterPageState extends State<NotificationCenterPage>
   late final TabController _tabController;
   final _searchController = TextEditingController();
   String _query = '';
+  bool _searchOpen = false;
+  int _unreadCount = NoticeSyncStore.instance.unreadSummary.value.count;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(_onTabChanged);
+    NoticeSyncStore.instance.unreadSummary.addListener(_onUnreadChanged);
   }
 
   @override
   void dispose() {
+    _tabController.removeListener(_onTabChanged);
+    NoticeSyncStore.instance.unreadSummary.removeListener(_onUnreadChanged);
     _tabController.dispose();
     _searchController.dispose();
     super.dispose();
   }
 
+  void _onTabChanged() {
+    if (!_tabController.indexIsChanging) setState(() {});
+  }
+
+  void _onUnreadChanged() {
+    if (!mounted) return;
+    setState(() {
+      _unreadCount = NoticeSyncStore.instance.unreadSummary.value.count;
+    });
+  }
+
+  void _toggleSearch() {
+    setState(() {
+      _searchOpen = !_searchOpen;
+      if (!_searchOpen) {
+        _searchController.clear();
+        _query = '';
+      }
+    });
+  }
+
+  Future<void> _markAllRead() => NoticeSyncStore.instance.markAllRead();
+
   @override
   Widget build(BuildContext context) {
+    final canMarkAllRead = _tabController.index == 0 && _unreadCount > 0;
     return Scaffold(
       appBar: AppAppBar(
-        title: const Text('通知中心'),
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(text: '校园公告'),
-            Tab(text: '实践通知'),
-          ],
+        title: const Text(
+          '通知',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
         ),
+        actions: [
+          IconButton(
+            onPressed: _toggleSearch,
+            tooltip: _searchOpen ? '关闭搜索' : '搜索',
+            icon: Icon(
+              _searchOpen ? Icons.close_rounded : Icons.search_rounded,
+            ),
+          ),
+          IconButton(
+            onPressed: canMarkAllRead ? _markAllRead : null,
+            tooltip: '全部标为已读',
+            icon: const Icon(Icons.done_all_rounded),
+          ),
+        ],
       ),
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-            child: AppSearchField(
-              controller: _searchController,
-              hintText: '搜索标题、类型或日期',
-              onChanged: (value) => setState(() => _query = value),
-              onClear: () => setState(() {
-                _searchController.clear();
-                _query = '';
-              }),
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+            child: _NoticeTabPills(
+              controller: _tabController,
+              unreadCount: _unreadCount,
             ),
           ),
+          if (_searchOpen)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+              child: AppSearchField(
+                controller: _searchController,
+                hintText: '搜索标题、类型或日期',
+                onChanged: (value) => setState(() => _query = value),
+                onClear: () => setState(() {
+                  _searchController.clear();
+                  _query = '';
+                }),
+              ),
+            ),
+          const SizedBox(height: 8),
           Expanded(
             child: TabBarView(
               controller: _tabController,
@@ -83,6 +132,78 @@ class _NotificationCenterPageState extends State<NotificationCenterPage>
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 两颗胶囊 Tab：校园公告（带未读数）/ 实践通知。
+class _NoticeTabPills extends StatelessWidget {
+  const _NoticeTabPills({required this.controller, required this.unreadCount});
+
+  final TabController controller;
+  final int unreadCount;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        return Row(
+          children: [
+            _NoticePillChip(
+              label: unreadCount > 0 ? '校园公告 · $unreadCount' : '校园公告',
+              selected: controller.index == 0,
+              onTap: () => controller.animateTo(0),
+            ),
+            const SizedBox(width: 8),
+            _NoticePillChip(
+              label: '实践通知',
+              selected: controller.index == 1,
+              onTap: () => controller.animateTo(1),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _NoticePillChip extends StatelessWidget {
+  const _NoticePillChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: selected
+          ? cs.primary.withValues(alpha: 0.14)
+          : cs.surfaceContainerHigh,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 36),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              color: selected ? cs.primary : cs.onSurfaceVariant,
+              fontWeight: selected ? FontWeight.w500 : FontWeight.w400,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -194,8 +315,6 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
     await NoticeSyncStore.instance.reload();
   }
 
-  Future<void> _markAllRead() => NoticeSyncStore.instance.markAllRead();
-
   void _openNotice(Notice notice) {
     if (_unreadIds.contains(notice.id)) {
       unawaited(NoticeSyncStore.instance.markRead([notice.id]));
@@ -220,7 +339,6 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final cs = Theme.of(context).colorScheme;
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_notices.isEmpty) {
       return RefreshIndicator(
@@ -233,7 +351,6 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
         ),
       );
     }
-    final unreadCount = _unreadIds.length;
     final showAuthBanner = _authRequired;
     final query = widget.query.trim().toLowerCase();
     final visibleNotices = query.isEmpty
@@ -246,7 +363,6 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
                     _noticeMatchesQuery(notice.date, query),
               )
               .toList();
-    final showHeader = query.isEmpty;
     if (visibleNotices.isEmpty && query.isNotEmpty) {
       return RefreshIndicator(
         onRefresh: _refresh,
@@ -261,34 +377,28 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
     return RefreshIndicator(
       onRefresh: _refresh,
       child: ListView.separated(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        itemCount:
-            visibleNotices.length +
-            (showHeader ? 1 : 0) +
-            (showAuthBanner ? 1 : 0),
-        separatorBuilder: (_, _) => const SizedBox(height: 10),
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        itemCount: visibleNotices.length + (showAuthBanner ? 1 : 0),
+        separatorBuilder: (_, index) {
+          if (showAuthBanner && index == 0) return const SizedBox.shrink();
+          return Divider(
+            height: 1,
+            thickness: 1,
+            indent: 28,
+            color: Theme.of(context).colorScheme.outlineVariant
+                .withValues(alpha: 0.25),
+          );
+        },
         itemBuilder: (context, index) {
           if (showAuthBanner && index == 0) {
-            return _AuthStaleBanner(onLoginTap: _presentLoginPrompt);
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+              child: _AuthStaleBanner(onLoginTap: _presentLoginPrompt),
+            );
           }
-          var headerIndex = showAuthBanner ? index - 1 : index;
-          if (showHeader) {
-            if (headerIndex == 0) {
-              return Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
-                  onPressed: unreadCount == 0 ? null : _markAllRead,
-                  child: Text(unreadCount > 0 ? '全部已读（$unreadCount）' : '全部已读'),
-                ),
-              );
-            }
-            headerIndex--;
-          }
-          final notice = visibleNotices[headerIndex];
-          return _buildNoticeTile(
-            context,
-            tag: notice.category,
-            tagColor: notice.category == '通知公告' ? cs.primary : cs.error,
+          final noticeIndex = showAuthBanner ? index - 1 : index;
+          final notice = visibleNotices[noticeIndex];
+          return _NoticeTile(
             title: notice.title,
             date: notice.date,
             unread: _unreadIds.contains(notice.id),
@@ -407,17 +517,21 @@ class _PracticeNoticeTabState extends State<_PracticeNoticeTab>
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView.separated(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.symmetric(vertical: 4),
         itemCount: visibleNotices.length,
-        separatorBuilder: (_, _) => const SizedBox(height: 10),
+        separatorBuilder: (_, _) => Divider(
+          height: 1,
+          thickness: 1,
+          indent: 28,
+          color: cs.outlineVariant.withValues(alpha: 0.25),
+        ),
         itemBuilder: (context, index) {
           final notice = visibleNotices[index];
-          return _buildNoticeTile(
-            context,
-            tag: notice.category,
-            tagColor: _sjjxCategoryColor(notice.category, cs),
+          return _NoticeTile(
             title: notice.title,
             date: notice.date,
+            tag: notice.category,
+            tagColor: _sjjxCategoryColor(notice.category, cs),
             onTap: () => context.pushNamed(
               'external-webview',
               extra: {
@@ -436,89 +550,116 @@ class _PracticeNoticeTabState extends State<_PracticeNoticeTab>
 
 // --- Shared tile ---
 
-Widget _buildNoticeTile(
-  BuildContext context, {
-  required String tag,
-  required Color tagColor,
-  required String title,
-  required String? date,
-  required VoidCallback onTap,
-  VoidCallback? onLongPress,
-  bool unread = false,
-}) {
-  final cs = Theme.of(context).colorScheme;
-  final publishDate = (date ?? '').trim();
-  final tagForeground = _contrastOn(tagColor);
-  return Material(
-    color: cs.surfaceContainerLowest,
-    borderRadius: BorderRadius.circular(12),
-    elevation: 0.5,
-    shadowColor: cs.shadow.withValues(alpha: 0.12),
-    child: InkWell(
-      borderRadius: BorderRadius.circular(12),
+/// 无卡片、无边框的通知行：未读圆点 + 标题 + 日期，例外标签（如分类差异明显
+/// 的实践通知）才追加小色块；「每条都一样」的标签（如校园公告固定的
+/// 「通知公告」）不再展示。
+class _NoticeTile extends StatelessWidget {
+  const _NoticeTile({
+    required this.title,
+    required this.date,
+    required this.onTap,
+    this.onLongPress,
+    this.unread = false,
+    this.tag,
+    this.tagColor,
+  });
+
+  final String title;
+  final String? date;
+  final VoidCallback onTap;
+  final VoidCallback? onLongPress;
+  final bool unread;
+  final String? tag;
+  final Color? tagColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final publishDate = (date ?? '').trim();
+    final showTag = (tag ?? '').trim().isNotEmpty;
+    return InkWell(
       onTap: onTap,
       onLongPress: onLongPress,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (unread) ...[
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  color: cs.primary,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 10),
-            ],
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: tagColor,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                tag,
-                style: TextStyle(
-                  color: tagForeground,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+            SizedBox(
+              width: 8,
+              child: unread
+                  ? Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: cs.primary,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    )
+                  : null,
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 8),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     title,
-                    style: TextStyle(fontSize: 15, color: cs.onSurface),
+                    style: TextStyle(
+                      fontSize: 15,
+                      height: 1.45,
+                      fontWeight: unread ? FontWeight.w500 : FontWeight.w400,
+                      color: unread ? cs.onSurface : cs.onSurfaceVariant,
+                    ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  if (publishDate.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      publishDate,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: cs.onSurfaceVariant,
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Text(
+                        publishDate,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: cs.onSurfaceVariant,
+                        ),
                       ),
-                    ),
-                  ],
+                      if (showTag) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: (tagColor ?? cs.tertiary).withValues(
+                              alpha: 0.16,
+                            ),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            tag!,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              color: tagColor ?? cs.tertiary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ],
               ),
             ),
-            const SizedBox(width: 8),
-            Icon(Icons.chevron_right, size: 20, color: cs.onSurfaceVariant),
           ],
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 bool shouldOpenCampusNoticeViaUnifiedAuth(String url) {
@@ -575,8 +716,4 @@ Color _sjjxCategoryColor(String category, ColorScheme cs) {
       .withSaturation((hsl.saturation * 0.86).clamp(0.42, 0.92))
       .withLightness(isDark ? 0.66 : 0.42)
       .toColor();
-}
-
-Color _contrastOn(Color background) {
-  return background.computeLuminance() > 0.45 ? Colors.black : Colors.white;
 }

@@ -497,6 +497,20 @@ class ChangxingJiadaService {
     _ensureSuccess(json, fallback: id == null ? '提交超时失败' : '修改超时失败');
   }
 
+  /// 提交体里的时间统一为本地墙钟 `yyyy-MM-dd HH:mm:ss` 字符串。
+  ///
+  /// `DateTime` 不能被 `jsonEncode` 直接序列化（会抛 `JsonUnsupportedObjectError`），
+  /// 且服务端读到的时间是不带时区的墙钟。格式与服务端返回值（`DateTime.tryParse`
+  /// 可解析）同构；尚未对真实服务端做设备端到端验证。
+  @visibleForTesting
+  static String formatSubmitTime(DateTime value) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    final local = value.toLocal();
+    return '${local.year.toString().padLeft(4, '0')}-${two(local.month)}-'
+        '${two(local.day)} ${two(local.hour)}:${two(local.minute)}:'
+        '${two(local.second)}';
+  }
+
   @visibleForTesting
   static ChangxingSubmitRequest buildLeaveRequestSubmitRequest({
     int? id,
@@ -513,8 +527,8 @@ class ChangxingJiadaService {
     String annex = '',
   }) {
     final payload = <String, dynamic>{
-      'startTime': startTime,
-      'endTime': endTime,
+      'startTime': formatSubmitTime(startTime),
+      'endTime': formatSubmitTime(endTime),
       'descr': descr,
       'toAreaCode': toAreaCode,
       'toAddr': toAddr,
@@ -547,8 +561,8 @@ class ChangxingJiadaService {
     required List<String> trafficTools,
   }) {
     final payload = <String, dynamic>{
-      'startTime': startTime,
-      'endTime': endTime,
+      'startTime': formatSubmitTime(startTime),
+      'endTime': formatSubmitTime(endTime),
       'descr': descr,
       'toAreaCode': toAreaCode,
       'toAddr': toAddr,
@@ -583,7 +597,7 @@ class ChangxingJiadaService {
   }) {
     final payload = <String, dynamic>{
       'userPhone': userPhone,
-      'startTime': startTime,
+      'startTime': formatSubmitTime(startTime),
       'trafficTool': trafficTool,
       'trafficDetail': trafficDetail,
       'nativePlace': nativePlace,

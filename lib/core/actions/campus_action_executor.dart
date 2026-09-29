@@ -36,8 +36,8 @@ class CampusActionExecutor {
     }
 
     switch (action.target) {
-      case RouteActionTarget(:final routeName):
-        await context.pushNamed(routeName);
+      case RouteActionTarget(:final routeName, :final extra):
+        await context.pushNamed(routeName, extra: extra);
         return const CampusActionResult(CampusActionStatus.success);
       case WechatActionTarget(:final url):
         return _executeWechat(context, action, url);

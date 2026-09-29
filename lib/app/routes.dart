@@ -5,7 +5,6 @@ import 'app_route_observer.dart';
 import 'app_shell_page.dart';
 import '../features/home/home_page.dart';
 import '../features/my/my_page.dart';
-import '../features/my/academic_service_page.dart';
 import '../features/my/unified_auth_login_page.dart';
 import '../features/schedule/schedule_page.dart';
 import '../features/grades/grades_page.dart';
@@ -246,11 +245,6 @@ final GoRouter appRouter = GoRouter(
       path: '/unified-auth-login',
       name: 'unified-auth-login',
       builder: (context, state) => const UnifiedAuthLoginPage(),
-    ),
-    _appRoute(
-      path: '/academic-service',
-      name: 'academic-service',
-      builder: (context, state) => const AcademicServicePage(),
     ),
     _appRoute(
       path: '/notice-list',

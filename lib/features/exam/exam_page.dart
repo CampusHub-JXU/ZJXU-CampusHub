@@ -409,12 +409,10 @@ class _ExamPageState extends State<ExamPage> {
 Widget buildExamLoginView({
   required bool automaticLoginPaused,
   required VoidCallback onAction,
-}) => AuthRequiredView(
-  title: automaticLoginPaused ? '需要手动登录' : '登录后查看考试安排',
-  message: automaticLoginPaused
-      ? '自动登录已暂停（多次登录失败），请手动登录一次；登录成功后会自动重新开启自动登录。'
-      : '考试信息依赖教务系统会话，登录后即可同步考试时间与地点。',
-  buttonLabel: '登录教务系统',
+}) => AcademicLoginRequiredView(
+  automaticLoginPaused: automaticLoginPaused,
+  title: '登录后查看考试安排',
+  message: '考试信息依赖教务系统会话，登录后即可同步考试时间与地点。',
   onAction: onAction,
   icon: Icons.quiz_outlined,
 );

@@ -9,10 +9,8 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../crypto/auth_crypto.dart';
 import '../logging/app_logger.dart';
-import '../network/cookie_interceptor.dart';
 import '../network/dio_client.dart';
-import '../network/network_settings.dart';
-import '../network/proxy_mode.dart';
+import '../network/proxy_fallback.dart';
 import 'auth_failure.dart';
 import 'auth_operation_coordinator.dart';
 import 'auth_recovery_state_store.dart';
@@ -383,91 +381,22 @@ class UnifiedAuthService extends ChangeNotifier {
     }
   }
 
-  Dio _createProxyFallbackDio() {
-    final baseOptions = _dio.options;
-    final client = Dio(
-      BaseOptions(
-        baseUrl: baseOptions.baseUrl,
-        connectTimeout: baseOptions.connectTimeout,
-        receiveTimeout: baseOptions.receiveTimeout,
-        sendTimeout: baseOptions.sendTimeout,
-        headers: Map<String, dynamic>.from(baseOptions.headers),
-        followRedirects: baseOptions.followRedirects,
-        validateStatus: baseOptions.validateStatus,
-      ),
-    );
-    client.interceptors.add(buildCookieInterceptor(_cookieJar));
-    applyProxyModeToDio(client, ignoreSystemProxy: false);
-    final override = debugProxyFallbackAdapter;
-    if (override != null) {
-      client.httpClientAdapter.close();
-      client.httpClientAdapter = override;
-    }
-    return client;
-  }
-
-  bool _shouldRetryWithSystemProxyForAny(Object error) {
-    return shouldRetryWithSystemProxyForError(
-      error,
-      ignoreSystemProxy: NetworkSettings.instance.ignoreSystemProxy.value,
-    );
-  }
-
   Future<Response<T>> _sendWithProxyFallback<T>({
     required String label,
     required Future<Response<T>> Function(Dio dio, CancelToken token) request,
     CancelToken? cancelToken,
-  }) async {
-    Uri? requestUri;
-    // ponytail: overlapping sends on the same Dio can clobber requestUri.
-    final capture = InterceptorsWrapper(
-      onRequest: (options, handler) {
-        requestUri = options.uri;
-        handler.next(options);
-      },
-    );
-
-    Future<Response<T>> send(Dio dio) async {
-      if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
-      final token = CancelToken();
-      unawaited(cancelToken?.whenCancel.then((error) => token.cancel(error)));
-      dio.interceptors.add(capture);
-      try {
-        return await request(dio, token).timeout(_requestTimeout);
-      } finally {
-        dio.interceptors.remove(capture);
-        // Future.timeout alone leaves the socket and cookie response alive.
-        token.cancel('CAS request finished or timed out');
-      }
-    }
-
-    try {
-      return await send(_dio);
-    } catch (error) {
-      if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
-      if (!_shouldRetryWithSystemProxyForAny(error)) rethrow;
-      final target = requestUri ?? _uriFromError(error);
-      if (target == null || await resolveHttpProxyForUri(target) == null) {
-        rethrow;
-      }
-      final reason = describeSystemProxyRetryReason(error);
-      AppLogger.instance.auth(
-        LogLevel.warn,
-        '$label 直连失败（$reason），尝试通过 HTTP_PROXY 环境代理重试',
-      );
-      final fallbackDio = _createProxyFallbackDio();
-      try {
-        return await send(fallbackDio);
-      } finally {
-        fallbackDio.close(force: true);
-      }
-    }
-  }
-
-  Uri? _uriFromError(Object error) {
-    if (error is DioException) return error.requestOptions.uri;
-    return null;
-  }
+  }) => sendWithSystemProxyFallback<T>(
+    primary: _dio,
+    createFallback: () => createSystemProxyFallbackDio(
+      template: _dio,
+      jar: _cookieJar,
+      adapterOverride: debugProxyFallbackAdapter,
+    ),
+    label: label,
+    request: request,
+    cancelToken: cancelToken,
+    timeout: _requestTimeout,
+  );
 
   Future<Uint8List> fetchCaptcha({
     String serviceUrl = defaultServiceUrl,

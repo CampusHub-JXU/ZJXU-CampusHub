@@ -9,9 +9,9 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:pointycastle/export.dart';
 
 import '../logging/app_logger.dart';
-import '../network/cookie_interceptor.dart';
 import '../network/dio_client.dart';
 import '../network/network_settings.dart';
+import '../network/proxy_fallback.dart';
 import '../network/proxy_mode.dart';
 import 'auth_failure.dart';
 import 'auth_operation_coordinator.dart';
@@ -303,91 +303,23 @@ class ZhengfangAuth extends ChangeNotifier {
 
   void _notifyAuthListeners() => notifyListeners();
 
-  Dio _createProxyFallbackDio([ZhengfangMode? mode]) {
-    final effectiveMode = mode ?? _mode;
-    final baseOptions = _dioFor(effectiveMode).options;
-    final client = Dio(
-      BaseOptions(
-        baseUrl: baseOptions.baseUrl,
-        connectTimeout: baseOptions.connectTimeout,
-        receiveTimeout: baseOptions.receiveTimeout,
-        sendTimeout: baseOptions.sendTimeout,
-        headers: Map<String, dynamic>.from(baseOptions.headers),
-        followRedirects: baseOptions.followRedirects,
-        validateStatus: baseOptions.validateStatus,
-      ),
-    );
-    client.interceptors.add(
-      buildCookieInterceptor(_cookieJarFor(effectiveMode)),
-    );
-    applyProxyModeToDio(client, ignoreSystemProxy: false);
-    return client;
-  }
-
-  bool _shouldRetryWithSystemProxyForAny(Object error) {
-    return shouldRetryWithSystemProxyForError(
-      error,
-      ignoreSystemProxy: NetworkSettings.instance.ignoreSystemProxy.value,
-    );
-  }
-
   Future<Response<T>> _sendWithProxyFallback<T>({
     required String label,
     required Future<Response<T>> Function(Dio dio, CancelToken token) request,
     CancelToken? cancelToken,
     ZhengfangMode? mode,
-  }) async {
+  }) {
     final effectiveMode = mode ?? _mode;
-    final dio = _dioFor(effectiveMode);
-    Uri? requestUri;
-    // ponytail: overlapping sends on the same Dio can clobber requestUri.
-    final capture = InterceptorsWrapper(
-      onRequest: (options, handler) {
-        requestUri = options.uri;
-        handler.next(options);
-      },
+    return sendWithSystemProxyFallback<T>(
+      primary: _dioFor(effectiveMode),
+      createFallback: () => createSystemProxyFallbackDio(
+        template: _dioFor(effectiveMode),
+        jar: _cookieJarFor(effectiveMode),
+      ),
+      label: label,
+      request: request,
+      cancelToken: cancelToken,
     );
-
-    Future<Response<T>> send(Dio client) async {
-      if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
-      final token = CancelToken();
-      unawaited(cancelToken?.whenCancel.then((error) => token.cancel(error)));
-      client.interceptors.add(capture);
-      try {
-        return await request(client, token);
-      } finally {
-        client.interceptors.remove(capture);
-        // Future.timeout/cancel 必须同时取消底层请求，避免 socket 悬挂。
-        token.cancel('zhengfang request finished');
-      }
-    }
-
-    try {
-      return await send(dio);
-    } catch (error) {
-      if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
-      if (!_shouldRetryWithSystemProxyForAny(error)) rethrow;
-      final target = requestUri ?? _uriFromError(error);
-      if (target == null || await resolveHttpProxyForUri(target) == null) {
-        rethrow;
-      }
-      final reason = describeSystemProxyRetryReason(error);
-      AppLogger.instance.auth(
-        LogLevel.warn,
-        '$label 直连失败（$reason），尝试通过 HTTP_PROXY 环境代理重试',
-      );
-      final fallbackDio = _createProxyFallbackDio(effectiveMode);
-      try {
-        return await send(fallbackDio);
-      } finally {
-        fallbackDio.close(force: true);
-      }
-    }
-  }
-
-  Uri? _uriFromError(Object error) {
-    if (error is DioException) return error.requestOptions.uri;
-    return null;
   }
 
   String _baseUrlFor(ZhengfangMode mode) => mode == ZhengfangMode.direct

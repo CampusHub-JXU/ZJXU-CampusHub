@@ -79,3 +79,36 @@ class AuthRequiredView extends StatelessWidget {
     );
   }
 }
+
+/// 教务数据页（课表/成绩/考试）共用的未登录引导。
+///
+/// [automaticLoginPaused] 为 true 时切换为「需要手动登录」文案（身份失败达
+/// 阈值、自动登录已暂停）；否则展示各页自己的 [title] / [message]。
+class AcademicLoginRequiredView extends StatelessWidget {
+  const AcademicLoginRequiredView({
+    super.key,
+    required this.automaticLoginPaused,
+    required this.title,
+    required this.message,
+    required this.onAction,
+    this.icon = Icons.school_outlined,
+  });
+
+  static const pausedTitle = '需要手动登录';
+  static const pausedMessage = '自动登录已暂停（多次登录失败），请手动登录一次；登录成功后会自动重新开启自动登录。';
+
+  final bool automaticLoginPaused;
+  final String title;
+  final String message;
+  final VoidCallback onAction;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) => AuthRequiredView(
+    title: automaticLoginPaused ? pausedTitle : title,
+    message: automaticLoginPaused ? pausedMessage : message,
+    buttonLabel: '登录教务系统',
+    onAction: onAction,
+    icon: icon,
+  );
+}

@@ -299,12 +299,10 @@ class _SchedulePageState extends State<SchedulePage> {
 Widget buildScheduleLoginView({
   required bool automaticLoginPaused,
   required VoidCallback onAction,
-}) => AuthRequiredView(
-  title: automaticLoginPaused ? '需要手动登录' : '登录后查看课表',
-  message: automaticLoginPaused
-      ? '自动登录已暂停（多次登录失败），请手动登录一次；登录成功后会自动重新开启自动登录。'
-      : '课表刷新依赖教务系统会话，登录后即可同步最新课程数据。',
-  buttonLabel: '登录教务系统',
+}) => AcademicLoginRequiredView(
+  automaticLoginPaused: automaticLoginPaused,
+  title: '登录后查看课表',
+  message: '课表刷新依赖教务系统会话，登录后即可同步最新课程数据。',
   onAction: onAction,
   icon: Icons.calendar_month_outlined,
 );

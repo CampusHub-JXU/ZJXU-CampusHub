@@ -1,4 +1,6 @@
-﻿import 'package:flutter_test/flutter_test.dart';
+﻿import 'dart:convert';
+
+import 'package:flutter_test/flutter_test.dart';
 import 'package:jxu_campus_hub/features/changxing_jiada/changxing_jiada_service.dart';
 
 void main() {
@@ -122,6 +124,51 @@ void main() {
       expect(editRequest.path, '/approvalForm/edit');
       expect(editRequest.payload['type'], 3);
       expect(editRequest.payload['id'], 3003);
+    });
+
+    test('date-bearing payloads are JSON-serializable wall-clock strings', () {
+      final leave = ChangxingJiadaService.buildLeaveRequestSubmitRequest(
+        startTime: start,
+        endTime: end,
+        descr: '请假事由',
+        toAreaCode: 330402,
+        toAddr: '南湖区测试路 1 号',
+        emergencyContact: '张三',
+        emergencyPhone: '13800000001',
+        userPhone: '13800000002',
+        trafficTools: const <String>['高铁'],
+      );
+      final leaveSchool = ChangxingJiadaService.buildLeaveSchoolSubmitRequest(
+        startTime: start,
+        endTime: end,
+        descr: '离校事由',
+        toAreaCode: 330402,
+        toAddr: '南湖区测试路 1 号',
+        emergencyContact: '张三',
+        emergencyPhone: '13800000001',
+        userPhone: '13800000002',
+        trafficTools: const <String>['高铁'],
+      );
+      final back = ChangxingJiadaService.buildBackSchoolSubmitRequest(
+        userPhone: '13800000005',
+        startTime: start,
+        trafficTool: '高铁',
+        trafficDetail: 'G1234',
+        nativePlace: '浙江嘉兴',
+        fromAreaCode: 330402,
+        emergencyContact: '王五',
+        emergencyPhone: '13800000006',
+        backStatus: 1,
+        notBackReason: '',
+      );
+
+      for (final request in [leave, leaveSchool, back]) {
+        // Dio 默认 Transformer 对 application/json 直接 jsonEncode。
+        expect(() => jsonEncode(request.payload), returnsNormally);
+        expect(request.payload['startTime'], '2026-04-08 08:00:00');
+      }
+      expect(leave.payload['endTime'], '2026-04-08 18:00:00');
+      expect(leaveSchool.payload['endTime'], '2026-04-08 18:00:00');
     });
 
     test('buildOvertimeSubmitRequest keeps same endpoint for add and edit', () {
