@@ -16,6 +16,7 @@ import '../features/library/library_page.dart';
 import '../features/micro_life/micro_life_page.dart';
 import '../features/one_stop_service/one_stop_service_page.dart';
 import '../features/physical_test/physical_test_page.dart';
+import '../features/notice/notice_detail_page.dart';
 import '../features/notice/notice_list_page.dart';
 import '../features/sjjx_notice/sjjx_notice_list_page.dart';
 import '../features/service_hall/service_hall_page.dart';
@@ -250,6 +251,17 @@ final GoRouter appRouter = GoRouter(
       path: '/notice-list',
       name: 'notice-list',
       builder: (context, state) => const NoticeListPage(),
+    ),
+    _appRoute(
+      path: '/notice-detail',
+      name: 'notice-detail',
+      builder: (context, state) {
+        final extra = (state.extra as Map?) ?? const {};
+        return NoticeDetailPage(
+          title: extra['title'] as String? ?? '通知详情',
+          url: extra['url'] as String? ?? '',
+        );
+      },
     ),
     _appRoute(
       path: '/sjjx-notice-list',

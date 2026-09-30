@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/logging/app_logger.dart';
+import '../../core/notice/notice_detail.dart';
 import '../../core/notice/notice_fetch_service.dart';
 import '../../core/notice/notice_model.dart';
 import '../../core/notice/notice_relevance.dart';
@@ -199,6 +200,13 @@ class _NoticeListPageState extends State<NoticeListPage> {
                     notice: notice,
                     colorScheme: cs,
                     onTap: () {
+                      if (isJwcNoticeDetailUrl(notice.url)) {
+                        context.pushNamed(
+                          'notice-detail',
+                          extra: {'title': notice.title, 'url': notice.url},
+                        );
+                        return;
+                      }
                       context.pushNamed(
                         'external-webview',
                         extra: {

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/auth/cas_auth_broker.dart';
+import '../../core/notice/notice_detail.dart';
 import '../../core/notice/notice_fetch_service.dart';
 import '../../core/notice/notice_model.dart';
 import '../../core/notice/notice_relevance.dart';
@@ -318,6 +319,13 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
   void _openNotice(Notice notice) {
     if (_unreadIds.contains(notice.id)) {
       unawaited(NoticeSyncStore.instance.markRead([notice.id]));
+    }
+    if (isJwcNoticeDetailUrl(notice.url)) {
+      context.pushNamed(
+        'notice-detail',
+        extra: {'title': notice.title, 'url': notice.url},
+      );
+      return;
     }
     context.pushNamed(
       'external-webview',
