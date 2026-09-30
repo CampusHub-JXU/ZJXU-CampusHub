@@ -13,6 +13,7 @@ import '../../core/notice/notice_sync_store.dart';
 import '../../core/profile/user_profile_controller.dart';
 import '../sjjx_notice/sjjx_notice_model.dart';
 import '../sjjx_notice/sjjx_notice_service.dart';
+import 'campus_notice_site_search.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_empty_view.dart';
 import '../../shared/widgets/app_error_view.dart';
@@ -81,10 +82,24 @@ class _NotificationCenterPageState extends State<NotificationCenterPage>
     final canMarkAllRead = _tabController.index == 0 && _unreadCount > 0;
     return Scaffold(
       appBar: AppAppBar(
-        title: const Text(
-          '通知',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-        ),
+        centerTitle: _searchOpen ? false : null,
+        titleSpacing: _searchOpen ? 0 : null,
+        title: _searchOpen
+            ? AppSearchField(
+                controller: _searchController,
+                hintText: '搜索标题、类型或日期',
+                compact: true,
+                autofocus: true,
+                onChanged: (value) => setState(() => _query = value),
+                onClear: () => setState(() {
+                  _searchController.clear();
+                  _query = '';
+                }),
+              )
+            : const Text(
+                '通知',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              ),
         actions: [
           IconButton(
             onPressed: _toggleSearch,
@@ -109,19 +124,6 @@ class _NotificationCenterPageState extends State<NotificationCenterPage>
               unreadCount: _unreadCount,
             ),
           ),
-          if (_searchOpen)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
-              child: AppSearchField(
-                controller: _searchController,
-                hintText: '搜索标题、类型或日期',
-                onChanged: (value) => setState(() => _query = value),
-                onClear: () => setState(() {
-                  _searchController.clear();
-                  _query = '';
-                }),
-              ),
-            ),
           const SizedBox(height: 8),
           Expanded(
             child: TabBarView(
@@ -344,10 +346,58 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
     );
   }
 
+  Widget _tileFor(Notice notice) => _NoticeTile(
+    title: notice.title,
+    date: notice.date,
+    unread: _unreadIds.contains(notice.id),
+    onTap: () => _openNotice(notice),
+    onLongPress: () => copyTextWithFeedback(context, notice.url),
+  );
+
+  /// 搜索态：先列本地收件箱命中（最近同步的一批，零延迟），再接教务处
+  /// 站内全文检索补齐更早的通知（去重）。
+  Widget _buildSearchResults(String query) {
+    final local = _notices
+        .where(
+          (notice) =>
+              _noticeMatchesQuery(notice.title, query) ||
+              _noticeMatchesQuery(notice.category, query) ||
+              _noticeMatchesQuery(notice.date, query),
+        )
+        .toList(growable: false);
+    final divider = Divider(
+      height: 1,
+      thickness: 1,
+      indent: 28,
+      color: Theme.of(context).colorScheme.outlineVariant
+          .withValues(alpha: 0.25),
+    );
+    return ListView(
+      padding: const EdgeInsets.only(bottom: 24),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      children: [
+        if (local.isNotEmpty) ...[
+          CampusNoticeSectionLabel('最近通知', trailing: '${local.length} 条'),
+          for (var i = 0; i < local.length; i++) ...[
+            if (i > 0) divider,
+            _tileFor(local[i]),
+          ],
+        ],
+        CampusNoticeSiteSearch(
+          query: widget.query,
+          excludeIds: {for (final n in local) n.id},
+          tileBuilder: _tileFor,
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
     if (_loading) return const Center(child: CircularProgressIndicator());
+    final query = widget.query.trim().toLowerCase();
+    if (query.isNotEmpty) return _buildSearchResults(query);
     if (_notices.isEmpty) {
       return RefreshIndicator(
         onRefresh: _refresh,
@@ -360,28 +410,7 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
       );
     }
     final showAuthBanner = _authRequired;
-    final query = widget.query.trim().toLowerCase();
-    final visibleNotices = query.isEmpty
-        ? _notices
-        : _notices
-              .where(
-                (notice) =>
-                    _noticeMatchesQuery(notice.title, query) ||
-                    _noticeMatchesQuery(notice.category, query) ||
-                    _noticeMatchesQuery(notice.date, query),
-              )
-              .toList();
-    if (visibleNotices.isEmpty && query.isNotEmpty) {
-      return RefreshIndicator(
-        onRefresh: _refresh,
-        child: ListView(
-          children: const [
-            SizedBox(height: 120),
-            AppEmptyView(title: '没有匹配的通知', icon: Icons.search_off_rounded),
-          ],
-        ),
-      );
-    }
+    final visibleNotices = _notices;
     return RefreshIndicator(
       onRefresh: _refresh,
       child: ListView.separated(
@@ -405,14 +434,7 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
             );
           }
           final noticeIndex = showAuthBanner ? index - 1 : index;
-          final notice = visibleNotices[noticeIndex];
-          return _NoticeTile(
-            title: notice.title,
-            date: notice.date,
-            unread: _unreadIds.contains(notice.id),
-            onTap: () => _openNotice(notice),
-            onLongPress: () => copyTextWithFeedback(context, notice.url),
-          );
+          return _tileFor(visibleNotices[noticeIndex]);
         },
       ),
     );

@@ -14,6 +14,8 @@ class AppSearchField extends StatelessWidget {
     required this.onChanged,
     required this.onClear,
     this.fillAlpha = 0.5,
+    this.compact = false,
+    this.autofocus = false,
   });
 
   final TextEditingController controller;
@@ -22,9 +24,14 @@ class AppSearchField extends StatelessWidget {
   final VoidCallback onClear;
   final double fillAlpha;
 
+  /// 紧凑胶囊形态：嵌入 AppBar 等窄高度位置，无描边、实色底。
+  final bool compact;
+  final bool autofocus;
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    if (compact) return _buildCompact(context, cs);
 
     return ValueListenableBuilder<TextEditingValue>(
       valueListenable: controller,
@@ -67,6 +74,58 @@ class AppSearchField extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildCompact(BuildContext context, ColorScheme cs) {
+    final pill = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(999),
+      borderSide: BorderSide.none,
+    );
+    return SizedBox(
+      height: 40,
+      child: ValueListenableBuilder<TextEditingValue>(
+        valueListenable: controller,
+        builder: (context, value, _) {
+          final showClear = value.text.isNotEmpty;
+          return TextField(
+            controller: controller,
+            autofocus: autofocus,
+            // 填满 40dp 胶囊：避免清除按钮出现/消失时高度跳变。
+            expands: true,
+            maxLines: null,
+            minLines: null,
+            textInputAction: TextInputAction.search,
+            textAlignVertical: TextAlignVertical.center,
+            onChanged: onChanged,
+            style: Theme.of(context).textTheme.bodyMedium,
+            decoration: InputDecoration(
+              hintText: hintText,
+              isDense: true,
+              prefixIcon: const Icon(Icons.search_rounded, size: 20),
+              prefixIconConstraints: const BoxConstraints(minWidth: 40),
+              suffixIcon: showClear
+                  ? IconButton(
+                      onPressed: onClear,
+                      icon: const Icon(Icons.cancel_rounded, size: 18),
+                      tooltip: '清除搜索',
+                      visualDensity: VisualDensity.compact,
+                    )
+                  : null,
+              suffixIconConstraints: const BoxConstraints(
+                minWidth: 40,
+                minHeight: 40,
+              ),
+              filled: true,
+              fillColor: cs.surfaceContainerHighest,
+              border: pill,
+              enabledBorder: pill,
+              focusedBorder: pill,
+              contentPadding: const EdgeInsets.only(right: 12),
+            ),
+          );
+        },
+      ),
     );
   }
 }
