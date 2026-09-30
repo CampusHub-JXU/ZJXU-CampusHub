@@ -16,6 +16,7 @@ class AppSearchField extends StatelessWidget {
     this.fillAlpha = 0.5,
     this.compact = false,
     this.autofocus = false,
+    this.onSubmitted,
   });
 
   final TextEditingController controller;
@@ -27,6 +28,9 @@ class AppSearchField extends StatelessWidget {
   /// 紧凑胶囊形态：嵌入 AppBar 等窄高度位置，无描边、实色底。
   final bool compact;
   final bool autofocus;
+
+  /// 按键盘「搜索」时触发；只在提交时才查询的页面（如第二课堂）用它。
+  final ValueChanged<String>? onSubmitted;
 
   @override
   Widget build(BuildContext context) {
@@ -41,6 +45,7 @@ class AppSearchField extends StatelessWidget {
           controller: controller,
           textInputAction: TextInputAction.search,
           onChanged: onChanged,
+          onSubmitted: onSubmitted,
           decoration: InputDecoration(
             hintText: hintText,
             prefixIcon: const Icon(Icons.search_rounded),
@@ -98,6 +103,7 @@ class AppSearchField extends StatelessWidget {
             textInputAction: TextInputAction.search,
             textAlignVertical: TextAlignVertical.center,
             onChanged: onChanged,
+            onSubmitted: onSubmitted,
             style: Theme.of(context).textTheme.bodyMedium,
             decoration: InputDecoration(
               hintText: hintText,

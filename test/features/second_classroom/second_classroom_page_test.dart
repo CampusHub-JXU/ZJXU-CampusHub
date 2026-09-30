@@ -7,7 +7,7 @@ import 'package:jxu_campus_hub/features/second_classroom/second_classroom_model.
 import 'package:jxu_campus_hub/features/second_classroom/second_classroom_page.dart';
 import 'package:jxu_campus_hub/features/second_classroom/second_classroom_service.dart';
 import 'package:jxu_campus_hub/features/second_classroom/second_classroom_subscription_service.dart';
-import 'package:jxu_campus_hub/shared/widgets/app_dropdown.dart';
+import 'package:jxu_campus_hub/shared/widgets/app_status_tag.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -90,10 +90,53 @@ void main() {
     expect(find.text('榜样分享活动'), findsOneWidget);
     expect(find.text('招募中'), findsOneWidget);
     expect(find.byTooltip('在微信中打开'), findsOneWidget);
-    expect(
-      find.byWidgetPredicate((widget) => widget is AppDropdown),
-      findsNWidgets(5),
+    // 状态 chip 行 + 排序 + 筛选入口，不再横排多个下拉（ui-unification-plan §4.5）。
+    expect(find.widgetWithText(ChoiceChip, '全部'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, '正在招募'), findsOneWidget);
+    expect(find.text('即将开始'), findsOneWidget);
+    expect(find.widgetWithText(TextButton, '筛选'), findsOneWidget);
+    expect(find.text('共 1 个活动'), findsOneWidget);
+    // 招募状态走主题 container 色调，不写死颜色。
+    final tag = tester.widget<AppStatusTag>(
+      find.ancestor(of: find.text('招募中'), matching: find.byType(AppStatusTag)),
     );
+    expect(tag.tone, AppStatusTone.positive);
+  });
+
+  testWidgets('status chip and filter sheet update the query', (tester) async {
+    final service = _FakeSecondClassroomService();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SecondClassroomPage(
+          service: service,
+          subscriptionService: _testSubscriptionService(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(ChoiceChip, '正在招募'));
+    await tester.pumpAndSettle();
+    expect(
+      service.queries.last.status,
+      SecondClassroomActivityStatus.recruiting,
+    );
+
+    await tester.tap(find.widgetWithText(TextButton, '筛选'));
+    await tester.pumpAndSettle();
+    expect(find.text('组织类型'), findsOneWidget);
+    expect(find.text('所属学院'), findsOneWidget);
+    expect(find.text('全部活动（含未开放）'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(ChoiceChip, '建筑工程学院'));
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, '完成'));
+    await tester.pumpAndSettle();
+
+    final last = service.queries.last;
+    expect(last.departmentId, '51');
+    expect(last.status, SecondClassroomActivityStatus.recruiting);
+    expect(find.widgetWithText(TextButton, '筛选 · 1'), findsOneWidget);
   });
 
   testWidgets('opens second classroom in WeChat from app bar', (tester) async {
@@ -227,10 +270,13 @@ class _FakeSecondClassroomService extends SecondClassroomService {
     );
   }
 
+  final queries = <SecondClassroomActivityQuery>[];
+
   @override
   Future<SecondClassroomActivityPage> searchActivities(
     SecondClassroomActivityQuery query,
   ) async {
+    queries.add(query);
     return SecondClassroomActivityPage(
       items: [_activity],
       pageIndex: query.page,
