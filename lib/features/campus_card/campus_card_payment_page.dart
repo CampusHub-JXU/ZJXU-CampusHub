@@ -17,6 +17,7 @@ import '../../shared/widgets/login_shell.dart';
 import '../../shared/widgets/unified_auth_protected_webview_page.dart';
 import 'campus_card_fallback_payment_page.dart';
 import 'epay_payment_code_service.dart';
+import '../../shared/widgets/app_feedback.dart';
 
 // 旧版备用码页已机械拆分到独立文件；此处保持原导出兼容
 // （import campus_card_payment_page.dart 仍可直接使用
@@ -313,9 +314,7 @@ class _CampusCardPaymentPageState extends State<CampusCardPaymentPage>
       CampusActionIds.campusCardResetPassword,
     );
     if (!result.isSuccess) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(result.message ?? '暂时无法打开重置密码页面')),
-      );
+      AppFeedback.toastOn(messenger, result.message ?? '暂时无法打开重置密码页面');
     }
   }
 

@@ -15,6 +15,8 @@ import '../../shared/widgets/detail_readout.dart';
 import '../../shared/widgets/login_shell.dart';
 import '../../shared/widgets/refresh_status_line.dart';
 import '../../shared/widgets/skeleton_box.dart';
+import '../../core/theme/app_typography.dart';
+import '../../shared/widgets/app_feedback.dart';
 
 /// 页面当前绑定的统一认证身份（账号 + sessionRevision）；未登录 / 空白
 /// 账号一律账号 null，与服务 owner 判定保持一致。
@@ -229,9 +231,7 @@ class _DormElectricityPageState extends State<DormElectricityPage> {
     // 无读数或需登录时由读数下方的横幅承载原因与动作。
     if (!mounted) return;
     if (_error != null && _electricity != null && !_requiresUnifiedAuth) {
-      ScaffoldMessenger.maybeOf(context)
-        ?..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(content: Text('电量刷新失败')));
+      AppFeedback.toast(context, '电量刷新失败');
     }
   }
 
@@ -456,11 +456,7 @@ class _DormElectricityPageState extends State<DormElectricityPage> {
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
           child: Text(
             '下拉可立即刷新；电量 30 分钟内有效，离开页面也会在后台补齐。',
-            style: TextStyle(
-              fontSize: 12,
-              height: 1.4,
-              color: cs.onSurfaceVariant,
-            ),
+            style: context.appText.meta.copyWith(height: 1.4),
           ),
         ),
       ],
@@ -485,8 +481,7 @@ class _DormElectricityPageState extends State<DormElectricityPage> {
         const SizedBox(width: 6),
         Text(
           _statusLabelFor(value),
-          style: TextStyle(
-            fontSize: 12,
+          style: context.appText.meta.copyWith(
             fontWeight: FontWeight.w600,
             color: color,
           ),
@@ -530,7 +525,10 @@ class _DormElectricityPageState extends State<DormElectricityPage> {
           Expanded(
             child: Text(
               message,
-              style: TextStyle(fontSize: 13, height: 1.35, color: cs.onSurface),
+              style: context.appText.secondary.copyWith(
+                height: 1.35,
+                color: cs.onSurface,
+              ),
             ),
           ),
           if (_requiresUnifiedAuth) ...[

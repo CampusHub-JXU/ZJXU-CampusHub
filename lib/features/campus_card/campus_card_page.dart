@@ -17,6 +17,8 @@ import '../../shared/widgets/login_shell.dart';
 import '../../shared/widgets/refresh_status_line.dart';
 import '../../shared/widgets/unified_auth_protected_webview_page.dart';
 import 'campus_card_service.dart';
+import '../../core/theme/app_typography.dart';
+import '../../shared/widgets/app_feedback.dart';
 
 class CampusCardPage extends StatefulWidget {
   const CampusCardPage({super.key});
@@ -302,11 +304,7 @@ class _CampusCardPageState extends State<CampusCardPage> {
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
             child: Text(
               '下拉可立即刷新；余额 5 分钟内有效，离开页面也会在后台补齐。',
-              style: TextStyle(
-                fontSize: 12,
-                height: 1.4,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+              style: context.appText.meta.copyWith(height: 1.4),
             ),
           ),
         ],
@@ -404,8 +402,7 @@ class _CampusCardPageState extends State<CampusCardPage> {
                           Expanded(
                             child: Text(
                               failureMessage,
-                              style: TextStyle(
-                                fontSize: 12,
+                              style: context.appText.meta.copyWith(
                                 height: 1.4,
                                 color: failureTone,
                               ),
@@ -597,8 +594,6 @@ class _CampusCardPageState extends State<CampusCardPage> {
   /// 刷新结果反馈文案：区分「有余额在手（保留旧值）」与「完全无余额」两种
   /// 失败语气；成功只说已刷新。
   void _showRefreshFeedback(double? balance) {
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.hideCurrentSnackBar();
     final cached = CampusCardService.instance.cachedBalance;
     final failure = CampusCardService.instance.lastBalanceFailure;
     final String message;
@@ -621,7 +616,7 @@ class _CampusCardPageState extends State<CampusCardPage> {
         BalanceFailureKind.none => '暂未获取到校园卡余额，请稍后重试',
       };
     }
-    messenger.showSnackBar(SnackBar(content: Text(message)));
+    AppFeedback.toast(context, message);
   }
 
   Future<void> _openRechargePage() async {
@@ -641,20 +636,13 @@ class _CampusCardPageState extends State<CampusCardPage> {
         .requestCampusCardPaymentShortcutResult();
     if (!mounted) return;
 
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(result.message),
-        action: result.canOpenPermissionSettings
-            ? SnackBarAction(
-                label: '去设置',
-                onPressed: () {
-                  AppShortcutService.instance.openShortcutPermissionSettings();
-                },
-              )
-            : null,
-      ),
+    AppFeedback.toast(
+      context,
+      result.message,
+      actionLabel: result.canOpenPermissionSettings ? '去设置' : null,
+      onAction: result.canOpenPermissionSettings
+          ? AppShortcutService.instance.openShortcutPermissionSettings
+          : null,
     );
   }
 }
