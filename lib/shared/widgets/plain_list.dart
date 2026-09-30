@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_design_tokens.dart';
+import '../../core/theme/app_typography.dart';
 import '../../core/theme/glass_style_controller.dart';
 import 'app_surface_style.dart';
 
-/// 分组列表页的左右留白（我的 / 设置 / 关于共用，与首页功能区一致）。
-const double kPlainListGutter = 24;
+/// 分组列表页的左右留白，即 [AppSpacing.listGutter]（保留旧名兼容调用方）。
+const double kPlainListGutter = AppSpacing.listGutter;
 
-/// 分组之间的留白。
-const double kPlainListGroupGap = 20;
+/// 分组之间的留白，即 [AppSpacing.listGroupGap]。
+const double kPlainListGroupGap = AppSpacing.listGroupGap;
 
 /// 行内左右内边距：图标与文字都从这条竖线起排。
 const double kPlainListRowInset = 16;
@@ -52,7 +53,7 @@ class PlainListGroup extends StatelessWidget {
   }
 }
 
-/// 分组小标题：13 号灰字，以 header 语义暴露给读屏。
+/// 分组小标题：13 w600 灰字（`AppTypography.label`），以 header 语义暴露给读屏。
 class PlainSectionHeader extends StatelessWidget {
   const PlainSectionHeader(this.title, {super.key});
 
@@ -65,14 +66,7 @@ class PlainSectionHeader extends StatelessWidget {
       child: Padding(
         // 左缘贴齐卡片边缘，与功能页标题同一条线。
         padding: const EdgeInsets.only(bottom: 8),
-        child: Text(
-          title,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        ),
+        child: Text(title, style: context.appText.label),
       ),
     );
   }
@@ -119,6 +113,7 @@ class PlainListRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final text = context.appText;
     final subtitleText = subtitle;
     final valueText = value;
     final chevron = showChevron ?? (onTap != null && trailing == null);
@@ -134,25 +129,16 @@ class PlainListRow extends StatelessWidget {
           children: [
             Text(
               title,
-              style: TextStyle(
-                fontSize: 16,
-                height: 1.3,
-                color: titleColor ?? cs.onSurface,
-              ),
+              style: titleColor == null
+                  ? text.listTitle
+                  : text.listTitle.copyWith(color: titleColor),
             ),
             if (titleBadge != null) PlainTag(titleBadge!),
           ],
         ),
         if (subtitleText != null) ...[
           const SizedBox(height: 2),
-          Text(
-            subtitleText,
-            style: TextStyle(
-              fontSize: 13,
-              height: 1.3,
-              color: cs.onSurfaceVariant,
-            ),
-          ),
+          Text(subtitleText, style: text.secondary),
         ],
       ],
     );
@@ -192,15 +178,15 @@ class PlainListRow extends StatelessWidget {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               textAlign: TextAlign.end,
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: emphasizeValue
-                                    ? FontWeight.w600
-                                    : FontWeight.w400,
-                                color: emphasizeValue
-                                    ? cs.primary
-                                    : cs.onSurfaceVariant,
-                              ),
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(
+                                    fontWeight: emphasizeValue
+                                        ? FontWeight.w600
+                                        : FontWeight.w400,
+                                    color: emphasizeValue
+                                        ? cs.primary
+                                        : cs.onSurfaceVariant,
+                                  ),
                             ),
                           ),
                         ],
@@ -225,7 +211,7 @@ class PlainListRow extends StatelessWidget {
   }
 }
 
-/// 行内小标签：tertiaryContainer 底 + 11 号字。
+/// 行内小标签：tertiaryContainer 底 + 11 w600（`AppTypography.tag`）。
 class PlainTag extends StatelessWidget {
   const PlainTag(this.label, {super.key});
 
@@ -243,12 +229,7 @@ class PlainTag extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
         child: Text(
           label,
-          style: TextStyle(
-            fontSize: 11,
-            height: 1.3,
-            fontWeight: FontWeight.w500,
-            color: cs.onTertiaryContainer,
-          ),
+          style: context.appText.tag.copyWith(color: cs.onTertiaryContainer),
         ),
       ),
     );
@@ -327,21 +308,11 @@ class PlainSliderRow extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: kPlainListRowInset),
             child: Row(
               children: [
-                Expanded(
-                  child: Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 16,
-                      height: 1.3,
-                      color: cs.onSurface,
-                    ),
-                  ),
-                ),
+                Expanded(child: Text(title, style: context.appText.listTitle)),
                 const SizedBox(width: 12),
                 Text(
                   valueLabel,
-                  style: TextStyle(
-                    fontSize: 14,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: cs.onSurfaceVariant,
                     fontFeatures: const [FontFeature.tabularFigures()],
                   ),

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme/app_typography.dart';
+
 /// 数据卡底部的一行刷新状态：「HH:mm 更新 · 正在刷新」。
 ///
 /// 统一替代各页的通栏「刷新xx / 正在刷新」按钮（见 design-guidelines 4.5）：
@@ -71,8 +73,7 @@ class RefreshStatusLine extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final baseColor = color ?? cs.onSurfaceVariant;
     final textColor = failed && !refreshing ? cs.error : baseColor;
-    final style = Theme.of(context).textTheme.bodySmall
-        ?.copyWith(fontSize: 12, color: textColor);
+    final style = context.appText.meta.copyWith(color: textColor);
 
     return Semantics(
       liveRegion: true,

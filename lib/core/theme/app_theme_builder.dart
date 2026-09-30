@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import 'app_design_tokens.dart';
+import 'app_typography.dart';
 
 /// Material 3 theme builder.
 ///
@@ -130,6 +131,7 @@ class AppThemeBuilder {
       colorScheme: colorScheme,
       fontFamily: 'Inter',
       textTheme: _appleTextTheme,
+      extensions: [AppTypography.fromScheme(colorScheme)],
       scaffoldBackgroundColor: colorScheme.surface,
       pageTransitionsTheme: _appPageTransitionsTheme,
       appBarTheme: AppBarTheme(
@@ -351,6 +353,7 @@ class AppThemeBuilder {
       colorScheme: colorScheme,
       fontFamily: 'Inter',
       textTheme: _appleTextTheme,
+      extensions: [AppTypography.fromScheme(colorScheme)],
       scaffoldBackgroundColor: background,
       pageTransitionsTheme: _appPageTransitionsTheme,
       appBarTheme: AppBarTheme(

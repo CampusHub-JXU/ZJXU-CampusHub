@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_design_tokens.dart';
+import '../../core/theme/app_typography.dart';
 import 'app_tile_surface.dart';
 
 /// 单值详情页（校园卡余额 / 寝室电量）的无框读数：标签行 + 大号数字 + 单位，
@@ -33,6 +34,7 @@ class DetailReadout extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final text = context.appText;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -45,11 +47,7 @@ class DetailReadout extends StatelessWidget {
                   label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: cs.onSurfaceVariant,
-                  ),
+                  style: text.label,
                 ),
               ),
               ?trailing,
@@ -66,24 +64,12 @@ class DetailReadout extends StatelessWidget {
             children: [
               Text(
                 valueText,
-                style: TextStyle(
-                  fontSize: 76,
-                  fontWeight: FontWeight.w700,
-                  height: 1.05,
-                  letterSpacing: -2.5,
-                  color: muted ? cs.outlineVariant : cs.onSurface,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
+                style: muted
+                    ? text.readout.copyWith(color: cs.outlineVariant)
+                    : text.readout,
               ),
               const SizedBox(width: AppSpacing.sm),
-              Text(
-                unit,
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w600,
-                  color: cs.onSurfaceVariant,
-                ),
-              ),
+              Text(unit, style: text.unit),
             ],
           ),
         ),
@@ -188,6 +174,7 @@ class DetailActionGrid extends StatelessWidget {
 
   Widget _buildTile(BuildContext context, DetailAction action) {
     final cs = Theme.of(context).colorScheme;
+    final text = context.appText;
     final primary = action.primary;
     final content = ConstrainedBox(
       constraints: const BoxConstraints(minHeight: _minHeight),
@@ -210,23 +197,20 @@ class DetailActionGrid extends StatelessWidget {
                   action.title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: primary ? cs.onPrimary : cs.onSurface,
-                  ),
+                  style: primary
+                      ? text.rowTitle.copyWith(color: cs.onPrimary)
+                      : text.rowTitle,
                 ),
                 const SizedBox(height: 2),
                 Text(
                   action.subtitle,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: primary
-                        ? cs.onPrimary.withValues(alpha: 0.82)
-                        : cs.onSurfaceVariant,
-                  ),
+                  style: primary
+                      ? text.meta.copyWith(
+                          color: cs.onPrimary.withValues(alpha: 0.82),
+                        )
+                      : text.meta,
                 ),
               ],
             ),
