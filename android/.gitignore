@@ -2,6 +2,8 @@ gradle-wrapper.jar
 /.gradle
 /.gradle-user-home/
 /.kotlin/
+# Gradle 9 problems report (build/reports/problems)
+/build/
 /captures/
 /gradlew
 /gradlew.bat

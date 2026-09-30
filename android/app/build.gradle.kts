@@ -2,7 +2,8 @@ import java.util.Properties
 
 plugins {
     id("com.android.application")
-    id("kotlin-android")
+    // AGP 9: do not apply the Kotlin Gradle plugin here. The Flutter Gradle
+    // plugin applies it (android.builtInKotlin=false); it must come after AGP.
     id("dev.flutter.flutter-gradle-plugin")
     id("com.google.gms.google-services")
 }
@@ -35,10 +36,6 @@ android {
         isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-    }
-
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
     }
 
     defaultConfig {
@@ -110,6 +107,12 @@ gradle.taskGraph.whenReady {
         if (!keystoreFile.isFile) {
             throw GradleException("Release signing keystore does not exist: ${keystoreFile.path}")
         }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
 }
 
