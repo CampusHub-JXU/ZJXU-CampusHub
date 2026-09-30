@@ -33,13 +33,13 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
       throw CaptchaException('登录上下文已过期，请重试');
     }
 
-    final session = await IsolatedAuthSession.create(
+    var session = await IsolatedAuthSession.create(
       sourceJar: _cookieJarFor(txMode),
       seedUris: _challengeSeedUris(txMode),
       template: _dioFor(txMode),
     );
 
-    final context = await _buildChallengeContext(
+    var context = await _buildChallengeContext(
       session,
       txMode,
       expectedEpoch: expectedEpoch,
@@ -50,6 +50,35 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
     if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
     if (revisionAtStart != _sessionRevision) {
       throw CaptchaException('登录上下文已过期，请重试');
+    }
+
+    // 服务端残留会话但本地没有可信身份：该会话无法绑定到任何账号，登录页
+    // 只会跳首页、拿不到 CSRF，原样复用会永久失败。重置一次会话重新取登录页；
+    // 仍跳转则明确报错，不循环。有可信身份时保留原短路语义。
+    if (context.indicatesLoggedIn && !isLoggedIn) {
+      AppLogger.instance.auth(LogLevel.info, '教务残留会话无可信身份，重置会话后重新获取登录页');
+      session = await _resetStaleChallengeSession(
+        session,
+        txMode,
+        cancelToken: cancelToken,
+      );
+      if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+      context = await _buildChallengeContext(
+        session,
+        txMode,
+        expectedEpoch: expectedEpoch,
+        revisionAtStart: revisionAtStart,
+        accountAtStart: accountAtStart,
+        cancelToken: cancelToken,
+      );
+      if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+      if (revisionAtStart != _sessionRevision) {
+        throw CaptchaException('登录上下文已过期，请重试');
+      }
+      if (context.indicatesLoggedIn) {
+        AppLogger.instance.auth(LogLevel.warn, '教务残留会话重置后仍跳转首页');
+        throw CaptchaException('教务系统会话异常，请稍后重试');
+      }
     }
 
     final bytes = await _fetchChallengeCaptcha(
@@ -169,6 +198,44 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
       ),
       Uri.parse('${ZhengfangAuth._directBase}/'),
     ];
+  }
+
+  /// 为残留会话换一个可登录的隔离会话；只作用于本事务，不动共享 jar。
+  ///
+  /// 直连：换成空 cookie 会话，服务端会签发新会话，旧会话原样留在共享 jar，
+  /// 登录成功后才被覆盖。WebVPN：后端会话挂在网关 cookie 上，无法靠换 jar
+  /// 得到新会话，只能在本隔离会话内注销教务账号（保留网关 cookie）。
+  Future<IsolatedAuthSession> _resetStaleChallengeSession(
+    IsolatedAuthSession session,
+    ZhengfangMode mode, {
+    CancelToken? cancelToken,
+  }) async {
+    if (mode == ZhengfangMode.direct) {
+      return IsolatedAuthSession.create(
+        sourceJar: CookieJar(),
+        seedUris: _challengeSeedUris(mode),
+        template: _dioFor(mode),
+      );
+    }
+    try {
+      await session.send<String>(
+        label: '教务残留会话注销',
+        cancelToken: cancelToken,
+        request: (dio, token) => dio.post<String>(
+          '${_baseUrlFor(mode)}/xtgl/login_logoutAccount.html',
+          cancelToken: token,
+          options: Options(
+            responseType: ResponseType.plain,
+            headers: {'Referer': _loginPageUrlFor(mode)},
+          ),
+        ),
+      );
+    } on DioException catch (error) {
+      if (CancelToken.isCancel(error)) rethrow;
+      // 注销失败不在此处判定；重新取登录页仍跳转时统一报错。
+      AppLogger.instance.auth(LogLevel.warn, '教务残留会话注销请求失败', error: error);
+    }
+    return session;
   }
 
   Future<_ZhengfangChallengeContext> _buildChallengeContext(

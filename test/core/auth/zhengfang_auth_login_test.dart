@@ -7,7 +7,6 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:jxu_campus_hub/core/auth/auth_failure.dart';
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/core/network/dio_client.dart';
 import 'package:jxu_campus_hub/core/network/network_settings.dart';
@@ -166,30 +165,27 @@ void main() {
       expect(adapter.requestLog.last, 'POST /jwglxt/xtgl/login_slogin.html');
     });
 
-    test(
-      'unknown existing session is not bound to the input account',
-      () async {
-        await DioClient.instance.ensureInitialized();
-        auth.setMode(ZhengfangMode.direct);
+    test('unknown existing session is reset once and never bound', () async {
+      await DioClient.instance.ensureInitialized();
+      auth.setMode(ZhengfangMode.direct);
 
-        final adapter = _RecordingZhengfangAdapter(existingSession: true);
-        DioClient.instance.dio.httpClientAdapter = adapter;
+      final adapter = _RecordingZhengfangAdapter(existingSession: true);
+      DioClient.instance.dio.httpClientAdapter = adapter;
 
-        await auth.fetchCaptcha();
-        final result = await auth.login('2024001', 'password123', '2468');
-
-        // 首页跳转只证明会话有效，不证明学号：必须失败且不写身份。
-        expect(result, isA<LoginFailure>());
-        expect((result as LoginFailure).kind, AuthFailureKind.protocolChanged);
-        expect(auth.isLoggedIn, isFalse);
-        expect(auth.currentStudentId, isNull);
-        expect(adapter.logoutCount, 0);
-        expect(
-          adapter.requestLog,
-          equals(['GET /jwglxt/xtgl/login_slogin.html', 'GET /jwglxt/kaptcha']),
-        );
-      },
-    );
+      // 首页跳转只证明会话有效，不证明学号：重置一次会话仍跳转则明确失败，
+      // 不循环、不写身份。
+      await expectLater(auth.fetchCaptcha(), throwsA(isA<CaptchaException>()));
+      expect(auth.isLoggedIn, isFalse);
+      expect(auth.currentStudentId, isNull);
+      expect(adapter.logoutCount, 0);
+      expect(
+        adapter.requestLog,
+        equals([
+          'GET /jwglxt/xtgl/login_slogin.html',
+          'GET /jwglxt/xtgl/login_slogin.html',
+        ]),
+      );
+    });
 
     test(
       'existing session short-circuits only for trusted same account',

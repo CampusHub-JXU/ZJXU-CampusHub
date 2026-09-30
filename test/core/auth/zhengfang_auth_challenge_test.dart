@@ -468,20 +468,76 @@ void main() {
     expect(auth.isLoggedIn, isTrue);
   });
 
-  test('unknown existing session is not bound to the input account', () async {
-    DioClient.instance.dio.httpClientAdapter = _existingSessionZfAdapter();
-    final challenge = await auth.prepareCaptchaChallenge();
+  test(
+    'unknown existing session that survives a reset fails without binding',
+    () async {
+      final adapter = _existingSessionZfAdapter();
+      DioClient.instance.dio.httpClientAdapter = adapter;
 
-    final result = await auth.submitCaptchaChallenge(
-      challengeId: challenge.id,
-      username: '2024001',
-      password: 'pw',
-      captcha: '1',
-    );
-    expect((result as LoginFailure).kind, AuthFailureKind.protocolChanged);
-    expect(auth.isLoggedIn, isFalse);
-    expect(auth.currentStudentId, isNull);
-  });
+      await expectLater(
+        auth.prepareCaptchaChallenge(),
+        throwsA(isA<CaptchaException>()),
+      );
+      // 只重置一次：两次登录页请求，不循环。
+      expect(
+        adapter.requestLog
+            .where((r) => r == 'GET /jwglxt/xtgl/login_slogin.html')
+            .length,
+        2,
+      );
+      expect(auth.hasActiveCaptchaChallenge, isFalse);
+      expect(auth.isLoggedIn, isFalse);
+      expect(auth.currentStudentId, isNull);
+    },
+  );
+
+  test(
+    'stale direct session without trusted identity is reset and can log in',
+    () async {
+      // 共享 jar 里残留服务端仍有效的会话：登录页只会跳首页。
+      await DioClient.instance.zhengfangCookieJar.saveFromResponse(
+        Uri.parse('https://jwzx.zjxu.edu.cn/jwglxt/'),
+        [Cookie('ZF_SESSION', 'stale')..path = '/'],
+      );
+      final adapter = _ChallengeZfAdapter();
+      adapter.register('GET', '/jwglxt/xtgl/login_slogin.html', (
+        options,
+      ) async {
+        if (_cookieHeader(options).contains('ZF_SESSION=stale')) {
+          return ResponseBody.fromString(
+            '',
+            302,
+            headers: <String, List<String>>{
+              'location': <String>['/jwglxt/xtgl/index_initMenu.html?jsdm=xs'],
+            },
+          );
+        }
+        return ResponseBody.fromString(
+          '<html><input type="hidden" id="csrftoken" name="csrftoken" '
+          'value="csrf-fresh" /></html>',
+          200,
+          headers: <String, List<String>>{
+            Headers.contentTypeHeader: <String>['text/html; charset=utf-8'],
+            'set-cookie': <String>['ZF_SESSION=fresh; Path=/'],
+          },
+        );
+      });
+      DioClient.instance.dio.httpClientAdapter = adapter;
+
+      final challenge = await auth.prepareCaptchaChallenge();
+      final result = await auth.submitCaptchaChallenge(
+        challengeId: challenge.id,
+        username: '2024001',
+        password: 'pw',
+        captcha: '2468',
+      );
+
+      expect(result, isA<LoginSuccess>());
+      expect(adapter.sessionMismatches, 0);
+      expect(auth.isLoggedIn, isTrue);
+      expect(auth.currentStudentId, '2024001');
+    },
+  );
 
   test(
     'existing session short-circuits only for trusted same account',
