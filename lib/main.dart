@@ -10,9 +10,12 @@ import 'app/background_task_dispatcher.dart';
 import 'app/calendar_sync_coordinator.dart';
 import 'app/campus_refresh_coordinator.dart';
 import 'app/routes.dart';
+import 'core/auth/background_session_gate.dart';
 import 'core/auth/connect_mode_resolver.dart';
+import 'core/auth/unified_auth.dart';
 import 'core/deep_link/campus_deep_link_service.dart';
 import 'core/logging/app_logger.dart';
+import 'core/network/dio_client.dart';
 import 'core/notice/notice_sync_service.dart';
 import 'core/notice/notice_sync_store.dart';
 import 'core/notification/app_notification_service.dart';
@@ -49,11 +52,48 @@ void _handleNotificationPayload(String payload) {
   }
 }
 
+/// 回到前台：先向后台会话恢复让位并对账其留下的变更，再启动前台刷新。
+///
+/// 对账失败只记日志，绝不阻断前台恢复。
+Future<void> _onAppResumed() async {
+  try {
+    final change = await BackgroundSessionGate.instance.enterForeground();
+    if (change != null) {
+      final auth = UnifiedAuthService.instance;
+      switch (change.kind) {
+        case BackgroundSessionChangeKind.committed:
+          // 后台已重登并把 Cookie 写盘：丢弃前台过期的内存镜像，重读磁盘，
+          // 再把新 Cookie 同步进 WebView。
+          await DioClient.instance.reloadPersistedCookies();
+          await auth.restoreSession();
+        case BackgroundSessionChangeKind.revoked:
+          // 后台探测到服务端会话过期并持久登出、且未能重登：前台内存身份对账，
+          // 随后由前台刷新协调器按既有逻辑（opt-in / 冷却）自动恢复。
+          if (auth.isLoggedIn) await auth.markLoggedOut();
+      }
+    }
+  } catch (error, stackTrace) {
+    AppLogger.instance.auth(
+      LogLevel.warn,
+      '回到前台时对账后台会话变更失败',
+      error: error,
+      stackTrace: stackTrace,
+    );
+  }
+  CampusRefreshCoordinator.instance.setForeground(true);
+  CalendarSyncCoordinator.instance.onAppResumed();
+  unawaited(runForegroundBackgroundChecks());
+  CampusWidgetSync.instance.requestSync();
+}
+
 Future<void> main() async {
   runZonedGuarded(
     () async {
       WidgetsFlutterBinding.ensureInitialized();
       await AppLogger.instance.init();
+      // 冷启动：先建立前台心跳与变更基线，后台会话恢复见此即让位；冷启动的
+      // CookieJar 本来就从磁盘读取，不需要对账历史变更。
+      await BackgroundSessionGate.instance.enterForeground(coldStart: true);
 
       FlutterError.onError = (details) {
         AppLogger.instance.ui(
@@ -144,10 +184,7 @@ Future<void> main() async {
       final lifecycleListener = AppLifecycleListener(
         onStateChange: (state) {
           if (state == AppLifecycleState.resumed) {
-            CampusRefreshCoordinator.instance.setForeground(true);
-            CalendarSyncCoordinator.instance.onAppResumed();
-            unawaited(runForegroundBackgroundChecks());
-            CampusWidgetSync.instance.requestSync();
+            unawaited(_onAppResumed());
           } else if (state == AppLifecycleState.inactive ||
               state == AppLifecycleState.paused ||
               state == AppLifecycleState.hidden) {
@@ -155,6 +192,11 @@ Future<void> main() async {
             // 边界失效）。
             CalendarSyncCoordinator.instance.onAppInactive();
             CampusRefreshCoordinator.instance.setForeground(false);
+            // 只有真正退到后台才放开后台会话恢复；inactive（通知栏 / 系统
+            // 弹窗）期间应用仍可见，心跳继续。
+            if (state != AppLifecycleState.inactive) {
+              unawaited(BackgroundSessionGate.instance.leaveForeground());
+            }
           }
         },
       );

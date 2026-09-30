@@ -5,7 +5,9 @@
 
 import 'package:workmanager/workmanager.dart';
 
+import '../../core/auth/background_cas_recovery.dart';
 import '../../core/logging/app_logger.dart';
+import '../../core/notice/notice_fetch_service.dart';
 import '../../core/notice/notice_sync_service.dart';
 import '../../core/notification/background_task_service.dart';
 
@@ -20,9 +22,13 @@ class NoticeBackground {
   /// 后台检查入口，由 app 层 dispatcher 在 WorkManager isolate 中调用。
   Future<bool> runCheck() async {
     try {
-      final outcome = await NoticeSyncService.instance.sync(
+      var outcome = await NoticeSyncService.instance.sync(
         trigger: NoticeSyncTrigger.background,
       );
+      if (!outcome.skipped &&
+          outcome.fetchStatus == NoticeFetchStatus.authRequired) {
+        outcome = await _recoverAndRetry(outcome);
+      }
       if (!outcome.skipped) {
         AppLogger.instance.network(
           LogLevel.info,
@@ -40,6 +46,29 @@ class NoticeBackground {
         stackTrace: stackTrace,
       );
       return false;
+    }
+  }
+
+  /// 统一认证会话过期：后台静默恢复一次并重试同步；无法恢复则发本地提醒。
+  ///
+  /// 前台正在使用（[BackgroundRecoveryResult.foregroundActive]）与探测不出
+  /// （[BackgroundRecoveryResult.undetermined]）时既不登录也不提醒——前者由
+  /// 前台自己处理，后者可能只是网络抖动。
+  Future<NoticeSyncOutcome> _recoverAndRetry(NoticeSyncOutcome expired) async {
+    final result = await BackgroundCasRecovery.instance.recover();
+    AppLogger.instance.network(LogLevel.info, '教务处通知后台会话恢复: ${result.name}');
+    switch (result) {
+      case BackgroundRecoveryResult.recovered:
+        return NoticeSyncService.instance.sync(
+          trigger: NoticeSyncTrigger.afterLogin,
+        );
+      case BackgroundRecoveryResult.notEligible:
+      case BackgroundRecoveryResult.failed:
+        await NoticeSyncService.instance.notifyAuthExpired();
+        return expired;
+      case BackgroundRecoveryResult.foregroundActive:
+      case BackgroundRecoveryResult.undetermined:
+        return expired;
     }
   }
 

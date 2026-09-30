@@ -91,8 +91,8 @@ class _AutomaticLoginFlight {
 /// challenge 只调用一次 OCR；返回 null 即判瞬时失败退避，不做第二次长度尝试、
 /// 不发额外网络请求。
 ///
-/// 不变量：自动登录仅前台单 isolate 发起（workmanager 后台不发起 CAS/教务
-/// 登录）；跨 isolate CookieJar 竞争未被消除，只被该不变量规避。
+/// 不变量：自动登录以前台为主；后台仅 CAS 教务处通知任务经 BackgroundSessionGate
+/// 申领做有限恢复（教务不在后台登录）；跨 isolate CookieJar 竞争只被收窄、未被消除。
 class AutomaticLoginService {
   AutomaticLoginService._({
     AuthOperationCoordinator? coordinator,

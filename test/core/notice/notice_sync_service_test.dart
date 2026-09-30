@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:jxu_campus_hub/core/auth/background_session_gate.dart';
 import 'package:jxu_campus_hub/core/notice/notice_fetch_service.dart';
 import 'package:jxu_campus_hub/core/notice/notice_model.dart';
 import 'package:jxu_campus_hub/core/notice/notice_sync_service.dart';
@@ -53,6 +54,8 @@ void main() {
     tempDir = await Directory.systemTemp.createTemp('notice_sync_svc_test');
     NoticeSyncStore.instance.debugReset();
     NoticeSyncStore.instance.debugDirectoryProvider = () async => tempDir;
+    BackgroundSessionGate.instance.debugReset();
+    BackgroundSessionGate.instance.debugDirectoryProvider = () async => tempDir;
 
     adapter = MockHttpClientAdapter();
     registerListHandler(
@@ -89,6 +92,7 @@ void main() {
       ..debugNotificationsEnabled = null
       ..debugShowNotification = null;
     NoticeSyncStore.instance.debugReset();
+    BackgroundSessionGate.instance.debugReset();
     try {
       await tempDir.delete(recursive: true);
     } catch (_) {}
@@ -377,6 +381,33 @@ void main() {
         trigger: NoticeSyncTrigger.afterLogin,
       );
       expect(outcome.skipped, isFalse);
+    });
+  });
+
+  group('notifyAuthExpired', () {
+    test('sends once, then is rate limited', () async {
+      expect(await NoticeSyncService.instance.notifyAuthExpired(), isTrue);
+      expect(sentNotifications, hasLength(1));
+      expect(sentNotifications.single['title'], contains('重新登录'));
+      expect(await NoticeSyncService.instance.notifyAuthExpired(), isFalse);
+      expect(sentNotifications, hasLength(1));
+    });
+
+    test('skipped during quiet hours and without permission', () async {
+      now = DateTime(2026, 9, 1, 23, 30);
+      expect(await NoticeSyncService.instance.notifyAuthExpired(), isFalse);
+      now = DateTime(2026, 9, 1, 10);
+      notificationsEnabled = false;
+      expect(await NoticeSyncService.instance.notifyAuthExpired(), isFalse);
+      expect(sentNotifications, isEmpty);
+    });
+
+    test('send failure rolls back so the next check can retry', () async {
+      failNotificationSend = true;
+      expect(await NoticeSyncService.instance.notifyAuthExpired(), isFalse);
+      failNotificationSend = false;
+      expect(await NoticeSyncService.instance.notifyAuthExpired(), isTrue);
+      expect(sentNotifications, hasLength(1));
     });
   });
 }

@@ -25,7 +25,7 @@ class AuthLockTimeoutException implements Exception {
 /// 正在网络中的持锁者踢出临界区。长时间操作不得持锁：自动登录交换本身
 /// **不持有任何文件锁**，只在锁内做状态读改写，网络/OCR 在锁外进行。
 ///
-/// 跨 isolate 的登录互斥由「自动登录仅前台单 isolate 发起」这一不变量
+/// 跨 isolate 的登录互斥由「自动登录以前台为主、后台仅经 BackgroundSessionGate 申领的有限例外」
 /// 规避（见 `AuthOperationCoordinator`），本锁只负责状态读改写的原子性。
 ///
 /// **调用约束**：锁内只做内存与本地文件操作；不得反向再取外层锁——固定

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../auth/background_session_gate.dart';
 import '../logging/app_logger.dart';
 import '../notification/app_notification_service.dart';
 import 'notice_fetch_service.dart';
@@ -249,6 +250,48 @@ class NoticeSyncService {
         error: error,
         stackTrace: stackTrace,
       );
+      return false;
+    }
+  }
+
+  static const int _authExpiredNotificationId = 301;
+
+  /// 后台检查发现统一认证已过期且无法静默恢复时，发一条本地提醒，让用户知道
+  /// 通知推送暂停的原因。夜间静音 / 无通知权限 / 距上次提醒不足间隔时不发；
+  /// 发送失败回滚去重记录，下轮仍可重试。返回是否真正发出。
+  Future<bool> notifyAuthExpired() async {
+    if (_isQuietHour(_now()) || !await _notificationsEnabled()) return false;
+    final gate = BackgroundSessionGate.instance;
+    if (!await gate.claimExpiredPrompt()) return false;
+    const title = '教务处通知需要重新登录';
+    const body = '统一认证登录已过期，打开应用即可恢复教务处通知提醒';
+    try {
+      final show = debugShowNotification;
+      if (show != null) {
+        await show(
+          id: _authExpiredNotificationId,
+          title: title,
+          body: body,
+          payload: aggregatePayload,
+        );
+      } else {
+        await AppNotificationService.instance.showNoticeUpdateNotification(
+          id: _authExpiredNotificationId,
+          title: title,
+          body: body,
+          payload: aggregatePayload,
+        );
+      }
+      return true;
+    } catch (error, stackTrace) {
+      AppLogger.instance.log(
+        LogLevel.warn,
+        LogCategory.general,
+        '教务处通知登录过期提醒发送失败',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      await gate.rollbackExpiredPrompt();
       return false;
     }
   }

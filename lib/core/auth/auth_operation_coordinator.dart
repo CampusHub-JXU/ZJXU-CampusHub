@@ -103,7 +103,7 @@ class AuthAutomaticOutcome<T> {
 ///   交换另有一个 abort 窗口，到期返回 [AuthRecoveryDecision.aborted]。
 /// - 人工验证码持有窗口期间自动恢复跳过。
 ///
-/// ## 新不变量：自动登录仅前台单 isolate 发起
+/// ## 新不变量：自动登录以前台为主（后台仅 CAS 教务处通知经 BackgroundSessionGate 有限例外）
 /// **workmanager 后台 isolate 不得发起 CAS / 教务登录**（后台只做纯 Dio 的
 /// 信息刷新与通知）。因此本协调器**不再**用持久交换 lease 假装跨 isolate
 /// 互斥：跨 isolate 的状态互斥由 `AuthFileLock` 的短 RMW 收敛，同 isolate
