@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/auth/unified_auth.dart';
@@ -9,6 +8,7 @@ import 'dorm_electricity_background.dart';
 import 'dorm_electricity_service.dart';
 import 'epay_electricity_gateway.dart';
 import '../../shared/widgets/app_app_bar.dart';
+import '../../shared/widgets/app_dropdown.dart';
 import '../../shared/widgets/app_error_view.dart';
 import '../../shared/widgets/auth_required_view.dart';
 import '../../shared/widgets/login_shell.dart';
@@ -67,7 +67,13 @@ class _DormElectricitySettingsPageState
   Map<String, List<DormRoom>> _floorMap = {};
   List<String> _floorList = [];
 
+  /// 当前选中的校区区期（[_AreaGroup.areaId]）。先于楼幢提交：换校区会清空
+  /// 楼幢/房间选择，选中楼幢时始终与其 `areaId` 一致。
+  String? _selectedAreaId;
   DormBuilding? _selectedBuilding;
+
+  /// 当前选中的楼层分组（[_floorList] 的成员）；换楼层清空房间选择。
+  String? _selectedFloor;
   DormRoom? _selectedRoom;
 
   bool _loadingBuildings = false;
@@ -237,7 +243,9 @@ class _DormElectricitySettingsPageState
       _rooms = [];
       _floorMap = {};
       _floorList = [];
+      _selectedAreaId = null;
       _selectedBuilding = null;
+      _selectedFloor = null;
       _selectedRoom = null;
       _hasSavedRoomConfig = false;
       _alertEnabled = false;
@@ -268,7 +276,9 @@ class _DormElectricitySettingsPageState
         _rooms = [];
         _floorMap = {};
         _floorList = [];
+        _selectedAreaId = null;
         _selectedBuilding = null;
+        _selectedFloor = null;
         _selectedRoom = null;
         _hasSavedRoomConfig = false;
         _alertEnabled = false;
@@ -318,7 +328,7 @@ class _DormElectricitySettingsPageState
         return;
       }
 
-      // 园区数量少（≤2），整表预取让滚轮切换零等待。
+      // 园区数量少（≤2），整表预取让下拉切换零等待。
       final groups = <_AreaGroup>[];
       final allBuildings = <DormBuilding>[];
       for (final area in areas) {
@@ -348,6 +358,7 @@ class _DormElectricitySettingsPageState
           if (b.areaId == savedConfig.areaId &&
               b.buildingId == savedConfig.buildingId) {
             _selectedBuilding = b;
+            _selectedAreaId = b.areaId;
             break;
           }
         }
@@ -441,6 +452,7 @@ class _DormElectricitySettingsPageState
       _rooms = [];
       _floorMap = {};
       _floorList = [];
+      _selectedFloor = null;
       _selectedRoom = null;
       _error = null;
     });
@@ -452,11 +464,14 @@ class _DormElectricitySettingsPageState
       if (!_isLiveBoundIdentity(owner, revision, loadId: loadId)) return;
       _rooms = rooms;
       _buildFloorMap();
+      // 只有一个楼层分组时直接选中，省去无意义的一步。
+      if (_floorList.length == 1) _selectedFloor = _floorList.first;
 
       if (savedRoomId != null) {
         for (final r in _rooms) {
           if (r.roomId == savedRoomId && r.floorId == savedFloorId) {
             _selectedRoom = r;
+            _selectedFloor = _floorKeyOf(r) ?? _selectedFloor;
             break;
           }
         }
@@ -543,392 +558,145 @@ class _DormElectricitySettingsPageState
     }
   }
 
-  void _showThresholdPicker() {
-    int selectedIdx = _thresholdOptions.indexOf(_alertThreshold);
-    if (selectedIdx < 0) selectedIdx = _thresholdOptions.indexOf(20.0);
+  // ── 下拉选择：预警阈值 / 校区区期 + 楼幢 / 楼层 + 房间号 ──
 
-    var tempThreshold = _thresholdOptions[selectedIdx];
-    final scrollCtrl = FixedExtentScrollController(initialItem: selectedIdx);
-
-    final dismissed = showModalBottomSheet(
-      context: context,
-      builder: (ctx) {
-        return SafeArea(
-          child: SizedBox(
-            height: 280,
-            child: Column(
-              children: [
-                _pickerHeader(
-                  title: '预警阈值',
-                  onCancel: () => Navigator.of(ctx).pop(),
-                  onConfirm: () {
-                    Navigator.of(ctx).pop();
-                    setState(() => _alertThreshold = tempThreshold);
-                    _saveAlertSettings(threshold: tempThreshold);
-                  },
-                ),
-                Expanded(
-                  child: CupertinoPicker(
-                    scrollController: scrollCtrl,
-                    itemExtent: 36,
-                    onSelectedItemChanged: (i) {
-                      tempThreshold = _thresholdOptions[i];
-                    },
-                    children: _thresholdOptions
-                        .map(
-                          (v) => Center(
-                            child: Text(
-                              '${v.toInt()} 度',
-                              style: const TextStyle(fontSize: 14),
-                            ),
-                          ),
-                        )
-                        .toList(),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-    unawaited(dismissed.whenComplete(scrollCtrl.dispose));
+  void _onThresholdChanged(double? value) {
+    if (value == null || value == _alertThreshold) return;
+    setState(() => _alertThreshold = value);
+    unawaited(_saveAlertSettings(threshold: value));
   }
 
-  // ── 两列波轮：校区区期 / 楼幢 ──
-
-  void _showBuildingPicker() {
-    if (_areaGroups.isEmpty) return;
-
-    int groupIdx = 0;
-    int buildingIdx = 0;
-
-    if (_selectedBuilding != null) {
-      groupIdx = _areaGroups.indexWhere(
-        (g) => g.areaId == _selectedBuilding!.areaId,
-      );
-      if (groupIdx < 0) groupIdx = 0;
-      buildingIdx = _areaGroups[groupIdx].buildings.indexWhere(
-        (b) => b.buildingId == _selectedBuilding!.buildingId,
-      );
-      if (buildingIdx < 0) buildingIdx = 0;
-    }
-
-    var currentGroup = _areaGroups[groupIdx];
-    var currentBuildings = currentGroup.buildings;
-    var tempBuildingIdx = buildingIdx;
-
-    final groupCtrl = FixedExtentScrollController(initialItem: groupIdx);
-    final buildingCtrl = FixedExtentScrollController(initialItem: buildingIdx);
-
-    final buildingDismissed = showModalBottomSheet(
-      context: context,
-      builder: (ctx) {
-        return SafeArea(
-          child: SizedBox(
-            height: 300,
-            child: StatefulBuilder(
-              builder: (ctx, setModalState) {
-                return Column(
-                  children: [
-                    _pickerHeader(
-                      title: '选择楼幢',
-                      onCancel: () => Navigator.of(ctx).pop(),
-                      onConfirm: currentBuildings.isEmpty
-                          ? null
-                          : () {
-                              Navigator.of(ctx).pop();
-                              final b =
-                                  currentBuildings[tempBuildingIdx.clamp(
-                                    0,
-                                    currentBuildings.length - 1,
-                                  )];
-                              setState(() {
-                                _selectedBuilding = b;
-                                _selectedRoom = null;
-                              });
-                              _loadRooms(
-                                areaId: b.areaId,
-                                buildingId: b.buildingId,
-                              );
-                            },
-                    ),
-                    Expanded(
-                      child: Row(
-                        children: [
-                          // 左：校区区期
-                          Expanded(
-                            flex: 3,
-                            child: CupertinoPicker(
-                              scrollController: groupCtrl,
-                              itemExtent: 36,
-                              onSelectedItemChanged: (i) {
-                                setModalState(() {
-                                  currentGroup = _areaGroups[i];
-                                  currentBuildings = currentGroup.buildings;
-                                  tempBuildingIdx = 0;
-                                });
-                                WidgetsBinding.instance.addPostFrameCallback((
-                                  _,
-                                ) {
-                                  buildingCtrl.jumpToItem(0);
-                                });
-                              },
-                              children: _areaGroups
-                                  .map(
-                                    (g) => Center(
-                                      child: Text(
-                                        g.label,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(fontSize: 14),
-                                      ),
-                                    ),
-                                  )
-                                  .toList(),
-                            ),
-                          ),
-                          // 右：楼幢
-                          Expanded(
-                            flex: 2,
-                            child: CupertinoPicker(
-                              scrollController: buildingCtrl,
-                              itemExtent: 36,
-                              onSelectedItemChanged: (i) {
-                                tempBuildingIdx = i;
-                              },
-                              children: currentBuildings
-                                  .map(
-                                    (b) => Center(
-                                      child: Text(
-                                        b.buildingName,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(fontSize: 14),
-                                      ),
-                                    ),
-                                  )
-                                  .toList(),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
-        );
-      },
-    );
-    unawaited(
-      buildingDismissed.whenComplete(() {
-        groupCtrl.dispose();
-        buildingCtrl.dispose();
-      }),
-    );
+  /// 换校区区期：只提交到「校区」这一层。已选楼幢若属于别的校区则连同房间
+  /// 选择一并清空（并作废在途的房间拉取），绝不留下「校区 A + 楼幢 B」的
+  /// 错配组合；选回同一校区不动。
+  void _onAreaChanged(String? areaId) {
+    if (areaId == null || areaId == _selectedAreaId) return;
+    _loadId++; // 丢弃旧楼幢的在途房间拉取
+    setState(() {
+      _selectedAreaId = areaId;
+      _selectedBuilding = null;
+      _selectedRoom = null;
+      _selectedFloor = null;
+      _loadingRooms = false;
+      _rooms = [];
+      _floorMap = {};
+      _floorList = [];
+    });
   }
 
-  // ── 两列波轮：楼层 / 房间号 ──
+  void _onBuildingChanged(DormBuilding? b) {
+    if (b == null) return;
+    setState(() {
+      _selectedAreaId = b.areaId;
+      _selectedBuilding = b;
+      _selectedRoom = null;
+    });
+    _loadRooms(areaId: b.areaId, buildingId: b.buildingId);
+  }
 
-  void _showRoomPicker() {
-    if (_floorList.isEmpty) return;
+  /// 换楼层：房间选择属于旧楼层，清空后由用户在新楼层下重选。
+  void _onFloorChanged(String? floor) {
+    if (floor == null || floor == _selectedFloor) return;
+    setState(() {
+      _selectedFloor = floor;
+      _selectedRoom = null;
+    });
+  }
 
-    int floorIdx = 0;
-    if (_selectedRoom != null) {
-      // 优先跳到房间名解析出的楼层分组，找不到再回退 API 楼层名。
-      final label =
-          DormElectricityService.parseFloorLabel(_selectedRoom!.roomName) ??
-          _selectedRoom!.floorName;
-      floorIdx = _floorList.indexOf(label);
-      if (floorIdx < 0) {
-        floorIdx = _floorList.indexOf(_selectedRoom!.floorName);
-      }
-      if (floorIdx < 0) floorIdx = 0;
-    }
+  void _onRoomChanged(DormRoom? room) {
+    if (room == null) return;
+    setState(() => _selectedRoom = room);
+  }
 
-    var currentFloor = _floorList[floorIdx];
-    var currentRooms = _floorMap[currentFloor]!;
-    var tempRoomIdx = 0;
-
-    if (_selectedRoom != null) {
-      final ri = currentRooms.indexWhere(
-        (r) => r.roomId == _selectedRoom!.roomId,
-      );
-      if (ri >= 0) tempRoomIdx = ri;
-    }
-
-    final floorCtrl = FixedExtentScrollController(initialItem: floorIdx);
-    final roomCtrl = FixedExtentScrollController(initialItem: tempRoomIdx);
-
-    final roomDismissed = showModalBottomSheet(
-      context: context,
-      builder: (ctx) {
-        return SafeArea(
-          child: SizedBox(
-            height: 300,
-            child: StatefulBuilder(
-              builder: (ctx, setModalState) {
-                return Column(
-                  children: [
-                    _pickerHeader(
-                      title: '选择房间',
-                      onCancel: () => Navigator.of(ctx).pop(),
-                      onConfirm: currentRooms.isEmpty
-                          ? null
-                          : () {
-                              Navigator.of(ctx).pop();
-                              setState(() {
-                                _selectedRoom =
-                                    currentRooms[tempRoomIdx.clamp(
-                                      0,
-                                      currentRooms.length - 1,
-                                    )];
-                              });
-                            },
-                    ),
-                    Expanded(
-                      child: Row(
-                        children: [
-                          // 左：楼层
-                          Expanded(
-                            child: CupertinoPicker(
-                              scrollController: floorCtrl,
-                              itemExtent: 36,
-                              onSelectedItemChanged: (i) {
-                                setModalState(() {
-                                  currentFloor = _floorList[i];
-                                  currentRooms = _floorMap[currentFloor]!;
-                                  tempRoomIdx = 0;
-                                });
-                                WidgetsBinding.instance.addPostFrameCallback((
-                                  _,
-                                ) {
-                                  roomCtrl.jumpToItem(0);
-                                });
-                              },
-                              children: _floorList
-                                  .map(
-                                    (f) => Center(
-                                      child: Text(
-                                        f,
-                                        style: const TextStyle(fontSize: 14),
-                                      ),
-                                    ),
-                                  )
-                                  .toList(),
-                            ),
-                          ),
-                          // 右：房间号
-                          Expanded(
-                            child: CupertinoPicker(
-                              scrollController: roomCtrl,
-                              itemExtent: 36,
-                              onSelectedItemChanged: (i) {
-                                tempRoomIdx = i;
-                              },
-                              children: currentRooms
-                                  .map(
-                                    (r) => Center(
-                                      child: Text(
-                                        '${r.roomName}号',
-                                        style: const TextStyle(fontSize: 14),
-                                      ),
-                                    ),
-                                  )
-                                  .toList(),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
-        );
-      },
-    );
-    unawaited(
-      roomDismissed.whenComplete(() {
-        floorCtrl.dispose();
-        roomCtrl.dispose();
-      }),
-    );
+  /// 已选房间所属的楼层分组：优先取房间名解析出的楼层，找不到再回退 API 楼层名。
+  String? _floorKeyOf(DormRoom room) {
+    final label =
+        DormElectricityService.parseFloorLabel(room.roomName) ?? room.floorName;
+    if (_floorList.contains(label)) return label;
+    if (_floorList.contains(room.floorName)) return room.floorName;
+    return null;
   }
 
   // ── 公共 UI ──
 
-  Widget _pickerHeader({
-    required String title,
-    required VoidCallback? onCancel,
-    required VoidCallback? onConfirm,
-  }) {
-    final cs = Theme.of(context).colorScheme;
-    return SizedBox(
-      height: 48,
-      child: Row(
-        children: [
-          TextButton(onPressed: onCancel, child: const Text('取消')),
-          const Spacer(),
-          Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-          const Spacer(),
-          TextButton(
-            onPressed: onConfirm,
-            child: Text(
-              '确定',
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                color: onConfirm != null
-                    ? null
-                    : cs.onSurfaceVariant.withValues(alpha: 0.5),
-              ),
-            ),
+  Widget _buildBuildingFields() {
+    final groupBuildings = _selectedAreaId == null
+        ? const <DormBuilding>[]
+        : _areaGroups
+              .where((g) => g.areaId == _selectedAreaId)
+              .expand((g) => g.buildings)
+              .toList();
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          flex: 3,
+          child: AppDropdown<String>(
+            key: const Key('dorm_area_dropdown'),
+            label: '园区',
+            hint: '请选择',
+            value: _selectedAreaId,
+            items: [
+              for (final g in _areaGroups)
+                AppDropdownItem(value: g.areaId, label: g.label),
+            ],
+            onChanged: _onAreaChanged,
           ),
-        ],
-      ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          flex: 2,
+          child: AppDropdown<DormBuilding>(
+            key: const Key('dorm_building_dropdown'),
+            label: '楼幢',
+            hint: '请选择',
+            value: _selectedBuilding,
+            items: [
+              for (final b in groupBuildings)
+                AppDropdownItem(value: b, label: b.buildingName),
+            ],
+            onChanged: _onBuildingChanged,
+          ),
+        ),
+      ],
     );
   }
 
-  Widget _buildPickerField({
-    required String label,
-    required String displayText,
-    required VoidCallback onTap,
-    bool enabled = true,
-  }) {
-    return InkWell(
-      onTap: enabled ? onTap : null,
-      borderRadius: BorderRadius.circular(8),
-      child: InputDecorator(
-        decoration: InputDecoration(
-          labelText: label,
-          border: const OutlineInputBorder(),
-          suffixIcon: const Icon(Icons.unfold_more),
-        ),
-        child: Text(
-          displayText,
-          style: TextStyle(
-            color: enabled && displayText != '请选择'
-                ? null
-                : Theme.of(context).hintColor,
+  Widget _buildRoomFields() {
+    final floorRooms = _selectedFloor == null
+        ? const <DormRoom>[]
+        : (_floorMap[_selectedFloor] ?? const <DormRoom>[]);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: AppDropdown<String>(
+            key: const Key('dorm_floor_dropdown'),
+            label: '楼层',
+            hint: '请选择',
+            value: _selectedFloor,
+            items: [
+              for (final f in _floorList) AppDropdownItem(value: f, label: f),
+            ],
+            onChanged: _onFloorChanged,
           ),
         ),
-      ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: AppDropdown<DormRoom>(
+            key: const Key('dorm_room_dropdown'),
+            label: '房间号',
+            hint: '请选择',
+            value: _selectedRoom,
+            items: [
+              for (final r in floorRooms)
+                AppDropdownItem(value: r, label: '${r.roomName}号'),
+            ],
+            onChanged: _onRoomChanged,
+          ),
+        ),
+      ],
     );
-  }
-
-  String get _buildingDisplayText {
-    final b = _selectedBuilding;
-    if (b == null) return '请选择';
-    return '${b.areaName}  ${b.buildingName}';
-  }
-
-  String get _roomDisplayText {
-    final r = _selectedRoom;
-    if (r == null) return '请选择';
-    return '${r.floorName}  ${r.roomName}号';
   }
 
   @override
@@ -963,21 +731,12 @@ class _DormElectricitySettingsPageState
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _buildPickerField(
-                    label: '园区 / 楼幢',
-                    displayText: _buildingDisplayText,
-                    onTap: _showBuildingPicker,
-                  ),
+                  _buildBuildingFields(),
                   const SizedBox(height: 20),
                   if (_loadingRooms)
                     const Center(child: CircularProgressIndicator())
                   else
-                    _buildPickerField(
-                      label: '楼层 / 房间号',
-                      displayText: _roomDisplayText,
-                      onTap: _showRoomPicker,
-                      enabled: _rooms.isNotEmpty,
-                    ),
+                    _buildRoomFields(),
                   const SizedBox(height: 32),
                   FilledButton(
                     onPressed:
@@ -1042,10 +801,19 @@ class _DormElectricitySettingsPageState
                   ),
                   if (_hasSavedRoomConfig && _alertEnabled) ...[
                     const SizedBox(height: 12),
-                    _buildPickerField(
+                    AppDropdown<double>(
+                      key: const Key('dorm_threshold_dropdown'),
                       label: '预警阈值',
-                      displayText: '${_alertThreshold.toInt()} 度',
-                      onTap: _showThresholdPicker,
+                      // 历史遗留的非选项值不在列表里：按钮回落显示当前值。
+                      hint: '${_alertThreshold.toInt()} 度',
+                      value: _thresholdOptions.contains(_alertThreshold)
+                          ? _alertThreshold
+                          : null,
+                      items: [
+                        for (final v in _thresholdOptions)
+                          AppDropdownItem(value: v, label: '${v.toInt()} 度'),
+                      ],
+                      onChanged: _onThresholdChanged,
                     ),
                   ],
                 ],

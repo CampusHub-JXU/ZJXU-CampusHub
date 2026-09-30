@@ -12,6 +12,7 @@ import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_backgr
 import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_service.dart';
 import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_settings_page.dart';
 import 'package:jxu_campus_hub/features/dorm_electricity/epay_electricity_gateway.dart';
+import 'package:jxu_campus_hub/shared/widgets/app_dropdown.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_error_view.dart';
 import 'package:jxu_campus_hub/shared/widgets/auth_required_view.dart';
 import 'package:jxu_campus_hub/shared/widgets/login_shell.dart';
@@ -23,6 +24,9 @@ import '../../helpers/test_setup.dart';
 class _FakeCatalogGateway implements EpayElectricityGateway {
   int callCount = 0;
   int invalidateCount = 0;
+
+  /// 为 true 时园区目录多出「东校区」，用于验证换校区清空楼幢/房间选择。
+  bool extraArea = false;
 
   /// 非 null 时，[call] 抛出该异常。
   Object? failure;
@@ -64,6 +68,7 @@ class _FakeCatalogGateway implements EpayElectricityGateway {
           'data': {
             'area_list': [
               {'id': '3', 'value': '梁林校区'},
+              if (extraArea) {'id': '4', 'value': '东校区'},
             ],
           },
         });
@@ -323,11 +328,12 @@ void main() {
       // 只作废 epay100 隐藏会话，随后经既有网关拉目录。
       expect(gateway.invalidateCount, greaterThanOrEqualTo(1));
       expect(gateway.callCount, greaterThanOrEqualTo(1));
-      // 园区/楼幢与楼层/房间号选择器已就位（label 中的空格与字形易碎，
-      // 按关键片段匹配），两处占位均为「请选择」。
+      // 园区/楼幢与楼层/房间号四个下拉已就位，均未选择，占位均为「请选择」。
       expect(find.textContaining('园区'), findsOneWidget);
+      expect(find.text('楼幢'), findsOneWidget);
+      expect(find.text('楼层'), findsOneWidget);
       expect(find.textContaining('房间号'), findsOneWidget);
-      expect(find.text('请选择'), findsNWidgets(2));
+      expect(find.text('请选择'), findsNWidgets(4));
 
       await tester.pumpWidget(const SizedBox.shrink());
     },
@@ -512,13 +518,13 @@ void main() {
       UnifiedAuthService.instance.debugSetSession(active: true, account: 'B');
       UnifiedAuthService.instance.notifyListeners();
       await _settleCatalog(tester);
-      expect(find.text('请选择'), findsNWidgets(2)); // B 的干净表单
+      expect(find.text('请选择'), findsNWidgets(4)); // B 的干净表单
 
       // A 的迟到房间响应到达：不得把 A 的房间/选择套到 B 的界面。
       gateway.completeHold();
       await _settleCatalog(tester);
       expect(find.textContaining('A-999'), findsNothing);
-      expect(find.text('请选择'), findsNWidgets(2));
+      expect(find.text('请选择'), findsNWidgets(4));
       expect(find.byType(AuthRequiredView), findsNothing);
       expect(find.byType(AppErrorView), findsNothing);
 
@@ -661,7 +667,7 @@ void main() {
 
       await tester.pumpWidget(_app());
       await _settleCatalog(tester);
-      expect(find.text('请选择'), findsNWidgets(2));
+      expect(find.text('请选择'), findsNWidgets(4));
 
       // 开关禁用且保持关闭，并提示先保存寝室；阈值行不出现。
       final sw = tester.widget<Switch>(find.byType(Switch));
@@ -710,7 +716,7 @@ void main() {
       // 延迟到达的通知正常恢复：为新身份重新拉取并展示表单。
       UnifiedAuthService.instance.notifyListeners();
       await _settleCatalog(tester);
-      expect(find.text('请选择'), findsNWidgets(2));
+      expect(find.text('请选择'), findsNWidgets(4));
 
       await tester.pumpWidget(const SizedBox.shrink());
     },
@@ -856,9 +862,97 @@ void main() {
       expect(find.byType(AuthRequiredView), findsNothing);
       expect(find.byType(LoginShell), findsNothing);
       expect(gateway.callCount, greaterThanOrEqualTo(1));
-      expect(find.text('请选择'), findsNWidgets(2));
+      expect(find.text('请选择'), findsNWidgets(4));
 
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
+
+  testWidgets('dropdowns pick area → building → floor → room and enable save; '
+      'changing the area clears the building and room', (tester) async {
+    UnifiedAuthService.instance.debugSetSession(active: true, account: 'A');
+    gateway.extraArea = true;
+
+    await tester.pumpWidget(_app());
+    await _settleCatalog(tester);
+    expect(find.text('请选择'), findsNWidgets(4));
+
+    FilledButton saveButton() =>
+        tester.widget<FilledButton>(find.widgetWithText(FilledButton, '保存'));
+    // 楼幢 / 楼层 / 房间号在上游未选之前禁用；保存不可用。
+    expect(
+      tester
+          .widget<AppDropdown<DormBuilding>>(
+            find.byKey(const Key('dorm_building_dropdown')),
+          )
+          .items,
+      isEmpty,
+    );
+    expect(saveButton().onPressed, isNull);
+
+    Future<void> pick(String key, String itemText) async {
+      await tester.tap(find.byKey(Key(key)));
+      await tester.pump(const Duration(milliseconds: 250));
+      await tester.tap(find.text(itemText).last);
+      await _settleCatalog(tester);
+    }
+
+    await pick('dorm_area_dropdown', '梁林校区');
+    await pick('dorm_building_dropdown', 'HX4');
+    // 仅一个楼层分组时自动选中；再选房间。
+    expect(find.text('默认楼层'), findsOneWidget);
+    await pick('dorm_room_dropdown', 'HX4-111号');
+    expect(find.text('HX4-111号'), findsOneWidget);
+    expect(saveButton().onPressed, isNotNull);
+
+    // 选回同一校区是 no-op，不清空选择。
+    await pick('dorm_area_dropdown', '梁林校区');
+    expect(find.text('HX4-111号'), findsOneWidget);
+    expect(saveButton().onPressed, isNotNull);
+
+    // 换到另一校区：旧楼幢 / 楼层 / 房间选择全部清空，不留错配组合；保存不可用。
+    await pick('dorm_area_dropdown', '东校区');
+    expect(find.text('东校区'), findsOneWidget);
+    expect(find.text('HX4-111号'), findsNothing);
+    expect(find.text('请选择'), findsNWidgets(3)); // 楼幢 / 楼层 / 房间号
+    expect(saveButton().onPressed, isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('alert threshold dropdown selects and persists the threshold', (
+    tester,
+  ) async {
+    const config = DormRoomConfig(
+      areaId: '3',
+      buildingId: '114',
+      floorId: 'F1',
+      roomId: '10720',
+    );
+    UnifiedAuthService.instance.debugSetSession(active: true, account: 'A');
+    await DormElectricityService.instance.saveRoomConfig(config);
+    await DormElectricityService.instance.setAlertEnabled(true);
+
+    await tester.pumpWidget(_app());
+    await _settleCatalog(tester);
+    expect(tester.widget<Switch>(find.byType(Switch)).value, isTrue);
+    expect(find.byKey(const Key('dorm_threshold_dropdown')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('dorm_threshold_dropdown')));
+    await tester.pump(const Duration(milliseconds: 250));
+    await tester.tap(find.text('30 度').last);
+    await _settleCatalog(tester, rounds: 6);
+
+    expect(
+      tester
+          .widget<AppDropdown<double>>(
+            find.byKey(const Key('dorm_threshold_dropdown')),
+          )
+          .value,
+      30.0,
+    );
+    expect(await DormElectricityService.instance.getAlertThreshold(), 30.0);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 }

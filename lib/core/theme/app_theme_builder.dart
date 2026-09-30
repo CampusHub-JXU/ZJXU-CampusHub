@@ -98,6 +98,28 @@ class AppThemeBuilder {
 
   // ── Light ──────────────────────────────────────────────────────────────
 
+  /// 弹出菜单（`PopupMenuButton`）与 [AppDropdown] 的弹层同一材质：
+  /// surfaceContainerHigh + 输入框圆角 + 0.3 描边，避免出现原生 Material 菜单。
+  static PopupMenuThemeData _popupMenuTheme(ColorScheme colorScheme) {
+    return PopupMenuThemeData(
+      color: colorScheme.surfaceContainerHigh,
+      surfaceTintColor: Colors.transparent,
+      elevation: 6,
+      shadowColor: colorScheme.shadow,
+      shape: RoundedRectangleBorder(
+        borderRadius: AppRadius.inputBorder,
+        side: BorderSide(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+        ),
+      ),
+      textStyle: TextStyle(
+        fontSize: 13.5,
+        fontWeight: FontWeight.w500,
+        color: colorScheme.onSurface,
+      ),
+    );
+  }
+
   static ThemeData light(
     Color seedColor, {
     bool filledButtonSoftStyle = false,
@@ -201,6 +223,7 @@ class AppThemeBuilder {
           vertical: 14,
         ),
       ),
+      popupMenuTheme: _popupMenuTheme(colorScheme),
       bottomSheetTheme: BottomSheetThemeData(
         shape: RoundedSuperellipseBorder(
           borderRadius: BorderRadius.vertical(
@@ -425,6 +448,7 @@ class AppThemeBuilder {
           vertical: 14,
         ),
       ),
+      popupMenuTheme: _popupMenuTheme(colorScheme),
       bottomSheetTheme: BottomSheetThemeData(
         shape: RoundedSuperellipseBorder(
           borderRadius: BorderRadius.vertical(
