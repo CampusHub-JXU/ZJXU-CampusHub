@@ -11,6 +11,10 @@ import '../../helpers/test_setup.dart';
 void main() {
   setUp(() async {
     await resetTestEnvironment();
+    // 全局默认是云母（无模糊）；本文件覆盖玻璃配方的渲染分支。
+    await GlassStyleController.instance.setMaterialStyle(
+      SurfaceMaterialStyle.glass,
+    );
   });
 
   Future<void> pumpBar(WidgetTester tester, {PreferredSizeWidget? bar}) async {

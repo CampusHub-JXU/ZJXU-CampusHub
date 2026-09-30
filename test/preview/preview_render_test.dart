@@ -14,8 +14,10 @@ import 'package:jxu_campus_hub/core/notice/notice_model.dart';
 import 'package:jxu_campus_hub/core/notice/notice_sync_store.dart';
 import 'package:jxu_campus_hub/core/semester/semester_calendar.dart';
 import 'package:jxu_campus_hub/core/theme/glass_style_controller.dart';
+import 'package:jxu_campus_hub/core/theme/personalization_controller.dart';
 import 'package:jxu_campus_hub/features/campus_card/campus_card_page.dart';
 import 'package:jxu_campus_hub/features/campus_card/campus_card_service.dart';
+import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_page.dart';
 import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_service.dart';
 import 'package:jxu_campus_hub/features/exam/exam_service.dart';
 import 'package:jxu_campus_hub/features/grades/grades_service.dart';
@@ -25,6 +27,7 @@ import 'package:jxu_campus_hub/features/my/my_page.dart';
 import 'package:jxu_campus_hub/features/notification_center/notification_center_page.dart';
 
 import 'package:jxu_campus_hub/features/settings/appearance_page.dart';
+import 'package:jxu_campus_hub/features/settings/personalization_page.dart';
 import 'package:jxu_campus_hub/features/settings/settings_page.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_app_bar.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_card.dart';
@@ -355,6 +358,28 @@ void main() {
     await renderPage(tester, 'page_appearance_light', const AppearancePage());
   });
 
+  // 个性化：展开 Shader 滑条，超高视口一次呈现三个分组。
+  previewTest('page_personalization_light', (tester) async {
+    await PersonalizationController.instance.setShaderEnabled(true);
+    await renderPage(
+      tester,
+      'page_personalization_light',
+      const PersonalizationPage(),
+      logicalSize: const Size(412, 1500),
+    );
+  });
+
+  previewTest('page_personalization_dark', (tester) async {
+    await PersonalizationController.instance.setShaderEnabled(true);
+    await renderPage(
+      tester,
+      'page_personalization_dark',
+      const PersonalizationPage(),
+      brightness: Brightness.dark,
+      logicalSize: const Size(412, 1500),
+    );
+  });
+
   // 说明：GradesPage / SchedulePage 在离线场景下会遗留网络重试 Timer，
   // 触发 flutter_test 的 pending-timer 断言，不适合放进无登录预览；
   // 它们的未登录态与 campus_card / AuthRequiredView 一致，画廊已覆盖。
@@ -362,6 +387,46 @@ void main() {
   previewTest('page_campus_card_light', (tester) async {
     await renderPage(tester, 'page_campus_card_light', const CampusCardPage());
   });
+
+  // 单值详情页（design-guidelines 4.7）：无框读数 + 三格动作，校园卡与电费
+  // 同一套骨架，靠富状态种子的新鲜缓存离线渲染。
+  for (final brightness in Brightness.values) {
+    final suffix = brightness.name;
+    previewTest('page_campus_card_detail_$suffix', (tester) async {
+      await GlassStyleController.instance.setEnabled(true);
+      await _seedRichHomeState();
+      await renderPage(
+        tester,
+        'page_campus_card_detail_$suffix',
+        const CampusCardPage(),
+        brightness: brightness,
+      );
+    });
+
+    previewTest('page_dorm_electricity_detail_$suffix', (tester) async {
+      await GlassStyleController.instance.setEnabled(true);
+      await _seedRichHomeState();
+      // 寝室配置须带当前账号 owner 标记，否则页面按未配置处理。
+      await DormElectricityService.instance.saveRoomConfig(
+        const DormRoomConfig(
+          areaId: 'area',
+          buildingId: 'building',
+          floorId: 'floor',
+          roomId: 'room',
+        ),
+      );
+      DormElectricityService.instance.debugSetCachedElectricity(
+        27.4,
+        updatedAt: DateTime.now(),
+      );
+      await renderPage(
+        tester,
+        'page_dorm_electricity_detail_$suffix',
+        const DormElectricityPage(),
+        brightness: brightness,
+      );
+    });
+  }
 }
 
 /// 预览公告条目：id 取 wbnewsid（与线上解析规则一致，未读集合靠它对上）。

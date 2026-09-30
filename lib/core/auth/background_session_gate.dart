@@ -26,10 +26,29 @@ enum BackgroundSessionChangeKind {
 }
 
 class BackgroundSessionChange {
-  const BackgroundSessionChange(this.kind, this.at);
+  const BackgroundSessionChange(this.kind, this.at, {this.account, this.epoch});
 
   final BackgroundSessionChangeKind kind;
   final DateTime at;
+
+  /// [BackgroundSessionChangeKind.revoked] 发生时被撤销的账号与持久会话 epoch。
+  /// 前台据此判断记录是否已被之后的登录取代（见 [revokedStillApplies]）。
+  final String? account;
+  final int? epoch;
+
+  /// `revoked` 记录是否仍适用于前台**当前**身份：账号与持久 epoch 都必须与记录
+  /// 一致。缺字段（旧记录）按不适用处理——少登出一次，前台下次探测会发现过期；
+  /// 多登出一次则会把用户刚重新登录的新会话踢掉。
+  bool revokedStillApplies({
+    required String? currentAccount,
+    required int? currentEpoch,
+  }) {
+    if (kind != BackgroundSessionChangeKind.revoked) return false;
+    final recordedAccount = account;
+    final recordedEpoch = epoch;
+    if (recordedAccount == null || recordedEpoch == null) return false;
+    return currentAccount == recordedAccount && currentEpoch == recordedEpoch;
+  }
 }
 
 /// 前台 / 后台 isolate 之间的会话交接门。
@@ -109,7 +128,16 @@ class BackgroundSessionGate {
     return File('${dir.path}${Platform.pathSeparator}$stateFileName');
   }
 
-  /// 锁内读改写。读坏文件按空状态处理（fail closed：没有前台心跳、没有申领）。
+  /// 状态文件存在但读不出有效内容（损坏 / schema 不符）时注入的保留键。
+  ///
+  /// 「文件不存在」是合法的空状态，「文件存在却读不出来」不是：此时无法证明前台
+  /// 没有在用，后台一律 fail closed（不申领、不提醒、不写盘覆盖现场）。只有前台
+  /// 写心跳的路径会 `remove` 该键自愈。
+  static const String _invalidKey = '_invalid';
+
+  bool _isInvalid(Map<String, dynamic> state) => state[_invalidKey] == true;
+
+  /// 锁内读改写。读坏文件注入 [_invalidKey]，由各调用方决定如何 fail closed。
   Future<T> _update<T>(
     T Function(Map<String, dynamic> state) mutate, {
     bool write = true,
@@ -123,13 +151,16 @@ class BackgroundSessionGate {
           final raw = jsonDecode(await file.readAsString());
           if (raw is Map<String, dynamic> && raw['v'] == schemaVersion) {
             state = raw;
+          } else {
+            state = <String, dynamic>{_invalidKey: true};
           }
         }
       } catch (_) {
-        state = <String, dynamic>{};
+        state = <String, dynamic>{_invalidKey: true};
       }
       final result = mutate(state);
-      if (write) {
+      // 仍无效（mutator 没有自愈）就不落盘：保持文件原样，不把半截状态写成有效。
+      if (write && !_isInvalid(state)) {
         state['v'] = schemaVersion;
         final tmp = File('${file.path}.tmp');
         await tmp.writeAsString(jsonEncode(state), flush: true);
@@ -170,6 +201,8 @@ class BackgroundSessionGate {
     startHeartbeat();
     try {
       await _update((state) {
+        // 前台心跳自愈：无效状态文件由这条重新写成有效文件。
+        state.remove(_invalidKey);
         state['fgAt'] = _now().toIso8601String();
         // 用户已回到应用：上一次「登录已过期」提醒已完成使命。
         state.remove('promptedAt');
@@ -193,7 +226,15 @@ class BackgroundSessionGate {
         final parsed = BackgroundSessionChangeKind.values
             .where((value) => value.name == kind)
             .firstOrNull;
-        return parsed == null ? null : BackgroundSessionChange(parsed, at);
+        if (parsed == null) return null;
+        final account = state['changeAccount'];
+        final epoch = state['changeEpoch'];
+        return BackgroundSessionChange(
+          parsed,
+          at,
+          account: account is String ? account : null,
+          epoch: epoch is int ? epoch : null,
+        );
       }, write: false);
     } catch (error, stackTrace) {
       AppLogger.instance.auth(
@@ -210,7 +251,10 @@ class BackgroundSessionGate {
   Future<void> leaveForeground() async {
     stopHeartbeat();
     try {
-      await _update((state) => state.remove('fgAt'));
+      await _update((state) {
+        state.remove(_invalidKey);
+        state.remove('fgAt');
+      });
     } catch (error, stackTrace) {
       AppLogger.instance.auth(
         LogLevel.warn,
@@ -225,8 +269,10 @@ class BackgroundSessionGate {
     if (_heartbeat != null) return;
     _heartbeat = Timer.periodic(foregroundHeartbeatInterval, (_) {
       unawaited(
-        _update((state) => state['fgAt'] = _now().toIso8601String())
-            .catchError((_) => ''),
+        _update((state) {
+          state.remove(_invalidKey);
+          return state['fgAt'] = _now().toIso8601String();
+        }).catchError((_) => ''),
       );
     });
   }
@@ -242,7 +288,7 @@ class BackgroundSessionGate {
   Future<bool> isForegroundActive() async {
     try {
       return await _update(
-        (state) => _foregroundFresh(state, _now()),
+        (state) => _isInvalid(state) || _foregroundFresh(state, _now()),
         write: false,
       );
     } catch (_) {
@@ -250,12 +296,13 @@ class BackgroundSessionGate {
     }
   }
 
-  /// 申领后台登录。前台心跳新鲜、或已有未过期申领时返回 null。读写失败同样
-  /// 返回 null（fail closed）。
+  /// 申领后台登录。前台心跳新鲜、已有未过期申领、状态文件无效时返回 null。
+  /// 读写失败同样返回 null（fail closed）。
   Future<BackgroundLoginClaim?> tryClaim() async {
     try {
       return await _update((state) {
         final now = _now();
+        if (_isInvalid(state)) return null;
         if (_foregroundFresh(state, now)) return null;
         if (_claimOf(state, now) != null) return null;
         final claim = BackgroundLoginClaim(
@@ -284,6 +331,7 @@ class BackgroundSessionGate {
     try {
       return await _update((state) {
         final now = _now();
+        if (_isInvalid(state)) return true;
         if (_foregroundFresh(state, now)) return true;
         final current = _claimOf(state, now);
         return current == null || current.token != claim.token;
@@ -294,9 +342,15 @@ class BackgroundSessionGate {
   }
 
   /// 释放申领；[change] 非空时同时留下会话变更记录，供前台回来时对账。
+  ///
+  /// [changeAccount] / [changeEpoch] 是 `revoked` 记录的适用范围：前台只在自己
+  /// 当前账号与持久 epoch 仍与之相同时才据此登出，见
+  /// [BackgroundSessionChange.revokedStillApplies]。
   Future<void> release(
     BackgroundLoginClaim claim, {
     BackgroundSessionChangeKind? change,
+    String? changeAccount,
+    int? changeEpoch,
   }) async {
     try {
       await _update((state) {
@@ -307,6 +361,13 @@ class BackgroundSessionGate {
         if (change != null) {
           state['changeKind'] = change.name;
           state['changeAt'] = _now().toIso8601String();
+          if (changeAccount != null && changeEpoch != null) {
+            state['changeAccount'] = changeAccount;
+            state['changeEpoch'] = changeEpoch;
+          } else {
+            state.remove('changeAccount');
+            state.remove('changeEpoch');
+          }
           if (change == BackgroundSessionChangeKind.committed) {
             state.remove('promptedAt');
           }
@@ -327,6 +388,7 @@ class BackgroundSessionGate {
   Future<bool> claimExpiredPrompt() async {
     try {
       return await _update((state) {
+        if (_isInvalid(state)) return false;
         final now = _now();
         final last = _time(state['promptedAt']);
         if (last != null && now.difference(last) < promptMinInterval) {

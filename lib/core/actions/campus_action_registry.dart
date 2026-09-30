@@ -116,7 +116,7 @@ class CampusActionRegistry {
     const CampusAction(
       id: CampusActionIds.noticeInbox,
       title: '校园公告',
-      target: RouteActionTarget('notice-list'),
+      target: RouteActionTarget('notification-center'),
     ),
     const CampusAction(
       id: CampusActionIds.notificationCenter,

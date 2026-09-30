@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/app_bootstrap_controller.dart';
 import '../../core/auth/unified_auth.dart';
 import '../../core/auth/zhengfang_auth.dart';
+import '../../core/notice/notice_detail.dart';
 import '../../core/notice/notice_model.dart';
 import '../../core/notice/notice_sync_store.dart';
 import '../../core/semester/semester_calendar.dart';
@@ -169,6 +170,13 @@ class _HomePageState extends State<HomePage> {
   /// jwc 详情属资源型目标：预热逐跳建立业务 Cookie（warmUpAsResource）。
   void _openCampusNotice(Notice notice) {
     unawaited(NoticeSyncStore.instance.markRead([notice.id]));
+    if (isJwcNoticeDetailUrl(notice.url)) {
+      context.pushNamed(
+        'notice-detail',
+        extra: {'title': notice.title, 'url': notice.url},
+      );
+      return;
+    }
     final uri = Uri.tryParse(notice.url);
     final isJwc = uri?.host.toLowerCase() == 'jwc.zjxu.edu.cn';
     context.pushNamed(

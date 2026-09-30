@@ -20,14 +20,13 @@ class SystemDownloader {
     String? mimeType,
     String? userAgent,
     String? referer,
+    String? cookieHeader,
   }) async {
     try {
-      final cookies = await CookieManager.instance().getCookies(
+      // 原生页面（非 WebView）可显式传入 Dio CookieJar 的 Cookie。
+      cookieHeader ??= (await CookieManager.instance().getCookies(
         url: WebUri(url),
-      );
-      final cookieHeader = cookies
-          .map((cookie) => '${cookie.name}=${cookie.value}')
-          .join('; ');
+      )).map((cookie) => '${cookie.name}=${cookie.value}').join('; ');
 
       final enqueued = await _channel.invokeMethod<bool>('enqueueDownload', {
         'url': url,

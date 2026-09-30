@@ -6,10 +6,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/features/grades/grades_model.dart';
 import 'package:jxu_campus_hub/features/grades/grades_page.dart';
-import 'package:jxu_campus_hub/features/grades/grades_term_resolver.dart';
-import 'package:jxu_campus_hub/features/grades/widgets/grades_grade_card.dart';
-import 'package:jxu_campus_hub/shared/widgets/app_dropdown.dart';
+import 'package:jxu_campus_hub/features/grades/widgets/grades_course_row.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_error_view.dart';
+import 'package:jxu_campus_hub/shared/widgets/skeleton_box.dart';
 
 import '../../helpers/test_setup.dart';
 
@@ -24,13 +23,16 @@ void main() {
   Future<void> pumpGradesPage(
     WidgetTester tester, {
     required List<Map<String, dynamic>> items,
+    GradesFetcher? fetcher,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: GradesPage(
-            fetchGrades: (_, {bool forceRefresh = false}) async =>
-                items.map(GradeEntry.fromJson).toList(),
+            fetchGrades:
+                fetcher ??
+                (_, {bool forceRefresh = false}) async =>
+                    items.map(GradeEntry.fromJson).toList(),
           ),
         ),
       ),
@@ -43,15 +45,15 @@ void main() {
     for (
       var elapsed = Duration.zero;
       elapsed < const Duration(seconds: 5) &&
-          find.byType(AppDropdown<String>).evaluate().isEmpty;
+          find.byType(ChoiceChip).evaluate().isEmpty;
       elapsed += const Duration(milliseconds: 50)
     ) {
       await tester.pump(const Duration(milliseconds: 50));
     }
     expect(
-      find.byType(AppDropdown<String>),
-      findsOneWidget,
-      reason: '成绩请求应在 5 秒测试时间内完成并渲染学期下拉框',
+      find.byType(ChoiceChip),
+      findsWidgets,
+      reason: '成绩请求应在 5 秒测试时间内完成并渲染学期 chip',
     );
     await tester.pump(const Duration(milliseconds: 500));
   }
@@ -71,6 +73,15 @@ void main() {
     'xqmmc': semester,
   };
 
+  String? selectedTermLabel(WidgetTester tester) {
+    final selected = tester
+        .widgetList<ChoiceChip>(find.byType(ChoiceChip))
+        .where((chip) => chip.selected)
+        .toList();
+    if (selected.length != 1) return null;
+    return (selected.single.label as Text).data;
+  }
+
   testWidgets(
     'defaults to the latest available term and lists only its courses',
     (tester) async {
@@ -84,11 +95,9 @@ void main() {
         ],
       );
 
-      final dropdown = tester.widget<AppDropdown<String>>(
-        find.byType(AppDropdown<String>),
-      );
       // 默认选中最新学期（2025-2026 第二学期）
-      expect(dropdown.value, '2025-2026|第二学期');
+      expect(selectedTermLabel(tester), '2025–26 春');
+      expect(find.text('学期绩点'), findsOneWidget);
       expect(find.text('高等数学A'), findsOneWidget);
       expect(find.text('线性代数'), findsOneWidget);
       // 其他学期课程不在当前学期列表中。
@@ -108,11 +117,8 @@ void main() {
       ],
     );
 
-    final dropdown = tester.widget<AppDropdown<String>>(
-      find.byType(AppDropdown<String>),
-    );
     // 最新可用学期为 2024-2025 第二学期
-    expect(dropdown.value, '2024-2025|第二学期');
+    expect(selectedTermLabel(tester), '2024–25 春');
     expect(find.text('程序设计'), findsOneWidget);
     expect(find.text('思政课'), findsNothing);
   });
@@ -131,7 +137,10 @@ void main() {
     // 高等数学A(优)在最新学期，大学英语(不及格)在另一学期。
     expect(find.text('高等数学A'), findsOneWidget);
     expect(find.text('大学英语'), findsNothing);
-    // 分布卡：当前学期只有 1 门优，"1" 文本应出现。
+    // 分布图例只统计当前学期：1 门优，没有不及格。
+    expect(find.text('优 1'), findsOneWidget);
+    expect(find.text('不及格 1'), findsNothing);
+    // 课程数 1。
     expect(find.text('1'), findsWidgets);
   });
 
@@ -145,6 +154,10 @@ void main() {
       ],
     );
 
+    // 搜索默认收起，点 AppBar 搜索图标才展开。
+    expect(find.byType(TextField), findsNothing);
+    await tester.tap(find.byTooltip('搜索课程'));
+    await tester.pump();
     await tester.enterText(find.byType(TextField), '高等');
     await tester.pump();
 
@@ -154,9 +167,7 @@ void main() {
     expect(find.text('大学英语'), findsNothing);
   });
 
-  testWidgets('includes an "all terms" option in the dropdown items', (
-    tester,
-  ) async {
+  testWidgets('term chips end with 全部, which shows every term', (tester) async {
     await pumpGradesPage(
       tester,
       items: [
@@ -165,15 +176,165 @@ void main() {
       ],
     );
 
-    final dropdown = tester.widget<AppDropdown<String>>(
-      find.byType(AppDropdown<String>),
+    final labels = tester
+        .widgetList<ChoiceChip>(find.byType(ChoiceChip))
+        .map((chip) => (chip.label as Text).data)
+        .toList();
+    // 最新在前，「全部」固定末尾。
+    expect(labels, ['2025–26 春', '2024–25 春', '全部']);
+
+    await tester.tap(find.widgetWithText(ChoiceChip, '全部'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(selectedTermLabel(tester), '全部');
+    expect(find.text('总绩点'), findsOneWidget);
+    expect(find.text('高等数学A'), findsOneWidget);
+    expect(find.text('大学英语'), findsOneWidget);
+  });
+
+  testWidgets('sort toggle cycles score, term and credits', (tester) async {
+    await pumpGradesPage(
+      tester,
+      items: [
+        {...grade('低分课', '2025-2026', '第二学期', score: '61'), 'xf': '4.0'},
+        grade('高分课', '2025-2026', '第二学期', score: '96'),
+        {...grade('中分课', '2025-2026', '第二学期', score: '78'), 'xf': '1.0'},
+      ],
     );
-    // 下拉选项应包含「全部学期」作为第一项
-    final allItem = dropdown.items
-        .where((item) => item.value == GradesTermResolver.allTermKey)
-        .firstOrNull;
-    expect(allItem, isNotNull);
-    expect(allItem!.label, '全部学期');
+
+    List<String> order() => tester
+        .widgetList<GradesCourseRow>(find.byType(GradesCourseRow))
+        .map((row) => row.grade.courseName)
+        .toList();
+
+    expect(find.text('按成绩 ↓'), findsOneWidget);
+    expect(order(), ['高分课', '中分课', '低分课']);
+
+    await tester.tap(find.byKey(const Key('grades_sort_toggle')));
+    await tester.pump();
+    expect(find.text('按学期'), findsOneWidget);
+    // 同一学期保持教务原始顺序。
+    expect(order(), ['低分课', '高分课', '中分课']);
+
+    await tester.tap(find.byKey(const Key('grades_sort_toggle')));
+    await tester.pump();
+    expect(find.text('按学分'), findsOneWidget);
+    // 4 学分 → 2 学分 → 1 学分。
+    expect(order(), ['低分课', '高分课', '中分课']);
+
+    await tester.tap(find.byKey(const Key('grades_sort_toggle')));
+    await tester.pump();
+    expect(find.text('按成绩 ↓'), findsOneWidget);
+  });
+
+  testWidgets('first load shows skeleton instead of a full-page spinner', (
+    tester,
+  ) async {
+    final pending = Completer<List<GradeEntry>>();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GradesPage(
+            fetchGrades: (_, {bool forceRefresh = false}) => pending.future,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byType(SkeletonBox), findsWidgets);
+    expect(find.text('正在获取成绩…'), findsOneWidget);
+    expect(find.text('--'), findsWidgets);
+    // 只剩状态行里 12px 的小 spinner，没有整页转圈。
+    final spinnerBoxes = tester.widgetList<SizedBox>(
+      find.ancestor(
+        of: find.byType(CircularProgressIndicator),
+        matching: find.byType(SizedBox),
+      ),
+    );
+    expect(spinnerBoxes.every((box) => (box.width ?? 0) <= 12), isTrue);
+
+    pending.complete([
+      GradeEntry.fromJson(grade('高等数学A', '2025-2026', '第二学期')),
+    ]);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byType(SkeletonBox), findsNothing);
+    expect(find.text('高等数学A'), findsOneWidget);
+  });
+
+  testWidgets('refresh keeps grades visible and reports failure inline', (
+    tester,
+  ) async {
+    var calls = 0;
+    final refresh = Completer<List<GradeEntry>>();
+    await pumpGradesPage(
+      tester,
+      items: const [],
+      fetcher: (_, {bool forceRefresh = false}) {
+        calls++;
+        if (calls == 1) {
+          return Future.value([
+            GradeEntry.fromJson(grade('高等数学A', '2025-2026', '第二学期')),
+          ]);
+        }
+        return refresh.future;
+      },
+    );
+
+    await tester.tap(find.byTooltip('刷新'));
+    await tester.pump();
+    // 刷新中：旧成绩保留，状态行提示正在刷新。
+    expect(find.text('高等数学A'), findsOneWidget);
+    expect(find.textContaining('正在刷新'), findsOneWidget);
+
+    refresh.completeError(Exception('网络不可用'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('高等数学A'), findsOneWidget);
+    expect(find.textContaining('· 刷新失败'), findsOneWidget);
+    expect(find.byType(AppErrorView), findsNothing);
+    await tester.pump(const Duration(seconds: 4));
+  });
+
+  testWidgets('360 wide at 1.3x text renders without overflow', (tester) async {
+    tester.view.physicalSize = const Size(360, 780);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: const TextScaler.linear(1.3)),
+          child: child!,
+        ),
+        home: Scaffold(
+          body: GradesPage(
+            fetchGrades: (_, {bool forceRefresh = false}) async => [
+              GradeEntry.fromJson({
+                ...grade('一门名字非常非常长的专业核心课程实验与实践', '2025-2026', '第二学期'),
+                'khfsmc': '考试',
+              }),
+              GradeEntry.fromJson(
+                grade('体育', '2025-2026', '第一学期', score: '52'),
+              ),
+              GradeEntry.fromJson(grade('大学英语', '2024-2025', '第二学期')),
+            ],
+          ),
+        ),
+      ),
+    );
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.byType(GradesCourseRow), findsWidgets);
+    expect(tester.takeException(), isNull);
+
+    await tester.ensureVisible(find.widgetWithText(ChoiceChip, '全部'));
+    await tester.tap(find.widgetWithText(ChoiceChip, '全部'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(tester.takeException(), isNull);
   });
 
   Future<void> pumpLoginView(
@@ -261,9 +422,11 @@ void main() {
     await pumpUntilFound(tester, find.text('A的课程'));
     await tester.pump(const Duration(milliseconds: 500));
 
+    await tester.tap(find.byTooltip('搜索课程'));
+    await tester.pump();
     await tester.enterText(find.byType(TextField), 'A的课程');
     await tester.pump();
-    expect(find.widgetWithText(GradesGradeCard, 'A的课程'), findsOneWidget);
+    expect(find.widgetWithText(GradesCourseRow, 'A的课程'), findsOneWidget);
 
     // debugSetSession 只改状态不通知；markLoggedIn 才让页面收到身份变化通知。
     ZhengfangAuth.instance.debugSetSession(active: true, studentId: '20250002');
@@ -279,15 +442,10 @@ void main() {
     // 新账号数据可见；旧账号课程、搜索词与学期选择都不得残留。
     expect(find.text('B的课程'), findsOneWidget);
     expect(find.text('A的课程'), findsNothing);
-    expect(
-      tester.widget<TextField>(find.byType(TextField)).controller?.text,
-      isEmpty,
-    );
-    final dropdown = tester.widget<AppDropdown<String>>(
-      find.byType(AppDropdown<String>),
-    );
+    // 搜索框随身份切换收起并清空关键字。
+    expect(find.byType(TextField), findsNothing);
     // B 账号按自己的最新学期重新默认选择，不沿用 A 的学期 key。
-    expect(dropdown.value, '2026-2027|第一学期');
+    expect(selectedTermLabel(tester), '2026–27 秋');
   });
 
   testWidgets('late result from the previous owner is discarded', (

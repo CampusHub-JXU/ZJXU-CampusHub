@@ -144,11 +144,96 @@ void main() {
     expect(await gate.claimExpiredPrompt(), isTrue);
   });
 
-  test('corrupt state file is treated as empty state', () async {
-    await File(
-      '${dir.path}${Platform.pathSeparator}'
-      '${BackgroundSessionGate.stateFileName}',
-    ).writeAsString('not json');
+  File stateFile() => File(
+    '${dir.path}${Platform.pathSeparator}'
+    '${BackgroundSessionGate.stateFileName}',
+  );
+
+  test('missing state file is an empty state and can be claimed', () async {
+    expect(await stateFile().exists(), isFalse);
     expect(await gate.tryClaim(), isNotNull);
+  });
+
+  test('corrupt state file fails closed for the background', () async {
+    await stateFile().writeAsString('not json');
+    expect(await gate.tryClaim(), isNull);
+    expect(await gate.isForegroundActive(), isTrue);
+    expect(await gate.claimExpiredPrompt(), isFalse);
+    // 后台不得改写损坏文件。
+    expect(await stateFile().readAsString(), 'not json');
+  });
+
+  test('wrong-schema state file fails closed for the background', () async {
+    await stateFile().writeAsString('{"v":999}');
+    expect(await gate.tryClaim(), isNull);
+  });
+
+  test('foreground heals a corrupt state file', () async {
+    await stateFile().writeAsString('not json');
+    await enterColdStart();
+    gate.stopHeartbeat();
+    await gate.leaveForeground();
+    expect(await gate.tryClaim(), isNotNull);
+  });
+
+  test('revoked change carries owner and epoch through the gate', () async {
+    await enterColdStart();
+    await gate.leaveForeground();
+    advance(const Duration(minutes: 5));
+    final claim = await gate.tryClaim();
+    advance(const Duration(seconds: 5));
+    await gate.release(
+      claim!,
+      change: BackgroundSessionChangeKind.revoked,
+      changeAccount: '2020001',
+      changeEpoch: 7,
+    );
+
+    final change = await gate.enterForeground(waitForClaim: Duration.zero);
+    gate.stopHeartbeat();
+    expect(change?.kind, BackgroundSessionChangeKind.revoked);
+    expect(change?.account, '2020001');
+    expect(change?.epoch, 7);
+  });
+
+  test('revokedStillApplies only for the same account and epoch', () {
+    final change = BackgroundSessionChange(
+      BackgroundSessionChangeKind.revoked,
+      now,
+      account: '2020001',
+      epoch: 7,
+    );
+    expect(
+      change.revokedStillApplies(currentAccount: '2020001', currentEpoch: 7),
+      isTrue,
+    );
+    expect(
+      change.revokedStillApplies(currentAccount: '2020001', currentEpoch: 8),
+      isFalse,
+    );
+    expect(
+      change.revokedStillApplies(currentAccount: '2020002', currentEpoch: 7),
+      isFalse,
+    );
+    expect(
+      change.revokedStillApplies(currentAccount: '2020001', currentEpoch: null),
+      isFalse,
+    );
+    expect(
+      BackgroundSessionChange(
+        BackgroundSessionChangeKind.revoked,
+        now,
+      ).revokedStillApplies(currentAccount: '2020001', currentEpoch: 7),
+      isFalse,
+    );
+    expect(
+      BackgroundSessionChange(
+        BackgroundSessionChangeKind.committed,
+        now,
+        account: '2020001',
+        epoch: 7,
+      ).revokedStillApplies(currentAccount: '2020001', currentEpoch: 7),
+      isFalse,
+    );
   });
 }

@@ -39,10 +39,15 @@ void main() {
     final router = GoRouter(
       initialLocation: '/',
       routes: [
-        StatefulShellRoute.indexedStack(
+        StatefulShellRoute(
           builder: (context, state, navigationShell) {
             return AppShellPage(navigationShell: navigationShell);
           },
+          navigatorContainerBuilder: (context, navigationShell, children) =>
+              AppShellBranchContainer(
+                currentIndex: navigationShell.currentIndex,
+                children: children,
+              ),
           branches: [
             StatefulShellBranch(
               routes: [
@@ -152,5 +157,18 @@ void main() {
     expect(find.text('首页页面'), findsOneWidget);
     expect(functionScrollCalls, 1);
     expect(homeScrollCalls, 0);
+  });
+
+  testWidgets('切换分支时旧页留在下层交叉淡化，结束后才下台', (tester) async {
+    await pumpShell(tester);
+    await tester.tap(find.text('我的'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+    // 过渡中两页都在台上：新页盖在旧页之上淡入，不透出底色。
+    expect(find.text('首页页面'), findsOneWidget);
+    expect(find.text('我的页面'), findsOneWidget);
+    await tester.pumpAndSettle();
+    expect(find.text('首页页面'), findsNothing);
+    expect(find.text('我的页面'), findsOneWidget);
   });
 }

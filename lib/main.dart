@@ -10,8 +10,10 @@ import 'app/background_task_dispatcher.dart';
 import 'app/calendar_sync_coordinator.dart';
 import 'app/campus_refresh_coordinator.dart';
 import 'app/routes.dart';
+import 'core/auth/auth_session_persistence.dart';
 import 'core/auth/background_session_gate.dart';
 import 'core/auth/connect_mode_resolver.dart';
+import 'core/auth/credential_store.dart';
 import 'core/auth/unified_auth.dart';
 import 'core/deep_link/campus_deep_link_service.dart';
 import 'core/logging/app_logger.dart';
@@ -52,10 +54,16 @@ void _handleNotificationPayload(String payload) {
   }
 }
 
+/// 生命周期代际：每次生命周期状态变化递增。`_onAppResumed` 要等最多 5 秒的
+/// 后台对账，期间应用可能又退到后台；旧任务醒来时代际已变，必须放弃，不得再把
+/// 前台刷新 / 自动登录重新打开。
+int _lifecycleGeneration = 0;
+
 /// 回到前台：先向后台会话恢复让位并对账其留下的变更，再启动前台刷新。
 ///
-/// 对账失败只记日志，绝不阻断前台恢复。
-Future<void> _onAppResumed() async {
+/// 对账失败只记日志，绝不阻断前台恢复。[generation] 是触发本次恢复时的
+/// [_lifecycleGeneration]，任一 await 之后它若已变化就不再启动前台工作。
+Future<void> _onAppResumed(int generation) async {
   try {
     final change = await BackgroundSessionGate.instance.enterForeground();
     if (change != null) {
@@ -69,7 +77,18 @@ Future<void> _onAppResumed() async {
         case BackgroundSessionChangeKind.revoked:
           // 后台探测到服务端会话过期并持久登出、且未能重登：前台内存身份对账，
           // 随后由前台刷新协调器按既有逻辑（opt-in / 冷却）自动恢复。
-          if (auth.isLoggedIn) await auth.markLoggedOut();
+          // 记录可能迟到：只在前台当前账号与持久 epoch 仍是被撤销的那一个时
+          // 才登出，否则用户已在此期间重新登录，不得踢掉新会话。
+          if (auth.isLoggedIn) {
+            final currentEpoch = await AuthSessionPersistence.instance
+                .readEpoch(CredentialSessionDomain.unified);
+            if (change.revokedStillApplies(
+              currentAccount: auth.currentAccount,
+              currentEpoch: currentEpoch,
+            )) {
+              await auth.markLoggedOut();
+            }
+          }
       }
     }
   } catch (error, stackTrace) {
@@ -80,6 +99,7 @@ Future<void> _onAppResumed() async {
       stackTrace: stackTrace,
     );
   }
+  if (generation != _lifecycleGeneration) return;
   CampusRefreshCoordinator.instance.setForeground(true);
   CalendarSyncCoordinator.instance.onAppResumed();
   unawaited(runForegroundBackgroundChecks());
@@ -183,8 +203,9 @@ Future<void> main() async {
       // 时仍能在 resumed 时执行前台检查。
       final lifecycleListener = AppLifecycleListener(
         onStateChange: (state) {
+          final generation = ++_lifecycleGeneration;
           if (state == AppLifecycleState.resumed) {
-            unawaited(_onAppResumed());
+            unawaited(_onAppResumed(generation));
           } else if (state == AppLifecycleState.inactive ||
               state == AppLifecycleState.paused ||
               state == AppLifecycleState.hidden) {

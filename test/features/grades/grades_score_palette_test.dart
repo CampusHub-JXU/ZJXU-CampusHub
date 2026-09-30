@@ -1,7 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:jxu_campus_hub/features/grades/grades_model.dart';
 import 'package:jxu_campus_hub/features/grades/grades_score_palette.dart';
+
+GradeEntry _entry({String grade = '', String percentage = ''}) => GradeEntry(
+  courseName: '课程',
+  grade: grade,
+  percentageScore: percentage,
+  gpaPoints: 0,
+  credits: 1,
+  academicYear: '2025-2026',
+  semester: '第一学期',
+  examType: '',
+  assessmentMethod: '',
+  courseRequirement: '',
+);
 
 void main() {
   group('gradeBandForScore', () {
@@ -19,7 +33,32 @@ void main() {
     });
   });
 
-  group('gradeBandColor', () {
+  group('gradeBandForEntry', () {
+    test('prefers the numeric percentage score', () {
+      expect(
+        gradeBandForEntry(_entry(grade: '优秀', percentage: '65')),
+        GradeBand.pass,
+      );
+      expect(gradeBandForEntry(_entry(grade: '88')), GradeBand.good);
+    });
+
+    test('maps letter grades by text', () {
+      expect(gradeBandForEntry(_entry(grade: '优秀')), GradeBand.excellent);
+      expect(gradeBandForEntry(_entry(grade: '良好')), GradeBand.good);
+      expect(gradeBandForEntry(_entry(grade: '中等')), GradeBand.medium);
+      expect(gradeBandForEntry(_entry(grade: '及格')), GradeBand.pass);
+      expect(gradeBandForEntry(_entry(grade: '合格')), GradeBand.pass);
+      expect(gradeBandForEntry(_entry(grade: '不及格')), GradeBand.fail);
+      expect(gradeBandForEntry(_entry(grade: '不合格')), GradeBand.fail);
+    });
+
+    test('returns null for unknown or empty grades', () {
+      expect(gradeBandForEntry(_entry()), isNull);
+      expect(gradeBandForEntry(_entry(grade: '缓考')), isNull);
+    });
+  });
+
+  group('band colors', () {
     final lightRed = ColorScheme.fromSeed(seedColor: const Color(0xFF8B1A2D));
     final darkRed = ColorScheme.fromSeed(
       seedColor: const Color(0xFF8B1A2D),
@@ -27,52 +66,27 @@ void main() {
     );
     final lightBlue = ColorScheme.fromSeed(seedColor: const Color(0xFF1565C0));
 
-    test('derives from the scheme primary, not hard-coded hues', () {
-      final red = gradeBandColor(lightRed, GradeBand.excellent);
-      final blue = gradeBandColor(lightBlue, GradeBand.excellent);
-
-      expect(red, isNot(blue));
-      // 优即 primary 本色。
-      expect(red, lightRed.primary);
-      expect(blue, lightBlue.primary);
-    });
-
-    test('pass tiers form a monotonic lightness ladder per brightness', () {
-      double lightness(ColorScheme cs, GradeBand band) =>
-          HSLColor.fromColor(gradeBandColor(cs, band)).lightness;
-
-      for (final cs in [lightRed, darkRed]) {
-        final excellent = lightness(cs, GradeBand.excellent);
-        final good = lightness(cs, GradeBand.good);
-        final medium = lightness(cs, GradeBand.medium);
-        final pass = lightness(cs, GradeBand.pass);
-        if (cs.brightness == Brightness.light) {
-          expect(excellent, lessThanOrEqualTo(good));
-          expect(good, lessThanOrEqualTo(medium));
-          expect(medium, lessThanOrEqualTo(pass));
-        } else {
-          expect(excellent, greaterThanOrEqualTo(good));
-          expect(good, greaterThanOrEqualTo(medium));
-          expect(medium, greaterThanOrEqualTo(pass));
-        }
+    test('distribution colors derive from the scheme', () {
+      for (final cs in [lightRed, darkRed, lightBlue]) {
+        expect(gradeBandColor(cs, GradeBand.excellent), cs.primary);
+        expect(
+          gradeBandColor(cs, GradeBand.good),
+          cs.primary.withValues(alpha: 0.6),
+        );
+        expect(
+          gradeBandColor(cs, GradeBand.medium),
+          cs.primary.withValues(alpha: 0.35),
+        );
+        expect(gradeBandColor(cs, GradeBand.pass), cs.outline);
+        expect(gradeBandColor(cs, GradeBand.fail), cs.error);
       }
+      expect(
+        gradeBandColor(lightRed, GradeBand.excellent),
+        isNot(gradeBandColor(lightBlue, GradeBand.excellent)),
+      );
     });
 
-    test('fail stays distinguishable from the accent in both brightness', () {
-      double lightness(ColorScheme cs) =>
-          HSLColor.fromColor(gradeBandColor(cs, GradeBand.fail)).lightness;
-
-      final failLight = lightness(lightRed);
-      final primaryLight = HSLColor.fromColor(lightRed.primary).lightness;
-      expect(failLight, greaterThan(primaryLight));
-      expect(failLight, greaterThanOrEqualTo(0.50));
-
-      final failDark = lightness(darkRed);
-      final primaryDark = HSLColor.fromColor(darkRed.primary).lightness;
-      expect(failDark, lessThan(primaryDark));
-    });
-
-    test('all five bands resolve to distinct colors', () {
+    test('all five distribution bands are distinct', () {
       for (final cs in [lightRed, darkRed, lightBlue]) {
         final colors = GradeBand.values
             .map((band) => gradeBandColor(cs, band))
@@ -80,19 +94,25 @@ void main() {
         expect(colors.length, GradeBand.values.length);
       }
     });
-  });
 
-  group('gradeBandColorForScore', () {
-    test('resolves the band then the color', () {
-      final cs = ColorScheme.fromSeed(seedColor: const Color(0xFF8B1A2D));
-      expect(
-        gradeBandColorForScore(cs, 95),
-        gradeBandColor(cs, GradeBand.excellent),
-      );
-      expect(
-        gradeBandColorForScore(cs, 30),
-        gradeBandColor(cs, GradeBand.fail),
-      );
+    test('score text colors only the extremes', () {
+      final cs = lightRed;
+      expect(gradeScoreColor(cs, GradeBand.excellent), cs.primary);
+      expect(gradeScoreColor(cs, GradeBand.fail), cs.error);
+      for (final band in [GradeBand.good, GradeBand.medium, GradeBand.pass]) {
+        expect(gradeScoreColor(cs, band), cs.onSurface);
+      }
+      expect(gradeScoreColor(cs, null), cs.onSurface);
+    });
+
+    test('band labels', () {
+      expect(GradeBand.values.map((b) => b.label).toList(), [
+        '优',
+        '良',
+        '中',
+        '及格',
+        '不及格',
+      ]);
     });
   });
 }

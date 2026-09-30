@@ -11,11 +11,10 @@ import '../../core/logging/app_logger.dart';
 import '../../core/shortcut/app_shortcut_service.dart';
 import '../../core/theme/app_design_tokens.dart';
 import '../../shared/widgets/app_app_bar.dart';
-import '../../shared/widgets/app_card.dart';
-import '../../shared/widgets/app_icon_badge.dart';
-import '../../shared/widgets/app_tile_surface.dart';
 import '../../shared/widgets/auth_required_view.dart';
+import '../../shared/widgets/detail_readout.dart';
 import '../../shared/widgets/login_shell.dart';
+import '../../shared/widgets/refresh_status_line.dart';
 import '../../shared/widgets/unified_auth_protected_webview_page.dart';
 import 'campus_card_service.dart';
 
@@ -224,32 +223,42 @@ class _CampusCardPageState extends State<CampusCardPage> {
     return Scaffold(
       appBar: AppAppBar(
         title: const Text('校园卡'),
+        // AppBar 只留 ⋮：刷新主要靠下拉 + 余额卡状态行，菜单里保留「刷新
+        // 余额」给不习惯下拉的用户（见 design-guidelines 4.5 / 4.6）。
         actions: [
-          if (!authRequired)
-            IconButton(
-              tooltip: '刷新余额',
-              onPressed: _balanceLoading ? null : _refreshBalance,
-              icon: const Icon(Icons.refresh_rounded),
-            ),
-          if (isAndroid)
+          if (!authRequired || isAndroid)
             PopupMenuButton<_CampusCardMenuAction>(
               tooltip: '更多操作',
               onSelected: (action) {
                 switch (action) {
+                  case _CampusCardMenuAction.refresh:
+                    _refreshBalance();
                   case _CampusCardMenuAction.addShortcut:
                     _requestPaymentShortcut();
                 }
               },
-              itemBuilder: (context) => const [
-                PopupMenuItem<_CampusCardMenuAction>(
-                  value: _CampusCardMenuAction.addShortcut,
-                  child: ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.add_to_home_screen_outlined),
-                    title: Text('添加至桌面'),
+              itemBuilder: (context) => [
+                if (!authRequired)
+                  PopupMenuItem<_CampusCardMenuAction>(
+                    value: _CampusCardMenuAction.refresh,
+                    enabled: !_balanceLoading,
+                    child: const ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.refresh_rounded),
+                      title: Text('刷新余额'),
+                    ),
                   ),
-                ),
+                if (isAndroid)
+                  const PopupMenuItem<_CampusCardMenuAction>(
+                    value: _CampusCardMenuAction.addShortcut,
+                    child: ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.add_to_home_screen_outlined),
+                      title: Text('添加付款码到桌面'),
+                    ),
+                  ),
               ],
             ),
         ],
@@ -285,47 +294,19 @@ class _CampusCardPageState extends State<CampusCardPage> {
           AppSpacing.xl,
         ),
         children: [
-          _buildBalanceCard(context, balance, lastUpdated),
+          _buildReadout(context, balance, lastUpdated),
           const SizedBox(height: AppSpacing.lg),
-          _buildActionTile(
-            context,
-            icon: Icons.qr_code_2_outlined,
-            title: '付款码',
-            subtitle: '出示一卡通二维码快速付款',
-            onTap: _openPaymentCodePage,
-          ),
-          const SizedBox(height: AppSpacing.md),
-          _buildActionTile(
-            context,
-            icon: Icons.receipt_long_outlined,
-            title: '账单',
-            subtitle: '查看校园卡消费明细',
-            onTap: () => _openCampusCardWebView(title: '校园卡账单'),
-          ),
-          const SizedBox(height: AppSpacing.md),
-          _buildActionTile(
-            context,
-            icon: Icons.add_card_outlined,
-            title: '充值',
-            subtitle: '在微信服务号内完成充值',
-            onTap: _openRechargePage,
-          ),
+          _buildActionGrid(context),
           const SizedBox(height: AppSpacing.lg),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: _refreshBalance,
-              icon: _balanceLoading
-                  ? SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Theme.of(context).colorScheme.onPrimary,
-                      ),
-                    )
-                  : const Icon(Icons.refresh_rounded, size: 18),
-              label: Text(_balanceLoading ? '正在刷新' : '刷新余额'),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+            child: Text(
+              '下拉可立即刷新；余额 5 分钟内有效，离开页面也会在后台补齐。',
+              style: TextStyle(
+                fontSize: 12,
+                height: 1.4,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
         ],
@@ -333,20 +314,17 @@ class _CampusCardPageState extends State<CampusCardPage> {
     );
   }
 
-  // ── Balance Card ────────────────────────────────────────────────────────
+  // ── Balance Readout ─────────────────────────────────────────────────────
 
-  Widget _buildBalanceCard(
+  /// 无框余额读数：数字直接落在页面底色上（design-guidelines 4.7），下方是
+  /// 状态行；没有余额时改为失败说明 + 登录 / 重试动作。
+  Widget _buildReadout(
     BuildContext context,
     double? balance,
     DateTime? lastUpdated,
   ) {
     final cs = Theme.of(context).colorScheme;
     final balanceText = balance != null ? balance.toStringAsFixed(2) : '--';
-    final timeText = lastUpdated != null
-        ? '${lastUpdated.month}/${lastUpdated.day} '
-              '${lastUpdated.hour.toString().padLeft(2, '0')}:'
-              '${lastUpdated.minute.toString().padLeft(2, '0')} 更新'
-        : '暂未获取余额';
 
     final failure = CampusCardService.instance.lastBalanceFailure;
     final (failureMessage, failureIcon) = switch (failure) {
@@ -368,215 +346,140 @@ class _CampusCardPageState extends State<CampusCardPage> {
     // 只有「明确认证失效」用警示底色；网络 / 服务不可用保持中性提示，
     // 不得把可重试的故障渲染成需要重新登录。
     final failureIsSerious = failure == BalanceFailureKind.authExpired;
-    final failureTone = failureIsSerious
-        ? cs.onErrorContainer
-        : cs.onSurfaceVariant;
+    final failureTone = failureIsSerious ? cs.onErrorContainer : cs.onSurface;
     final failureBackground = failureIsSerious
         ? cs.errorContainer
-        : cs.surfaceContainerHighest;
+        : cs.surfaceContainerHigh;
 
-    return AppCard(
+    return Padding(
+      // 比瓦片多缩进 8；眼睛按钮自带 44 点按区，右侧不再缩进。
+      padding: const EdgeInsets.only(left: AppSpacing.sm, top: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(Icons.credit_card_outlined, size: 18, color: cs.primary),
-              const SizedBox(width: AppSpacing.sm),
-              Flexible(
-                child: Text(
-                  '校园卡余额',
-                  style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
-                ),
+          DetailReadout(
+            label: '校园卡余额',
+            valueText: _obscured ? '****' : balanceText,
+            unit: '元',
+            muted: balance == null,
+            trailing: IconButton(
+              tooltip: _obscured ? '显示余额' : '隐藏余额',
+              onPressed: () => setState(() => _obscured = !_obscured),
+              icon: Icon(
+                _obscured
+                    ? Icons.visibility_off_rounded
+                    : Icons.visibility_rounded,
               ),
-            ],
+              iconSize: 20,
+              color: cs.onSurfaceVariant,
+              // 显式 standard density：compact 会把 44 约束盒缩水到 36，
+              // 最小点按区必须真实 ≥ 44x44。
+              visualDensity: VisualDensity.standard,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+            ),
           ),
-          const SizedBox(height: AppSpacing.xs),
-          // 大字号 / 窄屏下金额整体等比缩小，不挤压换行；可见性开关内联在
-          // 金额右侧、与金额同高成组，不再漂在标签行末端。
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Flexible(
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
-                    children: [
-                      Text(
-                        '¥',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w500,
-                          color: cs.onSurfaceVariant,
-                        ),
-                      ),
-                      const SizedBox(width: AppSpacing.xs),
-                      Text(
-                        _obscured ? '****' : balanceText,
-                        style: TextStyle(
-                          fontSize: 40,
-                          fontWeight: FontWeight.w600,
-                          color: cs.onSurface,
-                          letterSpacing: -1,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(width: AppSpacing.xs),
-              IconButton(
-                tooltip: _obscured ? '显示余额' : '隐藏余额',
-                onPressed: () => setState(() => _obscured = !_obscured),
-                icon: Icon(
-                  _obscured
-                      ? Icons.visibility_off_rounded
-                      : Icons.visibility_rounded,
-                ),
-                iconSize: 20,
-                color: cs.onSurfaceVariant,
-                // 显式 standard density：compact 会把 44 约束盒缩水到 36，
-                // 最小点按区必须真实 ≥ 44x44。
-                visualDensity: VisualDensity.standard,
-                padding: EdgeInsets.zero,
-                alignment: Alignment.centerLeft,
-                constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.md),
           if (balance == null) ...[
-            if (failureMessage != null && failureIcon != null) ...[
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: failureBackground,
-                  borderRadius: AppRadius.chipBorder,
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(failureIcon, size: 14, color: failureTone),
-                    const SizedBox(width: AppSpacing.sm),
-                    Expanded(
-                      child: Text(
-                        failureMessage,
-                        style: TextStyle(
-                          fontSize: 12,
-                          height: 1.4,
-                          color: failureTone,
-                        ),
+            const SizedBox(height: AppSpacing.md),
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Column(
+                children: [
+                  if (failureMessage != null && failureIcon != null) ...[
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: failureBackground,
+                        borderRadius: AppRadius.chipBorder,
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(failureIcon, size: 14, color: failureTone),
+                          const SizedBox(width: AppSpacing.sm),
+                          Expanded(
+                            child: Text(
+                              failureMessage,
+                              style: TextStyle(
+                                fontSize: 12,
+                                height: 1.4,
+                                color: failureTone,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
+                    const SizedBox(height: AppSpacing.sm),
                   ],
-                ),
-              ),
-              const SizedBox(height: AppSpacing.sm),
-            ],
-            SizedBox(
-              width: double.infinity,
-              child: switch (failure) {
-                BalanceFailureKind.authRequired => FilledButton.tonalIcon(
-                  onPressed: _balanceLoading ? null : _handleLogin,
-                  icon: const Icon(Icons.login_rounded, size: 18),
-                  label: const Text('登录统一认证'),
-                ),
-                BalanceFailureKind.authExpired => FilledButton.tonalIcon(
-                  onPressed: _balanceLoading ? null : _handleLogin,
-                  icon: const Icon(Icons.login_rounded, size: 18),
-                  label: const Text('重新登录'),
-                ),
-                _ => FilledButton.tonalIcon(
-                  onPressed: _balanceLoading ? null : _refreshBalance,
-                  icon: const Icon(Icons.touch_app_outlined, size: 18),
-                  label: Text(_balanceLoading ? '正在查询余额' : '点击查询余额'),
-                ),
-              },
-            ),
-          ] else
-            Row(
-              children: [
-                Icon(Icons.schedule, size: 13, color: cs.onSurfaceVariant),
-                const SizedBox(width: AppSpacing.xs),
-                Flexible(
-                  child: Text(
-                    timeText,
-                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                  SizedBox(
+                    width: double.infinity,
+                    child: switch (failure) {
+                      BalanceFailureKind.authRequired => FilledButton.icon(
+                        onPressed: _balanceLoading ? null : _handleLogin,
+                        icon: const Icon(Icons.login_rounded, size: 18),
+                        label: const Text('登录统一认证'),
+                      ),
+                      BalanceFailureKind.authExpired => FilledButton.icon(
+                        onPressed: _balanceLoading ? null : _handleLogin,
+                        icon: const Icon(Icons.login_rounded, size: 18),
+                        label: const Text('重新登录'),
+                      ),
+                      _ => FilledButton.icon(
+                        onPressed: _balanceLoading ? null : _refreshBalance,
+                        icon: const Icon(Icons.touch_app_outlined, size: 18),
+                        label: Text(_balanceLoading ? '正在查询余额' : '点击查询余额'),
+                      ),
+                    },
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
+            const SizedBox(height: AppSpacing.sm),
+          ] else ...[
+            const SizedBox(height: AppSpacing.sm),
+            RefreshStatusLine(
+              updatedAt: lastUpdated,
+              refreshing: _balanceLoading,
+              failed: failure != BalanceFailureKind.none,
+            ),
+          ],
         ],
       ),
     );
   }
 
-  // ── Action Tiles ────────────────────────────────────────────────────────
+  // ── Action Grid ─────────────────────────────────────────────────────────
 
-  Widget _buildActionTile(
-    BuildContext context, {
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    final cs = Theme.of(context).colorScheme;
-    return AppTileSurface(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.lg,
-        vertical: 13,
-      ),
-      onTap: onTap,
-      child: Row(
-        children: [
-          AppIconBadge(
-            icon: icon,
-            accentColor: cs.primary,
-            size: AppIconBadgeSize.medium,
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    height: 1.2,
-                    color: cs.onSurface,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    fontSize: 12,
-                    height: 1.25,
-                    color: cs.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: AppSpacing.sm),
-          Icon(
-            Icons.chevron_right_rounded,
-            size: 20,
-            color: cs.onSurfaceVariant.withValues(alpha: 0.45),
-          ),
-        ],
-      ),
+  /// 付款码 / 账单 / 充值 三等宽格：付款码是主动作（primary 实底），其余
+  /// 两格走亚克力瓦片；与寝室电费页共用 [DetailActionGrid]。
+  Widget _buildActionGrid(BuildContext context) {
+    return DetailActionGrid(
+      actions: [
+        DetailAction(
+          icon: Icons.qr_code_2_outlined,
+          title: '付款码',
+          subtitle: '出示扫码',
+          onTap: _openPaymentCodePage,
+          primary: true,
+        ),
+        DetailAction(
+          icon: Icons.receipt_long_outlined,
+          title: '账单',
+          subtitle: '消费明细',
+          onTap: () => _openCampusCardWebView(title: '校园卡账单'),
+        ),
+        DetailAction(
+          icon: Icons.add_card_outlined,
+          title: '充值',
+          subtitle: '微信',
+          onTap: _openRechargePage,
+        ),
+      ],
     );
   }
 
@@ -758,4 +661,4 @@ class _CampusCardPageState extends State<CampusCardPage> {
 
 // ── Campus Card Action ──────────────────────────────────────────────────────
 
-enum _CampusCardMenuAction { addShortcut }
+enum _CampusCardMenuAction { refresh, addShortcut }

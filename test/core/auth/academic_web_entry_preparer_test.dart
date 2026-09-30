@@ -735,6 +735,44 @@ void main() {
       expect(result, AcademicEntrySessionStatus.authenticated);
     });
 
+    // 合成 fixture，结构对齐 2026-09-30 直连设备实测的已登录学生菜单页
+    // （200、标题「教学管理信息服务平台」、页面级 sessionUserKey + 学生菜单链接）。
+    test('200 已登录学生菜单页（sessionUserKey + 学生菜单）-> authenticated', () async {
+      final adapter = await prepareDirectAdapter();
+      adapter.registerText(
+        'GET',
+        '/jwglxt/xtgl/index_initMenu.html',
+        '<html><head><title>教学管理信息服务平台</title></head><body>'
+            '<input type="hidden" id="sessionUserKey" value="x"/>'
+            '<a data-url="/kbcx/xskbcx_cxXskbcxIndex.html">'
+            '学生课表查询</a><a href="#">退出</a></body></html>',
+      );
+
+      final result = await ZhengfangAuth.instance.probeTrustedEntrySession(
+        mode: ZhengfangMode.direct,
+        requestUrl: _trustedXs,
+      );
+
+      expect(result, AcademicEntrySessionStatus.authenticated);
+    });
+
+    test('200 只有 sessionUserKey 而无学生菜单 -> unknown', () async {
+      final adapter = await prepareDirectAdapter();
+      adapter.registerText(
+        'GET',
+        '/jwglxt/xtgl/index_initMenu.html',
+        '<html><head><title>教学管理信息服务平台</title></head><body>'
+            '<input type="hidden" id="sessionUserKey" value="x"/></body></html>',
+      );
+
+      final result = await ZhengfangAuth.instance.probeTrustedEntrySession(
+        mode: ZhengfangMode.direct,
+        requestUrl: _trustedXs,
+      );
+
+      expect(result, AcademicEntrySessionStatus.unknown);
+    });
+
     test('302 跳转跨域任意地址 -> unknown，绝不判就绪', () async {
       final adapter = await prepareDirectAdapter();
       adapter.registerText(

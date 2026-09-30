@@ -16,7 +16,7 @@ import '../features/library/library_page.dart';
 import '../features/micro_life/micro_life_page.dart';
 import '../features/one_stop_service/one_stop_service_page.dart';
 import '../features/physical_test/physical_test_page.dart';
-import '../features/notice/notice_list_page.dart';
+import '../features/notice/notice_detail_page.dart';
 import '../features/sjjx_notice/sjjx_notice_list_page.dart';
 import '../features/service_hall/service_hall_page.dart';
 import '../features/notification_center/notification_center_page.dart';
@@ -78,9 +78,16 @@ final GoRouter appRouter = GoRouter(
   initialLocation: '/',
   observers: [appRouteObserver],
   routes: [
-    StatefulShellRoute.indexedStack(
+    // 自定义分支容器：交叉淡化切换，避免整体淡入时透出底色闪黑。
+    StatefulShellRoute(
       builder: (context, state, navigationShell) {
         return AppShellPage(navigationShell: navigationShell);
+      },
+      navigatorContainerBuilder: (context, navigationShell, children) {
+        return AppShellBranchContainer(
+          currentIndex: navigationShell.currentIndex,
+          children: children,
+        );
       },
       branches: [
         StatefulShellBranch(
@@ -247,9 +254,15 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const UnifiedAuthLoginPage(),
     ),
     _appRoute(
-      path: '/notice-list',
-      name: 'notice-list',
-      builder: (context, state) => const NoticeListPage(),
+      path: '/notice-detail',
+      name: 'notice-detail',
+      builder: (context, state) {
+        final extra = (state.extra as Map?) ?? const {};
+        return NoticeDetailPage(
+          title: extra['title'] as String? ?? '通知详情',
+          url: extra['url'] as String? ?? '',
+        );
+      },
     ),
     _appRoute(
       path: '/sjjx-notice-list',

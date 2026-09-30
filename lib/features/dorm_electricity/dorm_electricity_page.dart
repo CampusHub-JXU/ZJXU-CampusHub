@@ -7,11 +7,14 @@ import '../../core/actions/campus_action_executor.dart';
 import '../../core/auth/unified_auth.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/notification/app_notification_service.dart';
+import '../../core/theme/app_design_tokens.dart';
 import 'dorm_electricity_service.dart';
-import 'widgets/electricity_battery_header.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_empty_view.dart';
+import '../../shared/widgets/detail_readout.dart';
 import '../../shared/widgets/login_shell.dart';
+import '../../shared/widgets/refresh_status_line.dart';
+import '../../shared/widgets/skeleton_box.dart';
 
 /// 页面当前绑定的统一认证身份（账号 + sessionRevision）；未登录 / 空白
 /// 账号一律账号 null，与服务 owner 判定保持一致。
@@ -33,21 +36,23 @@ class DormElectricityPage extends StatefulWidget {
   State<DormElectricityPage> createState() => _DormElectricityPageState();
 }
 
-class _DormElectricityPageState extends State<DormElectricityPage>
-    with TickerProviderStateMixin {
+class _DormElectricityPageState extends State<DormElectricityPage> {
   final _service = DormElectricityService.instance;
   double? _electricity;
-  bool _loading = true;
+
+  /// 后台加载在途（首帧之后的自动拉取 / 切换寝室）：只驱动状态行小
+  /// spinner，绝不整页遮挡（见 design-guidelines 4.5）。
+  bool _loading = false;
   bool _refreshing = false;
   bool _hasConfig = false;
+
+  /// 寝室配置是否已确认。首帧有缓存视为已配置直接出数；无缓存时先显示
+  /// 骨架，确认未配置后才切空态，不闪一下空态再闪数据。
+  bool _configResolved = false;
   bool _requiresUnifiedAuth = false;
   bool _alertEnabled = false;
   double _alertThreshold = DormElectricityService.defaultAlertThreshold;
   String? _error;
-  AnimationController? _matrixFillController;
-  Animation<double>? _matrixFillAnim;
-  AnimationController? _matrixBreathController;
-  Animation<double>? _matrixBreathAnim;
 
   /// 最近一次观察到的统一认证身份：仅用于识别真实的身份推进（登出 /
   /// 换号 / 同号重登推进 sessionRevision），同一身份的重复通知不重复清空。
@@ -68,8 +73,11 @@ class _DormElectricityPageState extends State<DormElectricityPage>
     super.initState();
     _lastAuthIdentity = _currentIdentity();
     UnifiedAuthService.instance.addListener(_onAuthChanged);
-    _ensureMatrixAnimations();
-    _load(forceRefresh: true);
+    // 首帧同步读 bootstrap 已恢复的缓存（服务按 owner 过滤），网络只在后台补齐。
+    _electricity = _service.cachedElectricity;
+    _hasConfig = _electricity != null;
+    _configResolved = _hasConfig;
+    unawaited(_load(forceRefresh: !_service.hasFreshCache));
   }
 
   /// 当前已验证的统一认证身份；未登录 / 空白账号视为账号 null（fail closed）。
@@ -130,6 +138,8 @@ class _DormElectricityPageState extends State<DormElectricityPage>
     _alertThreshold = DormElectricityService.defaultAlertThreshold;
     _refreshing = false;
     _loading = identity.account != null;
+    // 未登录直接确认「无配置」回落空态；新身份先骨架，等配置结果再定。
+    _configResolved = identity.account == null;
     if (!mounted) return;
     setState(() {});
     if (identity.account == null) return;
@@ -144,47 +154,24 @@ class _DormElectricityPageState extends State<DormElectricityPage>
     await _load(forceRefresh: true);
   }
 
-  void _ensureMatrixAnimations() {
-    final fillController = _matrixFillController ??= AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 820),
-    );
-    _matrixFillAnim ??= CurvedAnimation(
-      parent: fillController,
-      curve: Curves.easeOutCubic,
-    );
-
-    final breathController = _matrixBreathController ??= AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 4700),
-    );
-    _matrixBreathAnim ??= CurvedAnimation(
-      parent: breathController,
-      curve: Curves.linear,
-    );
-    if (!breathController.isAnimating) {
-      breathController.repeat();
-    }
-  }
-
   @override
   void dispose() {
     UnifiedAuthService.instance.removeListener(_onAuthChanged);
-    _matrixFillController?.dispose();
-    _matrixBreathController?.dispose();
     super.dispose();
   }
 
-  /// [blocking] 为 true 时用整页加载态覆盖内容（首次加载 / 切换寝室）；
-  /// 为 false 时保留当前内容，仅由调用方自己的按钮/下拉指示器表达进度
-  /// （手动刷新 + 下拉刷新）。
+  /// 始终非阻塞：进度只由状态行表达。[blocking] 仅用于切换寝室后的首次
+  /// 拉取——先清掉旧寝室的读数改显示骨架，绝不把旧房间的值当新房间展示。
   ///
   /// 每个 await 边界都复核捕获的账号 + sessionRevision + 页面代际：认证
   /// 身份变化或出现更新的加载后，旧加载的迟到结果一律不落 UI、不发通知。
-  Future<void> _load({bool forceRefresh = false, bool blocking = true}) async {
+  Future<void> _load({bool forceRefresh = false, bool blocking = false}) async {
     if (!mounted) return;
     final capture = _captureRequest();
-    if (blocking) setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      if (blocking) _electricity = null;
+    });
 
     final hasConfig = await _service.hasRoomConfig();
     if (!_isCaptureCurrent(capture)) return;
@@ -203,16 +190,17 @@ class _DormElectricityPageState extends State<DormElectricityPage>
         _error = null;
         _alertEnabled = false;
         _alertThreshold = DormElectricityService.defaultAlertThreshold;
-        if (blocking) _loading = false;
+        _configResolved = true;
+        _loading = false;
       });
       return;
     }
 
     _hasConfig = true;
+    _configResolved = true;
     _alertEnabled = alertEnabled;
     _alertThreshold = alertThreshold;
 
-    final oldValue = _electricity;
     final value = await _service.fetchElectricity(forceRefresh: forceRefresh);
     if (!_isCaptureCurrent(capture)) return;
     _electricity = value;
@@ -235,20 +223,19 @@ class _DormElectricityPageState extends State<DormElectricityPage>
       if (!_isCaptureCurrent(capture)) return;
     }
 
-    if (oldValue == null && _electricity != null) {
-      _ensureMatrixAnimations();
-      _matrixFillController?.forward(from: 0);
-    } else if (_electricity != oldValue) {
-      _ensureMatrixAnimations();
-      _matrixFillController?.forward(from: 0);
-    }
+    setState(() => _loading = false);
 
-    setState(() {
-      if (blocking) _loading = false;
-    });
+    // 有读数时刷新失败：保留读数，状态行转「刷新失败」并补一条 SnackBar；
+    // 无读数或需登录时由读数下方的横幅承载原因与动作。
+    if (!mounted) return;
+    if (_error != null && _electricity != null && !_requiresUnifiedAuth) {
+      ScaffoldMessenger.maybeOf(context)
+        ?..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text('电量刷新失败')));
+    }
   }
 
-  /// 手动/下拉刷新：不覆盖内容，只点亮按钮或下拉指示器。
+  /// 手动/下拉刷新：不覆盖内容，只点亮状态行或下拉指示器。
   ///
   /// 刷新自己持票：身份变化或被更新的刷新接管后，旧刷新的 finally 不得把
   /// 新身份的「正在刷新」点亮态清掉。
@@ -288,6 +275,17 @@ class _DormElectricityPageState extends State<DormElectricityPage>
     }
   }
 
+  /// 进寝室设置；回来后寝室变了按「切换寝室」清旧读数拉新值，否则后台刷新。
+  Future<void> _openSettings() async {
+    final before = (await _service.loadRoomConfig())?.roomId;
+    if (!mounted) return;
+    await context.pushNamed('dorm-electricity-settings');
+    if (!mounted) return;
+    final after = (await _service.loadRoomConfig())?.roomId;
+    if (!mounted) return;
+    unawaited(_load(forceRefresh: true, blocking: before != after));
+  }
+
   Future<void> _openRecharge() async {
     await CampusActionExecutor.instance.executeWechat(
       context,
@@ -296,15 +294,6 @@ class _DormElectricityPageState extends State<DormElectricityPage>
       successMessage: '已跳转到微信，请在微信中完成电费充值',
       failureMessage: '未能打开页面，充值链接已复制，请到微信中打开',
       autoCopyOnFailure: true,
-    );
-  }
-
-  _ElectricityColors _resolveColors(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    // 状态强调色统一跟随全局主题色，不再为电量单独引入绿色系。
-    return _ElectricityColors(
-      primary: cs.primary,
-      label: _electricity == null ? '未知' : _statusLabelFor(_electricity!),
     );
   }
 
@@ -324,45 +313,36 @@ class _DormElectricityPageState extends State<DormElectricityPage>
       appBar: AppAppBar(
         title: const Text('寝室电费'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            tooltip: '选择寝室',
-            onPressed: () async {
-              await context.pushNamed('dorm-electricity-settings');
-              if (mounted) _load(forceRefresh: true);
+          PopupMenuButton<_DormElectricityMenuAction>(
+            tooltip: '更多操作',
+            icon: const Icon(Icons.more_vert),
+            onSelected: (action) {
+              switch (action) {
+                case _DormElectricityMenuAction.refresh:
+                  unawaited(_refresh());
+                case _DormElectricityMenuAction.chooseRoom:
+                  unawaited(_openSettings());
+              }
             },
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: _DormElectricityMenuAction.refresh,
+                child: Text('刷新电量'),
+              ),
+              PopupMenuItem(
+                value: _DormElectricityMenuAction.chooseRoom,
+                child: Text('选择寝室'),
+              ),
+            ],
           ),
         ],
       ),
-      body: _loading
-          ? _buildLoadingState(cs)
-          : !_hasConfig
+      body: _configResolved && !_hasConfig
           ? _buildNoConfig(context)
           : RefreshIndicator(
               onRefresh: _refresh,
               child: _buildContent(context, cs),
             ),
-    );
-  }
-
-  Widget _buildLoadingState(ColorScheme cs) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            width: 36,
-            height: 36,
-            child: CircularProgressIndicator(strokeWidth: 3, color: cs.primary),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            '正在获取电量…',
-            style: Theme.of(context).textTheme.bodyMedium
-                ?.copyWith(color: cs.onSurfaceVariant),
-          ),
-        ],
-      ),
     );
   }
 
@@ -372,203 +352,143 @@ class _DormElectricityPageState extends State<DormElectricityPage>
       message: '选择寝室后即可查看剩余电量',
       icon: Icons.home_outlined,
       actionLabel: '去选择寝室',
-      onAction: () async {
-        await context.pushNamed('dorm-electricity-settings');
-        if (mounted) _load(forceRefresh: true);
-      },
+      onAction: _openSettings,
     );
   }
 
   Widget _buildContent(BuildContext context, ColorScheme cs) {
-    final colors = _resolveColors(context);
-    final value = _service.formatElectricity(_electricity);
-    final updatedAt = _service.lastUpdated;
-    final updatedAtText = updatedAt == null
-        ? '未刷新'
-        : '${updatedAt.hour.toString().padLeft(2, '0')}:${updatedAt.minute.toString().padLeft(2, '0')}';
+    final value = _electricity;
+    final busy = _loading || _refreshing;
+    // 骨架只用于「还没有任何读数且正在取」；取数失败则回到 `--` + 横幅。
+    final skeleton = value == null && busy;
+    // 无读数或需登录时横幅承载原因；有读数的普通失败只走状态行 + SnackBar。
+    final showBanner =
+        _error != null && (value == null || _requiresUnifiedAuth);
+    final percent = (_chargeFraction * 100).round();
 
-    return SingleChildScrollView(
+    return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (_error != null) ...[
-            _buildErrorBanner(context, cs),
-            const SizedBox(height: 12),
-          ],
-          _buildDetailCard(context, cs, colors, value, updatedAtText),
-        ],
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.pageMargin,
+        AppSpacing.sm,
+        AppSpacing.pageMargin,
+        AppSpacing.xl,
       ),
-    );
-  }
-
-  // ── Electricity Detail Card ────────────────────────────────────────────────
-
-  Widget _buildDetailCard(
-    BuildContext context,
-    ColorScheme cs,
-    _ElectricityColors colors,
-    String value,
-    String updatedAtText,
-  ) {
-    _ensureMatrixAnimations();
-    final matrixFillAnim = _matrixFillAnim!;
-    final matrixBreathAnim = _matrixBreathAnim!;
-    final isLight = Theme.of(context).brightness == Brightness.light;
-
-    return TweenAnimationBuilder<Color?>(
-      tween: ColorTween(end: colors.primary),
-      duration: const Duration(milliseconds: 260),
-      curve: Curves.easeOutCubic,
-      builder: (context, animatedColor, _) {
-        final accent = animatedColor ?? colors.primary;
-        final statusBackgroundColor = accent.withValues(
-          alpha: isLight ? 0.1 : 0.16,
-        );
-        return RepaintBoundary(
-          child: Card(
-            clipBehavior: Clip.antiAlias,
-            margin: EdgeInsets.zero,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  ElectricityBatteryHeader(
-                    valueText: value,
-                    statusLabel: colors.label,
-                    fraction: _chargeFraction,
-                    fillAnimation: matrixFillAnim,
-                    breathAnimation: matrixBreathAnim,
-                    accentColor: accent,
-                    statusBackgroundColor: statusBackgroundColor,
-                  ),
-                  const SizedBox(height: 20),
-                  _buildInfoSection(context, accent, updatedAtText),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildInfoSection(
-    BuildContext context,
-    Color accent,
-    String updatedAtText,
-  ) {
-    final cs = Theme.of(context).colorScheme;
-    final dim = cs.onSurfaceVariant;
-    final dividerColor = cs.outlineVariant.withValues(alpha: 0.45);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        IntrinsicHeight(
-          child: Row(
+        // 无框读数：数字直接落在页面底色上，比瓦片多缩进 8。
+        Padding(
+          padding: const EdgeInsets.only(left: AppSpacing.sm, top: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(
-                child: _InfoRow(
-                  icon: Icons.update_outlined,
-                  label: '更新时间',
-                  value: updatedAtText,
-                  accent: accent,
+              Padding(
+                padding: const EdgeInsets.only(right: AppSpacing.sm),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    DetailReadout(
+                      label: '剩余电量',
+                      valueText: _service.formatElectricity(value),
+                      unit: '度',
+                      muted: value == null,
+                      trailing: _buildStatus(cs, value, skeleton),
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                    if (skeleton)
+                      const SkeletonBox(height: 6, radius: 3)
+                    else
+                      DetailLevelBar(
+                        fraction: _chargeFraction,
+                        color: _isLow(value) ? cs.error : cs.primary,
+                      ),
+                  ],
                 ),
               ),
-              VerticalDivider(
-                width: 1,
-                thickness: 0.6,
-                color: dividerColor,
-                indent: 4,
-                endIndent: 4,
+              // 行尾刷新图标自带 44 点按区，不再加右缩进。
+              RefreshStatusLine(
+                updatedAt: _service.lastUpdated,
+                refreshing: busy,
+                failed: _error != null,
+                prefix: value == null ? null : '$percent% · 满电 100 度',
+                loadingLabel: '正在获取电量…',
+                onRefresh: _refresh,
+                refreshTooltip: '刷新电量',
               ),
-              Expanded(
-                child: _InfoRow(
-                  icon: Icons.bolt_outlined,
-                  label: '预警阈值',
-                  value: _alertEnabled ? '${_alertThreshold.toInt()} 度' : '未开启',
-                  accent: accent,
+              if (showBanner)
+                Padding(
+                  padding: const EdgeInsets.only(
+                    top: AppSpacing.xs,
+                    right: AppSpacing.sm,
+                  ),
+                  child: _buildErrorBanner(context, cs),
                 ),
-              ),
             ],
           ),
         ),
-        const SizedBox(height: 6),
-        Divider(height: 1, thickness: 0.6, color: dividerColor),
-        const SizedBox(height: 2),
-        Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(10),
-            onTap: () async {
-              await context.pushNamed('dorm-electricity-settings');
-              if (mounted) _load(forceRefresh: true);
-            },
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
-              child: Row(
-                children: [
-                  Icon(Icons.notifications_outlined, size: 18, color: accent),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '低电量通知',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: cs.onSurface,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          _alertEnabled
-                              ? '低于 ${_alertThreshold.toInt()} 度时推送提醒'
-                              : '未开启，点击前往设置',
-                          style: TextStyle(fontSize: 11, color: dim),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(Icons.chevron_right, size: 18, color: dim),
-                ],
-              ),
+        const SizedBox(height: AppSpacing.lg),
+        DetailActionGrid(
+          actions: [
+            DetailAction(
+              icon: Icons.account_balance_wallet_outlined,
+              title: '充值',
+              subtitle: '微信',
+              onTap: _openRecharge,
+              primary: true,
+            ),
+            DetailAction(
+              icon: Icons.notifications_outlined,
+              title: '低电提醒',
+              subtitle: _alertEnabled
+                  ? '低于 ${_alertThreshold.toInt()} 度'
+                  : '未开启',
+              onTap: _openSettings,
+            ),
+            DetailAction(
+              icon: Icons.home_outlined,
+              title: '寝室',
+              subtitle: '点按更换',
+              onTap: _openSettings,
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.lg),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+          child: Text(
+            '下拉可立即刷新；电量 30 分钟内有效，离开页面也会在后台补齐。',
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.4,
+              color: cs.onSurfaceVariant,
             ),
           ),
         ),
-        const SizedBox(height: 14),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
-            onPressed: _refresh,
-            icon: _refreshing
-                ? SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: cs.onPrimary,
-                    ),
-                  )
-                : const Icon(Icons.refresh_rounded, size: 18),
-            label: Text(_refreshing ? '正在刷新' : '刷新电量'),
-          ),
+      ],
+    );
+  }
+
+  bool _isLow(double? value) => value != null && value < 20;
+
+  /// 标签行尾的电量状态：小圆点 + 文字，偏低 / 不足转 error 色。
+  Widget? _buildStatus(ColorScheme cs, double? value, bool skeleton) {
+    if (skeleton) return const SkeletonBox(width: 40, height: 14);
+    if (value == null) return null;
+    final color = _isLow(value) ? cs.error : cs.primary;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 6,
+          height: 6,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
-        const SizedBox(height: 2),
-        Center(
-          child: TextButton.icon(
-            onPressed: _openRecharge,
-            icon: const Icon(Icons.account_balance_wallet_outlined, size: 16),
-            label: const Text('去微信充值'),
-            style: TextButton.styleFrom(
-              visualDensity: VisualDensity.compact,
-              foregroundColor: dim,
-            ),
+        const SizedBox(width: 6),
+        Text(
+          _statusLabelFor(value),
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: color,
           ),
         ),
       ],
@@ -643,68 +563,4 @@ class _DormElectricityPageState extends State<DormElectricityPage>
   }
 }
 
-// ── Info Row ────────────────────────────────────────────────────────────────
-
-class _InfoRow extends StatelessWidget {
-  const _InfoRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.accent,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color accent;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final dim = cs.onSurfaceVariant;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: accent),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: dim,
-                    letterSpacing: 0.2,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: cs.onSurface,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Color Set ────────────────────────────────────────────────────────────────
-
-class _ElectricityColors {
-  const _ElectricityColors({required this.primary, required this.label});
-
-  final Color primary;
-  final String label;
-}
+enum _DormElectricityMenuAction { refresh, chooseRoom }

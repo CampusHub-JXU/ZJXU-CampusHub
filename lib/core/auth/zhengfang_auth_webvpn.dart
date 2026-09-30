@@ -72,8 +72,17 @@ bool _isAuthenticatedAcademicLocation(ZhengfangMode mode, String url) {
 bool _looksLikeAuthenticatedAcademicHtml(String html) {
   final lower = html.toLowerCase();
   if (lower.isEmpty) return false;
-  return lower.contains('/xtgl/index_initmenu.html') ||
-      lower.contains('/xtgl/index_cxyhxxindex.html');
+  if (lower.contains('/xtgl/index_initmenu.html') ||
+      lower.contains('/xtgl/index_cxyhxxindex.html')) {
+    return true;
+  }
+  // 设备实测（2026-09-30，直连校园网）：已登录的 index_initMenu.html 返回
+  // 200 + 学生菜单页，不含上面两个绝对路径，但带页面级 `sessionUserKey`
+  // 与学生专属菜单链接（课表查询 / 个人信息）。登录页不会渲染学生菜单，
+  // 两者同时命中才算正向证据。
+  return lower.contains('sessionuserkey') &&
+      (lower.contains('/kbcx/xskbcx_cxxskbcxindex.html') ||
+          lower.contains('/xsxxxggl/xsgrxxwh_cxxsgrxx.html'));
 }
 
 extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/auth/cas_auth_broker.dart';
+import '../../core/notice/notice_detail.dart';
 import '../../core/notice/notice_fetch_service.dart';
 import '../../core/notice/notice_model.dart';
 import '../../core/notice/notice_relevance.dart';
@@ -12,6 +13,7 @@ import '../../core/notice/notice_sync_store.dart';
 import '../../core/profile/user_profile_controller.dart';
 import '../sjjx_notice/sjjx_notice_model.dart';
 import '../sjjx_notice/sjjx_notice_service.dart';
+import 'campus_notice_site_search.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_empty_view.dart';
 import '../../shared/widgets/app_error_view.dart';
@@ -80,10 +82,24 @@ class _NotificationCenterPageState extends State<NotificationCenterPage>
     final canMarkAllRead = _tabController.index == 0 && _unreadCount > 0;
     return Scaffold(
       appBar: AppAppBar(
-        title: const Text(
-          '通知',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-        ),
+        centerTitle: _searchOpen ? false : null,
+        titleSpacing: _searchOpen ? 0 : null,
+        title: _searchOpen
+            ? AppSearchField(
+                controller: _searchController,
+                hintText: '搜索标题、类型或日期',
+                compact: true,
+                autofocus: true,
+                onChanged: (value) => setState(() => _query = value),
+                onClear: () => setState(() {
+                  _searchController.clear();
+                  _query = '';
+                }),
+              )
+            : const Text(
+                '通知',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              ),
         actions: [
           IconButton(
             onPressed: _toggleSearch,
@@ -108,19 +124,6 @@ class _NotificationCenterPageState extends State<NotificationCenterPage>
               unreadCount: _unreadCount,
             ),
           ),
-          if (_searchOpen)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
-              child: AppSearchField(
-                controller: _searchController,
-                hintText: '搜索标题、类型或日期',
-                onChanged: (value) => setState(() => _query = value),
-                onClear: () => setState(() {
-                  _searchController.clear();
-                  _query = '';
-                }),
-              ),
-            ),
           const SizedBox(height: 8),
           Expanded(
             child: TabBarView(
@@ -234,6 +237,18 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
   bool _loading = true;
   bool _authRequired = false;
 
+  /// 收件箱之外的更早通知：在线分页拉取，只在内存里展示——不写收件箱，
+  /// 否则会污染未读与待播报队列。收件箱通常覆盖前两页，分页从第 2 页起，
+  /// 与收件箱重叠的条目按 id 去重。
+  List<Notice> _older = const [];
+  int _nextPage = _olderFirstPage;
+  bool _hasMore = true;
+  bool _loadingMore = false;
+  bool _loadMoreFailed = false;
+  int _olderEpoch = 0;
+
+  static const int _olderFirstPage = 2;
+
   @override
   bool get wantKeepAlive => true;
 
@@ -281,6 +296,7 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
   /// 同步结果中的认证失效要显式呈现——收件箱有历史数据时不能只表现为
   /// 「刷新没反应」。
   Future<void> _refresh() async {
+    _resetOlder();
     try {
       final outcome = await NoticeSyncService.instance.sync(
         trigger: NoticeSyncTrigger.manualRefresh,
@@ -296,6 +312,63 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
     }
   }
 
+  void _resetOlder() {
+    _olderEpoch++;
+    if (!mounted) return;
+    setState(() {
+      _older = const [];
+      _nextPage = _olderFirstPage;
+      _hasMore = true;
+      _loadingMore = false;
+      _loadMoreFailed = false;
+    });
+  }
+
+  /// 滚动到列表底部时由页脚触发：抓取下一页并去重追加。
+  /// 刷新 / 登录会推进 epoch，迟到的旧结果直接丢弃。
+  Future<void> _loadMore() async {
+    if (_loadingMore || !_hasMore) return;
+    final epoch = _olderEpoch;
+    final page = _nextPage;
+    setState(() {
+      _loadingMore = true;
+      _loadMoreFailed = false;
+    });
+    final result = await NoticeService.instance.fetchNoticesRaw(page: page);
+    if (!mounted || epoch != _olderEpoch) return;
+    switch (result.status) {
+      case NoticeFetchStatus.ok:
+        final seen = <String>{
+          for (final n in _notices) n.id,
+          for (final n in _older) n.id,
+        };
+        final fresh = [
+          for (final n in result.notices)
+            if (seen.add(n.id)) n,
+        ];
+        final totalPages = result.totalPages;
+        setState(() {
+          _older = [..._older, ...fresh];
+          _nextPage = page + 1;
+          _hasMore =
+              result.notices.isNotEmpty &&
+              (totalPages == null || page < totalPages);
+          _loadingMore = false;
+        });
+      case NoticeFetchStatus.authRequired:
+        setState(() {
+          _authRequired = true;
+          _loadMoreFailed = true;
+          _loadingMore = false;
+        });
+      case NoticeFetchStatus.unavailable:
+        setState(() {
+          _loadMoreFailed = true;
+          _loadingMore = false;
+        });
+    }
+  }
+
   Future<void> _presentLoginPrompt() async {
     final ok = await showUnifiedAuthLoginModal(
       context,
@@ -303,6 +376,7 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
       description: '登录后可同步教务处通知公告',
     );
     if (!ok || !mounted) return;
+    _resetOlder();
     final outcome = await NoticeSyncService.instance.sync(
       trigger: NoticeSyncTrigger.afterLogin,
     );
@@ -318,6 +392,13 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
   void _openNotice(Notice notice) {
     if (_unreadIds.contains(notice.id)) {
       unawaited(NoticeSyncStore.instance.markRead([notice.id]));
+    }
+    if (isJwcNoticeDetailUrl(notice.url)) {
+      context.pushNamed(
+        'notice-detail',
+        extra: {'title': notice.title, 'url': notice.url},
+      );
+      return;
     }
     context.pushNamed(
       'external-webview',
@@ -336,10 +417,58 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
     );
   }
 
+  Widget _tileFor(Notice notice) => _NoticeTile(
+    title: notice.title,
+    date: notice.date,
+    unread: _unreadIds.contains(notice.id),
+    onTap: () => _openNotice(notice),
+    onLongPress: () => copyTextWithFeedback(context, notice.url),
+  );
+
+  /// 搜索态：先列本地收件箱命中（最近同步的一批，零延迟），再接教务处
+  /// 站内全文检索补齐更早的通知（去重）。
+  Widget _buildSearchResults(String query) {
+    final local = _notices
+        .where(
+          (notice) =>
+              _noticeMatchesQuery(notice.title, query) ||
+              _noticeMatchesQuery(notice.category, query) ||
+              _noticeMatchesQuery(notice.date, query),
+        )
+        .toList(growable: false);
+    final divider = Divider(
+      height: 1,
+      thickness: 1,
+      indent: 28,
+      color: Theme.of(context).colorScheme.outlineVariant
+          .withValues(alpha: 0.25),
+    );
+    return ListView(
+      padding: const EdgeInsets.only(bottom: 24),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      children: [
+        if (local.isNotEmpty) ...[
+          CampusNoticeSectionLabel('最近通知', trailing: '${local.length} 条'),
+          for (var i = 0; i < local.length; i++) ...[
+            if (i > 0) divider,
+            _tileFor(local[i]),
+          ],
+        ],
+        CampusNoticeSiteSearch(
+          query: widget.query,
+          excludeIds: {for (final n in local) n.id},
+          tileBuilder: _tileFor,
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
     if (_loading) return const Center(child: CircularProgressIndicator());
+    final query = widget.query.trim().toLowerCase();
+    if (query.isNotEmpty) return _buildSearchResults(query);
     if (_notices.isEmpty) {
       return RefreshIndicator(
         onRefresh: _refresh,
@@ -352,33 +481,14 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
       );
     }
     final showAuthBanner = _authRequired;
-    final query = widget.query.trim().toLowerCase();
-    final visibleNotices = query.isEmpty
-        ? _notices
-        : _notices
-              .where(
-                (notice) =>
-                    _noticeMatchesQuery(notice.title, query) ||
-                    _noticeMatchesQuery(notice.category, query) ||
-                    _noticeMatchesQuery(notice.date, query),
-              )
-              .toList();
-    if (visibleNotices.isEmpty && query.isNotEmpty) {
-      return RefreshIndicator(
-        onRefresh: _refresh,
-        child: ListView(
-          children: const [
-            SizedBox(height: 120),
-            AppEmptyView(title: '没有匹配的通知', icon: Icons.search_off_rounded),
-          ],
-        ),
-      );
-    }
+    final visibleNotices = [..._notices, ..._older];
+    final bannerCount = showAuthBanner ? 1 : 0;
+    final footerCount = _hasMore || _loadMoreFailed ? 1 : 0;
     return RefreshIndicator(
       onRefresh: _refresh,
       child: ListView.separated(
         padding: const EdgeInsets.symmetric(vertical: 4),
-        itemCount: visibleNotices.length + (showAuthBanner ? 1 : 0),
+        itemCount: bannerCount + visibleNotices.length + footerCount,
         separatorBuilder: (_, index) {
           if (showAuthBanner && index == 0) return const SizedBox.shrink();
           return Divider(
@@ -396,16 +506,42 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
               child: _AuthStaleBanner(onLoginTap: _presentLoginPrompt),
             );
           }
-          final noticeIndex = showAuthBanner ? index - 1 : index;
-          final notice = visibleNotices[noticeIndex];
-          return _NoticeTile(
-            title: notice.title,
-            date: notice.date,
-            unread: _unreadIds.contains(notice.id),
-            onTap: () => _openNotice(notice),
-            onLongPress: () => copyTextWithFeedback(context, notice.url),
-          );
+          final noticeIndex = index - bannerCount;
+          if (noticeIndex >= visibleNotices.length) {
+            return _buildLoadMoreFooter();
+          }
+          return _tileFor(visibleNotices[noticeIndex]);
         },
+      ),
+    );
+  }
+
+  /// 列表页脚：惰性构建即「滚到底部」，此时自动拉下一页；失败后停止自动
+  /// 重试，改为点击重试，避免断网时反复请求。
+  Widget _buildLoadMoreFooter() {
+    if (_loadMoreFailed) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Center(
+          child: TextButton(
+            onPressed: _authRequired ? _presentLoginPrompt : _loadMore,
+            child: Text(_authRequired ? '登录后加载更早通知' : '加载失败，点击重试'),
+          ),
+        ),
+      );
+    }
+    if (!_loadingMore) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_loadMore());
+      });
+    }
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 16),
+      child: Center(
+        child: SizedBox.square(
+          dimension: 22,
+          child: CircularProgressIndicator(strokeWidth: 2.4),
+        ),
       ),
     );
   }

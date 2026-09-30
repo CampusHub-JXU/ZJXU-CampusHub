@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/core/theme/glass_style_controller.dart';
+import 'package:jxu_campus_hub/core/theme/surface_material.dart';
 import 'package:jxu_campus_hub/shared/widgets/glass_dialog_route.dart';
 
 import '../../helpers/test_setup.dart';
@@ -9,6 +10,10 @@ import '../../helpers/test_setup.dart';
 void main() {
   setUp(() async {
     await resetTestEnvironment();
+    // 全局默认是云母（无模糊）；本文件覆盖玻璃配方的渲染分支。
+    await GlassStyleController.instance.setMaterialStyle(
+      SurfaceMaterialStyle.glass,
+    );
   });
 
   group('showGlassDialog', () {

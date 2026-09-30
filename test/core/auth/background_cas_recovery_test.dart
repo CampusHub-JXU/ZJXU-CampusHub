@@ -40,9 +40,11 @@ void main() {
     bool loggedIn = false,
     bool? validated = false,
     Duration overallBudget = const Duration(seconds: 75),
+    int? epoch = 7,
     Future<AutomaticLoginAttemptResult> Function(String, CancelToken)? attempt,
   }) => BackgroundCasRecovery.debugNew(
     gate: gate,
+    readEpoch: () async => epoch,
     eligibility: (_) async => decision,
     credentialAccount: () async => account,
     restoreSession: () async {},
@@ -126,6 +128,27 @@ void main() {
     final change = await gate.enterForeground(waitForClaim: Duration.zero);
     gate.stopHeartbeat();
     expect(change?.kind, BackgroundSessionChangeKind.revoked);
+    // 记录带上被撤销的账号与撤销后的持久 epoch，前台据此判断是否已被新登录取代。
+    expect(change?.account, '2020001');
+    expect(change?.epoch, 7);
+  });
+
+  test('revoked change without a readable epoch never applies', () async {
+    await build(
+      loggedIn: true,
+      validated: false,
+      epoch: null,
+      attempt: (a, t) async => const AutomaticLoginAttemptResult(
+        outcome: AutomaticLoginOutcome.failed,
+      ),
+    ).recover();
+    final change = await gate.enterForeground(waitForClaim: Duration.zero);
+    gate.stopHeartbeat();
+    expect(change?.kind, BackgroundSessionChangeKind.revoked);
+    expect(
+      change!.revokedStillApplies(currentAccount: '2020001', currentEpoch: 7),
+      isFalse,
+    );
   });
 
   test('foreground returning mid-login cancels the attempt', () async {

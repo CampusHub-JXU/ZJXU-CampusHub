@@ -14,6 +14,23 @@ class GradesTermResolver {
   static String labelOf(String academicYear, String semester) =>
       '$academicYear $semester';
 
+  /// 学期 chip 的短标签：`2025-2026 第一学期` → `2025–26 秋`，
+  /// 第二学期 → 春、第三学期 → 夏；无法识别的部分原样保留。
+  static String shortLabelOf(String academicYear, String semester) {
+    final match = RegExp(r'^(\d{4})\s*-\s*\d{2}(\d{2})$')
+        .firstMatch(academicYear.trim());
+    final year = match == null
+        ? academicYear
+        : '${match.group(1)}–${match.group(2)}';
+    final season = switch (semester.trim()) {
+      '第一学期' || '1' => '秋',
+      '第二学期' || '2' => '春',
+      '第三学期' || '3' => '夏',
+      final other => other,
+    };
+    return '$year $season';
+  }
+
   /// 从成绩列表中提取去重、排序后的学期组合，最新学期排在最前。
   static List<({String academicYear, String semester})> availableTerms(
     List<GradeEntry> grades,

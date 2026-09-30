@@ -14,11 +14,15 @@ import '../../core/logging/app_logger.dart';
 import '../../core/theme/app_design_tokens.dart';
 import '../../core/theme/widgets/app_wallpaper_backdrop.dart';
 import '../../shared/widgets/app_icon_badge.dart';
+import '../../shared/widgets/app_tile_surface.dart';
 import '../../shared/widgets/login_shell.dart';
 import '../../shared/widgets/plain_list.dart';
 
-/// 底部为悬浮导航条让出的高度（与首页同值）。
-const double _bottomNavClearance = 110;
+/// 版本号签名到悬浮导航条上缘的留白（底部 inset 已含导航条高度）。
+const double _footerDockGap = 12;
+
+/// 磁贴之间的间距，与功能页磁贴网格同值。
+const double _tileGap = 10;
 
 /// 状态未知时静默重试的延迟：「未知」不外露，只在后台再测一次。
 const Duration _silentRetryDelay = Duration(seconds: 5);
@@ -464,7 +468,6 @@ class _MyPageState extends State<MyPage> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final identity = _identity();
     final loggedIn = _campusLoggedIn || _academicLoggedIn;
     return Scaffold(
       body: Stack(
@@ -474,103 +477,112 @@ class _MyPageState extends State<MyPage> {
           const AppWallpaperBackdrop(),
           SafeArea(
             bottom: false,
-            child: ListView(
-              padding: EdgeInsets.fromLTRB(
-                kPlainListGutter,
-                AppSpacing.xl,
-                kPlainListGutter,
-                MediaQuery.paddingOf(context).bottom + _bottomNavClearance,
-              ),
-              children: [
-                _IdentityHeader(identity: identity),
-                const SizedBox(height: 20),
-                const PlainSectionHeader('账号'),
-                PlainListGroup(
-                  children: [
-                    PlainListRow(
-                      leading: AppIconBadge(
-                        icon: Icons.badge_outlined,
-                        accentColor: cs.primary,
-                        size: AppIconBadgeSize.small,
+            child: LayoutBuilder(
+              builder: (context, constraints) => SingleChildScrollView(
+                // 内容不满一屏时撑到视口高度，让 [Spacer] 把底部版本号锚到
+                // 页面底缘；大字号/内容超屏时自然回退为普通滚动。
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                  child: IntrinsicHeight(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        kPlainListGutter,
+                        AppSpacing.xl,
+                        kPlainListGutter,
+                        0,
                       ),
-                      title: '统一认证',
-                      value: _statusLabel(_campusLoggedIn),
-                      valueKey: const Key('my_campus_status'),
-                      // 已登录进一卡通；未登录先弹统一认证登录。
-                      onTap: () => unawaited(_openCampusCardAction()),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _MyHeader(
+                            identity: _identity(),
+                            onLogout: loggedIn
+                                ? () => unawaited(_promptLogout())
+                                : null,
+                          ),
+                          const SizedBox(height: AppSpacing.xxl),
+                          const _MySectionHeader(),
+                          const SizedBox(height: AppSpacing.md),
+                          // 两块等高：按较高一块的内容撑齐。
+                          IntrinsicHeight(
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Expanded(
+                                  child: _MyAccountTile(
+                                    icon: Icons.badge_outlined,
+                                    title: '统一认证',
+                                    loggedIn: _campusLoggedIn,
+                                    status: _statusLabel(_campusLoggedIn),
+                                    statusKey: const Key('my_campus_status'),
+                                    // 已登录进一卡通；未登录先弹统一认证登录。
+                                    onTap: () =>
+                                        unawaited(_openCampusCardAction()),
+                                  ),
+                                ),
+                                const SizedBox(width: _tileGap),
+                                Expanded(
+                                  child: _MyAccountTile(
+                                    icon: Icons.school_outlined,
+                                    title: '教务系统',
+                                    loggedIn: _academicLoggedIn,
+                                    status: _statusLabel(_academicLoggedIn),
+                                    statusKey: const Key('my_academic_status'),
+                                    // 已登录直达教务 H5；未登录先弹教务登录。
+                                    onTap: () =>
+                                        unawaited(_openAcademicAction()),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: _tileGap),
+                          _MyTile(
+                            icon: Icons.settings_outlined,
+                            title: '设置',
+                            status: '主题、学期、网络与关于',
+                            onTap: () async {
+                              await context.pushNamed('settings');
+                              if (!mounted) return;
+                              await _refreshStatus();
+                            },
+                          ),
+                          const Spacer(),
+                          _buildFooter(context, cs),
+                        ],
+                      ),
                     ),
-                    PlainListRow(
-                      leading: AppIconBadge(
-                        icon: Icons.school_outlined,
-                        accentColor: cs.primary,
-                        size: AppIconBadgeSize.small,
-                      ),
-                      title: '教务系统',
-                      value: _statusLabel(_academicLoggedIn),
-                      valueKey: const Key('my_academic_status'),
-                      // 已登录直达教务 H5；未登录先弹教务登录。
-                      onTap: () => unawaited(_openAcademicAction()),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: kPlainListGroupGap),
-                const PlainSectionHeader('应用'),
-                PlainListGroup(
-                  children: [
-                    PlainListRow(
-                      leading: AppIconBadge(
-                        icon: Icons.settings_outlined,
-                        accentColor: cs.primary,
-                        size: AppIconBadgeSize.small,
-                      ),
-                      title: '设置',
-                      onTap: () async {
-                        await context.pushNamed('settings');
-                        if (!mounted) return;
-                        await _refreshStatus();
-                      },
-                    ),
-                    FutureBuilder<PackageInfo>(
-                      future: _packageInfoFuture,
-                      builder: (context, snapshot) => PlainListRow(
-                        leading: AppIconBadge(
-                          icon: Icons.info_outline_rounded,
-                          accentColor: cs.primary,
-                          size: AppIconBadgeSize.small,
-                        ),
-                        title: '关于',
-                        value: snapshot.hasData
-                            ? 'v${snapshot.data!.version}'
-                            : null,
-                        onTap: () => context.pushNamed('about'),
-                      ),
-                    ),
-                  ],
-                ),
-                if (loggedIn) ...[
-                  const SizedBox(height: kPlainListGroupGap),
-                  // 破坏性操作单独成组，与导航行拉开距离。
-                  PlainListGroup(
-                    children: [
-                      PlainListRow(
-                        key: const Key('my_logout'),
-                        leading: AppIconBadge(
-                          icon: Icons.logout_rounded,
-                          accentColor: cs.primary,
-                          size: AppIconBadgeSize.small,
-                        ),
-                        title: '退出登录',
-                        titleColor: cs.primary,
-                        showChevron: false,
-                        onTap: () => unawaited(_promptLogout()),
-                      ),
-                    ],
                   ),
-                ],
-              ],
+                ),
+              ),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// 底部签名：锚在悬浮导航条上方，点按进「关于」。
+  Widget _buildFooter(BuildContext context, ColorScheme cs) {
+    return Padding(
+      padding: EdgeInsets.only(
+        top: AppSpacing.xl,
+        bottom: MediaQuery.paddingOf(context).bottom + _footerDockGap,
+      ),
+      child: Center(
+        child: FutureBuilder<PackageInfo>(
+          future: _packageInfoFuture,
+          builder: (context, snapshot) => TextButton(
+            onPressed: () => context.pushNamed('about'),
+            style: TextButton.styleFrom(
+              foregroundColor: cs.onSurfaceVariant,
+              textStyle: const TextStyle(fontSize: 12),
+            ),
+            child: Text(
+              snapshot.hasData ? '嘉兴大学 v${snapshot.data!.version}' : '嘉兴大学',
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -659,41 +671,245 @@ Future<bool> _fingerprintUnchanged(
   return await _readPersistedEpochSafe(domain) == capturedEpoch;
 }
 
-/// 顶部身份区：「我的」标题（与功能区段落头同款 20 号粗体）+ 学校与学号灰色小字。
-///
-/// 学号是 13 位长数字，放大做主标题会显得笨重，这里降为次要信息。
-class _IdentityHeader extends StatelessWidget {
-  const _IdentityHeader({required this.identity});
+/// 顶部：大标题「我的」+ 学校与学号灰色小字；有登录时行尾放低调的登出入口。
+class _MyHeader extends StatelessWidget {
+  const _MyHeader({required this.identity, required this.onLogout});
 
   final String? identity;
+  final VoidCallback? onLogout;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '我的',
+                style: Theme.of(context).textTheme.headlineMedium!
+                    .copyWith(color: cs.onSurface),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                '嘉兴大学 · ${identity ?? '未登录'}',
+                key: const Key('my_identity'),
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.4,
+                  letterSpacing: 0.2,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (onLogout != null)
+          IconButton(
+            key: const Key('my_logout'),
+            onPressed: onLogout,
+            icon: const Icon(Icons.logout_rounded),
+            tooltip: '退出登录',
+            style: IconButton.styleFrom(
+              foregroundColor: cs.onSurfaceVariant,
+              minimumSize: const Size(44, 44),
+              maximumSize: const Size(44, 44),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// 「账号」分组标题：与功能页「功能 · 长按置顶」同一排版。
+class _MySectionHeader extends StatelessWidget {
+  const _MySectionHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Row(
       children: [
         Text(
-          '我的',
+          '账号',
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
             fontSize: 20,
             fontWeight: FontWeight.w700,
             height: 1.2,
           ),
         ),
-        const SizedBox(height: 4),
+        const Spacer(),
         Text(
-          '嘉兴大学 · ${identity ?? '未登录'}',
-          key: const Key('my_identity'),
-          style: TextStyle(
-            fontSize: 13,
-            height: 1.4,
-            letterSpacing: 0.2,
-            fontFeatures: const [FontFeature.tabularFigures()],
-            color: cs.onSurfaceVariant,
-          ),
+          '点按进入对应服务',
+          style: Theme.of(context).textTheme.bodySmall
+              ?.copyWith(fontSize: 12, color: cs.onSurfaceVariant),
         ),
       ],
+    );
+  }
+}
+
+/// 账号方磁贴：并排两块，上徽标、下标题 + 登录状态。已登录带主色圆点，
+/// 未登录把「去登录」染主色作为行动提示。
+class _MyAccountTile extends StatelessWidget {
+  const _MyAccountTile({
+    required this.icon,
+    required this.title,
+    required this.loggedIn,
+    required this.status,
+    required this.onTap,
+    this.statusKey,
+  });
+
+  final IconData icon;
+  final String title;
+  final bool loggedIn;
+  final String status;
+  final Key? statusKey;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Semantics(
+      button: true,
+      label: title,
+      child: AppTileSurface(
+        padding: const EdgeInsets.all(16),
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AppIconBadge(
+              icon: icon,
+              accentColor: cs.primary,
+              size: AppIconBadgeSize.medium,
+            ),
+            const SizedBox(height: AppSpacing.xl),
+            Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                height: 1.2,
+                color: cs.onSurface,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.xs),
+            Row(
+              children: [
+                if (loggedIn) ...[
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: cs.primary,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                ],
+                Flexible(
+                  child: Text(
+                    status,
+                    key: statusKey,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      height: 1.25,
+                      fontWeight: loggedIn ? null : FontWeight.w600,
+                      color: loggedIn ? cs.onSurfaceVariant : cs.primary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 独立磁贴：与功能页宽磁贴同一配方（AppTileSurface + 中号徽标 +
+/// 标题/状态两行 + 淡色微箭头），只是去掉置顶等交互。
+class _MyTile extends StatelessWidget {
+  const _MyTile({
+    required this.icon,
+    required this.title,
+    required this.status,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String status;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Semantics(
+      button: true,
+      label: title,
+      child: AppTileSurface(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        onTap: onTap,
+        child: Row(
+          children: [
+            AppIconBadge(
+              icon: icon,
+              accentColor: cs.primary,
+              size: AppIconBadgeSize.medium,
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      height: 1.2,
+                      color: cs.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    status,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      height: 1.25,
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 20,
+              color: cs.onSurfaceVariant.withValues(alpha: 0.45),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
