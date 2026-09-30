@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import '../logging/app_logger.dart';
 import 'auth_operation_coordinator.dart';
 import 'auth_recovery_state_store.dart';
+import 'auth_session_persistence.dart';
 import 'automatic_login.dart';
 import 'background_session_gate.dart';
 import 'credential_store.dart';
@@ -59,9 +60,15 @@ class BackgroundCasRecovery {
       CancelToken token,
     )?
     attempt,
+    Future<int?> Function()? readEpoch,
     this.overallBudget = const Duration(seconds: 75),
     this.yieldPollInterval = const Duration(seconds: 2),
   }) : _gate = gate ?? BackgroundSessionGate.instance,
+       _readEpoch =
+           readEpoch ??
+           (() => AuthSessionPersistence.instance.readEpoch(
+             CredentialSessionDomain.unified,
+           )),
        _eligibility =
            eligibility ??
            ((account) => AuthOperationCoordinator.instance.automaticEligibility(
@@ -112,9 +119,11 @@ class BackgroundCasRecovery {
       CancelToken token,
     )?
     attempt,
+    Future<int?> Function()? readEpoch,
     Duration overallBudget = const Duration(seconds: 75),
     Duration yieldPollInterval = const Duration(milliseconds: 20),
   }) => BackgroundCasRecovery._(
+    readEpoch: readEpoch,
     gate: gate,
     eligibility: eligibility,
     credentialAccount: credentialAccount,
@@ -139,6 +148,7 @@ class BackgroundCasRecovery {
     CancelToken token,
   )
   _attempt;
+  final Future<int?> Function() _readEpoch;
 
   final Duration overallBudget;
   final Duration yieldPollInterval;
@@ -151,6 +161,7 @@ class BackgroundCasRecovery {
     }
 
     var revokedIdentity = false;
+    String? revokedAccount;
     var committed = false;
     Timer? poll;
     Timer? budget;
@@ -177,6 +188,7 @@ class BackgroundCasRecovery {
         if (validated == true) return BackgroundRecoveryResult.undetermined;
         if (validated == null) return BackgroundRecoveryResult.undetermined;
         revokedIdentity = true;
+        revokedAccount = account;
       }
 
       poll = Timer.periodic(yieldPollInterval, (_) async {
@@ -216,6 +228,17 @@ class BackgroundCasRecovery {
     } finally {
       poll?.cancel();
       budget?.cancel();
+      // revoked 记录必须带上被撤销的账号与撤销后的持久 epoch：前台迟到消费时，
+      // 用户可能已经重新登录（epoch 已推进），此时这条记录不再适用。读不到
+      // epoch 就不带，前台按「不适用」处理（少登出一次，不会误踢新会话）。
+      int? revokedEpoch;
+      if (revokedIdentity && !committed) {
+        try {
+          revokedEpoch = await _readEpoch();
+        } catch (_) {
+          revokedEpoch = null;
+        }
+      }
       await _gate.release(
         claim,
         change: committed
@@ -223,6 +246,8 @@ class BackgroundCasRecovery {
             : revokedIdentity
             ? BackgroundSessionChangeKind.revoked
             : null,
+        changeAccount: revokedAccount,
+        changeEpoch: revokedEpoch,
       );
     }
   }

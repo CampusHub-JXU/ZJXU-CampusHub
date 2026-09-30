@@ -151,6 +151,13 @@ class _AppShellBranchContainerState extends State<AppShellBranchContainer>
     value: 1,
   )..addStatusListener(_onStatus);
 
+  // CurvedAnimation 会在 parent 上登记状态监听，必须持有并 dispose；放在 build
+  // 里每次重建都新建一个就会一直累积。
+  late final CurvedAnimation _curved = CurvedAnimation(
+    parent: _controller,
+    curve: Curves.easeOutCubic,
+  );
+
   late int _current = widget.currentIndex;
   int? _previous;
   double _slideFrom = 0;
@@ -174,16 +181,14 @@ class _AppShellBranchContainerState extends State<AppShellBranchContainer>
 
   @override
   void dispose() {
+    _curved.dispose();
     _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final curved = CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeOutCubic,
-    );
+    final curved = _curved;
     final previous = _previous;
     return Stack(
       fit: StackFit.expand,
