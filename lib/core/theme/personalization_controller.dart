@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:palette_generator/palette_generator.dart';
+import 'package:material_color_utilities/material_color_utilities.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// 主屏个性化状态控制器（背景图/着色器/毛玻璃/Monet 色板）。
@@ -103,24 +105,14 @@ class PersonalizationController {
       return _monetColors!;
     }
     try {
-      final palette = await PaletteGenerator.fromImageProvider(
-        FileImage(File(path)),
-        size: const Size(200, 200),
-        maximumColorCount: 8,
-      );
-      final paletteColors = palette.paletteColors.map((e) => e.color).toList();
-      final dominant = palette.dominantColor?.color;
-      final vibrant = palette.vibrantColor?.color;
-      final lightVibrant = palette.lightVibrantColor?.color;
-      final darkVibrant = palette.darkVibrantColor?.color;
-      final darkMuted = palette.darkMutedColor?.color;
+      final swatches = await _extractSwatches(File(path));
       _monetColors = _buildExpressivePalette(
-        paletteColors: paletteColors,
-        dominant: dominant,
-        vibrant: vibrant,
-        lightVibrant: lightVibrant,
-        darkVibrant: darkVibrant,
-        darkMuted: darkMuted,
+        paletteColors: swatches.palette,
+        dominant: swatches.dominant,
+        vibrant: swatches.vibrant,
+        lightVibrant: swatches.lightVibrant,
+        darkVibrant: swatches.darkVibrant,
+        darkMuted: swatches.darkMuted,
       );
       _monetSourcePath = path;
     } catch (_) {
@@ -129,6 +121,79 @@ class PersonalizationController {
     }
     monetColors.value = _monetColors;
     return _monetColors!;
+  }
+
+  /// 缩小到约 200px 后用 Celebi 量化（与 palette_generator 的 200×200 /
+  /// 8 色配置对应），按人口排序，并按 HSL 区间挑出 vibrant / muted 色板。
+  static Future<_ImageSwatches> _extractSwatches(File file) async {
+    final bytes = await file.readAsBytes();
+    final codec = await ui.instantiateImageCodec(
+      bytes,
+      targetWidth: 200,
+      targetHeight: 200,
+    );
+    final ui.Image image;
+    try {
+      image = (await codec.getNextFrame()).image;
+    } finally {
+      codec.dispose();
+    }
+    final ByteData? data;
+    try {
+      data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    } finally {
+      image.dispose();
+    }
+    if (data == null) return const _ImageSwatches();
+
+    final pixels = <int>[];
+    for (var i = 0; i + 3 < data.lengthInBytes; i += 4) {
+      final a = data.getUint8(i + 3);
+      if (a < 128) continue;
+      pixels.add(
+        (0xFF << 24) |
+            (data.getUint8(i) << 16) |
+            (data.getUint8(i + 1) << 8) |
+            data.getUint8(i + 2),
+      );
+    }
+    if (pixels.isEmpty) return const _ImageSwatches();
+
+    final quantized = await QuantizerCelebi().quantize(pixels, 8);
+    final entries = quantized.colorToCount.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final palette = [for (final e in entries) Color(e.key)];
+    if (palette.isEmpty) return const _ImageSwatches();
+
+    Color? pick(double minL, double maxL, double minS, double maxS) {
+      Color? best;
+      var bestScore = double.negativeInfinity;
+      for (final color in palette) {
+        final hsl = HSLColor.fromColor(color);
+        if (hsl.lightness < minL ||
+            hsl.lightness > maxL ||
+            hsl.saturation < minS ||
+            hsl.saturation > maxS) {
+          continue;
+        }
+        // 人口靠前者优先（palette 已按人口降序），同区间内偏好高饱和。
+        final score = hsl.saturation - palette.indexOf(color) * 0.05;
+        if (score > bestScore) {
+          bestScore = score;
+          best = color;
+        }
+      }
+      return best;
+    }
+
+    return _ImageSwatches(
+      palette: palette,
+      dominant: palette.first,
+      vibrant: pick(0.3, 0.7, 0.35, 1.0),
+      lightVibrant: pick(0.55, 1.0, 0.35, 1.0),
+      darkVibrant: pick(0.0, 0.45, 0.35, 1.0),
+      darkMuted: pick(0.0, 0.45, 0.0, 0.4),
+    );
   }
 
   static List<Color> _buildExpressivePalette({
@@ -421,4 +486,22 @@ class PersonalizationController {
     _monetSourcePath = null;
     monetColors.value = null;
   }
+}
+
+class _ImageSwatches {
+  const _ImageSwatches({
+    this.palette = const [],
+    this.dominant,
+    this.vibrant,
+    this.lightVibrant,
+    this.darkVibrant,
+    this.darkMuted,
+  });
+
+  final List<Color> palette;
+  final Color? dominant;
+  final Color? vibrant;
+  final Color? lightVibrant;
+  final Color? darkVibrant;
+  final Color? darkMuted;
 }
