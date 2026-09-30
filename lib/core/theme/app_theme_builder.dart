@@ -19,6 +19,9 @@ class AppThemeBuilder {
 
   /// Apple 风格字阶（Inter 与 SF Pro 同骨架）：
   ///
+  /// * Inter 以拉丁 + 数字子集随包分发（`assets/fonts/inter/`，400–700 四档），
+  ///   中文不在子集内，由系统字体回退；
+  ///
   /// * 展示档（headline/titleLarge）用重字重 + 收紧字距，贴近 SF Pro
   ///   Display 的排版密度；正文/标签档只调行高与字重，保持中文可读性；
   /// * 颜色不在此指定，由 ThemeData 统一套 colorScheme 的 onSurface /
