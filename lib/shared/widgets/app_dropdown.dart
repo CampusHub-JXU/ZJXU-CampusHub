@@ -8,6 +8,10 @@ import '../../core/theme/app_design_tokens.dart';
 ///
 /// 使用 Overlay + AnimatedSwitcher 实现弹出菜单，避免原生样式的不一致。
 /// 支持泛型 [T]，通过 [items] 提供选项，[value] 标记当前选中项。
+///
+/// 全 App 下拉选择的**唯一实现**：筛选条直接使用；表单里传 [label] 得到
+/// 「标题在上、撑满宽度」的表单字段形态。不要再使用 `DropdownButton` /
+/// `DropdownButtonFormField` / `CupertinoPicker` 底部弹层自建下拉。
 class AppDropdown<T> extends StatefulWidget {
   const AppDropdown({
     super.key,
@@ -17,6 +21,7 @@ class AppDropdown<T> extends StatefulWidget {
     this.expanded = false,
     this.prefixIcon,
     this.hint,
+    this.label,
   });
 
   /// 当前选中值。为 `null` 时显示 [hint]。
@@ -36,6 +41,9 @@ class AppDropdown<T> extends StatefulWidget {
 
   /// 未选中时的占位文本。
   final String? hint;
+
+  /// 表单字段标题。非空时渲染在触发按钮上方并强制撑满宽度。
+  final String? label;
 
   @override
   State<AppDropdown<T>> createState() => _AppDropdownState<T>();
@@ -163,16 +171,36 @@ class _AppDropdownState<T> extends State<AppDropdown<T>>
     final selectedItem = _selectedItem;
     final label = selectedItem?.label ?? widget.hint ?? '';
     final hasSelection = selectedItem != null;
+    final enabled = widget.onChanged != null && widget.items.isNotEmpty;
+    final fieldLabel = widget.label;
 
-    return _DropdownButton(
+    final button = _DropdownButton(
       key: _buttonKey,
       label: label,
       hasSelection: hasSelection,
       isOpen: _isOpen,
       prefixIcon: widget.prefixIcon,
-      expanded: widget.expanded,
+      expanded: widget.expanded || fieldLabel != null,
       colorScheme: cs,
-      onTap: _toggleOverlay,
+      onTap: enabled ? _toggleOverlay : null,
+    );
+    if (fieldLabel == null) return button;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 6),
+          child: Text(
+            fieldLabel,
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: cs.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        button,
+      ],
     );
   }
 }
@@ -196,54 +224,57 @@ class _DropdownButton extends StatelessWidget {
   final IconData? prefixIcon;
   final bool expanded;
   final ColorScheme colorScheme;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final cs = colorScheme;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        splashFactory: InkRipple.splashFactory,
-        borderRadius: BorderRadius.circular(AppRadius.input),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-          decoration: BoxDecoration(
-            color: cs.surfaceContainerHighest.withValues(alpha: 0.4),
-            borderRadius: BorderRadius.circular(AppRadius.input),
-            border: Border.all(
-              color: isOpen
-                  ? cs.primary.withValues(alpha: 0.6)
-                  : cs.outlineVariant.withValues(alpha: 0.4),
-              width: isOpen ? 1.4 : 0.8,
-            ),
-          ),
-          child: Row(
-            mainAxisSize: expanded ? MainAxisSize.max : MainAxisSize.min,
-            children: [
-              if (prefixIcon != null) ...[
-                Icon(prefixIcon, size: 18, color: cs.onSurfaceVariant),
-                const SizedBox(width: 8),
-              ],
-              if (expanded)
-                Expanded(child: _buildLabel(cs, label, hasSelection))
-              else
-                _buildLabel(cs, label, hasSelection),
-              const SizedBox(width: 8),
-              AnimatedRotation(
-                turns: isOpen ? 0.5 : 0,
-                duration: const Duration(milliseconds: 180),
-                curve: Curves.easeOutCubic,
-                child: Icon(
-                  Icons.keyboard_arrow_down_rounded,
-                  size: 20,
-                  color: cs.onSurfaceVariant,
-                ),
+    return Opacity(
+      opacity: onTap == null ? 0.5 : 1,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          splashFactory: InkRipple.splashFactory,
+          borderRadius: BorderRadius.circular(AppRadius.input),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOutCubic,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest.withValues(alpha: 0.4),
+              borderRadius: BorderRadius.circular(AppRadius.input),
+              border: Border.all(
+                color: isOpen
+                    ? cs.primary.withValues(alpha: 0.6)
+                    : cs.outlineVariant.withValues(alpha: 0.4),
+                width: isOpen ? 1.4 : 0.8,
               ),
-            ],
+            ),
+            child: Row(
+              mainAxisSize: expanded ? MainAxisSize.max : MainAxisSize.min,
+              children: [
+                if (prefixIcon != null) ...[
+                  Icon(prefixIcon, size: 18, color: cs.onSurfaceVariant),
+                  const SizedBox(width: 8),
+                ],
+                if (expanded)
+                  Expanded(child: _buildLabel(cs, label, hasSelection))
+                else
+                  _buildLabel(cs, label, hasSelection),
+                const SizedBox(width: 8),
+                AnimatedRotation(
+                  turns: isOpen ? 0.5 : 0,
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOutCubic,
+                  child: Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    size: 20,
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
