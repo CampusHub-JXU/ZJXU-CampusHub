@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_design_tokens.dart';
 import '../../../shared/widgets/glass_container.dart';
+import '../../../core/theme/app_typography.dart';
 
 class ScheduleInfoBanner extends StatelessWidget {
   const ScheduleInfoBanner({
@@ -47,11 +48,7 @@ class ScheduleInfoBanner extends StatelessWidget {
             Expanded(
               child: Text(
                 parts.join(' · '),
-                style: TextStyle(
-                  fontSize: 12,
-                  height: 1.4,
-                  color: cs.onSurfaceVariant,
-                ),
+                style: context.appText.meta.copyWith(height: 1.4),
               ),
             ),
           ],

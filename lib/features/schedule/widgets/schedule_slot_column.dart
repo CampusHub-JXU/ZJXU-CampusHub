@@ -23,8 +23,7 @@ class ScheduleSlotColumn extends StatelessWidget {
               children: [
                 Text(
                   '${i + 1}',
-                  style: TextStyle(
-                    fontSize: 14,
+                  style: Theme.of(context).textTheme.titleSmall!.copyWith(
                     fontWeight: FontWeight.w700,
                     color: cs.onSurface,
                   ),

@@ -54,8 +54,7 @@ class ScheduleDayHeaders extends StatelessWidget {
                   child: Text(
                     '$scheduleTermLabelPrefix$currentWeek$scheduleWeekLabelSuffix',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 12,
+                    style: Theme.of(context).textTheme.labelMedium!.copyWith(
                       fontWeight: FontWeight.w700,
                       color: cs.onSurface,
                     ),
@@ -96,25 +95,25 @@ class ScheduleDayHeaders extends StatelessWidget {
                         ),
                         child: Text(
                           '${date.day}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: isToday
-                                ? FontWeight.w700
-                                : FontWeight.w500,
-                            color: isToday ? cs.onPrimary : cs.onSurface,
-                          ),
+                          style: Theme.of(context).textTheme.labelMedium!
+                              .copyWith(
+                                fontWeight: isToday
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                                color: isToday ? cs.onPrimary : cs.onSurface,
+                              ),
                         ),
                       ),
                       const SizedBox(height: 2),
                       Text(
                         '周${scheduleWeekdayLabels[i]}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: isToday
-                              ? FontWeight.w700
-                              : FontWeight.normal,
-                          color: isToday ? cs.primary : cs.onSurfaceVariant,
-                        ),
+                        style: Theme.of(context).textTheme.labelMedium!
+                            .copyWith(
+                              fontWeight: isToday
+                                  ? FontWeight.w700
+                                  : FontWeight.normal,
+                              color: isToday ? cs.primary : cs.onSurfaceVariant,
+                            ),
                       ),
                     ],
                   ),

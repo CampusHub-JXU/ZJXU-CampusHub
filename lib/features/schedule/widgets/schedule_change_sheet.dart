@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../schedule_change_rule.dart';
 import '../schedule_constants.dart';
+import '../../../core/theme/app_typography.dart';
+import '../../../shared/widgets/app_status_tag.dart';
 
 /// 纯展示层判定「只换教室」：调课且原/新时段相同（或缺一方），
 /// 新教室非空且与原教室不同。
@@ -129,17 +131,10 @@ class _ScheduleChangeSheetState extends State<ScheduleChangeSheet> {
               Expanded(
                 child: Text(
                   '调课提醒',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w600,
-                    color: cs.onSurface,
-                  ),
+                  style: Theme.of(context).textTheme.titleLarge,
                 ),
               ),
-              Text(
-                headerTrailing,
-                style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
-              ),
+              Text(headerTrailing, style: context.appText.secondary),
             ],
           ),
         ),
@@ -249,14 +244,11 @@ class _ScheduleChangeSheetState extends State<ScheduleChangeSheet> {
         children: [
           Row(
             children: [
-              _Tag(
-                label: pending ? '$typeLabel · 待确认' : typeLabel,
-                background: pending
-                    ? cs.tertiaryContainer
-                    : cs.secondaryContainer,
-                foreground: pending
-                    ? cs.onTertiaryContainer
-                    : cs.onSecondaryContainer,
+              AppStatusTag(
+                pending ? '$typeLabel · 待确认' : typeLabel,
+                tone: pending
+                    ? AppStatusTone.attention
+                    : AppStatusTone.positive,
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -264,19 +256,12 @@ class _ScheduleChangeSheetState extends State<ScheduleChangeSheet> {
                   courseName.isEmpty ? '课程调整' : courseName,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w600,
-                    color: cs.onSurface,
-                  ),
+                  style: Theme.of(context).textTheme.titleMedium,
                 ),
               ),
               if (teacher.isNotEmpty) ...[
                 const SizedBox(width: 8),
-                Text(
-                  teacher,
-                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-                ),
+                Text(teacher, style: context.appText.meta),
               ],
             ],
           ),
@@ -286,7 +271,7 @@ class _ScheduleChangeSheetState extends State<ScheduleChangeSheet> {
             const SizedBox(height: 6),
             Text(
               rule.termContext == null ? '学期未标注，请核对原文' : '课表未显示',
-              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+              style: context.appText.meta,
             ),
           ],
           if (rawMessage.isNotEmpty) _RawMessageToggle(message: rawMessage),
@@ -302,7 +287,8 @@ class _ScheduleChangeSheetState extends State<ScheduleChangeSheet> {
     required bool roomOnly,
   }) {
     final cs = Theme.of(context).colorScheme;
-    final base = TextStyle(fontSize: 14, height: 1.35, color: cs.onSurface);
+    final base = Theme.of(context).textTheme.bodyMedium!
+        .copyWith(height: 1.35, color: cs.onSurface);
     final struck = base.copyWith(
       color: cs.outline,
       decoration: TextDecoration.lineThrough,
@@ -363,18 +349,17 @@ class _ScheduleChangeSheetState extends State<ScheduleChangeSheet> {
       if (showOriginal)
         _ChangeLine(
           label: '原',
-          labelStyle: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+          labelStyle: context.appText.tag.copyWith(
+            fontWeight: FontWeight.w400,
+            color: cs.onSurfaceVariant,
+          ),
           text: _joinSlotRoom(_formatSlot(original, weekText), oldRoom),
           textStyle: struck,
         ),
       if (showOriginal) const SizedBox(height: 4),
       _ChangeLine(
         label: rule.type == CourseChangeType.makeup ? '补' : '改',
-        labelStyle: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: cs.primary,
-        ),
+        labelStyle: context.appText.tag.copyWith(color: cs.primary),
         text: _joinSlotRoom(
           _formatSlot(target, weekText),
           newRoom.isNotEmpty ? newRoom : oldRoom,
@@ -421,37 +406,6 @@ class _ScheduleChangeSheetState extends State<ScheduleChangeSheet> {
     final currentWeek = widget.currentWeek;
     if (currentWeek != null && week == '第$currentWeek周') return text;
     return '$week $text';
-  }
-}
-
-class _Tag extends StatelessWidget {
-  const _Tag({
-    required this.label,
-    required this.background,
-    required this.foreground,
-  });
-
-  final String label;
-  final Color background;
-  final Color foreground;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: foreground,
-        ),
-      ),
-    );
   }
 }
 
@@ -511,8 +465,7 @@ class _RawMessageToggleState extends State<_RawMessageToggle> {
               children: [
                 Text(
                   _expanded ? '收起原文' : '查看原文',
-                  style: TextStyle(
-                    fontSize: 12,
+                  style: context.appText.meta.copyWith(
                     fontWeight: FontWeight.w500,
                     color: cs.primary,
                   ),
@@ -539,11 +492,7 @@ class _RawMessageToggleState extends State<_RawMessageToggle> {
             ),
             child: Text(
               widget.message,
-              style: TextStyle(
-                fontSize: 12,
-                height: 1.4,
-                color: cs.onSurfaceVariant,
-              ),
+              style: context.appText.meta.copyWith(height: 1.4),
             ),
           ),
       ],
