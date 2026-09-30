@@ -36,6 +36,12 @@ enum CasService {
   /// [CasSession.ensure]。
   physicalTest('http://jkjy.zjxu.edu.cn/weixin/login.jsp'),
 
+  /// 畅行嘉大（zhx）CAS 回调：ticket 校验后站点签发一次性 tokenId。
+  /// 资源入口（`/api/cas_wap_login`、`/api/*`）不是 service，禁止传给
+  /// [CasSession.ensure]；WebVPN 路由经 `zhx.zjxu.edu.cn` host 映射
+  /// （端口段 `-8443`）改写。
+  changxing('http://zhx.zjxu.edu.cn:8443/api/wap/cas_login_back'),
+
   /// WebVPN 网关会话（教务两阶段登录的第一阶段，见 ZhengfangAuth）。
   webVpnGateway(ZhengfangAuth.webVpnGatewayServiceUrl);
 
@@ -123,7 +129,6 @@ class CasAuthBroker {
     CancelToken? cancelToken,
     Duration? timeout,
     DateTime? deadline,
-    bool Function(Uri nextLocation)? stopAtRedirect,
   })?
   debugGetResourceOverride;
 
@@ -145,7 +150,6 @@ class CasAuthBroker {
         cancelToken: cancelToken,
         timeout: timeout,
         deadline: deadline,
-        stopAtRedirect: stopAtRedirect,
       );
     }
     if (dio == null) await DioClient.instance.ensureInitialized();

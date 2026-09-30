@@ -5,7 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../core/auth/cas_auth_broker.dart';
-import '../../core/auth/connect_mode_resolver.dart';
+import '../../core/auth/cas_routed_access.dart';
 import '../../core/auth/unified_auth.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/logging/app_logger.dart';
@@ -90,22 +90,22 @@ class PhysicalTestService {
 
   Future<PhysicalTestSnapshot> _fetchRemote() async {
     // 先确认统一认证会话（未登录立即失败，不初始化网络层）。
-    final mode = await _prepareSession();
+    final route = await _prepareSession();
     if (_debugDio == null) {
       await DioClient.instance.ensureInitialized();
     }
     final guard = _captureGuard();
     _ensureGuard(guard);
 
-    final identity = await _fetchIdentity(guard, mode);
+    final identity = await _fetchIdentity(guard, route);
 
-    final currentRecord = await _fetchCurrentRecord(guard, mode, identity);
+    final currentRecord = await _fetchCurrentRecord(guard, route, identity);
 
-    final yearEntries = await _fetchYearEntries(guard, mode, identity);
+    final yearEntries = await _fetchYearEntries(guard, route, identity);
 
     final records = await _assembleRecords(
       guard: guard,
-      mode: mode,
+      route: route,
       identity: identity,
       currentRecord: currentRecord,
       yearEntries: yearEntries,
@@ -125,65 +125,18 @@ class PhysicalTestService {
     return snapshot;
   }
 
-  /// 会话与选路：CAS service 校验 → 直连/WebVPN 判定 → 必要时补网关会话。
-  Future<ZhengfangMode> _prepareSession() async {
-    final sessionStatus = await CasSession.ensure(
-      CasService.physicalTest.serviceUrl,
-      syncWebViewCookies: false,
-    );
-    if (sessionStatus == CasSessionStatus.inactive) {
-      throw const CasAuthExpiredException();
-    }
-    if (sessionStatus == CasSessionStatus.unknown) {
-      throw TimeoutException('统一认证暂时无法连接，请稍后重试');
-    }
-
-    final mode = await ConnectModeResolver.instance.resolve(
-      targetUrl: _siteHomeUrl,
-    );
-    if (mode == null) {
-      throw TimeoutException('体测服务暂时无法连接，请检查网络后重试');
-    }
-    if (mode == ZhengfangMode.webVpn) {
-      final gateway = await ZhengfangAuth.instance
-          .ensureWebVpnGatewaySessionResult(
-            syncWebViewCookies: false,
-            targetUrl: _siteHomeUrl,
-          );
-      if (gateway.ready == false) throw const CasAuthExpiredException();
-      if (gateway.ready == null) {
-        throw TimeoutException('体测服务暂时无法连接，请检查网络后重试');
-      }
-    }
-    return mode;
-  }
+  /// 会话与选路：经共享 [CasRoutedAccess]（CAS service 校验 → 按目标 origin
+  /// 直连/WebVPN 判定 → WebVPN 时用真实 CAS 回调链补网关会话），不读写全局
+  /// `ZhengfangAuth.mode`。
+  Future<CasRoute> _prepareSession() => CasRoutedAccess.prepare(
+    service: CasService.physicalTest,
+    targetUrl: _siteHomeUrl,
+  );
 
   /// 业务 bounce 后唯一一次恢复：重验 CAS service（含 WebVPN 网关）后重试。
   /// 明确失败抛 [CasAuthExpiredException]，但绝不调用 `markLoggedOut`。
-  Future<void> _recoverSession(_SessionGuard guard, ZhengfangMode mode) async {
-    if (mode == ZhengfangMode.webVpn) {
-      final gateway = await ZhengfangAuth.instance
-          .ensureWebVpnGatewaySessionResult(
-            syncWebViewCookies: false,
-            targetUrl: _siteHomeUrl,
-          );
-      if (gateway.ready == false) throw const CasAuthExpiredException();
-      if (gateway.ready == null) {
-        throw TimeoutException('体测服务暂时无法连接，请检查网络后重试');
-      }
-    }
-
-    final sessionStatus = await CasSession.ensure(
-      CasService.physicalTest.serviceUrl,
-      restoreFromStore: false,
-      syncWebViewCookies: false,
-    );
-    if (sessionStatus == CasSessionStatus.inactive) {
-      throw const CasAuthExpiredException();
-    }
-    if (sessionStatus == CasSessionStatus.unknown) {
-      throw TimeoutException('统一认证暂时无法连接，请稍后重试');
-    }
+  Future<void> _recoverSession(_SessionGuard guard, CasRoute route) async {
+    await CasRoutedAccess.recover(route, service: CasService.physicalTest);
     _ensureGuard(guard);
   }
 
@@ -191,7 +144,7 @@ class PhysicalTestService {
   /// 仍然 bounce 则抛 [CasAuthExpiredException]。
   Future<Response<List<int>>> _withBoundedAuthRetry({
     required _SessionGuard guard,
-    required ZhengfangMode mode,
+    required CasRoute route,
     required Future<Response<List<int>>> Function() send,
   }) async {
     Future<Response<List<int>>> attempt() async {
@@ -206,16 +159,16 @@ class PhysicalTestService {
       return await attempt();
     } on CasAuthExpiredException {
       _ensureGuard(guard);
-      await _recoverSession(guard, mode);
+      await _recoverSession(guard, route);
       return attempt();
     }
   }
 
   Future<PhysicalTestIdentity> _fetchIdentity(
     _SessionGuard guard,
-    ZhengfangMode mode,
+    CasRoute route,
   ) async {
-    final response = await _getResource(guard, mode, _menuPath);
+    final response = await _getResource(guard, route, _menuPath);
     final identity = parsePhysicalTestIdentity(_decodeHtml(response));
     _ensureGuard(guard);
     return identity;
@@ -225,12 +178,12 @@ class PhysicalTestService {
   /// 由调用方继续抓取历年成绩，绝不让当前页空态阻断历史查询。
   Future<PhysicalTestRecord?> _fetchCurrentRecord(
     _SessionGuard guard,
-    ZhengfangMode mode,
+    CasRoute route,
     PhysicalTestIdentity identity,
   ) async {
     final response = await _postQuery(
       guard: guard,
-      mode: mode,
+      route: route,
       pathAndQuery: _queryPath,
       body: {
         'method': _methodCurrent,
@@ -245,12 +198,12 @@ class PhysicalTestService {
 
   Future<List<PhysicalTestYearEntry>> _fetchYearEntries(
     _SessionGuard guard,
-    ZhengfangMode mode,
+    CasRoute route,
     PhysicalTestIdentity identity,
   ) async {
     final response = await _postQuery(
       guard: guard,
-      mode: mode,
+      route: route,
       pathAndQuery: _yearListPath,
       body: {'stuNo': identity.stuNo, 'schoolid': identity.schoolid},
     );
@@ -263,7 +216,7 @@ class PhysicalTestService {
   /// `healthscore` 未开放（current 为 null）时仍继续抓取历年成绩。
   Future<List<PhysicalTestRecord>> _assembleRecords({
     required _SessionGuard guard,
-    required ZhengfangMode mode,
+    required CasRoute route,
     required PhysicalTestIdentity identity,
     required PhysicalTestRecord? currentRecord,
     required List<PhysicalTestYearEntry> yearEntries,
@@ -314,7 +267,7 @@ class PhysicalTestService {
           'term': detail.term,
         },
       ).toString();
-      final response = await _getResource(guard, mode, detailPath);
+      final response = await _getResource(guard, route, detailPath);
       final parsed = parsePhysicalTestScorePage(_decodeHtml(response));
       _ensureGuard(guard);
       records.add(
@@ -440,28 +393,28 @@ class PhysicalTestService {
 
   Future<Response<List<int>>> _getResource(
     _SessionGuard guard,
-    ZhengfangMode mode,
+    CasRoute route,
     String pathAndQuery,
   ) {
-    final url = buildResourceUrl(pathAndQuery, mode);
+    final url = buildResourceUrl(pathAndQuery, route.mode);
     return _withBoundedAuthRetry(
       guard: guard,
-      mode: mode,
+      route: route,
       send: () => CasAuthBroker.getResource(url, dio: _debugDio),
     );
   }
 
   Future<Response<List<int>>> _postQuery({
     required _SessionGuard guard,
-    required ZhengfangMode mode,
+    required CasRoute route,
     required String pathAndQuery,
     required Map<String, String> body,
   }) {
-    final url = Uri.parse(buildResourceUrl(pathAndQuery, mode));
+    final url = Uri.parse(buildResourceUrl(pathAndQuery, route.mode));
     final dio = _debugDio ?? DioClient.instance.unifiedAuthDio;
     return _withBoundedAuthRetry(
       guard: guard,
-      mode: mode,
+      route: route,
       send: () => dio.postUri<List<int>>(
         url,
         data: body,
@@ -478,11 +431,7 @@ class PhysicalTestService {
   /// 直连用业务 origin；WebVPN 模式经已登记的 host 映射改写到网关代理前缀。
   @visibleForTesting
   static String buildResourceUrl(String pathAndQuery, ZhengfangMode mode) {
-    final direct = '$siteOrigin$pathAndQuery';
-    if (mode == ZhengfangMode.webVpn) {
-      return ZhengfangAuth.instance.buildWebVpnProxyUrl(direct);
-    }
-    return direct;
+    return CasRoute(mode).url('$siteOrigin$pathAndQuery');
   }
 
   String _decodeHtml(Response<List<int>> response) {

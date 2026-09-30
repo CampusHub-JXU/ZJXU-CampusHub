@@ -120,6 +120,13 @@ class CasRoutedAccess {
       );
     } on CasAuthExpiredException {
       rethrow;
+    } on StateError catch (error) {
+      // 逐跳链路异常（重定向超限 / 缺 Location）：网关状态不确定，非登录过期。
+      AppLogger.instance.auth(
+        LogLevel.warn,
+        'WebVPN 网关会话建立失败（链路异常）: ${error.message}',
+      );
+      throw TimeoutException('WebVPN 网关暂时无法连接，请稍后重试');
     } on DioException catch (error) {
       if (CancelToken.isCancel(error)) rethrow;
       AppLogger.instance.auth(
