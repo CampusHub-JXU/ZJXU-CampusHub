@@ -150,15 +150,6 @@ class AppFeaturesConfig {
       sortOrder: 60,
     ),
     const FeatureEntryDefinition(
-      id: 'notice-list',
-      title: '校园公告',
-      subtitle: '校级通知与重要公告快速查看',
-      icon: Icons.campaign_outlined,
-      accentColor: Color(0xFFE7A400),
-      primaryActionId: 'notice.inbox',
-      sortOrder: 65,
-    ),
-    const FeatureEntryDefinition(
       id: 'notification-center',
       title: '通知中心',
       subtitle: '集中查看课程、考试与系统提醒',

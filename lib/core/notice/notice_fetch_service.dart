@@ -54,28 +54,6 @@ class NoticeFetchResult {
   bool get isOk => status == NoticeFetchStatus.ok;
 }
 
-/// 前台展示路径的结果：允许缓存回退，但认证失效必须显式透传，
-/// 不得被缓存吞掉（页面据此引导登录）。
-class NoticeListResult {
-  const NoticeListResult({
-    required this.notices,
-    required this.fromCache,
-    required this.authRequired,
-    this.failed = false,
-  });
-
-  final List<Notice> notices;
-
-  /// 本次列表是否来自缓存回退。
-  final bool fromCache;
-
-  /// 刷新时统一认证失效。
-  final bool authRequired;
-
-  /// 网络失败且无任何可用数据（页面展示错误态）。
-  final bool failed;
-}
-
 @visibleForTesting
 bool looksLikeNoticeResponseNeedsUnifiedAuth(Response<List<int>> response) {
   return CasAuthBroker.isCasLoginExchange(
@@ -145,7 +123,6 @@ class NoticeService {
   NoticeService._();
   static final NoticeService instance = NoticeService._();
 
-  List<Notice>? _cachedNotices;
   int? _cachedTotalPages;
 
   Dio? _noticeDio;
@@ -210,64 +187,6 @@ class NoticeService {
     }
   }
 
-  // ── 前台展示路径 ────────────────────────────────────────────────────
-
-  /// 首屏加载：抓取失败时回退内存缓存，认证失效透传给页面引导登录。
-  Future<NoticeListResult> fetchNotices() async {
-    final result = await fetchNoticesRaw(page: 1);
-    switch (result.status) {
-      case NoticeFetchStatus.ok:
-        _cachedNotices = result.notices;
-        return NoticeListResult(
-          notices: result.notices,
-          fromCache: false,
-          authRequired: false,
-        );
-      case NoticeFetchStatus.authRequired:
-        final cached = _cachedNotices;
-        if (cached != null) {
-          return NoticeListResult(
-            notices: cached,
-            fromCache: true,
-            authRequired: true,
-          );
-        }
-        return const NoticeListResult(
-          notices: [],
-          fromCache: false,
-          authRequired: true,
-        );
-      case NoticeFetchStatus.unavailable:
-        final cached = _cachedNotices;
-        if (cached != null) {
-          return NoticeListResult(
-            notices: cached,
-            fromCache: true,
-            authRequired: false,
-          );
-        }
-        return const NoticeListResult(
-          notices: [],
-          fromCache: false,
-          authRequired: false,
-          failed: true,
-        );
-    }
-  }
-
-  /// 列表页翻页：保留抛异常行为（页面捕获后提示重试）。
-  Future<List<Notice>> fetchMoreNotices(int page) async {
-    if (page < 1) return [];
-    final totalPages = _cachedTotalPages;
-    if (totalPages != null && page > totalPages) return [];
-
-    final result = await fetchNoticesRaw(page: page);
-    if (!result.isOk) {
-      throw Exception('通知公告分页加载失败: page=$page, status=${result.status}');
-    }
-    return result.notices;
-  }
-
   String _buildNoticePageUrl(int page) {
     final queryParameters = <String, String>{
       'urltype': 'tree.TreeTempUrl',
@@ -293,7 +212,6 @@ class NoticeService {
 
   @visibleForTesting
   void debugReset() {
-    _cachedNotices = null;
     _cachedTotalPages = null;
     _noticeDio = null;
   }
