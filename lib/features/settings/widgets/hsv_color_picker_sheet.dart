@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_design_tokens.dart';
+import '../../../shared/widgets/app_feedback.dart';
 
 Future<Color?> showHsvColorPickerSheet(
   BuildContext context, {
   required Color initialColor,
 }) {
-  return showModalBottomSheet<Color>(
-    context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
+  return AppFeedback.sheet<Color>(
+    context,
+    scrollControlled: true,
     builder: (context) => _HsvColorPickerSheet(initialColor: initialColor),
   );
 }

@@ -237,6 +237,9 @@ class PlainTag extends StatelessWidget {
 }
 
 /// 开关行：点整行即切换，开关本身挂 [switchKey] 便于测试定位。
+///
+/// [enabled] 为 false 时整行与开关一起置灰不可用（前置条件未满足、原生调用
+/// 在途等）。
 class PlainSwitchRow extends StatelessWidget {
   const PlainSwitchRow({
     super.key,
@@ -246,6 +249,7 @@ class PlainSwitchRow extends StatelessWidget {
     this.subtitle,
     this.titleBadge,
     this.switchKey,
+    this.enabled = true,
   });
 
   final String title;
@@ -254,6 +258,7 @@ class PlainSwitchRow extends StatelessWidget {
   final bool value;
   final ValueChanged<bool> onChanged;
   final Key? switchKey;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
@@ -262,11 +267,11 @@ class PlainSwitchRow extends StatelessWidget {
       subtitle: subtitle,
       titleBadge: titleBadge,
       showChevron: false,
-      onTap: () => onChanged(!value),
+      onTap: enabled ? () => onChanged(!value) : null,
       trailing: Switch.adaptive(
         key: switchKey,
         value: value,
-        onChanged: onChanged,
+        onChanged: enabled ? onChanged : null,
       ),
     );
   }
