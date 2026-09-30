@@ -3,20 +3,20 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/auth/zhengfang_auth.dart';
-import '../../core/theme/app_design_tokens.dart';
-import '../../shared/widgets/app_card.dart';
-import '../../shared/widgets/app_dropdown.dart';
 import '../../shared/widgets/app_empty_view.dart';
 import '../../shared/widgets/app_error_view.dart';
 import '../../shared/widgets/app_search_field.dart';
 import '../../shared/widgets/auth_required_view.dart';
 import '../../shared/widgets/login_shell.dart';
 import '../../shared/widgets/network_error_toast.dart';
+import '../../shared/widgets/refresh_status_line.dart';
+import '../../shared/widgets/skeleton_box.dart';
 import 'grades_model.dart';
 import 'grades_service.dart';
+import 'grades_summary.dart';
 import 'grades_term_resolver.dart';
-import 'widgets/grades_distribution_card.dart';
-import 'widgets/grades_grade_card.dart';
+import 'widgets/grades_course_row.dart';
+import 'widgets/grades_distribution_bar.dart';
 import '../../shared/widgets/app_app_bar.dart';
 
 typedef GradesFetcher = Future<List<GradeEntry>> Function(
@@ -61,6 +61,18 @@ class _GradesPageState extends State<GradesPage>
   final _searchController = TextEditingController();
   String _query = '';
 
+  /// AppBar 搜索图标展开的搜索框；关闭即清空关键字。
+  bool _searchOpen = false;
+
+  /// 课程列表排序（纯前端本地状态，不落盘）。
+  GradesSortMode _sortMode = GradesSortMode.score;
+
+  /// 当前展示数据的上次成功更新时间（状态行用）。
+  DateTime? _updatedAt;
+
+  /// 有数据时最近一次刷新是否失败（保留旧数据，仅状态行提示）。
+  bool _refreshFailed = false;
+
   late final AnimationController _staggerController;
 
   @override
@@ -79,6 +91,7 @@ class _GradesPageState extends State<GradesPage>
     );
 
     if (_loggedIn) {
+      _seedFromCache();
       _fetchGrades();
     } else {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -95,6 +108,19 @@ class _GradesPageState extends State<GradesPage>
     ZhengfangAuth.instance.removeListener(_handleAuthChanged);
     _staggerController.dispose();
     super.dispose();
+  }
+
+  /// 首帧同步读服务缓存（owner/epoch 已由 [GradesService.cachedGrades] 校验），
+  /// 进页即见上次成绩，随后的 [_fetchGrades] 只在后台补齐。
+  void _seedFromCache() {
+    if (widget.fetchGrades != null || _identityOwner == null) return;
+    final service = GradesService.instance;
+    final cached = service.cachedGrades;
+    if (cached == null || cached.isEmpty) return;
+    _grades = cached;
+    _updatedAt = service.updatedAt;
+    _ensureSelectedTerm();
+    _staggerController.value = 1;
   }
 
   void _onSearchChanged() {
@@ -118,6 +144,9 @@ class _GradesPageState extends State<GradesPage>
     _query = '';
     _error = null;
     _loading = false;
+    _searchOpen = false;
+    _updatedAt = null;
+    _refreshFailed = false;
     _staggerController.reset();
     if (_searchController.text.isNotEmpty) {
       // _query 已归零，listener 不会重复 setState。
@@ -218,15 +247,22 @@ class _GradesPageState extends State<GradesPage>
     setState(() {
       _loading = true;
       _error = null;
+      _refreshFailed = false;
     });
     try {
       final fetchGrades =
           widget.fetchGrades ?? GradesService.instance.fetchGrades;
       final grades = await fetchGrades(owner, forceRefresh: forceRefresh);
       if (!_acceptFetchResult(generation, owner, revision)) return;
-      setState(() => _grades = grades);
+      setState(() {
+        _grades = grades;
+        _updatedAt = widget.fetchGrades == null
+            ? (GradesService.instance.updatedAt ?? DateTime.now())
+            : DateTime.now();
+      });
       _ensureSelectedTerm();
-      _staggerController.forward(from: 0);
+      // 只有从空到有数据时播入场动画；刷新替换数据不重播，避免闪烁。
+      if (!hasExistingData) _staggerController.forward(from: 0);
     } on GradesAuthExpiredException catch (e) {
       // 过期结果只对「发起时的身份」有效；换号/重登后的迟到过期不得影响新会话。
       if (!mounted) return;
@@ -245,6 +281,7 @@ class _GradesPageState extends State<GradesPage>
       if (!mounted) return;
       if (!_acceptFetchResult(generation, owner, revision)) return;
       if (hasExistingData) {
+        setState(() => _refreshFailed = true);
         NetworkErrorToast.show(context, e);
       } else {
         setState(() => _error = '获取成绩失败：$e');
@@ -305,24 +342,6 @@ class _GradesPageState extends State<GradesPage>
   List<({String academicYear, String semester})> get _availableTerms =>
       GradesTermResolver.availableTerms(_grades);
 
-  List<AppDropdownItem<String>> get _dropdownItems {
-    final terms = _availableTerms;
-    if (terms.isEmpty) return const [];
-    return [
-      AppDropdownItem(
-        value: GradesTermResolver.allTermKey,
-        label: '全部学期',
-        icon: Icons.list_alt_rounded,
-      ),
-      for (final t in terms)
-        AppDropdownItem(
-          value: '${t.academicYear}|${t.semester}',
-          label: GradesTermResolver.labelOf(t.academicYear, t.semester),
-          icon: Icons.school_outlined,
-        ),
-    ];
-  }
-
   void _ensureSelectedTerm() {
     _selectedTermKey = GradesTermResolver.pickDefault(
       _grades,
@@ -339,44 +358,21 @@ class _GradesPageState extends State<GradesPage>
     });
   }
 
+  bool get _allTermsSelected =>
+      _selectedTermKey == GradesTermResolver.allTermKey;
+
   List<GradeEntry> get _gradesForSelectedTerm =>
       GradesTermResolver.filterByTermKey(_grades, _selectedTermKey);
 
-  // ── GPA ──────────────────────────────────────────────────────────────────────
-
-  double get _weightedGpa {
-    final grades = _gradesForSelectedTerm;
-    double totalPoints = 0;
-    double totalCredits = 0;
-    for (final g in grades) {
-      if (g.gpaPoints > 0) {
-        totalPoints += g.gpaPoints * g.credits;
-        totalCredits += g.credits;
+  void _toggleSearch() {
+    setState(() {
+      _searchOpen = !_searchOpen;
+      if (!_searchOpen) {
+        _query = '';
+        // _query 已归零，listener 不会重复 setState。
+        _searchController.clear();
       }
-    }
-    return totalCredits > 0 ? totalPoints / totalCredits : 0;
-  }
-
-  double get _totalCredits => _gradesForSelectedTerm.fold(
-    0.0,
-    (sum, g) => sum + (g.gpaPoints > 0 ? g.credits : 0),
-  );
-
-  int get _courseCount => _gradesForSelectedTerm.length;
-
-  double get _avgScore {
-    final grades = _gradesForSelectedTerm;
-    if (grades.isEmpty) return 0;
-    double total = 0;
-    int count = 0;
-    for (final g in grades) {
-      final score = double.tryParse(g.percentageScore);
-      if (score != null) {
-        total += score;
-        count++;
-      }
-    }
-    return count > 0 ? total / count : 0;
+    });
   }
 
   // ── Build ────────────────────────────────────────────────────────────────────
@@ -385,20 +381,18 @@ class _GradesPageState extends State<GradesPage>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppAppBar(
-        title: const Text('成绩查询'),
+        title: const Text('成绩'),
         actions: _loggedIn
             ? [
                 IconButton(
-                  icon: _loading
-                      ? SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                        )
-                      : const Icon(Icons.refresh),
+                  icon: Icon(
+                    _searchOpen ? Icons.search_off_rounded : Icons.search,
+                  ),
+                  onPressed: _grades.isEmpty ? null : _toggleSearch,
+                  tooltip: _searchOpen ? '关闭搜索' : '搜索课程',
+                ),
+                IconButton(
+                  icon: const Icon(Icons.refresh),
                   onPressed: _loading
                       ? null
                       : () => _fetchGrades(forceRefresh: true),
@@ -417,178 +411,271 @@ class _GradesPageState extends State<GradesPage>
   );
 
   Widget _buildGradesBody() {
-    if (_loading && _grades.isEmpty) return _buildLoadingState();
     if (_error != null) return _buildErrorState();
-    if (_grades.isEmpty) return _buildEmptyState();
+    if (_grades.isEmpty) {
+      return _loading ? _buildSkeleton() : _buildEmptyState();
+    }
 
     final termGrades = _gradesForSelectedTerm;
-    final filteredGrades = _query.isEmpty
-        ? termGrades
-        : termGrades.where((g) {
-            final q = _query.toLowerCase();
-            return g.courseName.toLowerCase().contains(q) ||
-                g.assessmentMethod.toLowerCase().contains(q) ||
-                g.examType.toLowerCase().contains(q);
-          }).toList();
+    final summary = computeGradesSummary(termGrades);
+    final q = _query.toLowerCase();
+    final filteredGrades = sortGrades(
+      _query.isEmpty
+          ? termGrades
+          : termGrades.where((g) {
+              return g.courseName.toLowerCase().contains(q) ||
+                  g.assessmentMethod.toLowerCase().contains(q) ||
+                  g.examType.toLowerCase().contains(q);
+            }).toList(),
+      _sortMode,
+    );
+    final cs = Theme.of(context).colorScheme;
 
-    return CustomScrollView(
-      slivers: [
-        SliverToBoxAdapter(
+    return RefreshIndicator(
+      onRefresh: () => _fetchGrades(forceRefresh: true),
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          if (_searchOpen)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: AppSearchField(
+                  controller: _searchController,
+                  hintText: '搜索课程',
+                  autofocus: true,
+                  onChanged: (_) {},
+                  onClear: () => _searchController.clear(),
+                ),
+              ),
+            ),
+          SliverToBoxAdapter(child: _buildTermChips()),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: _buildOverview(summary),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+              child: GradesDistributionBar(bandCounts: summary.bandCounts),
+            ),
+          ),
+          if (_loading || _updatedAt != null)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: RefreshStatusLine(
+                  updatedAt: _updatedAt,
+                  refreshing: _loading,
+                  failed: _refreshFailed,
+                  loadingLabel: '正在获取成绩…',
+                ),
+              ),
+            ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 8, 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '课程',
+                      style: Theme.of(context).textTheme.titleSmall
+                          ?.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  TextButton(
+                    key: const Key('grades_sort_toggle'),
+                    onPressed: () => setState(() => _sortMode = _sortMode.next),
+                    child: Text(_sortMode.label),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (filteredGrades.isEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 40),
+                child: Center(
+                  child: Text(
+                    '没有匹配"$_query"的成绩',
+                    style: Theme.of(context).textTheme.bodyMedium
+                        ?.copyWith(color: cs.onSurfaceVariant),
+                  ),
+                ),
+              ),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+              sliver: SliverList.separated(
+                itemCount: filteredGrades.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 8),
+                itemBuilder: (context, index) {
+                  final grade = filteredGrades[index];
+                  final fadeAnim = CurvedAnimation(
+                    parent: _staggerController,
+                    curve: Interval(
+                      (index * 0.04).clamp(0.0, 0.6),
+                      ((index * 0.04) + 0.4).clamp(0.0, 1.0),
+                      curve: Curves.easeOutCubic,
+                    ),
+                  );
+                  return FadeTransition(
+                    opacity: fadeAnim,
+                    child: SlideTransition(
+                      position: Tween(
+                        begin: const Offset(0, 0.06),
+                        end: Offset.zero,
+                      ).animate(fadeAnim),
+                      child: GradesCourseRow(
+                        grade: grade,
+                        termLabel: _allTermsSelected
+                            ? GradesTermResolver.shortLabelOf(
+                                grade.academicYear,
+                                grade.semester,
+                              )
+                            : null,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+        ],
+      ),
+    );
+  }
+
+  /// 横向可滑的学期 chip：最新在前，「全部」固定末尾。
+  Widget _buildTermChips() {
+    final cs = Theme.of(context).colorScheme;
+    final options = [
+      for (final t in _availableTerms)
+        (
+          '${t.academicYear}|${t.semester}',
+          GradesTermResolver.shortLabelOf(t.academicYear, t.semester),
+        ),
+      (GradesTermResolver.allTermKey, '全部'),
+    ];
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+      child: Row(
+        children: [
+          for (final (index, (key, label)) in options.indexed) ...[
+            if (index > 0) const SizedBox(width: 8),
+            ChoiceChip(
+              label: Text(label),
+              selected: key == _selectedTermKey,
+              onSelected: (_) => _onTermChanged(key),
+              showCheckmark: false,
+              selectedColor: cs.secondaryContainer,
+              labelStyle: TextStyle(
+                fontSize: 13,
+                color: key == _selectedTermKey
+                    ? cs.onSecondaryContainer
+                    : cs.onSurfaceVariant,
+              ),
+              side: key == _selectedTermKey
+                  ? BorderSide.none
+                  : BorderSide(color: cs.outlineVariant),
+              shape: const StadiumBorder(),
+              visualDensity: VisualDensity.compact,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// 无卡片概览：左 GPA 大字，右 学分 / 均分 / 课程 三列。
+  /// [summary] 为 null 时（无缓存首次加载）数字显示 `--`。
+  Widget _buildOverview(GradesSummary? summary) {
+    final cs = Theme.of(context).colorScheme;
+    final hasGpa = summary != null && summary.credits > 0;
+    final avg = summary?.averageScore;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Expanded(
+          flex: 5,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _allTermsSelected ? '总绩点' : '学期绩点',
+                style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+              ),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  hasGpa ? summary.gpa.toStringAsFixed(2) : '--',
+                  style: TextStyle(
+                    fontSize: 48,
+                    fontWeight: FontWeight.w600,
+                    height: 1.1,
+                    letterSpacing: -1,
+                    color: hasGpa ? cs.primary : cs.outlineVariant,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          flex: 6,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+            padding: const EdgeInsets.only(bottom: 6),
             child: Row(
               children: [
-                Expanded(
-                  child: AppDropdown<String>(
-                    value: _selectedTermKey,
-                    items: _dropdownItems,
-                    onChanged: _onTermChanged,
-                    expanded: true,
-                    prefixIcon: Icons.calendar_view_week_rounded,
-                  ),
+                _OverviewStat(
+                  label: '学分',
+                  value: summary == null
+                      ? '--'
+                      : summary.credits.toStringAsFixed(1),
+                ),
+                _OverviewStat(
+                  label: '均分',
+                  value: avg == null ? '--' : avg.toStringAsFixed(1),
+                ),
+                _OverviewStat(
+                  label: '课程',
+                  value: summary == null ? '--' : '${summary.courseCount}',
                 ),
               ],
             ),
           ),
         ),
-        // ── 紧凑统计行 ──
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-            child: _buildStatsRow(),
-          ),
-        ),
-        // ── 分布卡 ──
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: AnimatedSize(
-              duration: const Duration(milliseconds: 240),
-              curve: Curves.easeOutCubic,
-              alignment: Alignment.topCenter,
-              child: GradesDistributionCard(grades: termGrades),
-            ),
-          ),
-        ),
-        // ── 搜索框 ──
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-            child: AppSearchField(
-              controller: _searchController,
-              hintText: '搜索课程',
-              onChanged: (_) {},
-              onClear: () => _searchController.clear(),
-            ),
-          ),
-        ),
-        // ── 成绩网格 ──
-        if (filteredGrades.isEmpty)
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 40),
-              child: Center(
-                child: Text(
-                  '没有匹配"$_query"的成绩',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-            ),
-          )
-        else
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-            sliver: SliverGrid(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                mainAxisSpacing: 6,
-                crossAxisSpacing: 6,
-                childAspectRatio: 1.5,
-              ),
-              delegate: SliverChildBuilderDelegate((context, index) {
-                final grade = filteredGrades[index];
-                final interval = Interval(
-                  (index * 0.04).clamp(0.0, 0.6),
-                  ((index * 0.04) + 0.4).clamp(0.0, 1.0),
-                  curve: Curves.easeOutCubic,
-                );
-                final fadeAnim = CurvedAnimation(
-                  parent: _staggerController,
-                  curve: interval,
-                );
-                return FadeTransition(
-                  opacity: fadeAnim,
-                  child: SlideTransition(
-                    position: Tween(
-                      begin: const Offset(0, 0.06),
-                      end: Offset.zero,
-                    ).animate(fadeAnim),
-                    child: GradesGradeCard(grade: grade),
-                  ),
-                );
-              }, childCount: filteredGrades.length),
-            ),
-          ),
-        const SliverToBoxAdapter(child: SizedBox(height: 24)),
       ],
-    );
-  }
-
-  /// 紧凑统计行：GPA | 学分 | 课程数 | 均分 四列横排。
-  Widget _buildStatsRow() {
-    final cs = Theme.of(context).colorScheme;
-    return AppCard(
-      radius: AppRadius.cardAlt,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-      child: Row(
-        children: [
-          _StatCell(
-            label: 'GPA',
-            value: _weightedGpa.toStringAsFixed(2),
-            accent: cs.primary,
-          ),
-          _Divider(),
-          _StatCell(
-            label: '学分',
-            value: _totalCredits.toStringAsFixed(1),
-            accent: cs.primary,
-          ),
-          _Divider(),
-          _StatCell(
-            label: '均分',
-            value: _avgScore.toStringAsFixed(1),
-            accent: cs.tertiary,
-          ),
-          _Divider(),
-          _StatCell(label: '课程', value: '$_courseCount', accent: cs.tertiary),
-        ],
-      ),
     );
   }
 
   // ── States ───────────────────────────────────────────────────────────────────
 
-  Widget _buildLoadingState() {
-    final cs = Theme.of(context).colorScheme;
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            width: 36,
-            height: 36,
-            child: CircularProgressIndicator(strokeWidth: 3, color: cs.primary),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            '正在获取成绩…',
-            style: Theme.of(context).textTheme.bodyMedium
-                ?.copyWith(color: cs.onSurfaceVariant),
-          ),
+  /// 无缓存首次加载：概览 `--` + 分布骨架 + 3 条骨架行，替代整页 spinner。
+  Widget _buildSkeleton() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      children: [
+        _buildOverview(null),
+        const SizedBox(height: 14),
+        const SkeletonBox(height: 8, radius: 4),
+        const SizedBox(height: 8),
+        const RefreshStatusLine(refreshing: true, loadingLabel: '正在获取成绩…'),
+        const SizedBox(height: 16),
+        for (var i = 0; i < 3; i++) ...[
+          if (i > 0) const SizedBox(height: 8),
+          const SkeletonBox(height: 64, radius: 16),
         ],
-      ),
+      ],
     );
   }
 
@@ -608,61 +695,41 @@ class _GradesPageState extends State<GradesPage>
   }
 }
 
-/// 紧凑统计单元。
-class _StatCell extends StatelessWidget {
-  const _StatCell({
-    required this.label,
-    required this.value,
-    required this.accent,
-  });
+/// 概览右侧的小统计列：11sp 标签 + 17sp w600 值。
+class _OverviewStat extends StatelessWidget {
+  const _OverviewStat({required this.label, required this.value});
 
   final String label;
   final String value;
-  final Color accent;
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Expanded(
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Text(
+            label,
+            maxLines: 1,
+            style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+          ),
+          const SizedBox(height: 2),
           FittedBox(
             fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
             child: Text(
               value,
               style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
-                height: 1.1,
-                color: accent,
-                letterSpacing: -0.5,
+                fontSize: 17,
+                fontWeight: FontWeight.w600,
+                color: cs.onSurface,
+                fontFeatures: const [FontFeature.tabularFigures()],
               ),
-            ),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.w600,
-              fontSize: 10.5,
-              letterSpacing: 0.3,
             ),
           ),
         ],
       ),
-    );
-  }
-}
-
-class _Divider extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 0.8,
-      height: 28,
-      margin: const EdgeInsets.symmetric(horizontal: 2),
-      color: Theme.of(context).colorScheme.outlineVariant
-          .withValues(alpha: 0.3),
     );
   }
 }

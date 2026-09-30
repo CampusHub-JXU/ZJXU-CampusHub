@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/core/theme/glass_style_controller.dart';
+import 'package:jxu_campus_hub/core/theme/surface_material.dart';
 
 import '../../helpers/test_setup.dart';
 
@@ -59,6 +60,22 @@ void main() {
     test('模糊强度拉到 0 后为 false（滑条 0 = 关模糊）', () async {
       await GlassStyleController.instance.setBlurSigma(0);
       expect(GlassStyleController.instance.shouldBlur(), isFalse);
+    });
+  });
+
+  group('亚克力单一开关', () {
+    test('默认开启且为亚克力', () {
+      final c = GlassStyleController.instance;
+      expect(c.enabled.value, isTrue);
+      expect(c.materialStyle.value, SurfaceMaterialStyle.acrylic);
+    });
+
+    test('关闭为实色，重新开启回到亚克力', () async {
+      final c = GlassStyleController.instance;
+      await c.setEnabled(false);
+      expect(c.materialStyle.value, SurfaceMaterialStyle.solid);
+      await c.setEnabled(true);
+      expect(c.materialStyle.value, SurfaceMaterialStyle.acrylic);
     });
   });
 }

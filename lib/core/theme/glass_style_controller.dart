@@ -19,8 +19,12 @@ enum GlassTier { card, nav, overlay }
 /// 所有玻璃组件（GlassContainer、玻璃 AppBar/底栏及各页玻璃卡片）统一从
 /// 这里读取开关与材质参数，避免各页各自持有一套开关导致状态不同步。
 ///
-/// 「模糊强度」滑条（[blurSigma]）是全应用唯一的模糊强度输入源：三档材质的
-/// 实际 sigma 通过 [sigmaFor] 派生，保证顶栏/底栏/弹层/卡片同步响应。
+/// 用户侧只保留一个开关：「亚克力材质」（默认开启）。开启时全局表面为
+/// [SurfaceMaterialStyle.acrylic]（真实背景模糊 + 颗粒），关闭时降级为
+/// [SurfaceMaterialStyle.solid]。风格与模糊强度、透明度参数不再对用户开放（各档差异在真机上
+/// 难以分辨、设置页也无法实时预览），固定为默认值；渲染配方仍保留，供
+/// 显式 `surfaceType` 覆盖与测试使用。旧版本持久化的风格/模糊/透明度键在
+/// [restore] 时清除。
 class GlassStyleController {
   GlassStyleController._();
 
@@ -31,11 +35,12 @@ class GlassStyleController {
   static const _keyTintOpacity = 'glass_tint_opacity_v1';
   static const _keyMaterialStyle = 'glass_material_style_v1';
 
-  /// 当前表面材质风格（实色/玻璃/亚克力/云母）。渲染配方见 [MaterialRecipe]。
+  /// 当前表面材质风格，由 [enabled] 决定：开 = 亚克力，关 = 实色。
+  /// 渲染配方见 [MaterialRecipe]。
   final ValueNotifier<SurfaceMaterialStyle> materialStyle =
-      ValueNotifier<SurfaceMaterialStyle>(SurfaceMaterialStyle.glass);
+      ValueNotifier<SurfaceMaterialStyle>(SurfaceMaterialStyle.acrylic);
 
-  /// 玻璃材质总开关。关闭后所有玻璃表面降级为实色，不产生 BackdropFilter。
+  /// 「亚克力材质」开关（默认开启）。关闭后所有表面降级为实色，不产生 BackdropFilter。
   final ValueNotifier<bool> enabled = ValueNotifier<bool>(true);
 
   /// 卡片级玻璃的模糊强度基准值（0-30）。
@@ -70,41 +75,46 @@ class GlassStyleController {
     if (_restored) return;
     final prefs = await SharedPreferences.getInstance();
     enabled.value = prefs.getBool(_keyEnabled) ?? true;
-    blurSigma.value = (prefs.getDouble(_keyBlurSigma) ?? 14).clamp(0.0, 30.0);
-    tintOpacity.value = (prefs.getDouble(_keyTintOpacity) ?? 0.84).clamp(
-      0.2,
-      1.0,
-    );
-    materialStyle.value = SurfaceMaterialStyle.fromName(
-      prefs.getString(_keyMaterialStyle),
-    );
+    materialStyle.value = _styleFor(enabled.value);
     _restored = true;
+    // 旧版本可调的风格/模糊/透明度已下线，清掉残留键，避免日后误读。
+    for (final key in _retiredKeys) {
+      if (prefs.containsKey(key)) await prefs.remove(key);
+    }
   }
 
+  static const _retiredKeys = [
+    _keyBlurSigma,
+    _keyTintOpacity,
+    _keyMaterialStyle,
+  ];
+
+  static SurfaceMaterialStyle _styleFor(bool enabled) =>
+      enabled ? SurfaceMaterialStyle.acrylic : SurfaceMaterialStyle.solid;
+
+  /// 测试入口：直接切换全局风格以覆盖各材质配方的渲染分支（不持久化）。
+  @visibleForTesting
   Future<void> setMaterialStyle(SurfaceMaterialStyle style) async {
     materialStyle.value = style;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keyMaterialStyle, style.name);
   }
 
   Future<void> setEnabled(bool value) async {
     enabled.value = value;
+    materialStyle.value = _styleFor(value);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyEnabled, value);
   }
 
+  /// 测试入口：调整模糊基准以覆盖派生与降级分支（不持久化）。
+  @visibleForTesting
   Future<void> setBlurSigma(double value) async {
-    final sigma = value.clamp(0.0, 30.0);
-    blurSigma.value = sigma;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(_keyBlurSigma, sigma);
+    blurSigma.value = value.clamp(0.0, 30.0);
   }
 
+  /// 测试入口：调整 tint 基准（不持久化）。
+  @visibleForTesting
   Future<void> setTintOpacity(double value) async {
-    final opacity = value.clamp(0.2, 1.0);
-    tintOpacity.value = opacity;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(_keyTintOpacity, opacity);
+    tintOpacity.value = value.clamp(0.2, 1.0);
   }
 
   @visibleForTesting
@@ -112,7 +122,7 @@ class GlassStyleController {
     enabled.value = true;
     blurSigma.value = 14;
     tintOpacity.value = 0.84;
-    materialStyle.value = SurfaceMaterialStyle.glass;
+    materialStyle.value = SurfaceMaterialStyle.acrylic;
     _restored = true;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_keyEnabled);

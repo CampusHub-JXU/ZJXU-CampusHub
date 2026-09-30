@@ -7,6 +7,7 @@ import '../../core/semester/semester_calendar.dart';
 import '../../shared/widgets/app_empty_view.dart';
 import '../../shared/widgets/app_error_view.dart';
 import '../../shared/widgets/auth_required_view.dart';
+import '../../shared/widgets/glass_dialog_route.dart';
 import '../../shared/widgets/login_shell.dart';
 import 'controllers/schedule_page_controller.dart';
 import 'schedule_constants.dart';
@@ -136,11 +137,10 @@ class _SchedulePageState extends State<SchedulePage> {
     final notices = _controller.courseChangeNotices;
     if (notices.isEmpty) return;
 
-    await showModalBottomSheet<void>(
+    await showGlassModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      backgroundColor: Colors.transparent,
       builder: (context) {
         return DraggableScrollableSheet(
           expand: false,
@@ -151,6 +151,9 @@ class _SchedulePageState extends State<SchedulePage> {
             return ScheduleChangeSheet(
               notices: notices,
               displayWeek: _controller.displayWeek,
+              currentWeek: _controller.hasCurrentWeek
+                  ? _controller.currentWeek
+                  : null,
               scrollController: scrollController,
             );
           },

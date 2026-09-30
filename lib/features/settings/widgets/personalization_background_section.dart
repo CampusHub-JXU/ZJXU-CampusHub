@@ -6,156 +6,81 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
-import '../../../core/theme/app_design_tokens.dart';
-import '../../../shared/widgets/app_card.dart';
-import '../../../shared/widgets/app_dropdown.dart';
-import '../../../shared/widgets/app_icon_badge.dart';
 import '../../../core/theme/personalization_controller.dart';
+import '../../../shared/widgets/plain_list.dart';
 import '../background_editor_page.dart';
 
-/// 首页个性化 — 背景图片 section（PRD FR-4 拆分）。
+/// 分段控件暴露的三档填充方式；`fill` / `fitWidth` 不再在 UI 出现，
+/// 已存这两档的用户显示为未选中，点任一档即覆盖（不做迁移）。
+const List<(HomeBackgroundFit, String)> kWallpaperFitSegments = [
+  (HomeBackgroundFit.cover, '铺满'),
+  (HomeBackgroundFit.contain, '适应'),
+  (HomeBackgroundFit.none, '居中'),
+];
+
+/// 个性化 — 「壁纸」分组：更换 / 填充方式 / 不透明度 / 移除。
 ///
-/// 平面化卡面：小节标题在卡外（13/w600/onSurfaceVariant），组内行由
-/// hairline 分隔（outlineVariant @ 0.35，与行文字左对齐）。
+/// 位置与缩放在顶部预览的「主页」场景里拖动、双指捏合调整。
 class PersonalizationBackgroundSection extends StatelessWidget {
   const PersonalizationBackgroundSection({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    final controller = PersonalizationController.instance;
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const _SectionHeader('背景图片'),
-        const SizedBox(height: 8),
-        AppCard(
-          padding: EdgeInsets.zero,
-          child: ClipRRect(
-            borderRadius: AppRadius.cardBorder,
-            child: ValueListenableBuilder<String?>(
-              valueListenable:
-                  PersonalizationController.instance.backgroundImagePath,
-              builder: (context, bgPath, _) {
-                return Column(
-                  children: [
-                    _PrefRow(
-                      icon: Icons.wallpaper_outlined,
-                      title: '选择背景图片',
-                      subtitle: bgPath != null ? '已设置自定义背景' : '未设置，使用默认背景',
-                      trailing: Icon(
-                        Icons.chevron_right,
-                        size: 20,
-                        color: cs.onSurfaceVariant,
-                      ),
-                      onTap: () => _pickHomeBackgroundImage(context),
-                    ),
-                    if (bgPath != null) ...[
-                      const _Hairline(),
-                      _PrefRow(
-                        icon: Icons.delete_outline,
-                        title: '移除背景图片',
-                        onTap: () async {
-                          await PersonalizationController.instance
-                              .setBackgroundImagePath(null);
-                          await PersonalizationController.instance
-                              .setShaderEnabled(false);
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('已移除首页背景')),
-                            );
-                          }
-                        },
-                      ),
-                      const _Hairline(),
-                      _buildBackgroundOpacitySlider(context),
-                      const _Hairline(),
-                      _buildBackgroundFitPicker(context),
-                      const _Hairline(),
-                      _buildBackgroundPositionControls(context),
-                    ],
-                  ],
-                );
-              },
-            ),
-          ),
+        const PlainSectionHeader('壁纸'),
+        ValueListenableBuilder<String?>(
+          valueListenable: controller.backgroundImagePath,
+          builder: (context, bgPath, _) {
+            return PlainListGroup(
+              children: [
+                PlainListRow(
+                  key: const Key('personalization_pick_wallpaper'),
+                  leading: _WallpaperThumbnail(path: bgPath),
+                  title: '更换壁纸',
+                  value: bgPath != null ? '自定义' : '默认',
+                  onTap: () => _pickHomeBackgroundImage(context),
+                ),
+                const _FitSegmentsRow(),
+                ValueListenableBuilder<double>(
+                  valueListenable: controller.backgroundOpacity,
+                  builder: (context, opacity, _) => PlainSliderRow(
+                    sliderKey: const Key('personalization_bg_opacity'),
+                    title: '壁纸不透明度',
+                    value: opacity,
+                    valueLabel: '${(opacity * 100).round()}%',
+                    divisions: 20,
+                    onChanged: controller.setBackgroundOpacity,
+                  ),
+                ),
+                if (bgPath != null) const _ResetTransformRow(),
+                if (bgPath != null)
+                  PlainListRow(
+                    key: const Key('personalization_remove_wallpaper'),
+                    title: '移除壁纸',
+                    titleColor: Theme.of(context).colorScheme.error,
+                    showChevron: false,
+                    onTap: () => _removeWallpaper(context),
+                  ),
+              ],
+            );
+          },
         ),
       ],
     );
   }
 
-  Widget _buildBackgroundOpacitySlider(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return ValueListenableBuilder<double>(
-      valueListenable: PersonalizationController.instance.backgroundOpacity,
-      builder: (context, opacity, _) {
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-              child: Text(
-                '透明度  ${(opacity * 100).round()}%',
-                style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
-              ),
-            ),
-            Slider.adaptive(
-              value: opacity,
-              min: 0.0,
-              max: 1.0,
-              divisions: 20,
-              onChanged:
-                  PersonalizationController.instance.setBackgroundOpacity,
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildBackgroundFitPicker(BuildContext context) {
-    return ValueListenableBuilder<HomeBackgroundFit>(
-      valueListenable: PersonalizationController.instance.backgroundFit,
-      builder: (context, fit, _) {
-        return _PrefRow(
-          icon: Icons.fit_screen_outlined,
-          title: '图片适应方式',
-          subtitle: '控制背景图铺满、完整显示或拉伸方式',
-          trailing: AppDropdown<HomeBackgroundFit>(
-            value: fit,
-            items: HomeBackgroundFit.values
-                .map((item) => AppDropdownItem(value: item, label: item.label))
-                .toList(),
-            onChanged: (value) {
-              if (value == null) return;
-              PersonalizationController.instance.setBackgroundFit(value);
-            },
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildBackgroundPositionControls(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              '在上方首页可见区域框中拖动图片调整位置，双指捏合调整缩放',
-              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-            ),
-          ),
-          TextButton.icon(
-            onPressed: () => PersonalizationController.instance
-                .setBackgroundAlignment(Alignment.center),
-            icon: const Icon(Icons.center_focus_strong_outlined, size: 18),
-            label: const Text('居中'),
-          ),
-        ],
-      ),
-    );
+  Future<void> _removeWallpaper(BuildContext context) async {
+    final controller = PersonalizationController.instance;
+    await controller.setBackgroundImagePath(null);
+    // 流体 Shader 依赖壁纸取样，移除壁纸时一并关闭。
+    await controller.setShaderEnabled(false);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('已移除首页背景')));
+    }
   }
 
   Future<void> _pickHomeBackgroundImage(BuildContext context) async {
@@ -226,108 +151,123 @@ class PersonalizationBackgroundSection extends StatelessWidget {
   }
 }
 
-/// 小节标题：13/w600/onSurfaceVariant。
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader(this.title);
-
-  final String title;
+/// 「填充方式」：标题在上、三档分段整行宽。
+class _FitSegmentsRow extends StatelessWidget {
+  const _FitSegmentsRow();
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Text(
-      title,
-      style: TextStyle(
-        fontSize: 13,
-        fontWeight: FontWeight.w600,
-        color: cs.onSurfaceVariant,
-        letterSpacing: 0.2,
+    final controller = PersonalizationController.instance;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        kPlainListRowInset,
+        10,
+        kPlainListRowInset,
+        6,
       ),
-    );
-  }
-}
-
-/// 组内 hairline 分隔线：outlineVariant @ 0.35，左缩进与行文字对齐。
-class _Hairline extends StatelessWidget {
-  const _Hairline();
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Divider(
-      height: 1,
-      thickness: 1,
-      indent: 64,
-      color: cs.outlineVariant.withValues(alpha: 0.35),
-    );
-  }
-}
-
-/// 设置行：图标徽标 + 标题/副标题 + 右侧控件。
-class _PrefRow extends StatelessWidget {
-  const _PrefRow({
-    required this.icon,
-    required this.title,
-    this.subtitle,
-    this.trailing,
-    this.onTap,
-  });
-
-  final IconData icon;
-  final String title;
-  final String? subtitle;
-  final Widget? trailing;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Row(
-            children: [
-              AppIconBadge(
-                icon: icon,
-                accentColor: cs.primary,
-                size: AppIconBadgeSize.small,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: cs.onSurface,
-                        height: 1.2,
-                      ),
-                    ),
-                    if (subtitle != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle!,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: cs.onSurfaceVariant,
-                          height: 1.3,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              if (trailing != null) ...[const SizedBox(width: 12), trailing!],
-            ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            '填充方式',
+            style: TextStyle(
+              fontSize: 16,
+              height: 1.3,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
           ),
-        ),
+          const SizedBox(height: 8),
+          ValueListenableBuilder<HomeBackgroundFit>(
+            valueListenable: controller.backgroundFit,
+            builder: (context, fit, _) {
+              final exposed = kWallpaperFitSegments.any((s) => s.$1 == fit);
+              return SegmentedButton<HomeBackgroundFit>(
+                key: const Key('personalization_fit_segments'),
+                showSelectedIcon: false,
+                emptySelectionAllowed: true,
+                segments: [
+                  for (final (value, label) in kWallpaperFitSegments)
+                    ButtonSegment(value: value, label: Text(label)),
+                ],
+                selected: exposed ? {fit} : const {},
+                onSelectionChanged: (selection) {
+                  // 再点已选中的一档会得到空集：保持原值。
+                  if (selection.isEmpty) return;
+                  controller.setBackgroundFit(selection.first);
+                },
+              );
+            },
+          ),
+        ],
       ),
+    );
+  }
+}
+
+/// 「更换壁纸」行首缩略图：有壁纸显示小图，否则显示占位图标。
+class _WallpaperThumbnail extends StatelessWidget {
+  const _WallpaperThumbnail({required this.path});
+
+  final String? path;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final placeholder = ColoredBox(
+      color: cs.surfaceContainerHighest,
+      child: Icon(
+        Icons.wallpaper_outlined,
+        size: 20,
+        color: cs.onSurfaceVariant,
+      ),
+    );
+    final imagePath = path;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: SizedBox(
+        width: 40,
+        height: 40,
+        child: imagePath == null
+            ? placeholder
+            : Image.file(
+                File(imagePath),
+                fit: BoxFit.cover,
+                cacheWidth: 120,
+                gaplessPlayback: true,
+                errorBuilder: (context, _, _) => placeholder,
+              ),
+      ),
+    );
+  }
+}
+
+/// 预览里拖动/捏合过壁纸后才出现：一键回到居中、原始缩放。
+class _ResetTransformRow extends StatelessWidget {
+  const _ResetTransformRow();
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = PersonalizationController.instance;
+    return ListenableBuilder(
+      listenable: Listenable.merge([
+        controller.backgroundAlignment,
+        controller.backgroundScale,
+      ]),
+      builder: (context, _) {
+        final moved =
+            controller.backgroundAlignment.value != Alignment.center ||
+            controller.backgroundScale.value != 1.0;
+        if (!moved) return const SizedBox.shrink();
+        return PlainListRow(
+          key: const Key('personalization_reset_transform'),
+          title: '复原位置与缩放',
+          showChevron: false,
+          onTap: () async {
+            await controller.setBackgroundAlignment(Alignment.center);
+            await controller.setBackgroundScale(1.0);
+          },
+        );
+      },
     );
   }
 }

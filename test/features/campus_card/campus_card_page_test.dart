@@ -97,9 +97,9 @@ void main() {
     await tester.tap(find.byTooltip('更多操作'));
     await tester.pumpAndSettle();
 
-    expect(find.text('添加至桌面'), findsOneWidget);
+    expect(find.text('添加付款码到桌面'), findsOneWidget);
 
-    await tester.tap(find.text('添加至桌面'));
+    await tester.tap(find.text('添加付款码到桌面'));
     await tester.pumpAndSettle();
 
     expect(
@@ -134,7 +134,7 @@ void main() {
 
     await tester.tap(find.byTooltip('更多操作'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('添加至桌面'));
+    await tester.tap(find.text('添加付款码到桌面'));
     await tester.pumpAndSettle();
 
     expect(find.text('去设置'), findsOneWidget);
@@ -157,7 +157,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('添加至桌面'), findsNothing);
+    // iOS 的 ⋮ 只剩「刷新余额」，没有桌面快捷方式。
+    await tester.tap(find.byTooltip('更多操作'));
+    await tester.pumpAndSettle();
+    expect(find.text('刷新余额'), findsOneWidget);
+    expect(find.text('添加付款码到桌面'), findsNothing);
   });
 
   testWidgets('opens campus card inside webvpn protected webview', (
@@ -302,7 +306,7 @@ void main() {
     expect(find.text('付款码占位页'), findsOneWidget);
   });
 
-  testWidgets('bottom refresh button queries the balance again', (
+  testWidgets('overflow menu refresh queries the balance again', (
     tester,
   ) async {
     var calls = 0;
@@ -314,16 +318,18 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
     await tester.pumpAndSettle();
 
-    expect(find.text('刷新余额'), findsOneWidget);
-    await tester.ensureVisible(find.text('刷新余额'));
-    await tester.tap(find.text('刷新余额'));
+    // 通栏刷新按钮与 AppBar 刷新图标都已移除，刷新收进 ⋮。
+    expect(find.text('刷新余额'), findsNothing);
+    expect(find.byTooltip('刷新余额'), findsNothing);
+    await _tapMenuRefresh(tester);
     await tester.pumpAndSettle();
 
     expect(calls, 1);
+    expect(find.text('88.00'), findsOneWidget);
     expect(find.text('校园卡余额已刷新'), findsOneWidget);
   });
 
-  testWidgets('bottom refresh button follows the theme seed', (tester) async {
+  testWidgets('payment-code primary tile follows the theme seed', (tester) async {
     Future<Color?> buttonColorFor(Color seed) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -334,10 +340,7 @@ void main() {
       await tester.pumpAndSettle();
       final material = tester.widget<Material>(
         find
-            .descendant(
-              of: find.widgetWithText(FilledButton, '刷新余额'),
-              matching: find.byType(Material),
-            )
+            .ancestor(of: find.text('付款码'), matching: find.byType(Material))
             .first,
       );
       return material.color;
@@ -346,10 +349,32 @@ void main() {
     final red = await buttonColorFor(const Color(0xFFB3261E));
     final green = await buttonColorFor(const Color(0xFF2E7D32));
 
-    // 按钮底色跟随主题 seed，而不是写死的品牌色。
+    // 付款码主格底色跟随主题 seed，而不是写死的品牌色。
     expect(red, isNotNull);
     expect(green, isNotNull);
     expect(red, isNot(green));
+  });
+
+  testWidgets('refresh keeps the cached amount and shows 正在刷新 inline', (
+    tester,
+  ) async {
+    final pending = Completer<double?>();
+    CampusCardService.instance.debugBalanceFetcher = () => pending.future;
+
+    await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+    await tester.pumpAndSettle();
+    await _tapMenuRefresh(tester);
+    await tester.pump(const Duration(milliseconds: 50));
+
+    // 刷新中：旧金额不闪成 --，卡内状态行提示正在刷新，没有通栏按钮。
+    expect(find.text('23.50'), findsOneWidget);
+    expect(find.textContaining('正在刷新'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, '刷新余额'), findsNothing);
+
+    pending.complete(30.0);
+    await tester.pumpAndSettle();
+    expect(find.text('30.00'), findsOneWidget);
+    expect(find.textContaining('正在刷新'), findsNothing);
   });
 
   testWidgets('balance exception shows failure and allows another refresh', (
@@ -362,15 +387,16 @@ void main() {
     };
     await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('刷新余额'));
+    await _tapMenuRefresh(tester);
     await tester.pumpAndSettle();
     expect(find.text('刷新失败，仍显示上次余额，请切换网络后重试'), findsOneWidget);
     expect(CampusCardService.instance.cachedBalance, 23.5);
     // 未知网络失败既不清缓存，也不误升格成登录问题：内容与重试保持可用。
     expect(find.text('23.50'), findsOneWidget);
+    expect(find.textContaining('· 刷新失败'), findsOneWidget);
     expect(find.byType(AuthRequiredView), findsNothing);
     expect(find.byType(LoginShell), findsNothing);
-    await tester.tap(find.byTooltip('刷新余额'));
+    await _tapMenuRefresh(tester);
     await tester.pumpAndSettle();
     expect(calls, 2);
     expect(tester.takeException(), isNull);
@@ -458,6 +484,12 @@ void main() {
         expect(find.text('校园卡余额'), findsOneWidget);
         expect(find.text('100.00'), findsOneWidget);
         expect(find.text('付款码'), findsOneWidget);
+        // 单位写在数字后（「100.00 元」），三格副标题说明去向。
+        expect(find.text('元'), findsOneWidget);
+        expect(find.text('¥'), findsNothing);
+        expect(find.text('出示扫码'), findsOneWidget);
+        expect(find.text('消费明细'), findsOneWidget);
+        expect(find.text('微信'), findsOneWidget);
         expect(find.text('账单'), findsOneWidget);
         expect(find.text('充值'), findsOneWidget);
         expect(find.text('校园卡余额已刷新'), findsOneWidget);
@@ -813,7 +845,7 @@ void main() {
         expect(find.text('23.50'), findsOneWidget);
 
         // A（'casuser'）手动刷新：请求在途，服务端迟迟不返回。
-        await tester.tap(find.byTooltip('刷新余额'));
+        await _tapMenuRefresh(tester);
         await tester.pump();
         await tester.pump();
         expect(calls, 1);
@@ -1016,7 +1048,7 @@ void main() {
         await tester.pumpAndSettle();
 
         // 手动刷新在途时登出：登出本身不发起查询、也不排队拉取。
-        await tester.tap(find.byTooltip('刷新余额'));
+        await _tapMenuRefresh(tester);
         await tester.pump();
         await tester.pump();
         UnifiedAuthService.instance.debugSetSession(
@@ -1162,7 +1194,7 @@ void main() {
         expect(find.text('23.50'), findsOneWidget);
 
         // 刷新失败时保留旧余额并显示提示
-        await tester.tap(find.byTooltip('刷新余额'));
+        await _tapMenuRefresh(tester);
         await tester.pumpAndSettle();
 
         expect(find.text('23.50'), findsOneWidget);
@@ -1180,15 +1212,10 @@ void main() {
       expect(find.text('23.50'), findsOneWidget);
       expect(find.text('****'), findsNothing);
 
-      // 可见性开关与金额成组（贴着金额，不再浮在标签行右端），且保持
-      // 44x44 最小点按区域。
-      final toggle = find.byTooltip('隐藏余额');
-      final toggleSize = tester.getSize(toggle);
+      // 可见性开关保持 44x44 最小点按区域。
+      final toggleSize = tester.getSize(find.byTooltip('隐藏余额'));
       expect(toggleSize.width, greaterThanOrEqualTo(44));
       expect(toggleSize.height, greaterThanOrEqualTo(44));
-      final toggleCenterY = tester.getCenter(toggle).dy;
-      final amountCenterY = tester.getCenter(find.text('23.50')).dy;
-      expect((toggleCenterY - amountCenterY).abs(), lessThan(24));
 
       // 隐藏余额
       await tester.tap(find.byTooltip('隐藏余额'));
@@ -1205,7 +1232,7 @@ void main() {
       expect(find.text('****'), findsNothing);
     });
 
-    testWidgets('visibility toggle is grouped inline with the balance amount', (
+    testWidgets('visibility toggle sits on the 余额 header row', (
       tester,
     ) async {
       await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
@@ -1215,13 +1242,11 @@ void main() {
       final amount = tester.getRect(find.text('23.50'));
       final eye = tester.getRect(find.byTooltip('隐藏余额'));
 
-      // 不再漂在标签行末端：位于标签之下、紧贴金额右侧、与金额同高成组。
-      expect(eye.center.dy, greaterThan(label.bottom));
-      expect(eye.left, greaterThanOrEqualTo(amount.right));
-      expect(eye.left - amount.right, lessThanOrEqualTo(24));
-      expect(eye.center.dy, moreOrLessEquals(amount.center.dy, epsilon: 8));
+      // 顶行「余额」+ 眼睛：与标签同行、在金额之上、位于标签右侧。
+      expect(eye.center.dy, moreOrLessEquals(label.center.dy, epsilon: 8));
+      expect(eye.center.dy, lessThan(amount.top));
+      expect(eye.left, greaterThan(label.right));
 
-      // 保留 44x44 最小点按区域。
       final size = tester.getSize(find.byTooltip('隐藏余额'));
       expect(size.width, greaterThanOrEqualTo(44));
       expect(size.height, greaterThanOrEqualTo(44));
@@ -1398,4 +1423,13 @@ List<String> _mockClipboard({bool throwOnSet = false}) {
         .setMockMethodCallHandler(SystemChannels.platform, null);
   });
   return texts;
+}
+
+/// UI 走真实入口：打开 ⋮「更多操作」再点「刷新余额」。
+Future<void> _tapMenuRefresh(WidgetTester tester) async {
+  await tester.tap(find.byTooltip('更多操作'));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
+  await tester.tap(find.text('刷新余额'));
+  await tester.pump();
 }

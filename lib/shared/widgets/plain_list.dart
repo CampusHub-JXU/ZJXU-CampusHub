@@ -95,6 +95,7 @@ class PlainListRow extends StatelessWidget {
     this.titleColor,
     this.showChevron,
     this.leading,
+    this.titleBadge,
   });
 
   /// 行首图标（通常是 `AppIconBadge` 小号），tab 页用它对齐功能区的磁贴。
@@ -112,6 +113,9 @@ class PlainListRow extends StatelessWidget {
   final Color? titleColor;
   final bool? showChevron;
 
+  /// 标题后的小标签（如「耗电」），用 tertiaryContainer 色块提示代价。
+  final String? titleBadge;
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -123,13 +127,21 @@ class PlainListRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          title,
-          style: TextStyle(
-            fontSize: 16,
-            height: 1.3,
-            color: titleColor ?? cs.onSurface,
-          ),
+        Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 6,
+          runSpacing: 2,
+          children: [
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 16,
+                height: 1.3,
+                color: titleColor ?? cs.onSurface,
+              ),
+            ),
+            if (titleBadge != null) PlainTag(titleBadge!),
+          ],
         ),
         if (subtitleText != null) ...[
           const SizedBox(height: 2),
@@ -208,6 +220,153 @@ class PlainListRow extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// 行内小标签：tertiaryContainer 底 + 11 号字。
+class PlainTag extends StatelessWidget {
+  const PlainTag(this.label, {super.key});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: cs.tertiaryContainer,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            height: 1.3,
+            fontWeight: FontWeight.w500,
+            color: cs.onTertiaryContainer,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 开关行：点整行即切换，开关本身挂 [switchKey] 便于测试定位。
+class PlainSwitchRow extends StatelessWidget {
+  const PlainSwitchRow({
+    super.key,
+    required this.title,
+    required this.value,
+    required this.onChanged,
+    this.subtitle,
+    this.titleBadge,
+    this.switchKey,
+  });
+
+  final String title;
+  final String? subtitle;
+  final String? titleBadge;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+  final Key? switchKey;
+
+  @override
+  Widget build(BuildContext context) {
+    return PlainListRow(
+      title: title,
+      subtitle: subtitle,
+      titleBadge: titleBadge,
+      showChevron: false,
+      onTap: () => onChanged(!value),
+      trailing: Switch.adaptive(
+        key: switchKey,
+        value: value,
+        onChanged: onChanged,
+      ),
+    );
+  }
+}
+
+/// 滑条行：标题在左、当前值在右（等宽数字），滑条下挂整行宽。
+class PlainSliderRow extends StatelessWidget {
+  const PlainSliderRow({
+    super.key,
+    required this.title,
+    required this.value,
+    required this.valueLabel,
+    required this.onChanged,
+    this.min = 0,
+    this.max = 1,
+    this.divisions,
+    this.sliderKey,
+  });
+
+  final String title;
+  final double value;
+  final String valueLabel;
+  final ValueChanged<double> onChanged;
+  final double min;
+  final double max;
+  final int? divisions;
+  final Key? sliderKey;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: kPlainListRowInset),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 16,
+                      height: 1.3,
+                      color: cs.onSurface,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  valueLabel,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: cs.onSurfaceVariant,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            // 档位只用于吸附，不画刻度点：20 档的点阵会让滑轨显得很碎。
+            child: SliderTheme(
+              data: SliderTheme.of(context)
+                  .copyWith(tickMarkShape: SliderTickMarkShape.noTickMark),
+              child: Slider(
+                key: sliderKey,
+                value: value.clamp(min, max),
+                min: min,
+                max: max,
+                divisions: divisions,
+                label: valueLabel,
+                onChanged: onChanged,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 
 import 'package:jxu_campus_hub/app/theme.dart';
 import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
@@ -25,6 +26,9 @@ class _FakeEpayElectricityGateway implements EpayElectricityGateway {
   /// 设置后，[call] 抛统一认证会话不可用，用于验证错误横幅与登录入口。
   bool failWithAuth = false;
 
+  /// 设置后，[call] 抛网关网络错误（非认证失效），用于验证保留缓存值。
+  bool failWithNetwork = false;
+
   @override
   Future<String> call(String method, Map<String, String> data) async {
     callCount++;
@@ -34,6 +38,9 @@ class _FakeEpayElectricityGateway implements EpayElectricityGateway {
     }
     if (failWithAuth) {
       throw const EpaySessionUnavailableException('请先登录统一认证后重试');
+    }
+    if (failWithNetwork) {
+      throw const EpayGatewayException('网络连接失败');
     }
     expect(method, 'app.electric.getRoomBalance');
     expect(data['L1_area_id'], '3');
@@ -200,10 +207,9 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(gateway.callCount, 1);
-    expect(find.text('电量详情'), findsOneWidget);
+    expect(find.text('剩余电量'), findsOneWidget);
     expect(find.text('66.60'), findsOneWidget);
     expect(find.text('度'), findsOneWidget);
-    expect(find.text('剩余'), findsOneWidget);
     expect(find.text('充足'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
@@ -256,8 +262,8 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 900));
 
-    await tester.ensureVisible(find.text('去微信充值'));
-    await tester.tap(find.text('去微信充值'));
+    await tester.ensureVisible(find.text('充值'));
+    await tester.tap(find.text('充值'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
@@ -280,7 +286,7 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('prominent refresh button refetches without blanking content', (
+  testWidgets('status-line refresh icon refetches without blanking content', (
     tester,
   ) async {
     const config = DormRoomConfig(
@@ -307,19 +313,23 @@ void main() {
     await tester.pump(const Duration(milliseconds: 900));
 
     expect(gateway.callCount, 1);
-    expect(find.text('刷新电量'), findsOneWidget);
-    // 微信充值降级为小号次级入口，但仍在页面上。
-    expect(find.text('去微信充值'), findsOneWidget);
+    // 通栏刷新按钮已移除：刷新收进状态行尾的小图标；充值是三格里的主动作。
+    expect(find.text('刷新电量'), findsNothing);
+    expect(find.byTooltip('刷新电量'), findsOneWidget);
+    expect(find.text('充值'), findsOneWidget);
+    expect(find.text('低电提醒'), findsOneWidget);
+    expect(find.text('寝室'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, '去微信充值'), findsNothing);
 
-    await tester.ensureVisible(find.text('刷新电量'));
     gateway.gate = Completer<void>();
-    await tester.tap(find.text('刷新电量'));
+    await tester.tap(find.byTooltip('刷新电量'));
     await tester.pump();
     await tester.pump();
 
-    // 刷新过程中保留详情内容，只切换按钮态，不整页转圈。
-    expect(find.text('正在刷新'), findsOneWidget);
-    expect(find.text('电量详情'), findsOneWidget);
+    // 刷新过程中保留详情内容，只点亮状态行，不整页转圈。
+    expect(find.textContaining('正在刷新'), findsOneWidget);
+    expect(find.text('剩余电量'), findsOneWidget);
+    expect(find.text('66.60'), findsOneWidget);
 
     gateway.gate!.complete();
     gateway.gate = null;
@@ -327,8 +337,68 @@ void main() {
     await tester.pump(const Duration(milliseconds: 900));
 
     expect(gateway.callCount, 2);
-    expect(find.text('刷新电量'), findsOneWidget);
+    expect(find.textContaining('正在刷新'), findsNothing);
     expect(find.text('66.60'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('读数无框：状态行带百分比，低电提醒 / 寝室瓦片与 ⋮ 都能进寝室设置', (tester) async {
+    const config = DormRoomConfig(
+      areaId: '3',
+      buildingId: '114',
+      floorId: 'F00000',
+      roomId: '10720',
+    );
+    UnifiedAuthService.instance.debugSetSession(
+      active: true,
+      account: '20260001',
+    );
+    await DormElectricityService.instance.saveRoomConfig(config);
+    final gateway = _FakeEpayElectricityGateway();
+    DormElectricityService.instance.debugSetGateway(gateway);
+
+    final router = GoRouter(
+      routes: [
+        GoRoute(path: '/', builder: (_, _) => const DormElectricityPage()),
+        GoRoute(
+          path: '/settings',
+          name: 'dorm-electricity-settings',
+          builder: (_, _) => const Scaffold(body: Text('寝室设置占位页')),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+    await tester.pumpWidget(
+      MaterialApp.router(theme: AppTheme.lightTheme, routerConfig: router),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 900));
+
+    expect(find.textContaining('67% · 满电 100 度'), findsOneWidget);
+    expect(find.text('微信'), findsOneWidget);
+    expect(find.text('未开启'), findsOneWidget);
+    // AppBar 只剩 ⋮：原「选择寝室」直达图标已并入第三格瓦片。
+    expect(find.byTooltip('选择寝室'), findsNothing);
+
+    Future<void> expectOpensSettings(Future<void> Function() open) async {
+      await open();
+      await tester.pumpAndSettle();
+      expect(find.text('寝室设置占位页'), findsOneWidget);
+      router.pop();
+      await tester.pumpAndSettle();
+      expect(find.text('剩余电量'), findsOneWidget);
+    }
+
+    await expectOpensSettings(() => tester.tap(find.text('低电提醒')));
+    await expectOpensSettings(() => tester.tap(find.text('寝室')));
+    await expectOpensSettings(() async {
+      await tester.tap(find.byTooltip('更多操作'));
+      await tester.pumpAndSettle();
+      expect(find.text('刷新电量'), findsOneWidget);
+      await tester.tap(find.text('选择寝室'));
+    });
     expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(const SizedBox.shrink());
@@ -370,7 +440,7 @@ void main() {
   });
 
   testWidgets(
-    'refresh button follows the theme seed instead of a fixed color',
+    'recharge button follows the theme seed instead of a fixed color',
     (tester) async {
       const config = DormRoomConfig(
         areaId: '3',
@@ -398,10 +468,7 @@ void main() {
         await tester.pump(const Duration(milliseconds: 900));
         final material = tester.widget<Material>(
           find
-              .descendant(
-                of: find.widgetWithText(FilledButton, '刷新电量'),
-                matching: find.byType(Material),
-              )
+              .ancestor(of: find.text('充值'), matching: find.byType(Material))
               .first,
         );
         return material.color;
@@ -418,6 +485,95 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
+
+  // ── 缓存优先首帧 ────────────────────────────────────────────────────────
+
+  testWidgets('有缓存进页：首帧即显示缓存读数，无整页 spinner，新鲜缓存不触网', (
+    tester,
+  ) async {
+    switchSession(active: true, account: 'A');
+    await DormElectricityService.instance.saveRoomConfig(_configA);
+    final gateway = _FakeEpayElectricityGateway();
+    DormElectricityService.instance.debugSetGateway(gateway);
+    DormElectricityService.instance.debugSetCachedElectricity(
+      42.5,
+      updatedAt: DateTime.now(),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: const DormElectricityPage(),
+      ),
+    );
+    // 只 pump 一帧：配置 / 网络都还没回来。
+    expect(find.text('42.50'), findsOneWidget);
+    expect(find.text('尚未配置寝室'), findsNothing);
+    expect(find.text('正在获取电量…'), findsNothing);
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 900));
+    expect(find.text('42.50'), findsOneWidget);
+    expect(gateway.callCount, 0);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('无缓存首帧：读数为 --、状态行在取数、充值按钮立即可点、不闪空态', (
+    tester,
+  ) async {
+    switchSession(active: true, account: 'A');
+    await DormElectricityService.instance.saveRoomConfig(_configA);
+    final gateway = _FakeEpayElectricityGateway()..gate = Completer<void>();
+    DormElectricityService.instance.debugSetGateway(gateway);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: const DormElectricityPage(),
+      ),
+    );
+    await tester.pump();
+    // 配置未知 / 未回来时绝不先闪「尚未配置寝室」。
+    expect(find.text('尚未配置寝室'), findsNothing);
+    expect(find.text('--'), findsOneWidget);
+    expect(find.text('正在获取电量…'), findsOneWidget);
+    final recharge = tester.widget<InkWell>(
+      find.ancestor(of: find.text('充值'), matching: find.byType(InkWell)).first,
+    );
+    expect(recharge.onTap, isNotNull);
+
+    gateway.gate!.complete();
+    gateway.gate = null;
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 900));
+    expect(find.text('66.60'), findsOneWidget);
+    expect(find.text('正在获取电量…'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('刷新失败保留缓存读数，状态行标失败并出现 SnackBar', (tester) async {
+    switchSession(active: true, account: 'A');
+    await DormElectricityService.instance.saveRoomConfig(_configA);
+    final gateway = _FakeEpayElectricityGateway()..failWithNetwork = true;
+    DormElectricityService.instance.debugSetGateway(gateway);
+    // 过期缓存：进页即后台强刷。
+    DormElectricityService.instance.debugSetCachedElectricity(
+      42.5,
+      updatedAt: DateTime.now().subtract(const Duration(hours: 2)),
+    );
+
+    await pumpDormPage(tester);
+
+    expect(gateway.callCount, 1);
+    expect(find.text('42.50'), findsOneWidget);
+    expect(find.textContaining('· 刷新失败'), findsOneWidget);
+    expect(find.text('电量刷新失败'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 
   // ── 身份切换 / 迟到结果 ──────────────────────────────────────────────────
 
@@ -437,10 +593,10 @@ void main() {
     await tester.pump();
 
     expect(find.text('66.60'), findsNothing);
-    expect(find.text('电量详情'), findsNothing);
 
     await tester.pump(const Duration(milliseconds: 900));
     expect(find.text('尚未配置寝室'), findsOneWidget);
+    expect(find.text('剩余电量'), findsNothing);
     expect(find.text('66.60'), findsNothing);
     // B 没有配置：页面不再触网，更不会读 A 的余额。
     expect(gateway.callCount, 1);
@@ -566,7 +722,7 @@ void main() {
     // fail closed：不展示、不查询、不回退无主缓存。
     expect(find.text('尚未配置寝室'), findsOneWidget);
     expect(find.text('88.80'), findsNothing);
-    expect(find.text('电量详情'), findsNothing);
+    expect(find.text('剩余电量'), findsNothing);
     expect(gateway.callCount, 0);
     expect(tester.takeException(), isNull);
 
@@ -606,13 +762,12 @@ void main() {
     await pumpDormPage(tester);
     expect(find.text('66.60'), findsOneWidget);
 
-    // 手动刷新挂起（不覆盖内容，只点亮按钮）。
+    // 手动刷新挂起（不覆盖内容，只点亮状态行）。
     final aPending = Completer<void>();
     gateway.gate = aPending;
-    await tester.ensureVisible(find.text('刷新电量'));
-    await tester.tap(find.text('刷新电量'));
+    await tester.tap(find.byTooltip('刷新电量'));
     await tester.pump();
-    expect(find.text('正在刷新'), findsOneWidget);
+    expect(find.textContaining('正在刷新'), findsOneWidget);
     expect(find.text('66.60'), findsOneWidget);
 
     // 换号到 B（无配置）：A 的刷新视图与点亮态立即作废。
@@ -626,7 +781,7 @@ void main() {
 
     expect(find.text('尚未配置寝室'), findsOneWidget);
     expect(find.text('66.60'), findsNothing);
-    expect(find.text('正在刷新'), findsNothing);
+    expect(find.textContaining('正在刷新'), findsNothing);
     expect(gateway.callCount, 2);
     expect(tester.takeException(), isNull);
 

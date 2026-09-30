@@ -18,41 +18,17 @@ class AppShellPage extends StatefulWidget {
   State<AppShellPage> createState() => _AppShellPageState();
 }
 
-class _AppShellPageState extends State<AppShellPage>
-    with SingleTickerProviderStateMixin {
-  /// 分支切换动效：进入「我的」时内容从右往左划入，返回主页时从左划入。
-  /// 只滑动单实例 navigationShell（复制 shell 会出现双份页面状态）。
-  late final AnimationController _switchController = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 280),
-    value: 1,
-  );
-  int _lastIndex = 0;
-  Offset _slideBegin = Offset.zero;
-
+class _AppShellPageState extends State<AppShellPage> {
   @override
   void initState() {
     super.initState();
-    _lastIndex = widget.navigationShell.currentIndex;
     GlassStyleController.instance.restore();
     // ScrollSpy：首页分区变化时刷新 dock 高亮。
     HomeZoneController.instance.addListener(_onZoneChanged);
   }
 
   @override
-  void didUpdateWidget(covariant AppShellPage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    final index = widget.navigationShell.currentIndex;
-    if (index == _lastIndex) return;
-    // 进入更高 index 的分支（主页→我的）从右划入；返回则从左划入。
-    _slideBegin = Offset(index > _lastIndex ? 0.06 : -0.06, 0);
-    _lastIndex = index;
-    _switchController.forward(from: 0);
-  }
-
-  @override
   void dispose() {
-    _switchController.dispose();
     HomeZoneController.instance.removeListener(_onZoneChanged);
     super.dispose();
   }
@@ -113,21 +89,7 @@ class _AppShellPageState extends State<AppShellPage>
   Widget build(BuildContext context) {
     return Scaffold(
       extendBody: true,
-      body: SlideTransition(
-        position: Tween<Offset>(begin: _slideBegin, end: Offset.zero).animate(
-          CurvedAnimation(
-            parent: _switchController,
-            curve: Curves.easeOutCubic,
-          ),
-        ),
-        child: FadeTransition(
-          opacity: CurvedAnimation(
-            parent: _switchController,
-            curve: const Interval(0, 0.55),
-          ),
-          child: widget.navigationShell,
-        ),
-      ),
+      body: widget.navigationShell,
       bottomNavigationBar: SafeArea(
         top: false,
         child: Padding(
@@ -155,6 +117,98 @@ class _AppShellPageState extends State<AppShellPage>
           ),
         ),
       ),
+    );
+  }
+}
+
+/// 分支容器：替代 `indexedStack` 的 IndexedStack，切换时新分支在旧分支
+/// **之上**淡入并轻微侧移，旧分支保持可见直到被完全盖住——两页都自带
+/// 不透明壁纸背景，因此过渡是页与页的交叉淡化，不会透出 Scaffold 底色
+/// （旧实现整体淡入单个 shell，暗色下会闪一下黑）。
+///
+/// 非当前、非过渡中的分支 Offstage + TickerMode 关闭，与 IndexedStack
+/// 一样保活状态且不跑动画 / Shader ticker。
+class AppShellBranchContainer extends StatefulWidget {
+  const AppShellBranchContainer({
+    super.key,
+    required this.currentIndex,
+    required this.children,
+  });
+
+  final int currentIndex;
+  final List<Widget> children;
+
+  @override
+  State<AppShellBranchContainer> createState() =>
+      _AppShellBranchContainerState();
+}
+
+class _AppShellBranchContainerState extends State<AppShellBranchContainer>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 260),
+    value: 1,
+  )..addStatusListener(_onStatus);
+
+  late int _current = widget.currentIndex;
+  int? _previous;
+  double _slideFrom = 0;
+
+  @override
+  void didUpdateWidget(covariant AppShellBranchContainer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.currentIndex == _current) return;
+    // 进入更高 index 的分支（主页→我的）从右侧轻推入；返回则从左侧。
+    _slideFrom = widget.currentIndex > _current ? 0.04 : -0.04;
+    _previous = _current;
+    _current = widget.currentIndex;
+    _controller.forward(from: 0);
+  }
+
+  void _onStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed && _previous != null) {
+      setState(() => _previous = null);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final curved = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutCubic,
+    );
+    final previous = _previous;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        for (var i = 0; i < widget.children.length; i++)
+          if (i != _current)
+            Offstage(
+              offstage: i != previous,
+              child: TickerMode(
+                enabled: i == previous,
+                child: IgnorePointer(child: widget.children[i]),
+              ),
+            ),
+        // 当前分支最后绘制，盖在过渡中的旧分支之上。
+        FadeTransition(
+          opacity: curved,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: Offset(_slideFrom, 0),
+              end: Offset.zero,
+            ).animate(curved),
+            child: widget.children[_current],
+          ),
+        ),
+      ],
     );
   }
 }

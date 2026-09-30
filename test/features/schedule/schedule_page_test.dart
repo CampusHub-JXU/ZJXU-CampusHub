@@ -125,9 +125,11 @@ void main() {
 
     expect(find.text('调课提醒'), findsOneWidget);
     expect(find.text('AI+创新创业基础'), findsWidgets);
-    expect(find.textContaining('第5周 周四 第8-9节 -> 第5周 周五 第8-9节'), findsOneWidget);
+    // 调课为「原 / 改」对照，时段统一「周X a–b 节」。
+    expect(find.textContaining('周四 8–9 节'), findsOneWidget);
+    expect(find.textContaining('周五 8–9 节 · 铭德楼468'), findsOneWidget);
+    expect(find.textContaining(' -> '), findsNothing);
     expect(find.text('胡亚楠'), findsWidgets);
-    expect(find.text('教室：铭德楼468'), findsOneWidget);
   });
 
   testWidgets('switching accounts replaces the visible schedule immediately', (

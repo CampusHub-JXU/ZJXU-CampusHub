@@ -199,12 +199,12 @@ class CourseChangeNotice {
   bool get isReflected => status == CourseChangeNoticeStatus.reflected;
   bool get isUnapplied => status == CourseChangeNoticeStatus.unapplied;
 
-  String get statusLabel => isReflected ? '当前课表已体现' : '未应用';
+  String get statusLabel => isReflected ? '当前课表已显示' : '未应用';
 
   String get statusDetail {
-    if (isReflected) return '当前课表已体现';
+    if (isReflected) return '当前课表已显示';
     if (rule.termContext == null) return '学期未确认，未应用';
-    return '当前课表未体现';
+    return '当前课表未显示';
   }
 }
 

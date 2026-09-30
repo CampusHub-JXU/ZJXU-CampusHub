@@ -6,7 +6,12 @@ import '../../../core/theme/app_design_tokens.dart';
 import '../../../core/theme/glass_style_controller.dart';
 import '../../../core/theme/personalization_controller.dart';
 import '../../../core/theme/widgets/home_background_layer.dart';
+import '../../../shared/widgets/app_tile_surface.dart';
 import '../../../shared/widgets/glass_container.dart';
+
+/// 预览场景：「主页」用真实首页场景并支持拖动/捏合调整壁纸；
+/// 「功能」「我的」只是静态示意（壁纸 + 占位磁贴 + dock），不跑真实页面树。
+enum AppearancePreviewScene { home, functions, my }
 
 /// 外观页顶部的真实比例首页预览（PRD 0.7.0 §16/§17）。
 ///
@@ -18,9 +23,13 @@ class AppearancePreview extends StatefulWidget {
     super.key,
     this.maxHeight = 320,
     this.homeSceneBuilder,
+    this.scene = AppearancePreviewScene.home,
   });
 
   final double maxHeight;
+
+  /// 预览哪个页面；手势只在 [AppearancePreviewScene.home] 生效。
+  final AppearancePreviewScene scene;
 
   /// 真实首页场景构建器（由 app 层注入 `HomeSurfaceScene`，避免
   /// feature→feature 依赖）。为空时回退到内置示意层。
@@ -37,6 +46,8 @@ class _AppearancePreviewState extends State<AppearancePreview> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isHome = widget.scene == AppearancePreviewScene.home;
     return ValueListenableBuilder<String?>(
       valueListenable: PersonalizationController.instance.backgroundImagePath,
       builder: (context, bgPath, _) {
@@ -74,34 +85,41 @@ class _AppearancePreviewState extends State<AppearancePreview> {
                             ),
                             child: GestureDetector(
                               behavior: HitTestBehavior.opaque,
-                              onScaleStart: (details) {
-                                _gestureStartScale = scale;
-                                _gestureStartAlignment = alignment;
-                                _gestureStartFocalPoint = details.focalPoint;
-                              },
-                              onScaleUpdate: (details) {
-                                _updatePreviewTransform(
-                                  focalPoint: details.focalPoint,
-                                  frameSize: frameSize,
-                                  scale: details.scale,
-                                );
-                              },
-                              onScaleEnd: (_) {
-                                PersonalizationController.instance
-                                    .setBackgroundAlignment(
-                                      PersonalizationController
-                                          .instance
-                                          .backgroundAlignment
-                                          .value,
-                                    );
-                                PersonalizationController.instance
-                                    .setBackgroundScale(
-                                      PersonalizationController
-                                          .instance
-                                          .backgroundScale
-                                          .value,
-                                    );
-                              },
+                              onScaleStart: !isHome
+                                  ? null
+                                  : (details) {
+                                      _gestureStartScale = scale;
+                                      _gestureStartAlignment = alignment;
+                                      _gestureStartFocalPoint =
+                                          details.focalPoint;
+                                    },
+                              onScaleUpdate: !isHome
+                                  ? null
+                                  : (details) {
+                                      _updatePreviewTransform(
+                                        focalPoint: details.focalPoint,
+                                        frameSize: frameSize,
+                                        scale: details.scale,
+                                      );
+                                    },
+                              onScaleEnd: !isHome
+                                  ? null
+                                  : (_) {
+                                      PersonalizationController.instance
+                                          .setBackgroundAlignment(
+                                            PersonalizationController
+                                                .instance
+                                                .backgroundAlignment
+                                                .value,
+                                          );
+                                      PersonalizationController.instance
+                                          .setBackgroundScale(
+                                            PersonalizationController
+                                                .instance
+                                                .backgroundScale
+                                                .value,
+                                          );
+                                    },
                               child: Stack(
                                 fit: StackFit.expand,
                                 children: [
@@ -118,33 +136,43 @@ class _AppearancePreviewState extends State<AppearancePreview> {
                                     )
                                   else
                                     _buildPreviewBackgroundPlaceholder(context),
-                                  widget.homeSceneBuilder?.call(context) ??
-                                      _buildHomeWidgetPreviewOverlay(context),
-                                  Positioned(
-                                    top: 10,
-                                    right: 10,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 4,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: Colors.black.withValues(
-                                          alpha: 0.42,
+                                  switch (widget.scene) {
+                                    AppearancePreviewScene.home =>
+                                      widget.homeSceneBuilder?.call(context) ??
+                                          _buildHomeWidgetPreviewOverlay(
+                                            context,
+                                          ),
+                                    AppearancePreviewScene.functions =>
+                                      const _FunctionsSceneMock(),
+                                    AppearancePreviewScene.my =>
+                                      const _MySceneMock(),
+                                  },
+                                  if (isHome && bgPath != null)
+                                    Positioned(
+                                      top: 10,
+                                      right: 10,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4,
                                         ),
-                                        borderRadius: BorderRadius.circular(
-                                          AppRadius.chip,
+                                        decoration: BoxDecoration(
+                                          color: cs.inverseSurface.withValues(
+                                            alpha: 0.72,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            AppRadius.chip,
+                                          ),
                                         ),
-                                      ),
-                                      child: const Text(
-                                        '首页可见区域 · 拖动/双指缩放',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 11,
+                                        child: Text(
+                                          '拖动 / 双指缩放',
+                                          style: TextStyle(
+                                            color: cs.onInverseSurface,
+                                            fontSize: 11,
+                                          ),
                                         ),
                                       ),
                                     ),
-                                  ),
                                 ],
                               ),
                             ),
@@ -316,5 +344,170 @@ class _AppearancePreviewState extends State<AppearancePreview> {
     );
     PersonalizationController.instance.backgroundScale.value =
         (_gestureStartScale * scale).clamp(0.5, 3.0);
+  }
+}
+
+/// 静态示意的底部 dock：与真实 dock 同为浮层材质，只画四个占位点。
+class _DockMock extends StatelessWidget {
+  const _DockMock({required this.activeIndex});
+
+  final int activeIndex;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth;
+        final h = constraints.maxHeight;
+        final dockHeight = (h * 0.075).clamp(10.0, 44.0);
+        return Align(
+          alignment: Alignment.bottomCenter,
+          child: Padding(
+            padding: EdgeInsets.only(bottom: h * 0.025),
+            child: IgnorePointer(
+              child: AppMaterialSurface(
+                tier: GlassTier.nav,
+                width: w * 0.62,
+                height: dockHeight,
+                borderRadius: BorderRadius.circular(dockHeight / 2),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    for (var i = 0; i < 4; i++)
+                      Container(
+                        width: dockHeight * 0.32,
+                        height: dockHeight * 0.32,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: i == activeIndex
+                              ? cs.primary
+                              : cs.onSurfaceVariant.withValues(alpha: 0.45),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// 示意用的文字条（一段圆角色块）。
+class _BarMock extends StatelessWidget {
+  const _BarMock({required this.width, required this.height});
+
+  final double width;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(height / 2),
+      ),
+    );
+  }
+}
+
+Widget _tileMock(double radius) => IgnorePointer(
+  child: AppTileSurface(
+    borderRadius: BorderRadius.circular(radius),
+    child: const SizedBox.expand(),
+  ),
+);
+
+/// 「功能」页示意：标题 + 两列磁贴网格 + dock。
+class _FunctionsSceneMock extends StatelessWidget {
+  const _FunctionsSceneMock();
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth;
+        final h = constraints.maxHeight;
+        final pad = w * 0.07;
+        final gap = w * 0.035;
+        final tileW = (w - pad * 2 - gap) / 2;
+        final tileH = tileW * 0.62;
+        final radius = w * 0.045;
+        final top = h * 0.14;
+        return Stack(
+          children: [
+            Positioned(
+              left: pad,
+              top: h * 0.06,
+              child: _BarMock(width: w * 0.22, height: h * 0.028),
+            ),
+            for (var i = 0; i < 8; i++)
+              Positioned(
+                left: pad + (i % 2) * (tileW + gap),
+                top: top + (i ~/ 2) * (tileH + gap),
+                width: tileW,
+                height: tileH,
+                child: _tileMock(radius),
+              ),
+            const Positioned.fill(child: _DockMock(activeIndex: 2)),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// 「我的」页示意：标题 + 两枚方形账号磁贴 + 一枚宽设置磁贴 + dock。
+class _MySceneMock extends StatelessWidget {
+  const _MySceneMock();
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth;
+        final h = constraints.maxHeight;
+        final pad = w * 0.07;
+        final gap = w * 0.035;
+        final squareW = (w - pad * 2 - gap) / 2;
+        final radius = w * 0.045;
+        final tilesTop = h * 0.22;
+        return Stack(
+          children: [
+            Positioned(
+              left: pad,
+              top: h * 0.07,
+              child: _BarMock(width: w * 0.2, height: h * 0.034),
+            ),
+            Positioned(
+              left: pad,
+              top: h * 0.13,
+              child: _BarMock(width: w * 0.38, height: h * 0.018),
+            ),
+            for (var i = 0; i < 2; i++)
+              Positioned(
+                left: pad + i * (squareW + gap),
+                top: tilesTop,
+                width: squareW,
+                height: squareW * 0.9,
+                child: _tileMock(radius),
+              ),
+            Positioned(
+              left: pad,
+              top: tilesTop + squareW * 0.9 + gap,
+              width: w - pad * 2,
+              height: squareW * 0.34,
+              child: _tileMock(radius),
+            ),
+            const Positioned.fill(child: _DockMock(activeIndex: 3)),
+          ],
+        );
+      },
+    );
   }
 }

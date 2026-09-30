@@ -2,17 +2,20 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/personalization_controller.dart';
+import '../../../shared/widgets/plain_list.dart';
 
-/// Shader 参数滑条组：与平面化分组卡同族——顶部 hairline 分隔 +
-/// 13/onSurfaceVariant 标签，回调与数值域保持不变。
+/// Shader 参数滑条组：放在「效果」分组里，与分组内其它行共用
+/// [PlainSliderRow]（标题左、数值右、滑条下挂）。回调与数值域不变。
 class ShaderAnimationSpeedSlider extends StatelessWidget {
   const ShaderAnimationSpeedSlider({super.key});
 
   @override
   Widget build(BuildContext context) {
     return _ShaderSlider(
+      sliderKey: const Key('personalization_shader_speed'),
+      title: '速度',
       valueListenable: PersonalizationController.instance.shaderAnimationSpeed,
-      label: (speed) => '动画速度  ${speed.toStringAsFixed(1)}x',
+      label: (speed) => '${speed.toStringAsFixed(1)}×',
       max: 2,
       divisions: 20,
       onChanged: PersonalizationController.instance.setShaderAnimationSpeed,
@@ -26,8 +29,10 @@ class ShaderStrengthSlider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _ShaderSlider(
+      sliderKey: const Key('personalization_shader_strength'),
+      title: '强度',
       valueListenable: PersonalizationController.instance.shaderStrength,
-      label: (strength) => 'Shader 强度  ${(strength * 100).round()}%',
+      label: (strength) => '${(strength * 100).round()}%',
       divisions: 10,
       onChanged: PersonalizationController.instance.setShaderStrength,
     );
@@ -40,8 +45,10 @@ class ShaderOpacitySlider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _ShaderSlider(
+      sliderKey: const Key('personalization_shader_opacity'),
+      title: '叠加不透明度',
       valueListenable: PersonalizationController.instance.shaderOpacity,
-      label: (opacity) => 'Shader 透明度  ${(opacity * 100).round()}%',
+      label: (opacity) => '${(opacity * 100).round()}%',
       divisions: 20,
       onChanged: PersonalizationController.instance.setShaderOpacity,
     );
@@ -50,6 +57,8 @@ class ShaderOpacitySlider extends StatelessWidget {
 
 class _ShaderSlider extends StatelessWidget {
   const _ShaderSlider({
+    required this.sliderKey,
+    required this.title,
     required this.valueListenable,
     required this.label,
     required this.divisions,
@@ -57,6 +66,8 @@ class _ShaderSlider extends StatelessWidget {
     this.max = 1,
   });
 
+  final Key sliderKey;
+  final String title;
   final ValueListenable<double> valueListenable;
   final String Function(double value) label;
   final int divisions;
@@ -65,36 +76,17 @@ class _ShaderSlider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return ValueListenableBuilder<double>(
       valueListenable: valueListenable,
-      builder: (context, value, _) {
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Divider(
-              height: 1,
-              thickness: 1,
-              indent: 16,
-              color: cs.outlineVariant.withValues(alpha: 0.35),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-              child: Text(
-                label(value),
-                style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
-              ),
-            ),
-            Slider.adaptive(
-              value: value,
-              min: 0,
-              max: max,
-              divisions: divisions,
-              onChanged: onChanged,
-            ),
-          ],
-        );
-      },
+      builder: (context, value, _) => PlainSliderRow(
+        sliderKey: sliderKey,
+        title: title,
+        value: value,
+        valueLabel: label(value),
+        max: max,
+        divisions: divisions,
+        onChanged: onChanged,
+      ),
     );
   }
 }
