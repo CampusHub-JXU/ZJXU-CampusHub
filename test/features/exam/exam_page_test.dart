@@ -10,6 +10,8 @@ import 'package:jxu_campus_hub/core/cache/private_cache_store.dart';
 import 'package:jxu_campus_hub/features/exam/exam_model.dart';
 import 'package:jxu_campus_hub/features/exam/exam_page.dart';
 import 'package:jxu_campus_hub/features/exam/exam_service.dart';
+import 'package:jxu_campus_hub/shared/widgets/refresh_status_line.dart';
+import 'package:jxu_campus_hub/shared/widgets/skeleton_box.dart';
 
 import '../../helpers/test_setup.dart';
 
@@ -348,6 +350,83 @@ void main() {
     expect(find.textContaining('获取考试信息失败'), findsNothing);
 
     // 推进 SnackBar 计时器，避免测试结束时留下 pending timer。
+    await tester.pump(const Duration(seconds: 4));
+  });
+
+  // ── 列表页形态（docs/ui-unification-plan.md 第 2 批）──────────────────────
+
+  testWidgets('无缓存首次加载显示骨架与状态行，不整页转圈', (tester) async {
+    final pending = Completer<List<ExamEntry>>();
+    ZhengfangAuth.instance.debugSetSession(
+      active: true,
+      studentId: '2025000001',
+    );
+    await pumpExamPage(
+      tester,
+      fetchExams: ({bool forceRefresh = false}) {
+        return pending.future;
+      },
+    );
+
+    expect(find.byType(SkeletonBox), findsWidgets);
+    expect(find.text('正在获取考试…'), findsOneWidget);
+    expect(
+      find.byType(CircularProgressIndicator),
+      findsOneWidget,
+      reason: '只有状态行里的 12px 小转圈',
+    );
+
+    pending.complete([examEntry('高等数学')]);
+    await pumpUntilFound(tester, find.text('高等数学'));
+    expect(find.byType(SkeletonBox), findsNothing);
+    expect(find.byType(RefreshStatusLine), findsOneWidget);
+    expect(find.textContaining('更新'), findsOneWidget);
+  });
+
+  testWidgets('有数据时下拉刷新会强制重新获取', (tester) async {
+    final forceFlags = <bool>[];
+    ZhengfangAuth.instance.debugSetSession(
+      active: true,
+      studentId: '2025000001',
+    );
+    await pumpExamPage(
+      tester,
+      fetchExams: ({bool forceRefresh = false}) async {
+        forceFlags.add(forceRefresh);
+        return [examEntry('高等数学')];
+      },
+    );
+    await pumpUntilFound(tester, find.text('高等数学'));
+
+    await tester.fling(find.text('高等数学'), const Offset(0, 400), 1000);
+    await tester.pumpAndSettle();
+
+    expect(forceFlags.last, isTrue);
+    expect(forceFlags.length, greaterThanOrEqualTo(2));
+  });
+
+  testWidgets('刷新失败时状态行标出「刷新失败」并保留数据', (tester) async {
+    var callCount = 0;
+    ZhengfangAuth.instance.debugSetSession(
+      active: true,
+      studentId: '2025000001',
+    );
+    await pumpExamPage(
+      tester,
+      fetchExams: ({bool forceRefresh = false}) async {
+        callCount++;
+        if (callCount == 1) return [examEntry('高等数学')];
+        throw const ExamRequestException('网络不可用');
+      },
+    );
+    await pumpUntilFound(tester, find.text('高等数学'));
+
+    await tester.tap(find.byIcon(Icons.refresh));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('高等数学'), findsOneWidget);
+    expect(find.textContaining('刷新失败'), findsOneWidget);
     await tester.pump(const Duration(seconds: 4));
   });
 }

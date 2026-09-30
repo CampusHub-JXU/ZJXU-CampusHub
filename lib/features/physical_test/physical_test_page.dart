@@ -6,12 +6,15 @@ import '../../core/auth/cas_auth_broker.dart';
 import '../../core/auth/unified_auth.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/theme/app_design_tokens.dart';
+import '../../core/theme/app_typography.dart';
 import '../../shared/widgets/app_app_bar.dart';
-import '../../shared/widgets/app_card.dart';
 import '../../shared/widgets/app_empty_view.dart';
 import '../../shared/widgets/app_error_view.dart';
 import '../../shared/widgets/auth_required_view.dart';
 import '../../shared/widgets/login_shell.dart';
+import '../../shared/widgets/plain_list.dart';
+import '../../shared/widgets/refresh_status_line.dart';
+import '../../shared/widgets/skeleton_box.dart';
 import 'physical_test_model.dart';
 import 'physical_test_service.dart';
 
@@ -185,7 +188,7 @@ class _PhysicalTestPageState extends State<PhysicalTestPage> {
 
   Widget _buildBody() {
     if (_loading && _snapshot == null && !_authRequired && _error == null) {
-      return const Center(child: CircularProgressIndicator());
+      return _buildSkeleton();
     }
 
     if (_authRequired) {
@@ -234,74 +237,73 @@ class _PhysicalTestPageState extends State<PhysicalTestPage> {
     );
   }
 
+  /// 每个学年一组：标题行「学年 · 总分 · 等级」+ 键值行（左项目、右成绩）。
   Widget _buildRecordCard(PhysicalTestRecord record) {
     final cs = Theme.of(context).colorScheme;
+    final label = context.appText.label;
     final summary = [
       record.totalScore,
       record.grade,
     ].where((value) => value.isNotEmpty).join(' · ');
 
-    return AppCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  record.academicYear.isEmpty ? '体测记录' : record.academicYear,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Semantics(
+          header: true,
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    record.academicYear.isEmpty ? '体测记录' : record.academicYear,
+                    style: label,
                   ),
                 ),
-              ),
-              if (summary.isNotEmpty)
-                Text(
-                  summary,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: cs.primary,
-                  ),
-                ),
-            ],
+                if (summary.isNotEmpty)
+                  Text(summary, style: label.copyWith(color: cs.primary)),
+              ],
+            ),
           ),
-          if (record.items.isNotEmpty) ...[
-            const SizedBox(height: AppSpacing.sm),
-            for (final item in record.items) _buildItemRow(item),
-          ],
-        ],
-      ),
+        ),
+        if (record.items.isNotEmpty)
+          PlainListGroup(
+            children: [for (final item in record.items) _buildItemRow(item)],
+          ),
+      ],
     );
   }
 
   Widget _buildItemRow(PhysicalTestItem item) {
-    final cs = Theme.of(context).colorScheme;
     final trailing = [
       item.result,
       if (item.score.isNotEmpty) '${item.score} 分',
       item.level,
     ].where((value) => value.isNotEmpty).join(' · ');
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              item.name.isEmpty ? '未命名项目' : item.name,
-              style: TextStyle(fontSize: 14, color: cs.onSurface),
-            ),
-          ),
-          const SizedBox(width: AppSpacing.sm),
-          if (trailing.isNotEmpty)
-            Text(
-              trailing,
-              style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
-            ),
-        ],
+    return PlainListRow(
+      title: item.name.isEmpty ? '未命名项目' : item.name,
+      value: trailing.isEmpty ? null : trailing,
+    );
+  }
+
+  /// 无缓存首次加载：一组骨架，替代整页 spinner。
+  Widget _buildSkeleton() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.pageMargin,
+        AppSpacing.sm,
+        AppSpacing.pageMargin,
+        AppSpacing.xl,
       ),
+      children: const [
+        RefreshStatusLine(refreshing: true, loadingLabel: '正在获取体测成绩…'),
+        SizedBox(height: AppSpacing.md),
+        SkeletonBox(width: 96, height: 12),
+        SizedBox(height: AppSpacing.sm),
+        SkeletonBox(height: 208, radius: 16),
+      ],
     );
   }
 }

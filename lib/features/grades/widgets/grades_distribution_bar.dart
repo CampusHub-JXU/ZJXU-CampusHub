@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/app_typography.dart';
+
 import '../grades_score_palette.dart';
 
 /// 成绩分布：一条 8 高圆角堆叠条（段间 2px 缝）+ 图例「优 3 / 良 4 …」。
@@ -64,9 +66,7 @@ class GradesDistributionBar extends StatelessWidget {
                   const SizedBox(width: 4),
                   Text(
                     '${band.label} $count',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: cs.onSurfaceVariant,
+                    style: context.appText.meta.copyWith(
                       fontFeatures: const [FontFeature.tabularFigures()],
                     ),
                   ),

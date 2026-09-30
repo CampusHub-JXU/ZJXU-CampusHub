@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../core/theme/app_typography.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../shared/widgets/app_empty_view.dart';
 import '../../shared/widgets/app_error_view.dart';
@@ -575,8 +576,7 @@ class _GradesPageState extends State<GradesPage>
               onSelected: (_) => _onTermChanged(key),
               showCheckmark: false,
               selectedColor: cs.secondaryContainer,
-              labelStyle: TextStyle(
-                fontSize: 13,
+              labelStyle: context.appText.secondary.copyWith(
                 color: key == _selectedTermKey
                     ? cs.onSecondaryContainer
                     : cs.onSurfaceVariant,
@@ -610,20 +610,15 @@ class _GradesPageState extends State<GradesPage>
             children: [
               Text(
                 _allTermsSelected ? '总绩点' : '学期绩点',
-                style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                style: context.appText.meta,
               ),
               FittedBox(
                 fit: BoxFit.scaleDown,
                 alignment: Alignment.centerLeft,
                 child: Text(
                   hasGpa ? summary.gpa.toStringAsFixed(2) : '--',
-                  style: TextStyle(
-                    fontSize: 48,
-                    fontWeight: FontWeight.w600,
-                    height: 1.1,
-                    letterSpacing: -1,
+                  style: context.appText.overview.copyWith(
                     color: hasGpa ? cs.primary : cs.outlineVariant,
-                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
               ),
@@ -695,7 +690,7 @@ class _GradesPageState extends State<GradesPage>
   }
 }
 
-/// 概览右侧的小统计列：11sp 标签 + 17sp w600 值。
+/// 概览右侧的小统计列：`meta` 标签 + `titleMedium` 等宽值。
 class _OverviewStat extends StatelessWidget {
   const _OverviewStat({required this.label, required this.value});
 
@@ -709,20 +704,14 @@ class _OverviewStat extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            maxLines: 1,
-            style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
-          ),
+          Text(label, maxLines: 1, style: context.appText.meta),
           const SizedBox(height: 2),
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
             child: Text(
               value,
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w600,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 color: cs.onSurface,
                 fontFeatures: const [FontFeature.tabularFigures()],
               ),
