@@ -27,9 +27,12 @@ import '../../helpers/mock_http_client_adapter.dart';
 /// 不会完成（同 `dorm_electricity_settings_page_test` 的 `_settleCatalog`），
 /// `pumpAndSettle` 会被拖到超时。这里用 `runAsync` 真实事件窗口放行磁盘
 /// 读写，再用假时时钟推进 best-effort 链的后续步骤。
+///
+/// [rounds] 是有界上限而非固定等待：[until] 成立即返回。全量套件负载下真实
+/// 事件窗口会被挤压，预算留足余量（约 6 秒真实时间）避免断言抢跑。
 Future<void> _settleLogout(
   WidgetTester tester, {
-  int rounds = 60,
+  int rounds = 300,
   bool Function()? until,
 }) async {
   for (var i = 0; i < rounds; i++) {
@@ -1033,9 +1036,13 @@ void main() {
       expect(commitResult, isNotNull);
 
       release.complete();
+      // 等待条件覆盖下方全部断言：提示已出现 + 教务域撤销真正走完。
       await _settleLogout(
         tester,
-        until: () => find.textContaining('已保留新会话').evaluate().isNotEmpty,
+        until: () =>
+            find.textContaining('已保留新会话').evaluate().isNotEmpty &&
+            !ZhengfangAuth.instance.isLoggedIn &&
+            stepCalls[LogoutStep.academicSession] == 1,
       );
 
       // 新登录被保留：统一认证会话没被误撤销；教务域照常撤销。
@@ -1087,9 +1094,13 @@ void main() {
       expect(commitResult, isNotNull);
 
       release.complete();
+      // 等待条件覆盖下方全部断言：提示已出现 + 教务域撤销真正走完。
       await _settleLogout(
         tester,
-        until: () => find.textContaining('已保留新会话').evaluate().isNotEmpty,
+        until: () =>
+            find.textContaining('已保留新会话').evaluate().isNotEmpty &&
+            !ZhengfangAuth.instance.isLoggedIn &&
+            stepCalls[LogoutStep.academicSession] == 1,
       );
 
       // 闸门之后的复核拦住了旧退出：新登录被保留，教务域照常撤销。
