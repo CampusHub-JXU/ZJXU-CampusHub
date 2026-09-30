@@ -15,14 +15,15 @@ buildscript {
 
     dependencies {
         // Keep in lockstep with android/settings.gradle.kts baseline
-        // (AGP 8.11.1 / Kotlin 2.2.20) to avoid pulling a newer toolchain.
-        classpath "com.android.tools.build:gradle:8.11.1"
-        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:2.2.20"
+        // (AGP 9.1.0 / Kotlin 2.4.0) to avoid pulling a newer toolchain.
+        classpath "com.android.tools.build:gradle:9.1.0"
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.0"
     }
 }
 
+// AGP 9: the Kotlin Gradle plugin is applied by the host app's Flutter Gradle
+// plugin (android.builtInKotlin=false), not here.
 apply plugin: "com.android.library"
-apply plugin: "kotlin-android"
 
 android {
     namespace = "edu.zjxu.campus_captcha_ocr"
@@ -33,16 +34,18 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
-    }
-
     defaultConfig {
         minSdk = 24
         // Ship the ONNX Runtime keep rules to every consumer app; R8 is enabled
         // by the Flutter Gradle plugin for release builds and would otherwise
         // strip classes that ORT's JNI resolves by literal name.
         consumerProguardFiles "consumer-rules.pro"
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
 }
 
