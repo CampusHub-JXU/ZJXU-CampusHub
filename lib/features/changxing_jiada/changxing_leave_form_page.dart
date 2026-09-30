@@ -6,7 +6,11 @@ import 'changxing_area_picker_dialog.dart';
 import 'changxing_jiada_form_validator.dart';
 import 'changxing_jiada_model.dart';
 import 'changxing_jiada_service.dart';
+import 'changxing_jiada_widgets.dart';
+import '../../core/theme/app_design_tokens.dart';
 import '../../shared/widgets/app_app_bar.dart';
+import '../../shared/widgets/app_feedback.dart';
+import '../../shared/widgets/plain_list.dart';
 
 class ChangxingLeaveFormPage extends StatefulWidget {
   const ChangxingLeaveFormPage({
@@ -321,8 +325,7 @@ class _ChangxingLeaveFormPageState extends State<ChangxingLeaveFormPage> {
 
   void _showSnackBar(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+    AppFeedback.toast(context, message);
   }
 
   String _fmtDateTime(DateTime? value) {
@@ -342,28 +345,25 @@ class _ChangxingLeaveFormPageState extends State<ChangxingLeaveFormPage> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(AppSpacing.pageMargin),
               children: [
-                Card(
-                  child: Column(
-                    children: [
-                      ListTile(
-                        title: const Text('开始时间'),
-                        subtitle: Text(_fmtDateTime(_startTime)),
-                        trailing: const Icon(Icons.calendar_month_outlined),
-                        onTap: () => _pickDateTime(isStart: true),
-                      ),
-                      const Divider(height: 1),
-                      ListTile(
-                        title: const Text('结束时间'),
-                        subtitle: Text(_fmtDateTime(_endTime)),
-                        trailing: const Icon(Icons.calendar_month_outlined),
-                        onTap: () => _pickDateTime(isStart: false),
-                      ),
-                    ],
-                  ),
+                const PlainSectionHeader('时间'),
+                PlainListGroup(
+                  children: [
+                    PlainListRow(
+                      title: '开始时间',
+                      value: _fmtDateTime(_startTime),
+                      onTap: () => _pickDateTime(isStart: true),
+                    ),
+                    PlainListRow(
+                      title: '结束时间',
+                      value: _fmtDateTime(_endTime),
+                      onTap: () => _pickDateTime(isStart: false),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: AppSpacing.listGroupGap),
+                const PlainSectionHeader('联系方式'),
                 TextField(
                   controller: _userPhoneController,
                   keyboardType: TextInputType.phone,
@@ -389,9 +389,8 @@ class _ChangxingLeaveFormPageState extends State<ChangxingLeaveFormPage> {
                     border: OutlineInputBorder(),
                   ),
                 ),
-                const SizedBox(height: 12),
-                Text('出行交通方式', style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpacing.listGroupGap),
+                const PlainSectionHeader('出行交通方式'),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
@@ -413,7 +412,8 @@ class _ChangxingLeaveFormPageState extends State<ChangxingLeaveFormPage> {
                       )
                       .toList(),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: AppSpacing.listGroupGap),
+                PlainSectionHeader(_isLeaveRequest ? '请假事由' : '离校事由'),
                 TextField(
                   controller: _reasonController,
                   minLines: 3,
@@ -424,14 +424,16 @@ class _ChangxingLeaveFormPageState extends State<ChangxingLeaveFormPage> {
                     border: const OutlineInputBorder(),
                   ),
                 ),
-                const SizedBox(height: 12),
-                Card(
-                  child: ListTile(
-                    title: const Text('目的地'),
-                    subtitle: Text(_areaSelection?.displayName ?? '请选择省份/市/区'),
-                    trailing: const Icon(Icons.place_outlined),
-                    onTap: _pickArea,
-                  ),
+                const SizedBox(height: AppSpacing.listGroupGap),
+                const PlainSectionHeader('目的地'),
+                PlainListGroup(
+                  children: [
+                    PlainListRow(
+                      title: '省份 / 市 / 区',
+                      value: _areaSelection?.displayName ?? '请选择',
+                      onTap: _pickArea,
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 12),
                 TextField(
@@ -444,25 +446,18 @@ class _ChangxingLeaveFormPageState extends State<ChangxingLeaveFormPage> {
                   ),
                 ),
                 if (_isLeaveRequest) ...[
-                  const SizedBox(height: 12),
-                  Card(
-                    child: ListTile(
-                      title: const Text('附件'),
-                      subtitle: Text(
-                        _attachmentLabel.isEmpty ? '未上传' : _attachmentLabel,
+                  const SizedBox(height: AppSpacing.listGroupGap),
+                  PlainListGroup(
+                    children: [
+                      changxingAttachmentRow(
+                        label: _attachmentLabel,
+                        uploading: _uploadingAttachment,
+                        onTap: _pickAttachment,
                       ),
-                      trailing: _uploadingAttachment
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.upload_file_outlined),
-                      onTap: _uploadingAttachment ? null : _pickAttachment,
-                    ),
+                    ],
                   ),
                 ],
-                const SizedBox(height: 20),
+                const SizedBox(height: AppSpacing.xl),
                 FilledButton(
                   onPressed: _submitting ? null : _submit,
                   child: Text(

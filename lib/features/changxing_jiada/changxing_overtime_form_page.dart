@@ -3,7 +3,9 @@ import 'package:go_router/go_router.dart';
 
 import 'changxing_jiada_form_validator.dart';
 import 'changxing_jiada_service.dart';
+import '../../core/theme/app_design_tokens.dart';
 import '../../shared/widgets/app_app_bar.dart';
+import '../../shared/widgets/app_feedback.dart';
 
 class ChangxingOvertimeFormPage extends StatefulWidget {
   const ChangxingOvertimeFormPage({super.key, this.applicationId});
@@ -91,8 +93,7 @@ class _ChangxingOvertimeFormPageState extends State<ChangxingOvertimeFormPage> {
 
   void _showSnackBar(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+    AppFeedback.toast(context, message);
   }
 
   @override
@@ -102,7 +103,7 @@ class _ChangxingOvertimeFormPageState extends State<ChangxingOvertimeFormPage> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(AppSpacing.pageMargin),
               children: [
                 TextField(
                   controller: _reasonController,
@@ -115,7 +116,7 @@ class _ChangxingOvertimeFormPageState extends State<ChangxingOvertimeFormPage> {
                     hintText: '请输入超时事由',
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: AppSpacing.xl),
                 FilledButton(
                   onPressed: _submitting ? null : _submit,
                   child: Text(
