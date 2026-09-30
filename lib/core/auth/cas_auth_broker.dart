@@ -112,6 +112,9 @@ class CasAuthBroker {
   /// Dio 请求，而不是只丢弃 Future。[cancelToken] 贯穿每跳，调用方可
   /// 在 dispose 时取消。调用方已选好的 [resourceUrl] 原样跟随；本入口
   /// 不做业务 WebVPN 回退。
+  ///
+  /// [stopAtRedirect] 可选：某一跳 3xx 的解析后 Location 命中时，直接返回
+  /// 该 3xx 响应（调用方自行读 `location` 头），不再跟随。
   @visibleForTesting
   static Future<Response<List<int>>> Function(
     String resourceUrl, {
@@ -120,6 +123,7 @@ class CasAuthBroker {
     CancelToken? cancelToken,
     Duration? timeout,
     DateTime? deadline,
+    bool Function(Uri nextLocation)? stopAtRedirect,
   })?
   debugGetResourceOverride;
 
@@ -130,6 +134,7 @@ class CasAuthBroker {
     CancelToken? cancelToken,
     Duration timeout = defaultResourceBudget,
     DateTime? deadline,
+    bool Function(Uri nextLocation)? stopAtRedirect,
   }) async {
     final override = debugGetResourceOverride;
     if (override != null) {
@@ -140,6 +145,7 @@ class CasAuthBroker {
         cancelToken: cancelToken,
         timeout: timeout,
         deadline: deadline,
+        stopAtRedirect: stopAtRedirect,
       );
     }
     if (dio == null) await DioClient.instance.ensureInitialized();
@@ -199,10 +205,15 @@ class CasAuthBroker {
           completedCasExchange |= isUnifiedAuthLoginEntryUrl(
             current.toString(),
           );
-          current = current.resolve(location);
-          if (current.scheme != 'http' && current.scheme != 'https') {
+          final next = current.resolve(location);
+          if (next.scheme != 'http' && next.scheme != 'https') {
             throw StateError('认证重定向协议不受支持');
           }
+          // 调用方只需要某一跳的 Location（如业务回调把一次性 tokenId 放在
+          // 重定向里）：命中即原样返回该 3xx 响应，不再请求下一跳，避免
+          // 额外消费 ticket / 一次性参数。
+          if (stopAtRedirect?.call(next) ?? false) return response;
+          current = next;
           continue;
         }
         final html = utf8.decode(
