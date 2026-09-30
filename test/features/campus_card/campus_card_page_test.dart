@@ -329,7 +329,9 @@ void main() {
     expect(find.text('校园卡余额已刷新'), findsOneWidget);
   });
 
-  testWidgets('payment-code primary tile follows the theme seed', (tester) async {
+  testWidgets('payment-code primary tile follows the theme seed', (
+    tester,
+  ) async {
     Future<Color?> buttonColorFor(Color seed) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -1232,9 +1234,7 @@ void main() {
       expect(find.text('****'), findsNothing);
     });
 
-    testWidgets('visibility toggle sits on the 余额 header row', (
-      tester,
-    ) async {
+    testWidgets('visibility toggle sits on the 余额 header row', (tester) async {
       await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
       await tester.pumpAndSettle();
 

@@ -21,65 +21,71 @@ void main() {
 
   testWidgets('shows refreshing, failed and first-load labels', (tester) async {
     final updated = DateTime(2026, 9, 30, 10, 32);
-    await tester.pumpWidget(_host(RefreshStatusLine(
-      updatedAt: updated,
-      refreshing: true,
-      now: now,
-    )));
+    await tester.pumpWidget(
+      _host(RefreshStatusLine(updatedAt: updated, refreshing: true, now: now)),
+    );
     expect(find.text('10:32 更新 · 正在刷新'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
-    await tester.pumpWidget(_host(RefreshStatusLine(
-      updatedAt: updated,
-      failed: true,
-      now: now,
-    )));
+    await tester.pumpWidget(
+      _host(RefreshStatusLine(updatedAt: updated, failed: true, now: now)),
+    );
     expect(find.text('10:32 更新 · 刷新失败'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
 
-    await tester.pumpWidget(_host(RefreshStatusLine(
-      refreshing: true,
-      loadingLabel: '正在获取电量…',
-      now: now,
-    )));
+    await tester.pumpWidget(
+      _host(
+        RefreshStatusLine(refreshing: true, loadingLabel: '正在获取电量…', now: now),
+      ),
+    );
     expect(find.text('正在获取电量…'), findsOneWidget);
   });
 
   testWidgets('prefix is joined in front of the status text', (tester) async {
     final updated = DateTime(2026, 9, 30, 10, 32);
-    await tester.pumpWidget(_host(RefreshStatusLine(
-      updatedAt: updated,
-      prefix: '67% · 满电 100 度',
-      now: now,
-    )));
+    await tester.pumpWidget(
+      _host(
+        RefreshStatusLine(
+          updatedAt: updated,
+          prefix: '67% · 满电 100 度',
+          now: now,
+        ),
+      ),
+    );
     expect(find.text('67% · 满电 100 度 · 10:32 更新'), findsOneWidget);
 
-    await tester.pumpWidget(_host(RefreshStatusLine(
-      updatedAt: updated,
-      prefix: '',
-      now: now,
-    )));
+    await tester.pumpWidget(
+      _host(RefreshStatusLine(updatedAt: updated, prefix: '', now: now)),
+    );
     expect(find.text('10:32 更新'), findsOneWidget);
   });
 
   testWidgets('refresh icon is disabled while refreshing', (tester) async {
     var taps = 0;
-    await tester.pumpWidget(_host(RefreshStatusLine(
-      updatedAt: now,
-      onRefresh: () => taps++,
-      refreshTooltip: '刷新电量',
-      now: now,
-    )));
+    await tester.pumpWidget(
+      _host(
+        RefreshStatusLine(
+          updatedAt: now,
+          onRefresh: () => taps++,
+          refreshTooltip: '刷新电量',
+          now: now,
+        ),
+      ),
+    );
     await tester.tap(find.byTooltip('刷新电量'));
     expect(taps, 1);
 
-    await tester.pumpWidget(_host(RefreshStatusLine(
-      updatedAt: now,
-      refreshing: true,
-      onRefresh: () => taps++,
-      refreshTooltip: '刷新电量',
-      now: now,
-    )));
+    await tester.pumpWidget(
+      _host(
+        RefreshStatusLine(
+          updatedAt: now,
+          refreshing: true,
+          onRefresh: () => taps++,
+          refreshTooltip: '刷新电量',
+          now: now,
+        ),
+      ),
+    );
     await tester.tap(find.byTooltip('刷新电量'), warnIfMissed: false);
     expect(taps, 1);
   });

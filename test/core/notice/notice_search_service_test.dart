@@ -92,9 +92,14 @@ void main() {
     tearDown(() => CasAuthBroker.debugGetResourceOverride = null);
 
     void stub(Future<Response<List<int>>> Function(String url) handler) {
-      CasAuthBroker.debugGetResourceOverride =
-          (url, {dio, needsLogin, cancelToken, Duration? timeout, deadline}) =>
-              handler(url);
+      CasAuthBroker.debugGetResourceOverride = (
+        url, {
+        dio,
+        needsLogin,
+        cancelToken,
+        Duration? timeout,
+        deadline,
+      }) => handler(url);
     }
 
     Response<List<int>> ok(String url, String body) => Response(

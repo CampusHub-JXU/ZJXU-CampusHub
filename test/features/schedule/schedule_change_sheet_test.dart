@@ -75,7 +75,6 @@ void main() {
     status: CourseChangeNoticeStatus.unapplied,
   );
 
-
   Future<void> pumpSheet(
     WidgetTester tester,
     List<CourseChangeNotice> notices, {
@@ -175,10 +174,7 @@ void main() {
 
     expect(find.text('本周 · 第 8 周'), findsOneWidget);
     expect(find.textContaining('共 '), findsNothing);
-    expect(
-      find.textContaining('周三 3–4 节  教B-202 → 教C-303'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('周三 3–4 节  教B-202 → 教C-303'), findsOneWidget);
     expect(find.textContaining('第8周'), findsNothing);
   });
 
@@ -221,37 +217,36 @@ void main() {
     );
   });
 
-  testWidgets(
-    'verified term but unapplied notice says 课表未显示, never 已显示',
-    (tester) async {
-      final unreflectedNotice = CourseChangeNotice(
-        rule: CourseChangeRule(
-          type: CourseChangeType.reschedule,
-          courseName: '微观经济学',
-          teacherName: '王老师',
-          classroom: '教D-404',
-          rawMessage: '微观经济学第3周周二第3-4节改为教D-404',
-          targetLesson: const CourseLessonSlot(
-            week: 3,
-            weekday: 2,
-            startLesson: 3,
-            endLesson: 4,
-          ),
-          // 学期已证实，但课表中尚未显示
-          termContext: dummyTerm,
+  testWidgets('verified term but unapplied notice says 课表未显示, never 已显示', (
+    tester,
+  ) async {
+    final unreflectedNotice = CourseChangeNotice(
+      rule: CourseChangeRule(
+        type: CourseChangeType.reschedule,
+        courseName: '微观经济学',
+        teacherName: '王老师',
+        classroom: '教D-404',
+        rawMessage: '微观经济学第3周周二第3-4节改为教D-404',
+        targetLesson: const CourseLessonSlot(
+          week: 3,
+          weekday: 2,
+          startLesson: 3,
+          endLesson: 4,
         ),
-        status: CourseChangeNoticeStatus.unapplied,
-      );
+        // 学期已证实，但课表中尚未显示
+        termContext: dummyTerm,
+      ),
+      status: CourseChangeNoticeStatus.unapplied,
+    );
 
-      await pumpSheet(tester, [unreflectedNotice], displayWeek: 1);
+    await pumpSheet(tester, [unreflectedNotice], displayWeek: 1);
 
-      expect(find.text('课表未显示'), findsOneWidget);
-      expect(find.text('换教室 · 待确认'), findsOneWidget);
-      expect(find.text('换教室'), findsNothing);
-      expect(find.textContaining('第3周 周二 3–4 节  改到 教D-404'), findsOneWidget);
-      expect(find.text('已根据这些提醒自动修正课表显示'), findsNothing);
-    },
-  );
+    expect(find.text('课表未显示'), findsOneWidget);
+    expect(find.text('换教室 · 待确认'), findsOneWidget);
+    expect(find.text('换教室'), findsNothing);
+    expect(find.textContaining('第3周 周二 3–4 节  改到 教D-404'), findsOneWidget);
+    expect(find.text('已根据这些提醒自动修正课表显示'), findsNothing);
+  });
 
   testWidgets('reschedule, cancel and makeup render their own layouts', (
     tester,
@@ -260,55 +255,60 @@ void main() {
       rule: rule,
       status: CourseChangeNoticeStatus.reflected,
     );
-    await pumpSheet(tester, [
-      notice(
-        CourseChangeRule(
-          type: CourseChangeType.reschedule,
-          courseName: '线性代数',
-          classroom: '9-102',
-          originalLesson: const CourseLessonSlot(
-            week: 5,
-            weekday: 4,
-            startLesson: 8,
-            endLesson: 9,
+    await pumpSheet(
+      tester,
+      [
+        notice(
+          CourseChangeRule(
+            type: CourseChangeType.reschedule,
+            courseName: '线性代数',
+            classroom: '9-102',
+            originalLesson: const CourseLessonSlot(
+              week: 5,
+              weekday: 4,
+              startLesson: 8,
+              endLesson: 9,
+            ),
+            targetLesson: const CourseLessonSlot(
+              week: 5,
+              weekday: 5,
+              startLesson: 8,
+              endLesson: 9,
+            ),
+            termContext: dummyTerm,
           ),
-          targetLesson: const CourseLessonSlot(
-            week: 5,
-            weekday: 5,
-            startLesson: 8,
-            endLesson: 9,
-          ),
-          termContext: dummyTerm,
         ),
-      ),
-      notice(
-        CourseChangeRule(
-          type: CourseChangeType.cancel,
-          courseName: '体育',
-          originalLesson: const CourseLessonSlot(
-            week: 5,
-            weekday: 1,
-            startLesson: 3,
-            endLesson: 3,
+        notice(
+          CourseChangeRule(
+            type: CourseChangeType.cancel,
+            courseName: '体育',
+            originalLesson: const CourseLessonSlot(
+              week: 5,
+              weekday: 1,
+              startLesson: 3,
+              endLesson: 3,
+            ),
+            termContext: dummyTerm,
           ),
-          termContext: dummyTerm,
         ),
-      ),
-      notice(
-        CourseChangeRule(
-          type: CourseChangeType.makeup,
-          courseName: '概率论',
-          classroom: '11-210',
-          targetLesson: const CourseLessonSlot(
-            week: 6,
-            weekday: 6,
-            startLesson: 1,
-            endLesson: 2,
+        notice(
+          CourseChangeRule(
+            type: CourseChangeType.makeup,
+            courseName: '概率论',
+            classroom: '11-210',
+            targetLesson: const CourseLessonSlot(
+              week: 6,
+              weekday: 6,
+              startLesson: 1,
+              endLesson: 2,
+            ),
+            termContext: dummyTerm,
           ),
-          termContext: dummyTerm,
         ),
-      ),
-    ], displayWeek: 5, currentWeek: 5);
+      ],
+      displayWeek: 5,
+      currentWeek: 5,
+    );
 
     // 调课：原/改对照，本周省略周次。
     expect(find.text('调课'), findsOneWidget);

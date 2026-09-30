@@ -10,9 +10,8 @@ Widget _host(Widget child, {ThemeData? theme, double textScale = 1}) {
     home: Scaffold(
       body: Builder(
         builder: (context) => MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(textScaler: TextScaler.linear(textScale)),
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: TextScaler.linear(textScale)),
           child: Padding(padding: const EdgeInsets.all(16), child: child),
         ),
       ),
@@ -84,7 +83,10 @@ void main() {
       ),
     );
     expect(tester.takeException(), isNull);
-    expect(tester.getRect(find.text('元')).right, lessThanOrEqualTo(320 - 16 + 0.01));
+    expect(
+      tester.getRect(find.text('元')).right,
+      lessThanOrEqualTo(320 - 16 + 0.01),
+    );
   });
 
   testWidgets('level bar settles on the clamped fraction, no looping motion', (
@@ -158,7 +160,9 @@ void main() {
     await tester.pump();
 
     final primaryMaterial = tester.widget<Material>(
-      find.ancestor(of: find.text('付款码'), matching: find.byType(Material)).first,
+      find
+          .ancestor(of: find.text('付款码'), matching: find.byType(Material))
+          .first,
     );
     expect(primaryMaterial.color, theme.colorScheme.primary);
     expect(find.byType(AppTileSurface), findsNWidgets(2));

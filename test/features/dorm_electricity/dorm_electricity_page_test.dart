@@ -488,9 +488,7 @@ void main() {
 
   // ── 缓存优先首帧 ────────────────────────────────────────────────────────
 
-  testWidgets('有缓存进页：首帧即显示缓存读数，无整页 spinner，新鲜缓存不触网', (
-    tester,
-  ) async {
+  testWidgets('有缓存进页：首帧即显示缓存读数，无整页 spinner，新鲜缓存不触网', (tester) async {
     switchSession(active: true, account: 'A');
     await DormElectricityService.instance.saveRoomConfig(_configA);
     final gateway = _FakeEpayElectricityGateway();
@@ -519,9 +517,7 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('无缓存首帧：读数为 --、状态行在取数、充值按钮立即可点、不闪空态', (
-    tester,
-  ) async {
+  testWidgets('无缓存首帧：读数为 --、状态行在取数、充值按钮立即可点、不闪空态', (tester) async {
     switchSession(active: true, account: 'A');
     await DormElectricityService.instance.saveRoomConfig(_configA);
     final gateway = _FakeEpayElectricityGateway()..gate = Completer<void>();

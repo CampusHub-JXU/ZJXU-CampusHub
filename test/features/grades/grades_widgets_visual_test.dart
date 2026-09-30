@@ -42,8 +42,12 @@ void main() {
               GradesCourseRow(
                 grade: _entry(course: '高等数学A', score: '95', credits: 4),
               ),
-              GradesCourseRow(grade: _entry(course: '大学物理', score: '82')),
-              GradesCourseRow(grade: _entry(course: '体育', score: '52')),
+              GradesCourseRow(
+                grade: _entry(course: '大学物理', score: '82'),
+              ),
+              GradesCourseRow(
+                grade: _entry(course: '体育', score: '52'),
+              ),
             ],
           );
         },
@@ -123,9 +127,7 @@ void main() {
     expect(segment(GradeBand.fail), cs.error);
 
     // 堆叠条 8 高，宽度按数量比例分配。
-    final bar = tester.getSize(
-      find.byKey(const ValueKey('grades_band_good')),
-    );
+    final bar = tester.getSize(find.byKey(const ValueKey('grades_band_good')));
     expect(bar.height, 8);
     final excellentWidth = tester
         .getSize(find.byKey(const ValueKey('grades_band_excellent')))
@@ -189,6 +191,9 @@ void main() {
     await tester.pump();
 
     expect(tester.takeException(), isNull);
-    expect(tester.widget<Text>(find.text('95')).style?.color, captured!.primary);
+    expect(
+      tester.widget<Text>(find.text('95')).style?.color,
+      captured!.primary,
+    );
   });
 }

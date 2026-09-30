@@ -26,8 +26,9 @@ GradeEntry _entry(
   courseRequirement: '',
 );
 
-List<String> _names(List<GradeEntry> list) =>
-    [for (final g in list) g.courseName];
+List<String> _names(List<GradeEntry> list) => [
+  for (final g in list) g.courseName,
+];
 
 void main() {
   group('computeGradesSummary', () {

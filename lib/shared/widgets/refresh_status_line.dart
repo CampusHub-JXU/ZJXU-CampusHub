@@ -71,10 +71,8 @@ class RefreshStatusLine extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final baseColor = color ?? cs.onSurfaceVariant;
     final textColor = failed && !refreshing ? cs.error : baseColor;
-    final style = Theme.of(context).textTheme.bodySmall?.copyWith(
-          fontSize: 12,
-          color: textColor,
-        );
+    final style = Theme.of(context).textTheme.bodySmall
+        ?.copyWith(fontSize: 12, color: textColor);
 
     return Semantics(
       liveRegion: true,

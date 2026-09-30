@@ -26,12 +26,7 @@ enum BackgroundSessionChangeKind {
 }
 
 class BackgroundSessionChange {
-  const BackgroundSessionChange(
-    this.kind,
-    this.at, {
-    this.account,
-    this.epoch,
-  });
+  const BackgroundSessionChange(this.kind, this.at, {this.account, this.epoch});
 
   final BackgroundSessionChangeKind kind;
   final DateTime at;
