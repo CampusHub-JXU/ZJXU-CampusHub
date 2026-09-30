@@ -22,9 +22,13 @@ class AppListTile extends StatelessWidget {
     this.trailing,
     this.onTap,
     this.dimmed = false,
+    this.titleMaxLines = 1,
   });
 
   final String title;
+
+  /// 标题最多几行；公告这类长标题可放宽到 2。
+  final int titleMaxLines;
 
   /// 紧跟标题的小元素（如「重修」标签），不参与右侧对齐。
   final Widget? titleTrailing;
@@ -60,7 +64,7 @@ class AppListTile extends StatelessWidget {
             Flexible(
               child: Text(
                 title,
-                maxLines: 1,
+                maxLines: titleMaxLines,
                 overflow: TextOverflow.ellipsis,
                 style: titleStyle,
               ),

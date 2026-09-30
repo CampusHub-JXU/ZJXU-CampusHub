@@ -4,11 +4,16 @@ import 'package:go_router/go_router.dart';
 import 'sjjx_notice_model.dart';
 import 'sjjx_notice_service.dart';
 import '../../core/auth/cas_auth_broker.dart';
+import '../../core/theme/app_design_tokens.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_empty_view.dart';
 import '../../shared/widgets/app_error_view.dart';
+import '../../shared/widgets/app_filter_chips.dart';
+import '../../shared/widgets/app_list_tile.dart';
 import '../../shared/widgets/auth_required_view.dart';
 import '../../shared/widgets/login_shell.dart';
+import '../../shared/widgets/refresh_status_line.dart';
+import '../../shared/widgets/skeleton_box.dart';
 
 class SjjxNoticeListPage extends StatefulWidget {
   const SjjxNoticeListPage({super.key});
@@ -152,7 +157,7 @@ class _SjjxNoticeListPageState extends State<SjjxNoticeListPage> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? _buildSkeleton()
           : _authRequired
           ? AuthRequiredView(
               title: '登录后查看实践通知',
@@ -167,7 +172,17 @@ class _SjjxNoticeListPageState extends State<SjjxNoticeListPage> {
           ? const AppEmptyView(title: '暂无通知', icon: Icons.article_outlined)
           : Column(
               children: [
-                _buildCategoryFilter(cs),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: AppFilterChips<String?>(
+                    options: [
+                      const AppFilterOption(null, '全部'),
+                      for (final cat in _categories) AppFilterOption(cat, cat),
+                    ],
+                    selected: _selectedCategory,
+                    onSelected: _filterByCategory,
+                  ),
+                ),
                 Expanded(
                   child: RefreshIndicator(
                     onRefresh: _loadNotices,
@@ -181,10 +196,10 @@ class _SjjxNoticeListPageState extends State<SjjxNoticeListPage> {
                                 child: Center(
                                   child: Text(
                                     '该分类下暂无通知',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: cs.onSurfaceVariant,
-                                    ),
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.copyWith(color: cs.onSurfaceVariant),
                                   ),
                                 ),
                               ),
@@ -192,7 +207,12 @@ class _SjjxNoticeListPageState extends State<SjjxNoticeListPage> {
                           )
                         : ListView.builder(
                             controller: _scrollController,
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            padding: const EdgeInsets.fromLTRB(
+                              AppSpacing.pageMargin,
+                              0,
+                              AppSpacing.pageMargin,
+                              AppSpacing.xl,
+                            ),
                             itemCount:
                                 _visibleNotices.length + (_loadingMore ? 1 : 0),
                             itemBuilder: (context, index) {
@@ -205,10 +225,11 @@ class _SjjxNoticeListPageState extends State<SjjxNoticeListPage> {
                                 );
                               }
                               return Padding(
-                                padding: const EdgeInsets.only(bottom: 10),
-                                child: _NoticeCard(
-                                  notice: _visibleNotices[index],
-                                  colorScheme: cs,
+                                padding: const EdgeInsets.only(
+                                  bottom: AppSpacing.sm,
+                                ),
+                                child: _noticeTile(
+                                  _visibleNotices[index],
                                   onTap: () {
                                     context.pushNamed(
                                       'external-webview',
@@ -230,150 +251,36 @@ class _SjjxNoticeListPageState extends State<SjjxNoticeListPage> {
     );
   }
 
-  Widget _buildCategoryFilter(ColorScheme cs) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: cs.surface,
-        border: Border(
-          bottom: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.5)),
-        ),
-      ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            _buildChip('全部', _selectedCategory == null, cs),
-            const SizedBox(width: 8),
-            ..._categories.map(
-              (cat) => Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: _buildChip(cat, _selectedCategory == cat, cs),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildChip(String label, bool selected, ColorScheme cs) {
-    final chipColor = _sjjxCategoryColor(label, cs);
-
-    return FilterChip(
-      label: Text(label),
-      selected: selected,
-      onSelected: (_) => _filterByCategory(selected ? null : label),
-      showCheckmark: false,
-      selectedColor: chipColor.withValues(alpha: 0.2),
-      backgroundColor: cs.surfaceContainerLow,
-      side: BorderSide(color: selected ? chipColor : cs.outlineVariant),
-      labelStyle: TextStyle(
-        color: selected ? chipColor : cs.onSurfaceVariant,
-        fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-        fontSize: 13,
-      ),
-    );
-  }
-}
-
-class _NoticeCard extends StatelessWidget {
-  final SjjxNotice notice;
-  final ColorScheme colorScheme;
-  final VoidCallback onTap;
-
-  const _NoticeCard({
-    required this.notice,
-    required this.colorScheme,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final tagColor = _sjjxCategoryColor(notice.category, colorScheme);
-    final tagForeground = _contrastOn(tagColor);
+  /// 分类与日期合并进元信息行，不用彩色分类块（分类不是状态）。
+  Widget _noticeTile(SjjxNotice notice, {required VoidCallback onTap}) {
     final publishDate = (notice.date ?? '').trim();
-
-    return Material(
-      color: colorScheme.surfaceContainerLowest,
-      borderRadius: BorderRadius.circular(12),
-      elevation: 0.5,
-      shadowColor: colorScheme.shadow.withValues(alpha: 0.12),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: tagColor,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  notice.category,
-                  style: TextStyle(
-                    color: tagForeground,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      notice.title,
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: colorScheme.onSurface,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (publishDate.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        '发布日期：$publishDate',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Icon(
-                Icons.chevron_right,
-                size: 20,
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ],
-          ),
-        ),
-      ),
+    return AppListTile(
+      title: notice.title,
+      titleMaxLines: 2,
+      meta: [
+        notice.category,
+        publishDate,
+      ].where((part) => part.isNotEmpty).join(' · '),
+      onTap: onTap,
     );
   }
-}
 
-Color _sjjxCategoryColor(String category, ColorScheme cs) {
-  final index = SjjxNotice.categoryOrder.indexOf(category);
-  final hueOffset = index < 0 ? category.hashCode.abs() % 360 : index * 38.0;
-  final hsl = HSLColor.fromColor(cs.primary);
-  final isDark = cs.brightness == Brightness.dark;
-  return hsl
-      .withHue((hsl.hue + hueOffset) % 360.0)
-      .withSaturation((hsl.saturation * 0.86).clamp(0.42, 0.92))
-      .withLightness(isDark ? 0.66 : 0.42)
-      .toColor();
-}
-
-Color _contrastOn(Color background) {
-  return background.computeLuminance() > 0.45 ? Colors.black : Colors.white;
+  Widget _buildSkeleton() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.pageMargin,
+        AppSpacing.sm,
+        AppSpacing.pageMargin,
+        AppSpacing.xl,
+      ),
+      children: [
+        const RefreshStatusLine(refreshing: true, loadingLabel: '正在获取实践通知…'),
+        const SizedBox(height: AppSpacing.md),
+        for (var i = 0; i < 4; i++) ...[
+          if (i > 0) const SizedBox(height: AppSpacing.sm),
+          const SkeletonBox(height: 68, radius: 16),
+        ],
+      ],
+    );
+  }
 }

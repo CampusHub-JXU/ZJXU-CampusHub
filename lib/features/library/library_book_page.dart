@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_design_tokens.dart';
+import '../../core/theme/app_typography.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_card.dart';
 import '../../shared/widgets/app_empty_view.dart';
 import '../../shared/widgets/app_error_view.dart';
+import '../../shared/widgets/skeleton_box.dart';
 import 'library_models.dart';
 import 'library_service.dart';
 
@@ -47,7 +49,19 @@ class _LibraryBookPageState extends State<LibraryBookPage> {
         future: _future,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return ListView(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.pageMargin,
+                AppSpacing.md,
+                AppSpacing.pageMargin,
+                AppSpacing.xl,
+              ),
+              children: const [
+                SkeletonBox(height: 96, radius: 16),
+                SizedBox(height: AppSpacing.md),
+                SkeletonBox(height: 120, radius: 16),
+              ],
+            );
           }
           final detail = snapshot.data;
           if (detail == null) {
@@ -103,11 +117,7 @@ class _LibraryBookPageState extends State<LibraryBookPage> {
                           holding.locationName.isEmpty
                               ? holding.groupName
                               : holding.locationName,
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: Theme.of(context).colorScheme.onSurface,
-                          ),
+                          style: context.appText.rowTitle,
                         ),
                         const SizedBox(height: 6),
                         _DetailLine(label: '分馆', value: holding.groupName),
@@ -154,21 +164,15 @@ class _DetailLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final secondary = context.appText.secondary;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        SizedBox(
-          width: 84,
-          child: Text(
-            label,
-            style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
-          ),
-        ),
+        SizedBox(width: 84, child: Text(label, style: secondary)),
         Expanded(
           child: Text(
             value,
-            style: TextStyle(
-              fontSize: 13,
+            style: secondary.copyWith(
               fontWeight: emphasized ? FontWeight.w700 : FontWeight.w500,
               color: emphasized ? cs.primary : cs.onSurface,
             ),
