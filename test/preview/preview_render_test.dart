@@ -702,7 +702,7 @@ class _ComponentGallery extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 48),
         children: [
-          _sectionLabel('AppCard · 实色 / 玻璃 tint'),
+          _sectionLabel('AppCard · 实色'),
           AppCard(
             onTap: () {},
             child: Column(
@@ -719,11 +719,6 @@ class _ComponentGallery extends StatelessWidget {
                 ),
               ],
             ),
-          ),
-          const SizedBox(height: 12),
-          const AppCard(
-            glassEnabled: true,
-            child: Text('玻璃 tint 卡片（无 BackdropFilter）'),
           ),
           _sectionLabel('AppTileSurface · 质感瓦片（功能区同款）'),
           SizedBox(
