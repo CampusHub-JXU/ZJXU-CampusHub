@@ -20,6 +20,8 @@ import '../../core/update/update_checker.dart';
 import '../../core/update/update_model.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_dropdown.dart';
+import '../../shared/widgets/app_feedback.dart';
+import '../../shared/widgets/glass_dialog_route.dart';
 import '../../shared/widgets/plain_list.dart';
 import '../../shared/widgets/update_dialog.dart';
 
@@ -63,9 +65,7 @@ class SettingsPage extends StatelessWidget {
 
     switch (result.status) {
       case UpdateCheckStatus.disabled:
-        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-          const SnackBar(content: Text('当前为内部开发版本，请通过统一发布渠道获取新版本')),
-        );
+        AppFeedback.toast(context, '当前为内部开发版本，请通过统一发布渠道获取新版本');
         break;
       case UpdateCheckStatus.updateAvailable:
         final release = result.release;
@@ -74,12 +74,10 @@ class SettingsPage extends StatelessWidget {
         }
         break;
       case UpdateCheckStatus.upToDate:
-        ScaffoldMessenger.maybeOf(context)
-            ?.showSnackBar(const SnackBar(content: Text('当前已是最新版本')));
+        AppFeedback.toast(context, '当前已是最新版本');
         break;
       case UpdateCheckStatus.error:
-        ScaffoldMessenger.maybeOf(context)
-            ?.showSnackBar(const SnackBar(content: Text('检查更新失败，请稍后重试')));
+        AppFeedback.toast(context, '检查更新失败，请稍后重试');
         break;
       case UpdateCheckStatus.checking:
         break;
@@ -88,31 +86,16 @@ class SettingsPage extends StatelessWidget {
 
   Future<void> _clearOfflineCache(BuildContext context) async {
     final messenger = ScaffoldMessenger.maybeOf(context);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        final cs = Theme.of(dialogContext).colorScheme;
-        return AlertDialog(
-          title: const Text('清除离线缓存'),
-          content: const Text('将清除目录等临时缓存，不影响登录状态、课表缓存与个性化设置。'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('取消'),
-            ),
-            // 确认按钮是不可撤销动作，用错误色与「取消」拉开层级。
-            TextButton(
-              style: TextButton.styleFrom(foregroundColor: cs.error),
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('清除'),
-            ),
-          ],
-        );
-      },
+    final confirmed = await AppFeedback.confirm(
+      context,
+      title: '清除离线缓存',
+      message: '将清除目录等临时缓存，不影响登录状态、课表缓存与个性化设置。',
+      confirmLabel: '清除',
+      destructive: true,
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     await JsonCacheStore.instance.clearAll();
-    messenger?.showSnackBar(const SnackBar(content: Text('离线缓存已清除')));
+    if (messenger != null) AppFeedback.toastOn(messenger, '离线缓存已清除');
   }
 
   @override
@@ -133,13 +116,13 @@ class SettingsPage extends StatelessWidget {
             ),
             children: [
               const PlainSectionHeader('外观'),
-              _GroupCard(
+              PlainListGroup(
                 children: [
-                  _SettingsRow(
+                  PlainListRow(
                     title: '主题与色彩',
                     onTap: () => context.pushNamed('appearance'),
                   ),
-                  _SettingsRow(
+                  PlainListRow(
                     title: '个性化',
                     onTap: () => context.pushNamed('personalization'),
                   ),
@@ -147,7 +130,7 @@ class SettingsPage extends StatelessWidget {
               ),
               const SizedBox(height: kPlainListGroupGap),
               const PlainSectionHeader('学期'),
-              _GroupCard(
+              PlainListGroup(
                 children: [
                   const _CurrentTermTile(),
                   const _EnrollmentYearRow(),
@@ -162,7 +145,7 @@ class SettingsPage extends StatelessWidget {
                       return Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          _SettingsRow(
+                          PlainListRow(
                             title: '开学日',
                             value: _formatMonthDay(semesterStartDate),
                             showChevron: true,
@@ -178,7 +161,7 @@ class SettingsPage extends StatelessWidget {
                             semesterStartDate,
                             defaultStart,
                           )) ...[
-                            _SettingsRow(
+                            PlainListRow(
                               title: '恢复默认开学日',
                               value: _formatMonthDay(defaultStart),
                               onTap: () async {
@@ -195,11 +178,11 @@ class SettingsPage extends StatelessWidget {
               ),
               const SizedBox(height: kPlainListGroupGap),
               const PlainSectionHeader('课表与后台'),
-              _GroupCard(
+              PlainListGroup(
                 children: [
                   if (Theme.of(context).platform == TargetPlatform.android)
                     const _CalendarSyncCard(),
-                  _SettingsRow(
+                  PlainListRow(
                     title: '桌面组件与后台',
                     onTap: () => context.pushNamed('desktop-background'),
                   ),
@@ -207,7 +190,7 @@ class SettingsPage extends StatelessWidget {
               ),
               const SizedBox(height: kPlainListGroupGap),
               const PlainSectionHeader('其他'),
-              _GroupCard(
+              PlainListGroup(
                 children: [
                   ValueListenableBuilder<AppRelease?>(
                     valueListenable: UpdateChecker.instance.availableRelease,
@@ -226,7 +209,7 @@ class SettingsPage extends StatelessWidget {
                               } else {
                                 value = null;
                               }
-                              return _SettingsRow(
+                              return PlainListRow(
                                 title: '检查更新',
                                 value: value,
                                 emphasizeValue: release != null,
@@ -252,11 +235,11 @@ class SettingsPage extends StatelessWidget {
                       );
                     },
                   ),
-                  _SettingsRow(
+                  PlainListRow(
                     title: '清除离线缓存',
                     onTap: () => _clearOfflineCache(context),
                   ),
-                  _SettingsRow(
+                  PlainListRow(
                     title: '关于与诊断',
                     onTap: () => context.pushNamed('about'),
                   ),
@@ -271,17 +254,17 @@ class SettingsPage extends StatelessWidget {
                     return ValueListenableBuilder<LogConfig>(
                       valueListenable: AppLogger.instance.config,
                       builder: (context, logConfig, _) {
-                        return _GroupCard(
+                        return PlainListGroup(
                           children: [
-                            _SwitchRow(
+                            PlainSwitchRow(
                               title: '调试日志',
                               subtitle: '开启后记录调试期日志和异常',
                               value: loggingEnabled,
-                              onToggle: (value) {
+                              onChanged: (value) {
                                 AppLogger.instance.setEnabled(value);
                               },
                             ),
-                            _SettingsRow(
+                            PlainListRow(
                               title: '最低日志级别',
                               subtitle: _formatLogLevel(logConfig.minimumLevel),
                               trailing: AppDropdown<LogLevel>(
@@ -302,11 +285,11 @@ class SettingsPage extends StatelessWidget {
                                     .toList(),
                               ),
                             ),
-                            _SwitchRow(
+                            PlainSwitchRow(
                               title: 'WebView 生命周期日志',
                               subtitle: '页面加载、跳转和白屏探测细节',
                               value: logConfig.webviewLifecycleEnabled,
-                              onToggle: (value) {
+                              onChanged: (value) {
                                 AppLogger.instance.updateConfig(
                                   logConfig.copyWith(
                                     webviewLifecycleEnabled: value,
@@ -314,11 +297,11 @@ class SettingsPage extends StatelessWidget {
                                 );
                               },
                             ),
-                            _SwitchRow(
+                            PlainSwitchRow(
                               title: 'WebView 控制台日志',
                               subtitle: '记录页面 console warning/error',
                               value: logConfig.webviewConsoleEnabled,
-                              onToggle: (value) {
+                              onChanged: (value) {
                                 AppLogger.instance.updateConfig(
                                   logConfig.copyWith(
                                     webviewConsoleEnabled: value,
@@ -326,11 +309,11 @@ class SettingsPage extends StatelessWidget {
                                 );
                               },
                             ),
-                            _SwitchRow(
+                            PlainSwitchRow(
                               title: '网络详细日志',
                               subtitle: '记录请求和响应细节，噪音较大',
                               value: logConfig.networkVerboseEnabled,
-                              onToggle: (value) {
+                              onChanged: (value) {
                                 AppLogger.instance.updateConfig(
                                   logConfig.copyWith(
                                     networkVerboseEnabled: value,
@@ -338,7 +321,7 @@ class SettingsPage extends StatelessWidget {
                                 );
                               },
                             ),
-                            _SettingsRow(
+                            PlainListRow(
                               title: '通知测试',
                               subtitle: '发送一条本地测试通知',
                               trailing: Icon(
@@ -356,7 +339,7 @@ class SettingsPage extends StatelessWidget {
                                 );
                               },
                             ),
-                            _SettingsRow(
+                            PlainListRow(
                               title: '推送令牌',
                               subtitle: '查看 FCM 推送注册状态',
                               trailing: _chevron(context),
@@ -381,81 +364,6 @@ class SettingsPage extends StatelessWidget {
       Icons.chevron_right,
       size: 20,
       color: Theme.of(context).colorScheme.onSurfaceVariant,
-    );
-  }
-}
-
-/// 分组卡片：[PlainListGroup] 的本页别名。
-class _GroupCard extends StatelessWidget {
-  const _GroupCard({required this.children});
-
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) => PlainListGroup(children: children);
-}
-
-/// 设置行：[PlainListRow] 的本页别名，保持调用处简短。
-class _SettingsRow extends StatelessWidget {
-  const _SettingsRow({
-    required this.title,
-    this.subtitle,
-    this.value,
-    this.emphasizeValue = false,
-    this.trailing,
-    this.onTap,
-    this.showChevron,
-  });
-
-  final String title;
-  final String? subtitle;
-  final String? value;
-  final bool emphasizeValue;
-  final Widget? trailing;
-  final VoidCallback? onTap;
-  final bool? showChevron;
-
-  @override
-  Widget build(BuildContext context) {
-    return PlainListRow(
-      title: title,
-      subtitle: subtitle,
-      value: value,
-      emphasizeValue: emphasizeValue,
-      trailing: trailing,
-      onTap: onTap,
-      showChevron: showChevron,
-    );
-  }
-}
-
-/// 开关行：延续 SwitchListTile 的「点行即切换」语义，样式并入平色行。
-/// [enabled] 为 false 时整行与开关一起置灰不可用（如原生调用在途）。
-class _SwitchRow extends StatelessWidget {
-  const _SwitchRow({
-    required this.title,
-    required this.value,
-    required this.onToggle,
-    this.subtitle,
-    this.enabled = true,
-  });
-
-  final String title;
-  final String? subtitle;
-  final bool value;
-  final ValueChanged<bool> onToggle;
-  final bool enabled;
-
-  @override
-  Widget build(BuildContext context) {
-    return _SettingsRow(
-      title: title,
-      subtitle: subtitle,
-      trailing: Switch.adaptive(
-        value: value,
-        onChanged: enabled ? onToggle : null,
-      ),
-      onTap: enabled ? () => onToggle(!value) : null,
     );
   }
 }
@@ -491,7 +399,7 @@ class _EnrollmentYearRowState extends State<_EnrollmentYearRow> {
 
   @override
   Widget build(BuildContext context) {
-    return _SettingsRow(
+    return PlainListRow(
       title: '年级',
       trailing: AppDropdown<int>(
         value:
@@ -554,7 +462,7 @@ class _CurrentTermTileState extends State<_CurrentTermTile> {
     final subtitle = !_loading && _resolved == null ? '按日期推算' : null;
 
     // 只读信息行：无点击语义，识别中在行尾给一个轻量进度指示。
-    return _SettingsRow(
+    return PlainListRow(
       title: '当前学期',
       value: _termLabel(term),
       subtitle: subtitle,
@@ -676,19 +584,19 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _SwitchRow(
+        PlainSwitchRow(
           title: '同步到系统日历',
           subtitle: _subtitle,
           value: state == CalendarSyncControlState.enabled,
           // 开启/清理请求在途：整行置灰，避免重复触发原生调用。
           enabled: !_busy,
-          onToggle: (value) {
+          onChanged: (value) {
             if (_busy) return;
             unawaited(value ? _requestEnable() : _requestDisable());
           },
         ),
         if (state == CalendarSyncControlState.cleanupPending) ...[
-          _SettingsRow(
+          PlainListRow(
             title: '清理未完成',
             subtitle: _residualSubtitle(),
             trailing: TextButton(
@@ -731,27 +639,16 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
 
   /// 开关关闭：先确认，再尝试删除全部历史账号/学期由本应用创建的事件。
   Future<void> _requestDisable() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('关闭课表日历同步'),
-        content: const Text(
+    final confirmed = await AppFeedback.confirm(
+      context,
+      title: '关闭课表日历同步',
+      message:
           '将尝试删除本应用在全部历史账号与学期写入系统日历的事件，不会影响其他应用或系统日历中的其他事件。\n\n'
           '部分事件可能已被移动或删除失败，届时会显示残留数量与原因，可稍后重试。',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('关闭并清理'),
-          ),
-        ],
-      ),
+      confirmLabel: '关闭并清理',
+      destructive: true,
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     await _runCleanup();
   }
 
@@ -775,9 +672,12 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
   }
 
   Future<_CalendarSyncTarget?> _askCalendarTarget() {
-    return showDialog<_CalendarSyncTarget>(
+    return showGlassDialog<_CalendarSyncTarget>(
       context: context,
       builder: (dialogContext) => AlertDialog(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        surfaceTintColor: Colors.transparent,
         title: const Text('开启课表日历同步'),
         content: const Text(
           '将把课表写入系统日历，仅在应用前台同步；课前 10 分钟由系统日历提醒（非精确闹钟）。\n\n'
@@ -838,9 +738,12 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
   Future<CalendarSyncWritableCalendar?> _askCalendar(
     List<CalendarSyncWritableCalendar> calendars,
   ) {
-    return showDialog<CalendarSyncWritableCalendar>(
+    return showGlassDialog<CalendarSyncWritableCalendar>(
       context: context,
       builder: (dialogContext) => AlertDialog(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        surfaceTintColor: Colors.transparent,
         title: const Text('选择目标日历'),
         content: SizedBox(
           width: double.maxFinite,
@@ -922,8 +825,5 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
         .join('、');
   }
 
-  void _showSnack(String message) {
-    ScaffoldMessenger.maybeOf(context)
-        ?.showSnackBar(SnackBar(content: Text(message)));
-  }
+  void _showSnack(String message) => AppFeedback.toast(context, message);
 }

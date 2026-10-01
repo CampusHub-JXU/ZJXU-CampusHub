@@ -52,6 +52,9 @@ void main() {
     await tester.tapAt(tester.getTopLeft(colorPlane) + const Offset(220, 24));
     await tester.pump();
 
+    // 弹层内容在 800×600 测试窗口里比可视区略高（可滚动），先滚到保存按钮。
+    await tester.ensureVisible(find.text('保存'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
 

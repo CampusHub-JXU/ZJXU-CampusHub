@@ -76,7 +76,7 @@ abstract final class AppFeedback {
 
   /// 确认框：返回用户是否点了确认；点遮罩或返回键关闭视为取消。
   ///
-  /// [destructive] 为 true 时确认按钮用 `error` 色（退出登录、清缓存、
+  /// [destructive] 为 true 时确认按钮文字用 `error` 色（退出登录、清缓存、
   /// 关闭同步这类不可撤销的操作）。
   static Future<bool> confirm(
     BuildContext context, {
@@ -101,12 +101,10 @@ abstract final class AppFeedback {
               onPressed: () => Navigator.of(dialogContext).pop(false),
               child: Text(cancelLabel),
             ),
-            FilledButton(
+            // 对话框按钮沿用文字按钮；不可撤销的动作用 error 色与「取消」拉开层级。
+            TextButton(
               style: destructive
-                  ? FilledButton.styleFrom(
-                      backgroundColor: cs.error,
-                      foregroundColor: cs.onError,
-                    )
+                  ? TextButton.styleFrom(foregroundColor: cs.error)
                   : null,
               onPressed: () => Navigator.of(dialogContext).pop(true),
               child: Text(confirmLabel),

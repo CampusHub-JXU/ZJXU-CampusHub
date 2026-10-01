@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../../core/theme/personalization_controller.dart';
+import '../../../shared/widgets/app_feedback.dart';
 import '../../../shared/widgets/plain_list.dart';
 import '../background_editor_page.dart';
 
@@ -78,8 +79,7 @@ class PersonalizationBackgroundSection extends StatelessWidget {
     // 流体 Shader 依赖壁纸取样，移除壁纸时一并关闭。
     await controller.setShaderEnabled(false);
     if (context.mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('已移除首页背景')));
+      AppFeedback.toast(context, '已移除首页背景');
     }
   }
 
@@ -127,13 +127,11 @@ class PersonalizationBackgroundSection extends StatelessWidget {
       await _pruneOtherBackgrounds(destDir, destPath);
 
       if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('已设置首页背景')));
+        AppFeedback.toast(context, '已设置首页背景');
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('选择图片失败，请稍后重试')));
+        AppFeedback.toast(context, '选择图片失败，请稍后重试');
       }
     }
   }

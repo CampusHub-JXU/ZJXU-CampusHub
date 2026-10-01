@@ -8,8 +8,8 @@ import '../../core/shortcut/app_shortcut_service.dart';
 import '../../core/system_surface/campus_widget_bridge.dart';
 import '../../core/system_surface/system_settings_launcher.dart';
 import '../../shared/widgets/app_app_bar.dart';
-import '../../shared/widgets/app_card.dart';
-import '../../shared/widgets/app_icon_badge.dart';
+import '../../shared/widgets/app_feedback.dart';
+import '../../shared/widgets/plain_list.dart';
 
 /// 设置 → 桌面与后台（PRD §42）。
 ///
@@ -19,58 +19,53 @@ class DesktopBackgroundPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppAppBar(
         title: const Text('桌面与后台'),
         leading: const BackButton(),
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+        padding: const EdgeInsets.fromLTRB(
+          kPlainListGutter,
+          16,
+          kPlainListGutter,
+          32,
+        ),
         children: [
-          const _SectionHeader('桌面组件'),
-          const SizedBox(height: 8),
-          _GroupCard(
+          const PlainSectionHeader('桌面组件'),
+          PlainListGroup(
             children: [
-              _ActionRow(
-                icon: Icons.widgets_outlined,
+              PlainListRow(
                 title: '添加桌面组件',
                 subtitle: '在桌面查看下一节课、余额与通知，数据随 App 更新',
                 onTap: () => _addWidget(context),
               ),
             ],
           ),
-          const SizedBox(height: 24),
-          const _SectionHeader('快捷方式'),
-          const SizedBox(height: 8),
-          _GroupCard(
+          const SizedBox(height: kPlainListGroupGap),
+          const PlainSectionHeader('快捷方式'),
+          PlainListGroup(
             children: [
-              _ActionRow(
-                icon: Icons.push_pin_outlined,
+              PlainListRow(
                 title: '添加「今日课表」快捷方式',
                 subtitle: '固定到桌面后可直接打开今日课表',
                 onTap: () => _addShortcut(context),
               ),
-              _Hairline(color: cs.outlineVariant),
-              _ActionRow(
-                icon: Icons.settings_outlined,
+              PlainListRow(
                 title: '打开快捷方式权限设置',
                 subtitle: '部分系统（如 MIUI/HyperOS）需手动允许创建快捷方式',
                 onTap: () => _openShortcutSettings(context),
               ),
             ],
           ),
-          const SizedBox(height: 24),
-          const _SectionHeader('通知'),
-          const SizedBox(height: 8),
-          _GroupCard(children: [_NotificationPermissionRow()]),
-          const SizedBox(height: 24),
-          const _SectionHeader('后台运行'),
-          const SizedBox(height: 8),
-          _GroupCard(
+          const SizedBox(height: kPlainListGroupGap),
+          const PlainSectionHeader('通知'),
+          PlainListGroup(children: [_NotificationPermissionRow()]),
+          const SizedBox(height: kPlainListGroupGap),
+          const PlainSectionHeader('后台运行'),
+          PlainListGroup(
             children: [
-              _ActionRow(
-                icon: Icons.schedule_outlined,
+              PlainListRow(
                 title: '后台运行状态',
                 subtitle: '通知与课表更新由系统后台任务调度，App 不会在后台自动弹出界面。点按打开应用详情页检查系统后台限制',
                 onTap: () => _openSystemSettings(
@@ -78,9 +73,7 @@ class DesktopBackgroundPage extends StatelessWidget {
                   SystemSettingsTarget.appDetails,
                 ),
               ),
-              _Hairline(color: cs.outlineVariant),
-              _ActionRow(
-                icon: Icons.alarm_outlined,
+              PlainListRow(
                 title: '精确闹钟',
                 subtitle: '若需准点提醒，请允许本应用使用「闹钟和提醒」。点按打开对应设置页',
                 onTap: () => _openSystemSettings(
@@ -88,9 +81,7 @@ class DesktopBackgroundPage extends StatelessWidget {
                   SystemSettingsTarget.exactAlarms,
                 ),
               ),
-              _Hairline(color: cs.outlineVariant),
-              _ActionRow(
-                icon: Icons.battery_saver_outlined,
+              PlainListRow(
                 title: '电池优化',
                 subtitle: '系统省电策略可能延后后台任务。点按仅打开电池优化列表页，需手动将本应用设为「无限制」（会更耗电）',
                 onTap: () => _openSystemSettings(
@@ -98,9 +89,7 @@ class DesktopBackgroundPage extends StatelessWidget {
                   SystemSettingsTarget.batteryOptimization,
                 ),
               ),
-              _Hairline(color: cs.outlineVariant),
-              _ActionRow(
-                icon: Icons.phone_android_outlined,
+              PlainListRow(
                 title: 'HyperOS / MIUI 自启动',
                 subtitle:
                     '小米系系统可能出现链式启动确认，属系统正常行为。点按尝试打开自启动管理，部分系统不保证直达，可能需手动查找',
@@ -175,11 +164,8 @@ class DesktopBackgroundPage extends StatelessWidget {
   }
 }
 
-void _showSnackBar(BuildContext context, String message) {
-  ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(message)));
-}
+void _showSnackBar(BuildContext context, String message) =>
+    AppFeedback.toast(context, message);
 
 class _NotificationPermissionRow extends StatefulWidget {
   @override
@@ -236,8 +222,7 @@ class _NotificationPermissionRowState extends State<_NotificationPermissionRow>
             false => '未开启，点按前往系统设置开启',
             null => '状态未知，点按前往系统通知设置查看',
           };
-    return _ActionRow(
-      icon: Icons.notifications_outlined,
+    return PlainListRow(
       title: '通知权限',
       subtitle: status,
       // 已开启也可点按：直达应用通知设置（打开成功不代表已授权）。
@@ -258,120 +243,5 @@ class _NotificationPermissionRowState extends State<_NotificationPermissionRow>
       SystemSettingsOpenResult.unavailable => '未能打开系统设置，请手动前往系统「应用管理」调整',
     };
     if (message != null) _showSnackBar(context, message);
-  }
-}
-
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader(this.title);
-
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Text(
-      title,
-      style: TextStyle(
-        fontSize: 13,
-        fontWeight: FontWeight.w600,
-        color: cs.onSurfaceVariant,
-      ),
-    );
-  }
-}
-
-class _GroupCard extends StatelessWidget {
-  const _GroupCard({required this.children});
-
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    return AppCard(
-      padding: EdgeInsets.zero,
-      child: Column(mainAxisSize: MainAxisSize.min, children: children),
-    );
-  }
-}
-
-class _Hairline extends StatelessWidget {
-  const _Hairline({required this.color});
-
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Divider(height: 1, thickness: 1, indent: 64, color: color);
-  }
-}
-
-class _ActionRow extends StatelessWidget {
-  const _ActionRow({
-    required this.icon,
-    required this.title,
-    this.subtitle,
-    this.onTap,
-  });
-
-  final IconData icon;
-  final String title;
-  final String? subtitle;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final subtitle = this.subtitle;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Row(
-            children: [
-              AppIconBadge(
-                icon: icon,
-                size: AppIconBadgeSize.small,
-                accentColor: cs.primary,
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: cs.onSurface,
-                        height: 1.2,
-                      ),
-                    ),
-                    if (subtitle != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: cs.onSurfaceVariant,
-                          height: 1.3,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              if (onTap != null)
-                Icon(
-                  Icons.chevron_right_rounded,
-                  size: 20,
-                  color: cs.onSurfaceVariant.withValues(alpha: 0.45),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 }

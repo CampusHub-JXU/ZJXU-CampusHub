@@ -120,7 +120,7 @@ void main() {
     expect(results, [true, false, false]);
   });
 
-  testWidgets('destructive 确认按钮使用 error 色', (tester) async {
+  testWidgets('destructive 确认按钮文字使用 error 色', (tester) async {
     await tester.pumpWidget(
       _host((context) {
         AppFeedback.confirm(context, title: '清除缓存？', destructive: true);
@@ -130,11 +130,11 @@ void main() {
     await tester.pumpAndSettle();
 
     final context = tester.element(find.text('确定'));
-    final button = tester.widget<FilledButton>(
-      find.ancestor(of: find.text('确定'), matching: find.byType(FilledButton)),
+    final button = tester.widget<TextButton>(
+      find.widgetWithText(TextButton, '确定'),
     );
-    final bg = button.style?.backgroundColor?.resolve(<WidgetState>{});
-    expect(bg, Theme.of(context).colorScheme.error);
+    final fg = button.style?.foregroundColor?.resolve(<WidgetState>{});
+    expect(fg, Theme.of(context).colorScheme.error);
   });
 
   testWidgets('sheet 走亚克力底部弹层并返回结果', (tester) async {
