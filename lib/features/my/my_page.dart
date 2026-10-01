@@ -17,7 +17,6 @@ import '../../core/theme/widgets/app_wallpaper_backdrop.dart';
 import '../../shared/widgets/app_feedback.dart';
 import '../../shared/widgets/app_icon_badge.dart';
 import '../../shared/widgets/app_tile_surface.dart';
-import '../../shared/widgets/identity_watermark.dart';
 import '../../shared/widgets/login_shell.dart';
 import '../../shared/widgets/plain_list.dart';
 
@@ -438,20 +437,6 @@ class _MyPageState extends State<MyPage> {
 
   String _statusLabel(bool loggedIn) => loggedIn ? '已登录' : '去登录';
 
-  /// 水印文字行：上一卡通号（统一认证）、下学号（教务）。
-  ///
-  /// 缺任一则只留另一行；两者相同只留一行；都缺则空（不绘制水印）。标识只
-  /// 用于绘制，不写日志。
-  List<String> _watermarkLines() {
-    final account = UnifiedAuthService.instance.verifiedAccount;
-    final studentId = ZhengfangAuth.instance.verifiedStudentId;
-    return [
-      if (account != null && account.isNotEmpty) account,
-      if (studentId != null && studentId.isNotEmpty && studentId != account)
-        studentId,
-    ];
-  }
-
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -547,12 +532,6 @@ class _MyPageState extends State<MyPage> {
                     ),
                   ),
                 ),
-              ),
-            ),
-            // 全屏身份水印：压在内容之上（不被磁贴模糊）、不拦截触摸、静态。
-            Positioned.fill(
-              child: IgnorePointer(
-                child: IdentityWatermark(lines: _watermarkLines()),
               ),
             ),
           ],
@@ -670,7 +649,7 @@ Future<bool> _fingerprintUnchanged(
   return await _readPersistedEpochSafe(domain) == capturedEpoch;
 }
 
-/// 顶部：大标题「我的」+ 学校名灰色小字（身份标识改由全屏水印呈现）；
+/// 顶部：大标题「我的」+ 学校名灰色小字（不显示任何身份数字）；
 /// 有登录时行尾放低调的登出入口。
 class _MyHeader extends StatelessWidget {
   const _MyHeader({required this.onLogout});
