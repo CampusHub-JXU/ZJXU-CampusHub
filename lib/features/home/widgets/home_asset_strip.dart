@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme_controller.dart';
 import '../models/home_presentation.dart';
+import '../../../core/theme/app_typography.dart';
 
 /// 无框资产行：校园卡余额 + 宿舍电费，左对齐并排、无分隔线。
 ///
@@ -133,8 +134,7 @@ class HomeAssetStrip extends StatelessWidget {
                       ],
                       Text(
                         label,
-                        style: textTheme.labelMedium!.copyWith(
-                          fontSize: 13,
+                        style: context.appText.secondary.copyWith(
                           fontWeight: FontWeight.w500,
                           color: secondaryTextColor,
                         ),

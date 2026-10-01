@@ -3,15 +3,8 @@
 // 数字变小或条目消失。
 
 const designRatchetBaseline = <String, Map<String, int>>{
-  'features/home/function_zone/function_zone_section.dart': {
-    'fontSize': 5,
-    'showSnackBar': 1,
-  },
-  'features/home/widgets/home_asset_strip.dart': {'fontSize': 2},
-  'features/home/widgets/home_campus_notice_section.dart': {'fontSize': 4},
-  'features/home/widgets/home_event_banner.dart': {'fontSize': 1},
-  'features/home/widgets/home_primary_status_hero.dart': {'fontSize': 14},
-  'features/home/widgets/home_today_section.dart': {'fontSize': 6},
+  'features/home/widgets/home_asset_strip.dart': {'fontSize': 1},
+  'features/home/widgets/home_primary_status_hero.dart': {'fontSize': 2},
   'features/my/my_page.dart': {
     'fontSize': 8,
     'showDialog': 1,

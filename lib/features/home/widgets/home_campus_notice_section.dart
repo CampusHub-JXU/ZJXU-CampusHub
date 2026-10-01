@@ -5,6 +5,7 @@ import '../../../core/notice/notice_relevance.dart';
 import '../../../core/notice/notice_sync_store.dart';
 import '../../../core/profile/user_profile_controller.dart';
 import '../../../shared/widgets/copy_text_feedback.dart';
+import '../../../core/theme/app_typography.dart';
 
 /// 首页「校园公告」区块：紧随资产行、功能区之前。
 ///
@@ -37,20 +38,12 @@ class HomeCampusNoticeSection extends StatelessWidget {
       children: [
         Row(
           children: [
-            Text(
-              '校园公告',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: cs.onSurfaceVariant,
-              ),
-            ),
+            Text('校园公告', style: context.appText.label),
             const Spacer(),
             if (head.unreadCount > 0)
               Text(
                 '${head.unreadCount} 条未读',
-                style: TextStyle(
-                  fontSize: 12,
+                style: context.appText.meta.copyWith(
                   fontWeight: FontWeight.w500,
                   color: cs.primary,
                 ),
@@ -98,8 +91,7 @@ class _NoticeRow extends StatelessWidget {
           width: double.infinity,
           child: Text(
             notice.title,
-            style: TextStyle(
-              fontSize: 14,
+            style: Theme.of(context).textTheme.bodyMedium!.copyWith(
               fontWeight: unread ? FontWeight.w500 : FontWeight.w400,
               color: cs.onSurface,
             ),
@@ -129,8 +121,7 @@ class _ViewAllRow extends StatelessWidget {
           children: [
             Text(
               '查看全部',
-              style: TextStyle(
-                fontSize: 13,
+              style: context.appText.secondary.copyWith(
                 fontWeight: FontWeight.w500,
                 color: cs.primary,
               ),

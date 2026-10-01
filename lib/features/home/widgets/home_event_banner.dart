@@ -45,8 +45,7 @@ class HomeEventBanner extends StatelessWidget {
           Expanded(
             child: Text(
               alert.message,
-              style: TextStyle(
-                fontSize: 14,
+              style: Theme.of(context).textTheme.bodyMedium!.copyWith(
                 fontWeight: FontWeight.w500,
                 color: cs.onErrorContainer,
               ),

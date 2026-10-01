@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme_controller.dart';
 import '../../../core/theme/personalization_controller.dart';
 import '../models/home_presentation.dart';
+import '../../../core/theme/app_typography.dart';
 
 /// Primary Status Hero：首页唯一的最强视觉焦点（无框纯排版）。
 ///
@@ -118,9 +119,7 @@ class HomePrimaryStatusHero extends StatelessWidget {
                   if (showKicker) ...[
                     Text(
                       kickerText,
-                      style: textTheme.labelMedium!.copyWith(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
+                      style: textTheme.labelLarge!.copyWith(
                         letterSpacing: 0.5,
                         color: kickerColor,
                       ),
@@ -211,7 +210,7 @@ class HomePrimaryStatusHero extends StatelessWidget {
     Color secondaryTextColor,
   ) {
     final cs = Theme.of(context).colorScheme;
-    final envStyle = Theme.of(context).textTheme.titleSmall!;
+    final envStyle = context.appText.rowTitle;
     final hasStatus = envStatusText.isNotEmpty;
     return Row(
       children: [
@@ -222,7 +221,6 @@ class HomePrimaryStatusHero extends StatelessWidget {
                 TextSpan(
                   text: envDateText,
                   style: envStyle.copyWith(
-                    fontSize: 15,
                     fontWeight: FontWeight.w600,
                     color: secondaryTextColor,
                   ),
@@ -230,7 +228,6 @@ class HomePrimaryStatusHero extends StatelessWidget {
                 TextSpan(
                   text: hasStatus ? ' · ' : '',
                   style: envStyle.copyWith(
-                    fontSize: 15,
                     fontWeight: FontWeight.w500,
                     color: secondaryTextColor,
                   ),
@@ -239,7 +236,6 @@ class HomePrimaryStatusHero extends StatelessWidget {
                   TextSpan(
                     text: envStatusText,
                     style: envStyle.copyWith(
-                      fontSize: 15,
                       fontWeight: FontWeight.w500,
                       color: secondaryTextColor,
                     ),
@@ -323,10 +319,8 @@ class HomePrimaryStatusHero extends StatelessWidget {
       children: [
         Text(
           hero.courseName ?? hero.headline,
-          style: textTheme.headlineMedium!.copyWith(
-            fontSize: 32,
+          style: textTheme.headlineLarge!.copyWith(
             height: 1.3,
-            fontWeight: FontWeight.w700,
             color: primaryTextColor,
           ),
           maxLines: 2,
@@ -395,9 +389,7 @@ class HomePrimaryStatusHero extends StatelessWidget {
                   children: [
                     Text(
                       '查看课表',
-                      style: textTheme.titleSmall!.copyWith(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
+                      style: context.appText.rowTitle.copyWith(
                         color: accentColor,
                       ),
                     ),
@@ -427,8 +419,11 @@ class HomePrimaryStatusHero extends StatelessWidget {
         Flexible(
           child: Text(
             text,
-            style: Theme.of(context).textTheme.bodyMedium!
-                .copyWith(fontSize: 15, height: 1.5, color: color),
+            style: context.appText.rowTitle.copyWith(
+              fontWeight: FontWeight.w400,
+              height: 1.5,
+              color: color,
+            ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
@@ -467,19 +462,14 @@ class HomePrimaryStatusHero extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             hero.timeText!,
-            style: textTheme.bodyMedium!.copyWith(
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-              color: secondaryTextColor,
-            ),
+            style: context.appText.rowTitle.copyWith(color: secondaryTextColor),
           ),
         ],
         if (hero.courseName != null) ...[
           const SizedBox(height: 4),
           Text(
             hero.courseName!,
-            style: textTheme.bodyMedium!.copyWith(
-              fontSize: 15,
+            style: context.appText.rowTitle.copyWith(
               fontWeight: FontWeight.w500,
               color: secondaryTextColor,
             ),
@@ -502,7 +492,6 @@ class HomePrimaryStatusHero extends StatelessWidget {
                   child: Text(
                     hero.locationText!,
                     style: textTheme.bodyMedium!.copyWith(
-                      fontSize: 14,
                       color: secondaryTextColor,
                     ),
                     maxLines: 1,
@@ -521,7 +510,6 @@ class HomePrimaryStatusHero extends StatelessWidget {
                 Text(
                   hero.lessonText!,
                   style: textTheme.bodyMedium!.copyWith(
-                    fontSize: 14,
                     color: secondaryTextColor,
                   ),
                 ),
@@ -538,11 +526,7 @@ class HomePrimaryStatusHero extends StatelessWidget {
               children: [
                 Text(
                   '去登录',
-                  style: textTheme.titleSmall!.copyWith(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: accentColor,
-                  ),
+                  style: context.appText.rowTitle.copyWith(color: accentColor),
                 ),
                 const SizedBox(width: 2),
                 Icon(Icons.chevron_right, size: 16, color: accentColor),
