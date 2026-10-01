@@ -319,6 +319,26 @@ void main() {
     expect(adapter.requestLog.length, greaterThan(requestsAfterFirst));
   });
 
+  test('内存缓存超过 15 分钟 TTL 后重新抓取', () async {
+    final adapter = _happyPathAdapter();
+    var now = DateTime(2026, 10, 1, 9);
+    final service = PhysicalTestService.instance
+      ..debugSetDio(_dioWith(adapter))
+      ..debugNow = () => now;
+
+    final first = await service.fetchSnapshot();
+    final requestsAfterFirst = adapter.requestLog.length;
+
+    now = now.add(const Duration(minutes: 14, seconds: 59));
+    expect(identical(await service.fetchSnapshot(), first), isTrue);
+    expect(adapter.requestLog, hasLength(requestsAfterFirst));
+
+    now = DateTime(2026, 10, 1, 9, 15);
+    final expired = await service.fetchSnapshot();
+    expect(identical(expired, first), isFalse);
+    expect(adapter.requestLog.length, greaterThan(requestsAfterFirst));
+  });
+
   test('身份空值 / null / base64 null 一律拒绝，不发起查询', () async {
     for (final badValue in ['', 'null', 'bnVsbA==']) {
       PhysicalTestService.instance.debugReset();

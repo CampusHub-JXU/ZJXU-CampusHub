@@ -9,7 +9,7 @@ import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/shared/widgets/glass_nav_bar.dart';
 import 'package:jxu_campus_hub/shared/widgets/login_shell.dart';
-import 'package:jxu_campus_hub/shared/widgets/zhengfang_protected_webview_page.dart';
+import 'package:jxu_campus_hub/shared/widgets/academic_web_entry_page.dart';
 
 /// 设备端 UI 流程：真实 App 启动 → 底部 dock → 「我的」页 → 点开教务受信入口
 /// → 读取 `AcademicWebEntryPageState.debugStatus` → 登出确认框「返回」取消

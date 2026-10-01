@@ -233,16 +233,6 @@ class AppLogger {
     log(LogLevel.warn, LogCategory.general, message);
   }
 
-  void error(String message, {Object? error, StackTrace? stackTrace}) {
-    log(
-      LogLevel.error,
-      LogCategory.general,
-      message,
-      error: error,
-      stackTrace: stackTrace,
-    );
-  }
-
   void log(
     LogLevel level,
     LogCategory category,

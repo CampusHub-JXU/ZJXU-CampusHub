@@ -18,6 +18,7 @@ import 'package:jxu_campus_hub/core/network/dio_client.dart';
 import 'package:jxu_campus_hub/core/network/network_settings.dart';
 
 import '../../helpers/mock_http_client_adapter.dart';
+import '../../helpers/credential_store_test_ext.dart';
 
 const _modulus =
     '18vI4XcZMDybHwuQYgp+fxR8kAgAQWPnKFNLVDoTopVtDgtb1PlyJAmV85T1TVUmTVCGqw1adAmVgdDm3MaAO+CrS6bsfywyqMqT8yTNadF79hkFqf3DW0PUCWk59/vfc8QRnPyJBAIN6pNmukJxdL2Z4WLuQ4e63VivUoacFeE=';

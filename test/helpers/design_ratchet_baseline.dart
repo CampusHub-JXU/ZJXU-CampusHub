@@ -16,11 +16,6 @@ const designRatchetBaseline = <String, Map<String, int>>{
   'features/schedule/widgets/schedule_slot_column.dart': {'fontSize': 1},
   'features/settings/about_page.dart': {'fontSize': 1},
   'features/settings/background_editor_page.dart': {'fontSize': 2},
-  'features/settings/push_debug_page.dart': {
-    'fontSize': 1,
-    'rawCard': 1,
-    'showSnackBar': 1,
-  },
   'features/settings/widgets/appearance_preview.dart': {'fontSize': 2},
   'features/settings/widgets/hsv_color_picker_sheet.dart': {'fontSize': 1},
   'features/settings/widgets/personalization_background_section.dart': {
@@ -39,5 +34,5 @@ const designRatchetBaseline = <String, Map<String, int>>{
   'shared/widgets/unified_auth_login_widget.dart': {'fontSize': 4},
   'shared/widgets/update_dialog.dart': {'showSnackBar': 2},
   'shared/widgets/webview_page.dart': {'showSnackBar': 1},
-  'shared/widgets/webview_page_build.dart': {'fontSize': 3},
+  'shared/widgets/webview_page_build.dart': {'fontSize': 2},
 };

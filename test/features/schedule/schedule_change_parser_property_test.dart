@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';
-import 'package:jxu_campus_hub/features/schedule/schedule_term_context.dart';
+import 'package:jxu_campus_hub/core/semester/schedule_term_context.dart';
 
 import '../../helpers/property.dart';
 

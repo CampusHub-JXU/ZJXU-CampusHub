@@ -11,7 +11,7 @@ import 'package:jxu_campus_hub/features/schedule/schedule_cache_snapshot.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_model.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_page.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';
-import 'package:jxu_campus_hub/features/schedule/schedule_term_context.dart';
+import 'package:jxu_campus_hub/core/semester/schedule_term_context.dart';
 
 import '../../helpers/mock_http_client_adapter.dart';
 

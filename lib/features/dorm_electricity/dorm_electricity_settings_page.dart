@@ -6,7 +6,7 @@ import '../../core/auth/unified_auth.dart';
 import '../../core/logging/app_logger.dart';
 import 'dorm_electricity_background.dart';
 import 'dorm_electricity_service.dart';
-import 'epay_electricity_gateway.dart';
+import '../../core/epay100/epay100_gateway.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_dropdown.dart';
 import '../../shared/widgets/app_error_view.dart';

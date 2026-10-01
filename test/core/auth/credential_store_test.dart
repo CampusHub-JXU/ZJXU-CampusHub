@@ -1,7 +1,9 @@
-﻿import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/core/auth/credential_store.dart';
+
+import '../../helpers/credential_store_test_ext.dart';
 
 void main() {
   setUp(() {

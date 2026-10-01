@@ -7,6 +7,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:jxu_campus_hub/app/routes.dart';
 import 'package:jxu_campus_hub/core/auth/cas_auth_broker.dart';
+import 'package:jxu_campus_hub/core/actions/campus_action.dart';
+import 'package:jxu_campus_hub/core/actions/campus_action_ids.dart';
+import 'package:jxu_campus_hub/core/actions/campus_action_registry.dart';
 import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/shared/widgets/unified_auth_protected_webview_page.dart';
 import 'package:jxu_campus_hub/shared/widgets/webview_page.dart';
@@ -163,5 +166,51 @@ void main() {
     expect(page.serviceUrl, service);
     expect(resourceCalls, isEmpty);
     expect(find.byType(WebViewPage), findsOneWidget);
+  });
+
+  Map<String, Object?> registryExtra(String actionId) {
+    final target = CampusActionRegistry.instance.findById(actionId)!.target;
+    expect(target, isA<RouteActionTarget>());
+    final route = target as RouteActionTarget;
+    expect(route.routeName, 'external-webview');
+    return route.extra!;
+  }
+
+  testWidgets('注册表中的嘉大微生活入口以普通 WebView 打开后勤 H5', (tester) async {
+    final extra = registryExtra(CampusActionIds.microLifeOpen);
+    await pumpRouter(tester);
+    router.pushNamed('external-webview', extra: extra);
+    await tester.pump();
+    await tester.pump();
+
+    final page = tester.widget<WebViewPage>(find.byType(WebViewPage));
+    expect(page.title, '嘉大微生活');
+    expect(
+      page.url,
+      'http://jdhq.wap.zjxu.edu.cn/Base/Center/center/account_id/6',
+    );
+    expect(page.showWebViewBottomBackButton, isTrue);
+    expect(find.byType(UnifiedAuthProtectedWebViewPage), findsNothing);
+  });
+
+  testWidgets('注册表中的校务服务入口经 WebVPN 资源预热加载', (tester) async {
+    final extra = registryExtra(CampusActionIds.oneStopServiceOpen);
+    await pumpRouter(tester);
+    router.pushNamed('external-webview', extra: extra);
+    await tester.pump();
+    await tester.pump();
+
+    final page = tester.widget<UnifiedAuthProtectedWebViewPage>(
+      find.byType(UnifiedAuthProtectedWebViewPage),
+    );
+    expect(page.title, '校务服务');
+    expect(
+      page.url,
+      'https://webvpn.zjxu.edu.cn/https/77726476706e69737468656265737421e3e05b84692a62486b468ca88d1b203b/',
+    );
+    expect(page.warmUpAsResource, isTrue);
+    expect(page.showWebViewBottomBackButton, isTrue);
+    expect(page.serviceUrl, UnifiedAuthService.defaultServiceUrl);
+    expect(resourceCalls, [page.url]);
   });
 }

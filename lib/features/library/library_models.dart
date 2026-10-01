@@ -177,8 +177,6 @@ class LibraryBorrowItem {
 
   bool get isOverdue => overDay > 0 || overTime.isNotEmpty;
 
-  bool get isWillEnd => willEnd == '1';
-
   /// 到期提醒文案：超期优先，其次 1–3 天内到期。
   String? get dueHint {
     if (isOverdue) {

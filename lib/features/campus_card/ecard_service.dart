@@ -16,8 +16,6 @@ class EcardService {
 
   String? _cachedAccName;
 
-  String? get cachedAccName => _cachedAccName;
-
   @visibleForTesting
   static String formatTime(DateTime now) {
     return '${now.year}'
@@ -42,22 +40,6 @@ class EcardService {
   static String generateSign(List<String> values) {
     final joined = values.join('|');
     return md5Hash('$joined|$_secretKey');
-  }
-
-  static String tripleBase64Encode(String input) {
-    var result = input;
-    for (var i = 0; i < 3; i++) {
-      result = base64Encode(utf8.encode(result));
-    }
-    return result;
-  }
-
-  static String tripleBase64Decode(String input) {
-    var result = input;
-    for (var i = 0; i < 3; i++) {
-      result = utf8.decode(base64Decode(result));
-    }
-    return result;
   }
 
   Map<String, String> _buildParams(Map<String, String> signParams) {

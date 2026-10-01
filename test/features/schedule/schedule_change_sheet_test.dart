@@ -6,7 +6,7 @@ import 'package:jxu_campus_hub/shared/widgets/app_status_tag.dart';
 
 import 'package:jxu_campus_hub/features/schedule/schedule_change_rule.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_model.dart';
-import 'package:jxu_campus_hub/features/schedule/schedule_term_context.dart';
+import 'package:jxu_campus_hub/core/semester/schedule_term_context.dart';
 import 'package:jxu_campus_hub/features/schedule/widgets/schedule_change_sheet.dart';
 
 void main() {

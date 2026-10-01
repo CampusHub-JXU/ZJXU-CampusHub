@@ -22,7 +22,8 @@ class AppShortcutService {
   bool _readyListenerRegistered = false;
   String? _pendingAction;
   ValueListenable<bool>? _navigationReady;
-  Future<void> Function(String routeName)? _navigateToNamedRoute;
+  Future<void> Function(String routeName, {Object? extra})?
+  _navigateToNamedRoute;
 
   /// 注入导航就绪信号与路由跳转回调。
   ///
@@ -30,7 +31,8 @@ class AppShortcutService {
   /// 就绪信号由 app 层（bootstrap 控制器）注入，本服务不再反向依赖 app 层。
   Future<void> initialize({
     required ValueListenable<bool> navigationReady,
-    Future<void> Function(String routeName)? navigateToNamedRoute,
+    Future<void> Function(String routeName, {Object? extra})?
+    navigateToNamedRoute,
   }) async {
     _navigationReady = navigationReady;
     _navigateToNamedRoute = navigateToNamedRoute ?? _navigateToNamedRoute;
@@ -231,7 +233,9 @@ class AppShortcutService {
           final target = CampusActionRegistry.instance.findById(action)?.target;
           final navigateToNamedRoute = _navigateToNamedRoute;
           if (target is RouteActionTarget && navigateToNamedRoute != null) {
-            unawaited(navigateToNamedRoute(target.routeName));
+            unawaited(
+              navigateToNamedRoute(target.routeName, extra: target.extra),
+            );
           }
           break;
       }

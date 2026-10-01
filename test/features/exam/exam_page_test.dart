@@ -14,6 +14,7 @@ import 'package:jxu_campus_hub/shared/widgets/refresh_status_line.dart';
 import 'package:jxu_campus_hub/shared/widgets/skeleton_box.dart';
 
 import '../../helpers/test_setup.dart';
+import '../../helpers/credential_store_test_ext.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

@@ -99,8 +99,6 @@ class PhysicalTestSnapshot {
   final String? message;
   final DateTime? updatedAt;
 
-  bool get hasRecords => records.isNotEmpty;
-
   factory PhysicalTestSnapshot.fromJson(Map<String, dynamic> json) {
     final rawRecords = json['records'];
     final rawUpdatedAt = json['updatedAt']?.toString();

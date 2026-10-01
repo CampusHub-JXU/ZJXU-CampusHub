@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jxu_campus_hub/core/cache/cache_policy.dart';
 
+const _volatile = CachePolicy(ttl: Duration.zero, staleGrace: Duration.zero);
+
 void main() {
   group('预设档位', () {
     test('catalog 面向一学期也未必变一次的目录数据', () {
@@ -10,37 +12,11 @@ void main() {
       expect(policy.staleGrace, const Duration(days: 60));
       expect(policy.isVolatile, isFalse);
     });
-
-    test('daily 面向当天内可复用的列表数据', () {
-      const policy = CachePolicy.daily;
-
-      expect(policy.ttl, const Duration(hours: 8));
-      expect(policy.staleGrace, const Duration(days: 3));
-      expect(policy.isVolatile, isFalse);
-    });
-
-    test('session 面向余额一类会话内数据', () {
-      const policy = CachePolicy.session;
-
-      expect(policy.ttl, const Duration(minutes: 30));
-      expect(policy.staleGrace, const Duration(days: 1));
-      expect(policy.isVolatile, isFalse);
-    });
-
-    test('volatile 不缓存，ttl 与宽限期均为 0', () {
-      const policy = CachePolicy.volatile;
-
-      expect(policy.ttl, Duration.zero);
-      expect(policy.staleGrace, Duration.zero);
-      expect(policy.isVolatile, isTrue);
-    });
   });
 
   group('isVolatile', () {
     test('只有 ttl 非正的档位才算实时型', () {
-      expect(CachePolicy.volatile.isVolatile, isTrue);
-      expect(CachePolicy.session.isVolatile, isFalse);
-      expect(CachePolicy.daily.isVolatile, isFalse);
+      expect(_volatile.isVolatile, isTrue);
       expect(CachePolicy.catalog.isVolatile, isFalse);
     });
 
@@ -138,19 +114,16 @@ void main() {
 
   group('volatile 策略', () {
     test('age 为 0 的一瞬间仍判 fresh', () {
-      expect(
-        CachePolicy.volatile.freshnessOf(Duration.zero),
-        CacheFreshness.fresh,
-      );
+      expect(_volatile.freshnessOf(Duration.zero), CacheFreshness.fresh);
     });
 
     test('任何正的 age 立即 expired，且不存在 stale 过渡', () {
       expect(
-        CachePolicy.volatile.freshnessOf(const Duration(microseconds: 1)),
+        _volatile.freshnessOf(const Duration(microseconds: 1)),
         CacheFreshness.expired,
       );
       expect(
-        CachePolicy.volatile.freshnessOf(const Duration(hours: 1)),
+        _volatile.freshnessOf(const Duration(hours: 1)),
         CacheFreshness.expired,
       );
     });
@@ -174,27 +147,6 @@ void main() {
       );
       expect(
         policy.freshnessOf(const Duration(days: 91)),
-        CacheFreshness.expired,
-      );
-    });
-
-    test('session 超过 30 分钟即进入 stale，一天后彻底失效', () {
-      const policy = CachePolicy.session;
-
-      expect(
-        policy.freshnessOf(const Duration(minutes: 29)),
-        CacheFreshness.fresh,
-      );
-      expect(
-        policy.freshnessOf(const Duration(minutes: 31)),
-        CacheFreshness.stale,
-      );
-      expect(
-        policy.freshnessOf(const Duration(hours: 2)),
-        CacheFreshness.stale,
-      );
-      expect(
-        policy.freshnessOf(const Duration(days: 2)),
         CacheFreshness.expired,
       );
     });

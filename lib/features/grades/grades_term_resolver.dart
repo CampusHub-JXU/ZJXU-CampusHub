@@ -10,10 +10,6 @@ class GradesTermResolver {
   /// 成绩中学年学期组合的去重 key：`"$academicYear|$semester"`。
   static String keyOf(GradeEntry g) => '${g.academicYear}|${g.semester}';
 
-  /// 展示用的学期标签：`"$academicYear $semester"`（不再拼接"第…学期"后缀）。
-  static String labelOf(String academicYear, String semester) =>
-      '$academicYear $semester';
-
   /// 学期 chip 的短标签：`2025-2026 第一学期` → `2025–26 秋`，
   /// 第二学期 → 春、第三学期 → 夏；无法识别的部分原样保留。
   static String shortLabelOf(String academicYear, String semester) {

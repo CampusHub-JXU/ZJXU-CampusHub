@@ -374,11 +374,6 @@ class AuthRecoveryStateStore {
   AuthRecoverySnapshot get debugSnapshot => _snapshot;
 
   @visibleForTesting
-  void debugInjectSnapshot(AuthRecoverySnapshot snapshot) {
-    _snapshot = snapshot;
-  }
-
-  @visibleForTesting
   void debugReset() {
     _snapshot = AuthRecoverySnapshot.empty;
     debugDirectoryProvider = null;

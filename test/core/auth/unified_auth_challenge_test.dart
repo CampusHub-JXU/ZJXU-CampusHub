@@ -18,6 +18,7 @@ import 'package:jxu_campus_hub/core/network/dio_client.dart';
 import 'package:jxu_campus_hub/core/network/network_settings.dart';
 
 import '../../helpers/mock_http_client_adapter.dart';
+import '../../helpers/credential_store_test_ext.dart';
 
 final Uint8List _png = Uint8List.fromList(<int>[
   0x89,

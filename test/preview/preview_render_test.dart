@@ -43,11 +43,11 @@ import 'package:jxu_campus_hub/shared/widgets/glass_nav_bar.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_cache_snapshot.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_model.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';
-import 'package:jxu_campus_hub/features/schedule/schedule_term_context.dart';
-import 'package:jxu_campus_hub/shared/widgets/webview_page.dart';
+import 'package:jxu_campus_hub/core/semester/schedule_term_context.dart';
 
 import '../helpers/test_setup.dart';
 import '../helpers/preview_support.dart';
+import '../helpers/credential_store_test_ext.dart';
 
 /// 视觉预览渲染（预渲染脚本）。
 ///
@@ -290,33 +290,6 @@ void main() {
     await tester.enterText(find.byType(TextField).first, '竞赛');
     await tester.pump();
     await expectPreviewGolden(tester, 'page_notification_center_search_light');
-  });
-
-  // WebView 悬浮返回小岛：模拟网页背景 + 小岛浮层——
-  // 验收点：药丸尺寸小巧、不占底部整条、半透明浮岛质感。
-  previewTest('webview_back_pill_light', (tester) async {
-    await pumpPreviewScene(
-      tester,
-      (_) => Scaffold(
-        body: Stack(
-          children: [
-            Container(
-              color: const Color(0xFFEDEDF2),
-              alignment: Alignment.center,
-              child: const Text('模拟网页内容'),
-            ),
-            Align(
-              alignment: Alignment.bottomLeft,
-              child: Padding(
-                padding: const EdgeInsets.only(left: 16, bottom: 16),
-                child: WebViewBackPill(onTap: () {}),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-    await expectPreviewGolden(tester, 'webview_back_pill_light');
   });
 
   previewTest('page_settings_light', (tester) async {

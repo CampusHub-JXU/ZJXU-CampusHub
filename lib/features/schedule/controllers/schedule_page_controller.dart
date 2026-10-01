@@ -8,7 +8,7 @@ import '../schedule_cache_snapshot.dart';
 import '../schedule_constants.dart';
 import '../schedule_model.dart';
 import '../schedule_service.dart';
-import '../schedule_term_context.dart';
+import '../../../core/semester/schedule_term_context.dart';
 import '../schedule_week_view_model.dart';
 import '../widgets/schedule_grid.dart';
 
@@ -91,7 +91,6 @@ class SchedulePageController extends ChangeNotifier {
   String? get infoMessage => _infoMessage;
   bool get automaticLoginPaused => _automaticLoginPaused;
   List<CourseEntry> get courses => _courses;
-  List<CourseChangeRule> get courseChangeRules => _courseChangeRules;
   List<CourseChangeNotice> get courseChangeNotices =>
       ScheduleService.instance.buildCourseChangeNotices(
         courses: _courses,

@@ -20,6 +20,8 @@ import 'package:jxu_campus_hub/core/network/dio_client.dart';
 import 'package:jxu_campus_hub/core/network/network_settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../helpers/credential_store_test_ext.dart';
+
 class _FakeGateway implements Epay100Gateway {
   _FakeGateway({this.body, this.error});
 

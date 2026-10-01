@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:jxu_campus_hub/core/actions/campus_action_ids.dart';
 import 'package:jxu_campus_hub/core/shortcut/app_shortcut_service.dart';
 
 void main() {
@@ -101,7 +102,7 @@ void main() {
 
     await AppShortcutService.instance.initialize(
       navigationReady: navigationReady,
-      navigateToNamedRoute: (routeName) async {
+      navigateToNamedRoute: (routeName, {extra}) async {
         routes.add(routeName);
       },
     );
@@ -125,7 +126,7 @@ void main() {
     navigationReady.value = false;
     await AppShortcutService.instance.initialize(
       navigationReady: navigationReady,
-      navigateToNamedRoute: (routeName) async {
+      navigateToNamedRoute: (routeName, {extra}) async {
         routes.add(routeName);
       },
     );
@@ -137,5 +138,30 @@ void main() {
     await tester.pump();
 
     expect(routes, ['shuati-practice']);
+  });
+
+  testWidgets('route action shortcut forwards the registry extra', (
+    tester,
+  ) async {
+    final calls = <(String, Object?)>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(shortcutChannel, (call) async {
+          if (call.method == 'consumeInitialShortcutAction') {
+            return CampusActionIds.academicWebOpen;
+          }
+          return null;
+        });
+
+    await AppShortcutService.instance.initialize(
+      navigationReady: navigationReady,
+      navigateToNamedRoute: (routeName, {extra}) async {
+        calls.add((routeName, extra));
+      },
+    );
+    await tester.pump();
+
+    expect(calls, hasLength(1));
+    expect(calls.single.$1, 'external-webview');
+    expect(calls.single.$2, {'title': '教务系统', 'academicEntry': true});
   });
 }

@@ -10,7 +10,7 @@ import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_error_view.dart';
 import 'package:jxu_campus_hub/shared/widgets/auth_required_view.dart';
 import 'package:jxu_campus_hub/shared/widgets/webview_page.dart';
-import 'package:jxu_campus_hub/shared/widgets/zhengfang_protected_webview_page.dart';
+import 'package:jxu_campus_hub/shared/widgets/academic_web_entry_page.dart';
 
 import '../../helpers/test_setup.dart';
 

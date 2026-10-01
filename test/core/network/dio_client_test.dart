@@ -30,7 +30,7 @@ void main() {
     await DioClient.instance.ensureInitialized();
     final dio = DioClient.instance.dio;
     final unifiedAuthDio = DioClient.instance.unifiedAuthDio;
-    final cookieJar = DioClient.instance.cookieJar;
+    final cookieJar = DioClient.instance.zhengfangCookieJar;
     final unifiedAuthCookieJar = DioClient.instance.unifiedAuthCookieJar;
 
     await DioClient.instance.ensureInitialized();
@@ -40,7 +40,7 @@ void main() {
       identical(unifiedAuthDio, DioClient.instance.unifiedAuthDio),
       isTrue,
     );
-    expect(identical(cookieJar, DioClient.instance.cookieJar), isTrue);
+    expect(identical(cookieJar, DioClient.instance.zhengfangCookieJar), isTrue);
     expect(
       identical(unifiedAuthCookieJar, DioClient.instance.unifiedAuthCookieJar),
       isTrue,

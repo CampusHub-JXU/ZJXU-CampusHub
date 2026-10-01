@@ -14,7 +14,7 @@ import '../../core/system_surface/campus_data_change_bus.dart';
 import 'schedule_cache_snapshot.dart';
 import 'schedule_change_rule.dart';
 import 'schedule_model.dart';
-import 'schedule_term_context.dart';
+import '../../core/semester/schedule_term_context.dart';
 
 export 'schedule_change_rule.dart';
 

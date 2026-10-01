@@ -24,8 +24,6 @@ class DioClient {
   Future<void>? _reloadFuture;
   VoidCallback? _proxyModeListener;
 
-  PersistCookieJar get cookieJar => zhengfangCookieJar;
-
   PersistCookieJar get zhengfangCookieJar =>
       _zhengfangCookieJar ??
       (throw StateError('DioClient has not been initialized.'));
@@ -38,15 +36,9 @@ class DioClient {
       _zhengfangDio ??
       (throw StateError('DioClient has not been initialized.'));
 
-  Dio get zhengfangDio => dio;
-
   Dio get unifiedAuthDio =>
       _unifiedAuthDio ??
       (throw StateError('DioClient has not been initialized.'));
-
-  Future<void> init() async {
-    await ensureInitialized();
-  }
 
   Future<void> ensureInitialized() async {
     final existing = _initFuture;

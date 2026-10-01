@@ -22,7 +22,6 @@ import 'core/notice/notice_sync_service.dart';
 import 'core/notice/notice_sync_store.dart';
 import 'core/notification/app_notification_service.dart';
 import 'core/notification/background_task_service.dart';
-import 'core/push/push_service.dart';
 import 'core/shortcut/app_shortcut_service.dart';
 import 'features/dorm_electricity/dorm_electricity_background.dart';
 import 'features/second_classroom/second_classroom_subscription_service.dart';
@@ -179,7 +178,6 @@ Future<void> main() async {
       unawaited(
         SecondClassroomSubscriptionService.instance.checkRecruitingMatches(),
       );
-      unawaited(PushService.instance.initialize());
       // 教务处通知：冷启动无条件重载磁盘状态（后台 isolate 写盘后的红点
       // 正确性不依赖后续 resumed 事件），并发起一次自动补查（claim 防抖）。
       unawaited(NoticeSyncStore.instance.reload());

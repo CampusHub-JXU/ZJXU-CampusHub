@@ -5,7 +5,6 @@ import 'app_route_observer.dart';
 import 'app_shell_page.dart';
 import '../features/home/home_page.dart';
 import '../features/my/my_page.dart';
-import '../features/my/unified_auth_login_page.dart';
 import '../features/schedule/schedule_page.dart';
 import '../features/grades/grades_page.dart';
 import '../features/campus_card/campus_card_page.dart';
@@ -13,8 +12,6 @@ import '../features/campus_card/campus_card_payment_page.dart';
 import '../features/library/library_book_page.dart';
 import '../features/library/library_borrows_page.dart';
 import '../features/library/library_page.dart';
-import '../features/micro_life/micro_life_page.dart';
-import '../features/one_stop_service/one_stop_service_page.dart';
 import '../features/physical_test/physical_test_page.dart';
 import '../features/notice/notice_detail_page.dart';
 import '../features/sjjx_notice/sjjx_notice_list_page.dart';
@@ -30,7 +27,6 @@ import '../features/settings/background_editor_page.dart';
 import '../features/settings/desktop_background_page.dart';
 import '../features/home/home_surface_scene.dart';
 import '../features/home/models/example_campus_snapshot.dart';
-import '../features/settings/push_debug_page.dart';
 import '../features/dorm_electricity/dorm_electricity_page.dart';
 import '../features/dorm_electricity/dorm_electricity_settings_page.dart';
 import '../features/second_classroom/second_classroom_page.dart';
@@ -42,7 +38,7 @@ import '../features/changxing_jiada/changxing_jiada_model.dart';
 import '../core/auth/unified_auth.dart';
 import '../shared/widgets/unified_auth_protected_webview_page.dart';
 import '../shared/widgets/webview_page.dart';
-import '../shared/widgets/zhengfang_protected_webview_page.dart';
+import '../shared/widgets/academic_web_entry_page.dart';
 
 int? _parseOptionalId(GoRouterState state) {
   final text = state.uri.queryParameters['id']?.trim() ?? '';
@@ -164,16 +160,6 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const LibraryBorrowsPage(),
     ),
     _appRoute(
-      path: '/micro-life',
-      name: 'micro-life',
-      builder: (context, state) => const MicroLifePage(),
-    ),
-    _appRoute(
-      path: '/one-stop-service',
-      name: 'one-stop-service',
-      builder: (context, state) => const OneStopServicePage(),
-    ),
-    _appRoute(
       path: '/physical-test',
       name: 'physical-test',
       builder: (context, state) => const PhysicalTestPage(),
@@ -197,16 +183,6 @@ final GoRouter appRouter = GoRouter(
           presentation: ExampleCampusSnapshot.presentation,
         ),
       ),
-    ),
-    GoRoute(
-      path: '/theme',
-      name: 'theme',
-      redirect: (context, state) => '/appearance',
-    ),
-    GoRoute(
-      path: '/theme-settings',
-      name: 'theme-settings',
-      redirect: (context, state) => '/appearance',
     ),
     _appRoute(
       path: '/personalization',
@@ -234,11 +210,6 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const DesktopBackgroundPage(),
     ),
     _appRoute(
-      path: '/push-debug',
-      name: 'push-debug',
-      builder: (context, state) => const PushDebugPage(),
-    ),
-    _appRoute(
       path: '/about',
       name: 'about',
       builder: (context, state) => const AboutPage(),
@@ -247,11 +218,6 @@ final GoRouter appRouter = GoRouter(
       path: '/notification-center',
       name: 'notification-center',
       builder: (context, state) => const NotificationCenterPage(),
-    ),
-    _appRoute(
-      path: '/unified-auth-login',
-      name: 'unified-auth-login',
-      builder: (context, state) => const UnifiedAuthLoginPage(),
     ),
     _appRoute(
       path: '/notice-detail',
@@ -268,20 +234,6 @@ final GoRouter appRouter = GoRouter(
       path: '/sjjx-notice-list',
       name: 'sjjx-notice-list',
       builder: (context, state) => const SjjxNoticeListPage(),
-    ),
-    _appRoute(
-      path: '/news-detail',
-      name: 'news-detail',
-      builder: (context, state) {
-        final extra = Map<String, dynamic>.from(
-          (state.extra as Map?) ?? const <String, dynamic>{},
-        );
-        return WebViewPage(
-          title: extra['title'] as String? ?? '新闻详情',
-          url: extra['url'] as String? ?? '',
-          onHomePressed: () => context.goNamed('home'),
-        );
-      },
     ),
     _appRoute(
       path: '/dorm-electricity',

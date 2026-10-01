@@ -15,6 +15,12 @@ class CampusActionRegistry {
   static const _resetPasswordUrl =
       'https://webvpn.zjxu.edu.cn/https/77726476706e69737468656265737421fef2569f267e725a661dc7a99c406d362a/security/start/index.html#/business/security/mResetPassword';
 
+  static const _microLifeUrl =
+      'http://jdhq.wap.zjxu.edu.cn/Base/Center/center/account_id/6';
+
+  static const _oneStopServiceUrl =
+      'https://webvpn.zjxu.edu.cn/https/77726476706e69737468656265737421e3e05b84692a62486b468ca88d1b203b/';
+
   late final Map<String, CampusAction> _byId = {
     for (final action in _build()) action.id: action,
   };
@@ -85,7 +91,7 @@ class CampusActionRegistry {
       id: CampusActionIds.campusCardResetPassword,
       title: '忘记密码',
       // 资源型 WebVPN 页面：走受保护 WebView 并预热业务 Cookie，
-      // 不能当 CAS service 传给 ensure；执行器尚未接入 ProtectedWebActionTarget。
+      // 不能当 CAS service 传给 ensure。
       target: RouteActionTarget(
         'external-webview',
         extra: <String, Object?>{
@@ -141,12 +147,31 @@ class CampusActionRegistry {
     const CampusAction(
       id: CampusActionIds.oneStopServiceOpen,
       title: '校务服务',
-      target: RouteActionTarget('one-stop-service'),
+      // 与「服务大厅」并列的独立入口；经 WebVPN 资源预热的受保护 WebView。
+      target: RouteActionTarget(
+        'external-webview',
+        extra: <String, Object?>{
+          'title': '校务服务',
+          'url': _oneStopServiceUrl,
+          'requireUnifiedAuthProtection': true,
+          'warmUpAsResource': true,
+          'loginDescription': '校务服务经 WebVPN 访问，请先完成统一认证登录',
+          'showWebViewBottomBackButton': true,
+        },
+      ),
     ),
     const CampusAction(
       id: CampusActionIds.microLifeOpen,
       title: '嘉大微生活',
-      target: RouteActionTarget('micro-life'),
+      // 后勤 H5，应用内普通 WebView 承接。
+      target: RouteActionTarget(
+        'external-webview',
+        extra: <String, Object?>{
+          'title': '嘉大微生活',
+          'url': _microLifeUrl,
+          'showWebViewBottomBackButton': true,
+        },
+      ),
     ),
     const CampusAction(
       id: CampusActionIds.physicalTestOpen,

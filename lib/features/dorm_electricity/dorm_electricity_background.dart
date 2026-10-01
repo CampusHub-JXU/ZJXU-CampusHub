@@ -34,23 +34,19 @@ const _immediateNotificationId = 100;
 const _channelId = 'dorm_electricity_alert';
 const _channelName = '寝室电费提醒';
 
-// SharedPreferences keys（owner 标记取自服务层公开常量，避免两处字面量漂移）。
-const _keyAlertEnabled = 'dorm_alert_enabled';
-const _keyAlertThreshold = 'dorm_alert_threshold';
-const _keyLastNotifiedDate = 'dorm_alert_last_notified_date';
-const _keyCachedElectricity = 'dorm_cached_electricity';
-const _keyCachedElectricityUpdatedAt = 'dorm_cached_electricity_updated_at';
-const _keyAreaId = 'dorm_epay_area_id';
-const _keyBuildingId = 'dorm_epay_building_id';
-const _keyFloorId = 'dorm_epay_floor_id';
-const _keyRoomId = 'dorm_epay_room_id';
+// SharedPreferences keys（取自服务层公开常量，避免两处字面量漂移）。
+const _keyAlertEnabled = DormElectricityService.keyAlertEnabled;
+const _keyAlertThreshold = DormElectricityService.keyAlertThreshold;
+const _keyLastNotifiedDate = DormElectricityService.keyAlertLastNotifiedDate;
+const _keyCachedElectricity = DormElectricityService.keyElectricity;
+const _keyCachedElectricityUpdatedAt =
+    DormElectricityService.keyElectricityUpdatedAt;
+const _keyAreaId = DormElectricityService.keyAreaId;
+const _keyBuildingId = DormElectricityService.keyBuildingId;
+const _keyFloorId = DormElectricityService.keyFloorId;
+const _keyRoomId = DormElectricityService.keyRoomId;
 const _keyRoomOwner = DormElectricityService.roomOwnerKey;
 const _backgroundCacheMaxAge = Duration(hours: 24);
-
-String _todayString() {
-  final now = DateTime.now();
-  return '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-}
 
 String _formatElectricity(double value) {
   if (value == value.truncateToDouble()) return value.toInt().toString();
@@ -643,7 +639,7 @@ class DormElectricityBackground {
           prefs.getDouble(_keyAlertThreshold) ??
           DormElectricityService.defaultAlertThreshold;
       final lastNotified = prefs.getString(_keyLastNotifiedDate);
-      final today = _todayString();
+      final today = DormElectricityService.todayString();
       if (lastNotified == today) return true;
 
       final value = _readFreshConfiguredElectricity(prefs);
@@ -724,7 +720,7 @@ class DormElectricityBackground {
           prefs.getDouble(_keyAlertThreshold) ??
           DormElectricityService.defaultAlertThreshold;
       final lastNotified = prefs.getString(_keyLastNotifiedDate);
-      final today = _todayString();
+      final today = DormElectricityService.todayString();
 
       final value = await DormElectricityService.instance.fetchElectricity(
         forceRefresh: true,

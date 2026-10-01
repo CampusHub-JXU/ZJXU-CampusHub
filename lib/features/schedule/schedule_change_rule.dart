@@ -1,5 +1,12 @@
 import 'schedule_model.dart';
-import 'schedule_term_context.dart';
+import '../../core/semester/schedule_term_context.dart';
+
+/// 缓存 JSON 里的毫秒时间戳（int 或数字字符串）→ [DateTime]；无法解析返回 null。
+DateTime? dateFromEpochMillis(Object? value) {
+  final millis = value is int ? value : int.tryParse(value?.toString() ?? '');
+  if (millis == null) return null;
+  return DateTime.fromMillisecondsSinceEpoch(millis);
+}
 
 enum CourseChangeType { cancel, reschedule, makeup }
 
@@ -147,7 +154,7 @@ class CourseChangeRule {
       originalClassroom: json['originalClassroom']?.toString(),
       classroom: json['classroom']?.toString(),
       rawMessage: json['rawMessage']?.toString(),
-      publishedAt: _dateFromMillis(json['publishedAt']),
+      publishedAt: dateFromEpochMillis(json['publishedAt']),
       termContext: _termContextFromJson(json['termContext']),
     );
   }
@@ -169,12 +176,6 @@ class CourseChangeRule {
     }
     return null;
   }
-
-  static DateTime? _dateFromMillis(Object? value) {
-    final millis = value is int ? value : int.tryParse(value?.toString() ?? '');
-    if (millis == null) return null;
-    return DateTime.fromMillisecondsSinceEpoch(millis);
-  }
 }
 
 enum CourseChangeNoticeStatus { reflected, unapplied }
@@ -193,8 +194,6 @@ class CourseChangeNotice {
 
   String? get rawMessage => rule.rawMessage;
   String? get originalClassroom => rule.originalClassroom;
-  String? get newClassroom => rule.classroom;
-  String? get effectiveClassroom => effectiveCourse?.classroom;
   ScheduleTermContext? get termContext => rule.termContext;
   bool get isReflected => status == CourseChangeNoticeStatus.reflected;
   bool get isUnapplied => status == CourseChangeNoticeStatus.unapplied;

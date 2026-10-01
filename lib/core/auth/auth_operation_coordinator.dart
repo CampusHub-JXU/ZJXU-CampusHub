@@ -88,11 +88,6 @@ class AuthAutomaticOutcome<T> {
   final Object? error;
 
   bool get didCommit => decision == AuthRecoveryDecision.committed;
-  bool get didExchange =>
-      decision == AuthRecoveryDecision.committed ||
-      decision == AuthRecoveryDecision.exchangeFailed ||
-      decision == AuthRecoveryDecision.ticketRejected ||
-      decision == AuthRecoveryDecision.aborted;
 }
 
 /// 认证事务协调器（阶段 2 使用）。
