@@ -228,6 +228,8 @@ class _AppDropdownState<T> extends State<AppDropdown<T>>
     final overlaySize = overlayBox.size;
     final cs = Theme.of(context).colorScheme;
 
+    // 关闭动画尚未结束就重新打开：旧菜单立即移除，避免残留在 Overlay 里。
+    _overlayEntry?.remove();
     _overlayEntry = OverlayEntry(
       builder: (context) => _AppDropdownOverlay<T>(
         buttonRect: buttonRect,
@@ -263,8 +265,12 @@ class _AppDropdownState<T> extends State<AppDropdown<T>>
       if (mounted) setState(() => _isOpen = false);
       return;
     }
+    // 只移除本次关闭的那个菜单：120ms 关闭动画内重新打开时，新菜单不能被
+    // 迟到的回调删掉（否则按钮卡在「已展开」）。
+    final closing = _overlayEntry;
     _animController.reverse().then((_) {
-      _overlayEntry?.remove();
+      if (!identical(_overlayEntry, closing)) return;
+      closing?.remove();
       _overlayEntry = null;
     });
     if (mounted) setState(() => _isOpen = false);
