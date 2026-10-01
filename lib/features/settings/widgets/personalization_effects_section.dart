@@ -5,19 +5,15 @@ import '../../../core/theme/personalization_controller.dart';
 import '../../../shared/widgets/plain_list.dart';
 import 'shader_tuning_controls.dart';
 
-/// 个性化 — 「效果」分组：亚克力材质、流体 Shader（含参数滑条）、
-/// 课表卡片毛玻璃。
+/// 个性化 — 「效果」分组：只剩流体 Shader（含参数滑条）。
 ///
-/// 全局只保留一个「亚克力材质」开关（默认开启，关闭为实色），由
-/// [GlassStyleController] 统一存储并被所有表面组件消费；风格切换与
-/// 模糊/透明度滑条已下线。「课表卡片毛玻璃」是首页头卡的独立布局开关，
-/// 仍归 [PersonalizationController]。Shader 仅保留流体纹理一种模式。
+/// 亚克力材质始终开启（见 [GlassStyleController]），「亚克力材质」与只影响
+/// 预览的「课表卡片毛玻璃」开关均已下线。Shader 仅保留流体纹理一种模式。
 class PersonalizationEffectsSection extends StatelessWidget {
   const PersonalizationEffectsSection({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final style = GlassStyleController.instance;
     final controller = PersonalizationController.instance;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -25,16 +21,6 @@ class PersonalizationEffectsSection extends StatelessWidget {
         const PlainSectionHeader('效果'),
         PlainListGroup(
           children: [
-            ValueListenableBuilder<bool>(
-              valueListenable: style.enabled,
-              builder: (context, acrylicEnabled, _) => PlainSwitchRow(
-                switchKey: const Key('personalization_acrylic'),
-                title: '亚克力材质',
-                subtitle: '顶栏、底部导航与功能卡片模糊透出壁纸',
-                value: acrylicEnabled,
-                onChanged: style.setEnabled,
-              ),
-            ),
             ValueListenableBuilder<bool>(
               valueListenable: controller.shaderEnabled,
               builder: (context, shaderEnabled, _) => Column(
@@ -54,16 +40,6 @@ class PersonalizationEffectsSection extends StatelessWidget {
                     ShaderOpacitySlider(),
                   ],
                 ],
-              ),
-            ),
-            ValueListenableBuilder<bool>(
-              valueListenable: controller.headerGlassEnabled,
-              builder: (context, headerGlass, _) => PlainSwitchRow(
-                switchKey: const Key('personalization_header_glass'),
-                title: '课表卡片毛玻璃',
-                subtitle: '壁纸之上时对首页顶部课表卡片添加模糊',
-                value: headerGlass,
-                onChanged: controller.setHeaderGlassEnabled,
               ),
             ),
           ],

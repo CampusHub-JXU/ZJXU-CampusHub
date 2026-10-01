@@ -287,18 +287,14 @@ class _AppearancePreviewState extends State<AppearancePreview> {
   }
 
   Widget _buildHomeWidgetPreviewOverlay(BuildContext context) {
+    // 与真实首页一致：顶部课表区不加模糊，功能卡片走亚克力。
     return ValueListenableBuilder<bool>(
-      valueListenable: PersonalizationController.instance.headerGlassEnabled,
-      builder: (context, headerGlassEnabled, _) {
-        return ValueListenableBuilder<bool>(
-          valueListenable: GlassStyleController.instance.enabled,
-          builder: (context, cardGlassEnabled, _) {
-            return _buildHomeWidgetPreviewBoxes(
-              context,
-              headerGlassEnabled: headerGlassEnabled,
-              cardGlassEnabled: cardGlassEnabled,
-            );
-          },
+      valueListenable: GlassStyleController.instance.enabled,
+      builder: (context, cardGlassEnabled, _) {
+        return _buildHomeWidgetPreviewBoxes(
+          context,
+          headerGlassEnabled: false,
+          cardGlassEnabled: cardGlassEnabled,
         );
       },
     );
