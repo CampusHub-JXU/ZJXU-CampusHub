@@ -96,3 +96,6 @@ packages/**/.cxx/
 /mke2fs.conf
 /source.properties
 /opencode.json
+
+# Firebase 已退役；本地可能残留旧的配置文件，继续忽略防止误提交
+android/app/google-services.json
