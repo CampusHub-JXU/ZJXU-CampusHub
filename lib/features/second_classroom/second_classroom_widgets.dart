@@ -1,37 +1,13 @@
 part of 'second_classroom_page.dart';
 
-Color _recruitmentColor(
-  BuildContext context,
-  SecondClassroomActivity activity,
-) {
-  final cs = Theme.of(context).colorScheme;
+/// 招募状态只映射主题 container 色调：招募中 → secondaryContainer，
+/// 已招满 → tertiaryContainer，其余中性。
+AppStatusTone _recruitmentTone(SecondClassroomActivity activity) {
   return switch (activity.recruitmentLabel) {
-    '招募中' => const Color(0xFF168A52),
-    '活动预热' => cs.primary,
-    '已招满' => const Color(0xFFE08A00),
-    _ => cs.onSurfaceVariant,
+    '招募中' => AppStatusTone.positive,
+    '已招满' => AppStatusTone.attention,
+    _ => AppStatusTone.neutral,
   };
-}
-
-String _syncStatusText({
-  required int activityCount,
-  required DateTime? updatedAt,
-  required bool showingCache,
-  required bool syncing,
-}) {
-  if (syncing && showingCache) {
-    return '正在后台同步，当前显示缓存 $activityCount 个活动';
-  }
-  if (syncing) {
-    return '正在同步完整活动列表';
-  }
-  final updated = updatedAt == null
-      ? ''
-      : ' · ${updatedAt.month}月${updatedAt.day}日 ${_formatTime(updatedAt)}';
-  if (showingCache) {
-    return '本地缓存 $activityCount 个活动$updated';
-  }
-  return '已同步 $activityCount 个活动$updated';
 }
 
 class _ActivityDetailSheet extends StatelessWidget {
@@ -71,14 +47,14 @@ class _ActivityDetailSheet extends StatelessWidget {
                   _ActivityCoverBanner(
                     imageUrl: imageUrl,
                     statusLabel: activity.recruitmentLabel,
-                    statusColor: _recruitmentColor(context, activity),
+                    statusTone: _recruitmentTone(activity),
                   ),
                   const SizedBox(height: 16),
                   Text(
                     activity.title,
                     style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      height: 1.2,
+                      fontWeight: FontWeight.w700,
+                      height: 1.25,
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -87,18 +63,14 @@ class _ActivityDetailSheet extends StatelessWidget {
                     runSpacing: 8,
                     children: [
                       if (activity.categoryName.isNotEmpty)
-                        _TinyBadge(label: activity.categoryName),
+                        AppStatusTag(activity.categoryName),
                       if (detail.hasCredit)
-                        _TinyBadge(
-                          label:
-                              '${_formatCreditHours(activity.creditHours)} 学时',
+                        AppStatusTag(
+                          '${_formatCreditHours(activity.creditHours)} 学时',
                         ),
-                      if (detail.isFavorite) const _TinyBadge(label: '已收藏'),
+                      if (detail.isFavorite) const AppStatusTag('已收藏'),
                       if (activity.isRegistered)
-                        const _TinyBadge(
-                          label: '已报名',
-                          color: Color(0xFF168A52),
-                        ),
+                        const AppStatusTag('已报名', tone: AppStatusTone.positive),
                     ],
                   ),
                   const SizedBox(height: 18),
@@ -179,13 +151,7 @@ class _ActivityDetailSheet extends StatelessWidget {
                   ),
                   if (activity.summary.isNotEmpty) ...[
                     const SizedBox(height: 18),
-                    Text(
-                      '活动简介',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
+                    const PlainSectionHeader('活动简介'),
                     Text(
                       activity.summary,
                       style: theme.textTheme.bodyMedium?.copyWith(
@@ -258,36 +224,22 @@ class _SubscriptionSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.pageMargin,
+        0,
+        AppSpacing.pageMargin,
+        AppSpacing.lg,
+      ),
       child: SizedBox(
         height: MediaQuery.sizeOf(context).height * 0.72,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Text(
-                  '已订阅活动名',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const Spacer(),
-                if (activities.isNotEmpty)
-                  Text(
-                    '${activities.length} 个',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: cs.onSurfaceVariant,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-              ],
+            PlainSectionHeader(
+              activities.isEmpty ? '已订阅活动名' : '已订阅活动名 · ${activities.length}',
             ),
-            const SizedBox(height: 12),
             if (activities.isEmpty)
               const Expanded(
                 child: AppEmptyView(
@@ -301,52 +253,17 @@ class _SubscriptionSheet extends StatelessWidget {
                 child: ListView.separated(
                   itemCount: activities.length,
                   separatorBuilder: (context, index) =>
-                      const SizedBox(height: 8),
+                      const SizedBox(height: AppSpacing.sm),
                   itemBuilder: (context, index) {
                     final activity = activities[index];
-                    return AppCard(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
+                    return AppListTile(
+                      title: activity.title,
+                      meta: '同名活动开始招募时提醒',
                       onTap: () => onOpen(activity),
-                      child: Row(
-                        children: [
-                          AppIconBadge(
-                            icon: Icons.notifications_active_outlined,
-                            accentColor: cs.primary,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  activity.title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.titleSmall?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  '同名活动开始招募时提醒',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: cs.onSurfaceVariant,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete_outline_rounded),
-                            tooltip: '取消开招提醒',
-                            onPressed: () => onRemove(activity),
-                          ),
-                        ],
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete_outline_rounded),
+                        tooltip: '取消开招提醒',
+                        onPressed: () => onRemove(activity),
                       ),
                     );
                   },
@@ -440,73 +357,10 @@ class _MetaLine extends StatelessWidget {
             text,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodySmall
-                ?.copyWith(color: cs.onSurfaceVariant),
+            style: context.appText.secondary,
           ),
         ),
       ],
-    );
-  }
-}
-
-class _TinyBadge extends StatelessWidget {
-  const _TinyBadge({required this.label, this.color});
-
-  final String label;
-  final Color? color;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final badgeColor = color ?? cs.primary;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: badgeColor.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.labelSmall
-            ?.copyWith(color: badgeColor, fontWeight: FontWeight.w700),
-      ),
-    );
-  }
-}
-
-class _CoverBadge extends StatelessWidget {
-  const _CoverBadge({required this.label, required this.color});
-
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.58),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-          ),
-          const SizedBox(width: 5),
-          Text(
-            label,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -516,13 +370,13 @@ class _ActivityCover extends StatelessWidget {
     required this.imageUrl,
     required this.size,
     this.statusLabel,
-    this.statusColor,
+    this.statusTone = AppStatusTone.neutral,
   });
 
   final String imageUrl;
   final double size;
   final String? statusLabel;
-  final Color? statusColor;
+  final AppStatusTone statusTone;
 
   @override
   Widget build(BuildContext context) {
@@ -541,10 +395,7 @@ class _ActivityCover extends StatelessWidget {
               Positioned(
                 left: 6,
                 bottom: 6,
-                child: _CoverBadge(
-                  label: statusLabel!,
-                  color: statusColor ?? cs.primary,
-                ),
+                child: AppStatusTag(statusLabel!, tone: statusTone),
               ),
           ],
         ),
@@ -576,12 +427,12 @@ class _ActivityCoverBanner extends StatelessWidget {
   const _ActivityCoverBanner({
     required this.imageUrl,
     this.statusLabel,
-    this.statusColor,
+    this.statusTone = AppStatusTone.neutral,
   });
 
   final String imageUrl;
   final String? statusLabel;
-  final Color? statusColor;
+  final AppStatusTone statusTone;
 
   @override
   Widget build(BuildContext context) {
@@ -614,10 +465,7 @@ class _ActivityCoverBanner extends StatelessWidget {
               Positioned(
                 left: 12,
                 top: 12,
-                child: _CoverBadge(
-                  label: statusLabel!,
-                  color: statusColor ?? cs.primary,
-                ),
+                child: AppStatusTag(statusLabel!, tone: statusTone),
               ),
           ],
         ),
@@ -626,29 +474,40 @@ class _ActivityCoverBanner extends StatelessWidget {
   }
 }
 
-class _LoadingState extends StatelessWidget {
-  const _LoadingState();
+/// 无缓存首次加载：静态骨架（搜索框 + chip 行 + 三张活动卡）。
+class _LoadingSkeleton extends StatelessWidget {
+  const _LoadingSkeleton();
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            width: 34,
-            height: 34,
-            child: CircularProgressIndicator(strokeWidth: 3, color: cs.primary),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            '正在加载第二课堂活动',
-            style: Theme.of(context).textTheme.bodyMedium
-                ?.copyWith(color: cs.onSurfaceVariant),
-          ),
-        ],
+    return ListView(
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.pageMargin,
+        AppSpacing.md,
+        AppSpacing.pageMargin,
+        AppSpacing.xl,
       ),
+      children: [
+        const SkeletonBox(height: 52, radius: AppRadius.input),
+        const SizedBox(height: AppSpacing.md),
+        const Row(
+          children: [
+            SkeletonBox(width: 56, height: 32, radius: 16),
+            SizedBox(width: AppSpacing.sm),
+            SkeletonBox(width: 80, height: 32, radius: 16),
+            SizedBox(width: AppSpacing.sm),
+            SkeletonBox(width: 80, height: 32, radius: 16),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.lg),
+        const RefreshStatusLine(refreshing: true, loadingLabel: '正在同步活动…'),
+        const SizedBox(height: AppSpacing.md),
+        for (var i = 0; i < 3; i++) ...[
+          if (i > 0) const SizedBox(height: AppSpacing.md),
+          const SkeletonBox(height: 128, radius: AppRadius.card),
+        ],
+      ],
     );
   }
 }
@@ -731,8 +590,6 @@ class _ActivityCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
     final capacity = activity.capacity;
     final enrolled = activity.enrolledCount;
     final progress = capacity > 0 ? (enrolled / capacity).clamp(0.0, 1.0) : 0.0;
@@ -751,7 +608,7 @@ class _ActivityCard extends StatelessWidget {
             imageUrl: imageUrl,
             size: 104,
             statusLabel: activity.recruitmentLabel,
-            statusColor: _recruitmentColor(context, activity),
+            statusTone: _recruitmentTone(activity),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -766,10 +623,7 @@ class _ActivityCard extends StatelessWidget {
                         activity.title,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          height: 1.25,
-                        ),
+                        style: context.appText.rowTitle.copyWith(height: 1.3),
                       ),
                     ),
                     const SizedBox(width: 4),
@@ -786,10 +640,7 @@ class _ActivityCard extends StatelessWidget {
                     subtitle,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: cs.primary,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: context.appText.meta,
                   ),
                 ],
                 const SizedBox(height: 9),
@@ -881,7 +732,7 @@ class _EnrollmentBar extends StatelessWidget {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final full = capacity > 0 && enrolled >= capacity;
-    final barColor = full ? const Color(0xFFE08A00) : cs.primary;
+    final barColor = full ? cs.tertiary : cs.primary;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -889,14 +740,15 @@ class _EnrollmentBar extends StatelessWidget {
           children: [
             Text(
               capacity > 0 ? '$enrolled/$capacity 人' : '$enrolled 人已报名',
-              style: theme.textTheme.bodySmall?.copyWith(
+              style: context.appText.secondary.copyWith(
                 color: cs.onSurface,
                 fontWeight: FontWeight.w600,
+                fontFeatures: const [FontFeature.tabularFigures()],
               ),
             ),
             const Spacer(),
             if (creditHours > 0)
-              _TinyBadge(label: '${_formatCreditHours(creditHours)} 学时'),
+              AppStatusTag('${_formatCreditHours(creditHours)} 学时'),
           ],
         ),
         if (capacity > 0) ...[

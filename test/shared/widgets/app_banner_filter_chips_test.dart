@@ -72,4 +72,19 @@ void main() {
     expect(selected, isNull);
     expect(chip('全部').selected, isTrue);
   });
+
+  testWidgets('AppFilterChips wrap 模式换行排列，不横向滚动', (tester) async {
+    await tester.pumpWidget(
+      _host(
+        AppFilterChips<int>(
+          wrap: true,
+          options: const [AppFilterOption(0, '全部'), AppFilterOption(1, '学生部门')],
+          selected: 0,
+          onSelected: (_) {},
+        ),
+      ),
+    );
+    expect(find.byType(Wrap), findsOneWidget);
+    expect(find.byType(SingleChildScrollView), findsNothing);
+  });
 }
