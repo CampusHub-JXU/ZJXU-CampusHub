@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jxu_campus_hub/shared/widgets/app_status_tag.dart';
 
 import 'package:jxu_campus_hub/features/schedule/schedule_change_rule.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_model.dart';
@@ -449,18 +450,20 @@ void main() {
     await pumpSheet(tester, [reflectedNotice, unappliedNotice], theme: theme);
 
     final cs = theme.colorScheme;
-    BoxDecoration tagDecoration(String label) =>
+    // 标签已改用共享的 AppStatusTag（DecoratedBox + ShapeDecoration）。
+    ShapeDecoration tagDecoration(String label) =>
         tester
-                .widget<Container>(
-                  find
-                      .ancestor(
-                        of: find.text(label),
-                        matching: find.byType(Container),
-                      )
-                      .first,
+                .widget<DecoratedBox>(
+                  find.descendant(
+                    of: find.ancestor(
+                      of: find.text(label),
+                      matching: find.byType(AppStatusTag),
+                    ),
+                    matching: find.byType(DecoratedBox),
+                  ),
                 )
-                .decoration!
-            as BoxDecoration;
+                .decoration
+            as ShapeDecoration;
 
     expect(tagDecoration('换教室').color, cs.secondaryContainer);
     await tester.tap(find.text('待确认 1'));

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_design_tokens.dart';
+import '../../../shared/widgets/app_feedback.dart';
 import '../schedule_constants.dart';
 import '../schedule_model.dart';
 
@@ -29,18 +30,12 @@ class ScheduleCourseCell extends StatelessWidget {
   }
 
   void _showCourseDetail(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(AppRadius.sheet),
-        ),
-      ),
+    AppFeedback.sheet<void>(
+      context,
       builder: (context) {
         final textTheme = Theme.of(context).textTheme;
-        final cs = Theme.of(context).colorScheme;
         return Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
           child: ConstrainedBox(
             // 大字号下详情行会增高：弹层内容高度有界并可滚动，避免溢出。
             constraints: BoxConstraints(
@@ -51,17 +46,6 @@ class ScheduleCourseCell extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Center(
-                    child: Container(
-                      width: 36,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: cs.outlineVariant,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
                   Text(
                     course.courseName,
                     style: textTheme.titleLarge?.copyWith(

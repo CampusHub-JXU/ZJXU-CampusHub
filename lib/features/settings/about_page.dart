@@ -4,6 +4,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../core/logging/app_logger.dart';
 import '../../shared/widgets/app_app_bar.dart';
+import '../../shared/widgets/app_feedback.dart';
 import '../../shared/widgets/external_url_launcher.dart';
 import '../../shared/widgets/plain_list.dart';
 
@@ -35,9 +36,9 @@ class AboutPage extends StatelessWidget {
       await Clipboard.setData(
         ClipboardData(text: AppLogger.instance.formatAuthTrail()),
       );
-      messenger.showSnackBar(const SnackBar(content: Text('登录诊断日志已复制')));
+      AppFeedback.toastOn(messenger, '登录诊断日志已复制');
     } on PlatformException {
-      messenger.showSnackBar(const SnackBar(content: Text('复制失败')));
+      AppFeedback.toastOn(messenger, '复制失败');
     }
   }
 

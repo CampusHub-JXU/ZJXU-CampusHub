@@ -10,8 +10,10 @@ import 'epay_electricity_gateway.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_dropdown.dart';
 import '../../shared/widgets/app_error_view.dart';
+import '../../shared/widgets/app_feedback.dart';
 import '../../shared/widgets/auth_required_view.dart';
 import '../../shared/widgets/login_shell.dart';
+import '../../shared/widgets/plain_list.dart';
 
 /// 寝室配置（房间选择 + 电量预警）原生页面。
 ///
@@ -519,8 +521,7 @@ class _DormElectricitySettingsPageState
       // 或回滚写入，绝不把 A 的保存失败反馈到 B 的界面。
       if (!mounted || !_isLiveBoundIdentity(owner, revision)) return;
       setState(() => _saving = false);
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('保存寝室配置失败：$error')));
+      AppFeedback.toast(context, '保存寝室配置失败：$error');
       return;
     }
     // 同上：身份已变化（含静默变化）时不展示 A 的保存成功、不导航。
@@ -532,8 +533,7 @@ class _DormElectricitySettingsPageState
     // 保存会按归属重置/落盘预警设置：重新载入当前身份的预警设置再反馈。
     unawaited(_loadAlertSettings());
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('寝室配置成功')));
+    AppFeedback.toast(context, '寝室配置成功');
     Navigator.of(context).pop();
   }
 
@@ -713,6 +713,7 @@ class _DormElectricitySettingsPageState
               onAction: () => _presentLoginPrompt(),
             )
           : _loadingBuildings
+          // 切换数据主体（目录 / 身份）时旧选择不应再显示，允许阻塞式加载。
           ? const Center(child: CircularProgressIndicator())
           : _error != null
           ? AppErrorView(
@@ -726,98 +727,79 @@ class _DormElectricitySettingsPageState
                 _loadBuildings();
               },
             )
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _buildBuildingFields(),
-                  const SizedBox(height: 20),
-                  if (_loadingRooms)
-                    const Center(child: CircularProgressIndicator())
-                  else
-                    _buildRoomFields(),
-                  const SizedBox(height: 32),
-                  FilledButton(
-                    onPressed:
-                        (_selectedBuilding != null &&
-                            _selectedRoom != null &&
-                            !_saving)
-                        ? _save
-                        : null,
-                    child: _saving
-                        ? SizedBox(
-                            height: 18,
-                            width: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: cs.onPrimary,
-                            ),
-                          )
-                        : const Text('保存'),
-                  ),
-                  const SizedBox(height: 24),
-                  const Divider(),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              '低电量预警',
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              // 没有归属当前身份的已保存寝室配置时，预警写入
-                              // 会被服务层 no-op：禁用开关并提示先保存寝室，
-                              // 绝不展示「可开启」的乐观开关。
-                              _hasSavedRoomConfig
-                                  ? '当剩余电量低于设定阈值时发送提醒'
-                                  : '保存寝室后可开启低电量预警',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Theme.of(context).hintColor,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Switch(
-                        value: _hasSavedRoomConfig && _alertEnabled,
-                        onChanged: _hasSavedRoomConfig
-                            ? (v) {
-                                setState(() => _alertEnabled = v);
-                                _saveAlertSettings(enabled: v);
-                              }
-                            : null,
-                      ),
-                    ],
-                  ),
-                  if (_hasSavedRoomConfig && _alertEnabled) ...[
-                    const SizedBox(height: 12),
-                    AppDropdown<double>(
-                      key: const Key('dorm_threshold_dropdown'),
-                      label: '预警阈值',
-                      // 历史遗留的非选项值不在列表里：按钮回落显示当前值。
-                      hint: '${_alertThreshold.toInt()} 度',
-                      value: _thresholdOptions.contains(_alertThreshold)
-                          ? _alertThreshold
-                          : null,
-                      items: [
-                        for (final v in _thresholdOptions)
-                          AppDropdownItem(value: v, label: '${v.toInt()} 度'),
-                      ],
-                      onChanged: _onThresholdChanged,
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(
+                kPlainListGutter,
+                16,
+                kPlainListGutter,
+                32,
+              ),
+              children: [
+                const PlainSectionHeader('寝室'),
+                _buildBuildingFields(),
+                const SizedBox(height: 16),
+                if (_loadingRooms)
+                  const Center(child: CircularProgressIndicator())
+                else
+                  _buildRoomFields(),
+                const SizedBox(height: kPlainListGroupGap),
+                FilledButton(
+                  onPressed:
+                      (_selectedBuilding != null &&
+                          _selectedRoom != null &&
+                          !_saving)
+                      ? _save
+                      : null,
+                  child: _saving
+                      ? SizedBox(
+                          height: 18,
+                          width: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: cs.onPrimary,
+                          ),
+                        )
+                      : const Text('保存'),
+                ),
+                const SizedBox(height: kPlainListGroupGap + 8),
+                const PlainSectionHeader('提醒'),
+                PlainListGroup(
+                  children: [
+                    PlainSwitchRow(
+                      title: '低电量预警',
+                      // 没有归属当前身份的已保存寝室配置时，预警写入会被
+                      // 服务层 no-op：禁用开关并提示先保存寝室，绝不展示
+                      // 「可开启」的乐观开关。
+                      subtitle: _hasSavedRoomConfig
+                          ? '当剩余电量低于设定阈值时发送提醒'
+                          : '保存寝室后可开启低电量预警',
+                      value: _hasSavedRoomConfig && _alertEnabled,
+                      enabled: _hasSavedRoomConfig,
+                      onChanged: (v) {
+                        setState(() => _alertEnabled = v);
+                        _saveAlertSettings(enabled: v);
+                      },
                     ),
                   ],
+                ),
+                if (_hasSavedRoomConfig && _alertEnabled) ...[
+                  const SizedBox(height: 12),
+                  AppDropdown<double>(
+                    key: const Key('dorm_threshold_dropdown'),
+                    label: '预警阈值',
+                    // 历史遗留的非选项值不在列表里：按钮回落显示当前值。
+                    hint: '${_alertThreshold.toInt()} 度',
+                    value: _thresholdOptions.contains(_alertThreshold)
+                        ? _alertThreshold
+                        : null,
+                    items: [
+                      for (final v in _thresholdOptions)
+                        AppDropdownItem(value: v, label: '${v.toInt()} 度'),
+                    ],
+                    onChanged: _onThresholdChanged,
+                  ),
                 ],
-              ),
+              ],
             ),
     );
   }

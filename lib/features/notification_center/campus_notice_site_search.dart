@@ -132,7 +132,7 @@ class _CampusNoticeSiteSearchState extends State<CampusNoticeSiteSearch> {
         .toList(growable: false);
 
     Widget hint(String text, {Widget? action}) => Padding(
-      padding: const EdgeInsets.fromLTRB(36, 8, 20, 8),
+      padding: const EdgeInsets.fromLTRB(32, 8, 16, 8),
       child: Row(
         children: [
           Expanded(
@@ -235,7 +235,7 @@ class _SectionLabel extends StatelessWidget {
     final style = Theme.of(context).textTheme.labelMedium
         ?.copyWith(color: cs.onSurfaceVariant);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(36, 16, 20, 4),
+      padding: const EdgeInsets.fromLTRB(32, 16, 16, 4),
       child: Row(
         children: [
           Expanded(child: Text(text, style: style)),

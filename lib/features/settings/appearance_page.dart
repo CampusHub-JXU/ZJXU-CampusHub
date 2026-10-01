@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../shared/widgets/app_app_bar.dart';
+import '../../shared/widgets/plain_list.dart';
 import 'widgets/appearance_preview.dart';
 import 'widgets/theme_settings_sections.dart';
 
@@ -18,7 +19,12 @@ class AppearancePage extends StatelessWidget {
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            padding: const EdgeInsets.fromLTRB(
+              kPlainListGutter,
+              12,
+              kPlainListGutter,
+              8,
+            ),
             child: AppearancePreview(
               maxHeight: 320,
               homeSceneBuilder: homeSceneBuilder,
@@ -26,7 +32,12 @@ class AppearancePage extends StatelessWidget {
           ),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+              padding: const EdgeInsets.fromLTRB(
+                kPlainListGutter,
+                8,
+                kPlainListGutter,
+                24,
+              ),
               children: const [ThemeSettingsSections()],
             ),
           ),

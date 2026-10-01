@@ -10,6 +10,8 @@ import '../../../core/theme/app_theme_controller.dart';
 import '../../../features/service_hub/service_hub_usage_store.dart';
 import '../../../shared/widgets/app_icon_badge.dart';
 import '../../../shared/widgets/app_tile_surface.dart';
+import '../../../core/theme/app_typography.dart';
+import '../../../shared/widgets/app_feedback.dart';
 
 /// 首页单滚动页底部的「功能」锚点段落：圆润磁贴网格（有主次层级）。
 ///
@@ -77,15 +79,10 @@ class _FunctionZoneSectionState extends State<FunctionZoneSection> {
     final wasPinned = _usageStore.snapshot.isPinned(entry.id);
     await _usageStore.togglePinned(entry.id);
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(
-            wasPinned ? '已取消置顶 ${entry.title}' : '已置顶 ${entry.title}',
-          ),
-        ),
-      );
+    AppFeedback.toast(
+      context,
+      wasPinned ? '已取消置顶 ${entry.title}' : '已置顶 ${entry.title}',
+    );
   }
 
   /// 展示顺序：置顶优先，其余按访问频次降序、同频按目录 sortOrder。
@@ -197,23 +194,15 @@ class _FunctionZoneHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return Row(
       children: [
         Text(
           '功能',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-            height: 1.2,
-          ),
+          style: Theme.of(context).textTheme.titleLarge
+              ?.copyWith(fontWeight: FontWeight.w700, height: 1.2),
         ),
         const Spacer(),
-        Text(
-          '长按置顶',
-          style: Theme.of(context).textTheme.bodySmall
-              ?.copyWith(fontSize: 12, color: cs.onSurfaceVariant),
-        ),
+        Text('长按置顶', style: context.appText.meta),
       ],
     );
   }
@@ -283,12 +272,7 @@ class _WideFunctionTile extends StatelessWidget {
                           label,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            height: 1.2,
-                            color: cs.onSurface,
-                          ),
+                          style: context.appText.rowTitle.copyWith(height: 1.2),
                         ),
                       ),
                       if (pinned) ...[
@@ -306,11 +290,7 @@ class _WideFunctionTile extends StatelessWidget {
                     statsText,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12,
-                      height: 1.25,
-                      color: cs.onSurfaceVariant,
-                    ),
+                    style: context.appText.meta.copyWith(height: 1.25),
                   ),
                 ],
               ),
@@ -377,12 +357,8 @@ class _SmallFunctionTile extends StatelessWidget {
                       label,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        height: 1.2,
-                        color: cs.onSurface,
-                      ),
+                      style: Theme.of(context).textTheme.titleSmall!
+                          .copyWith(height: 1.2, color: cs.onSurface),
                     ),
                   ),
                   if (pinned) ...[

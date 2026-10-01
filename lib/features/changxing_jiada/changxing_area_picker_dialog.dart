@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../shared/widgets/app_dropdown.dart';
+import '../../shared/widgets/app_banner.dart';
+import '../../shared/widgets/glass_dialog_route.dart';
 import 'changxing_jiada_model.dart';
 import 'changxing_jiada_service.dart';
 
@@ -9,7 +11,7 @@ Future<ChangxingAreaSelection?> showChangxingAreaPickerDialog({
   required ChangxingJiadaService service,
   int? initialAreaId,
 }) {
-  return showDialog<ChangxingAreaSelection>(
+  return showGlassDialog<ChangxingAreaSelection>(
     context: context,
     builder: (_) => _ChangxingAreaPickerDialog(
       service: service,
@@ -240,6 +242,9 @@ class _ChangxingAreaPickerDialogState
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      surfaceTintColor: Colors.transparent,
       title: const Text('选择生源地'),
       content: SizedBox(
         width: 380,
@@ -252,22 +257,8 @@ class _ChangxingAreaPickerDialogState
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (_error != null) ...[
-                    Container(
-                      width: double.infinity,
-                      margin: const EdgeInsets.only(bottom: 12),
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.errorContainer,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        _error!,
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onErrorContainer,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
+                    AppBanner(message: _error!, tone: AppBannerTone.error),
+                    const SizedBox(height: 12),
                   ],
                   _buildDropdown(
                     label: '省份',

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme_controller.dart';
 import '../models/home_presentation.dart';
+import '../../../core/theme/app_typography.dart';
 
 /// Today Section：当天剩余课程 + 今日考试的紧凑纯文字列表；今天没有
 /// 剩余安排时由 resolver 降级为次日预览形态（标题变为「开学首日 · …」
@@ -32,6 +33,15 @@ class HomeTodaySection extends StatelessWidget {
   /// 全天模式行数上限放宽——同学要的就是一整天的安排。
   static const int _maxRows = 3;
   static const int _maxRowsFullDay = 6;
+
+  /// 时间 / 地点列：实时列表 13（`secondary`），次日预览降一档到 12（`meta`）。
+  static TextStyle _small(BuildContext context, bool compact) =>
+      compact ? context.appText.meta : context.appText.secondary;
+
+  /// 课程名：实时列表 15（`rowTitle`），次日预览降一档到 14（`titleSmall`）。
+  static TextStyle _name(BuildContext context, bool compact) => compact
+      ? Theme.of(context).textTheme.titleSmall!
+      : context.appText.rowTitle;
 
   @override
   Widget build(BuildContext context) {
@@ -79,7 +89,6 @@ class HomeTodaySection extends StatelessWidget {
     required Color secondaryTextColor,
   }) {
     final cs = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
     final count = today.courses.length;
     final next = today.courses.first;
     final detailText = count == 1
@@ -91,18 +100,13 @@ class HomeTodaySection extends StatelessWidget {
         children: [
           Text(
             '之后还有 $count 门课',
-            style: textTheme.labelLarge!.copyWith(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: cs.primary,
-            ),
+            style: context.appText.label.copyWith(color: cs.primary),
           ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               detailText,
-              style: textTheme.labelSmall!.copyWith(
-                fontSize: 13,
+              style: context.appText.secondary.copyWith(
                 color: secondaryTextColor,
               ),
               maxLines: 1,
@@ -155,8 +159,7 @@ class HomeTodaySection extends StatelessWidget {
       children: [
         Text(
           today.title,
-          style: Theme.of(context).textTheme.titleSmall!.copyWith(
-            fontSize: 15,
+          style: context.appText.rowTitle.copyWith(
             fontWeight: FontWeight.w700,
             color: primaryTextColor,
           ),
@@ -183,19 +186,11 @@ class HomeTodaySection extends StatelessWidget {
         children: [
           Text(
             '查看全部',
-            style: Theme.of(context).textTheme.labelLarge!.copyWith(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: cs.primary,
-            ),
+            style: context.appText.label.copyWith(color: cs.primary),
           ),
           Icon(Icons.chevron_right_rounded, size: 16, color: cs.primary),
           const Spacer(),
-          Text(
-            '还有 $hiddenCount 条 · 见课表',
-            style: Theme.of(context).textTheme.labelSmall!
-                .copyWith(fontSize: 12, color: cs.onSurfaceVariant),
-          ),
+          Text('还有 $hiddenCount 条 · 见课表', style: context.appText.meta),
         ],
       ),
     );
@@ -220,7 +215,6 @@ class HomeTodaySection extends StatelessWidget {
     required Color secondaryTextColor,
   }) {
     final cs = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
     // 次日预览形态整体降一档（14/12 字号 + 更紧行距），与实时的
     // 「今天」列表拉开层级——它是未来安排的轻量提示。
     final compact = today.isPreview;
@@ -240,8 +234,7 @@ class HomeTodaySection extends StatelessWidget {
             constraints: const BoxConstraints(minWidth: _timeColumnWidth),
             child: Text(
               course.timeText,
-              style: textTheme.labelSmall!.copyWith(
-                fontSize: compact ? 12 : 13,
+              style: _small(context, compact).copyWith(
                 fontWeight: FontWeight.w500,
                 color: timeColor,
                 fontFeatures: const [FontFeature.tabularFigures()],
@@ -267,8 +260,7 @@ class HomeTodaySection extends StatelessWidget {
                 Flexible(
                   child: Text(
                     course.courseName,
-                    style: textTheme.titleSmall!.copyWith(
-                      fontSize: compact ? 14 : 15,
+                    style: _name(context, compact).copyWith(
                       fontWeight: done || compact
                           ? FontWeight.w500
                           : FontWeight.w600,
@@ -291,11 +283,7 @@ class HomeTodaySection extends StatelessWidget {
                     ),
                     child: Text(
                       '进行中',
-                      style: textTheme.labelSmall!.copyWith(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: cs.primary,
-                      ),
+                      style: context.appText.tag.copyWith(color: cs.primary),
                     ),
                   ),
                 ],
@@ -307,8 +295,7 @@ class HomeTodaySection extends StatelessWidget {
             flex: 2,
             child: Text(
               course.locationText,
-              style: textTheme.labelSmall!.copyWith(
-                fontSize: compact ? 12 : 13,
+              style: _small(context, compact).copyWith(
                 color: done
                     ? secondaryTextColor.withValues(alpha: 0.6)
                     : secondaryTextColor,
@@ -331,7 +318,6 @@ class HomeTodaySection extends StatelessWidget {
     required Color secondaryTextColor,
   }) {
     final cs = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
     final compact = today.isPreview;
     return Padding(
       padding: EdgeInsets.symmetric(vertical: compact ? 9 : 11),
@@ -348,8 +334,7 @@ class HomeTodaySection extends StatelessWidget {
                 const SizedBox(width: 4),
                 Text(
                   exam.timeText,
-                  style: textTheme.labelSmall!.copyWith(
-                    fontSize: compact ? 12 : 13,
+                  style: _small(context, compact).copyWith(
                     fontWeight: FontWeight.w500,
                     color: secondaryTextColor,
                     fontFeatures: const [FontFeature.tabularFigures()],
@@ -363,8 +348,7 @@ class HomeTodaySection extends StatelessWidget {
             flex: 3,
             child: Text(
               exam.courseName,
-              style: textTheme.titleSmall!.copyWith(
-                fontSize: compact ? 14 : 15,
+              style: _name(context, compact).copyWith(
                 fontWeight: compact ? FontWeight.w500 : FontWeight.w600,
                 color: primaryTextColor,
               ),
@@ -377,10 +361,10 @@ class HomeTodaySection extends StatelessWidget {
             flex: 2,
             child: Text(
               exam.locationText,
-              style: textTheme.labelSmall!.copyWith(
-                fontSize: compact ? 12 : 13,
-                color: secondaryTextColor,
-              ),
+              style: _small(
+                context,
+                compact,
+              ).copyWith(color: secondaryTextColor),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.right,

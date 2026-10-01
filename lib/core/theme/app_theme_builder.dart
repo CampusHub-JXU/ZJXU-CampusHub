@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import 'app_design_tokens.dart';
+import 'app_typography.dart';
 
 /// Material 3 theme builder.
 ///
@@ -18,6 +19,9 @@ class AppThemeBuilder {
   static const Color _brandRedSeed = Color(0xFF8B1A2D);
 
   /// Apple 风格字阶（Inter 与 SF Pro 同骨架）：
+  ///
+  /// * Inter 以拉丁 + 数字子集随包分发（`assets/fonts/inter/`，400–700 四档），
+  ///   中文不在子集内，由系统字体回退；
   ///
   /// * 展示档（headline/titleLarge）用重字重 + 收紧字距，贴近 SF Pro
   ///   Display 的排版密度；正文/标签档只调行高与字重，保持中文可读性；
@@ -149,6 +153,7 @@ class AppThemeBuilder {
       colorScheme: colorScheme,
       fontFamily: 'Inter',
       textTheme: _appleTextTheme,
+      extensions: [AppTypography.fromScheme(colorScheme)],
       scaffoldBackgroundColor: colorScheme.surface,
       pageTransitionsTheme: _appPageTransitionsTheme,
       appBarTheme: AppBarTheme(
@@ -371,6 +376,7 @@ class AppThemeBuilder {
       colorScheme: colorScheme,
       fontFamily: 'Inter',
       textTheme: _appleTextTheme,
+      extensions: [AppTypography.fromScheme(colorScheme)],
       scaffoldBackgroundColor: background,
       pageTransitionsTheme: _appPageTransitionsTheme,
       appBarTheme: AppBarTheme(

@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../core/theme/app_typography.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../shared/widgets/app_empty_view.dart';
 import '../../shared/widgets/app_error_view.dart';
+import '../../shared/widgets/app_filter_chips.dart';
 import '../../shared/widgets/app_search_field.dart';
 import '../../shared/widgets/auth_required_view.dart';
 import '../../shared/widgets/login_shell.dart';
@@ -553,43 +555,21 @@ class _GradesPageState extends State<GradesPage>
 
   /// 横向可滑的学期 chip：最新在前，「全部」固定末尾。
   Widget _buildTermChips() {
-    final cs = Theme.of(context).colorScheme;
-    final options = [
-      for (final t in _availableTerms)
-        (
-          '${t.academicYear}|${t.semester}',
-          GradesTermResolver.shortLabelOf(t.academicYear, t.semester),
-        ),
-      (GradesTermResolver.allTermKey, '全部'),
-    ];
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-      child: Row(
-        children: [
-          for (final (index, (key, label)) in options.indexed) ...[
-            if (index > 0) const SizedBox(width: 8),
-            ChoiceChip(
-              label: Text(label),
-              selected: key == _selectedTermKey,
-              onSelected: (_) => _onTermChanged(key),
-              showCheckmark: false,
-              selectedColor: cs.secondaryContainer,
-              labelStyle: TextStyle(
-                fontSize: 13,
-                color: key == _selectedTermKey
-                    ? cs.onSecondaryContainer
-                    : cs.onSurfaceVariant,
-              ),
-              side: key == _selectedTermKey
-                  ? BorderSide.none
-                  : BorderSide(color: cs.outlineVariant),
-              shape: const StadiumBorder(),
-              visualDensity: VisualDensity.compact,
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: AppFilterChips<String?>(
+        options: [
+          for (final t in _availableTerms)
+            AppFilterOption(
+              '${t.academicYear}|${t.semester}',
+              GradesTermResolver.shortLabelOf(t.academicYear, t.semester),
             ),
-          ],
+          const AppFilterOption(GradesTermResolver.allTermKey, '全部'),
         ],
+        selected: _selectedTermKey,
+        onSelected: (key) {
+          if (key != null) _onTermChanged(key);
+        },
       ),
     );
   }
@@ -610,20 +590,15 @@ class _GradesPageState extends State<GradesPage>
             children: [
               Text(
                 _allTermsSelected ? '总绩点' : '学期绩点',
-                style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                style: context.appText.meta,
               ),
               FittedBox(
                 fit: BoxFit.scaleDown,
                 alignment: Alignment.centerLeft,
                 child: Text(
                   hasGpa ? summary.gpa.toStringAsFixed(2) : '--',
-                  style: TextStyle(
-                    fontSize: 48,
-                    fontWeight: FontWeight.w600,
-                    height: 1.1,
-                    letterSpacing: -1,
+                  style: context.appText.overview.copyWith(
                     color: hasGpa ? cs.primary : cs.outlineVariant,
-                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
               ),
@@ -695,7 +670,7 @@ class _GradesPageState extends State<GradesPage>
   }
 }
 
-/// 概览右侧的小统计列：11sp 标签 + 17sp w600 值。
+/// 概览右侧的小统计列：`meta` 标签 + `titleMedium` 等宽值。
 class _OverviewStat extends StatelessWidget {
   const _OverviewStat({required this.label, required this.value});
 
@@ -709,20 +684,14 @@ class _OverviewStat extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            maxLines: 1,
-            style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
-          ),
+          Text(label, maxLines: 1, style: context.appText.meta),
           const SizedBox(height: 2),
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
             child: Text(
               value,
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w600,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 color: cs.onSurface,
                 fontFeatures: const [FontFeature.tabularFigures()],
               ),

@@ -6,8 +6,12 @@ import 'changxing_area_picker_dialog.dart';
 import 'changxing_jiada_form_validator.dart';
 import 'changxing_jiada_model.dart';
 import 'changxing_jiada_service.dart';
+import 'changxing_jiada_widgets.dart';
+import '../../core/theme/app_design_tokens.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_dropdown.dart';
+import '../../shared/widgets/app_feedback.dart';
+import '../../shared/widgets/plain_list.dart';
 
 class ChangxingBackSchoolFormPage extends StatefulWidget {
   const ChangxingBackSchoolFormPage({super.key, this.applicationId});
@@ -290,8 +294,7 @@ class _ChangxingBackSchoolFormPageState
 
   void _showSnackBar(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+    AppFeedback.toast(context, message);
   }
 
   String _fmtDate(DateTime? value) {
@@ -308,8 +311,9 @@ class _ChangxingBackSchoolFormPageState
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(AppSpacing.pageMargin),
               children: [
+                const PlainSectionHeader('报到'),
                 TextField(
                   controller: _userPhoneController,
                   keyboardType: TextInputType.phone,
@@ -318,9 +322,8 @@ class _ChangxingBackSchoolFormPageState
                     border: OutlineInputBorder(),
                   ),
                 ),
-                const SizedBox(height: 12),
-                Text('报到状态', style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpacing.listGroupGap),
+                const PlainSectionHeader('报到状态'),
                 SegmentedButton<int>(
                   segments: const <ButtonSegment<int>>[
                     ButtonSegment<int>(value: 0, label: Text('正常报到')),
@@ -362,7 +365,8 @@ class _ChangxingBackSchoolFormPageState
                     ),
                   ),
                 ],
-                const SizedBox(height: 12),
+                const SizedBox(height: AppSpacing.listGroupGap),
+                const PlainSectionHeader('籍贯与生源地'),
                 TextField(
                   controller: _nativePlaceController,
                   decoration: const InputDecoration(
@@ -371,15 +375,17 @@ class _ChangxingBackSchoolFormPageState
                   ),
                 ),
                 const SizedBox(height: 12),
-                Card(
-                  child: ListTile(
-                    title: const Text('生源所在地'),
-                    subtitle: Text(_areaSelection?.displayName ?? '请选择省份/市/区'),
-                    trailing: const Icon(Icons.place_outlined),
-                    onTap: _pickArea,
-                  ),
+                PlainListGroup(
+                  children: [
+                    PlainListRow(
+                      title: '生源所在地',
+                      value: _areaSelection?.displayName ?? '请选择',
+                      onTap: _pickArea,
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: AppSpacing.listGroupGap),
+                const PlainSectionHeader('紧急联系人'),
                 TextField(
                   controller: _emergencyContactController,
                   decoration: const InputDecoration(
@@ -397,14 +403,16 @@ class _ChangxingBackSchoolFormPageState
                   ),
                 ),
                 if (_isNormalBack) ...[
-                  const SizedBox(height: 12),
-                  Card(
-                    child: ListTile(
-                      title: const Text('报到日期'),
-                      subtitle: Text(_fmtDate(_reportDate)),
-                      trailing: const Icon(Icons.event_outlined),
-                      onTap: _pickReportDate,
-                    ),
+                  const SizedBox(height: AppSpacing.listGroupGap),
+                  const PlainSectionHeader('行程'),
+                  PlainListGroup(
+                    children: [
+                      PlainListRow(
+                        title: '报到日期',
+                        value: _fmtDate(_reportDate),
+                        onTap: _pickReportDate,
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 12),
                   AppDropdown<String>(
@@ -430,24 +438,17 @@ class _ChangxingBackSchoolFormPageState
                     ),
                   ),
                 ],
-                const SizedBox(height: 12),
-                Card(
-                  child: ListTile(
-                    title: const Text('附件'),
-                    subtitle: Text(
-                      _attachmentLabel.isEmpty ? '未上传' : _attachmentLabel,
+                const SizedBox(height: AppSpacing.listGroupGap),
+                PlainListGroup(
+                  children: [
+                    changxingAttachmentRow(
+                      label: _attachmentLabel,
+                      uploading: _uploadingAttachment,
+                      onTap: _pickAttachment,
                     ),
-                    trailing: _uploadingAttachment
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.upload_file_outlined),
-                    onTap: _uploadingAttachment ? null : _pickAttachment,
-                  ),
+                  ],
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: AppSpacing.xl),
                 FilledButton(
                   onPressed: _submitting ? null : _submit,
                   child: Text(

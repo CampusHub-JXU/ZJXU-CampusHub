@@ -94,8 +94,15 @@ class AppSpacing {
   /// 高于普通模块间距、远低于功能区锚点的 72 呼吸留白。
   static const double sectionBreak = 40;
 
-  /// Home page outer horizontal margin.
+  /// 数据页 / 表单页（C、D 型）左右留白。
   static const double pageMargin = 16;
+
+  /// Tab 页与分组列表页（A、B 型：我的 / 设置 / 关于 / 首页功能区）左右留白。
+  /// 页边距只有 [pageMargin] 与本值两档（docs/ui-unification-plan.md §4.2）。
+  static const double listGutter = 24;
+
+  /// 分组列表页的组间距。
+  static const double listGroupGap = 20;
 
   /// Home card internal padding.
   static const double cardPadding = 16;
