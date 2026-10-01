@@ -181,10 +181,7 @@ class ConnectModeResolver {
         location: location,
         requestUri: requestUri,
       );
-      // 只记跳转目标的 host，不记 path / query。
-      final redirectHost = location.trim().isEmpty
-          ? ''
-          : ' → ${requestUri.resolve(location.trim()).host}';
+      final redirectHost = _redirectHostForLog(requestUri, location);
       AppLogger.instance.auth(
         LogLevel.info,
         '目标直连探测 ${requestUri.origin}: '
@@ -236,6 +233,16 @@ class ConnectModeResolver {
     if (resolved.host.toLowerCase() == _webVpnHost) return false;
     if (_isSameOrigin(requestUri, resolved)) return true;
     return false;
+  }
+
+  /// 日志用：只记跳转目标的 host，不记 path / query。畸形 Location 不抛异常，
+  /// 避免诊断日志改变探测结果。
+  static String _redirectHostForLog(Uri requestUri, String location) {
+    final raw = location.trim();
+    if (raw.isEmpty) return '';
+    final parsed = Uri.tryParse(raw);
+    if (parsed == null) return ' → (invalid location)';
+    return ' → ${requestUri.resolveUri(parsed).host}';
   }
 
   static bool _isSameOrigin(Uri a, Uri b) {
