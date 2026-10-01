@@ -489,6 +489,46 @@ void main() {
       expect(calls, 2);
       expect(ZhengfangAuth.instance.isLoggedIn, isTrue, reason: '改道不得撤销会话');
     });
+
+    test('改道后恢复失败且无法自动登录：不撤销会话', () async {
+      for (final outcome in [
+        AutomaticLoginOutcome.notEligible,
+        AutomaticLoginOutcome.manualRequired,
+      ]) {
+        ZhengfangAuth.instance.debugSetSession(
+          active: true,
+          studentId: '2025000001',
+        );
+        AcademicAuthGuard.debugAutomaticLoginReceiptOverride = null;
+        AcademicAuthGuard.debugAutomaticLoginOverride = (
+          domain, {
+          String? expectedAccount,
+        }) async => outcome;
+
+        await expectLater(
+          AcademicAuthGuard.guardWithSession<Object?>(
+            request: () async => moved(
+              'https://jwzx.zjxu.edu.cn/jwglxt/cjcx/cjcx_cxDgXscj.html',
+              webVpnResource,
+            ),
+          ),
+          outcome == AutomaticLoginOutcome.manualRequired
+              ? throwsA(
+                  isA<AcademicAuthExpiredException>().having(
+                    (e) => e.automaticLoginPaused,
+                    'automaticLoginPaused',
+                    isTrue,
+                  ),
+                )
+              : throwsA(isA<AcademicAuthRecoveryPendingException>()),
+        );
+        expect(
+          ZhengfangAuth.instance.isLoggedIn,
+          isTrue,
+          reason: '$outcome：改道恢复失败不得撤销会话',
+        );
+      }
+    });
   });
 
   group('_safeRequest 的 DioException 处理', () {

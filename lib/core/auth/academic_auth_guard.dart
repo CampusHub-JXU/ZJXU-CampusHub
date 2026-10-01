@@ -70,7 +70,8 @@ class _RecoveryLease {
 class AcademicAuthGuard {
   const AcademicAuthGuard._();
 
-  static final _recoveries = <(String?, int, int?), Future<_RecoveryLease>>{};
+  static final _recoveries =
+      <(String?, int, int?, bool), Future<_RecoveryLease>>{};
 
   /// 测试注入：替换静默自动登录动作（默认走 [AutomaticLoginService.instance]）。
   ///
@@ -192,7 +193,8 @@ class AcademicAuthGuard {
     var lease = _RecoveryLease(account, revision, epoch);
     final routeMoved = isRouteMovedResponse(first);
     if (routeMoved || isAuthExpiredResponse(first)) {
-      final key = (account, revision, epoch);
+      // 改道恢复与过期恢复分开去重：前者绝不走撤销终态。
+      final key = (account, revision, epoch, routeMoved);
       if (routeMoved && !_recoveries.containsKey(key)) {
         AppLogger.instance.auth(LogLevel.info, '教务请求被改道到 WebVPN，重新选路后重试');
         // 缓存里的 direct 已过期：让恢复链路里的 resolve() 重新探测。
@@ -200,7 +202,11 @@ class AcademicAuthGuard {
       }
       final pending = _recoveries.putIfAbsent(
         key,
-        () => _recover(lease, const AcademicAuthExpiredException()),
+        () => _recover(
+          lease,
+          const AcademicAuthExpiredException(),
+          routeOnly: routeMoved,
+        ),
       );
       try {
         lease = await pending;
@@ -280,10 +286,14 @@ class AcademicAuthGuard {
     }
   }
 
+  /// [routeOnly] 为 true 时（请求只是被改道到 WebVPN）恢复失败**绝不撤销**
+  /// 会话：选路变化不是登录态失效。需手动登录时抛暂停语义的过期异常，其余
+  /// 一律按暂时失败抛 [AcademicAuthRecoveryPendingException]，保留缓存。
   static Future<_RecoveryLease> _recover(
     _RecoveryLease start,
-    Object expired,
-  ) async {
+    Object expired, {
+    bool routeOnly = false,
+  }) async {
     final auth = ZhengfangAuth.instance;
     final recovered = await _attemptRecovery();
     if (!_isSessionCurrent(auth, start.revision)) throw expired;
@@ -309,6 +319,12 @@ class AcademicAuthGuard {
         attempt.outcome == AutomaticLoginOutcome.cooldown ||
         attempt.outcome == AutomaticLoginOutcome.failed) {
       // 暂时失败不能撤销另一条恢复事务，也不能清掉同账号最后成功快照。
+      throw const AcademicAuthRecoveryPendingException();
+    }
+    if (routeOnly) {
+      if (attempt.outcome == AutomaticLoginOutcome.manualRequired) {
+        throw _expiredExceptionFor(expired, attempt.outcome);
+      }
       throw const AcademicAuthRecoveryPendingException();
     }
     await auth.revokeExpiredSessionIfCurrent(
