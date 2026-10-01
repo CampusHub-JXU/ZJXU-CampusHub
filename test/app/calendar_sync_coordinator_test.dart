@@ -453,6 +453,101 @@ void main() {
       expect(h.channel.upsertCalls, upsertsBefore);
       expect((await h.ledger.reload()).batchesFor(_ownerA), hasLength(1));
     });
+
+    test('教务登出 / 会话缺失：保持 enabled 等待、不写日历；同账号回来继续同步', () async {
+      final h = _Harness();
+      await h.enable(_ownerA, _calendarId, revision: 1);
+      h.term = _term2026;
+      h.snapshot = h.snapshotWith();
+      await h.run();
+      final upsertsBefore = h.channel.upsertCalls;
+      final deletesBefore = h.channel.deleteCalls;
+      expect(upsertsBefore, greaterThan(0));
+
+      // 登出（身份缺失）。
+      h.identity = const CalendarSyncIdentity(isLoggedIn: false, revision: 2);
+      await h.coordinator.onAuthIdentityChanged();
+      await h.coordinator.waitForIdle();
+      await h.run();
+
+      expect(h.control.state, CalendarSyncControlState.enabled);
+      expect(h.control.isWaitingForIdentity, isTrue);
+      expect(h.control.ownerKey, _ownerA);
+      expect(h.channel.upsertCalls, upsertsBefore);
+      expect(h.channel.deleteCalls, deletesBefore);
+      expect(h.coordinator.outcome.value, CalendarSyncRunOutcome.noWork);
+
+      // 同学号重新登录：不暂停、继续同步（复用同一批映射，不重复新增）。
+      h.identity = const CalendarSyncIdentity(
+        isLoggedIn: true,
+        ownerKey: _ownerA,
+        revision: 3,
+      );
+      await h.coordinator.onAuthIdentityChanged();
+      await h.coordinator.waitForIdle();
+
+      expect(h.control.state, CalendarSyncControlState.enabled);
+      expect(h.control.isWaitingForIdentity, isFalse);
+      expect(h.coordinator.outcome.value, CalendarSyncRunOutcome.synced);
+      expect((await h.ledger.reload()).allEntries, hasLength(20));
+    });
+
+    test('冷启动竞态：教务尚未 restoreSession 时 start 同步不暂停也不写', () async {
+      final h = _Harness();
+      await h.enable(_ownerA, _calendarId, revision: 1);
+      h.term = _term2026;
+      h.snapshot = h.snapshotWith();
+
+      // 模拟新进程：控制态由磁盘恢复（enabled），正方身份尚为空。
+      h.control.debugReset();
+      h.identity = const CalendarSyncIdentity(isLoggedIn: false, revision: 0);
+      await h.run();
+
+      expect(h.control.state, CalendarSyncControlState.enabled);
+      expect(h.control.isWaitingForIdentity, isTrue);
+      expect(h.channel.upsertCalls, 0);
+      expect(
+        (await CalendarSyncControlStore.debugNew().read()).state,
+        CalendarSyncControlState.enabled,
+      );
+
+      // restoreSession 完成：同学号，revision 推进 → 恢复同步。
+      h.identity = const CalendarSyncIdentity(
+        isLoggedIn: true,
+        ownerKey: _ownerA,
+        revision: 1,
+      );
+      await h.coordinator.onAuthIdentityChanged();
+      await h.coordinator.waitForIdle();
+
+      expect(h.control.state, CalendarSyncControlState.enabled);
+      expect(h.coordinator.outcome.value, CalendarSyncRunOutcome.synced);
+      expect(h.channel.upsertedDrafts, hasLength(20));
+    });
+
+    test('登出后换另一账号登录才暂停并落盘', () async {
+      final h = _Harness();
+      await h.enable(_ownerA, _calendarId, revision: 1);
+      h.identity = const CalendarSyncIdentity(isLoggedIn: false, revision: 2);
+      await h.coordinator.onAuthIdentityChanged();
+      await h.coordinator.waitForIdle();
+      expect(h.control.state, CalendarSyncControlState.enabled);
+
+      h.identity = const CalendarSyncIdentity(
+        isLoggedIn: true,
+        ownerKey: '20230002',
+        revision: 3,
+      );
+      await h.coordinator.onAuthIdentityChanged();
+      await h.coordinator.waitForIdle();
+
+      expect(h.control.state, CalendarSyncControlState.paused);
+      expect(h.channel.upsertCalls, 0);
+      expect(
+        (await CalendarSyncControlStore.debugNew().read()).state,
+        CalendarSyncControlState.paused,
+      );
+    });
   });
 
   group('事务与崩溃恢复', () {

@@ -500,6 +500,8 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
   void initState() {
     super.initState();
     _control.addListener(_handleControlChanged);
+    // paused 的副标题取决于当前是否有已验证教务身份，登录 / 登出时需要重绘。
+    ZhengfangAuth.instance.addListener(_handleControlChanged);
     unawaited(
       _control.load().then((_) {
         if (!mounted) return;
@@ -514,6 +516,7 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
   @override
   void dispose() {
     _control.removeListener(_handleControlChanged);
+    ZhengfangAuth.instance.removeListener(_handleControlChanged);
     super.dispose();
   }
 
@@ -545,8 +548,16 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
 
   String? get _subtitle => switch (_control.state) {
     CalendarSyncControlState.off => null,
-    CalendarSyncControlState.enabled => null,
-    CalendarSyncControlState.paused => '已暂停：当前账号与绑定账号不一致，重新开启将绑定当前账号',
+    // 教务未登录 / 会话过期 / 冷启动尚未恢复：开关保持开启，绑定与事件都保留，
+    // 同一账号重新登录后自动继续（不是换号，不暂停）。
+    CalendarSyncControlState.enabled =>
+      _control.isWaitingForIdentity ? '等待登录教务系统后继续同步，已保留原绑定账号' : null,
+    // 当前确有另一个已验证教务账号时才是「账号不一致」；没有已验证身份时
+    // （含旧版本因登出而落盘的 paused）同一账号登录后会自动恢复，不能提示不一致。
+    CalendarSyncControlState.paused =>
+      ZhengfangAuth.instance.verifiedStudentId == null
+          ? '已暂停：登录教务系统后将自动恢复（同一账号）'
+          : '已暂停：当前教务账号与绑定账号不一致，重新开启将绑定当前账号',
     CalendarSyncControlState.cleanupPending => '清理未完成，完成清理后才能重新开启',
   };
 

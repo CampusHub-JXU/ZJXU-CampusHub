@@ -114,6 +114,14 @@ void main() {
     ZhengfangAuth.instance.debugSetSession(active: true, studentId: studentId);
   }
 
+  /// `debugSetSession` 不通知监听者（真实登录路径会）；paused 副标题依赖教务
+  /// 身份，这里补发与真实登录 / 登出一致的变更通知。
+  void logInAndNotify(String studentId) {
+    logIn(studentId);
+    // ignore: invalid_use_of_protected_member
+    ZhengfangAuth.instance.notifyListeners();
+  }
+
   Future<void> seedEnabled({
     String ownerKey = '20230001',
     int calendarId = 42,
@@ -303,8 +311,13 @@ void main() {
     await pumpSettingsPage(tester);
     await revealSyncRow(tester);
 
+    // 真正换号：当前有另一个已验证教务账号，才提示账号不一致。
+    logInAndNotify('20230002');
+    await tester.pumpAndSettle();
+
     expect(syncSwitchValue(tester), isFalse);
     expect(find.textContaining('已暂停'), findsOneWidget);
+    expect(find.textContaining('账号不一致'), findsOneWidget);
     // 暂停状态不会自动写入任何事件。
     expect(
       native.calls.where(
@@ -315,7 +328,6 @@ void main() {
     );
 
     // 显式重新开启：绑定当前登录账号，而不是默默沿用旧账号。
-    logIn('20230002');
     await tester.tap(find.text('同步到系统日历'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('使用专属本地日历'));
@@ -324,6 +336,69 @@ void main() {
     final control = CalendarSyncControl.instance;
     expect(control.state, CalendarSyncControlState.enabled);
     expect(control.ownerKey, '20230002');
+  }, timeout: perTestTimeout);
+
+  testWidgets('旧版本因登出落盘的 paused：无已验证教务身份时提示登录后自动恢复，不显示账号不一致', (tester) async {
+    await seedEnabled(ownerKey: '20230001');
+    final paused = await CalendarSyncControl.instance.pauseIfOwnerMismatch(
+      ownerKey: '20230002',
+      revision: 2,
+    );
+    expect(paused, CalendarSyncControlState.paused);
+    // 教务此刻未登录（旧版本登出时落盘的 paused 会一直保留到重新登录）。
+    expect(ZhengfangAuth.instance.verifiedStudentId, isNull);
+
+    await pumpSettingsPage(tester);
+    await revealSyncRow(tester);
+
+    expect(syncSwitchValue(tester), isFalse);
+    expect(find.textContaining('登录教务系统后将自动恢复（同一账号）'), findsOneWidget);
+    expect(find.textContaining('账号不一致'), findsNothing);
+
+    // 登录了另一个账号：切换为账号不一致文案。
+    logInAndNotify('20230002');
+    await tester.pumpAndSettle();
+    expect(find.textContaining('账号不一致'), findsOneWidget);
+    expect(find.textContaining('自动恢复（同一账号）'), findsNothing);
+
+    // 再次登出：回到「登录后自动恢复」文案。
+    await ZhengfangAuth.instance.markLoggedOut();
+    await tester.pumpAndSettle();
+    expect(find.textContaining('自动恢复（同一账号）'), findsOneWidget);
+    expect(find.textContaining('账号不一致'), findsNothing);
+  }, timeout: perTestTimeout);
+
+  testWidgets('教务登出/会话缺失：开关保持开启并提示等待登录，不显示账号不一致', (tester) async {
+    await seedEnabled(ownerKey: '20230001');
+    final state = await CalendarSyncControl.instance.pauseIfOwnerMismatch(
+      ownerKey: null,
+      revision: 2,
+    );
+    expect(state, CalendarSyncControlState.enabled);
+
+    await pumpSettingsPage(tester);
+    await revealSyncRow(tester);
+
+    expect(syncSwitchValue(tester), isTrue);
+    expect(find.textContaining('等待登录教务系统'), findsOneWidget);
+    expect(find.textContaining('账号不一致'), findsNothing);
+    expect(find.textContaining('已暂停'), findsNothing);
+    expect(
+      native.calls.where(
+        (method) =>
+            method == 'upsertEventBatch' || method == 'deleteOwnedEventsByIds',
+      ),
+      isEmpty,
+    );
+
+    // 同一学号重新登录后提示消失，开关仍开启。
+    await CalendarSyncControl.instance.pauseIfOwnerMismatch(
+      ownerKey: '20230001',
+      revision: 3,
+    );
+    await tester.pumpAndSettle();
+    expect(syncSwitchValue(tester), isTrue);
+    expect(find.textContaining('等待登录教务系统'), findsNothing);
   }, timeout: perTestTimeout);
 
   testWidgets('关闭确认对话框取消时不删除任何事件', (tester) async {

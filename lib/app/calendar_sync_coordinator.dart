@@ -246,11 +246,19 @@ class CalendarSyncCoordinator {
   void _onDataChanged() => _requestSync();
   void _onControlChanged() => onControlStateChanged();
 
+  /// 当前已验证 owner：未登录 / 空白一律为 null（= 无身份，控制层据此进入
+  /// 「等待身份」而不是暂停；只有非空且不同于绑定 owner 才算换号）。
+  static String? _verifiedOwner(CalendarSyncIdentity identity) {
+    if (!identity.isLoggedIn) return null;
+    final owner = identity.ownerKey?.trim();
+    return owner == null || owner.isEmpty ? null : owner;
+  }
+
   Future<void> _pauseThenRequest() async {
     try {
       final identity = _readIdentity();
       await _control.pauseIfOwnerMismatch(
-        ownerKey: identity.ownerKey,
+        ownerKey: _verifiedOwner(identity),
         revision: identity.revision,
       );
     } catch (error) {
@@ -295,20 +303,29 @@ class CalendarSyncCoordinator {
     final token = ++_runToken;
     try {
       await _control.load();
-      if (!_stillValid(token, null)) return;
+      // 仅复核本轮 token + 前台；身份缺失（登出 / 过期 / 冷启动未恢复）不在此提前
+      // 返回，交给下面显式的「等待身份」分支同步控制层并如实报告 noWork。
+      if (token != _runToken || !_foreground) return;
 
       final identity = _readIdentity();
+      final verifiedOwner = _verifiedOwner(identity);
       await _control.pauseIfOwnerMismatch(
-        ownerKey: identity.ownerKey,
+        ownerKey: verifiedOwner,
         revision: identity.revision,
       );
+      // 教务未登录 / 会话过期 / 冷启动尚未恢复：控制层保持 enabled（等待身份），
+      // 但本轮绝不写日历；同一 owner 重新登录后由身份变化触发下一轮。
+      if (verifiedOwner == null) {
+        _setOutcome(CalendarSyncRunOutcome.noWork);
+        return;
+      }
       if (!_stillValid(token, null)) return;
       if (!_control.isWritable) {
         _setOutcome(CalendarSyncRunOutcome.noWork);
         return;
       }
 
-      final owner = identity.ownerKey!.trim();
+      final owner = verifiedOwner;
       final calendarId = _control.calendarId;
       if (calendarId == null || calendarId <= 0) {
         _setOutcome(CalendarSyncRunOutcome.noWork);
