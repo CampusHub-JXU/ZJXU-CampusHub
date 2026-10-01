@@ -16,6 +16,7 @@ import 'package:jxu_campus_hub/shared/widgets/app_dropdown.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_error_view.dart';
 import 'package:jxu_campus_hub/shared/widgets/auth_required_view.dart';
 import 'package:jxu_campus_hub/shared/widgets/login_shell.dart';
+import 'package:jxu_campus_hub/shared/widgets/plain_list.dart';
 
 import '../../helpers/test_setup.dart';
 
@@ -27,6 +28,9 @@ class _FakeCatalogGateway implements Epay100Gateway {
 
   /// 为 true 时园区目录多出「东校区」，用于验证换校区清空楼幢/房间选择。
   bool extraArea = false;
+
+  /// 梁林校区的原始名称（可带「嘉兴大学」前缀，验证展示时去前缀）。
+  String areaName = '梁林校区';
 
   /// 非 null 时，[call] 抛出该异常。
   Object? failure;
@@ -67,7 +71,7 @@ class _FakeCatalogGateway implements Epay100Gateway {
           'msg': 'SUC0000',
           'data': {
             'area_list': [
-              {'id': '3', 'value': '梁林校区'},
+              {'id': '3', 'value': areaName},
               if (extraArea) {'id': '4', 'value': '东校区'},
             ],
           },
@@ -142,6 +146,8 @@ class _FakeCatalogGateway implements Epay100Gateway {
     holdNextInvalidate = false;
     _invalidateGate?.complete();
     _invalidateGate = null;
+    areaName = '梁林校区';
+    extraArea = false;
   }
 }
 
@@ -215,6 +221,56 @@ Future<void> _settleCatalog(
   }
 }
 
+const _pickerRowKey = Key('dorm_room_picker_row');
+
+/// 房间行（页面唯一的寝室选择入口）当前展示的值：「未选择」/「加载中…」/房间号。
+String? _pickerValue(WidgetTester tester) {
+  final row = find.byKey(_pickerRowKey);
+  if (row.evaluate().isEmpty) return null;
+  final texts = find
+      .descendant(of: row, matching: find.byType(Text))
+      .evaluate()
+      .map((e) => (e.widget as Text).data)
+      .whereType<String>()
+      .where((t) => t != '房间')
+      .toList();
+  return texts.isEmpty ? null : texts.first;
+}
+
+/// 点开房间选择弹层。
+Future<void> _openPicker(WidgetTester tester) async {
+  await tester.tap(find.byKey(_pickerRowKey));
+  await _settleCatalog(tester, rounds: 6);
+}
+
+/// 点弹层里的列表行 / chip（面包屑里可能有同名文字，故限定 ListTile / chip）并
+/// 放行目录请求（房间列表经 JsonCacheStore 文件 I/O）。
+Future<void> _tapPickerItem(WidgetTester tester, String text) async {
+  final target = find.descendant(
+    of: find.byWidgetPredicate((w) => w is ListTile || w is ChoiceChip),
+    matching: find.text(text),
+  );
+  await tester.tap(target);
+  await _settleCatalog(tester, rounds: 12);
+}
+
+/// 走完 园区 → 楼幢 →（单楼层自动）→ 房间 的完整选择。
+Future<void> _pickRoomViaSheet(
+  WidgetTester tester, {
+  String? area,
+  String building = 'HX4',
+  String room = 'HX4-111',
+}) async {
+  await _openPicker(tester);
+  // 只有一个园区时弹层自动选中并直接停在楼幢级。
+  if (area != null) await _tapPickerItem(tester, area);
+  await _tapPickerItem(tester, building);
+  await _tapPickerItem(tester, room);
+}
+
+FilledButton _saveButton(WidgetTester tester) =>
+    tester.widget<FilledButton>(find.byKey(const Key('dorm_save_button')));
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -257,6 +313,7 @@ void main() {
       expect(find.text('需要登录一卡通后继续'), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsNothing);
       expect(find.byType(AppErrorView), findsNothing);
+      expect(find.byKey(const Key('dorm_save_button')), findsNothing);
       expect(gateway.callCount, 0);
 
       await tester.pumpWidget(const SizedBox.shrink());
@@ -328,12 +385,10 @@ void main() {
       // 只作废 epay100 隐藏会话，随后经既有网关拉目录。
       expect(gateway.invalidateCount, greaterThanOrEqualTo(1));
       expect(gateway.callCount, greaterThanOrEqualTo(1));
-      // 园区/楼幢与楼层/房间号四个下拉已就位，均未选择，占位均为「请选择」。
-      expect(find.textContaining('园区'), findsOneWidget);
-      expect(find.text('楼幢'), findsOneWidget);
-      expect(find.text('楼层'), findsOneWidget);
-      expect(find.textContaining('房间号'), findsOneWidget);
-      expect(find.text('请选择'), findsNWidgets(4));
+      // 单个「房间」选择行已就位且未选择；保存按钮在底部但不可用。
+      expect(find.byKey(_pickerRowKey), findsOneWidget);
+      expect(_pickerValue(tester), '未选择');
+      expect(_saveButton(tester).onPressed, isNull);
 
       await tester.pumpWidget(const SizedBox.shrink());
     },
@@ -356,6 +411,7 @@ void main() {
       expect(find.text('一卡通网关网络异常，请稍后重试'), findsOneWidget);
       expect(find.byType(AuthRequiredView), findsNothing);
       expect(find.byType(LoginShell), findsNothing);
+      expect(find.byKey(const Key('dorm_save_button')), findsNothing);
 
       // 全局统一认证会话保持原样（不误判为认证过期、不强制登出）。
       expect(UnifiedAuthService.instance.isLoggedIn, isTrue);
@@ -404,7 +460,7 @@ void main() {
       await _settleCatalog(tester);
       expect(find.byType(AppErrorView), findsNothing);
       expect(find.byType(AuthRequiredView), findsNothing);
-      expect(find.textContaining('园区'), findsOneWidget);
+      expect(find.byKey(_pickerRowKey), findsOneWidget);
 
       await tester.pumpWidget(const SizedBox.shrink());
     },
@@ -480,7 +536,7 @@ void main() {
       await _settleCatalog(tester);
       expect(find.byType(AppErrorView), findsNothing);
       expect(find.byType(AuthRequiredView), findsNothing);
-      expect(find.textContaining('园区'), findsOneWidget);
+      expect(find.byKey(_pickerRowKey), findsOneWidget);
 
       await tester.pumpWidget(const SizedBox.shrink());
     },
@@ -518,13 +574,13 @@ void main() {
       UnifiedAuthService.instance.debugSetSession(active: true, account: 'B');
       UnifiedAuthService.instance.notifyListeners();
       await _settleCatalog(tester);
-      expect(find.text('请选择'), findsNWidgets(4)); // B 的干净表单
+      expect(_pickerValue(tester), '未选择'); // B 的干净表单
 
       // A 的迟到房间响应到达：不得把 A 的房间/选择套到 B 的界面。
       gateway.completeHold();
       await _settleCatalog(tester);
       expect(find.textContaining('A-999'), findsNothing);
-      expect(find.text('请选择'), findsNWidgets(4));
+      expect(_pickerValue(tester), '未选择');
       expect(find.byType(AuthRequiredView), findsNothing);
       expect(find.byType(AppErrorView), findsNothing);
 
@@ -667,7 +723,7 @@ void main() {
 
       await tester.pumpWidget(_app());
       await _settleCatalog(tester);
-      expect(find.text('请选择'), findsNWidgets(4));
+      expect(_pickerValue(tester), '未选择');
 
       // 开关禁用且保持关闭，并提示先保存寝室；阈值行不出现。
       final sw = tester.widget<Switch>(find.byType(Switch));
@@ -706,8 +762,8 @@ void main() {
       await _settleCatalog(tester);
 
       // fail closed：A 的迟到目录绝不填充表单，也不出现反馈/闸门/错误态。
-      expect(find.textContaining('园区'), findsNothing);
-      expect(find.text('请选择'), findsNothing);
+      expect(find.byKey(_pickerRowKey), findsNothing);
+      expect(find.byKey(const Key('dorm_save_button')), findsNothing);
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
       expect(find.byType(SnackBar), findsNothing);
       expect(find.byType(AuthRequiredView), findsNothing);
@@ -716,7 +772,7 @@ void main() {
       // 延迟到达的通知正常恢复：为新身份重新拉取并展示表单。
       UnifiedAuthService.instance.notifyListeners();
       await _settleCatalog(tester);
-      expect(find.text('请选择'), findsNWidgets(4));
+      expect(_pickerValue(tester), '未选择');
 
       await tester.pumpWidget(const SizedBox.shrink());
     },
@@ -822,7 +878,7 @@ void main() {
       await _settleCatalog(tester);
       expect(find.textContaining('HX4-111'), findsOneWidget);
 
-      await tester.tap(find.text('保存'));
+      await tester.tap(find.byKey(const Key('dorm_save_button')));
       await _settleCatalog(tester, until: () => !writeArmed);
       expect(writeArmed, isFalse); // 保存已挂起在写入中
 
@@ -862,144 +918,232 @@ void main() {
       expect(find.byType(AuthRequiredView), findsNothing);
       expect(find.byType(LoginShell), findsNothing);
       expect(gateway.callCount, greaterThanOrEqualTo(1));
-      expect(find.text('请选择'), findsNWidgets(4));
+      expect(_pickerValue(tester), '未选择');
 
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
 
-  testWidgets('dropdowns pick area → building → floor → room and enable save; '
-      'changing the area clears the building and room', (tester) async {
+  testWidgets('room picker sheet picks area → building → room and enables '
+      'save; closing the sheet or browsing another area changes nothing', (
+    tester,
+  ) async {
     UnifiedAuthService.instance.debugSetSession(active: true, account: 'A');
     gateway.extraArea = true;
 
     await tester.pumpWidget(_app());
     await _settleCatalog(tester);
-    expect(find.text('请选择'), findsNWidgets(4));
+    expect(_pickerValue(tester), '未选择');
+    expect(_saveButton(tester).onPressed, isNull);
 
-    FilledButton saveButton() =>
-        tester.widget<FilledButton>(find.widgetWithText(FilledButton, '保存'));
-    // 楼幢 / 楼层 / 房间号在上游未选之前禁用；保存不可用。
-    expect(
-      tester
-          .widget<AppDropdown<DormBuilding>>(
-            find.byKey(const Key('dorm_building_dropdown')),
-          )
-          .items,
-      isEmpty,
-    );
-    expect(saveButton().onPressed, isNull);
+    await _pickRoomViaSheet(tester, area: '梁林校区');
+    // 弹层随选中房间关闭；页面行内只展示房间号，保存可用。
+    expect(find.byTooltip('取消'), findsNothing);
+    expect(_pickerValue(tester), 'HX4-111');
+    expect(_saveButton(tester).onPressed, isNotNull);
 
-    Future<void> pick(String key, String itemText) async {
-      await tester.tap(find.byKey(Key(key)));
-      await tester.pump(const Duration(milliseconds: 250));
-      await tester.tap(find.text(itemText).last);
-      await _settleCatalog(tester);
-    }
-
-    await pick('dorm_area_dropdown', '梁林校区');
-    await pick('dorm_building_dropdown', 'HX4');
-    // 仅一个楼层分组时自动选中；再选房间。
-    expect(find.text('默认楼层'), findsOneWidget);
-    await pick('dorm_room_dropdown', 'HX4-111号');
-    expect(find.text('HX4-111号'), findsOneWidget);
-    expect(saveButton().onPressed, isNotNull);
-
-    // 选回同一校区是 no-op，不清空选择。
-    await pick('dorm_area_dropdown', '梁林校区');
-    expect(find.text('HX4-111号'), findsOneWidget);
-    expect(saveButton().onPressed, isNotNull);
-
-    // 换到另一校区：旧楼幢 / 楼层 / 房间选择全部清空，不留错配组合；保存不可用。
-    await pick('dorm_area_dropdown', '东校区');
-    expect(find.text('东校区'), findsOneWidget);
-    expect(find.text('HX4-111号'), findsNothing);
-    expect(find.text('请选择'), findsNWidgets(3)); // 楼幢 / 楼层 / 房间号
-    expect(saveButton().onPressed, isNull);
+    // 再次打开：停在房间级；面包屑回到园区改选另一校区后直接关闭（×）——
+    // 弹层只改草稿，页面原选择与保存状态保持不变。
+    await _openPicker(tester);
+    expect(find.byKey(const Key('dorm_crumb_3')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('dorm_crumb_0')));
+    await _settleCatalog(tester, rounds: 6);
+    await _tapPickerItem(tester, '东校区');
+    expect(find.text('选择楼幢'), findsOneWidget); // 换校区清空更深级草稿
+    await tester.tap(find.byTooltip('取消'));
+    await _settleCatalog(tester, rounds: 6);
+    expect(find.byTooltip('取消'), findsNothing);
+    expect(_pickerValue(tester), 'HX4-111');
+    expect(_saveButton(tester).onPressed, isNotNull);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('reselecting the current building keeps the chosen room and '
-      'does not refetch rooms', (tester) async {
+  testWidgets('area labels drop the redundant 嘉兴大学 prefix', (tester) async {
+    UnifiedAuthService.instance.debugSetSession(active: true, account: 'A');
+    gateway.areaName = '嘉兴大学梁林校区';
+    gateway.extraArea = true;
+
+    await tester.pumpWidget(_app());
+    await _settleCatalog(tester);
+    await _openPicker(tester);
+
+    expect(find.text('梁林校区'), findsOneWidget);
+    expect(find.text('嘉兴大学梁林校区'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('re-picking the current building keeps working without '
+      'refetching rooms', (tester) async {
     UnifiedAuthService.instance.debugSetSession(active: true, account: 'A');
 
     await tester.pumpWidget(_app());
     await _settleCatalog(tester);
+    await _pickRoomViaSheet(tester);
+    expect(_saveButton(tester).onPressed, isNotNull);
 
-    Future<void> pick(String key, String itemText) async {
-      await tester.tap(find.byKey(Key(key)));
-      await tester.pump(const Duration(milliseconds: 250));
-      await tester.tap(find.text(itemText).last);
-      await _settleCatalog(tester);
-    }
-
-    await pick('dorm_area_dropdown', '梁林校区');
-    await pick('dorm_building_dropdown', 'HX4');
-    await pick('dorm_room_dropdown', 'HX4-111号');
-    FilledButton saveButton() =>
-        tester.widget<FilledButton>(find.widgetWithText(FilledButton, '保存'));
-    expect(saveButton().onPressed, isNotNull);
-
+    // 重新打开后面包屑回到楼幢级，再点同一楼幢：沿用已拉到的房间，不重新请求。
     final callsBefore = gateway.callCount;
-    await pick('dorm_building_dropdown', 'HX4');
-    expect(find.text('HX4-111号'), findsOneWidget);
-    expect(saveButton().onPressed, isNotNull);
+    await _openPicker(tester);
+    await tester.tap(find.byKey(const Key('dorm_crumb_1')));
+    await _settleCatalog(tester, rounds: 6);
+    await _tapPickerItem(tester, 'HX4');
+    await _tapPickerItem(tester, '默认楼层');
+    await _tapPickerItem(tester, 'HX4-111');
+
+    expect(_pickerValue(tester), 'HX4-111');
+    expect(_saveButton(tester).onPressed, isNotNull);
     expect(gateway.callCount, callsBefore, reason: '同一楼幢不应重新拉取房间');
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('retry after a failed room load rebinds the unsaved building '
-      'selection to the reloaded catalog instance', (tester) async {
+  testWidgets('room load failure in the sheet stays inside the sheet and the '
+      'page selection is untouched', (tester) async {
     UnifiedAuthService.instance.debugSetSession(active: true, account: 'A');
 
     await tester.pumpWidget(_app());
     await _settleCatalog(tester);
 
-    Future<void> pick(String key, String itemText) async {
-      await tester.tap(find.byKey(Key(key)));
-      await tester.pump(const Duration(milliseconds: 250));
-      await tester.tap(find.text(itemText).last);
-      await _settleCatalog(tester);
-    }
+    await _openPicker(tester);
+    // 服务层对目录 RPC 失败会自动重试：持续失败才落到弹层内的错误横幅。
+    gateway.failure = const EpayGatewayException('一卡通网关网络异常，请稍后重试');
+    await _tapPickerItem(tester, 'HX4');
+    await _settleCatalog(tester);
+    expect(find.text('一卡通网关网络异常，请稍后重试'), findsOneWidget);
+    expect(find.text('重试'), findsOneWidget);
+    // 整页仍是表单，没有被整页错误态替换。
+    expect(find.byType(AppErrorView), findsNothing);
 
-    await pick('dorm_area_dropdown', '梁林校区');
-    // 房间拉取失败 → 整页可重试错误态。
+    // 网关恢复后弹层内重试，继续选择。
+    gateway.failure = null;
+    await tester.tap(find.text('重试'));
+    await _settleCatalog(tester);
+    await _tapPickerItem(tester, 'HX4-111');
+    expect(_pickerValue(tester), 'HX4-111');
+    expect(_saveButton(tester).onPressed, isNotNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('identity change while the sheet is loading rooms closes the '
+      "sheet and drops the old identity's result", (tester) async {
+    UnifiedAuthService.instance.debugSetSession(active: true, account: 'A');
+
+    await tester.pumpWidget(_app());
+    await _settleCatalog(tester);
+
+    await _openPicker(tester);
     gateway.holdMethod = 'app.electric.getRoomList';
-    await pick('dorm_building_dropdown', 'HX4');
+    await tester.tap(
+      find.descendant(of: find.byType(ListTile), matching: find.text('HX4')),
+    );
+    await _settleCatalog(tester, until: () => gateway.holdReached);
     expect(gateway.holdReached, isTrue);
-    // 服务层对目录 RPC 失败会自动重试：持续失败才会落到错误态。
+
+    // 在途期间静默换号，迟到的房间列表属于旧身份：弹层关闭、不带结果。
+    UnifiedAuthService.instance.debugSetSession(active: true, account: 'B');
+    gateway.completeHold();
+    await _settleCatalog(tester, rounds: 8);
+    expect(find.byTooltip('取消'), findsNothing);
+    expect(find.text('HX4-111'), findsNothing);
+
+    // 通知到达后为 B 重新拉目录：干净表单，没有 A 的选择。
+    UnifiedAuthService.instance.notifyListeners();
+    await _settleCatalog(tester);
+    expect(_pickerValue(tester), '未选择');
+    expect(_saveButton(tester).onPressed, isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('saved room config is restored into the picker row and a failed '
+      'room load retries with the reloaded catalog', (tester) async {
+    const config = DormRoomConfig(
+      areaId: '3',
+      buildingId: '114',
+      floorId: 'F1',
+      roomId: '10720',
+    );
+    UnifiedAuthService.instance.debugSetSession(active: true, account: 'A');
+    await DormElectricityService.instance.saveRoomConfig(config);
+
+    // 已保存配置的房间恢复：先按楼幢拉房间，期间行内展示「加载中…」且不可点开。
+    gateway.holdMethod = 'app.electric.getRoomList';
+    await tester.pumpWidget(_app());
+    await _settleCatalog(tester, until: () => gateway.holdReached);
+    expect(gateway.holdReached, isTrue);
+    expect(_pickerValue(tester), '加载中…');
+    expect(
+      tester.widget<PlainListRow>(find.byKey(_pickerRowKey)).onTap,
+      isNull,
+      reason: '房间恢复未完成时不应打开会拿到空房间列表的弹层',
+    );
+
+    // 持续失败 → 整页可重试错误态（保存按钮随表单一并隐藏）。
     gateway.failure = const EpayGatewayException('一卡通网关网络异常，请稍后重试');
     gateway.completeHold();
     await _settleCatalog(tester);
     expect(find.byType(AppErrorView), findsOneWidget);
+    expect(find.byKey(const Key('dorm_save_button')), findsNothing);
     gateway.failure = null;
 
-    // 重试：目录重载换成新的 DormBuilding 实例，未保存的选择须重新绑定。
+    // 重试：目录重载后已保存配置按新目录实例恢复，行内即为房间号，保存可用。
     await tester.tap(find.text('重试'));
     await _settleCatalog(tester);
     expect(find.byType(AppErrorView), findsNothing);
+    expect(_pickerValue(tester), 'HX4-111');
+    expect(_saveButton(tester).onPressed, isNotNull);
 
-    final dropdown = tester.widget<AppDropdown<DormBuilding>>(
-      find.byKey(const Key('dorm_building_dropdown')),
-    );
-    expect(dropdown.value, isNotNull);
-    expect(
-      dropdown.items.any((item) => identical(item.value, dropdown.value)),
-      isTrue,
-      reason: '选中值必须是当前目录里的实例，否则下拉显示「请选择」',
-    );
+    // 弹层停在房间级，面包屑是当前（重载后）目录里的楼幢。
+    await _openPicker(tester);
+    expect(find.byKey(const Key('dorm_crumb_3')), findsOneWidget);
     expect(find.text('HX4'), findsOneWidget);
+    await tester.tap(find.byTooltip('取消'));
+    await _settleCatalog(tester, rounds: 6);
 
-    // 房间随重绑后的楼幢重新加载，可继续选择并保存。
-    await pick('dorm_room_dropdown', 'HX4-111号');
-    expect(
-      tester
-          .widget<FilledButton>(find.widgetWithText(FilledButton, '保存'))
-          .onPressed,
-      isNotNull,
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('saving a picked room persists the configuration', (
+    tester,
+  ) async {
+    UnifiedAuthService.instance.debugSetSession(active: true, account: 'A');
+
+    // 保存成功后页面会 pop：放在第二层路由里，避免弹空根路由。
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const DormElectricitySettingsPage(),
+                ),
+              ),
+              child: const Text('go'),
+            ),
+          ),
+        ),
+      ),
     );
+    await tester.tap(find.text('go'));
+    await _settleCatalog(tester);
+    expect(find.byType(DormElectricitySettingsPage), findsOneWidget);
+    await _pickRoomViaSheet(tester);
+    expect(_saveButton(tester).onPressed, isNotNull);
+
+    await tester.tap(find.byKey(const Key('dorm_save_button')));
+    await _settleCatalog(tester, rounds: 10);
+
+    final saved = await DormElectricityService.instance.loadRoomConfig();
+    expect(saved, isNotNull);
+    expect(saved!.areaId, '3');
+    expect(saved.buildingId, '114');
+    expect(saved.roomId, '10720');
+    expect(find.byType(DormElectricitySettingsPage), findsNothing);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });

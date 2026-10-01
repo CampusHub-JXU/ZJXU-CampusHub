@@ -6,6 +6,7 @@ import '../../core/auth/unified_auth.dart';
 import '../../core/logging/app_logger.dart';
 import 'dorm_electricity_background.dart';
 import 'dorm_electricity_service.dart';
+import 'dorm_room_picker_sheet.dart';
 import '../../core/epay100/epay100_gateway.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_dropdown.dart';
@@ -52,7 +53,13 @@ class _AreaGroup {
   final List<DormBuilding> buildings;
   const _AreaGroup({required this.area, required this.buildings});
 
-  String get label => area.name;
+  /// 展示用名称：去掉冗余的「嘉兴大学」前缀（「嘉兴大学梁林校区」→「梁林校区」）。
+  String get label {
+    final name = area.name;
+    final short = name.startsWith('嘉兴大学') ? name.substring(4).trim() : name;
+    return short.isEmpty ? name : short;
+  }
+
   String get areaId => area.id;
 }
 
@@ -430,35 +437,9 @@ class _DormElectricitySettingsPageState
   }
 
   void _buildFloorMap() {
-    _floorMap = {};
-    for (final r in _rooms) {
-      _floorMap.putIfAbsent(r.floorName, () => []).add(r);
-    }
-    // API 只回一个「默认楼层」时，几百个房间号只能从头滚：按房间名解析
-    // 楼层（HX4-105 → 1楼）追加筛选分组，解析不出的房间只留在默认楼层。
-    if (_floorMap.length <= 1) {
-      final parsed = <String, List<DormRoom>>{};
-      for (final r in _rooms) {
-        final label = DormElectricityService.parseFloorLabel(r.roomName);
-        if (label == null) continue;
-        parsed.putIfAbsent(label, () => []).add(r);
-      }
-      if (parsed.length > 1) {
-        final floorKeys = parsed.keys.toList()..sort(_compareFloorLabel);
-        _floorMap = {_allRoomsFloorKey: List.of(_rooms), ...parsed};
-        _floorList = [_allRoomsFloorKey, ...floorKeys];
-        return;
-      }
-    }
-    _floorList = _floorMap.keys.toList();
-  }
-
-  static const _allRoomsFloorKey = '默认楼层';
-
-  int _compareFloorLabel(String a, String b) {
-    final na = int.tryParse(a.replaceAll(RegExp(r'\D'), '')) ?? 0;
-    final nb = int.tryParse(b.replaceAll(RegExp(r'\D'), '')) ?? 0;
-    return na.compareTo(nb);
+    final groups = groupDormRoomsByFloor(_rooms);
+    _floorMap = groups.byFloor;
+    _floorList = groups.floors;
   }
 
   Future<void> _loadRooms({
@@ -495,7 +476,9 @@ class _DormElectricitySettingsPageState
         for (final r in _rooms) {
           if (r.roomId == savedRoomId && r.floorId == savedFloorId) {
             _selectedRoom = r;
-            _selectedFloor = _floorKeyOf(r) ?? _selectedFloor;
+            _selectedFloor =
+                DormFloorGroups(_floorList, _floorMap).floorOf(r) ??
+                _selectedFloor;
             break;
           }
         }
@@ -580,7 +563,7 @@ class _DormElectricitySettingsPageState
     }
   }
 
-  // ── 下拉选择：预警阈值 / 校区区期 + 楼幢 / 楼层 + 房间号 ──
+  // ── 下拉选择：预警阈值 ──
 
   void _onThresholdChanged(double? value) {
     if (value == null || value == _alertThreshold) return;
@@ -588,142 +571,85 @@ class _DormElectricitySettingsPageState
     unawaited(_saveAlertSettings(threshold: value));
   }
 
-  /// 换校区区期：只提交到「校区」这一层。已选楼幢若属于别的校区则连同房间
-  /// 选择一并清空（并作废在途的房间拉取），绝不留下「校区 A + 楼幢 B」的
-  /// 错配组合；选回同一校区不动。
-  void _onAreaChanged(String? areaId) {
-    if (areaId == null || areaId == _selectedAreaId) return;
-    _loadId++; // 丢弃旧楼幢的在途房间拉取
-    setState(() {
-      _selectedAreaId = areaId;
-      _selectedBuilding = null;
-      _selectedRoom = null;
-      _selectedFloor = null;
-      _loadingRooms = false;
-      _rooms = [];
-      _floorMap = {};
-      _floorList = [];
-    });
-  }
-
-  void _onBuildingChanged(DormBuilding? b) {
-    if (b == null) return;
-    // 选回当前楼幢（按 areaId+buildingId，目录重载后实例会换）不动，避免清掉
-    // 已选房间并重复拉取。
-    final current = _selectedBuilding;
-    if (current != null &&
-        current.areaId == b.areaId &&
-        current.buildingId == b.buildingId) {
-      return;
-    }
-    setState(() {
-      _selectedAreaId = b.areaId;
-      _selectedBuilding = b;
-      _selectedRoom = null;
-    });
-    _loadRooms(areaId: b.areaId, buildingId: b.buildingId);
-  }
-
-  /// 换楼层：房间选择属于旧楼层，清空后由用户在新楼层下重选。
-  void _onFloorChanged(String? floor) {
-    if (floor == null || floor == _selectedFloor) return;
-    setState(() {
-      _selectedFloor = floor;
-      _selectedRoom = null;
-    });
-  }
-
-  void _onRoomChanged(DormRoom? room) {
-    if (room == null) return;
-    setState(() => _selectedRoom = room);
-  }
-
-  /// 已选房间所属的楼层分组：优先取房间名解析出的楼层，找不到再回退 API 楼层名。
-  String? _floorKeyOf(DormRoom room) {
-    final label =
-        DormElectricityService.parseFloorLabel(room.roomName) ?? room.floorName;
-    if (_floorList.contains(label)) return label;
-    if (_floorList.contains(room.floorName)) return room.floorName;
-    return null;
-  }
-
   // ── 公共 UI ──
 
-  Widget _buildBuildingFields() {
-    final groupBuildings = _selectedAreaId == null
-        ? const <DormBuilding>[]
-        : _areaGroups
-              .where((g) => g.areaId == _selectedAreaId)
-              .expand((g) => g.buildings)
-              .toList();
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          flex: 3,
-          child: AppDropdown<String>(
-            key: const Key('dorm_area_dropdown'),
-            label: '园区',
-            hint: '请选择',
-            value: _selectedAreaId,
-            items: [
-              for (final g in _areaGroups)
-                AppDropdownItem(value: g.areaId, label: g.label),
-            ],
-            onChanged: _onAreaChanged,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          flex: 2,
-          child: AppDropdown<DormBuilding>(
-            key: const Key('dorm_building_dropdown'),
-            label: '楼幢',
-            hint: '请选择',
-            value: _selectedBuilding,
-            items: [
-              for (final b in groupBuildings)
-                AppDropdownItem(value: b, label: b.buildingName),
-            ],
-            onChanged: _onBuildingChanged,
-          ),
-        ),
-      ],
+  /// 设置类表单行：标题在左，行内下拉（当前值 + ⌃⌄）在右。
+  Widget _pickerRow(String title, Widget dropdown) {
+    return PlainListRow(
+      title: title,
+      trailing: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 220),
+        child: dropdown,
+      ),
     );
   }
 
-  Widget _buildRoomFields() {
-    final floorRooms = _selectedFloor == null
-        ? const <DormRoom>[]
-        : (_floorMap[_selectedFloor] ?? const <DormRoom>[]);
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+  // ── 选寝室：页面一行摘要，逐级收窄在底部弹层里完成 ──
+
+  Future<void> _openRoomPicker() async {
+    final owner = _boundAccount;
+    final revision = _boundRevision;
+    final pick = await showDormRoomPickerSheet(
+      context,
+      areas: [
+        for (final g in _areaGroups)
+          DormAreaOption(id: g.areaId, label: g.label, buildings: g.buildings),
+      ],
+      initialAreaId: _selectedAreaId,
+      initialBuilding: _selectedBuilding,
+      initialRooms: _rooms,
+      initialFloor: _selectedFloor,
+      initialRoom: _selectedRoom,
+      // 弹层拉房间同样按身份复核：旧身份的迟到结果返回 null，弹层直接关闭。
+      loadRooms: (b) async {
+        try {
+          final rooms = await _service.fetchRooms(
+            areaId: b.areaId,
+            buildingId: b.buildingId,
+          );
+          return _isLiveBoundIdentity(owner, revision) ? rooms : null;
+        } catch (e) {
+          if (!_isLiveBoundIdentity(owner, revision)) return null;
+          if (e is DormServiceException ||
+              e is EpaySessionUnavailableException ||
+              e is EpayGatewayException) {
+            rethrow;
+          }
+          throw '加载房间列表失败';
+        }
+      },
+    );
+    if (pick == null || !_isLiveBoundIdentity(owner, revision)) return;
+    _loadId++; // 作废页面上仍在途的已保存配置房间恢复
+    setState(() {
+      _selectedAreaId = pick.building.areaId;
+      _selectedBuilding = pick.building;
+      _rooms = pick.rooms;
+      _floorMap = pick.groups.byFloor;
+      _floorList = pick.groups.floors;
+      _selectedFloor = pick.floor;
+      _selectedRoom = pick.room;
+      _loadingRooms = false;
+      _error = null;
+    });
+  }
+
+  Widget _buildRoomGroup() {
+    // 行内只放房间号：园区 / 楼幢在弹层面包屑里看，长名称在窄屏会被截断。
+    final room = _selectedRoom;
+    final value = _loadingRooms ? '加载中…' : (room?.roomName ?? '未选择');
+    return PlainListGroup(
       children: [
-        Expanded(
-          child: AppDropdown<String>(
-            key: const Key('dorm_floor_dropdown'),
-            label: '楼层',
-            hint: '请选择',
-            value: _selectedFloor,
-            items: [
-              for (final f in _floorList) AppDropdownItem(value: f, label: f),
-            ],
-            onChanged: _onFloorChanged,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: AppDropdown<DormRoom>(
-            key: const Key('dorm_room_dropdown'),
-            label: '房间号',
-            hint: '请选择',
-            value: _selectedRoom,
-            items: [
-              for (final r in floorRooms)
-                AppDropdownItem(value: r, label: '${r.roomName}号'),
-            ],
-            onChanged: _onRoomChanged,
-          ),
+        PlainListRow(
+          key: const Key('dorm_room_picker_row'),
+          title: '房间',
+          value: value,
+          emphasizeValue: room == null && !_loadingRooms,
+          // 已保存配置的房间仍在恢复时不开弹层：此刻页面还没有房间列表，弹层
+          // 会停在楼层级并展示空的楼层选项。
+          onTap: (_areaGroups.isEmpty || _loadingRooms)
+              ? null
+              : _openRoomPicker,
         ),
       ],
     );
@@ -732,8 +658,42 @@ class _DormElectricitySettingsPageState
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final showForm = !_authGate && !_loadingBuildings && _error == null;
     return Scaffold(
       appBar: AppAppBar(title: const Text('选择寝室')),
+      // 保存固定在页面底部：表单内容多少都不影响它的位置。
+      bottomNavigationBar: showForm
+          ? SafeArea(
+              minimum: const EdgeInsets.fromLTRB(
+                kPlainListGutter,
+                8,
+                kPlainListGutter,
+                16,
+              ),
+              child: FilledButton(
+                key: const Key('dorm_save_button'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                ),
+                onPressed:
+                    (_selectedBuilding != null &&
+                        _selectedRoom != null &&
+                        !_saving)
+                    ? _save
+                    : null,
+                child: _saving
+                    ? SizedBox(
+                        height: 18,
+                        width: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: cs.onPrimary,
+                        ),
+                      )
+                    : const Text('保存'),
+              ),
+            )
+          : null,
       body: _authGate
           ? AuthRequiredView(
               title: '需要登录一卡通后继续',
@@ -766,31 +726,7 @@ class _DormElectricitySettingsPageState
               ),
               children: [
                 const PlainSectionHeader('寝室'),
-                _buildBuildingFields(),
-                const SizedBox(height: 16),
-                if (_loadingRooms)
-                  const Center(child: CircularProgressIndicator())
-                else
-                  _buildRoomFields(),
-                const SizedBox(height: kPlainListGroupGap),
-                FilledButton(
-                  onPressed:
-                      (_selectedBuilding != null &&
-                          _selectedRoom != null &&
-                          !_saving)
-                      ? _save
-                      : null,
-                  child: _saving
-                      ? SizedBox(
-                          height: 18,
-                          width: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: cs.onPrimary,
-                          ),
-                        )
-                      : const Text('保存'),
-                ),
+                _buildRoomGroup(),
                 const SizedBox(height: kPlainListGroupGap + 8),
                 const PlainSectionHeader('提醒'),
                 PlainListGroup(
@@ -810,25 +746,29 @@ class _DormElectricitySettingsPageState
                         _saveAlertSettings(enabled: v);
                       },
                     ),
+                    if (_hasSavedRoomConfig && _alertEnabled)
+                      _pickerRow(
+                        '预警阈值',
+                        AppDropdown<double>(
+                          key: const Key('dorm_threshold_dropdown'),
+                          inline: true,
+                          // 历史遗留的非选项值不在列表里：按钮回落显示当前值。
+                          hint: '${_alertThreshold.toInt()} 度',
+                          value: _thresholdOptions.contains(_alertThreshold)
+                              ? _alertThreshold
+                              : null,
+                          items: [
+                            for (final v in _thresholdOptions)
+                              AppDropdownItem(
+                                value: v,
+                                label: '${v.toInt()} 度',
+                              ),
+                          ],
+                          onChanged: _onThresholdChanged,
+                        ),
+                      ),
                   ],
                 ),
-                if (_hasSavedRoomConfig && _alertEnabled) ...[
-                  const SizedBox(height: 12),
-                  AppDropdown<double>(
-                    key: const Key('dorm_threshold_dropdown'),
-                    label: '预警阈值',
-                    // 历史遗留的非选项值不在列表里：按钮回落显示当前值。
-                    hint: '${_alertThreshold.toInt()} 度',
-                    value: _thresholdOptions.contains(_alertThreshold)
-                        ? _alertThreshold
-                        : null,
-                    items: [
-                      for (final v in _thresholdOptions)
-                        AppDropdownItem(value: v, label: '${v.toInt()} 度'),
-                    ],
-                    onChanged: _onThresholdChanged,
-                  ),
-                ],
               ],
             ),
     );

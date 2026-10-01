@@ -28,6 +28,7 @@ class AppDropdown<T> extends StatefulWidget {
     this.prefixIcon,
     this.hint,
     this.label,
+    this.inline = false,
   });
 
   /// 当前选中值。为 `null` 时显示 [hint]。
@@ -50,6 +51,10 @@ class AppDropdown<T> extends StatefulWidget {
 
   /// 表单字段标题。非空时渲染在触发按钮上方并强制撑满宽度。
   final String? label;
+
+  /// 列表行内形态：无底色无描边，只显示「当前值 + ⌃⌄」，放在
+  /// `PlainListRow.trailing` 里使用（设置类表单：标题在左、值在右）。
+  final bool inline;
 
   @override
   State<AppDropdown<T>> createState() => _AppDropdownState<T>();
@@ -223,6 +228,8 @@ class _AppDropdownState<T> extends State<AppDropdown<T>>
     final overlaySize = overlayBox.size;
     final cs = Theme.of(context).colorScheme;
 
+    // 关闭动画尚未结束就重新打开：旧菜单立即移除，避免残留在 Overlay 里。
+    _overlayEntry?.remove();
     _overlayEntry = OverlayEntry(
       builder: (context) => _AppDropdownOverlay<T>(
         buttonRect: buttonRect,
@@ -258,8 +265,12 @@ class _AppDropdownState<T> extends State<AppDropdown<T>>
       if (mounted) setState(() => _isOpen = false);
       return;
     }
+    // 只移除本次关闭的那个菜单：120ms 关闭动画内重新打开时，新菜单不能被
+    // 迟到的回调删掉（否则按钮卡在「已展开」）。
+    final closing = _overlayEntry;
     _animController.reverse().then((_) {
-      _overlayEntry?.remove();
+      if (!identical(_overlayEntry, closing)) return;
+      closing?.remove();
       _overlayEntry = null;
     });
     if (mounted) setState(() => _isOpen = false);
@@ -277,6 +288,15 @@ class _AppDropdownState<T> extends State<AppDropdown<T>>
     final enabled = widget.onChanged != null && widget.items.isNotEmpty;
     final fieldLabel = widget.label;
 
+    if (widget.inline) {
+      return _InlineDropdownButton(
+        key: _buttonKey,
+        label: label,
+        hasSelection: hasSelection,
+        colorScheme: cs,
+        onTap: enabled ? _toggleOverlay : null,
+      );
+    }
     final button = _DropdownButton(
       key: _buttonKey,
       label: label,
@@ -398,6 +418,57 @@ class _DropdownButton extends StatelessWidget {
   }
 }
 
+/// 列表行内的下拉触发器：值 + 上下箭头，无底色无描边。
+class _InlineDropdownButton extends StatelessWidget {
+  const _InlineDropdownButton({
+    super.key,
+    required this.label,
+    required this.hasSelection,
+    required this.colorScheme,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool hasSelection;
+  final ColorScheme colorScheme;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = colorScheme;
+    final color = hasSelection ? cs.onSurfaceVariant : cs.outline;
+    return Opacity(
+      opacity: onTap == null ? 0.5 : 1,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(AppRadius.input),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyMedium
+                        ?.copyWith(color: color),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(Icons.unfold_more_rounded, size: 18, color: color),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// 下拉弹出菜单层。
 class _AppDropdownOverlay<T> extends StatelessWidget {
   const _AppDropdownOverlay({
@@ -431,7 +502,10 @@ class _AppDropdownOverlay<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = colorScheme;
-    final menuWidth = math.min(buttonWidth + 80, overlaySize.width - 24);
+    final menuWidth = math.min(
+      math.max(buttonWidth + 80, 168.0),
+      overlaySize.width - 24,
+    );
     final leftMargin = 12.0;
     final maxLeft = math.max(
       leftMargin,

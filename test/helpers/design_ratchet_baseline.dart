@@ -9,7 +9,6 @@ const designRatchetBaseline = <String, Map<String, int>>{
   'features/schedule/widgets/schedule_course_cell.dart': {'fontSize': 1},
   'features/schedule/widgets/schedule_day_headers.dart': {'fontSize': 1},
   'features/schedule/widgets/schedule_slot_column.dart': {'fontSize': 1},
-  'features/settings/about_page.dart': {'fontSize': 1},
   'features/settings/background_editor_page.dart': {'fontSize': 2},
   'features/settings/widgets/appearance_preview.dart': {'fontSize': 2},
   'features/settings/widgets/hsv_color_picker_sheet.dart': {'fontSize': 1},

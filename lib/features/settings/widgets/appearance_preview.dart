@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_design_tokens.dart';
@@ -12,6 +13,59 @@ import '../../../shared/widgets/glass_container.dart';
 /// 预览场景：「主页」用真实首页场景并支持拖动/捏合调整壁纸；
 /// 「功能」「我的」只是静态示意（壁纸 + 占位磁贴 + dock），不跑真实页面树。
 enum AppearancePreviewScene { home, functions, my }
+
+/// 按下即宣告胜出的缩放识别器：预览框处于可调状态时，竖向拖动不交给外层
+/// 可滚动列表（默认竖向拖动的判定阈值比缩放小，会先赢走手势）。
+class _EagerScaleGestureRecognizer extends ScaleGestureRecognizer {
+  @override
+  void addAllowedPointer(PointerDownEvent event) {
+    super.addAllowedPointer(event);
+    resolve(GestureDisposition.accepted);
+  }
+}
+
+class _PreviewGestureDetector extends StatelessWidget {
+  const _PreviewGestureDetector({
+    required this.eager,
+    required this.onScaleStart,
+    required this.onScaleUpdate,
+    required this.onScaleEnd,
+    required this.child,
+  });
+
+  final bool eager;
+  final GestureScaleStartCallback? onScaleStart;
+  final GestureScaleUpdateCallback? onScaleUpdate;
+  final GestureScaleEndCallback? onScaleEnd;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!eager) {
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onScaleStart: onScaleStart,
+        onScaleUpdate: onScaleUpdate,
+        onScaleEnd: onScaleEnd,
+        child: child,
+      );
+    }
+    return RawGestureDetector(
+      behavior: HitTestBehavior.opaque,
+      gestures: {
+        _EagerScaleGestureRecognizer:
+            GestureRecognizerFactoryWithHandlers<_EagerScaleGestureRecognizer>(
+              _EagerScaleGestureRecognizer.new,
+              (r) => r
+                ..onStart = onScaleStart
+                ..onUpdate = onScaleUpdate
+                ..onEnd = onScaleEnd,
+            ),
+      },
+      child: child,
+    );
+  }
+}
 
 /// 外观页顶部的真实比例首页预览（PRD 0.7.0 §16/§17）。
 ///
@@ -83,8 +137,10 @@ class _AppearancePreviewState extends State<AppearancePreview> {
                                     .withValues(alpha: 0.7),
                               ),
                             ),
-                            child: GestureDetector(
-                              behavior: HitTestBehavior.opaque,
+                            child: _PreviewGestureDetector(
+                              // 可调壁纸时按下即独占手势，竖向拖动不再被外层
+                              // 设置列表抢去滚动；框外拖动照常滚动页面。
+                              eager: isHome && bgPath != null,
                               onScaleStart: !isHome
                                   ? null
                                   : (details) {
