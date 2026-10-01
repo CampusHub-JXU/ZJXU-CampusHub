@@ -5,8 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 
-import '../auth/cas_auth_broker.dart';
 import '../logging/app_logger.dart';
+import 'jwc_html_fetch.dart';
 import 'notice_model.dart';
 
 /// 教务处站内全文检索（博达 VSB `sousuo.jsp`）。
@@ -127,8 +127,6 @@ class NoticeSearchService {
 
   static final NoticeSearchService instance = NoticeSearchService._();
 
-  static const Duration _budget = Duration(seconds: 20);
-
   Dio? _dio;
 
   /// 永不抛异常；空关键词直接返回空结果、不触网。
@@ -146,37 +144,34 @@ class NoticeSearchService {
         totalPages: 0,
       );
     }
-    try {
-      final resp = await CasAuthBroker.getResource(
-        buildNoticeSearchUrl(trimmed, page: page),
-        dio: _dio,
-        cancelToken: cancelToken,
-        timeout: _budget,
-      );
-      final data = resp.data;
-      if (data == null || data.isEmpty) return const NoticeSearchUnavailable();
-      final parsed = parseNoticeSearchHtml(
-        utf8.decode(data, allowMalformed: true),
-        page: page,
-      );
-      if (parsed == null) {
-        AppLogger.instance.network(LogLevel.warn, '教务处站内检索结果结构无法识别');
+    final result = await fetchJwcHtml(
+      buildNoticeSearchUrl(trimmed, page: page),
+      failureLabel: '教务处站内检索失败',
+      dio: _dio,
+      cancelToken: cancelToken,
+    );
+    switch (result) {
+      case JwcHtmlAuthRequired():
+        return const NoticeSearchAuthRequired();
+      case JwcHtmlUnavailable():
         return const NoticeSearchUnavailable();
-      }
-      return parsed;
-    } on CasAuthExpiredException {
-      return const NoticeSearchAuthRequired();
-    } catch (error, stackTrace) {
-      if (error is DioException && CancelToken.isCancel(error)) {
-        return const NoticeSearchUnavailable();
-      }
-      AppLogger.instance.network(
-        LogLevel.warn,
-        '教务处站内检索失败',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      return const NoticeSearchUnavailable();
+      case JwcHtmlOk(:final html):
+        try {
+          final parsed = parseNoticeSearchHtml(html, page: page);
+          if (parsed == null) {
+            AppLogger.instance.network(LogLevel.warn, '教务处站内检索结果结构无法识别');
+            return const NoticeSearchUnavailable();
+          }
+          return parsed;
+        } catch (error, stackTrace) {
+          AppLogger.instance.network(
+            LogLevel.warn,
+            '教务处站内检索失败',
+            error: error,
+            stackTrace: stackTrace,
+          );
+          return const NoticeSearchUnavailable();
+        }
     }
   }
 

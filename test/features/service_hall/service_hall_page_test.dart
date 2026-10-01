@@ -7,29 +7,7 @@ import 'package:jxu_campus_hub/core/auth/cas_auth_broker.dart';
 import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/features/service_hall/service_hall_page.dart';
 
-class _FakeInAppWebViewPlatform extends InAppWebViewPlatform {
-  @override
-  PlatformInAppWebViewWidget createPlatformInAppWebViewWidget(
-    PlatformInAppWebViewWidgetCreationParams params,
-  ) {
-    return _FakePlatformInAppWebViewWidget(params);
-  }
-}
-
-class _FakePlatformInAppWebViewWidget extends PlatformInAppWebViewWidget {
-  _FakePlatformInAppWebViewWidget(super.params) : super.implementation();
-
-  @override
-  Widget build(BuildContext context) => const SizedBox.expand();
-
-  @override
-  T controllerFromPlatform<T>(PlatformInAppWebViewController controller) {
-    throw UnimplementedError('Controller is not used by this test fake.');
-  }
-
-  @override
-  void dispose() {}
-}
+import '../../helpers/fake_inappwebview.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -37,7 +15,7 @@ void main() {
   const wechatChannel = MethodChannel('edu.zjxu.jxucampushub/wechat');
 
   setUpAll(() {
-    InAppWebViewPlatform.instance = _FakeInAppWebViewPlatform();
+    InAppWebViewPlatform.instance = FakeInAppWebViewPlatform();
   });
 
   tearDown(() {

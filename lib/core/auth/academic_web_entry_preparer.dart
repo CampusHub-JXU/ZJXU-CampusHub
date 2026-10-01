@@ -1,11 +1,11 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:dio/dio.dart';
 
 import '../logging/app_logger.dart';
 import '../network/dio_client.dart';
 import 'cas_auth_broker.dart';
+import 'cas_routed_access.dart';
 import 'connect_mode_resolver.dart';
 import 'unified_auth.dart';
 import 'zhengfang_auth.dart';
@@ -463,18 +463,8 @@ class AcademicWebEntryPreparer {
       CasService.webVpnGateway.serviceUrl,
       cancelToken: token,
       deadline: deadline,
-      needsLogin: _gatewayNeedsLogin,
+      needsLogin: webVpnGatewayResponseNeedsLogin,
     );
-  }
-
-  static bool _gatewayNeedsLogin(Response<List<int>> response) {
-    final realUrl = response.realUri.toString();
-    if (isZhengfangGatewayLoginUrl(realUrl) ||
-        isZhengfangLoginEntryUrl(realUrl)) {
-      return true;
-    }
-    final html = utf8.decode(response.data ?? const [], allowMalformed: true);
-    return looksLikeUnifiedAuthLoginHtml(html);
   }
 
   static Future<AcademicEntrySessionStatus> _defaultAcademicSessionProber(

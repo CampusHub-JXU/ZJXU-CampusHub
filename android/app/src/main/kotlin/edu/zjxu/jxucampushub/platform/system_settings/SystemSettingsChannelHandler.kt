@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import edu.zjxu.jxucampushub.platform.requireStringArg
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
 
@@ -36,11 +37,8 @@ class SystemSettingsChannelHandler(private val activity: Activity) {
         MethodChannel(messenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "open" -> {
-                    val target = call.argument<String>("target")
-                    if (target.isNullOrBlank()) {
-                        result.error("invalid_args", "target is required", null)
-                        return@setMethodCallHandler
-                    }
+                    val target = call.requireStringArg("target", result)
+                        ?: return@setMethodCallHandler
                     result.success(open(target))
                 }
 

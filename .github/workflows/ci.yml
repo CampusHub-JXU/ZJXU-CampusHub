@@ -168,25 +168,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          workflow=".github/workflows/release-to-public-github.yml"
-          test -f "${workflow}"
-          grep -q 'PUBLIC_GH_REPO: ZJXU-CampusHub' "${workflow}"
-          grep -q 'PUBLIC_TARGET_BRANCH: main' "${workflow}"
-          grep -q 'gh release upload' "${workflow}"
-          grep -q 'Release tag must match vX.Y.Z' "${workflow}"
-          grep -q 'EXPECTED_RELEASE_CERT_SHA256:' "${workflow}"
-          grep -q 'apksigner.*verify --print-certs' "${workflow}"
-          grep -q 'Missing required release secrets' "${workflow}"
-          grep -q 'R8 removed ai.onnxruntime.TensorInfo' "${workflow}"
-          grep -q 'Release signing is required' android/app/build.gradle.kts
-          if grep -q 'using debug signing\|请先卸载旧版本' "${workflow}"; then
-            echo "Release workflow still allows a destructive or incompatible upgrade path" >&2
-            exit 1
-          fi
-          if grep -q 'GITEE_TOKEN\|GITEE_REPO\|gitee.com' "${workflow}"; then
-            echo "Release workflow still contains Gitee publishing references" >&2
-            exit 1
-          fi
+          python3 tools/check_release_workflow.py
 
       - name: Summarize workflow smoke test
         shell: bash

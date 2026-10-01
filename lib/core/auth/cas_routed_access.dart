@@ -83,6 +83,35 @@ class CasRoutedAccess {
     await _ensureCasSession(service, restoreFromStore: false);
   }
 
+  /// 「attempt → 命中 [CasAuthExpiredException] → [recover] → 仅再试一次」。
+  ///
+  /// 第二次仍抛 [CasAuthExpiredException] 时原样上抛，由调用方映射为业务
+  /// 异常（不清全局会话）。[beforeRecover] / [afterRecover] 供调用方在恢复前后
+  /// 复核身份（抛出的异常原样上抛）；本方法不做任何 guard 判断。
+  static Future<T> withRecoverOnce<T>({
+    required CasRoute route,
+    required CasService service,
+    required Future<T> Function() attempt,
+    CancelToken? cancelToken,
+    DateTime? deadline,
+    void Function()? beforeRecover,
+    void Function()? afterRecover,
+  }) async {
+    try {
+      return await attempt();
+    } on CasAuthExpiredException {
+      beforeRecover?.call();
+      await recover(
+        route,
+        service: service,
+        cancelToken: cancelToken,
+        deadline: deadline,
+      );
+      afterRecover?.call();
+      return attempt();
+    }
+  }
+
   static Future<void> _ensureCasSession(
     CasService service, {
     bool restoreFromStore = true,
@@ -116,7 +145,7 @@ class CasRoutedAccess {
         CasService.webVpnGateway.serviceUrl,
         cancelToken: cancelToken,
         deadline: deadline,
-        needsLogin: _gatewayNeedsLogin,
+        needsLogin: webVpnGatewayResponseNeedsLogin,
       );
     } on CasAuthExpiredException {
       rethrow;
@@ -136,15 +165,22 @@ class CasRoutedAccess {
       throw TimeoutException('WebVPN 网关暂时无法连接，请稍后重试');
     }
   }
-
-  /// WebVPN 网关登录落地页 / CAS 登录页判定（沿用教务 H5 入口的同一判据）。
-  static bool _gatewayNeedsLogin(Response<List<int>> response) {
-    final realUrl = response.realUri.toString();
-    if (isZhengfangGatewayLoginUrl(realUrl) ||
-        isZhengfangLoginEntryUrl(realUrl)) {
-      return true;
-    }
-    final html = utf8.decode(response.data ?? const [], allowMalformed: true);
-    return looksLikeUnifiedAuthLoginHtml(html);
-  }
 }
+
+/// WebVPN 网关登录落地页 / CAS 登录页判定（纯函数）：[realUrl] 为最终落地
+/// URL，[html] 为解码后的正文。教务 H5 入口与 [CasRoutedAccess] 共用同一判据。
+bool isWebVpnGatewayLoginBounce(String realUrl, String html) {
+  if (isZhengfangGatewayLoginUrl(realUrl) ||
+      isZhengfangLoginEntryUrl(realUrl)) {
+    return true;
+  }
+  return looksLikeUnifiedAuthLoginHtml(html);
+}
+
+/// [CasAuthBroker.getResource] 的 `needsLogin` 适配：对响应应用
+/// [isWebVpnGatewayLoginBounce]。
+bool webVpnGatewayResponseNeedsLogin(Response<List<int>> response) =>
+    isWebVpnGatewayLoginBounce(
+      response.realUri.toString(),
+      utf8.decode(response.data ?? const [], allowMalformed: true),
+    );

@@ -11,6 +11,7 @@ import 'package:jxu_campus_hub/shared/widgets/unified_auth_protected_webview_pag
 import 'package:jxu_campus_hub/shared/widgets/webview_page.dart';
 
 import '../../helpers/test_setup.dart';
+import '../../helpers/fake_inappwebview.dart';
 
 const _resource = 'https://jwc.zjxu.edu.cn/list.jsp';
 const _cmsCallback =
@@ -22,60 +23,6 @@ const _proxiedCasLogin =
     'https://webvpn.zjxu.edu.cn/https/'
     '77726476706e69737468656265737421fafc4b85692a62486b468ca88d1b203b'
     '/cas/login?service=https%3A%2F%2Fjwc.zjxu.edu.cn%2Flist.jsp';
-
-class _FakeInAppWebViewPlatform extends InAppWebViewPlatform {
-  @override
-  PlatformInAppWebViewWidget createPlatformInAppWebViewWidget(
-    PlatformInAppWebViewWidgetCreationParams params,
-  ) {
-    return _FakePlatformInAppWebViewWidget(params);
-  }
-
-  @override
-  PlatformCookieManager createPlatformCookieManager(
-    PlatformCookieManagerCreationParams params,
-  ) {
-    return _FakePlatformCookieManager(params);
-  }
-}
-
-class _FakePlatformCookieManager extends PlatformCookieManager {
-  _FakePlatformCookieManager(super.params) : super.implementation();
-
-  @override
-  Future<bool> setCookie({
-    required WebUri url,
-    required String name,
-    required String value,
-    String path = '/',
-    String? domain,
-    int? expiresDate,
-    int? maxAge,
-    bool? isSecure,
-    bool? isHttpOnly,
-    HTTPCookieSameSitePolicy? sameSite,
-    @Deprecated('Use webViewController instead')
-    PlatformInAppWebViewController? iosBelow11WebViewController,
-    PlatformInAppWebViewController? webViewController,
-  }) async {
-    return true;
-  }
-}
-
-class _FakePlatformInAppWebViewWidget extends PlatformInAppWebViewWidget {
-  _FakePlatformInAppWebViewWidget(super.params) : super.implementation();
-
-  @override
-  Widget build(BuildContext context) => const SizedBox.expand();
-
-  @override
-  T controllerFromPlatform<T>(PlatformInAppWebViewController controller) {
-    throw UnimplementedError('Controller is not used by this test fake.');
-  }
-
-  @override
-  void dispose() {}
-}
 
 Response<List<int>> _ok(String url) {
   return Response<List<int>>(
@@ -89,7 +36,9 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUpAll(() {
-    InAppWebViewPlatform.instance = _FakeInAppWebViewPlatform();
+    InAppWebViewPlatform.instance = FakeInAppWebViewPlatform(
+      cookieMode: FakeCookieManagerMode.acceptOnly,
+    );
   });
 
   setUp(() async {

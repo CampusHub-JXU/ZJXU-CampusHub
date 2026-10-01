@@ -1,7 +1,8 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/academic/academic_exceptions.dart';
+import '../../core/academic/zhengfang_query_post.dart';
 import '../../core/auth/academic_auth_guard.dart';
 import '../../core/auth/auth_session_persistence.dart';
 import '../../core/auth/credential_store.dart';
@@ -61,12 +62,7 @@ class GradesService {
   /// 变化的旧结果一律丢弃。仅进程内有效。
   int get _authRevision => ZhengfangAuth.instance.sessionRevision;
 
-  String? get _currentStudentId {
-    final auth = ZhengfangAuth.instance;
-    if (!auth.isLoggedIn) return null;
-    final id = auth.currentStudentId?.trim();
-    return (id == null || id.isEmpty) ? null : id;
-  }
+  String? get _currentStudentId => ZhengfangAuth.instance.verifiedStudentId;
 
   /// 身份变化时清空内存缓存；getter 另有归属校验兜底。
   void _onAuthChanged() {
@@ -194,11 +190,8 @@ class GradesService {
     final owner = studentId.trim();
     final auth = ZhengfangAuth.instance;
     if (!auth.isLoggedIn) throw const GradesAuthExpiredException();
-    final current = auth.currentStudentId?.trim();
-    if (owner.isEmpty ||
-        current == null ||
-        current.isEmpty ||
-        owner != current) {
+    final current = auth.verifiedStudentId;
+    if (owner.isEmpty || current == null || owner != current) {
       throw const GradesRequestException('学号与当前登录身份不一致，请重新查询');
     }
 
@@ -258,46 +251,27 @@ class GradesService {
     final ts = DateTime.now().millisecondsSinceEpoch;
     try {
       _ensureGuard(guard);
-      final guarded =
-          await AcademicAuthGuard.guardWithSession<Map<String, dynamic>>(
-            authExpiredException: const GradesAuthExpiredException(),
-            request: () =>
-                ZhengfangAuth.instance.academicDio.post<Map<String, dynamic>>(
-                  ZhengfangAuth.instance.buildPortalUrl(
-                    '/cjcx/cjcx_cxDgXscj.html',
-                  ),
-                  queryParameters: {
-                    'doType': 'query',
-                    'gnmkdm': 'N305005',
-                    'su': owner,
-                  },
-                  data:
-                      'xnm=&xqm=&_search=false&nd=$ts'
-                      '&queryModel.showCount=100&queryModel.currentPage=1'
-                      '&queryModel.sortName=&queryModel.sortOrder=asc&time=1',
-                  options: Options(
-                    contentType: 'application/x-www-form-urlencoded',
-                    headers: {
-                      'Referer': ZhengfangAuth.instance.academicServiceUrl,
-                      'X-Requested-With': 'XMLHttpRequest',
-                    },
-                  ),
-                ),
-          );
+      final query = await postZhengfangQuery(
+        path: '/cjcx/cjcx_cxDgXscj.html',
+        gnmkdm: 'N305005',
+        owner: owner,
+        formBody:
+            'xnm=&xqm=&_search=false&nd=$ts'
+            '&queryModel.showCount=100&queryModel.currentPage=1'
+            '&queryModel.sortName=&queryModel.sortOrder=asc&time=1',
+        authExpiredException: const GradesAuthExpiredException(),
+        unexpectedResponseException: const GradesRequestException(
+          '成绩响应异常，保留上次成功数据',
+        ),
+      );
+      final guarded = query.guarded;
 
       final settledGuard = _GradesGuard(
         revision: guarded.revision,
         owner: owner,
-        durableEpoch: guarded.epoch ?? -1,
+        durableEpoch: guarded.epoch!,
       );
-      if (guarded.account != owner || guarded.epoch == null) {
-        throw const GradesAuthExpiredException();
-      }
-      final items = guarded.response.data?['items'];
-      if (guarded.response.statusCode != 200 || items is! List) {
-        throw const GradesRequestException('成绩响应异常，保留上次成功数据');
-      }
-      final grades = items
+      final grades = query.items
           .cast<Map<String, dynamic>>()
           .map(GradeEntry.fromJson)
           .toList();
@@ -421,18 +395,15 @@ class _GradesInFlight {
   final Future<List<GradeEntry>> future;
 }
 
-class GradesRequestException implements Exception {
-  const GradesRequestException(this.message);
-  final String message;
-  @override
-  String toString() => message;
+class GradesRequestException extends AcademicRequestException {
+  const GradesRequestException(super.message);
 }
 
-class GradesAuthExpiredException extends GradesRequestException {
+class GradesAuthExpiredException extends GradesRequestException
+    implements AcademicSessionExpired {
   const GradesAuthExpiredException({this.automaticLoginPaused = false})
-    : super('登录状态已过期，请重新登录');
+    : super(academicSessionExpiredMessage);
 
-  /// 自动登录是否因连续身份失败被暂停。为 true 时页面应提示用户手动登录
-  /// 一次（登录成功后会由登录控件重新武装自动登录）。
+  @override
   final bool automaticLoginPaused;
 }

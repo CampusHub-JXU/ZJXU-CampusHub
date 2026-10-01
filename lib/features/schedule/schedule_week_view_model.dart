@@ -1,4 +1,4 @@
-import 'schedule_model.dart';
+import '../../core/academic/schedule_model.dart';
 
 class ScheduleDayCourses {
   const ScheduleDayCourses({

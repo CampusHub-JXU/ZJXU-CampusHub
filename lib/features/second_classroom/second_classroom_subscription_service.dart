@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/logging/app_logger.dart';
 import '../../core/notification/app_notification_service.dart';
+import '../../core/util/json_coerce.dart';
 import 'second_classroom_model.dart';
 import 'second_classroom_service.dart';
 
@@ -392,7 +393,7 @@ class _SecondClassroomSubscriptionRecord {
       createdAt:
           parseSecondClassroomDate(json['createdAt']) ??
           DateTime.fromMillisecondsSinceEpoch(0),
-      lastMatchedActivityId: _nullableIntValue(json['lastMatchedActivityId']),
+      lastMatchedActivityId: asNullableInt(json['lastMatchedActivityId']),
       lastMatchedAt: parseSecondClassroomDate(json['lastMatchedAt']),
     );
   }
@@ -405,11 +406,4 @@ class _SecondClassroomSubscriptionRecord {
       'lastMatchedAt': lastMatchedAt?.toIso8601String(),
     };
   }
-}
-
-int? _nullableIntValue(Object? value) {
-  if (value == null) return null;
-  if (value is int) return value;
-  if (value is num) return value.toInt();
-  return int.tryParse(value.toString());
 }

@@ -92,12 +92,7 @@ class ChangxingTokenBinding {
   }
 
   /// 当前明确的统一认证账号；未登录 / 空白账号一律为 null。
-  String? get currentOwner {
-    final auth = UnifiedAuthService.instance;
-    if (!auth.isLoggedIn) return null;
-    final account = auth.currentAccount?.trim();
-    return (account == null || account.isEmpty) ? null : account;
-  }
+  String? get currentOwner => UnifiedAuthService.instance.verifiedAccount;
 
   /// 当前身份可用的 token：owner 与当前非空 CAS 账号一致，且绑定时记录的
   /// `sessionRevision` 未漂移；任一条不满足一律视为没有 token。

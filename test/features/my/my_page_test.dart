@@ -20,6 +20,7 @@ import 'package:jxu_campus_hub/features/my/my_page.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';
 
 import '../../helpers/mock_http_client_adapter.dart';
+import '../../helpers/fake_inappwebview.dart';
 
 /// 推进「我的」页显式登出链直至自然结束（或 [until] 成立）。
 ///
@@ -59,7 +60,9 @@ void main() {
   setUpAll(() {
     // 进门户前的 syncCookiesToWebView 需要 WebView Cookie 平台实现；
     // 测试用内存假实现（与 webview_page_test 等同一模式）。
-    InAppWebViewPlatform.instance = _FakeInAppWebViewPlatform();
+    InAppWebViewPlatform.instance = FakeInAppWebViewPlatform(
+      cookieMode: FakeCookieManagerMode.inMemory,
+    );
   });
 
   setUp(() async {
@@ -1156,72 +1159,4 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
-}
-
-class _FakeInAppWebViewPlatform extends InAppWebViewPlatform {
-  @override
-  PlatformCookieManager createPlatformCookieManager(
-    PlatformCookieManagerCreationParams params,
-  ) {
-    return _FakePlatformCookieManager(params);
-  }
-}
-
-class _FakePlatformCookieManager extends PlatformCookieManager {
-  _FakePlatformCookieManager(super.params) : super.implementation();
-
-  final Map<String, Cookie> _cookies = {};
-
-  String _key(WebUri url, String name, String? domain, String path) {
-    return '${url.host}|${domain ?? ''}|$path|$name';
-  }
-
-  @override
-  Future<bool> setCookie({
-    required WebUri url,
-    required String name,
-    required String value,
-    String path = '/',
-    String? domain,
-    int? expiresDate,
-    int? maxAge,
-    bool? isSecure,
-    bool? isHttpOnly,
-    HTTPCookieSameSitePolicy? sameSite,
-    @Deprecated('Use webViewController instead')
-    PlatformInAppWebViewController? iosBelow11WebViewController,
-    PlatformInAppWebViewController? webViewController,
-  }) async {
-    _cookies[_key(url, name, domain, path)] = Cookie(
-      name: name,
-      value: value,
-      domain: domain,
-      path: path,
-    );
-    return true;
-  }
-
-  @override
-  Future<List<Cookie>> getCookies({
-    required WebUri url,
-    @Deprecated('Use webViewController instead')
-    PlatformInAppWebViewController? iosBelow11WebViewController,
-    PlatformInAppWebViewController? webViewController,
-  }) async {
-    return _cookies.values.toList(growable: false);
-  }
-
-  @override
-  Future<bool> deleteCookie({
-    required WebUri url,
-    required String name,
-    String path = '/',
-    String? domain,
-    @Deprecated('Use webViewController instead')
-    PlatformInAppWebViewController? iosBelow11WebViewController,
-    PlatformInAppWebViewController? webViewController,
-  }) async {
-    _cookies.remove(_key(url, name, domain, path));
-    return true;
-  }
 }

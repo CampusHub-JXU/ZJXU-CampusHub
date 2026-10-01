@@ -4,9 +4,10 @@ import 'package:flutter/widgets.dart';
 
 import '../../../core/auth/zhengfang_auth.dart';
 import '../../../core/semester/semester_calendar.dart';
-import '../schedule_cache_snapshot.dart';
-import '../schedule_constants.dart';
-import '../schedule_model.dart';
+import '../../../core/academic/effective_week_courses.dart';
+import '../../../core/academic/schedule_cache_snapshot.dart';
+import '../../../core/academic/schedule_constants.dart';
+import '../../../core/academic/schedule_model.dart';
 import '../schedule_service.dart';
 import '../../../core/semester/schedule_term_context.dart';
 import '../schedule_week_view_model.dart';
@@ -361,9 +362,7 @@ class SchedulePageController extends ChangeNotifier {
   bool onLoginSuccess({String? studentId}) {
     final requested = _normalizeStudentId(studentId);
     final auth = ZhengfangAuth.instance;
-    final currentOwner = auth.isLoggedIn
-        ? _normalizeStudentId(auth.currentStudentId)
-        : null;
+    final currentOwner = auth.verifiedStudentId;
 
     if (requested == null || requested != currentOwner) {
       _loggedIn = false;
@@ -419,13 +418,12 @@ class SchedulePageController extends ChangeNotifier {
   }
 
   ScheduleWeekViewModel _buildWeekViewModel(int week) {
-    final effectiveWeekCourses = ScheduleService.instance
-        .buildEffectiveWeekCourses(
-          courses: _courses,
-          week: week,
-          changeRules: _courseChangeRules,
-          termContext: activeTermContext,
-        );
+    final effectiveWeekCourses = buildEffectiveWeekCourses(
+      courses: _courses,
+      week: week,
+      changeRules: _courseChangeRules,
+      termContext: activeTermContext,
+    );
 
     final currentWeekCoursesByDay = <int, List<CourseEntry>>{
       for (int day = 1; day <= 7; day++) day: <CourseEntry>[],

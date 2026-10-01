@@ -12,6 +12,7 @@ import '../../core/auth/captcha_challenge.dart';
 import '../../core/auth/credential_store.dart';
 import '../../core/auth/unified_auth.dart';
 import '../../core/logging/app_logger.dart';
+import '../../core/network/cancel_token_x.dart';
 import '../../core/theme/app_design_tokens.dart';
 
 enum UnifiedAuthMode { direct }
@@ -157,7 +158,7 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
   Future<bool> _preparePrimaryLoginMode(CancelToken token) async {
     if (widget.sessionPreflight != null) {
       final hasActiveSession = await widget.sessionPreflight!.call();
-      if (token.isCancelled) throw token.cancelError!;
+      token.throwIfCancelled();
       if (!mounted || hasActiveSession) {
         return hasActiveSession;
       }
@@ -221,10 +222,10 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
             (() async {
               if (prepare) {
                 await _loadSaved(token);
-                if (token.isCancelled) throw token.cancelError!;
+                token.throwIfCancelled();
                 if (await _preparePrimaryLoginMode(token)) return null;
               }
-              if (token.isCancelled) throw token.cancelError!;
+              token.throwIfCancelled();
               if (widget.challengeLoader != null) {
                 final ch = await widget.challengeLoader!(cancelToken: token);
                 if (!mounted ||

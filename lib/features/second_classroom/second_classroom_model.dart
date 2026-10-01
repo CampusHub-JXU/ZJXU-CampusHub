@@ -1,3 +1,5 @@
+import '../../core/util/json_coerce.dart';
+
 enum SecondClassroomActivityStatus {
   all('', '全部状态'),
   warming('1', '活动预热'),
@@ -278,23 +280,23 @@ class SecondClassroomActivity {
 
   factory SecondClassroomActivity.fromJson(Map<String, dynamic> json) {
     return SecondClassroomActivity(
-      id: _intValue(json['id']),
-      title: _stringValue(json['mc']),
-      coverId: _stringValue(json['fm']),
-      iconId: _stringValue(json['tb']),
+      id: asInt(json['id']),
+      title: asString(json['mc'], trim: true),
+      coverId: asString(json['fm'], trim: true),
+      iconId: asString(json['tb'], trim: true),
       registrationStartAt: parseSecondClassroomDate(json['bmkssj']),
       registrationEndAt: parseSecondClassroomDate(json['bmjssj']),
       activityStartAt: parseSecondClassroomDate(json['hdkssj']),
       activityEndAt: parseSecondClassroomDate(json['hdjssj']),
-      creditHours: _doubleValue(json['xs']),
-      location: _stringValue(json['hddd']),
-      summary: _stringValue(json['hdjj']),
-      contactName: _stringValue(json['lxr']),
-      contactPhone: _stringValue(json['hdlxfs']),
-      categoryName: _stringValue(json['flmc']),
-      organizerName: _stringValue(json['zbzz']),
-      capacity: _intValue(json['zmrs']),
-      enrolledCount: _intValue(json['hdbmrs']),
+      creditHours: asDouble(json['xs']),
+      location: asString(json['hddd'], trim: true),
+      summary: asString(json['hdjj'], trim: true),
+      contactName: asString(json['lxr'], trim: true),
+      contactPhone: asString(json['hdlxfs'], trim: true),
+      categoryName: asString(json['flmc'], trim: true),
+      organizerName: asString(json['zbzz'], trim: true),
+      capacity: asInt(json['zmrs']),
+      enrolledCount: asInt(json['hdbmrs']),
       isRegistered: json['sfbm'] == true,
       hasCheckedIn: json['sfqd'] == true,
       hasRetaken: json['sfqt'] == true,
@@ -305,29 +307,29 @@ class SecondClassroomActivity {
     final category = json['hdfl'];
     final organizer = json['zzdw'];
     return SecondClassroomActivity(
-      id: _intValue(json['id']),
-      title: _stringValue(json['mc']),
-      coverId: _stringValue(json['fm']),
+      id: asInt(json['id']),
+      title: asString(json['mc'], trim: true),
+      coverId: asString(json['fm'], trim: true),
       iconId: category is Map<String, dynamic>
-          ? _stringValue(category['tb'])
+          ? asString(category['tb'], trim: true)
           : '',
       registrationStartAt: parseSecondClassroomDate(json['bmkssj']),
       registrationEndAt: parseSecondClassroomDate(json['bmjssj']),
       activityStartAt: parseSecondClassroomDate(json['hdkssj']),
       activityEndAt: parseSecondClassroomDate(json['hdjssj']),
-      creditHours: _doubleValue(json['xs']),
-      location: _stringValue(json['hddd']),
-      summary: _stringValue(json['hdjj']),
-      contactName: _stringValue(json['lxr']),
-      contactPhone: _stringValue(json['hdlxfs']),
+      creditHours: asDouble(json['xs']),
+      location: asString(json['hddd'], trim: true),
+      summary: asString(json['hdjj'], trim: true),
+      contactName: asString(json['lxr'], trim: true),
+      contactPhone: asString(json['hdlxfs'], trim: true),
       categoryName: category is Map<String, dynamic>
-          ? _stringValue(category['mc'])
+          ? asString(category['mc'], trim: true)
           : '',
       organizerName: organizer is Map<String, dynamic>
-          ? _stringValue(organizer['mc'])
-          : _stringValue(json['zbf']),
-      capacity: _intValue(json['zmrs']),
-      enrolledCount: _intValue(json['hdbmrs']),
+          ? asString(organizer['mc'], trim: true)
+          : asString(json['zbf'], trim: true),
+      capacity: asInt(json['zmrs']),
+      enrolledCount: asInt(json['hdbmrs']),
       isRegistered: json['sfbm'] == true,
       hasCheckedIn: json['sfqd'] == true,
       hasRetaken: json['sfqt'] == true,
@@ -361,25 +363,25 @@ class SecondClassroomActivity {
 
   factory SecondClassroomActivity.fromStoredJson(Map<String, dynamic> json) {
     return SecondClassroomActivity(
-      id: _intValue(json['id']),
-      title: _stringValue(json['title']),
-      coverId: _stringValue(json['coverId']),
-      iconId: _stringValue(json['iconId']),
+      id: asInt(json['id']),
+      title: asString(json['title'], trim: true),
+      coverId: asString(json['coverId'], trim: true),
+      iconId: asString(json['iconId'], trim: true),
       registrationStartAt: parseSecondClassroomDate(
         json['registrationStartAt'],
       ),
       registrationEndAt: parseSecondClassroomDate(json['registrationEndAt']),
       activityStartAt: parseSecondClassroomDate(json['activityStartAt']),
       activityEndAt: parseSecondClassroomDate(json['activityEndAt']),
-      creditHours: _doubleValue(json['creditHours']),
-      location: _stringValue(json['location']),
-      summary: _stringValue(json['summary']),
-      contactName: _stringValue(json['contactName']),
-      contactPhone: _stringValue(json['contactPhone']),
-      categoryName: _stringValue(json['categoryName']),
-      organizerName: _stringValue(json['organizerName']),
-      capacity: _intValue(json['capacity']),
-      enrolledCount: _intValue(json['enrolledCount']),
+      creditHours: asDouble(json['creditHours']),
+      location: asString(json['location'], trim: true),
+      summary: asString(json['summary'], trim: true),
+      contactName: asString(json['contactName'], trim: true),
+      contactPhone: asString(json['contactPhone'], trim: true),
+      categoryName: asString(json['categoryName'], trim: true),
+      organizerName: asString(json['organizerName'], trim: true),
+      capacity: asInt(json['capacity']),
+      enrolledCount: asInt(json['enrolledCount']),
       isRegistered: json['isRegistered'] == true,
       hasCheckedIn: json['hasCheckedIn'] == true,
       hasRetaken: json['hasRetaken'] == true,
@@ -415,19 +417,17 @@ class SecondClassroomActivityDetail {
     }
     final signUpMode = hd['bmfs'];
     final activity = SecondClassroomActivity.fromDetailJson(hd).copyWith(
-      enrolledCount: extend.containsKey('bmrs')
-          ? _intValue(extend['bmrs'])
-          : null,
+      enrolledCount: extend.containsKey('bmrs') ? asInt(extend['bmrs']) : null,
       isRegistered: extend['sfbm'] == true,
     );
     return SecondClassroomActivityDetail(
       activity: activity,
       signUpMode: signUpMode is Map<String, dynamic>
-          ? _stringValue(signUpMode['label'])
+          ? asString(signUpMode['label'], trim: true)
           : '',
-      limitedCollege: _stringValue(hd['kcyxy']),
-      limitedGrade: _stringValue(hd['kcynj']),
-      hasCredit: _doubleValue(hd['xs']) > 0,
+      limitedCollege: asString(hd['kcyxy'], trim: true),
+      limitedGrade: asString(hd['kcynj'], trim: true),
+      hasCredit: asDouble(hd['xs']) > 0,
       isFavorite: extend['sfsc'] == true,
       isInRegistrationTime: extend['inTime'] == true,
     );
@@ -438,22 +438,6 @@ DateTime? parseSecondClassroomDate(Object? value) {
   final text = value?.toString().trim() ?? '';
   if (text.isEmpty || text == 'null') return null;
   return DateTime.tryParse(text)?.toLocal();
-}
-
-int _intValue(Object? value) {
-  if (value is int) return value;
-  if (value is num) return value.toInt();
-  return int.tryParse(value?.toString() ?? '') ?? 0;
-}
-
-double _doubleValue(Object? value) {
-  if (value is double) return value;
-  if (value is num) return value.toDouble();
-  return double.tryParse(value?.toString() ?? '') ?? 0;
-}
-
-String _stringValue(Object? value) {
-  return value?.toString().trim() ?? '';
 }
 
 List<SecondClassroomFilterOption> _filterOptionsFromStoredJson(Object? value) {

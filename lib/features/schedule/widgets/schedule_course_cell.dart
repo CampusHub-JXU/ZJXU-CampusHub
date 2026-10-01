@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_design_tokens.dart';
 import '../../../shared/widgets/app_feedback.dart';
-import '../schedule_constants.dart';
-import '../schedule_model.dart';
+import '../../../core/academic/schedule_constants.dart';
+import '../../../core/academic/schedule_model.dart';
 
 class ScheduleCourseCell extends StatelessWidget {
   const ScheduleCourseCell({

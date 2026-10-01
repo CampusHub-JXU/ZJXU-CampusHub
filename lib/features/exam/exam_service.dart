@@ -2,6 +2,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/academic/academic_exceptions.dart';
+import '../../core/academic/zhengfang_query_post.dart';
 import '../../core/auth/academic_auth_guard.dart';
 import '../../core/auth/auth_session_persistence.dart';
 import '../../core/auth/credential_store.dart';
@@ -11,7 +13,7 @@ import '../../core/network/dio_client.dart';
 import '../../core/semester/current_term_resolver.dart';
 import '../../core/semester/schedule_term_context.dart';
 import '../../core/system_surface/campus_data_change_bus.dart';
-import 'exam_model.dart';
+import '../../core/academic/exam_model.dart';
 
 class ExamService {
   ExamService._() {
@@ -61,12 +63,7 @@ class ExamService {
   /// 变化的旧结果一律丢弃。仅进程内有效。
   int get _authRevision => ZhengfangAuth.instance.sessionRevision;
 
-  String? get _currentStudentId {
-    final auth = ZhengfangAuth.instance;
-    if (!auth.isLoggedIn) return null;
-    final id = auth.currentStudentId?.trim();
-    return (id == null || id.isEmpty) ? null : id;
-  }
+  String? get _currentStudentId => ZhengfangAuth.instance.verifiedStudentId;
 
   /// 身份变化时清空内存缓存；getter 另有归属校验兜底。
   void _onAuthChanged() {
@@ -208,10 +205,8 @@ class ExamService {
   }) async {
     final auth = ZhengfangAuth.instance;
     if (!auth.isLoggedIn) throw const ExamAuthExpiredException();
-    final current = auth.currentStudentId?.trim();
-    if (current == null || current.isEmpty) {
-      throw const ExamAuthExpiredException();
-    }
+    final current = auth.verifiedStudentId;
+    if (current == null) throw const ExamAuthExpiredException();
     final provided = studentId?.trim();
     if (studentId != null && (provided == null || provided.isEmpty)) {
       throw const ExamRequestException('未获取到学号，请先登录教务系统');
@@ -285,48 +280,32 @@ class ExamService {
 
     try {
       _ensureGuard(guard);
-      final guarded =
-          await AcademicAuthGuard.guardWithSession<Map<String, dynamic>>(
-            authExpiredException: const ExamAuthExpiredException(),
-            request: () =>
-                ZhengfangAuth.instance.academicDio.post<Map<String, dynamic>>(
-                  ZhengfangAuth.instance.buildPortalUrl(
-                    '/kwgl/kscx_cxXsksxxIndex.html',
-                  ),
-                  queryParameters: {
-                    'doType': 'query',
-                    'gnmkdm': 'N358105',
-                    'su': resolvedId,
-                  },
-                  data:
-                      'xnm=$academicYear&xqm=$term&ksmcdmb_id=&kch=&kc=&ksrq='
-                      '&kkbm_id=&ksmc=&_search=false&nd=$ts'
-                      '&queryModel.showCount=100&queryModel.currentPage=1'
-                      '&queryModel.sortName=&queryModel.sortOrder=asc&time=0',
-                  options: Options(
-                    contentType: 'application/x-www-form-urlencoded',
-                    headers: {
-                      'Referer': ZhengfangAuth.instance.academicServiceUrl,
-                      'X-Requested-With': 'XMLHttpRequest',
-                    },
-                  ),
-                ),
-          );
+      final query = await postZhengfangQuery(
+        path: '/kwgl/kscx_cxXsksxxIndex.html',
+        gnmkdm: 'N358105',
+        owner: resolvedId,
+        formBody:
+            'xnm=$academicYear&xqm=$term&ksmcdmb_id=&kch=&kc=&ksrq='
+            '&kkbm_id=&ksmc=&_search=false&nd=$ts'
+            '&queryModel.showCount=100&queryModel.currentPage=1'
+            '&queryModel.sortName=&queryModel.sortOrder=asc&time=0',
+        authExpiredException: const ExamAuthExpiredException(),
+        unexpectedResponseException: const ExamRequestException(
+          '考试响应异常，保留上次成功数据',
+        ),
+      );
+      final guarded = query.guarded;
 
       final settledGuard = _ExamGuard(
         revision: guarded.revision,
         owner: resolvedId,
-        durableEpoch: guarded.epoch ?? -1,
+        durableEpoch: guarded.epoch!,
       );
-      if (guarded.account != resolvedId || guarded.epoch == null) {
-        throw const ExamAuthExpiredException();
-      }
-      final items = guarded.response.data?['items'];
-      if (guarded.response.statusCode != 200 || items is! List) {
-        throw const ExamRequestException('考试响应异常，保留上次成功数据');
-      }
       final exams =
-          items.cast<Map<String, dynamic>>().map(ExamEntry.fromJson).toList()
+          query.items
+              .cast<Map<String, dynamic>>()
+              .map(ExamEntry.fromJson)
+              .toList()
             ..sort(_compareExams);
 
       // 内存身份 / 纪元变化必须丢弃；已被更新请求淘汰的旧结果不提交。
@@ -455,18 +434,15 @@ class _ExamInFlight {
   final Future<List<ExamEntry>> future;
 }
 
-class ExamRequestException implements Exception {
-  const ExamRequestException(this.message);
-  final String message;
-  @override
-  String toString() => message;
+class ExamRequestException extends AcademicRequestException {
+  const ExamRequestException(super.message);
 }
 
-class ExamAuthExpiredException extends ExamRequestException {
+class ExamAuthExpiredException extends ExamRequestException
+    implements AcademicSessionExpired {
   const ExamAuthExpiredException({this.automaticLoginPaused = false})
-    : super('登录状态已过期，请重新登录');
+    : super(academicSessionExpiredMessage);
 
-  /// 自动登录是否因连续身份失败被暂停。为 true 时页面应提示用户手动登录
-  /// 一次（登录成功后会由登录控件重新武装自动登录）。
+  @override
   final bool automaticLoginPaused;
 }

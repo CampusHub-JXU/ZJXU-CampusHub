@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../core/logging/app_logger.dart';
 import '../../core/network/dio_client.dart';
+import '../../core/util/json_coerce.dart';
 import 'second_classroom_model.dart';
 
 const _secondClassroomHost = 'twdekt.zjxu.edu.cn';
@@ -246,10 +247,10 @@ SecondClassroomActivityPage parseSecondClassroomActivityPagePayload(
 
   return SecondClassroomActivityPage(
     items: items,
-    pageIndex: _intValue(payload['pageIndex']),
-    pageSize: _intValue(payload['pageSize']),
-    totalPages: _intValue(payload['totalPages']),
-    count: _intValue(payload['count']),
+    pageIndex: asInt(payload['pageIndex']),
+    pageSize: asInt(payload['pageSize']),
+    totalPages: asInt(payload['totalPages']),
+    count: asInt(payload['count']),
   );
 }
 
@@ -277,10 +278,4 @@ List<SecondClassroomFilterOption> _optionList(Object? value) {
       )
       .where((option) => option.value.isNotEmpty && option.text.isNotEmpty)
       .toList(growable: false);
-}
-
-int _intValue(Object? value) {
-  if (value is int) return value;
-  if (value is num) return value.toInt();
-  return int.tryParse(value?.toString() ?? '') ?? 0;
 }

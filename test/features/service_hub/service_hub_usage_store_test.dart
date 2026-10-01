@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:jxu_campus_hub/features/service_hub/service_hub_usage_store.dart';
+import 'package:jxu_campus_hub/core/config/service_hub_usage_store.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

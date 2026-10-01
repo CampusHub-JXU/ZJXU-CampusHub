@@ -6,6 +6,7 @@ import '../core/auth/auth_recovery_state_store.dart';
 import '../core/auth/automatic_login.dart';
 import '../core/auth/unified_auth.dart';
 import '../core/auth/zhengfang_auth.dart';
+import '../core/async/run_isolated.dart';
 import '../core/logging/app_logger.dart';
 import '../core/network/dio_client.dart';
 import '../core/network/network_settings.dart';
@@ -175,23 +176,12 @@ class AppBootstrapController {
   }
 
   /// 单个暖启动步骤：失败只记日志，绝不阻断整个暖启动。
-  Future<void> _runWarmUpStep(
-    String label,
-    Future<void> Function() action,
-  ) async {
-    try {
-      final override = debugWarmUpStepOverrides[label];
-      await (override ?? action)();
-    } catch (error, stackTrace) {
-      AppLogger.instance.log(
-        LogLevel.warn,
-        LogCategory.general,
-        '$label失败，已跳过（不影响暖启动）',
-        error: error,
-        stackTrace: stackTrace,
+  Future<void> _runWarmUpStep(String label, Future<void> Function() action) =>
+      runIsolated(
+        label,
+        debugWarmUpStepOverrides[label] ?? action,
+        message: (label) => '$label失败，已跳过（不影响暖启动）',
       );
-    }
-  }
 
   /// 对每个仍未登录的认证域发起一次静默自动登录（unawaited）。
   ///

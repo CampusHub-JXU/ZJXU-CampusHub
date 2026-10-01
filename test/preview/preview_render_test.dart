@@ -40,8 +40,8 @@ import 'package:jxu_campus_hub/shared/widgets/app_tile_surface.dart';
 import 'package:jxu_campus_hub/shared/widgets/auth_required_view.dart';
 import 'package:jxu_campus_hub/shared/widgets/glass_container.dart';
 import 'package:jxu_campus_hub/shared/widgets/glass_nav_bar.dart';
-import 'package:jxu_campus_hub/features/schedule/schedule_cache_snapshot.dart';
-import 'package:jxu_campus_hub/features/schedule/schedule_model.dart';
+import 'package:jxu_campus_hub/core/academic/schedule_cache_snapshot.dart';
+import 'package:jxu_campus_hub/core/academic/schedule_model.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';
 import 'package:jxu_campus_hub/core/semester/schedule_term_context.dart';
 

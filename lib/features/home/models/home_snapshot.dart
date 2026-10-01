@@ -1,6 +1,6 @@
-import '../../exam/exam_model.dart';
-import '../../schedule/schedule_change_rule.dart';
-import '../../schedule/schedule_model.dart';
+import '../../../core/academic/exam_model.dart';
+import '../../../core/academic/schedule_change_rule.dart';
+import '../../../core/academic/schedule_model.dart';
 
 /// 首页展示层快照。
 ///

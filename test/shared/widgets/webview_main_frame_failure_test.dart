@@ -5,88 +5,13 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jxu_campus_hub/shared/widgets/webview_page.dart';
 
+import '../../helpers/fake_inappwebview.dart';
+
 const _url = 'https://mobilehall.zjxu.edu.cn/webroot/decision/view/form?op=h5';
 
-class _FakeInAppWebViewPlatform extends InAppWebViewPlatform {
-  @override
-  PlatformInAppWebViewWidget createPlatformInAppWebViewWidget(
-    PlatformInAppWebViewWidgetCreationParams params,
-  ) {
-    return _FakePlatformInAppWebViewWidget(params);
-  }
-
-  @override
-  PlatformInAppWebViewController createPlatformInAppWebViewController(
-    PlatformInAppWebViewControllerCreationParams params,
-  ) {
-    return _FakePlatformInAppWebViewController(params);
-  }
-
-  @override
-  PlatformCookieManager createPlatformCookieManager(
-    PlatformCookieManagerCreationParams params,
-  ) {
-    return _FakePlatformCookieManager(params);
-  }
-}
-
-class _FakePlatformInAppWebViewController
-    extends PlatformInAppWebViewController {
-  _FakePlatformInAppWebViewController(super.params) : super.implementation();
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-}
-
-class _FakePlatformCookieManager extends PlatformCookieManager {
-  _FakePlatformCookieManager(super.params) : super.implementation();
-
-  @override
-  Future<bool> setCookie({
-    required WebUri url,
-    required String name,
-    required String value,
-    String path = '/',
-    String? domain,
-    int? expiresDate,
-    int? maxAge,
-    bool? isSecure,
-    bool? isHttpOnly,
-    HTTPCookieSameSitePolicy? sameSite,
-    @Deprecated('Use webViewController instead')
-    PlatformInAppWebViewController? iosBelow11WebViewController,
-    PlatformInAppWebViewController? webViewController,
-  }) async {
-    return true;
-  }
-}
-
-class _FakePlatformInAppWebViewWidget extends PlatformInAppWebViewWidget {
-  _FakePlatformInAppWebViewWidget(super.params) : super.implementation();
-
-  @override
-  Widget build(BuildContext context) => const SizedBox.expand();
-
-  @override
-  T controllerFromPlatform<T>(PlatformInAppWebViewController controller) {
-    throw UnimplementedError('Controller is not used by this test fake.');
-  }
-
-  @override
-  void dispose() {}
-}
-
 /// 读取 WebViewPage 实际绑定到平台层的导航回调。
-PlatformInAppWebViewWidgetCreationParams _boundParams(WidgetTester tester) {
-  final webView = tester.widget<InAppWebView>(find.byType(InAppWebView));
-  final platform = webView.platform;
-  expect(
-    platform,
-    isA<_FakePlatformInAppWebViewWidget>(),
-    reason: '测试必须运行在 fake InAppWebView 平台上',
-  );
-  return (platform as _FakePlatformInAppWebViewWidget).params;
-}
+PlatformInAppWebViewWidgetCreationParams _boundParams(WidgetTester tester) =>
+    boundInAppWebViewParams(tester);
 
 InAppWebViewController _testController() {
   return InAppWebViewController.fromPlatformCreationParams(
@@ -162,7 +87,10 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUpAll(() {
-    InAppWebViewPlatform.instance = _FakeInAppWebViewPlatform();
+    InAppWebViewPlatform.instance = FakeInAppWebViewPlatform(
+      cookieMode: FakeCookieManagerMode.acceptOnly,
+      withController: true,
+    );
   });
 
   testWidgets(
