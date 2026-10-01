@@ -1,25 +1,16 @@
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/academic/academic_exceptions.dart';
 import '../../core/academic/zhengfang_query_post.dart';
 import '../../core/auth/academic_auth_guard.dart';
-import '../../core/auth/auth_session_persistence.dart';
-import '../../core/auth/credential_store.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/cache/private_cache_store.dart';
+import '../../core/cache/private_owner_cache.dart';
 import '../../core/network/dio_client.dart';
-import '../../core/system_surface/campus_data_change_bus.dart';
 import 'grades_model.dart';
 
 class GradesService {
-  GradesService._() {
-    _lastAuthIdentity = (
-      ZhengfangAuth.instance.currentStudentId,
-      ZhengfangAuth.instance.isLoggedIn,
-    );
-    ZhengfangAuth.instance.addListener(_onAuthChanged);
-  }
+  GradesService._();
 
   static final GradesService instance = GradesService._();
 
@@ -29,159 +20,41 @@ class GradesService {
   /// 单条原子 JSON envelope（owner + updatedAt + durable epoch + payload）。
   static const cacheKey = 'grades_private_cache_v1';
 
-  // 旧多 key / 旧无 epoch 格式：无法证明属于哪个持久身份纪元，安全舍弃。
-  static const _legacyDataKey = 'grades_cached_data';
-  static const _legacyTimeKey = 'grades_cached_at';
-  static const _legacyOwnerKey = 'grades_cached_owner';
-
-  static final PrivateCacheStore _store = SharedPreferencesPrivateCacheStore(
-    cacheKey,
-  );
-
-  List<GradeEntry>? _cachedGrades;
-  DateTime? _lastSavedAt;
-  String? _cachedOwner;
-  int? _cachedEpoch;
-
-  /// 当前有效的持久身份纪元（最近一次读到 durable session 的 epoch）。
-  /// 采纳缓存时与 [_cachedEpoch] 同步；身份变化 / 登出清空。
-  int? _validEpoch;
-
-  _GradesInFlight? _inFlight;
-  int _latestGeneration = 0;
+  /// 私有缓存内核（归属 / epoch / TTL / inflight / 条件落盘），与考试共用。
+  final PrivateOwnerCache<List<GradeEntry>> _cache =
+      PrivateOwnerCache<List<GradeEntry>>(
+        store: SharedPreferencesPrivateCacheStore(cacheKey),
+        refreshWindow: refreshWindow,
+        encode: (grades) => grades.map((e) => e.toJson()).toList(),
+        decode: _decodeEntries,
+        // 旧多 key / 旧无 epoch 格式：无法证明属于哪个持久身份纪元，安全舍弃。
+        legacyKeys: const [
+          'grades_cached_data',
+          'grades_cached_at',
+          'grades_cached_owner',
+        ],
+      );
 
   /// 测试注入：restore 读取持久 epoch 之后、获取同域锁之前的屏障，
   /// 用于在锁前推进 epoch 以验证 restore 竞态。
   @visibleForTesting
-  Future<void> Function()? debugRestoreBarrier;
+  Future<void> Function()? get debugRestoreBarrier =>
+      _cache.debugRestoreBarrier;
 
-  /// 上一次已清空内存缓存时看到的教务身份，用于识别登出 / 换号。
-  (String?, bool) _lastAuthIdentity = (null, false);
+  @visibleForTesting
+  set debugRestoreBarrier(Future<void> Function()? barrier) =>
+      _cache.debugRestoreBarrier = barrier;
 
-  /// 教务身份修订号：登录 / 登出 / 换号 / 恢复时递增，异步期间发生
-  /// 变化的旧结果一律丢弃。仅进程内有效。
-  int get _authRevision => ZhengfangAuth.instance.sessionRevision;
+  DateTime? get updatedAt => _cache.updatedAt;
 
-  String? get _currentStudentId => ZhengfangAuth.instance.verifiedStudentId;
+  bool get isCacheFresh => _cache.isFresh;
 
-  /// 身份变化时清空内存缓存；getter 另有归属校验兜底。
-  void _onAuthChanged() {
-    final auth = ZhengfangAuth.instance;
-    final identity = (auth.currentStudentId, auth.isLoggedIn);
-    if (identity == _lastAuthIdentity) return;
-    _lastAuthIdentity = identity;
-    _clearMemoryCache();
-    _validEpoch = null;
-    _inFlight = null;
-    _latestGeneration++;
-  }
-
-  void _clearMemoryCache() {
-    _cachedGrades = null;
-    _lastSavedAt = null;
-    _cachedOwner = null;
-    _cachedEpoch = null;
-  }
-
-  /// 记录当前 durable epoch；若与已采纳记录的 epoch 不一致，说明身份纪元已
-  /// 推进（登出/同账号重登/其它 isolate），立即失效内存缓存（fail closed）。
-  void _observeDurableEpoch(int epoch) {
-    if (_cachedEpoch != null && _cachedEpoch != epoch) {
-      _clearMemoryCache();
-    }
-    _validEpoch = epoch;
-  }
-
-  DateTime? get updatedAt => _lastSavedAt;
-
-  bool get isCacheFresh {
-    if (_lastSavedAt == null) return false;
-    return DateTime.now().difference(_lastSavedAt!) < refreshWindow;
-  }
-
-  bool get isStale => !isCacheFresh;
+  bool get isStale => _cache.isStale;
 
   /// 只在缓存归属与当前教务账号一致、且 epoch 仍是当前有效持久 epoch 时可见。
-  List<GradeEntry>? get cachedGrades {
-    final cached = _cachedGrades;
-    if (cached == null) return null;
-    final owner = _cachedOwner;
-    if (owner == null || owner != _currentStudentId) return null;
-    if (_cachedEpoch == null || _cachedEpoch != _validEpoch) return null;
-    return cached;
-  }
+  List<GradeEntry>? get cachedGrades => _cache.cached;
 
-  /// 持久身份快照：必须 active 且账号与 [account] 一致，否则 fail closed。
-  Future<CredentialSessionEnvelope?> _readDurableSession(String account) async {
-    final durable = await AuthSessionPersistence.instance.read(
-      CredentialSessionDomain.academic,
-    );
-    if (!durable.active) return null;
-    if (durable.account?.trim() != account) return null;
-    return durable;
-  }
-
-  Future<bool> restoreCache() async {
-    await _cleanupLegacyCache();
-
-    final current = _currentStudentId;
-    if (current == null) return false;
-
-    final durable = await _readDurableSession(current);
-    if (durable == null) return false;
-    final capturedEpoch = durable.epoch;
-    _observeDurableEpoch(capturedEpoch);
-    final capturedRevision = _authRevision;
-    final capturedGeneration = _latestGeneration;
-
-    // 测试注入点：可在获取同域锁之前推进持久 epoch，验证 restore 竞态。
-    await debugRestoreBarrier?.call();
-
-    // 读 + 采纳都在 auth 同域锁内、且当前会话仍是该账号该 epoch 时执行；
-    // 锁内只做本地 cache IO 与本地字段校验，不反调 auth / 不发网络。
-    final adopted = await AuthSessionPersistence.instance
-        .withCurrentSession<bool>(
-          CredentialSessionDomain.academic,
-          account: current,
-          expectedEpoch: capturedEpoch,
-          action: () async {
-            if (_currentStudentId != current) return false;
-            if (_authRevision != capturedRevision) return false;
-            if (_latestGeneration != capturedGeneration) return false;
-
-            final envelope = await _store.read();
-            if (envelope == null) return false;
-            // 旧无 epoch 记录解析为 null；epoch 不匹配说明是旧身份纪元的记录。
-            if (!envelope.belongsTo(current, capturedEpoch)) return false;
-
-            final list = _decodeEntries(envelope.payload);
-            if (list == null) return false;
-
-            _cachedGrades = list;
-            _lastSavedAt = envelope.updatedAt;
-            _cachedOwner = current;
-            _cachedEpoch = capturedEpoch;
-            _validEpoch = capturedEpoch;
-            return true;
-          },
-        );
-
-    return adopted == true;
-  }
-
-  /// 旧多 key 格式无法证明属于哪个持久身份纪元，直接清掉，下次刷新。
-  Future<void> _cleanupLegacyCache() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.reload();
-    final hasLegacy =
-        prefs.containsKey(_legacyDataKey) ||
-        prefs.containsKey(_legacyTimeKey) ||
-        prefs.containsKey(_legacyOwnerKey);
-    if (!hasLegacy) return;
-    await prefs.remove(_legacyDataKey);
-    await prefs.remove(_legacyTimeKey);
-    await prefs.remove(_legacyOwnerKey);
-  }
+  Future<bool> restoreCache() => _cache.restore();
 
   Future<List<GradeEntry>> fetchGrades(
     String studentId, {
@@ -195,62 +68,23 @@ class GradesService {
       throw const GradesRequestException('学号与当前登录身份不一致，请重新查询');
     }
 
-    // 请求开始即固定持久身份（active + 账号 + epoch）。
-    final durable = await _readDurableSession(owner);
-    if (durable == null) throw const GradesAuthExpiredException();
-    _observeDurableEpoch(durable.epoch);
-    final guard = _GradesGuard(
-      revision: auth.sessionRevision,
+    return _cache.load(
       owner: owner,
-      durableEpoch: durable.epoch,
+      forceRefresh: forceRefresh,
+      authExpired: () => const GradesAuthExpiredException(),
+      identityChanged: () => const GradesRequestException('登录状态已变化，请重新查询'),
+      fetch: (run) => _fetchGradesRemote(run),
     );
-
-    if (!forceRefresh &&
-        _cachedGrades != null &&
-        _cachedOwner == owner &&
-        _cachedEpoch == durable.epoch &&
-        isCacheFresh &&
-        _isGuardCurrent(guard)) {
-      return _cachedGrades!;
-    }
-
-    final existing = _inFlight;
-    if (existing != null &&
-        existing.generation == _latestGeneration &&
-        existing.revision == guard.revision &&
-        existing.owner == guard.owner) {
-      // 同一最新请求直接共享；force 不被较旧的非 force 请求短路。
-      if (!forceRefresh || existing.force) return existing.future;
-    }
-
-    final generation = ++_latestGeneration;
-    final future = _fetchGradesRemote(
-      owner: owner,
-      guard: guard,
-      generation: generation,
-    );
-    final inFlight = _GradesInFlight(
-      revision: guard.revision,
-      owner: guard.owner,
-      generation: generation,
-      force: forceRefresh,
-      future: future,
-    );
-    _inFlight = inFlight;
-    return future.whenComplete(() {
-      if (identical(_inFlight, inFlight)) _inFlight = null;
-    });
   }
 
-  Future<List<GradeEntry>> _fetchGradesRemote({
-    required String owner,
-    required _GradesGuard guard,
-    required int generation,
-  }) async {
+  Future<PrivateCacheFetched<List<GradeEntry>>> _fetchGradesRemote(
+    PrivateCacheRun run,
+  ) async {
+    final owner = run.owner;
     await DioClient.instance.ensureInitialized();
     final ts = DateTime.now().millisecondsSinceEpoch;
     try {
-      _ensureGuard(guard);
+      run.ensureCurrent();
       final query = await postZhengfangQuery(
         path: '/cjcx/cjcx_cxDgXscj.html',
         gnmkdm: 'N305005',
@@ -266,57 +100,15 @@ class GradesService {
       );
       final guarded = query.guarded;
 
-      final settledGuard = _GradesGuard(
-        revision: guarded.revision,
-        owner: owner,
-        durableEpoch: guarded.epoch!,
-      );
       final grades = query.items
           .cast<Map<String, dynamic>>()
           .map(GradeEntry.fromJson)
           .toList();
-
-      // 内存身份 / 纪元变化必须丢弃；已被更新请求淘汰的旧结果不提交。
-      _ensureGuard(settledGuard);
-      if (generation != _latestGeneration) return grades;
-
-      final now = DateTime.now();
-      final committed = await AuthSessionPersistence.instance
-          .withCurrentSession<bool>(
-            CredentialSessionDomain.academic,
-            account: owner,
-            expectedEpoch: settledGuard.durableEpoch,
-            action: () async {
-              // 锁内仅本地 cache IO，不反调 auth / 不发网络。
-              if (generation != _latestGeneration) {
-                return false;
-              }
-              await _store.write(
-                PrivateCacheEnvelope(
-                  owner: owner,
-                  updatedAt: now,
-                  epoch: settledGuard.durableEpoch,
-                  payload: grades.map((e) => e.toJson()).toList(),
-                ),
-              );
-              return true;
-            },
-          );
-
-      // 持久 epoch 已推进（登出 / 同账号重登 / 其它 isolate 撤销）：fail closed。
-      if (committed == null) throw const GradesAuthExpiredException();
-      // 写后内存身份 / generation 又变化：不 notify、不覆盖 memory。
-      if (committed &&
-          _isGuardCurrent(settledGuard) &&
-          generation == _latestGeneration) {
-        _cachedGrades = grades;
-        _lastSavedAt = now;
-        _cachedOwner = owner;
-        _cachedEpoch = settledGuard.durableEpoch;
-        _validEpoch = settledGuard.durableEpoch;
-        CampusDataChangeBus.instance.notifyChanged();
-      }
-      return grades;
+      return PrivateCacheFetched(
+        value: grades,
+        revision: guarded.revision,
+        durableEpoch: guarded.epoch!,
+      );
     } on GradesAuthExpiredException {
       rethrow;
     } on AcademicAuthRecoveryPendingException {
@@ -328,16 +120,6 @@ class GradesService {
         automaticLoginPaused: e.automaticLoginPaused,
       );
     }
-  }
-
-  bool _isGuardCurrent(_GradesGuard guard) {
-    if (guard.revision != _authRevision) return false;
-    return ZhengfangAuth.instance.currentStudentId?.trim() == guard.owner;
-  }
-
-  void _ensureGuard(_GradesGuard guard) {
-    if (_isGuardCurrent(guard)) return;
-    throw const GradesRequestException('登录状态已变化，请重新查询');
   }
 
   static List<GradeEntry>? _decodeEntries(Object? payload) {
@@ -353,46 +135,7 @@ class GradesService {
   }
 
   @visibleForTesting
-  void debugReset() {
-    _clearMemoryCache();
-    _validEpoch = null;
-    _inFlight = null;
-    _latestGeneration = 0;
-    debugRestoreBarrier = null;
-    _lastAuthIdentity = (
-      ZhengfangAuth.instance.currentStudentId,
-      ZhengfangAuth.instance.isLoggedIn,
-    );
-  }
-}
-
-/// 一次抓取开始时固定的教务身份与持久纪元。
-class _GradesGuard {
-  const _GradesGuard({
-    required this.revision,
-    required this.owner,
-    required this.durableEpoch,
-  });
-
-  final int revision;
-  final String owner;
-  final int durableEpoch;
-}
-
-class _GradesInFlight {
-  const _GradesInFlight({
-    required this.revision,
-    required this.owner,
-    required this.generation,
-    required this.force,
-    required this.future,
-  });
-
-  final int revision;
-  final String owner;
-  final int generation;
-  final bool force;
-  final Future<List<GradeEntry>> future;
+  void debugReset() => _cache.debugReset();
 }
 
 class GradesRequestException extends AcademicRequestException {
