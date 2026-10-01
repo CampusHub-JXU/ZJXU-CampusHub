@@ -350,6 +350,147 @@ void main() {
     });
   });
 
+  group('直连被改道到 WebVPN（isRouteMovedResponse）', () {
+    const webVpnResource =
+        'https://webvpn.zjxu.edu.cn/https/77726476706e69737468656265737421'
+        'fae05b84692a62486b468ca88d1b203b//jwglxt/cjcx/cjcx_cxDgXscj.html'
+        '?doType=query';
+
+    Response<Object?> moved(String requestUrl, String location) =>
+        Response<Object?>(
+          requestOptions: RequestOptions(path: requestUrl),
+          statusCode: 302,
+          headers: Headers.fromMap({
+            'location': [location],
+          }),
+          data: '<html>302 Found</html>',
+        );
+
+    test('jwzx 302 到 WebVPN 代理资源识别为改道，而非登录过期', () {
+      final response = moved(
+        'https://jwzx.zjxu.edu.cn/jwglxt/cjcx/cjcx_cxDgXscj.html',
+        webVpnResource,
+      );
+      expect(AcademicAuthGuard.isRouteMovedResponse(response), isTrue);
+      expect(AcademicAuthGuard.isAuthExpiredResponse(response), isFalse);
+      expect(
+        AcademicAuthGuard.isRouteMovedResponse(
+          moved(
+            'https://jwzx.zjxu.edu.cn/x',
+            'https://webvpn.zjxu.edu.cn/https-8443/abc/x',
+          ),
+        ),
+        isTrue,
+        reason: '带端口的代理路径同样是改道',
+      );
+    });
+
+    test('WebVPN 登录页 / 教务登录页 / WebVPN 自身请求 / 非 3xx 不算改道', () {
+      final cases = <Response<Object?>>[
+        moved('https://jwzx.zjxu.edu.cn/x', 'https://webvpn.zjxu.edu.cn/login'),
+        moved('https://jwzx.zjxu.edu.cn/x', '/jwglxt/xtgl/login_slogin.html'),
+        moved('https://webvpn.zjxu.edu.cn/https/abc/x', webVpnResource),
+        Response<Object?>(
+          requestOptions: RequestOptions(path: 'https://jwzx.zjxu.edu.cn/x'),
+          statusCode: 200,
+          headers: Headers.fromMap({
+            'location': [webVpnResource],
+          }),
+        ),
+      ];
+      for (final response in cases) {
+        expect(
+          AcademicAuthGuard.isRouteMovedResponse(response),
+          isFalse,
+          reason: '${response.statusCode} → ${response.headers['location']}',
+        );
+      }
+      expect(AcademicAuthGuard.isRouteMovedResponse<Object?>(null), isFalse);
+    });
+
+    test('真实 Dio：302 HTML 响应体不再变成 DioException，恢复后重试一次', () async {
+      final dio = Dio(
+        BaseOptions(
+          followRedirects: false,
+          validateStatus: (status) => status != null && status < 400,
+        ),
+      );
+      final adapter = MockHttpClientAdapter();
+      var hits = 0;
+      adapter.register('POST', '/jwglxt/cjcx/cjcx_cxDgXscj.html', (_) async {
+        hits++;
+        if (hits == 1) {
+          return ResponseBody.fromString(
+            '<html><body>302 Found</body></html>',
+            302,
+            headers: <String, List<String>>{
+              'location': <String>[webVpnResource],
+              Headers.contentTypeHeader: <String>['text/html'],
+            },
+          );
+        }
+        return ResponseBody.fromString(
+          '{"items":[]}',
+          200,
+          headers: <String, List<String>>{
+            Headers.contentTypeHeader: <String>['application/json'],
+          },
+        );
+      });
+      dio.httpClientAdapter = adapter;
+      ZhengfangAuth.instance.debugSetSession(
+        active: true,
+        studentId: '2025000001',
+      );
+
+      var autoLoginCalls = 0;
+      AcademicAuthGuard.debugAutomaticLoginReceiptOverride =
+          (domain, {String? expectedAccount}) async {
+            autoLoginCalls++;
+            return _commitAcademicSession('2025000001');
+          };
+
+      final guarded = await AcademicAuthGuard.guardWithSession<Object?>(
+        request: () => dio.post<Object?>(
+          'https://jwzx.zjxu.edu.cn/jwglxt/cjcx/cjcx_cxDgXscj.html',
+        ),
+      );
+
+      expect(guarded.response.statusCode, 200);
+      expect((guarded.response.data as Map)['items'], isA<List>());
+      expect(hits, 2, reason: '改道后只重试一次');
+      expect(autoLoginCalls, 1);
+      expect(ZhengfangAuth.instance.isLoggedIn, isTrue);
+    });
+
+    test('重新选路后仍被改道：抛恢复中异常，不撤销会话', () async {
+      ZhengfangAuth.instance.debugSetSession(
+        active: true,
+        studentId: '2025000001',
+      );
+      AcademicAuthGuard.debugAutomaticLoginReceiptOverride = (
+        domain, {
+        String? expectedAccount,
+      }) async => _commitAcademicSession('2025000001');
+      var calls = 0;
+
+      await expectLater(
+        AcademicAuthGuard.guardWithSession<Object?>(
+          request: () async {
+            calls++;
+            return moved(
+              'https://jwzx.zjxu.edu.cn/jwglxt/cjcx/cjcx_cxDgXscj.html',
+              webVpnResource,
+            );
+          },
+        ),
+        throwsA(isA<AcademicAuthRecoveryPendingException>()),
+      );
+      expect(calls, 2);
+      expect(ZhengfangAuth.instance.isLoggedIn, isTrue, reason: '改道不得撤销会话');
+    });
+  });
+
   group('_safeRequest 的 DioException 处理', () {
     test('真实 Dio 抛出的认证 status DioException 也能被识别（非合成响应）', () async {
       final dio = Dio(
