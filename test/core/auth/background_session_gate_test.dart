@@ -118,7 +118,7 @@ void main() {
   });
 
   test(
-    'expired-prompt is rate limited; rollback and foreground reset it',
+    'expired-prompt is rate limited; rollback resets it, foreground does not',
     () async {
       expect(await gate.claimExpiredPrompt(), isTrue);
       expect(await gate.claimExpiredPrompt(), isFalse);
@@ -132,8 +132,11 @@ void main() {
       expect(await gate.claimExpiredPrompt(), isTrue);
 
       expect(await gate.claimExpiredPrompt(), isFalse);
+      // 进入前台（冷启动 / 回前台）不得重置限频，否则常开应用的用户每轮都被提醒。
       await enterColdStart();
-      expect(await gate.claimExpiredPrompt(), isTrue);
+      expect(await gate.claimExpiredPrompt(), isFalse);
+      await gate.enterForeground(waitForClaim: Duration.zero);
+      expect(await gate.claimExpiredPrompt(), isFalse);
     },
   );
 

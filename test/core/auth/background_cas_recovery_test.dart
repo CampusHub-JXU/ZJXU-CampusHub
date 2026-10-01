@@ -70,10 +70,33 @@ void main() {
     expect(attempts, 0);
   });
 
-  test('no account: not eligible, no login', () async {
+  test('no account (never logged in): no identity, no login', () async {
     final result = await build(account: null).recover();
-    expect(result, BackgroundRecoveryResult.notEligible);
+    expect(result, BackgroundRecoveryResult.noIdentity);
     expect(attempts, 0);
+  });
+
+  test('explicit user logout (revoked): no identity, no login', () async {
+    final result = await build(decision: AuthRecoveryDecision.revoked)
+        .recover();
+    expect(result, BackgroundRecoveryResult.noIdentity);
+    expect(attempts, 0);
+  });
+
+  test('opt-in off and no active identity: no identity', () async {
+    final result = await build(
+      decision: AuthRecoveryDecision.disabled,
+      loggedIn: false,
+    ).recover();
+    expect(result, BackgroundRecoveryResult.noIdentity);
+  });
+
+  test('paused auto recovery without active identity still counts', () async {
+    final result = await build(
+      decision: AuthRecoveryDecision.manualRequired,
+      loggedIn: false,
+    ).recover();
+    expect(result, BackgroundRecoveryResult.notEligible);
   });
 
   test('ineligible decision: not eligible, identity untouched', () async {

@@ -3,6 +3,7 @@
 // 照 SecondClassroomBackground 模式：feature 侧只承载注册与后台入口，
 // WorkManager 回调分发由 app/background_task_dispatcher.dart 组合接线。
 
+import 'package:flutter/foundation.dart';
 import 'package:workmanager/workmanager.dart';
 
 import '../../core/auth/background_cas_recovery.dart';
@@ -51,12 +52,25 @@ class NoticeBackground {
 
   /// 统一认证会话过期：后台静默恢复一次并重试同步；无法恢复则发本地提醒。
   ///
-  /// 前台正在使用（[BackgroundRecoveryResult.foregroundActive]）与探测不出
-  /// （[BackgroundRecoveryResult.undetermined]）时既不登录也不提醒——前者由
+  /// 前台正在使用（[BackgroundRecoveryResult.foregroundActive]）、探测不出
+  /// （[BackgroundRecoveryResult.undetermined]）与没有身份
+  /// （[BackgroundRecoveryResult.noIdentity]）时既不登录也不提醒——前者由
   /// 前台自己处理，后者可能只是网络抖动。
   Future<NoticeSyncOutcome> _recoverAndRetry(NoticeSyncOutcome expired) async {
     final result = await BackgroundCasRecovery.instance.recover();
     AppLogger.instance.network(LogLevel.info, '教务处通知后台会话恢复: ${result.name}');
+    return handleRecoveryResult(result, expired);
+  }
+
+  /// 按恢复结果决定重试同步或发提醒。
+  ///
+  /// 仅「曾有身份但无法恢复」（notEligible / failed）才提醒；
+  /// [BackgroundRecoveryResult.noIdentity]（从未登录 / 已主动退出）永不提醒。
+  @visibleForTesting
+  Future<NoticeSyncOutcome> handleRecoveryResult(
+    BackgroundRecoveryResult result,
+    NoticeSyncOutcome expired,
+  ) async {
     switch (result) {
       case BackgroundRecoveryResult.recovered:
         return NoticeSyncService.instance.sync(
@@ -66,6 +80,7 @@ class NoticeBackground {
       case BackgroundRecoveryResult.failed:
         await NoticeSyncService.instance.notifyAuthExpired();
         return expired;
+      case BackgroundRecoveryResult.noIdentity:
       case BackgroundRecoveryResult.foregroundActive:
       case BackgroundRecoveryResult.undetermined:
         return expired;

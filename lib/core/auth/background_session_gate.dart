@@ -191,8 +191,9 @@ class BackgroundSessionGate {
         // 前台心跳自愈：无效状态文件由这条重新写成有效文件。
         state.remove(_invalidKey);
         state['fgAt'] = _now().toIso8601String();
-        // 用户已回到应用：上一次「登录已过期」提醒已完成使命。
-        state.remove('promptedAt');
+        // 注意：不在这里清 promptedAt。回到前台不代表身份已恢复，若每次进入前台
+        // 都清掉，12 小时限频形同虚设；只有后台恢复成功（release committed）
+        // 才清，其余靠时间过期。
       });
       final deadline = _now().add(waitForClaim);
       while (true) {
