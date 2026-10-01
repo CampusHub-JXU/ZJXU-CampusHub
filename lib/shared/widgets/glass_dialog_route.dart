@@ -73,16 +73,28 @@ Future<T?> showGlassDialog<T>({
     useSafeArea: useSafeArea,
     routeSettings: routeSettings,
     anchorPoint: anchorPoint,
-    builder: (dialogContext) => Dialog(
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      insetPadding: insetPadding,
-      child: GlassOverlaySurface(
-        borderRadius: borderRadius,
-        padding: surfacePadding,
-        child: builder(dialogContext),
-      ),
-    ),
+    builder: (dialogContext) {
+      final theme = Theme.of(dialogContext);
+      return Dialog(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        insetPadding: insetPadding,
+        child: GlassOverlaySurface(
+          borderRadius: borderRadius,
+          padding: surfacePadding,
+          // 外壳已按 [insetPadding] 让出屏幕边距；内层 AlertDialog 若再套默认
+          // inset（40/24）会叠加两次，窄屏可用宽度被压到一半。
+          child: Theme(
+            data: theme.copyWith(
+              dialogTheme: theme.dialogTheme.copyWith(
+                insetPadding: EdgeInsets.zero,
+              ),
+            ),
+            child: Builder(builder: builder),
+          ),
+        ),
+      );
+    },
   );
 }
 

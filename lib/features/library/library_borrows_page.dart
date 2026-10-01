@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -11,6 +13,7 @@ import '../../shared/widgets/app_error_view.dart';
 import '../../shared/widgets/app_feedback.dart';
 import '../../shared/widgets/app_status_tag.dart';
 import '../../shared/widgets/auth_required_view.dart';
+import '../../shared/widgets/refresh_status_line.dart';
 import '../../shared/widgets/skeleton_box.dart';
 import 'library_models.dart';
 import 'library_page.dart';
@@ -31,12 +34,27 @@ class LibraryBorrowsPage extends StatefulWidget {
 }
 
 class _LibraryBorrowsPageState extends State<LibraryBorrowsPage> {
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_fetch());
+  }
+
   /// 与 `LibraryService._mapDioError` 的 401 文案一致；命中即清缓存令牌。
+  static const _notLoggedIn = '未登录图书馆';
   static const _expiredTokenMessage = '图书馆登录已过期，请重新登录';
 
   bool _history = false;
   String? _token;
-  late Future<LibraryBorrowPage> _future = _load();
+
+  // 缓存优先：已有数据时刷新不换骨架、不替换列表；仅首次（无数据）显示骨架 /
+  // 整页错误。[_gen] 让切换分段 / 重复刷新后的旧结果被丢弃。
+  LibraryBorrowPage? _page;
+  Object? _error;
+  bool _loading = true;
+  bool _refreshFailed = false;
+  DateTime? _updatedAt;
+  int _gen = 0;
   final Set<String> _renewing = <String>{};
 
   Future<LibraryBorrowPage> _load() async {
@@ -45,7 +63,7 @@ class _LibraryBorrowsPageState extends State<LibraryBorrowsPage> {
     LibrarySession.instance.ensureGuard(guard);
     _token = token;
     if (token == null || token.isEmpty) {
-      throw const LibraryApiException('未登录图书馆');
+      throw const LibraryApiException(_notLoggedIn);
     }
     try {
       final page = await LibraryService.instance.fetchBorrows(
@@ -86,21 +104,53 @@ class _LibraryBorrowsPageState extends State<LibraryBorrowsPage> {
     return null;
   }
 
-  void _reload() {
-    setState(() {
-      _future = _load();
-    });
-  }
+  String _errorMessage(Object? error) => error is LibraryApiException
+      ? error.message
+      : error is LibrarySessionChangedException
+      ? error.message
+      : '请检查网络后重试';
 
-  /// 下拉刷新：重新加载并等到结果（成功或失败）落定再收起指示器。
-  Future<void> _refresh() async {
-    _reload();
+  /// 拉取借阅。已有数据时保持列表可见，失败只置「刷新失败」并 toast；
+  /// 身份已变化 / 未登录图书馆时旧数据不再属于当前会话，丢弃并走整页状态。
+  Future<void> _fetch() async {
+    final gen = ++_gen;
+    setState(() {
+      _loading = true;
+      _refreshFailed = false;
+    });
     try {
-      await _future;
-    } catch (_) {
-      // 失败由 FutureBuilder 渲染错误态，这里只负责收起指示器。
+      final page = await _load();
+      if (!mounted || gen != _gen) return;
+      setState(() {
+        _page = page;
+        _error = null;
+        _loading = false;
+        _updatedAt = DateTime.now();
+      });
+    } catch (error) {
+      if (!mounted || gen != _gen) return;
+      final dropData =
+          error is LibrarySessionChangedException ||
+          (error is LibraryApiException && error.message == _notLoggedIn);
+      if (_page != null && !dropData) {
+        setState(() {
+          _loading = false;
+          _refreshFailed = true;
+        });
+        AppFeedback.toast(context, _errorMessage(error));
+      } else {
+        setState(() {
+          _page = null;
+          _updatedAt = null;
+          _error = error;
+          _loading = false;
+        });
+      }
     }
   }
+
+  /// 下拉刷新：等到结果（成功或失败）落定再收起指示器。
+  Future<void> _refresh() => _fetch();
 
   Future<void> _renew(LibraryBorrowItem item) async {
     final token = _token;
@@ -116,7 +166,7 @@ class _LibraryBorrowsPageState extends State<LibraryBorrowsPage> {
         cid: item.renewId,
       );
       if (messenger != null) AppFeedback.toastOn(messenger, '续借成功');
-      if (mounted) _reload();
+      if (mounted) unawaited(_fetch());
     } on LibraryApiException catch (error) {
       if (error.message == _expiredTokenMessage) {
         LibrarySession.instance.clearToken();
@@ -149,65 +199,71 @@ class _LibraryBorrowsPageState extends State<LibraryBorrowsPage> {
               ],
               selected: <bool>{_history},
               onSelectionChanged: (selection) {
+                // 历史 / 在借是两份不同数据：先清空再走首次加载（骨架）。
                 setState(() {
                   _history = selection.first;
-                  _future = _load();
+                  _page = null;
+                  _error = null;
+                  _updatedAt = null;
                 });
+                unawaited(_fetch());
               },
             ),
           ),
-          Expanded(
-            child: FutureBuilder<LibraryBorrowPage>(
-              future: _future,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return _buildSkeleton();
-                }
-                final page = snapshot.data;
-                if (page == null) {
-                  final error = snapshot.error;
-                  if (error is LibraryApiException &&
-                      error.message == '未登录图书馆') {
-                    return _buildLoginRequired(context);
-                  }
-                  return AppErrorView(
-                    title: '借阅记录加载失败',
-                    message: error is LibraryApiException
-                        ? error.message
-                        : error is LibrarySessionChangedException
-                        ? error.message
-                        : '请检查网络后重试',
-                    onRetry: _reload,
-                  );
-                }
-                if (page.isEmpty) {
-                  return AppEmptyView(
-                    title: _history ? '暂无历史借阅' : '没有借阅',
-                    message: '当前没有可显示的借阅记录',
-                    icon: Icons.menu_book_outlined,
-                  );
-                }
-                return RefreshIndicator(
-                  onRefresh: _refresh,
-                  child: ListView.builder(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(
-                      AppSpacing.pageMargin,
-                      0,
-                      AppSpacing.pageMargin,
-                      AppSpacing.xl,
-                    ),
-                    itemCount: page.items.length,
-                    itemBuilder: (context, index) => Padding(
-                      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                      child: _buildItem(context, page.items[index]),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
+          Expanded(child: _buildBody(context)),
         ],
+      ),
+    );
+  }
+
+  Widget _buildBody(BuildContext context) {
+    final page = _page;
+    if (page == null) {
+      if (_loading) return _buildSkeleton();
+      final error = _error;
+      if (error is LibraryApiException && error.message == _notLoggedIn) {
+        return _buildLoginRequired(context);
+      }
+      return AppErrorView(
+        title: '借阅记录加载失败',
+        message: _errorMessage(error),
+        onRetry: () => unawaited(_fetch()),
+      );
+    }
+    if (page.isEmpty) {
+      return AppEmptyView(
+        title: _history ? '暂无历史借阅' : '没有借阅',
+        message: '当前没有可显示的借阅记录',
+        icon: Icons.menu_book_outlined,
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _refresh,
+      child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.pageMargin,
+          0,
+          AppSpacing.pageMargin,
+          AppSpacing.xl,
+        ),
+        itemCount: page.items.length + 1,
+        itemBuilder: (context, index) {
+          if (index == 0) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+              child: RefreshStatusLine(
+                updatedAt: _updatedAt,
+                refreshing: _loading,
+                failed: _refreshFailed,
+              ),
+            );
+          }
+          return Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+            child: _buildItem(context, page.items[index - 1]),
+          );
+        },
       ),
     );
   }

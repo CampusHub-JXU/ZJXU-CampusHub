@@ -352,6 +352,29 @@ class _DormElectricitySettingsPageState
       _areaGroups = groups;
       _allBuildings = allBuildings;
 
+      // 目录重载后实例已换：把尚未保存的当前选择按 (areaId, buildingId) 重新绑到
+      // 新实例；目录里已不存在则连同楼层 / 房间一并清空。已保存配置的恢复仍在
+      // 下面执行并优先于此。
+      final stale = _selectedBuilding;
+      if (stale != null) {
+        DormBuilding? rebound;
+        for (final b in allBuildings) {
+          if (b.areaId == stale.areaId && b.buildingId == stale.buildingId) {
+            rebound = b;
+            break;
+          }
+        }
+        _selectedBuilding = rebound;
+        if (rebound == null) {
+          _selectedAreaId = null;
+          _selectedFloor = null;
+          _selectedRoom = null;
+          _rooms = [];
+          _floorMap = {};
+          _floorList = [];
+        }
+      }
+
       // Restore previously saved config
       final savedConfig = await _service.loadRoomConfig();
       if (!_isLiveBoundIdentity(owner, revision, loadId: loadId)) return;
@@ -586,6 +609,14 @@ class _DormElectricitySettingsPageState
 
   void _onBuildingChanged(DormBuilding? b) {
     if (b == null) return;
+    // 选回当前楼幢（按 areaId+buildingId，目录重载后实例会换）不动，避免清掉
+    // 已选房间并重复拉取。
+    final current = _selectedBuilding;
+    if (current != null &&
+        current.areaId == b.areaId &&
+        current.buildingId == b.buildingId) {
+      return;
+    }
     setState(() {
       _selectedAreaId = b.areaId;
       _selectedBuilding = b;
