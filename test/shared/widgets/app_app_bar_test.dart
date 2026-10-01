@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/core/theme/glass_style_controller.dart';
-import 'package:jxu_campus_hub/core/theme/surface_material.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_app_bar.dart';
 import 'package:jxu_campus_hub/shared/widgets/material_noise.dart';
 
@@ -11,10 +10,6 @@ import '../../helpers/test_setup.dart';
 void main() {
   setUp(() async {
     await resetTestEnvironment();
-    // 全局默认是云母（无模糊）；本文件覆盖玻璃配方的渲染分支。
-    await GlassStyleController.instance.setMaterialStyle(
-      SurfaceMaterialStyle.glass,
-    );
   });
 
   Future<void> pumpBar(WidgetTester tester, {PreferredSizeWidget? bar}) async {
@@ -43,7 +38,7 @@ void main() {
     return fill.decoration as BoxDecoration;
   }
 
-  testWidgets('玻璃开启时渲染模糊层与标题', (tester) async {
+  testWidgets('亚克力开启时渲染模糊层与标题', (tester) async {
     await pumpBar(tester);
 
     expect(find.text('标题'), findsOneWidget);
@@ -54,7 +49,7 @@ void main() {
     expect(filterConfig, isA<ImageFilterConfig>());
   });
 
-  testWidgets('玻璃关闭时回退实色且不创建 BackdropFilter', (tester) async {
+  testWidgets('亚克力关闭时回退实色且不创建 BackdropFilter', (tester) async {
     await GlassStyleController.instance.setEnabled(false);
     await pumpBar(tester);
 
@@ -62,18 +57,7 @@ void main() {
     expect(find.byType(BackdropFilter), findsNothing);
   });
 
-  testWidgets('模糊强度拉到 0 时不创建 BackdropFilter（滑条 0 = 关模糊）', (tester) async {
-    await GlassStyleController.instance.setBlurSigma(0);
-    await pumpBar(tester);
-
-    expect(find.text('标题'), findsOneWidget);
-    expect(find.byType(BackdropFilter), findsNothing);
-  });
-
   testWidgets('亚克力材质保留有界模糊、半透明填充与细微噪点', (tester) async {
-    await GlassStyleController.instance.setMaterialStyle(
-      SurfaceMaterialStyle.acrylic,
-    );
     await pumpBar(tester);
 
     expect(find.text('标题'), findsOneWidget);
@@ -85,37 +69,6 @@ void main() {
     );
     expect(noisePainterFinder(), findsOneWidget);
     expect(appBarFill(tester).color!.a, lessThan(1.0));
-  });
-
-  testWidgets('实色材质回退实色且不创建 BackdropFilter', (tester) async {
-    await GlassStyleController.instance.setMaterialStyle(
-      SurfaceMaterialStyle.solid,
-    );
-    await pumpBar(tester);
-
-    expect(find.text('标题'), findsOneWidget);
-    expect(find.byType(BackdropFilter), findsNothing);
-  });
-
-  testWidgets('云母材质回退不透明主题色调表面且不创建 BackdropFilter', (tester) async {
-    await GlassStyleController.instance.setMaterialStyle(
-      SurfaceMaterialStyle.mica,
-    );
-    await pumpBar(tester);
-
-    expect(find.text('标题'), findsOneWidget);
-    expect(find.byType(BackdropFilter), findsNothing);
-    expect(noisePainterFinder(), findsNothing);
-
-    final color = appBarFill(tester).color!;
-    expect(color.a, 1.0);
-
-    // 主题色调：不透明顶栏填充必须与中性 surface 容器色可区分。
-    final theme = Theme.of(tester.element(find.byType(GlassAppBarSpace)));
-    final baseSurface = theme.brightness == Brightness.dark
-        ? theme.colorScheme.surfaceContainerLow
-        : theme.colorScheme.surfaceContainerLowest;
-    expect(color, isNot(equals(baseSurface)));
   });
 
   testWidgets('显式 backgroundColor 跳过玻璃层', (tester) async {

@@ -9,8 +9,8 @@ import 'material_noise.dart';
 /// 可点卡面的统一质感容器。
 ///
 /// 两种形态，实时监听 [GlassStyleController]：
-/// * **亚克力**（全局风格为 [SurfaceMaterialStyle.acrylic] 且
-///   [GlassStyleController.shouldBlur]）——ClipRSuperellipse → BackdropFilter
+/// * **亚克力**（全局风格为 [SurfaceMaterialStyle.acrylic]，即
+///   [GlassStyleController.enabled] 开启）——ClipRSuperellipse → BackdropFilter
 ///   （非 bounded 模糊 + 提饱和，按 [MaterialRecipe]）→ Material → Ink（半透明
 ///   填充 + hairline 描边）→ InkWell，内容下方铺一层程序化颗粒。裁剪严格
 ///   位于 BackdropFilter 祖先位置，避免糊整屏。
@@ -39,14 +39,9 @@ class AppTileSurface extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final style = GlassStyleController.instance;
-    return ListenableBuilder(
-      listenable: Listenable.merge([
-        style.enabled,
-        style.materialStyle,
-        style.blurSigma,
-        style.tintOpacity,
-      ]),
-      builder: (context, _) => _buildSurface(context, style),
+    return ValueListenableBuilder<bool>(
+      valueListenable: style.enabled,
+      builder: (context, _, _) => _buildSurface(context, style),
     );
   }
 
@@ -56,17 +51,10 @@ class AppTileSurface extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final radius = borderRadius ?? AppRadius.tileBorder;
     final glassEnabled = style.enabled.value;
-    final tintOpacity = style.tintOpacity.value;
 
-    final recipe = MaterialRecipe.resolve(
-      style.materialStyle.value,
-      blurBase: style.blurSigma.value,
-      tintBase: tintOpacity,
-    );
+    final recipe = MaterialRecipe.resolve(style.materialStyle);
     final useAcrylic =
-        style.shouldBlur() &&
-        recipe.style == SurfaceMaterialStyle.acrylic &&
-        recipe.usesBackdropBlur;
+        recipe.style == SurfaceMaterialStyle.acrylic && recipe.usesBackdropBlur;
 
     final shape = RoundedSuperellipseBorder(borderRadius: radius);
     Widget content = Padding(padding: padding ?? EdgeInsets.zero, child: child);
@@ -100,7 +88,9 @@ class AppTileSurface extends StatelessWidget {
             isDark: isDark,
             glassEnabled: glassEnabled,
             borderRadius: radius,
-            tintAlpha: isDark ? tintOpacity * 0.86 : tintOpacity,
+            tintAlpha: isDark
+                ? kSurfaceTintOpacity * 0.86
+                : kSurfaceTintOpacity,
           );
 
     final surface = Material(
