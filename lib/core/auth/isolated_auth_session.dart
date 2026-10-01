@@ -54,18 +54,7 @@ class IsolatedAuthSession {
       }
     }
 
-    final baseOptions = template.options;
-    final dio = Dio(
-      BaseOptions(
-        baseUrl: baseOptions.baseUrl,
-        connectTimeout: baseOptions.connectTimeout,
-        receiveTimeout: baseOptions.receiveTimeout,
-        sendTimeout: baseOptions.sendTimeout,
-        headers: Map<String, dynamic>.from(baseOptions.headers),
-        followRedirects: baseOptions.followRedirects,
-        validateStatus: baseOptions.validateStatus,
-      ),
-    );
+    final dio = Dio(cloneBaseOptions(template));
     dio.interceptors.add(buildCookieInterceptor(jar));
     // 冻结 adapter：复用 template 当前 adapter，不因后续代理模式切换而变。
     // 共享引用，禁止对本 Dio 调用 close(force:true)（会关闭共享 adapter）。
@@ -79,9 +68,6 @@ class IsolatedAuthSession {
       seedUris: seedUris,
     );
   }
-
-  /// 本会话触碰过的 URI（含 seed）。
-  Set<Uri> get touchedUris => Set<Uri>.unmodifiable(_touchedUris);
 
   /// 与共享代理回退同语义（[sendWithSystemProxyFallback]），但只作用于
   /// 隔离 dio/jar，并记录本会话触碰过的 URI。

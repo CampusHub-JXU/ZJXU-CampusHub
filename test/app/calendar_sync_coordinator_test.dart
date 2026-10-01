@@ -11,8 +11,8 @@ import 'package:jxu_campus_hub/core/calendar/calendar_sync_control.dart';
 import 'package:jxu_campus_hub/core/calendar/calendar_sync_models.dart';
 import 'package:jxu_campus_hub/core/logging/app_logger.dart';
 import 'package:jxu_campus_hub/core/semester/schedule_term_context.dart';
-import 'package:jxu_campus_hub/features/schedule/schedule_cache_snapshot.dart';
-import 'package:jxu_campus_hub/features/schedule/schedule_model.dart';
+import 'package:jxu_campus_hub/core/academic/schedule_cache_snapshot.dart';
+import 'package:jxu_campus_hub/core/academic/schedule_model.dart';
 
 /// 纯内存假通道：绝不触达真实系统日历，记录 native 调用与 payload。
 class _FakeChannel implements CalendarSyncChannel {

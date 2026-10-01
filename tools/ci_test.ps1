@@ -57,29 +57,7 @@ try {
   }
 
   Invoke-CiStep "Verify release workflow target" {
-    $workflow = Join-Path $repoRoot '.github/workflows/release-to-public-github.yml'
-    if (-not (Test-Path $workflow)) {
-      throw "Missing release workflow: $workflow"
-    }
-    $content = Get-Content -Raw -LiteralPath $workflow
-    if ($content -notmatch 'PUBLIC_GH_REPO:\s*ZJXU-CampusHub') {
-      throw 'Release workflow does not target FHfanshu/ZJXU-CampusHub'
-    }
-    if ($content -notmatch 'PUBLIC_TARGET_BRANCH:\s*main') {
-      throw 'Release workflow does not target the public main branch'
-    }
-    if ($content -notmatch 'gh release upload') {
-      throw 'Release workflow does not upload an APK to a GitHub release'
-    }
-    if ($content -notmatch 'FHfanshu/shuatipwa') {
-      throw 'Release workflow does not checkout the Shuati PWA source'
-    }
-    if ($content -notmatch 'sync_shuati_pwa\.ps1') {
-      throw 'Release workflow does not sync the Shuati PWA before build'
-    }
-    if ($content -match 'GITEE_TOKEN|GITEE_REPO|gitee\.com') {
-      throw 'Release workflow still contains Gitee publishing references'
-    }
+    Invoke-Native python tools/check_release_workflow.py
   }
 
   Invoke-CiStep "Run test diagnostics" {
@@ -97,7 +75,6 @@ try {
 
   Invoke-CiStep "Focused regression tests" {
     Invoke-Native $FlutterExe test test/core/update/update_service_test.dart
-    Invoke-Native $FlutterExe test test/shared/widgets/protected_webview_auth_test.dart --plain-name "shows login guidance"
   }
 
   if (-not $SkipFullTest) {

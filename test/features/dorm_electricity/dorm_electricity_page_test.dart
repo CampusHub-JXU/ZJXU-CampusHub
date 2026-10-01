@@ -12,12 +12,12 @@ import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/core/theme/app_theme_builder.dart';
 import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_page.dart';
 import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_service.dart';
-import 'package:jxu_campus_hub/features/dorm_electricity/epay_electricity_gateway.dart';
+import 'package:jxu_campus_hub/core/epay100/epay100_gateway.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../helpers/test_setup.dart';
 
-class _FakeEpayElectricityGateway implements EpayElectricityGateway {
+class _FakeEpayElectricityGateway implements Epay100Gateway {
   int callCount = 0;
 
   /// 设置后，下一次 [call] 会挂起直到该 completer 完成，用于观察刷新中的 UI 状态。
@@ -69,7 +69,7 @@ class _FakeEpayElectricityGateway implements EpayElectricityGateway {
 
 /// 身份隔离测试用网关：按**调用时快照**的余额回包（挂起期间改值不影响已
 /// 发出的调用），并支持挂起下一笔调用以制造确定性交错。
-class _IdentityGateway implements EpayElectricityGateway {
+class _IdentityGateway implements Epay100Gateway {
   _IdentityGateway({this.balance = '66.60'});
 
   String balance;

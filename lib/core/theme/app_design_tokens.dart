@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 ///
 /// Centralizes radius / spacing / elevation / icon-badge sizing so that
 /// scattered hard-coded values across features converge on a single source of
-/// truth. See `docs/design.md` §5 (P0-1) for the full migration plan.
+/// truth. See `docs/archive/design.md` §5 (P0-1) for the full migration plan.
 ///
 /// Conventions:
 /// * Values are tuned to match the current visual language (Material 3 seed

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:jxu_campus_hub/features/exam/exam_model.dart';
+import 'package:jxu_campus_hub/core/academic/exam_model.dart';
 
 void main() {
   group('ExamEntry.fromJson', () {

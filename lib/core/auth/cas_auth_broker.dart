@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
+import '../network/cancel_token_x.dart';
 import '../network/dio_client.dart';
 import 'unified_auth.dart';
 import 'zhengfang_auth.dart';
@@ -173,7 +174,7 @@ class CasAuthBroker {
     }
     try {
       for (var hop = 0; hop < 16; hop++) {
-        if (token.isCancelled) throw token.cancelError!;
+        token.throwIfCancelled();
         // WebVPN 的 CAS 代理域没有 newca 的 SSO Cookie；回到真实 CAS 域，
         // 保留网关提供的 service 参数，再由其回调建立 WebVPN 会话。
         final proxiedCas = Uri.parse(

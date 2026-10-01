@@ -12,7 +12,9 @@ import '../../core/auth/captcha_challenge.dart';
 import '../../core/auth/credential_store.dart';
 import '../../core/auth/unified_auth.dart';
 import '../../core/logging/app_logger.dart';
-import '../../core/theme/app_design_tokens.dart';
+import '../../core/network/cancel_token_x.dart';
+import 'app_banner.dart';
+import 'login_parts.dart';
 
 enum UnifiedAuthMode { direct }
 
@@ -157,7 +159,7 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
   Future<bool> _preparePrimaryLoginMode(CancelToken token) async {
     if (widget.sessionPreflight != null) {
       final hasActiveSession = await widget.sessionPreflight!.call();
-      if (token.isCancelled) throw token.cancelError!;
+      token.throwIfCancelled();
       if (!mounted || hasActiveSession) {
         return hasActiveSession;
       }
@@ -221,10 +223,10 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
             (() async {
               if (prepare) {
                 await _loadSaved(token);
-                if (token.isCancelled) throw token.cancelError!;
+                token.throwIfCancelled();
                 if (await _preparePrimaryLoginMode(token)) return null;
               }
-              if (token.isCancelled) throw token.cancelError!;
+              token.throwIfCancelled();
               if (widget.challengeLoader != null) {
                 final ch = await widget.challengeLoader!(cancelToken: token);
                 if (!mounted ||
@@ -614,7 +616,17 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
             onSubmitted: (_) => _captchaFocusNode.requestFocus(),
           ),
           const SizedBox(height: 12),
-          _buildCaptchaRow(cs),
+          CaptchaRow(
+            controller: _captchaCtrl,
+            focusNode: _captchaFocusNode,
+            hintText: '验证码',
+            bytes: _captchaBytes,
+            loading: _loading,
+            captchaLoading: _captchaLoading,
+            hasError: _error != null,
+            onRefresh: _refreshCaptcha,
+            onSubmitted: _login,
+          ),
           // 就绪后整条帮助行隐藏，不留空白 Padding/SizedBox。
           if (_captchaLoading) ...[
             const SizedBox(height: 8),
@@ -626,7 +638,10 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
               ),
             ),
           ],
-          _buildRememberAccountTile(cs),
+          RememberAccountTile(
+            value: _rememberAccount,
+            onChanged: (value) => setState(() => _rememberAccount = value),
+          ),
           const SizedBox(height: 6),
           FilledButton(
             onPressed:
@@ -650,153 +665,14 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
 
           if (_error != null) ...[
             const SizedBox(height: 12),
-            _buildErrorBanner(cs),
+            AppBanner(
+              message: _error!,
+              icon: Icons.error_outline,
+              tone: AppBannerTone.error,
+            ),
           ],
         ],
       ),
-    );
-  }
-
-  /// 错误提示横幅：图标 + 单段文案，errorContainer 底色分层，
-  /// 比裸居中红字更易读；文案本身保持调用方语义不变。
-  Widget _buildErrorBanner(ColorScheme cs) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: cs.errorContainer,
-        borderRadius: AppRadius.chipBorder,
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.error_outline, size: 16, color: cs.onErrorContainer),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              _error!,
-              style: TextStyle(
-                color: cs.onErrorContainer,
-                fontSize: 13,
-                height: 1.4,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// 「记住账号并自动登录」勾选行。使用紧凑自定义行而非 [CheckboxListTile]：
-  /// 主/副标题两行文本在窄屏（含 600 高的最小测试视口）下不会把表单顶出可视区。
-  Widget _buildRememberAccountTile(ColorScheme cs) {
-    return MergeSemantics(
-      child: InkWell(
-        onTap: () => setState(() => _rememberAccount = !_rememberAccount),
-        borderRadius: AppRadius.inputBorder,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 40,
-                height: 40,
-                child: Checkbox(
-                  value: _rememberAccount,
-                  onChanged: (value) =>
-                      setState(() => _rememberAccount = value ?? false),
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  visualDensity: VisualDensity.compact,
-                ),
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      '记住账号并自动登录',
-                      style: TextStyle(fontSize: 14, color: cs.onSurface),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '自动登录并自动刷新数据；不勾选则不保存密码',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: cs.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCaptchaRow(ColorScheme cs) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Expanded(
-          child: TextField(
-            controller: _captchaCtrl,
-            focusNode: _captchaFocusNode,
-            decoration: const InputDecoration(
-              hintText: '验证码',
-              prefixIcon: Icon(Icons.shield_outlined),
-            ),
-            textInputAction: TextInputAction.done,
-            onSubmitted: (_) => _login(),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Semantics(
-          button: true,
-          label: '刷新验证码',
-          // 内层 InkWell 关闭了自身语义，这里补上等价的 tap 动作（含加载态
-          // 禁用分支），避免无障碍服务只播报按钮却无法激活刷新。
-          onTap: (_captchaLoading || _loading) ? null : _refreshCaptcha,
-          child: SizedBox(
-            width: 140,
-            height: 72,
-            child: Material(
-              color: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: AppRadius.inputBorder,
-                side: BorderSide(
-                  color: cs.outlineVariant.withValues(alpha: 0.5),
-                  width: 0.8,
-                ),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: InkWell(
-                onTap: (_captchaLoading || _loading) ? null : _refreshCaptcha,
-                excludeFromSemantics: true,
-                child: _captchaBytes != null
-                    ? Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 4,
-                          vertical: 6,
-                        ),
-                        child: Image.memory(
-                          _captchaBytes!,
-                          fit: BoxFit.contain,
-                          filterQuality: FilterQuality.high,
-                        ),
-                      )
-                    : (_error != null && !_captchaLoading)
-                    ? Icon(Icons.refresh, color: cs.error, size: 24)
-                    : const Center(
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-              ),
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../async/serial_queue.dart';
 import '../logging/app_logger.dart';
 import 'calendar_event_ledger_store.dart';
 import 'calendar_sync_channel.dart';
@@ -283,7 +284,7 @@ class CalendarSyncCleanupResult {
 ///   其余保留并汇总残留原因；绝不 `clearAll` 假装完成。
 ///
 /// 并发模型（同 isolate，linearizable）：
-/// - 所有「读取 + 修改 + 持久化」的状态转移都在单条 [_serialize] Future 队列的
+/// - 所有「读取 + 修改 + 持久化」的状态转移都在单条 [SerialQueue] Future 队列的
 ///   临界区内完成。原生 provider / 权限调用在临界区**之外**执行，但其结果必须
 ///   再次进入临界区做 generation + state 校验后才提交；因此不存在
 ///   「先检查 generation、再 await 写盘」的窗口——检查与写盘是同一临界区。
@@ -328,7 +329,7 @@ class CalendarSyncControl extends ChangeNotifier {
   int _generation = 0;
 
   /// 同 isolate 串行队列：状态 read/modify/write 与 store 持久化在临界区内完成。
-  Future<void> _queueTail = Future<void>.value();
+  final SerialQueue _queue = SerialQueue();
 
   CalendarSyncControlState get state => _state;
   String? get ownerKey => _ownerKey;
@@ -353,16 +354,16 @@ class CalendarSyncControl extends ChangeNotifier {
     _loaded = false;
     _sessionRevision = 0;
     _generation++;
-    _queueTail = Future<void>.value();
+    _queue.reset();
   }
 
   /// 冷启动 / 回前台：从磁盘恢复绑定状态（不触发权限或 provider 调用）。
-  Future<void> load() => _serialize(_ensureLoadedLocked);
+  Future<void> load() => _queue.run(_ensureLoadedLocked);
 
   /// 当前账本残留条数（含 pending 与删不掉项），供设置页展示；
   /// 只读账本，不触发任何 CalendarProvider 调用。账本损坏时抛
   /// [CalendarSyncException]，调用方按失败展示，不得当作「已清干净」。
-  Future<int> residualCount() => _serialize(() async {
+  Future<int> residualCount() => _queue.run(() async {
     await _ensureLoadedLocked();
     return (await _ledger.reload()).allEntries.length;
   });
@@ -379,7 +380,7 @@ class CalendarSyncControl extends ChangeNotifier {
     int? calendarId,
     int revision = 0,
   }) async {
-    await _serialize(_ensureLoadedLocked);
+    await _queue.run(_ensureLoadedLocked);
 
     final trimmedOwner = ownerKey.trim();
     if (trimmedOwner.isEmpty) {
@@ -394,7 +395,7 @@ class CalendarSyncControl extends ChangeNotifier {
     }
 
     // 原子预检：cleanupPending 期间不得覆盖绑定，先完成清理。
-    final precheck = await _serialize(() async {
+    final precheck = await _queue.run(() async {
       await _ensureLoadedLocked();
       return (
         generation: _generation,
@@ -434,7 +435,7 @@ class CalendarSyncControl extends ChangeNotifier {
 
     // 提交：generation 校验 + state 校验 + store.write 在同一临界区内原子完成，
     // 迟到的写不会绕过已开始的 disable。
-    final result = await _serialize(() async {
+    final result = await _queue.run(() async {
       await _ensureLoadedLocked();
       if (_generation != captured) {
         return _enableFailure(
@@ -484,7 +485,7 @@ class CalendarSyncControl extends ChangeNotifier {
   Future<CalendarSyncControlState> pauseIfOwnerMismatch({
     required String? ownerKey,
     required int revision,
-  }) => _serialize(() async {
+  }) => _queue.run(() async {
     await _ensureLoadedLocked();
 
     final trimmed = ownerKey?.trim();
@@ -531,7 +532,7 @@ class CalendarSyncControl extends ChangeNotifier {
   /// 无权限 / 平台异常 / 账本异常都保留 pending 并返回失败；跨 await 身份变化时
   /// 旧结果被拒绝（[CalendarSyncReconcileResult.aborted]），不写账本。
   Future<CalendarSyncReconcileResult> reconcilePending() async {
-    final captured = await _serialize(() async {
+    final captured = await _queue.run(() async {
       await _ensureLoadedLocked();
       return _generation;
     });
@@ -554,7 +555,7 @@ class CalendarSyncControl extends ChangeNotifier {
   /// pending 无法复核都保留账本并汇总残留原因；只有账本清空且无失败才回到
   /// [off]。重复调用安全（[off] 且账本为空直接返回完成）。
   Future<CalendarSyncCleanupResult> disableAndCleanup() async {
-    await _serialize(_ensureLoadedLocked);
+    await _queue.run(_ensureLoadedLocked);
 
     CalendarEventLedgerSnapshot pre;
     try {
@@ -570,7 +571,7 @@ class CalendarSyncControl extends ChangeNotifier {
     }
 
     // 原子阻断阶段：置 cleanupPending（若尚未）+ 推进 generation。
-    final block = await _serialize(() async {
+    final block = await _queue.run(() async {
       await _ensureLoadedLocked();
       if (_state == CalendarSyncControlState.off && pre.isEmpty) {
         return (complete: true, changed: false, generation: _generation);
@@ -780,7 +781,7 @@ class CalendarSyncControl extends ChangeNotifier {
     required int failedBatchCount,
     required CalendarSyncFailureKind? failureKind,
     required Set<CalendarSyncCleanupResidualReason> reasons,
-  }) => _serialize(() async {
+  }) => _queue.run(() async {
     await _ensureLoadedLocked();
     final residual = await _tryResidualCount();
     if (residual == null) {
@@ -830,16 +831,6 @@ class CalendarSyncControl extends ChangeNotifier {
   // ── 内部 ────────────────────────────────────────────────────────────
 
   /// 同 isolate 串行队列：临界区内 read/modify/write 不被其他转移交错。
-  Future<T> _serialize<T>(Future<T> Function() action) {
-    final previous = _queueTail;
-    final result = previous.then<T>((_) => action());
-    _queueTail = result.then<void>(
-      (_) {},
-      onError: (Object _, StackTrace _) {},
-    );
-    return result;
-  }
-
   Future<void> _ensureLoadedLocked() async {
     if (_loaded) return;
     final binding = await _store.read();

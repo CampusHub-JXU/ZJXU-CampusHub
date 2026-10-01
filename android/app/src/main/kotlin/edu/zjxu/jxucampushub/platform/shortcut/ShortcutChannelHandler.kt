@@ -22,6 +22,7 @@ import edu.zjxu.jxucampushub.platform.ACTION_HOST
 import edu.zjxu.jxucampushub.platform.EXTRA_SHORTCUT_ACTION
 import edu.zjxu.jxucampushub.platform.SHORTCUT_SCHEME
 import edu.zjxu.jxucampushub.platform.extractShortcutAction
+import edu.zjxu.jxucampushub.platform.requireStringArg
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
 import kotlin.math.roundToInt
@@ -89,11 +90,8 @@ class ShortcutChannelHandler(private val activity: Activity) {
                     }
 
                     "requestPinnedShortcut" -> {
-                        val actionId = call.argument<String>("actionId")
-                        if (actionId.isNullOrBlank()) {
-                            result.error("invalid_args", "actionId is required", null)
-                            return@setMethodCallHandler
-                        }
+                        val actionId = call.requireStringArg("actionId", result)
+                            ?: return@setMethodCallHandler
                         val title = call.argument<String>("title") ?: actionId
                         result.success(requestPinnedShortcut(actionId, title).code)
                     }

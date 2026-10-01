@@ -7,13 +7,14 @@ import 'package:jxu_campus_hub/core/auth/auth_session_persistence.dart';
 import 'package:jxu_campus_hub/core/auth/credential_store.dart';
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/core/cache/private_cache_store.dart';
-import 'package:jxu_campus_hub/features/exam/exam_model.dart';
+import 'package:jxu_campus_hub/core/academic/exam_model.dart';
 import 'package:jxu_campus_hub/features/exam/exam_page.dart';
 import 'package:jxu_campus_hub/features/exam/exam_service.dart';
 import 'package:jxu_campus_hub/shared/widgets/refresh_status_line.dart';
 import 'package:jxu_campus_hub/shared/widgets/skeleton_box.dart';
 
 import '../../helpers/test_setup.dart';
+import '../../helpers/credential_store_test_ext.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

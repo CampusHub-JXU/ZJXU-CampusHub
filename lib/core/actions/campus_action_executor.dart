@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../shared/widgets/copy_text_feedback.dart';
-import '../../shared/widgets/external_url_launcher.dart';
 import 'campus_action.dart';
 import 'campus_action_registry.dart';
 import '../wechat/wechat_launcher.dart';
@@ -13,8 +12,8 @@ import '../wechat/wechat_launcher.dart';
 /// CampusAction 执行器（PRD 0.7.0 §6）。
 ///
 /// Feature / Widget / Shortcut / Deep Link 只提交 action id，由本类决定实际
-/// 启动方式并统一处理 WeChat 复制 fallback。Web / ProtectedWeb / Native 目标
-/// 在对应 Phase 接入前返回 unsupported。
+/// 启动方式并统一处理 WeChat 复制 fallback。WebView 入口统一走 Route 目标
+/// （`external-webview` + extra）。
 class CampusActionExecutor {
   CampusActionExecutor._();
 
@@ -41,24 +40,6 @@ class CampusActionExecutor {
         return const CampusActionResult(CampusActionStatus.success);
       case WechatActionTarget(:final url):
         return _executeWechat(context, action, url);
-      case ExternalActionTarget(:final url):
-        final opened = await openInExternalBrowser(
-          url,
-          logPrefix: 'CampusAction',
-        );
-        return opened
-            ? const CampusActionResult(CampusActionStatus.success)
-            : const CampusActionResult(
-                CampusActionStatus.targetUnavailable,
-                message: '无法打开外部链接',
-              );
-      case WebActionTarget():
-      case ProtectedWebActionTarget():
-      case NativeActionTarget():
-        return const CampusActionResult(
-          CampusActionStatus.unsupported,
-          message: '该入口尚未接入',
-        );
     }
   }
 

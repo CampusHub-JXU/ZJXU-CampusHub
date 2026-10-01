@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../async/serial_queue.dart';
 import 'calendar_sync_models.dart';
 
 /// 一条「本地课程 → 系统日历事件」的归属记录（仅存 App 私有 ledger）。
@@ -293,7 +294,7 @@ class CalendarEventLedgerStore {
 
   CalendarEventLedgerSnapshot _snapshot = CalendarEventLedgerSnapshot.empty;
   bool _loaded = false;
-  Future<void> _queueTail = Future<void>.value();
+  final SerialQueue _queue = SerialQueue();
 
   /// 当前内存镜像；未 [reload] 时为空快照。
   CalendarEventLedgerSnapshot get snapshot => _snapshot;
@@ -314,7 +315,7 @@ class CalendarEventLedgerStore {
   void debugReset() {
     _snapshot = CalendarEventLedgerSnapshot.empty;
     _loaded = false;
-    _queueTail = Future<void>.value();
+    _queue.reset();
   }
 
   // ── 读路径 ──────────────────────────────────────────────────────────
@@ -322,7 +323,7 @@ class CalendarEventLedgerStore {
   /// 重新读盘并刷新内存镜像（冷启动 / 回前台 / 恢复 pending 批次）。
   ///
   /// 解析失败抛 `ledgerCorrupted`，磁盘原值保留。
-  Future<CalendarEventLedgerSnapshot> reload() => _serialize(() async {
+  Future<CalendarEventLedgerSnapshot> reload() => _queue.run(() async {
     final prefs = await SharedPreferences.getInstance();
     await _reloadPreferences(prefs);
     _snapshot = _decode(prefs.getString(storageKey));
@@ -378,7 +379,7 @@ class CalendarEventLedgerStore {
     required List<CalendarSyncEventPlan> plans,
     String? generation,
     DateTime? now,
-  }) => _serialize(() async {
+  }) => _queue.run(() async {
     await _ensureLoadedLocked();
     _validateOwnerKey(ownerKey);
     if (calendarId <= 0) {
@@ -448,7 +449,7 @@ class CalendarEventLedgerStore {
     required String ownerKey,
     required String generation,
     required Map<String, int> eventIds,
-  }) => _serialize(() async {
+  }) => _queue.run(() async {
     await _ensureLoadedLocked();
 
     final batches = _snapshot.owners[ownerKey];
@@ -525,7 +526,7 @@ class CalendarEventLedgerStore {
     required String ownerKey,
     required String generation,
     required Map<String, int> eventIds,
-  }) => _serialize(() async {
+  }) => _queue.run(() async {
     await _ensureLoadedLocked();
     if (eventIds.isEmpty) return 0;
 
@@ -573,7 +574,7 @@ class CalendarEventLedgerStore {
     required String opaqueId,
     required int expectedOldEventId,
     required int providerVerifiedNewEventId,
-  }) => _serialize(() async {
+  }) => _queue.run(() async {
     await _ensureLoadedLocked();
     if (expectedOldEventId <= 0 || providerVerifiedNewEventId <= 0) {
       return false;
@@ -611,7 +612,7 @@ class CalendarEventLedgerStore {
     required String ownerKey,
     required String generation,
     required Iterable<String> opaqueIds,
-  }) => _serialize(() async {
+  }) => _queue.run(() async {
     await _ensureLoadedLocked();
     final removedIds = opaqueIds.toSet();
     if (removedIds.isEmpty) return 0;
@@ -651,7 +652,7 @@ class CalendarEventLedgerStore {
   ///
   /// 仅限两种场景：用户明确重置日历同步、或账本损坏且用户确认重建。
   /// 停用同步 / 登出 / 换账号一律不得调用（会丢失原账号事件归属）。
-  Future<void> clearAll() => _serialize(() async {
+  Future<void> clearAll() => _queue.run(() async {
     final prefs = await SharedPreferences.getInstance();
     final existed = prefs.containsKey(storageKey);
     final removed = await prefs.remove(storageKey);
@@ -665,16 +666,6 @@ class CalendarEventLedgerStore {
   // ── 内部 ────────────────────────────────────────────────────────────
 
   /// 同 isolate 串行队列：整 key read-modify-write 不互相覆盖。
-  Future<T> _serialize<T>(Future<T> Function() action) {
-    final previous = _queueTail;
-    final result = previous.then<T>((_) => action());
-    _queueTail = result.then<void>(
-      (_) {},
-      onError: (Object _, StackTrace _) {},
-    );
-    return result;
-  }
-
   Future<void> _ensureLoadedLocked() async {
     if (_loaded) return;
     final prefs = await SharedPreferences.getInstance();

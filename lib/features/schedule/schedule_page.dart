@@ -10,7 +10,7 @@ import '../../shared/widgets/auth_required_view.dart';
 import '../../shared/widgets/glass_dialog_route.dart';
 import '../../shared/widgets/login_shell.dart';
 import 'controllers/schedule_page_controller.dart';
-import 'schedule_constants.dart';
+import '../../core/academic/schedule_constants.dart';
 import 'widgets/schedule_change_sheet.dart';
 import 'widgets/schedule_grid.dart';
 import 'widgets/schedule_info_banner.dart';

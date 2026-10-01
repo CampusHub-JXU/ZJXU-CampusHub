@@ -7,6 +7,7 @@ import '../core/auth/auth_recovery_state_store.dart';
 import '../core/auth/automatic_login.dart';
 import '../core/auth/unified_auth.dart';
 import '../core/auth/zhengfang_auth.dart';
+import '../core/async/run_isolated.dart';
 import '../core/logging/app_logger.dart';
 import '../features/campus_card/campus_card_service.dart';
 import '../features/dorm_electricity/dorm_electricity_service.dart';
@@ -162,18 +163,13 @@ class CampusRefreshCoordinator {
     ]);
   }
 
-  Future<void> _isolate(String label, Future<void> Function() action) async {
-    try {
-      await action();
-    } catch (error, stackTrace) {
-      AppLogger.instance.network(
-        LogLevel.warn,
-        '$label未完成，下轮重试',
-        error: error,
-        stackTrace: stackTrace,
+  Future<void> _isolate(String label, Future<void> Function() action) =>
+      runIsolated(
+        label,
+        action,
+        category: LogCategory.network,
+        message: (label) => '$label未完成，下轮重试',
       );
-    }
-  }
 
   @visibleForTesting
   void dispose() {

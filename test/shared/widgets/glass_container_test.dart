@@ -10,10 +10,6 @@ import '../../helpers/test_setup.dart';
 void main() {
   setUp(() async {
     await resetTestEnvironment();
-    // 全局默认是云母（无模糊）；本文件覆盖玻璃配方的渲染分支。
-    await GlassStyleController.instance.setMaterialStyle(
-      SurfaceMaterialStyle.glass,
-    );
   });
 
   Future<void> pumpSurface(WidgetTester tester, Widget surface) async {
@@ -68,24 +64,16 @@ void main() {
     expect(find.byType(BackdropFilter), findsOneWidget);
   });
 
-  testWidgets('玻璃总开关关闭后降级实色且无 BackdropFilter', (tester) async {
+  testWidgets('亚克力总开关关闭后降级实色（不透明、无噪点、无 BackdropFilter）', (tester) async {
     await GlassStyleController.instance.setEnabled(false);
     await pumpSurface(tester, const GlassContainer(child: Text('卡片')));
 
     expect(find.byType(BackdropFilter), findsNothing);
-  });
-
-  testWidgets('模糊强度拉到 0 时不创建 BackdropFilter（滑条 0 = 关模糊）', (tester) async {
-    await GlassStyleController.instance.setBlurSigma(0);
-    await pumpSurface(tester, const GlassContainer(child: Text('卡片')));
-
-    expect(find.byType(BackdropFilter), findsNothing);
+    expect(noisePainterFinder(), findsNothing);
+    expect(surfaceDecoration(tester).color!.a, 1.0);
   });
 
   testWidgets('亚克力材质保留有界实时模糊、半透明填充与细微噪点', (tester) async {
-    await GlassStyleController.instance.setMaterialStyle(
-      SurfaceMaterialStyle.acrylic,
-    );
     await pumpSurface(tester, const GlassContainer(child: Text('卡片')));
 
     final backdrop = find.byType(BackdropFilter);
@@ -98,56 +86,6 @@ void main() {
 
     final shape = surfaceDecoration(tester);
     expect(shape.color!.a, lessThan(1.0));
-  });
-
-  testWidgets('云母材质为不透明主题色调稳定表面：无模糊、无噪点', (tester) async {
-    await GlassStyleController.instance.setMaterialStyle(
-      SurfaceMaterialStyle.mica,
-    );
-    await pumpSurface(tester, const GlassContainer(child: Text('卡片')));
-
-    expect(find.byType(BackdropFilter), findsNothing);
-    expect(noisePainterFinder(), findsNothing);
-
-    // 不透明：填充色 alpha 必须为 1，否则未模糊的背景会透出。
-    final shape = surfaceDecoration(tester);
-    expect(shape.color!.a, 1.0);
-
-    // 主题色调：不透明填充必须与中性 surface 容器色可区分。
-    final theme = Theme.of(tester.element(find.byType(GlassContainer)));
-    final baseSurface = theme.brightness == Brightness.dark
-        ? theme.colorScheme.surfaceContainerLow
-        : theme.colorScheme.surfaceContainerLowest;
-    expect(shape.color, isNot(equals(baseSurface)));
-  });
-
-  testWidgets('实色材质降级为不透明表面且无 BackdropFilter', (tester) async {
-    await GlassStyleController.instance.setMaterialStyle(
-      SurfaceMaterialStyle.solid,
-    );
-    await pumpSurface(tester, const GlassContainer(child: Text('卡片')));
-
-    expect(find.byType(BackdropFilter), findsNothing);
-  });
-
-  testWidgets('AppMaterialSurface 支持通过 surfaceType 显式指定材质', (tester) async {
-    await pumpSurface(
-      tester,
-      const AppMaterialSurface(
-        surfaceType: MaterialSurfaceType.mica,
-        child: Text('显式云母'),
-      ),
-    );
-    expect(find.byType(BackdropFilter), findsNothing);
-
-    await pumpSurface(
-      tester,
-      const AppMaterialSurface(
-        surfaceType: MaterialSurfaceType.acrylic,
-        child: Text('显式亚克力'),
-      ),
-    );
-    expect(find.byType(BackdropFilter), findsOneWidget);
   });
 
   testWidgets('BackdropFilter 必须严格处于 ClipRRect 祖先内部避免整屏扩散', (tester) async {

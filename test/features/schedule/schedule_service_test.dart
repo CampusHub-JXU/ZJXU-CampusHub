@@ -16,10 +16,11 @@ import 'package:jxu_campus_hub/core/semester/current_term_resolver.dart';
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/core/network/dio_client.dart';
 import 'package:jxu_campus_hub/core/semester/semester_calendar.dart';
-import 'package:jxu_campus_hub/features/schedule/schedule_cache_snapshot.dart';
-import 'package:jxu_campus_hub/features/schedule/schedule_model.dart';
+import 'package:jxu_campus_hub/core/academic/effective_week_courses.dart';
+import 'package:jxu_campus_hub/core/academic/schedule_cache_snapshot.dart';
+import 'package:jxu_campus_hub/core/academic/schedule_model.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';
-import 'package:jxu_campus_hub/features/schedule/schedule_term_context.dart';
+import 'package:jxu_campus_hub/core/semester/schedule_term_context.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../helpers/mock_http_client_adapter.dart';
@@ -909,7 +910,7 @@ void main() {
         );
         expect(snapshot?.changeRules, hasLength(1));
         expect(
-          ScheduleService.instance.buildEffectiveWeekCourses(
+          buildEffectiveWeekCourses(
             courses: snapshot!.courses,
             week: 5,
             changeRules: snapshot.changeRules,
@@ -1078,7 +1079,7 @@ void main() {
         hasScheduleChange: true,
       );
 
-      final effective = ScheduleService.instance.buildEffectiveWeekCourses(
+      final effective = buildEffectiveWeekCourses(
         courses: const [authoritativeCourse],
         week: 2,
         changeRules: [rule],
@@ -1145,7 +1146,7 @@ void main() {
 
       expect(notices.single.status, CourseChangeNoticeStatus.unapplied);
 
-      final effective = ScheduleService.instance.buildEffectiveWeekCourses(
+      final effective = buildEffectiveWeekCourses(
         courses: const [
           CourseEntry(
             courseName: '数字经济概论',
@@ -1268,8 +1269,8 @@ void main() {
       );
       expect(reflected.status, CourseChangeNoticeStatus.reflected);
       expect(reflected.originalClassroom, '兴德楼南楼223');
-      expect(reflected.newClassroom, '博学楼(8号楼)501');
-      expect(reflected.effectiveClassroom, '博学楼(8号楼)501');
+      expect(reflected.rule.classroom, '博学楼(8号楼)501');
+      expect(reflected.effectiveCourse?.classroom, '博学楼(8号楼)501');
       expect(reflected.termContext, isNull);
 
       final unapplied = notices.firstWhere(
@@ -1278,7 +1279,7 @@ void main() {
       expect(unapplied.status, CourseChangeNoticeStatus.unapplied);
       expect(unapplied.statusDetail, '学期未确认，未应用');
 
-      final effective = ScheduleService.instance.buildEffectiveWeekCourses(
+      final effective = buildEffectiveWeekCourses(
         courses: snapshot.courses,
         week: 2,
         changeRules: snapshot.changeRules,
@@ -1326,7 +1327,7 @@ void main() {
         '2026-2027学年第1学期 调课提醒:胡亚楠老师于第5周星期四第8-9节在铭德楼467上的AI+创新创业基础课程调课到由胡亚楠老师在第5周星期五第8-9节在铭德楼468上的AI+创新创业基础课程，请各位同学相互告知！',
       ]);
 
-      final weekCourses = ScheduleService.instance.buildEffectiveWeekCourses(
+      final weekCourses = buildEffectiveWeekCourses(
         courses: baseCourses,
         week: 5,
         changeRules: rules,
@@ -1356,12 +1357,12 @@ void main() {
         '2026-2027学年第1学期 补课提醒:杨月红老师将在第17周星期六第11-12节对课程健身1进行补课，请各位同学相互告知！',
       ]);
 
-      final week17Courses = ScheduleService.instance.buildEffectiveWeekCourses(
+      final week17Courses = buildEffectiveWeekCourses(
         courses: baseCourses,
         week: 17,
         changeRules: rules,
       );
-      final week16Courses = ScheduleService.instance.buildEffectiveWeekCourses(
+      final week16Courses = buildEffectiveWeekCourses(
         courses: baseCourses,
         week: 16,
         changeRules: rules,

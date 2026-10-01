@@ -20,6 +20,9 @@ import 'package:jxu_campus_hub/core/network/dio_client.dart';
 import 'package:jxu_campus_hub/core/network/network_settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../helpers/credential_store_test_ext.dart';
+import '../../helpers/fake_inappwebview.dart';
+
 class _FakeGateway implements Epay100Gateway {
   _FakeGateway({this.body, this.error});
 
@@ -80,7 +83,9 @@ Future<void> waitFor(bool Function() condition) async {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  InAppWebViewPlatform.instance = _FakeInAppWebViewPlatform();
+  InAppWebViewPlatform.instance = FakeInAppWebViewPlatform(
+    cookieMode: FakeCookieManagerMode.inMemory,
+  );
 
   final service = CampusCardService.instance;
 
@@ -1064,74 +1069,6 @@ void main() {
       },
     );
   });
-}
-
-class _FakeInAppWebViewPlatform extends InAppWebViewPlatform {
-  @override
-  PlatformCookieManager createPlatformCookieManager(
-    PlatformCookieManagerCreationParams params,
-  ) {
-    return _FakePlatformCookieManager(params);
-  }
-}
-
-class _FakePlatformCookieManager extends PlatformCookieManager {
-  _FakePlatformCookieManager(super.params) : super.implementation();
-
-  final Map<String, Cookie> _cookies = {};
-
-  String _key(WebUri url, String name, String? domain, String path) {
-    return '${url.host}|${domain ?? ''}|$path|$name';
-  }
-
-  @override
-  Future<bool> setCookie({
-    required WebUri url,
-    required String name,
-    required String value,
-    String path = '/',
-    String? domain,
-    int? expiresDate,
-    int? maxAge,
-    bool? isSecure,
-    bool? isHttpOnly,
-    HTTPCookieSameSitePolicy? sameSite,
-    @Deprecated('Use webViewController instead')
-    PlatformInAppWebViewController? iosBelow11WebViewController,
-    PlatformInAppWebViewController? webViewController,
-  }) async {
-    _cookies[_key(url, name, domain, path)] = Cookie(
-      name: name,
-      value: value,
-      domain: domain,
-      path: path,
-    );
-    return true;
-  }
-
-  @override
-  Future<List<Cookie>> getCookies({
-    required WebUri url,
-    @Deprecated('Use webViewController instead')
-    PlatformInAppWebViewController? iosBelow11WebViewController,
-    PlatformInAppWebViewController? webViewController,
-  }) async {
-    return _cookies.values.toList(growable: false);
-  }
-
-  @override
-  Future<bool> deleteCookie({
-    required WebUri url,
-    required String name,
-    String path = '/',
-    String? domain,
-    @Deprecated('Use webViewController instead')
-    PlatformInAppWebViewController? iosBelow11WebViewController,
-    PlatformInAppWebViewController? webViewController,
-  }) async {
-    _cookies.remove(_key(url, name, domain, path));
-    return true;
-  }
 }
 
 class _WebVpnPortalAdapter implements HttpClientAdapter {

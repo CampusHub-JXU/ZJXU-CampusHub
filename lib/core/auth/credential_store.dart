@@ -166,19 +166,6 @@ class CredentialStore {
 
   // ── Zhengfang session persistence ──────────────────────────────────────────
 
-  /// 兼容入口：无条件提交并推进 envelope epoch（单 key 写入）。
-  Future<void> saveZhengfangSession(String studentId) async {
-    final current = await readSessionEnvelope(CredentialSessionDomain.academic);
-    await writeSessionEnvelope(
-      CredentialSessionDomain.academic,
-      CredentialSessionEnvelope(
-        account: studentId,
-        active: true,
-        epoch: current.epoch + 1,
-      ),
-    );
-  }
-
   Future<String?> loadZhengfangSession() async {
     final envelope = await readSessionEnvelope(
       CredentialSessionDomain.academic,
@@ -186,39 +173,11 @@ class CredentialStore {
     return envelope.active ? envelope.account : null;
   }
 
-  Future<void> clearZhengfangSession() async {
-    final current = await readSessionEnvelope(CredentialSessionDomain.academic);
-    await writeSessionEnvelope(
-      CredentialSessionDomain.academic,
-      CredentialSessionEnvelope(epoch: current.epoch + 1),
-    );
-  }
-
   // ── Unified Auth session persistence ───────────────────────────────────────
-
-  Future<void> saveUnifiedAuthSession(String account) async {
-    final current = await readSessionEnvelope(CredentialSessionDomain.unified);
-    await writeSessionEnvelope(
-      CredentialSessionDomain.unified,
-      CredentialSessionEnvelope(
-        account: account,
-        active: true,
-        epoch: current.epoch + 1,
-      ),
-    );
-  }
 
   Future<String?> loadUnifiedAuthSession() async {
     final envelope = await readSessionEnvelope(CredentialSessionDomain.unified);
     return envelope.active ? envelope.account : null;
-  }
-
-  Future<void> clearUnifiedAuthSession() async {
-    final current = await readSessionEnvelope(CredentialSessionDomain.unified);
-    await writeSessionEnvelope(
-      CredentialSessionDomain.unified,
-      CredentialSessionEnvelope(epoch: current.epoch + 1),
-    );
   }
 
   Future<void> _writePair(

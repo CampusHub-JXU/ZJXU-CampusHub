@@ -20,6 +20,7 @@ import 'package:jxu_campus_hub/shared/widgets/unified_auth_protected_webview_pag
 
 import '../../helpers/mock_http_client_adapter.dart';
 import '../../helpers/test_setup.dart';
+import '../../helpers/credential_store_test_ext.dart';
 
 class _NoopGateway implements Epay100Gateway {
   @override

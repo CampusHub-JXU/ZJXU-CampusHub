@@ -18,18 +18,17 @@ import 'package:jxu_campus_hub/core/profile/user_profile_controller.dart';
 import 'package:jxu_campus_hub/core/theme/glass_style_controller.dart';
 import 'package:jxu_campus_hub/core/theme/personalization_controller.dart';
 import 'package:jxu_campus_hub/core/network/network_settings.dart';
-import 'package:jxu_campus_hub/core/push/push_service.dart';
 import 'package:jxu_campus_hub/core/shortcut/app_shortcut_service.dart';
 import 'package:jxu_campus_hub/core/update/update_checker.dart';
 import 'package:jxu_campus_hub/core/update/update_service.dart';
 import 'package:jxu_campus_hub/features/campus_card/campus_card_service.dart';
 import 'package:jxu_campus_hub/features/changxing_jiada/changxing_jiada_service.dart';
 import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_service.dart';
-import 'package:jxu_campus_hub/features/dorm_electricity/epay_electricity_gateway.dart';
+import 'package:jxu_campus_hub/core/epay100/epay100_gateway.dart';
 import 'package:jxu_campus_hub/features/exam/exam_service.dart';
 import 'package:jxu_campus_hub/features/grades/grades_service.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';
-import 'package:jxu_campus_hub/features/service_hub/service_hub_usage_store.dart';
+import 'package:jxu_campus_hub/core/config/service_hub_usage_store.dart';
 import 'package:jxu_campus_hub/features/home/widget/campus_widget_sync.dart';
 
 Future<void> resetTestEnvironment() async {
@@ -69,13 +68,10 @@ Future<void> resetTestEnvironment() async {
   UpdateChecker.instance.debugReset();
   CampusCardService.instance.debugSetCachedBalance(null);
   ChangxingJiadaService.instance.debugReset();
-  EpayElectricityGateway.instance.debugReset();
-  DormElectricityService.instance.debugSetGateway(
-    EpayElectricityGateway.instance,
-  );
+  Epay100Gateway.instance.debugReset();
+  DormElectricityService.instance.debugSetGateway(Epay100Gateway.instance);
   DormElectricityService.instance.debugReset();
   await ScheduleService.instance.debugClearCache();
-  PushService.instance.debugReset();
   ExamService.instance.debugReset();
   GradesService.instance.debugReset();
   ServiceHubUsageStore.instance.debugReset();

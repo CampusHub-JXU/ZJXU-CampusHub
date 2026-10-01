@@ -162,9 +162,8 @@ class CurrentTermResolver {
 
   ({String owner, int revision})? _currentIdentity() {
     final auth = ZhengfangAuth.instance;
-    if (!auth.isLoggedIn) return null;
-    final owner = auth.currentStudentId?.trim();
-    if (owner == null || owner.isEmpty) return null;
+    final owner = auth.verifiedStudentId;
+    if (owner == null) return null;
     return (owner: owner, revision: auth.sessionRevision);
   }
 

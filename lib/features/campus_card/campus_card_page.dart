@@ -87,13 +87,7 @@ class _CampusCardPageState extends State<CampusCardPage> {
   /// 判定保持一致。同一 revision 的重复通知视为同一身份。
   ({String? account, int revision}) _currentIdentity() {
     final auth = UnifiedAuthService.instance;
-    final revision = auth.sessionRevision;
-    if (!auth.isLoggedIn) return (account: null, revision: revision);
-    final account = auth.currentAccount?.trim();
-    if (account == null || account.isEmpty) {
-      return (account: null, revision: revision);
-    }
-    return (account: account, revision: revision);
+    return (account: auth.verifiedAccount, revision: auth.sessionRevision);
   }
 
   void _onAuthChanged() {

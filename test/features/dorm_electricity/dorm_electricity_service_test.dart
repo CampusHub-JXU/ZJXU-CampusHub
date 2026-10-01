@@ -6,12 +6,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_service.dart';
-import 'package:jxu_campus_hub/features/dorm_electricity/epay_electricity_gateway.dart';
+import 'package:jxu_campus_hub/core/epay100/epay100_gateway.dart';
 
 import '../../helpers/test_setup.dart';
 
 /// 断言「未登录 / 无归属时绝不触网」：任何 call 都视为测试失败。
-class _ThrowingGateway implements EpayElectricityGateway {
+class _ThrowingGateway implements Epay100Gateway {
   int calls = 0;
 
   @override
@@ -30,7 +30,7 @@ class _ThrowingGateway implements EpayElectricityGateway {
 }
 
 /// 只回答余额查询的网关替身（供串行写入测试驱动一次成功查询）。
-class _BalanceGateway implements EpayElectricityGateway {
+class _BalanceGateway implements Epay100Gateway {
   _BalanceGateway(this.balance);
 
   final String balance;

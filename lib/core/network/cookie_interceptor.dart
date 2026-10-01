@@ -1,2 +1,7 @@
-export 'cookie_interceptor_stub.dart'
-    if (dart.library.io) 'cookie_interceptor_io.dart';
+import 'package:cookie_jar/cookie_jar.dart';
+import 'package:dio/dio.dart';
+import 'package:dio_cookie_manager/dio_cookie_manager.dart';
+
+Interceptor buildCookieInterceptor(CookieJar cookieJar) {
+  return CookieManager(cookieJar);
+}

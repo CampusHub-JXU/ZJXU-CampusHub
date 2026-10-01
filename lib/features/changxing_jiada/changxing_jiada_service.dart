@@ -148,31 +148,25 @@ class ChangxingJiadaService {
 
       // 2. 发起 CAS 登录并在重定向链里提取 tokenId（命中即停，不消费后续 ticket）。
       // 命中登录 bounce 时只做一次恢复 + 重试，仍失效则引导重新登录一卡通。
-      String? tokenId;
-      for (var attempt = 0; ; attempt++) {
-        try {
-          tokenId = await _fetchTokenId(
+      // 第二次仍失效时 CasAuthExpiredException 上抛，由下方外层 catch 统一映射为
+      // 「需要重新登录一卡通」。
+      final tokenId = await CasRoutedAccess.withRecoverOnce<String?>(
+        route: route,
+        service: CasService.changxing,
+        cancelToken: cancelToken,
+        deadline: deadline,
+        attempt: () async {
+          final id = await _fetchTokenId(
             route,
             cancelToken: cancelToken,
             deadline: deadline,
           );
           ensureIdentityCurrent();
-          break;
-        } on CasAuthExpiredException {
-          ensureNotSwitched();
-          if (attempt >= 1) {
-            AppLogger.instance.auth(LogLevel.warn, '畅行嘉大：统一认证会话已失效，需要重新登录一卡通');
-            throw ChangxingNeedUnifiedAuthException();
-          }
-          await CasRoutedAccess.recover(
-            route,
-            service: CasService.changxing,
-            cancelToken: cancelToken,
-            deadline: deadline,
-          );
-          ensureIdentityCurrent();
-        }
-      }
+          return id;
+        },
+        beforeRecover: ensureNotSwitched,
+        afterRecover: ensureIdentityCurrent,
+      );
 
       if (tokenId == null || tokenId.isEmpty) {
         AppLogger.instance.auth(LogLevel.warn, '畅行嘉大：SSO 链路结束但未获取到 tokenId');
@@ -633,16 +627,6 @@ class ChangxingJiadaService {
     } catch (_) {
       return false;
     }
-  }
-
-  Future<String?> fetchImageByMd5(String md5) async {
-    if (md5.trim().isEmpty) return null;
-    final json = await _get('/image/getOne', query: {'md5': md5.trim()});
-    _ensureSuccess(json, fallback: '获取附件预览失败');
-    final data = _extractDataMap(json)['data'] as Map<String, dynamic>? ?? {};
-    final base64 = data['base64']?.toString().trim() ?? '';
-    if (base64.isEmpty) return null;
-    return 'data:image/png;base64,$base64';
   }
 
   Future<ChangxingUploadResult> uploadAttachment(

@@ -1,11 +1,10 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../logging/app_logger.dart';
+import '../storage/atomic_json_file.dart';
 import 'auth_file_lock.dart';
 
 /// 后台登录申领凭证。
@@ -109,23 +108,16 @@ class BackgroundSessionGate {
   Timer? _heartbeat;
   DateTime? _lastSeenChangeAt;
 
-  Future<Directory> _resolveDir() async {
-    final override = debugDirectoryProvider;
-    if (override != null) return override();
-    return getApplicationSupportDirectory();
-  }
+  late final AtomicJsonFile _io = AtomicJsonFile(
+    stateFileName,
+    directory: () => debugDirectoryProvider?.call(),
+  );
 
   Future<AuthFileLock> _lock() async {
-    final dir = await _resolveDir();
     return AuthFileLock(
-      lockFile: File('${dir.path}${Platform.pathSeparator}$lockFileName'),
+      lockFile: await _io.siblingFile(lockFileName),
       acquireTimeout: const Duration(seconds: 5),
     );
-  }
-
-  Future<File> _stateFile() async {
-    final dir = await _resolveDir();
-    return File('${dir.path}${Platform.pathSeparator}$stateFileName');
   }
 
   /// 状态文件存在但读不出有效内容（损坏 / schema 不符）时注入的保留键。
@@ -144,27 +136,22 @@ class BackgroundSessionGate {
   }) async {
     final lock = await _lock();
     return lock.withLock(() async {
-      final file = await _stateFile();
-      var state = <String, dynamic>{};
-      try {
-        if (await file.exists()) {
-          final raw = jsonDecode(await file.readAsString());
-          if (raw is Map<String, dynamic> && raw['v'] == schemaVersion) {
-            state = raw;
-          } else {
-            state = <String, dynamic>{_invalidKey: true};
-          }
-        }
-      } catch (_) {
-        state = <String, dynamic>{_invalidKey: true};
-      }
+      final file = await _io.file();
+      // 文件不存在 → 空状态；存在却读不出（损坏 / schema 不符）→ 注入无效标记。
+      final state = await _io.read<Map<String, dynamic>>(
+        file,
+        absent: <String, dynamic>{},
+        decode: (raw) =>
+            raw is Map<String, dynamic> && raw['v'] == schemaVersion
+            ? raw
+            : <String, dynamic>{_invalidKey: true},
+        onCorrupt: (_, _) => <String, dynamic>{_invalidKey: true},
+      );
       final result = mutate(state);
       // 仍无效（mutator 没有自愈）就不落盘：保持文件原样，不把半截状态写成有效。
       if (write && !_isInvalid(state)) {
         state['v'] = schemaVersion;
-        final tmp = File('${file.path}.tmp');
-        await tmp.writeAsString(jsonEncode(state), flush: true);
-        await tmp.rename(file.path);
+        await AtomicJsonFile.write(file, state);
       }
       return result;
     });

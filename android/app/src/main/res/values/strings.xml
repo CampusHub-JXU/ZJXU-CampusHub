@@ -4,5 +4,4 @@
     <string name="shortcut_campus_card_payment_long_label">校园卡付款码</string>
     <string name="shortcut_shuati_short_label">刷题助手</string>
     <string name="shortcut_shuati_long_label">刷题助手</string>
-    <string name="default_notification_channel_id">push_notifications</string>
 </resources>

@@ -3,12 +3,19 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/cache/json_cache_store.dart';
 import '../../core/logging/app_logger.dart';
 import 'second_classroom_model.dart';
 
-const _catalogCacheKey = 'second_classroom_catalog_cache_v1';
-const _activityCacheKey = 'second_classroom_activity_cache_v1';
+/// 落在 [JsonCacheStore] 的桶名；设置页「清除离线缓存」经 `clearAll` 一并清掉。
+const _cacheBucket = 'second_classroom';
+const _catalogRecordKey = 'catalog';
+const _activitiesRecordKey = 'activities';
 const _maxActivityCacheBuckets = 12;
+
+/// 迁移前存放在 SharedPreferences 的旧键；首次使用时一次性清除，不迁移内容。
+const _legacyCatalogPrefsKey = 'second_classroom_catalog_cache_v1';
+const _legacyActivityPrefsKey = 'second_classroom_activity_cache_v1';
 
 class SecondClassroomActivityCacheSnapshot {
   const SecondClassroomActivityCacheSnapshot({
@@ -26,14 +33,25 @@ class SecondClassroomCacheStore {
   static final SecondClassroomCacheStore instance =
       SecondClassroomCacheStore._();
 
+  final JsonCacheStore _store = JsonCacheStore.instance;
+  Future<void>? _legacyPurge;
+
+  /// 一次性清除迁移前遗留在 SharedPreferences 的旧缓存（失败不阻断缓存读写）。
+  Future<void> _purgeLegacyPrefs() => _legacyPurge ??= () async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_legacyCatalogPrefsKey);
+      await prefs.remove(_legacyActivityPrefsKey);
+    } catch (_) {}
+  }();
+
   Future<SecondClassroomCatalog?> loadCatalog() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_catalogCacheKey);
-    if (raw == null || raw.isEmpty) return null;
+    await _purgeLegacyPrefs();
+    final record = await _store.read(_cacheBucket, _catalogRecordKey);
+    final decoded = record?.payload;
+    if (decoded is! Map) return null;
 
     try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map) return null;
       return SecondClassroomCatalog.fromJson(
         Map<String, dynamic>.from(decoded),
       );
@@ -44,14 +62,14 @@ class SecondClassroomCacheStore {
         error: error,
         stackTrace: stackTrace,
       );
-      await prefs.remove(_catalogCacheKey);
+      await _store.remove(_cacheBucket, _catalogRecordKey);
       return null;
     }
   }
 
   Future<void> saveCatalog(SecondClassroomCatalog catalog) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_catalogCacheKey, jsonEncode(catalog.toJson()));
+    await _purgeLegacyPrefs();
+    await _store.write(_cacheBucket, _catalogRecordKey, catalog.toJson());
   }
 
   Future<SecondClassroomActivityCacheSnapshot?> loadActivities(
@@ -84,7 +102,6 @@ class SecondClassroomCacheStore {
     SecondClassroomActivityQuery query,
     List<SecondClassroomActivity> activities,
   ) async {
-    final prefs = await SharedPreferences.getInstance();
     final cache = await _loadActivityCache();
     cache[_queryCacheKey(query)] = {
       'updatedAt': DateTime.now().toIso8601String(),
@@ -92,28 +109,17 @@ class SecondClassroomCacheStore {
     };
 
     _trimCache(cache);
-    await prefs.setString(_activityCacheKey, jsonEncode(cache));
+    await _store.write(_cacheBucket, _activitiesRecordKey, cache);
   }
 
+  /// 活动缓存整体是一条 record（查询 key → 桶），最多保留
+  /// [_maxActivityCacheBuckets] 个查询桶，超出按 updatedAt 淘汰最旧的。
   Future<Map<String, dynamic>> _loadActivityCache() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_activityCacheKey);
-    if (raw == null || raw.isEmpty) return <String, dynamic>{};
-
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map) return <String, dynamic>{};
-      return Map<String, dynamic>.from(decoded);
-    } catch (error, stackTrace) {
-      AppLogger.instance.storage(
-        LogLevel.warn,
-        '第二课堂活动缓存解析失败，已清空',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      await prefs.remove(_activityCacheKey);
-      return <String, dynamic>{};
-    }
+    await _purgeLegacyPrefs();
+    final record = await _store.read(_cacheBucket, _activitiesRecordKey);
+    final decoded = record?.payload;
+    if (decoded is! Map) return <String, dynamic>{};
+    return Map<String, dynamic>.from(decoded);
   }
 
   void _trimCache(Map<String, dynamic> cache) {
@@ -148,8 +154,10 @@ class SecondClassroomCacheStore {
 
   @visibleForTesting
   Future<void> debugClear() async {
+    await _store.clearBucket(_cacheBucket);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_catalogCacheKey);
-    await prefs.remove(_activityCacheKey);
+    await prefs.remove(_legacyCatalogPrefsKey);
+    await prefs.remove(_legacyActivityPrefsKey);
+    _legacyPurge = null;
   }
 }

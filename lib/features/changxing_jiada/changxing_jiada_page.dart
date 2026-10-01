@@ -107,12 +107,7 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
   ChangxingJiadaService get _service => ChangxingJiadaService.instance;
 
   /// 当前明确的统一认证账号；未登录 / 空白账号一律为 null。
-  String? get _currentOwner {
-    final auth = UnifiedAuthService.instance;
-    if (!auth.isLoggedIn) return null;
-    final account = auth.currentAccount?.trim();
-    return (account == null || account.isEmpty) ? null : account;
-  }
+  String? get _currentOwner => UnifiedAuthService.instance.verifiedAccount;
 
   /// 仪表盘数据必须同时满足：已有 profile、归属账号仍是当前账号、
   /// 且抓取时的 `sessionRevision` 未漂移。监听时序异常时也不渲染错身份数据。

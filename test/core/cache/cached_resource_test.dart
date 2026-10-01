@@ -8,6 +8,16 @@ import 'package:jxu_campus_hub/core/cache/json_cache_store.dart';
 
 import '../../helpers/test_setup.dart';
 
+/// 测试用策略：生产代码只有 catalog 档，这里自行构造覆盖 CachedResource 行为。
+const _dailyPolicy = CachePolicy(
+  ttl: Duration(hours: 8),
+  staleGrace: Duration(days: 3),
+);
+const _volatilePolicy = CachePolicy(
+  ttl: Duration.zero,
+  staleGrace: Duration.zero,
+);
+
 /// 手写 fetch 替身：既能计数，也能用 [gate] 卡住完成时机。
 class _FakeFetcher {
   _FakeFetcher(this.result);
@@ -66,7 +76,7 @@ void main() {
 
   CachedResource<List<String>> buildResource(
     _FakeFetcher fetcher, {
-    CachePolicy policy = CachePolicy.daily,
+    CachePolicy policy = _dailyPolicy,
     void Function(List<String> value)? onRefreshed,
   }) {
     return CachedResource<List<String>>(
@@ -411,7 +421,7 @@ void main() {
   group('volatile 策略', () {
     test('回源成功但不落盘', () async {
       final fetcher = _FakeFetcher(['v1']);
-      final resource = buildResource(fetcher, policy: CachePolicy.volatile);
+      final resource = buildResource(fetcher, policy: _volatilePolicy);
 
       final result = await resource.get();
 
@@ -423,7 +433,7 @@ void main() {
 
     test('ttl 为 0，每次读取都重新回源', () async {
       final fetcher = _FakeFetcher(['v1']);
-      final resource = buildResource(fetcher, policy: CachePolicy.volatile);
+      final resource = buildResource(fetcher, policy: _volatilePolicy);
 
       await resource.get();
       // 保证 age > 0，volatile 下任何正年龄都已失效。

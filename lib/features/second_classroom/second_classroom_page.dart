@@ -74,6 +74,7 @@ class SecondClassroomPage extends StatefulWidget {
     this.initialActivityId,
     this.service,
     this.subscriptionService,
+    this.cacheStore,
   });
 
   static const authEntryUrl =
@@ -83,6 +84,7 @@ class SecondClassroomPage extends StatefulWidget {
   final int? initialActivityId;
   final SecondClassroomService? service;
   final SecondClassroomSubscriptionService? subscriptionService;
+  final SecondClassroomCacheStore? cacheStore;
 
   @override
   State<SecondClassroomPage> createState() => _SecondClassroomPageState();
@@ -98,7 +100,8 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
   SecondClassroomSubscriptionService get _subscriptionService =>
       widget.subscriptionService ?? SecondClassroomSubscriptionService.instance;
 
-  final _cacheStore = SecondClassroomCacheStore.instance;
+  SecondClassroomCacheStore get _cacheStore =>
+      widget.cacheStore ?? SecondClassroomCacheStore.instance;
 
   SecondClassroomActivityQuery _query = const SecondClassroomActivityQuery();
   SecondClassroomCatalog? _catalog;

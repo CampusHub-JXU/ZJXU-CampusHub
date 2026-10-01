@@ -1,6 +1,6 @@
-import '../exam/exam_model.dart';
-import '../schedule/schedule_model.dart';
-import '../schedule/schedule_service.dart';
+import '../../core/academic/effective_week_courses.dart';
+import '../../core/academic/exam_model.dart';
+import '../../core/academic/schedule_model.dart';
 import 'models/home_presentation.dart';
 import 'models/home_snapshot.dart';
 
@@ -20,7 +20,7 @@ const _weekDayLabels = ['周一', '周二', '周三', '周四', '周五', '周�
 /// 约定：本函数不取 [DateTime.now]、不触网、不读可变单例状态；
 /// 周次换算复刻 `SemesterCalendar.weekForDate` 的纯公式
 /// （以开学日所在周的周一为第 1 周起点，钳制 1..20），
-/// 课表「周有效课」复用 [ScheduleService.buildEffectiveWeekCourses]
+/// 课表「周有效课」复用 [buildEffectiveWeekCourses]
 /// （仅做过滤与调课变换，无 IO）。
 ///
 /// [fullDayCourses]：首页个性化「今日全部课程」开关。开启时 Today
@@ -548,7 +548,7 @@ DateTime _normalizeDate(DateTime date) =>
     DateTime(date.year, date.month, date.day);
 
 List<CourseEntry> _effectiveWeekCourses(HomeSnapshot snapshot, int week) {
-  return ScheduleService.instance.buildEffectiveWeekCourses(
+  return buildEffectiveWeekCourses(
     courses: snapshot.courses,
     week: week,
     changeRules: snapshot.changeRules,

@@ -13,6 +13,7 @@ import 'package:jxu_campus_hub/core/network/proxy_mode.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../helpers/mock_http_client_adapter.dart';
+import '../../helpers/credential_store_test_ext.dart';
 
 void main() {
   group('Unified auth url classifiers', () {

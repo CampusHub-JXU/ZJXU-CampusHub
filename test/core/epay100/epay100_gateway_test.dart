@@ -4,9 +4,10 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/core/auth/credential_store.dart';
 import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
-import 'package:jxu_campus_hub/features/dorm_electricity/epay_electricity_gateway.dart';
+import 'package:jxu_campus_hub/core/epay100/epay100_gateway.dart';
 
 import '../../helpers/test_setup.dart';
+import '../../helpers/credential_store_test_ext.dart';
 
 HeadlessEpay100Gateway get _gateway =>
     Epay100Gateway.instance as HeadlessEpay100Gateway;
@@ -393,14 +394,9 @@ void main() {
     });
   });
 
-  group('兼容别名（dorm_electricity 旧调用方）', () {
-    test('旧名 typedef 指向共享网关同一实例', () {
-      expect(EpayElectricityGateway.instance, same(Epay100Gateway.instance));
-      expect(
-        EpayElectricityGateway.instance,
-        isA<HeadlessEpayElectricityGateway>(),
-      );
-      expect(EpayElectricityGateway.instance, isA<HeadlessEpay100Gateway>());
+  group('共享实例', () {
+    test('默认实例为 Headless 实现', () {
+      expect(Epay100Gateway.instance, isA<HeadlessEpay100Gateway>());
     });
   });
 }

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../../core/shortcut/app_shortcut_service.dart';
+import '../../shared/widgets/app_feedback.dart';
 import '../../shared/widgets/external_url_launcher.dart';
 import 'shuati_asset_service.dart';
 import '../../shared/widgets/app_app_bar.dart';
@@ -78,20 +79,13 @@ class _ShuatiWebViewPageState extends State<ShuatiWebViewPage> {
         .requestShuatiShortcutResult();
     if (!mounted) return;
 
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(result.message),
-        action: result.canOpenPermissionSettings
-            ? SnackBarAction(
-                label: '去设置',
-                onPressed: () {
-                  AppShortcutService.instance.openShortcutPermissionSettings();
-                },
-              )
-            : null,
-      ),
+    AppFeedback.toast(
+      context,
+      result.message,
+      actionLabel: result.canOpenPermissionSettings ? '去设置' : null,
+      onAction: () {
+        AppShortcutService.instance.openShortcutPermissionSettings();
+      },
     );
   }
 

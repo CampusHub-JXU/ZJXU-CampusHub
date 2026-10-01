@@ -171,13 +171,6 @@ class AppNotificationService {
     );
   }
 
-  Future<void> cancelNotification(int id) async {
-    if (!_initialized) {
-      await initialize(requestNotificationPermission: false);
-    }
-    await _plugin.cancel(id);
-  }
-
   Future<void> _createAndroidChannels() async {
     final android = _plugin
         .resolvePlatformSpecificImplementation<

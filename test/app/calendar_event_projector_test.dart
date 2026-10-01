@@ -2,9 +2,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jxu_campus_hub/app/calendar_event_projector.dart';
 import 'package:jxu_campus_hub/core/calendar/calendar_sync_models.dart';
 import 'package:jxu_campus_hub/core/semester/schedule_term_context.dart';
-import 'package:jxu_campus_hub/features/schedule/schedule_cache_snapshot.dart';
-import 'package:jxu_campus_hub/features/schedule/schedule_change_rule.dart';
-import 'package:jxu_campus_hub/features/schedule/schedule_model.dart';
+import 'package:jxu_campus_hub/core/academic/schedule_cache_snapshot.dart';
+import 'package:jxu_campus_hub/core/academic/schedule_change_rule.dart';
+import 'package:jxu_campus_hub/core/academic/schedule_model.dart';
 
 void main() {
   // 固定时间基准（第一学期：2026-2027 学年第 1 学期）。

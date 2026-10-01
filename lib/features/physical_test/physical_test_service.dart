@@ -48,12 +48,19 @@ class PhysicalTestService {
   /// 发生变化的旧操作结果一律丢弃。
   int _authEpoch = 0;
 
+  /// 内存缓存有效期；超过后按未命中处理并重新抓取。
+  static const cacheTtl = Duration(minutes: 15);
+
   PhysicalTestSnapshot? _cachedSnapshot;
   _SessionGuard? _cachedGuard;
 
   /// 测试注入；生产为空时走真实抓取路径。
   @visibleForTesting
   Future<PhysicalTestSnapshot> Function()? debugSnapshotFetcher;
+
+  /// 测试注入时钟，用于覆盖缓存过期。
+  @visibleForTesting
+  DateTime Function() debugNow = DateTime.now;
 
   Dio? _debugDio;
 
@@ -69,7 +76,7 @@ class PhysicalTestService {
     _cachedGuard = null;
   }
 
-  /// 拉取当前及可用历年成绩；同一会话未过期时命中内存缓存。
+  /// 拉取当前及可用历年成绩；同一会话且未超过 [cacheTtl] 时命中内存缓存。
   ///
   /// 认证失败（无本地会话 / 明确失效 / bounce 重试后仍登录页）抛
   /// [CasAuthExpiredException]；网络未知原样抛出且不清理全局会话；异步
@@ -114,7 +121,7 @@ class PhysicalTestService {
     _ensureGuard(guard);
     final snapshot = PhysicalTestSnapshot(
       records: records,
-      updatedAt: DateTime.now(),
+      updatedAt: debugNow(),
     );
     _cachedSnapshot = snapshot;
     _cachedGuard = guard;
@@ -133,35 +140,27 @@ class PhysicalTestService {
     targetUrl: _siteHomeUrl,
   );
 
-  /// 业务 bounce 后唯一一次恢复：重验 CAS service（含 WebVPN 网关）后重试。
-  /// 明确失败抛 [CasAuthExpiredException]，但绝不调用 `markLoggedOut`。
-  Future<void> _recoverSession(_SessionGuard guard, CasRoute route) async {
-    await CasRoutedAccess.recover(route, service: CasService.physicalTest);
-    _ensureGuard(guard);
-  }
-
-  /// 有界认证重试：第一次命中登录页/登录跳转时恢复会话并重试一次；
-  /// 仍然 bounce 则抛 [CasAuthExpiredException]。
+  /// 有界认证重试：第一次命中登录页/登录跳转时恢复会话（重验 CAS service，含
+  /// WebVPN 网关，绝不 `markLoggedOut`）并重试一次；仍然 bounce 则抛
+  /// [CasAuthExpiredException]。
   Future<Response<List<int>>> _withBoundedAuthRetry({
     required _SessionGuard guard,
     required CasRoute route,
     required Future<Response<List<int>>> Function() send,
-  }) async {
-    Future<Response<List<int>>> attempt() async {
-      final response = await send();
-      if (_looksLikeAuthBounce(response)) {
-        throw const CasAuthExpiredException();
-      }
-      return response;
-    }
-
-    try {
-      return await attempt();
-    } on CasAuthExpiredException {
-      _ensureGuard(guard);
-      await _recoverSession(guard, route);
-      return attempt();
-    }
+  }) {
+    return CasRoutedAccess.withRecoverOnce(
+      route: route,
+      service: CasService.physicalTest,
+      attempt: () async {
+        final response = await send();
+        if (_looksLikeAuthBounce(response)) {
+          throw const CasAuthExpiredException();
+        }
+        return response;
+      },
+      beforeRecover: () => _ensureGuard(guard),
+      afterRecover: () => _ensureGuard(guard),
+    );
   }
 
   Future<PhysicalTestIdentity> _fetchIdentity(
@@ -475,12 +474,18 @@ class PhysicalTestService {
         cachedGuard.epoch != guard.epoch) {
       return null;
     }
+    final updatedAt = cached.updatedAt;
+    if (updatedAt == null) return null;
+    // 时钟回拨时 age 为负，同样按过期处理，避免缓存一直命中。
+    final age = debugNow().difference(updatedAt);
+    if (age.isNegative || age >= cacheTtl) return null;
     return cached;
   }
 
   @visibleForTesting
   void debugReset() {
     debugSnapshotFetcher = null;
+    debugNow = DateTime.now;
     _debugDio = null;
     _cachedSnapshot = null;
     _cachedGuard = null;

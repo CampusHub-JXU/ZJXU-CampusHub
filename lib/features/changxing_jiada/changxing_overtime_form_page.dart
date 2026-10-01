@@ -1,16 +1,22 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 
+import 'changxing_form_support.dart';
 import 'changxing_jiada_form_validator.dart';
 import 'changxing_jiada_service.dart';
 import '../../core/theme/app_design_tokens.dart';
 import '../../shared/widgets/app_app_bar.dart';
-import '../../shared/widgets/app_feedback.dart';
 
 class ChangxingOvertimeFormPage extends StatefulWidget {
-  const ChangxingOvertimeFormPage({super.key, this.applicationId});
+  const ChangxingOvertimeFormPage({
+    super.key,
+    this.applicationId,
+    this.service,
+  });
 
   final int? applicationId;
+
+  /// 测试注入点；默认走 [ChangxingJiadaService.instance]。
+  final ChangxingJiadaService? service;
 
   @override
   State<ChangxingOvertimeFormPage> createState() =>
@@ -23,7 +29,8 @@ class _ChangxingOvertimeFormPageState extends State<ChangxingOvertimeFormPage> {
   bool _loading = true;
   bool _submitting = false;
 
-  ChangxingJiadaService get _service => ChangxingJiadaService.instance;
+  ChangxingJiadaService get _service =>
+      widget.service ?? ChangxingJiadaService.instance;
 
   bool get _isEdit => (widget.applicationId ?? 0) > 0;
 
@@ -46,19 +53,13 @@ class _ChangxingOvertimeFormPageState extends State<ChangxingOvertimeFormPage> {
       return;
     }
 
-    try {
+    final loaded = await loadChangxingForm(this, () async {
       final detail = await _service.fetchApplicationDetail(
         widget.applicationId!,
       );
       _reasonController.text = detail.descr;
-    } catch (e) {
-      if (!mounted) return;
-      _showSnackBar('加载表单失败：$e');
-      context.pop();
-      return;
-    }
-
-    if (!mounted) return;
+    });
+    if (!loaded) return;
     setState(() => _loading = false);
   }
 
@@ -69,31 +70,22 @@ class _ChangxingOvertimeFormPageState extends State<ChangxingOvertimeFormPage> {
       tooLongMessage: '超时理由过长，最多200字',
     );
     if (reasonMessage != null) {
-      _showSnackBar(reasonMessage);
+      changxingToast(this, reasonMessage);
       return;
     }
 
-    setState(() => _submitting = true);
-    try {
-      await _service.submitOvertime(
-        id: widget.applicationId,
-        descr: _reasonController.text.trim(),
-      );
-      if (!mounted) return;
-      _showSnackBar(_isEdit ? '修改成功' : '提交成功');
-      context.pop(true);
-    } catch (e) {
-      _showSnackBar(_isEdit ? '修改失败：$e' : '提交失败：$e');
-    } finally {
-      if (mounted) {
-        setState(() => _submitting = false);
-      }
-    }
-  }
-
-  void _showSnackBar(String message) {
-    if (!mounted) return;
-    AppFeedback.toast(context, message);
+    await submitChangxingForm(
+      this,
+      isEdit: _isEdit,
+      setSubmitting: (value) => setState(() => _submitting = value),
+      submit: () async {
+        await _service.submitOvertime(
+          id: widget.applicationId,
+          descr: _reasonController.text.trim(),
+        );
+        return true;
+      },
+    );
   }
 
   @override

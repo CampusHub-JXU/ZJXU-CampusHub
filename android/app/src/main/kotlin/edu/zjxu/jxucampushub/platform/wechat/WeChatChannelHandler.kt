@@ -5,6 +5,7 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import io.flutter.plugin.common.BinaryMessenger
+import edu.zjxu.jxucampushub.platform.requireStringArg
 import io.flutter.plugin.common.MethodChannel
 
 /**
@@ -20,11 +21,8 @@ class WeChatChannelHandler(private val activity: Activity) {
         MethodChannel(messenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "openUrlInWeChat" -> {
-                    val url = call.argument<String>("url")
-                    if (url.isNullOrBlank()) {
-                        result.error("invalid_args", "url is required", null)
-                        return@setMethodCallHandler
-                    }
+                    val url = call.requireStringArg("url", result)
+                        ?: return@setMethodCallHandler
                     result.success(openUrlInWeChat(url))
                 }
 

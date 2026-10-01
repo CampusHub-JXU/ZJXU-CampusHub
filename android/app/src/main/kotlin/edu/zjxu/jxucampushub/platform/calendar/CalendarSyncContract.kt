@@ -1,5 +1,6 @@
 package edu.zjxu.jxucampushub.platform.calendar
 
+import edu.zjxu.jxucampushub.platform.ERROR_INVALID_ARGS
 import java.util.TimeZone
 
 /**
@@ -60,7 +61,7 @@ internal object CalendarSyncContract {
 /** 通道错误类别；全部不携带 PII，Dart 侧按类别降级。 */
 internal object CalendarSyncErrors {
     const val PERMISSION_DENIED = "permission_denied"
-    const val INVALID_ARGS = "invalid_args"
+    const val INVALID_ARGS = ERROR_INVALID_ARGS
     const val PROVIDER_UNAVAILABLE = "provider_unavailable"
     const val CALENDAR_UNAVAILABLE = "calendar_unavailable"
     const val OWNERSHIP_CONFLICT = "ownership_conflict"

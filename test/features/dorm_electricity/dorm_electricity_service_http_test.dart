@@ -8,7 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/core/cache/json_cache_store.dart';
 import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_service.dart';
-import 'package:jxu_campus_hub/features/dorm_electricity/epay_electricity_gateway.dart';
+import 'package:jxu_campus_hub/core/epay100/epay100_gateway.dart';
 
 import '../../helpers/test_setup.dart';
 
@@ -19,7 +19,7 @@ class _GatewayCall {
   final Map<String, String> data;
 }
 
-class _FakeEpayElectricityGateway implements EpayElectricityGateway {
+class _FakeEpayElectricityGateway implements Epay100Gateway {
   final Map<String, List<Object>> responses = {};
   final List<_GatewayCall> calls = [];
 

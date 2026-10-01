@@ -1,8 +1,6 @@
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 
-import 'changxing_area_picker_dialog.dart';
+import 'changxing_form_support.dart';
 import 'changxing_jiada_form_validator.dart';
 import 'changxing_jiada_model.dart';
 import 'changxing_jiada_service.dart';
@@ -10,13 +8,19 @@ import 'changxing_jiada_widgets.dart';
 import '../../core/theme/app_design_tokens.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_dropdown.dart';
-import '../../shared/widgets/app_feedback.dart';
 import '../../shared/widgets/plain_list.dart';
 
 class ChangxingBackSchoolFormPage extends StatefulWidget {
-  const ChangxingBackSchoolFormPage({super.key, this.applicationId});
+  const ChangxingBackSchoolFormPage({
+    super.key,
+    this.applicationId,
+    this.service,
+  });
 
   final int? applicationId;
+
+  /// 测试注入点；默认走 [ChangxingJiadaService.instance]。
+  final ChangxingJiadaService? service;
 
   @override
   State<ChangxingBackSchoolFormPage> createState() =>
@@ -49,7 +53,8 @@ class _ChangxingBackSchoolFormPageState
   String _attachmentMd5 = '';
   String _attachmentLabel = '';
 
-  ChangxingJiadaService get _service => ChangxingJiadaService.instance;
+  ChangxingJiadaService get _service =>
+      widget.service ?? ChangxingJiadaService.instance;
 
   bool get _isEdit => (widget.applicationId ?? 0) > 0;
 
@@ -74,7 +79,7 @@ class _ChangxingBackSchoolFormPageState
 
   Future<void> _loadInitialData() async {
     setState(() => _loading = true);
-    try {
+    final loaded = await loadChangxingForm(this, () async {
       if (_isEdit) {
         final detail = await _service.fetchApplicationDetail(
           widget.applicationId!,
@@ -93,7 +98,10 @@ class _ChangxingBackSchoolFormPageState
             : '已上传附件（${_attachmentMd5.substring(0, 8)}...）';
 
         if (detail.fromAreaCode > 0) {
-          _areaSelection = await _buildAreaSelection(detail.fromAreaCode);
+          _areaSelection = await buildChangxingAreaSelection(
+            _service,
+            detail.fromAreaCode,
+          );
         }
 
         if (_trafficOptions.contains(detail.trafficTool)) {
@@ -113,39 +121,18 @@ class _ChangxingBackSchoolFormPageState
         _emergencyContactController.text = profile.emergencyContact;
         _emergencyPhoneController.text = profile.emergencyPhone;
       }
-    } catch (e) {
-      if (!mounted) return;
-      _showSnackBar('加载表单失败：$e');
-      context.pop();
-      return;
-    }
-
-    if (!mounted) return;
+    });
+    if (!loaded) return;
     setState(() => _loading = false);
   }
 
-  Future<ChangxingAreaSelection?> _buildAreaSelection(int areaId) async {
-    final parents = await _service.fetchAreaParents(areaId);
-    if (parents.isEmpty) return null;
-    final chain = parents.reversed.toList();
-    final province = chain.isNotEmpty ? chain[0] : null;
-    final city = chain.length > 1 ? chain[1] : null;
-    final district = chain.length > 2 ? chain[2] : null;
-    return ChangxingAreaSelection(
-      id: areaId,
-      province: province,
-      city: city,
-      district: district,
-    );
-  }
-
   Future<void> _pickArea() async {
-    final selection = await showChangxingAreaPickerDialog(
-      context: context,
-      service: _service,
+    final selection = await pickChangxingArea(
+      this,
+      _service,
       initialAreaId: _areaSelection?.id,
     );
-    if (selection == null || !mounted) return;
+    if (selection == null) return;
     setState(() => _areaSelection = selection);
   }
 
@@ -161,43 +148,24 @@ class _ChangxingBackSchoolFormPageState
     setState(() => _reportDate = date);
   }
 
-  Future<void> _pickAttachment() async {
-    setState(() => _uploadingAttachment = true);
-    try {
-      final result = await FilePicker.platform.pickFiles(
-        allowMultiple: false,
-        type: FileType.custom,
-        allowedExtensions: <String>['doc', 'docx', 'xlsx', 'xls', 'txt', 'pdf'],
-      );
-      final picked = result?.files.single;
-      if (picked == null || picked.path == null || picked.path!.isEmpty) {
-        return;
-      }
-
-      final upload = await _service.uploadAttachment(picked.path!, picked.name);
-      if (!mounted) return;
-      setState(() {
-        _attachmentMd5 = upload.md5;
-        _attachmentLabel = picked.name;
-      });
-      _showSnackBar('附件上传成功');
-    } catch (e) {
-      _showSnackBar('附件上传失败：$e');
-    } finally {
-      if (mounted) {
-        setState(() => _uploadingAttachment = false);
-      }
-    }
-  }
+  Future<void> _pickAttachment() => uploadChangxingAttachmentWithFeedback(
+    this,
+    _service,
+    setUploading: (value) => setState(() => _uploadingAttachment = value),
+    onUploaded: (attachment) => setState(() {
+      _attachmentMd5 = attachment.md5;
+      _attachmentLabel = attachment.label;
+    }),
+  );
 
   Future<void> _submit() async {
     if (_backStatus == null) {
-      _showSnackBar('请选择报到状态');
+      changxingToast(this, '请选择报到状态');
       return;
     }
 
     if (!ChangxingFormValidator.isPhone(_userPhoneController.text)) {
-      _showSnackBar('请输入正确的手机号');
+      changxingToast(this, '请输入正确的手机号');
       return;
     }
 
@@ -205,43 +173,43 @@ class _ChangxingBackSchoolFormPageState
       _emergencyContactController.text,
     );
     if (contactMessage != null) {
-      _showSnackBar(contactMessage);
+      changxingToast(this, contactMessage);
       return;
     }
 
     if (!ChangxingFormValidator.isPhone(_emergencyPhoneController.text)) {
-      _showSnackBar('请输入正确的紧急联系人手机号');
+      changxingToast(this, '请输入正确的紧急联系人手机号');
       return;
     }
 
     if (ChangxingFormValidator.isBlank(_nativePlaceController.text)) {
-      _showSnackBar('请填写籍贯');
+      changxingToast(this, '请填写籍贯');
       return;
     }
 
     if (_areaSelection == null) {
-      _showSnackBar('请选择生源所在地');
+      changxingToast(this, '请选择生源所在地');
       return;
     }
 
     if (_isNormalBack) {
       if (_reportDate == null) {
-        _showSnackBar('请选择报到日期');
+        changxingToast(this, '请选择报到日期');
         return;
       }
 
       if ((_trafficTool ?? '').isEmpty) {
-        _showSnackBar('请选择交通方式');
+        changxingToast(this, '请选择交通方式');
         return;
       }
 
       if (ChangxingFormValidator.isBlank(_trafficDetailController.text)) {
-        _showSnackBar('请填写交通信息详情');
+        changxingToast(this, '请填写交通信息详情');
         return;
       }
 
       if (!_promiseChecked) {
-        _showSnackBar('如正常报到，请勾选承诺');
+        changxingToast(this, '如正常报到，请勾选承诺');
         return;
       }
     } else {
@@ -249,52 +217,43 @@ class _ChangxingBackSchoolFormPageState
         _notBackReasonController.text,
       );
       if (notBackReasonMessage != null) {
-        _showSnackBar(notBackReasonMessage);
+        changxingToast(this, notBackReasonMessage);
         return;
       }
     }
 
-    setState(() => _submitting = true);
-    try {
-      final enabled = await _service.fetchFanxiaoEnableFlag();
-      if (!enabled) {
-        _showSnackBar('报到登记暂未开放，请联系管理员');
-        return;
-      }
+    await submitChangxingForm(
+      this,
+      isEdit: _isEdit,
+      setSubmitting: (value) => setState(() => _submitting = value),
+      submit: () async {
+        final enabled = await _service.fetchFanxiaoEnableFlag();
+        if (!enabled) {
+          changxingToast(this, '报到登记暂未开放，请联系管理员');
+          return false;
+        }
 
-      await _service.submitBackSchool(
-        id: widget.applicationId,
-        userPhone: _userPhoneController.text.trim(),
-        startTime: _reportDate ?? DateTime.now(),
-        trafficTool: _trafficTool ?? '',
-        trafficDetail: _trafficDetailController.text.trim(),
-        nativePlace: _nativePlaceController.text.trim(),
-        fromAreaCode: _areaSelection!.id,
-        emergencyContact: _emergencyContactController.text.trim(),
-        emergencyPhone: _emergencyPhoneController.text.trim(),
-        backStatus: _backStatus!,
-        notBackReason: _isNormalBack
-            ? ''
-            : _notBackReasonController.text.trim(),
-        img: _imageMd5,
-        annex: _attachmentMd5,
-      );
+        await _service.submitBackSchool(
+          id: widget.applicationId,
+          userPhone: _userPhoneController.text.trim(),
+          startTime: _reportDate ?? DateTime.now(),
+          trafficTool: _trafficTool ?? '',
+          trafficDetail: _trafficDetailController.text.trim(),
+          nativePlace: _nativePlaceController.text.trim(),
+          fromAreaCode: _areaSelection!.id,
+          emergencyContact: _emergencyContactController.text.trim(),
+          emergencyPhone: _emergencyPhoneController.text.trim(),
+          backStatus: _backStatus!,
+          notBackReason: _isNormalBack
+              ? ''
+              : _notBackReasonController.text.trim(),
+          img: _imageMd5,
+          annex: _attachmentMd5,
+        );
 
-      if (!mounted) return;
-      _showSnackBar(_isEdit ? '修改成功' : '提交成功');
-      context.pop(true);
-    } catch (e) {
-      _showSnackBar(_isEdit ? '修改失败：$e' : '提交失败：$e');
-    } finally {
-      if (mounted) {
-        setState(() => _submitting = false);
-      }
-    }
-  }
-
-  void _showSnackBar(String message) {
-    if (!mounted) return;
-    AppFeedback.toast(context, message);
+        return true;
+      },
+    );
   }
 
   String _fmtDate(DateTime? value) {
@@ -377,9 +336,9 @@ class _ChangxingBackSchoolFormPageState
                 const SizedBox(height: 12),
                 PlainListGroup(
                   children: [
-                    PlainListRow(
+                    changxingAreaRow(
                       title: '生源所在地',
-                      value: _areaSelection?.displayName ?? '请选择',
+                      selection: _areaSelection,
                       onTap: _pickArea,
                     ),
                   ],

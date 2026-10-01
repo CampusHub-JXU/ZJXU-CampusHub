@@ -2,10 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/widgets.dart';
 
 import '../actions/campus_deep_link.dart';
+import '../actions/pending_action_inbox.dart';
 import '../logging/app_logger.dart';
+import '../platform/safe_invoke.dart';
 
 /// 深链入口（PRD 0.7.0 §8）。
 ///
@@ -20,39 +21,36 @@ class CampusDeepLinkService {
   static const _channel = MethodChannel('edu.zjxu.jxucampushub/deeplink');
 
   bool _initialized = false;
-  bool _readyListenerRegistered = false;
-  String? _pendingActionId;
-  ValueListenable<bool>? _navigationReady;
+  late final PendingActionInbox _inbox = PendingActionInbox(
+    canDeliver: () => _dispatch != null,
+    deliver: (actionId) {
+      // 投递发生在 post-frame 回调里，期间可能已 debugReset：为 null 时放弃。
+      final dispatch = _dispatch;
+      if (dispatch != null) unawaited(dispatch(actionId));
+    },
+  );
   Future<void> Function(String actionId)? _dispatch;
 
   Future<void> initialize({
     required ValueListenable<bool> navigationReady,
     required Future<void> Function(String actionId) dispatch,
   }) async {
-    _navigationReady = navigationReady;
+    _inbox.navigationReady = navigationReady;
     _dispatch = dispatch;
     if (_initialized) return;
     _initialized = true;
 
     _channel.setMethodCallHandler(_handleMethodCall);
-    if (!_readyListenerRegistered) {
-      navigationReady.addListener(_flushPendingAction);
-      _readyListenerRegistered = true;
-    }
+    _inbox.ensureListening();
 
-    try {
-      final raw = await _channel.invokeMethod<String>('consumeInitialDeepLink');
-      _queueRaw(raw);
-    } on MissingPluginException {
-      // Non-Android platforms and tests do not register the native channel.
-    } on PlatformException catch (error) {
-      AppLogger.instance.ui(
-        LogLevel.error,
-        '读取深链启动动作失败: ${error.message ?? error.code}',
-      );
-    } catch (error) {
-      AppLogger.instance.ui(LogLevel.error, '读取深链启动动作异常: $error');
-    }
+    await safeInvoke<String, void>(
+      _channel,
+      'consumeInitialDeepLink',
+      map: _queueRaw,
+      missing: null,
+      failed: null,
+      label: '读取深链启动动作',
+    );
   }
 
   Future<void> _handleMethodCall(MethodCall call) async {
@@ -70,36 +68,14 @@ class CampusDeepLinkService {
       return;
     }
 
-    _pendingActionId = actionId;
-    _flushPendingAction();
+    _inbox.queue(actionId);
   }
-
-  void _flushPendingAction() {
-    final actionId = _pendingActionId;
-    if (actionId == null || !_isNavigationReady) return;
-
-    final dispatch = _dispatch;
-    if (dispatch == null) return;
-
-    _pendingActionId = null;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(dispatch(actionId));
-    });
-    WidgetsBinding.instance.scheduleFrame();
-  }
-
-  bool get _isNavigationReady => _navigationReady?.value ?? false;
 
   @visibleForTesting
   void debugReset() {
-    if (_readyListenerRegistered && _navigationReady != null) {
-      _navigationReady!.removeListener(_flushPendingAction);
-    }
+    _inbox.reset();
     _channel.setMethodCallHandler(null);
     _initialized = false;
-    _readyListenerRegistered = false;
-    _pendingActionId = null;
-    _navigationReady = null;
     _dispatch = null;
   }
 }

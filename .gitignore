@@ -92,3 +92,8 @@ docs/agents/session-databases.md
 packages/**/build/
 packages/**/android/.gradle/
 packages/**/.cxx/
+
+# Machine-local files (Android emulator/SDK artifacts, personal tool configs)
+/mke2fs.conf
+/source.properties
+/opencode.json

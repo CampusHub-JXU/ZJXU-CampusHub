@@ -4,6 +4,7 @@ import android.app.Activity
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.os.Build
+import edu.zjxu.jxucampushub.platform.invalidArgs
 import edu.zjxu.jxucampushub.widget.CampusWidgetProvider
 import edu.zjxu.jxucampushub.widget.CampusWidgetStore
 import io.flutter.plugin.common.BinaryMessenger
@@ -24,7 +25,7 @@ class WidgetChannelHandler(private val activity: Activity) {
                 "pushSnapshot" -> {
                     val snapshot = call.argument<Map<String, Any?>>("snapshot")
                     if (snapshot == null) {
-                        result.error("invalid_args", "snapshot is required", null)
+                        result.invalidArgs("snapshot is required")
                         return@setMethodCallHandler
                     }
                     CampusWidgetStore.store(activity, JSONObject(snapshot).toString())

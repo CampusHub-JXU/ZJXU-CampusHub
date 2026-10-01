@@ -5,7 +5,6 @@ allprojects {
         if (System.getenv("CI") != "true") {
             maven(url = "https://maven.aliyun.com/repository/google")
             maven(url = "https://maven.aliyun.com/repository/public")
-            maven(url = "https://maven.aliyun.com/repository/jcenter")
         }
         google()
         mavenCentral()
@@ -21,8 +20,7 @@ rootProject.layout.buildDirectory.value(newBuildDir)
 subprojects {
     val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
     project.layout.buildDirectory.value(newSubprojectBuildDir)
-}
-subprojects {
+
     // workmanager_android 0.9.3 skips `kotlin-android` on AGP 9 because it
     // assumes built-in Kotlin, but this build keeps android.builtInKotlin=false
     // (other plugins still apply KGP themselves). Without this its Kotlin
@@ -38,6 +36,9 @@ subprojects {
         }
     }
 }
+
+// Must stay a separate, later block: it forces :app to evaluate, and every
+// subproject needs the shim above registered before that can happen.
 subprojects {
     project.evaluationDependsOn(":app")
 }

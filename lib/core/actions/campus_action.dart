@@ -1,7 +1,7 @@
 /// 校园系统动作（CampusAction）。
 ///
 /// Action ID 与 Route 解耦：feature / widget / shortcut / deep link 只引用稳定
-/// 的 action id，启动方式（Route / WebView / WeChat / 浏览器 / 原生）由
+/// 的 action id，启动方式（Route / WeChat；WebView 经 `external-webview` 路由）由
 /// [CampusActionRegistry] 决定、由 [CampusActionExecutor] 执行。
 ///
 /// 分层说明：本层放在 core 而非 app，因为 feature 需要同时“产生”和“分发”动作，
@@ -41,40 +41,10 @@ class RouteActionTarget extends CampusActionTarget {
   final Map<String, Object?>? extra;
 }
 
-class WebActionTarget extends CampusActionTarget {
-  const WebActionTarget(this.url);
-
-  final String url;
-}
-
-enum ProtectedWebAuth { unified, zhengfang }
-
-class ProtectedWebActionTarget extends CampusActionTarget {
-  const ProtectedWebActionTarget(
-    this.url, {
-    this.auth = ProtectedWebAuth.unified,
-  });
-
-  final String url;
-  final ProtectedWebAuth auth;
-}
-
 class WechatActionTarget extends CampusActionTarget {
   const WechatActionTarget(this.url);
 
   final String url;
-}
-
-class ExternalActionTarget extends CampusActionTarget {
-  const ExternalActionTarget(this.url);
-
-  final String url;
-}
-
-class NativeActionTarget extends CampusActionTarget {
-  const NativeActionTarget(this.handlerId);
-
-  final String handlerId;
 }
 
 class CampusAction {
@@ -82,11 +52,9 @@ class CampusAction {
     required this.id,
     required this.title,
     required this.target,
-    this.subtitle,
   });
 
   final String id;
   final String title;
-  final String? subtitle;
   final CampusActionTarget target;
 }

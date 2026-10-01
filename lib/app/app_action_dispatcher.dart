@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../core/actions/campus_action.dart';
 import '../core/actions/campus_action_executor.dart';
 import '../core/actions/campus_action_registry.dart';
@@ -11,13 +13,22 @@ import 'routes.dart';
 class AppActionDispatcher {
   AppActionDispatcher._();
 
+  /// 路由跳转实现；测试可替换以断言 routeName / extra 是否被完整透传。
+  @visibleForTesting
+  static Future<void> Function(String routeName, {Object? extra}) pushRoute =
+      _pushOnAppRouter;
+
+  static Future<void> _pushOnAppRouter(String routeName, {Object? extra}) {
+    return appRouter.pushNamed(routeName, extra: extra);
+  }
+
   static Future<void> dispatch(String actionId) async {
     final action = CampusActionRegistry.instance.findById(actionId);
     if (action == null) return;
 
     final target = action.target;
     if (target is RouteActionTarget) {
-      await appRouter.pushNamed(target.routeName);
+      await pushRoute(target.routeName, extra: target.extra);
       return;
     }
 

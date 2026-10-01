@@ -14,7 +14,7 @@ import '../../shared/widgets/network_error_toast.dart';
 import '../../shared/widgets/plain_list.dart';
 import '../../shared/widgets/refresh_status_line.dart';
 import '../../shared/widgets/skeleton_box.dart';
-import 'exam_model.dart';
+import '../../core/academic/exam_model.dart';
 import 'exam_service.dart';
 import '../../shared/widgets/app_app_bar.dart';
 
@@ -61,17 +61,12 @@ class _ExamPageState extends State<ExamPage> {
   /// 页面内抓取代际：身份变化或发起新抓取时递增，只接纳最新一代结果。
   int _fetchGeneration = 0;
 
-  static String? _normalizeOwner(String? raw) {
-    final trimmed = raw?.trim();
-    return (trimmed == null || trimmed.isEmpty) ? null : trimmed;
-  }
-
   @override
   void initState() {
     super.initState();
     final auth = ZhengfangAuth.instance;
     _loggedIn = auth.isLoggedIn;
-    _identityOwner = _loggedIn ? _normalizeOwner(auth.currentStudentId) : null;
+    _identityOwner = auth.verifiedStudentId;
     _identityRevision = auth.sessionRevision;
     auth.addListener(_handleAuthChanged);
     if (_loggedIn) {
@@ -123,16 +118,14 @@ class _ExamPageState extends State<ExamPage> {
         _identityRevision == revision &&
         auth.isLoggedIn &&
         auth.sessionRevision == revision &&
-        _normalizeOwner(auth.currentStudentId) == owner;
+        auth.verifiedStudentId == owner;
   }
 
   void _handleAuthChanged() {
     if (!mounted) return;
     final auth = ZhengfangAuth.instance;
     final nextLoggedIn = auth.isLoggedIn;
-    final nextOwner = nextLoggedIn
-        ? _normalizeOwner(auth.currentStudentId)
-        : null;
+    final nextOwner = auth.verifiedStudentId;
     final nextRevision = auth.sessionRevision;
     final loginChanged = nextLoggedIn != _loggedIn;
     final ownerChanged = nextOwner != _identityOwner;
@@ -209,7 +202,7 @@ class _ExamPageState extends State<ExamPage> {
 
   Future<void> _fetchExams({bool forceRefresh = false}) async {
     final auth = ZhengfangAuth.instance;
-    final owner = _normalizeOwner(auth.currentStudentId);
+    final owner = auth.verifiedStudentId;
     if (!auth.isLoggedIn || owner == null || owner != _identityOwner) {
       // 身份未就绪或已被切换：不发起抓取，等身份同步完成后再刷新。
       return;
@@ -279,9 +272,7 @@ class _ExamPageState extends State<ExamPage> {
 
   void _onLoginSuccess() {
     final auth = ZhengfangAuth.instance;
-    final owner = auth.isLoggedIn
-        ? _normalizeOwner(auth.currentStudentId)
-        : null;
+    final owner = auth.verifiedStudentId;
     if (owner == null) {
       // 登录模态声称成功但身份不完整：按通用身份同步处理，不伪造已登录。
       _handleAuthChanged();

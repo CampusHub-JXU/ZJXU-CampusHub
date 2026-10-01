@@ -65,22 +65,11 @@ const _allowedLegacyEdges = <String>{
   'features/home/home_page.dart -> app/app_bootstrap_controller.dart',
   // home 聚合页：home_page 只留纯模型类型；业务 service 拉取已集中到
   // features/home/campus_snapshot_coordinator.dart（PRD §10/§11 的聚合点）。
-  'features/home/function_zone/function_zone_section.dart -> features/service_hub/service_hub_usage_store.dart',
-  'features/home/home_page.dart -> features/exam/exam_model.dart',
-  'features/home/home_page.dart -> features/schedule/schedule_cache_snapshot.dart',
   'features/home/campus_snapshot_coordinator.dart -> features/campus_card/campus_card_service.dart',
   'features/home/campus_snapshot_coordinator.dart -> features/dorm_electricity/dorm_electricity_service.dart',
-  'features/home/campus_snapshot_coordinator.dart -> features/exam/exam_model.dart',
   'features/home/campus_snapshot_coordinator.dart -> features/exam/exam_service.dart',
   'features/home/campus_snapshot_coordinator.dart -> features/grades/grades_service.dart',
-  'features/home/campus_snapshot_coordinator.dart -> features/schedule/schedule_cache_snapshot.dart',
   'features/home/campus_snapshot_coordinator.dart -> features/schedule/schedule_service.dart',
-  'features/home/home_presentation_resolver.dart -> features/exam/exam_model.dart',
-  'features/home/home_presentation_resolver.dart -> features/schedule/schedule_model.dart',
-  'features/home/home_presentation_resolver.dart -> features/schedule/schedule_service.dart',
-  'features/home/models/home_snapshot.dart -> features/exam/exam_model.dart',
-  'features/home/models/home_snapshot.dart -> features/schedule/schedule_change_rule.dart',
-  'features/home/models/home_snapshot.dart -> features/schedule/schedule_model.dart',
   // my 页快捷入口
   // 通知中心聚合页（notice 核心 2026-09 下沉 core/notice 后，原
   // notification_center -> features/notice 例外随 edge 消失一并移除）

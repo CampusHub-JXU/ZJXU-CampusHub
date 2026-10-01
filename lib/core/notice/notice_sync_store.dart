@@ -1,12 +1,11 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
 
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
 
+import '../auth/auth_file_lock.dart';
 import '../logging/app_logger.dart';
+import '../storage/atomic_json_file.dart';
 import 'notice_model.dart';
 
 /// 未读摘要：主 isolate 侧红点与新通知块共享的 [ValueListenable] 载荷。
@@ -172,7 +171,7 @@ enum NoticeSyncClaim { granted, blocked }
 /// rename 替换，对它持有的锁在替换后失效。残留锁（持有者崩溃、旧版
 /// 本遗留的空锁文件）由回收兜底，不会永久阻塞；create 与 token 写入
 /// 之间的毫秒级空窗借空锁宽限期与旧版残留区分，防止并发写者互抢新锁
-/// （见 [_emptyLockGraceAge]）。
+/// （见 [AuthFileLock.emptyLockGraceAge]）。
 ///
 /// 调用约束：公开 API 之间不得嵌套调用（同 isolate 内第二次取锁会等待
 /// 外层释放 → 死锁）。内部组合只调用 `*_locked` 私有实现。
@@ -197,21 +196,11 @@ class NoticeSyncStore {
   static const String stateFileName = 'notice_sync_state.json';
   static const String lockFileName = 'notice_sync_state.lock';
 
-  /// 残留锁回收阈值（有 token 的锁）。锁内只有毫秒级本地 IO（网络在
-  /// 锁外），超龄即视为持有者已死。
-  static const Duration _staleLockAge = Duration(seconds: 60);
-
-  /// 空锁文件宽限期。create 与 token 写入是两步异步操作，中间存在合法
-  /// 的「已创建、尚为空」窗口（毫秒级）；旧版本遗留的空锁文件则永不
-  /// 增重。宽限期内视空锁为活跃写者的取锁中态，照常轮询等待——否则
-  /// 并发写者会把新锁当旧版残留删掉，双方同时进入临界区（CI 并发用例
-  /// 实证：claim 与 notify 各放行两方）。
-  static const Duration _emptyLockGraceAge = Duration(milliseconds: 250);
-  static const Duration _lockPollMaxDelay = Duration(milliseconds: 50);
+  // 残留锁回收阈值 / 空锁宽限期沿用 [AuthFileLock] 默认值（60s / 250ms）：
+  // 锁内只有毫秒级本地 IO，超龄即视为持有者已死；空锁在宽限期内视为活跃写者
+  // 的取锁中态，否则并发写者会把新锁当旧版残留删掉（CI 并发用例实证）。
 
   NoticeSyncSnapshot _state = NoticeSyncSnapshot.empty;
-
-  final Random _random = Random();
 
   final ValueNotifier<NoticeUnreadSummary> unreadSummary =
       ValueNotifier<NoticeUnreadSummary>(NoticeUnreadSummary.empty);
@@ -494,95 +483,11 @@ class NoticeSyncStore {
 
   // ── 内部 ────────────────────────────────────────────────────────────
 
-  /// O_EXCL 排他创建文件锁：`create(exclusive: true)` 按 inode 原子判
-  /// 冲突，跨进程与同进程多 isolate 都正确（fcntl 句柄锁在 Linux 按
-  /// process 判冲突，同进程第二加锁方不被阻塞，见类注释）。
+  /// 排他文件锁委托 [AuthFileLock]（O_EXCL 创建 + 持有者 token + 残留回收，
+  /// 见类注释）。无 acquireTimeout：沿用此前的无限等待语义。
   Future<T> _withLock<T>(Future<T> Function() action) async {
-    final lockFile = await _lockFile();
-    final token = await _acquireFileLock(lockFile);
-    try {
-      return await action();
-    } finally {
-      await _releaseFileLock(lockFile, token);
-    }
-  }
-
-  Future<String> _acquireFileLock(File lockFile) async {
-    final token =
-        'pid-$pid-${DateTime.now().microsecondsSinceEpoch}-'
-        '${identityHashCode(this)}-${_random.nextInt(0x7fffffff)}';
-    var delay = const Duration(milliseconds: 1);
-    while (true) {
-      try {
-        await lockFile.create(exclusive: true);
-        final raf = await lockFile.open(mode: FileMode.append);
-        try {
-          await raf.writeString(token);
-          await raf.flush();
-        } finally {
-          await raf.close();
-        }
-        // 校验锁文件内容仍是自己的 token：token 写入期间锁可能被他人
-        // 回收重取（读到别人的 token，或路径已消失）。此时绝不能带着
-        // 「假锁」进临界区，回到竞争循环重新取锁即可。追加模式保证误写
-        // 只会拼在他人 token 之后，真正的持有者以 startsWith 识别并
-        // 正常释放。
-        if (await _readTokenSafe(lockFile) == token) return token;
-      } on FileSystemException catch (error) {
-        if (!_isPathExistsError(error)) rethrow;
-        if (await _tryRecoverStaleLock(lockFile)) continue;
-      }
-      await Future<void>.delayed(delay);
-      if (delay < _lockPollMaxDelay) delay *= 2;
-    }
-  }
-
-  Future<String?> _readTokenSafe(File lockFile) async {
-    try {
-      return await lockFile.readAsString();
-    } on FileSystemException {
-      return null;
-    }
-  }
-
-  bool _isPathExistsError(FileSystemException error) {
-    if (error is PathExistsException) return true;
-    final code = error.osError?.errorCode;
-    // EEXIST (POSIX) / ERROR_ALREADY_EXISTS (Windows)。
-    return code == 17 || code == 183;
-  }
-
-  /// 残留锁回收：有 token 的锁超龄（持有者已死，如后台任务被系统杀死）
-  /// 或空文件超宽限期（旧版本从不写 token，其空锁永不增重）时删除，
-  /// 返回 true 供调用方立即重试创建。空文件在宽限期内视为活跃写者的
-  /// 取锁中态，不可回收（见 [_emptyLockGraceAge]）。
-  Future<bool> _tryRecoverStaleLock(File lockFile) async {
-    try {
-      final stat = await lockFile.stat();
-      final age = DateTime.now().difference(stat.modified);
-      final isAged = age >= _staleLockAge;
-      final isEmptyAged = stat.size == 0 && age >= _emptyLockGraceAge;
-      if (!isAged && !isEmptyAged) return false;
-      await lockFile.delete();
-      return true;
-    } on FileSystemException {
-      return false;
-    }
-  }
-
-  Future<void> _releaseFileLock(File lockFile, String token) async {
-    try {
-      // 仅当锁内仍是自己的 token 才删除：超龄锁被回收、他人已接手时，
-      // 绝不能误删新持有者的锁。startsWith 兼容后来者在我方 token 之后
-      // 的误追加（见 [_acquireFileLock] 读校验注释）：文件头是我即仍是
-      // 我的锁，正常删除，避免残留到陈旧回收。
-      final content = await _readTokenSafe(lockFile);
-      if (content != null && content.startsWith(token)) {
-        await lockFile.delete();
-      }
-    } on FileSystemException {
-      // 锁已被回收或读取失败：无需处理。
-    }
+    final lockFile = await _io.siblingFile(lockFileName);
+    return AuthFileLock(lockFile: lockFile).withLock(action);
   }
 
   void _applyStateLocked(NoticeSyncSnapshot state) {
@@ -633,43 +538,37 @@ class NoticeSyncStore {
     );
   }
 
-  Future<Directory> _resolveDir() async {
-    final override = debugDirectoryProvider;
-    if (override != null) return override();
-    final support = await getApplicationSupportDirectory();
-    return support;
-  }
+  late final AtomicJsonFile _io = AtomicJsonFile(
+    stateFileName,
+    directory: () => debugDirectoryProvider?.call(),
+  );
 
-  Future<File> _stateFile() async {
-    final dir = await _resolveDir();
-    return File('${dir.path}${Platform.pathSeparator}$stateFileName');
-  }
+  Future<File> _stateFile() => _io.file();
 
-  Future<File> _lockFile() async {
-    final dir = await _resolveDir();
-    // 不预创建：O_EXCL 创建本身是取锁的原子操作。
-    return File('${dir.path}${Platform.pathSeparator}$lockFileName');
-  }
-
-  Future<NoticeSyncSnapshot> _readStateLocked(File file) async {
-    if (!await file.exists()) return NoticeSyncSnapshot.empty;
-    try {
-      final raw = jsonDecode(await file.readAsString());
-      if (raw is! Map || raw['v'] != _schemaVersion) {
-        await _safeDelete(file);
+  Future<NoticeSyncSnapshot> _readStateLocked(File file) {
+    return _io.read<NoticeSyncSnapshot>(
+      file,
+      absent: NoticeSyncSnapshot.empty,
+      decode: (raw) {
+        if (raw is! Map || raw['v'] != _schemaVersion) {
+          throw const _UnsupportedSchema();
+        }
+        return _decodeState(raw);
+      },
+      // 损坏策略：删除并重建（schema 不符静默，解析失败记日志）。
+      onCorrupt: (error, stackTrace) async {
+        if (error is! _UnsupportedSchema) {
+          AppLogger.instance.storage(
+            LogLevel.warn,
+            '通知同步状态解析失败，已重建',
+            error: error,
+            stackTrace: stackTrace,
+          );
+        }
+        await AtomicJsonFile.safeDelete(file);
         return NoticeSyncSnapshot.empty;
-      }
-      return _decodeState(raw);
-    } catch (error, stackTrace) {
-      AppLogger.instance.storage(
-        LogLevel.warn,
-        '通知同步状态解析失败，已重建',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      await _safeDelete(file);
-      return NoticeSyncSnapshot.empty;
-    }
+      },
+    );
   }
 
   NoticeSyncSnapshot _decodeState(Map raw) {
@@ -712,7 +611,7 @@ class NoticeSyncStore {
   }
 
   Future<void> _writeStateLocked(File file, NoticeSyncSnapshot state) async {
-    final encoded = jsonEncode(<String, dynamic>{
+    final encoded = <String, dynamic>{
       'v': _schemaVersion,
       'snapshotIds': state.snapshotIds.map(
         (key, value) => MapEntry(key, value.toIso8601String()),
@@ -725,26 +624,11 @@ class NoticeSyncStore {
       'baselineBuilt': state.baselineBuilt,
       'lastAttemptAt': state.lastAttemptAt?.toIso8601String(),
       'lastSuccessfulSyncAt': state.lastSuccessfulSyncAt?.toIso8601String(),
-    });
-    // 每次写入使用独立临时文件名：POSIX rename 语义下，共享临时名会让
-    // 并发写者互相搬走对方的文件（ENOENT，Linux CI 实证）；独立命名后
-    // rename 仍是对状态文件的原子替换，后写者整体生效。
-    final tmp = File(
-      '${file.path}.${DateTime.now().microsecondsSinceEpoch}'
-      '-${_random.nextInt(0x7fffffff)}.tmp',
-    );
-    await tmp.writeAsString(encoded, flush: true);
-    try {
-      await tmp.rename(file.path);
-    } on FileSystemException {
-      await _safeDelete(tmp);
-      rethrow;
-    }
+    };
+    await AtomicJsonFile.write(file, encoded);
   }
+}
 
-  static Future<void> _safeDelete(File file) async {
-    try {
-      if (await file.exists()) await file.delete();
-    } catch (_) {}
-  }
+class _UnsupportedSchema implements Exception {
+  const _UnsupportedSchema();
 }

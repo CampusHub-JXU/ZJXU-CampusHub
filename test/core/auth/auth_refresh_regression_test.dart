@@ -18,6 +18,7 @@ import 'package:jxu_campus_hub/features/exam/exam_service.dart';
 
 import '../../helpers/mock_http_client_adapter.dart';
 import '../../helpers/test_setup.dart';
+import '../../helpers/credential_store_test_ext.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

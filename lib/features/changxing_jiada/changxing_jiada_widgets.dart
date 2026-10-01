@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_typography.dart';
 import '../../shared/widgets/app_card.dart';
 import '../../shared/widgets/plain_list.dart';
+import 'changxing_jiada_model.dart';
 
 /// 统计单元：行值档数字（24，等宽）+ 小标签（设计规范 §1.1 数字分档）。
 class ChangxingMetric extends StatelessWidget {
@@ -79,6 +80,19 @@ class _InfoCell extends StatelessWidget {
       ],
     );
   }
+}
+
+/// 表单里的区域选择行：右侧显示已选区域名，未选时显示「请选择」。
+PlainListRow changxingAreaRow({
+  required String title,
+  required ChangxingAreaSelection? selection,
+  required VoidCallback onTap,
+}) {
+  return PlainListRow(
+    title: title,
+    value: selection?.displayName ?? '请选择',
+    onTap: onTap,
+  );
 }
 
 /// 表单里的附件行：右侧显示文件名 / 「未上传」，上传中换成小 spinner。

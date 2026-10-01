@@ -1,7 +1,7 @@
 ﻿import 'package:flutter_test/flutter_test.dart';
 
-import 'package:jxu_campus_hub/features/schedule/schedule_change_rule.dart';
-import 'package:jxu_campus_hub/features/schedule/schedule_model.dart';
+import 'package:jxu_campus_hub/core/academic/schedule_change_rule.dart';
+import 'package:jxu_campus_hub/core/academic/schedule_model.dart';
 
 void main() {
   const course = CourseEntry(

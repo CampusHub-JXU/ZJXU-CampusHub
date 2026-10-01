@@ -9,6 +9,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../crypto/auth_crypto.dart';
 import '../logging/app_logger.dart';
+import '../network/cancel_token_x.dart';
 import '../network/dio_client.dart';
 import '../network/proxy_fallback.dart';
 import 'auth_failure.dart';
@@ -224,6 +225,13 @@ class UnifiedAuthService extends ChangeNotifier {
     return _sessionActive && account != null && account.isNotEmpty;
   }
 
+  /// 当前已验证的统一认证账号（trim 后）；未登录 / 空白账号一律 null（fail closed）。
+  String? get verifiedAccount {
+    if (!isLoggedIn) return null;
+    final account = currentAccount?.trim();
+    return (account == null || account.isEmpty) ? null : account;
+  }
+
   Future<bool> prepareLogin({
     String serviceUrl = defaultServiceUrl,
     CancelToken? cancelToken,
@@ -231,7 +239,7 @@ class UnifiedAuthService extends ChangeNotifier {
     if (!isLoggedIn) {
       await restoreSession(syncWebViewCookies: false);
     }
-    if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+    cancelToken.throwIfCancelled();
     if (isLoggedIn) return true;
     try {
       final context = await _refreshLoginContext(
@@ -433,7 +441,7 @@ class UnifiedAuthService extends ChangeNotifier {
     }
     // 兼容路径：只引用「当前」challenge（由 fetchCaptcha/prepare 发出），
     // 绝不重新初始化上下文。没有当前 challenge 即视为过期。
-    if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+    cancelToken.throwIfCancelled();
     final revisionAtStart = _sessionRevision;
     final attempt = _captchaChallenges.consumeCurrent(
       accountRevision: revisionAtStart,
@@ -626,12 +634,12 @@ class UnifiedAuthService extends ChangeNotifier {
     }
 
     await DioClient.instance.ensureInitialized();
-    if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+    cancelToken.throwIfCancelled();
     final revisionAtStart = _sessionRevision;
     if (!isLoggedIn) {
       await _clearCasOriginCookies();
     }
-    if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+    cancelToken.throwIfCancelled();
     if (revisionAtStart != _sessionRevision) {
       AppLogger.instance.auth(LogLevel.debug, '统一认证登录上下文放弃：清 Cookie 期间登录态已变化');
       throw UnifiedAuthIncompleteSessionException('统一认证登录上下文已过期，请重试');
@@ -660,7 +668,7 @@ class UnifiedAuthService extends ChangeNotifier {
       ),
     );
 
-    if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+    cancelToken.throwIfCancelled();
     if (revisionAtStart != _sessionRevision) {
       AppLogger.instance.auth(LogLevel.debug, '统一认证登录上下文放弃：等待期间登录态已变化');
       throw UnifiedAuthIncompleteSessionException('统一认证登录上下文已过期，请重试');
@@ -688,7 +696,7 @@ class UnifiedAuthService extends ChangeNotifier {
           ),
         ),
       );
-      if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+      cancelToken.throwIfCancelled();
       if (revisionAtStart != _sessionRevision) {
         AppLogger.instance.auth(LogLevel.debug, '统一认证登录上下文放弃：登录页重定向期间登录态已变化');
         throw UnifiedAuthIncompleteSessionException('统一认证登录上下文已过期，请重试');

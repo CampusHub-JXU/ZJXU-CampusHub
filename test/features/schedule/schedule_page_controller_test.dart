@@ -7,10 +7,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/core/semester/semester_calendar.dart';
 import 'package:jxu_campus_hub/features/schedule/controllers/schedule_page_controller.dart';
-import 'package:jxu_campus_hub/features/schedule/schedule_cache_snapshot.dart';
-import 'package:jxu_campus_hub/features/schedule/schedule_model.dart';
+import 'package:jxu_campus_hub/core/academic/schedule_cache_snapshot.dart';
+import 'package:jxu_campus_hub/core/academic/schedule_model.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';
-import 'package:jxu_campus_hub/features/schedule/schedule_term_context.dart';
+import 'package:jxu_campus_hub/core/semester/schedule_term_context.dart';
 
 import '../../helpers/test_setup.dart';
 
@@ -181,7 +181,7 @@ void main() {
 
       expect(controller.loggedIn, isFalse);
       expect(controller.courses, isEmpty);
-      expect(controller.courseChangeRules, isEmpty);
+      expect(controller.courseChangeNotices, isEmpty);
       expect(controller.scheduleUpdatedAt, isNull);
 
       // 同一份缓存只在身份可验证时才允许展示，证明上面的空态不是缓存缺失。
@@ -245,7 +245,7 @@ void main() {
 
     expect(controller.loggedIn, isFalse);
     expect(controller.courses, isEmpty);
-    expect(controller.courseChangeRules, isEmpty);
+    expect(controller.courseChangeNotices, isEmpty);
     expect(controller.scheduleUpdatedAt, isNull);
     expect(
       ScheduleService.instance.preferredSnapshot(
@@ -409,7 +409,7 @@ void main() {
 
       expect(controller.loggedIn, isFalse);
       expect(controller.courses, isEmpty);
-      expect(controller.courseChangeRules, isEmpty);
+      expect(controller.courseChangeNotices, isEmpty);
       expect(controller.scheduleUpdatedAt, isNull);
       expect(controller.error, isNull);
       expect(controller.infoMessage, isNull);

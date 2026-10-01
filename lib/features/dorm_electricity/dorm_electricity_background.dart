@@ -34,34 +34,23 @@ const _immediateNotificationId = 100;
 const _channelId = 'dorm_electricity_alert';
 const _channelName = '寝室电费提醒';
 
-// SharedPreferences keys（owner 标记取自服务层公开常量，避免两处字面量漂移）。
-const _keyAlertEnabled = 'dorm_alert_enabled';
-const _keyAlertThreshold = 'dorm_alert_threshold';
-const _keyLastNotifiedDate = 'dorm_alert_last_notified_date';
-const _keyCachedElectricity = 'dorm_cached_electricity';
-const _keyCachedElectricityUpdatedAt = 'dorm_cached_electricity_updated_at';
-const _keyAreaId = 'dorm_epay_area_id';
-const _keyBuildingId = 'dorm_epay_building_id';
-const _keyFloorId = 'dorm_epay_floor_id';
-const _keyRoomId = 'dorm_epay_room_id';
+// SharedPreferences keys（取自服务层公开常量，避免两处字面量漂移）。
+const _keyAlertEnabled = DormElectricityService.keyAlertEnabled;
+const _keyAlertThreshold = DormElectricityService.keyAlertThreshold;
+const _keyLastNotifiedDate = DormElectricityService.keyAlertLastNotifiedDate;
+const _keyCachedElectricity = DormElectricityService.keyElectricity;
+const _keyCachedElectricityUpdatedAt =
+    DormElectricityService.keyElectricityUpdatedAt;
+const _keyAreaId = DormElectricityService.keyAreaId;
+const _keyBuildingId = DormElectricityService.keyBuildingId;
+const _keyFloorId = DormElectricityService.keyFloorId;
+const _keyRoomId = DormElectricityService.keyRoomId;
 const _keyRoomOwner = DormElectricityService.roomOwnerKey;
 const _backgroundCacheMaxAge = Duration(hours: 24);
-
-String _todayString() {
-  final now = DateTime.now();
-  return '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-}
 
 String _formatElectricity(double value) {
   if (value == value.truncateToDouble()) return value.toInt().toString();
   return value.toStringAsFixed(2);
-}
-
-/// 当前已验证的统一认证账号；未登录 / 空白账号一律 null（fail closed）。
-String? _verifiedOwnerOf(UnifiedAuthService auth) {
-  if (!auth.isLoggedIn) return null;
-  final account = auth.currentAccount?.trim();
-  return (account == null || account.isEmpty) ? null : account;
 }
 
 /// 捕获的 owner + sessionRevision + prefs owner 标记是否仍一致。
@@ -71,7 +60,7 @@ bool _ownerStillCurrent({
   required SharedPreferences prefs,
 }) {
   final auth = UnifiedAuthService.instance;
-  return _verifiedOwnerOf(auth) == owner &&
+  return auth.verifiedAccount == owner &&
       auth.sessionRevision == revision &&
       prefs.getString(_keyRoomOwner) == owner;
 }
@@ -448,7 +437,7 @@ class DormElectricityBackground {
       // 后台 isolate 可能刚写过设置：按磁盘最新值判定。
       await prefs.reload();
 
-      final owner = _verifiedOwnerOf(auth);
+      final owner = auth.verifiedAccount;
       final revision = auth.sessionRevision;
       final stamp = _AuthIdentityStamp(owner: owner, revision: revision);
       if (stamp == _lastAppliedIdentityStamp) return;
@@ -496,7 +485,7 @@ class DormElectricityBackground {
   Future<void> _revertStaleArtifacts({required SharedPreferences prefs}) async {
     await _cancelScheduledArtifacts();
     final auth = UnifiedAuthService.instance;
-    final latestOwner = _verifiedOwnerOf(auth);
+    final latestOwner = auth.verifiedAccount;
     final latestRevision = auth.sessionRevision;
     final latestEligible =
         latestOwner != null &&
@@ -519,7 +508,7 @@ class DormElectricityBackground {
   Future<void> _applyExplicitState() async {
     final prefs = await SharedPreferences.getInstance();
     final auth = UnifiedAuthService.instance;
-    final owner = _verifiedOwnerOf(auth);
+    final owner = auth.verifiedAccount;
     final revision = auth.sessionRevision;
     final alertEnabled = prefs.getBool(_keyAlertEnabled) ?? false;
     if (!alertEnabled ||
@@ -563,7 +552,7 @@ class DormElectricityBackground {
     return _effects.enqueue(() async {
       try {
         final auth = UnifiedAuthService.instance;
-        final owner = _verifiedOwnerOf(auth);
+        final owner = auth.verifiedAccount;
         final revision = auth.sessionRevision;
         if (owner == null) return;
         final prefs = await SharedPreferences.getInstance();
@@ -598,7 +587,7 @@ class DormElectricityBackground {
   /// 以免在登出持久撤销竞态中复活旧身份。
   Future<String?> _resolveVerifiedOwner() async {
     final auth = UnifiedAuthService.instance;
-    final current = _verifiedOwnerOf(auth);
+    final current = auth.verifiedAccount;
     if (current != null) return current;
     try {
       await auth.restoreSession(syncWebViewCookies: false);
@@ -610,7 +599,7 @@ class DormElectricityBackground {
       );
       return null;
     }
-    return _verifiedOwnerOf(auth);
+    return auth.verifiedAccount;
   }
 
   /// 后台检查入口，由 app 层 dispatcher 在 WorkManager isolate 中调用。
@@ -643,7 +632,7 @@ class DormElectricityBackground {
           prefs.getDouble(_keyAlertThreshold) ??
           DormElectricityService.defaultAlertThreshold;
       final lastNotified = prefs.getString(_keyLastNotifiedDate);
-      final today = _todayString();
+      final today = DormElectricityService.todayString();
       if (lastNotified == today) return true;
 
       final value = _readFreshConfiguredElectricity(prefs);
@@ -712,7 +701,7 @@ class DormElectricityBackground {
   Future<void> foregroundCheck() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final owner = _verifiedOwnerOf(UnifiedAuthService.instance);
+      final owner = UnifiedAuthService.instance.verifiedAccount;
       if (owner == null) return;
       final revision = UnifiedAuthService.instance.sessionRevision;
       if (prefs.getString(_keyRoomOwner) != owner) return;
@@ -724,7 +713,7 @@ class DormElectricityBackground {
           prefs.getDouble(_keyAlertThreshold) ??
           DormElectricityService.defaultAlertThreshold;
       final lastNotified = prefs.getString(_keyLastNotifiedDate);
-      final today = _todayString();
+      final today = DormElectricityService.todayString();
 
       final value = await DormElectricityService.instance.fetchElectricity(
         forceRefresh: true,

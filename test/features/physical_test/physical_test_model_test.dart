@@ -18,7 +18,7 @@ void main() {
       'updatedAt': '2026-09-12T10:00:00',
     });
 
-    expect(snapshot.hasRecords, isTrue);
+    expect(snapshot.records, isNotEmpty);
     expect(snapshot.updatedAt, DateTime(2026, 9, 12, 10));
     final record = snapshot.records.single;
     expect(record.academicYear, '2025-2026');
@@ -45,7 +45,7 @@ void main() {
       'updatedAt': 'not-a-date',
     });
 
-    expect(snapshot.hasRecords, isTrue);
+    expect(snapshot.records, isNotEmpty);
     expect(snapshot.updatedAt, isNull);
     final record = snapshot.records.single;
     expect(record.academicYear, '');
@@ -61,7 +61,7 @@ void main() {
   test('non-list records degrade to an empty snapshot', () {
     final snapshot = PhysicalTestSnapshot.fromJson({'records': 'bad'});
 
-    expect(snapshot.hasRecords, isFalse);
+    expect(snapshot.records, isEmpty);
     expect(snapshot.message, isNull);
   });
 }

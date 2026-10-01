@@ -11,14 +11,14 @@ import '../../core/logging/app_logger.dart';
 import '../../core/system_surface/campus_data_change_bus.dart';
 import 'dorm_electricity_models.dart';
 import 'dorm_electricity_private_writes.dart';
-import 'epay_electricity_gateway.dart';
+import '../../core/epay100/epay100_gateway.dart';
 
 // DTO / 异常拆分到 dorm_electricity_models.dart；重新导出，保持
 // `import .../dorm_electricity_service.dart` 的历史调用方不变。
 export 'dorm_electricity_models.dart';
 
 /// 宿舍电费服务：数据源为 epay100 新版电控（老 jdhq.wap 系统已于 2026-08
-/// 下线）。RPC 经 [EpayElectricityGateway] 在隐藏 WebView 页面上下文发出，
+/// 下线）。RPC 经 [Epay100Gateway] 在隐藏 WebView 页面上下文发出，
 /// 会话不可用时抛 [EpaySessionUnavailableException]，由本层转译为
 /// [_lastError] 并回退缓存。
 ///
@@ -41,10 +41,13 @@ class DormElectricityService {
 
   static final DormElectricityService instance = DormElectricityService._();
 
-  static const _keyAreaId = 'dorm_epay_area_id';
-  static const _keyBuildingId = 'dorm_epay_building_id';
-  static const _keyFloorId = 'dorm_epay_floor_id';
-  static const _keyRoomId = 'dorm_epay_room_id';
+  // 房间 / 缓存 / 预警的 SharedPreferences 键：后台 isolate
+  // （dorm_electricity_background.dart）读取同一批键，故作为公开常量，避免两处
+  // 字面量漂移。
+  static const keyAreaId = 'dorm_epay_area_id';
+  static const keyBuildingId = 'dorm_epay_building_id';
+  static const keyFloorId = 'dorm_epay_floor_id';
+  static const keyRoomId = 'dorm_epay_room_id';
 
   /// 房间配置 / 余额缓存 / 预警设置的 owner 标记（统一认证账号）。
   ///
@@ -58,11 +61,11 @@ class DormElectricityService {
     'dorm_floor_id',
     'dorm_room_id',
   ];
-  static const _keyElectricity = 'dorm_cached_electricity';
-  static const _keyElectricityUpdatedAt = 'dorm_cached_electricity_updated_at';
-  static const _keyAlertEnabled = 'dorm_alert_enabled';
-  static const _keyAlertThreshold = 'dorm_alert_threshold';
-  static const _keyAlertLastNotifiedDate = 'dorm_alert_last_notified_date';
+  static const keyElectricity = 'dorm_cached_electricity';
+  static const keyElectricityUpdatedAt = 'dorm_cached_electricity_updated_at';
+  static const keyAlertEnabled = 'dorm_alert_enabled';
+  static const keyAlertThreshold = 'dorm_alert_threshold';
+  static const keyAlertLastNotifiedDate = 'dorm_alert_last_notified_date';
   static const refreshWindow = Duration(minutes: 30);
   static const _catalogCacheBucket = 'dorm_electricity_catalog';
 
@@ -88,7 +91,7 @@ class DormElectricityService {
   }
 
   @visibleForTesting
-  EpayElectricityGateway gateway = EpayElectricityGateway.instance;
+  Epay100Gateway gateway = Epay100Gateway.instance;
 
   SharedPreferences? _prefs;
   bool _cacheRestored = false;
@@ -113,18 +116,12 @@ class DormElectricityService {
   String? _lastAuthOwner;
 
   /// 当前已验证的统一认证 owner；未登录 / 空白账号一律 null（fail closed）。
-  static String? _verifiedOwnerOf(UnifiedAuthService auth) {
-    if (!auth.isLoggedIn) return null;
-    final account = auth.currentAccount?.trim();
-    return (account == null || account.isEmpty) ? null : account;
-  }
-
-  String? get _currentOwner => _verifiedOwnerOf(UnifiedAuthService.instance);
+  String? get _currentOwner => UnifiedAuthService.instance.verifiedAccount;
 
   /// 捕获的 owner + sessionRevision 是否仍是当前身份（每个 await 边界复核）。
   bool _isCurrentIdentity(String owner, int revision) {
     final auth = UnifiedAuthService.instance;
-    return _verifiedOwnerOf(auth) == owner && auth.sessionRevision == revision;
+    return auth.verifiedAccount == owner && auth.sessionRevision == revision;
   }
 
   /// 同一 isolate 内私有 prefs 变更的串行队列与受守卫写入（zone 安全，
@@ -209,7 +206,7 @@ class DormElectricityService {
   bool get requiresAuthentication => _requiresAuthentication;
 
   @visibleForTesting
-  void debugSetGateway(EpayElectricityGateway value) => gateway = value;
+  void debugSetGateway(Epay100Gateway value) => gateway = value;
 
   /// 测试注入：restoreCache 在采纳磁盘值之前调用（验证旧代际不回写）。
   @visibleForTesting
@@ -249,9 +246,9 @@ class DormElectricityService {
         }
       }
       if (removedLegacyConfig) {
-        await prefs.remove(_keyElectricity);
-        await prefs.remove(_keyElectricityUpdatedAt);
-        await prefs.remove(_keyAlertLastNotifiedDate);
+        await prefs.remove(keyElectricity);
+        await prefs.remove(keyElectricityUpdatedAt);
+        await prefs.remove(keyAlertLastNotifiedDate);
       }
     });
     if (!_isCurrentIdentity(owner, revision)) return;
@@ -270,8 +267,8 @@ class DormElectricityService {
       _cacheRestored = true;
       return;
     }
-    _cachedElectricity = prefs.getDouble(_keyElectricity);
-    final updatedAtMillis = prefs.getInt(_keyElectricityUpdatedAt);
+    _cachedElectricity = prefs.getDouble(keyElectricity);
+    final updatedAtMillis = prefs.getInt(keyElectricityUpdatedAt);
     _lastUpdated = updatedAtMillis == null
         ? null
         : DateTime.fromMillisecondsSinceEpoch(updatedAtMillis);
@@ -308,10 +305,10 @@ class DormElectricityService {
     // 再复核一次，绝不把旧 epoch 的配置快照暴露给新 epoch。
     await debugBeforeRoomConfigExpose?.call();
     if (!_isCurrentIdentity(owner, revision)) return null;
-    final areaId = prefs.getString(_keyAreaId);
-    final buildingId = prefs.getString(_keyBuildingId);
-    final floorId = prefs.getString(_keyFloorId);
-    final roomId = prefs.getString(_keyRoomId);
+    final areaId = prefs.getString(keyAreaId);
+    final buildingId = prefs.getString(keyBuildingId);
+    final floorId = prefs.getString(keyFloorId);
+    final roomId = prefs.getString(keyRoomId);
     if (areaId == null ||
         buildingId == null ||
         floorId == null ||
@@ -365,32 +362,32 @@ class DormElectricityService {
       await write(roomOwnerKey, () => prefs.remove(roomOwnerKey));
       // 余额必须和房间配置绑定；保存后强制下一次查询新房间，绝不能回退到
       // 上一个寝室的缓存值。
-      await write(_keyElectricity, () => prefs.remove(_keyElectricity));
+      await write(keyElectricity, () => prefs.remove(keyElectricity));
       await write(
-        _keyElectricityUpdatedAt,
-        () => prefs.remove(_keyElectricityUpdatedAt),
+        keyElectricityUpdatedAt,
+        () => prefs.remove(keyElectricityUpdatedAt),
       );
       await write(
-        _keyAlertLastNotifiedDate,
-        () => prefs.remove(_keyAlertLastNotifiedDate),
+        keyAlertLastNotifiedDate,
+        () => prefs.remove(keyAlertLastNotifiedDate),
       );
       if (previousOwner != owner) {
         await write(
-          _keyAlertEnabled,
-          () => prefs.setBool(_keyAlertEnabled, false),
+          keyAlertEnabled,
+          () => prefs.setBool(keyAlertEnabled, false),
         );
-        await write(_keyAlertThreshold, () => prefs.remove(_keyAlertThreshold));
+        await write(keyAlertThreshold, () => prefs.remove(keyAlertThreshold));
       }
-      await write(_keyAreaId, () => prefs.setString(_keyAreaId, config.areaId));
+      await write(keyAreaId, () => prefs.setString(keyAreaId, config.areaId));
       await write(
-        _keyBuildingId,
-        () => prefs.setString(_keyBuildingId, config.buildingId),
+        keyBuildingId,
+        () => prefs.setString(keyBuildingId, config.buildingId),
       );
       await write(
-        _keyFloorId,
-        () => prefs.setString(_keyFloorId, config.floorId),
+        keyFloorId,
+        () => prefs.setString(keyFloorId, config.floorId),
       );
-      await write(_keyRoomId, () => prefs.setString(_keyRoomId, config.roomId));
+      await write(keyRoomId, () => prefs.setString(keyRoomId, config.roomId));
       // owner 标记最后落：只有全部键写入成功后才可被采纳；身份在落盘后
       // 变化时立即撤回标记（回滚），绝不让新身份采纳旧身份的半写入配置。
       await write(roomOwnerKey, () => prefs.setString(roomOwnerKey, owner));
@@ -426,16 +423,16 @@ class DormElectricityService {
         if (marker != null && marker != owner) return;
       }
       for (final key in [
-        _keyAreaId,
-        _keyBuildingId,
-        _keyFloorId,
-        _keyRoomId,
+        keyAreaId,
+        keyBuildingId,
+        keyFloorId,
+        keyRoomId,
         roomOwnerKey,
-        _keyElectricity,
-        _keyElectricityUpdatedAt,
-        _keyAlertEnabled,
-        _keyAlertThreshold,
-        _keyAlertLastNotifiedDate,
+        keyElectricity,
+        keyElectricityUpdatedAt,
+        keyAlertEnabled,
+        keyAlertThreshold,
+        keyAlertLastNotifiedDate,
       ]) {
         await prefs.remove(key);
       }
@@ -458,7 +455,7 @@ class DormElectricityService {
     final revision = UnifiedAuthService.instance.sessionRevision;
     final prefs = await _ownedPrefs(owner);
     if (prefs == null || !_isCurrentIdentity(owner, revision)) return false;
-    return prefs.getBool(_keyAlertEnabled) ?? false;
+    return prefs.getBool(keyAlertEnabled) ?? false;
   }
 
   /// 无 owner 归属时静默失败（不写、不迁移），避免把设置写到别的账号上。
@@ -474,15 +471,15 @@ class DormElectricityService {
       bool stillOwned() =>
           _isCurrentIdentity(owner, revision) &&
           prefs.getString(roomOwnerKey) == owner;
-      final previous = prefs.getBool(_keyAlertEnabled);
+      final previous = prefs.getBool(keyAlertEnabled);
       await _guardedPrivateWrite(
         operation: 'setAlertEnabled',
-        key: _keyAlertEnabled,
+        key: keyAlertEnabled,
         verify: stillOwned,
-        write: () => prefs.setBool(_keyAlertEnabled, value),
+        write: () => prefs.setBool(keyAlertEnabled, value),
         rollback: previous == null
-            ? () => prefs.remove(_keyAlertEnabled)
-            : () => prefs.setBool(_keyAlertEnabled, previous),
+            ? () => prefs.remove(keyAlertEnabled)
+            : () => prefs.setBool(keyAlertEnabled, previous),
       );
     });
   }
@@ -497,7 +494,7 @@ class DormElectricityService {
     if (prefs == null || !_isCurrentIdentity(owner, revision)) {
       return defaultAlertThreshold;
     }
-    return prefs.getDouble(_keyAlertThreshold) ?? defaultAlertThreshold;
+    return prefs.getDouble(keyAlertThreshold) ?? defaultAlertThreshold;
   }
 
   Future<void> setAlertThreshold(double value) async {
@@ -509,20 +506,21 @@ class DormElectricityService {
       bool stillOwned() =>
           _isCurrentIdentity(owner, revision) &&
           prefs.getString(roomOwnerKey) == owner;
-      final previous = prefs.getDouble(_keyAlertThreshold);
+      final previous = prefs.getDouble(keyAlertThreshold);
       await _guardedPrivateWrite(
         operation: 'setAlertThreshold',
-        key: _keyAlertThreshold,
+        key: keyAlertThreshold,
         verify: stillOwned,
-        write: () => prefs.setDouble(_keyAlertThreshold, value),
+        write: () => prefs.setDouble(keyAlertThreshold, value),
         rollback: previous == null
-            ? () => prefs.remove(_keyAlertThreshold)
-            : () => prefs.setDouble(_keyAlertThreshold, previous),
+            ? () => prefs.remove(keyAlertThreshold)
+            : () => prefs.setDouble(keyAlertThreshold, previous),
       );
     });
   }
 
-  String _todayString() {
+  /// 本地日期 `yyyy-MM-dd`；预警「当日已通知」标记与后台任务共用。
+  static String todayString() {
     final now = DateTime.now();
     return '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
   }
@@ -559,20 +557,20 @@ class DormElectricityService {
         identityIntact() && prefs.getString(roomOwnerKey) == owner;
     if (!stillOwned()) return;
 
-    final today = _todayString();
+    final today = todayString();
     await _serializedPrivateMutation(() async {
       if (!stillOwned()) return;
-      final lastNotified = prefs.getString(_keyAlertLastNotifiedDate);
+      final lastNotified = prefs.getString(keyAlertLastNotifiedDate);
       if (electricity >= threshold) {
         // 电量已回到阈值之上：撤掉当日标记，下次跌回阈值内仍可提醒。
         if (lastNotified == null) return;
         await _guardedPrivateWrite(
           operation: 'checkAndAlert',
-          key: _keyAlertLastNotifiedDate,
+          key: keyAlertLastNotifiedDate,
           verify: stillOwned,
-          write: () => prefs.remove(_keyAlertLastNotifiedDate),
+          write: () => prefs.remove(keyAlertLastNotifiedDate),
           rollback: () =>
-              prefs.setString(_keyAlertLastNotifiedDate, lastNotified),
+              prefs.setString(keyAlertLastNotifiedDate, lastNotified),
         );
         return;
       }
@@ -581,12 +579,12 @@ class DormElectricityService {
       if (!stillOwned()) return;
       await _guardedPrivateWrite(
         operation: 'checkAndAlert',
-        key: _keyAlertLastNotifiedDate,
+        key: keyAlertLastNotifiedDate,
         verify: stillOwned,
-        write: () => prefs.setString(_keyAlertLastNotifiedDate, today),
+        write: () => prefs.setString(keyAlertLastNotifiedDate, today),
         rollback: lastNotified == null
-            ? () => prefs.remove(_keyAlertLastNotifiedDate)
-            : () => prefs.setString(_keyAlertLastNotifiedDate, lastNotified),
+            ? () => prefs.remove(keyAlertLastNotifiedDate)
+            : () => prefs.setString(keyAlertLastNotifiedDate, lastNotified),
       );
     });
   }
@@ -925,28 +923,28 @@ class DormElectricityService {
       if (value == null || updatedAt == null) return;
       final wroteValue = await _guardedPrivateWrite(
         operation: 'persistCache',
-        key: _keyElectricity,
+        key: keyElectricity,
         verify: stillOwned,
-        write: () => prefs.setDouble(_keyElectricity, value),
-        rollback: () => prefs.remove(_keyElectricity),
+        write: () => prefs.setDouble(keyElectricity, value),
+        rollback: () => prefs.remove(keyElectricity),
       );
       if (!wroteValue) return;
       final wroteTimestamp = await _guardedPrivateWrite(
         operation: 'persistCache',
-        key: _keyElectricityUpdatedAt,
+        key: keyElectricityUpdatedAt,
         verify: stillOwned,
         write: () => prefs.setInt(
-          _keyElectricityUpdatedAt,
+          keyElectricityUpdatedAt,
           updatedAt.millisecondsSinceEpoch,
         ),
-        rollback: () => prefs.remove(_keyElectricityUpdatedAt),
+        rollback: () => prefs.remove(keyElectricityUpdatedAt),
       );
       if (wroteTimestamp) return;
       // 时间戳被放弃 / 回滚：值也必须撤掉，绝不留下半对缓存（归属仍属捕获
       // owner 或已无主时才删，绝不误删新身份刚写入的数据）。
       final marker = prefs.getString(roomOwnerKey);
       if (marker == null || marker == owner) {
-        await prefs.remove(_keyElectricity);
+        await prefs.remove(keyElectricity);
       }
     });
   }
@@ -962,7 +960,7 @@ class DormElectricityService {
 
   @visibleForTesting
   void debugReset() {
-    gateway = EpayElectricityGateway.instance;
+    gateway = Epay100Gateway.instance;
     _prefs = null;
     _cacheRestored = false;
     _cachedElectricity = null;

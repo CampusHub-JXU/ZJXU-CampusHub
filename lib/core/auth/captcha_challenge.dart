@@ -51,8 +51,6 @@ class CaptchaChallenge {
 
   bool isExpiredAt(DateTime now) => !now.isBefore(createdAt.add(ttl));
 
-  int ageMsAt(DateTime now) => now.difference(createdAt).inMilliseconds;
-
   @override
   String toString() =>
       'CaptchaChallenge(domain=${domain.wireName}, id=$id, '

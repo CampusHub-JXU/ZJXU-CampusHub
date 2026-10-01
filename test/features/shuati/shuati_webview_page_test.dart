@@ -8,13 +8,15 @@ import 'package:jxu_campus_hub/app/app_bootstrap_controller.dart';
 import 'package:jxu_campus_hub/core/shortcut/app_shortcut_service.dart';
 import 'package:jxu_campus_hub/features/shuati/shuati_webview_page.dart';
 
+import '../../helpers/fake_inappwebview.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   const shortcutChannel = MethodChannel('edu.zjxu.jxucampushub/shortcut');
 
   setUpAll(() {
-    InAppWebViewPlatform.instance = _FakeInAppWebViewPlatform();
+    InAppWebViewPlatform.instance = FakeInAppWebViewPlatform();
   });
 
   setUp(() {
@@ -110,30 +112,6 @@ void main() {
     expect(find.byTooltip('更多操作'), findsNothing);
     expect(find.text('添加到桌面'), findsNothing);
   });
-}
-
-class _FakeInAppWebViewPlatform extends InAppWebViewPlatform {
-  @override
-  PlatformInAppWebViewWidget createPlatformInAppWebViewWidget(
-    PlatformInAppWebViewWidgetCreationParams params,
-  ) {
-    return _FakePlatformInAppWebViewWidget(params);
-  }
-}
-
-class _FakePlatformInAppWebViewWidget extends PlatformInAppWebViewWidget {
-  _FakePlatformInAppWebViewWidget(super.params) : super.implementation();
-
-  @override
-  Widget build(BuildContext context) => const SizedBox.expand();
-
-  @override
-  T controllerFromPlatform<T>(PlatformInAppWebViewController controller) {
-    throw UnimplementedError('Controller is not used by this test fake.');
-  }
-
-  @override
-  void dispose() {}
 }
 
 class _ShuatiTestApp extends StatelessWidget {

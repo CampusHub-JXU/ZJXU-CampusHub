@@ -2,9 +2,10 @@ import 'package:flutter/foundation.dart' show immutable;
 
 import '../core/calendar/calendar_sync_models.dart';
 import '../core/semester/schedule_term_context.dart';
-import '../features/schedule/schedule_cache_snapshot.dart';
-import '../features/schedule/schedule_constants.dart';
-import '../features/schedule/schedule_model.dart';
+import '../core/academic/effective_week_courses.dart';
+import '../core/academic/schedule_cache_snapshot.dart';
+import '../core/academic/schedule_constants.dart';
+import '../core/academic/schedule_model.dart';
 // `normalizeCourseName` 由 schedule_service.dart 转出（schedule_change_rule.dart）。
 import '../features/schedule/schedule_service.dart';
 
@@ -172,7 +173,7 @@ class ProjectedCourseOccurrence {
 /// - 只读入调用方已验证的 [snapshot]（正方 owner、已确认当前学期、已校对
 ///   开学日），不访问网络、不读写系统日历 provider、不读写凭据、不生成随机
 ///   opaqueId，也不读 `SemesterCalendar` 单例（开学日由参数传入）；
-/// - 逐周（1–`scheduleWeekCount`）调用 [ScheduleService.buildEffectiveWeekCourses]
+/// - 逐周（1–`scheduleWeekCount`）调用 [buildEffectiveWeekCourses]
 ///   （纯计算：单双周过滤 + 停课/调课/补课/换教室），把每节课投影为一条绝对
 ///   时间事件；日期按开学日所在周的周一 + (周次-1)*7 + (星期-1) 校准，因此
 ///   非周一开学时第 1 周周一的课程不会被丢弃；
@@ -226,7 +227,7 @@ List<ProjectedCourseOccurrence> projectCurrentTermCalendarEvents({
   final occurrences = <ProjectedCourseOccurrence>[];
   final seenKeys = <String>{};
   for (var week = 1; week <= scheduleWeekCount; week++) {
-    final weekCourses = ScheduleService.instance.buildEffectiveWeekCourses(
+    final weekCourses = buildEffectiveWeekCourses(
       courses: snapshot.courses,
       week: week,
       changeRules: snapshot.changeRules,

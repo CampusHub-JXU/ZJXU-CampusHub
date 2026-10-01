@@ -7,7 +7,7 @@ import '../../../core/actions/campus_action_executor.dart';
 import '../../../core/config/feature_entry_catalog.dart';
 import '../../../core/theme/app_design_tokens.dart';
 import '../../../core/theme/app_theme_controller.dart';
-import '../../../features/service_hub/service_hub_usage_store.dart';
+import '../../../core/config/service_hub_usage_store.dart';
 import '../../../shared/widgets/app_icon_badge.dart';
 import '../../../shared/widgets/app_tile_surface.dart';
 import '../../../core/theme/app_typography.dart';

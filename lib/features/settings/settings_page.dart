@@ -339,12 +339,6 @@ class SettingsPage extends StatelessWidget {
                                 );
                               },
                             ),
-                            PlainListRow(
-                              title: '推送令牌',
-                              subtitle: '查看 FCM 推送注册状态',
-                              trailing: _chevron(context),
-                              onTap: () => context.pushNamed('push-debug'),
-                            ),
                           ],
                         );
                       },
@@ -356,14 +350,6 @@ class SettingsPage extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-
-  static Widget _chevron(BuildContext context) {
-    return Icon(
-      Icons.chevron_right,
-      size: 20,
-      color: Theme.of(context).colorScheme.onSurfaceVariant,
     );
   }
 }

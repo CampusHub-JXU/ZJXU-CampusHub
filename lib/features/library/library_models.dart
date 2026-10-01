@@ -6,6 +6,8 @@
 /// locationName, count, total, cids[], shelfNo}], isLogin}`。
 library;
 
+import '../../core/util/json_coerce.dart';
+
 /// 一条馆藏位置记录（PRD 0.7.0 §34：馆藏位置 / 可借状态）。
 class LibraryHolding {
   const LibraryHolding({
@@ -48,16 +50,18 @@ class LibraryHolding {
   static LibraryHolding? fromJson(Object? raw) {
     if (raw is! Map) return null;
     return LibraryHolding(
-      group: _str(raw['group']),
-      groupName: _str(raw['groupName']),
-      location: _str(raw['location']),
-      locationName: _str(raw['locationName']),
-      count: _int(raw['count']),
-      total: _int(raw['total']),
+      group: asString(raw['group']),
+      groupName: asString(raw['groupName']),
+      location: asString(raw['location']),
+      locationName: asString(raw['locationName']),
+      count: asInt(raw['count']),
+      total: asInt(raw['total']),
       cids: raw['cids'] is List
-          ? (raw['cids']! as List).map(_str).toList(growable: false)
+          ? (raw['cids']! as List)
+                .map((e) => asString(e))
+                .toList(growable: false)
           : const <String>[],
-      shelfNo: _str(raw['shelfNo']),
+      shelfNo: asString(raw['shelfNo']),
     );
   }
 }
@@ -102,13 +106,13 @@ class LibraryBookDetail {
 
   static LibraryBookDetail? fromJson(Object? raw) {
     if (raw is! Map) return null;
-    final bid = _str(raw['bid']);
+    final bid = asString(raw['bid']);
     if (bid.isEmpty) return null;
     return LibraryBookDetail(
       bid: bid,
-      callNo: _str(raw['callNo']),
-      total: _int(raw['total']),
-      count: _int(raw['count']),
+      callNo: asString(raw['callNo']),
+      total: asInt(raw['total']),
+      count: asInt(raw['count']),
       libraries: raw['libraries'] is List
           ? (raw['libraries']! as List)
                 .map(LibraryHolding.fromJson)
@@ -177,8 +181,6 @@ class LibraryBorrowItem {
 
   bool get isOverdue => overDay > 0 || overTime.isNotEmpty;
 
-  bool get isWillEnd => willEnd == '1';
-
   /// 到期提醒文案：超期优先，其次 1–3 天内到期。
   String? get dueHint {
     if (isOverdue) {
@@ -190,22 +192,22 @@ class LibraryBorrowItem {
 
   static LibraryBorrowItem? fromJson(Object? raw) {
     if (raw is! Map) return null;
-    final name = _str(raw['bookName']);
+    final name = asString(raw['bookName']);
     if (name.isEmpty) return null;
     return LibraryBorrowItem(
       bookName: name,
-      author: _str(raw['author']),
-      desc: _str(raw['desc']),
-      bookImage: _str(raw['bookImage']),
-      borrowTime: _str(raw['borrowTime']),
-      endTime: _str(raw['endTime']),
-      returnTime: _str(raw['returnTime']),
-      infoDay: _int(raw['infoDay']),
-      overDay: _int(raw['overDay']),
-      overTime: _str(raw['overTime']),
-      renewId: _str(raw['renewID']),
-      willEnd: _str(raw['willEnd']),
-      returnCode: _str(raw['returnCode']),
+      author: asString(raw['author']),
+      desc: asString(raw['desc']),
+      bookImage: asString(raw['bookImage']),
+      borrowTime: asString(raw['borrowTime']),
+      endTime: asString(raw['endTime']),
+      returnTime: asString(raw['returnTime']),
+      infoDay: asInt(raw['infoDay']),
+      overDay: asInt(raw['overDay']),
+      overTime: asString(raw['overTime']),
+      renewId: asString(raw['renewID']),
+      willEnd: asString(raw['willEnd']),
+      returnCode: asString(raw['returnCode']),
     );
   }
 }
@@ -248,9 +250,9 @@ class LibraryBorrowPage {
                 .whereType<LibraryBorrowItem>()
                 .toList(growable: false)
           : const <LibraryBorrowItem>[],
-      page: _int(raw['page'], fallback: 1),
-      pageSize: _int(raw['pageSize']),
-      nextUrl: _str(raw['nextUrl']),
+      page: asInt(raw['page'], fallback: 1),
+      pageSize: asInt(raw['pageSize']),
+      nextUrl: asString(raw['nextUrl']),
     );
   }
 }
@@ -263,12 +265,4 @@ class LibraryApiException implements Exception {
 
   @override
   String toString() => 'LibraryApiException: $message';
-}
-
-String _str(Object? value) => value == null ? '' : value.toString();
-
-int _int(Object? value, {int fallback = 0}) {
-  if (value is int) return value;
-  if (value is num) return value.toInt();
-  return int.tryParse(value?.toString() ?? '') ?? fallback;
 }

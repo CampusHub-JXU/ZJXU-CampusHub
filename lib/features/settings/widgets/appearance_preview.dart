@@ -268,7 +268,7 @@ class _AppearancePreviewState extends State<AppearancePreview> {
         width: width,
         height: height,
         child: IgnorePointer(
-          child: AppMaterialSurface(
+          child: GlassContainer(
             borderRadius: borderRadius,
             blurred: glassEnabled,
             child: const SizedBox.expand(),
@@ -366,7 +366,7 @@ class _DockMock extends StatelessWidget {
           child: Padding(
             padding: EdgeInsets.only(bottom: h * 0.025),
             child: IgnorePointer(
-              child: AppMaterialSurface(
+              child: GlassContainer(
                 tier: GlassTier.nav,
                 width: w * 0.62,
                 height: dockHeight,

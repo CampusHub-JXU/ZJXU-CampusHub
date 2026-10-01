@@ -17,6 +17,7 @@ import 'package:jxu_campus_hub/features/exam/exam_service.dart';
 import 'package:jxu_campus_hub/features/grades/grades_service.dart';
 
 import '../helpers/test_setup.dart';
+import '../helpers/credential_store_test_ext.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

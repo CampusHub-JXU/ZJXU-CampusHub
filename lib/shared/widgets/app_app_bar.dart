@@ -5,12 +5,12 @@ import '../../core/theme/glass_style_controller.dart';
 import '../../core/theme/surface_material.dart';
 import 'material_noise.dart';
 
-/// 全局玻璃质感 AppBar。
+/// 全局亚克力质感 AppBar。
 ///
 /// 毛玻璃层放在 flexibleSpace 内，材质细节见 [GlassAppBarSpace]。
 ///
-/// * 玻璃开启：模糊 + 半透明平色 tint + 底部发丝线，悬浮于滚动内容之上；
-/// * 玻璃关闭（[GlassStyleController.enabled]）或显式传入
+/// * 亚克力开启：模糊 + 半透明平色 tint + 底部发丝线，悬浮于滚动内容之上；
+/// * 亚克力关闭（[GlassStyleController.enabled]）或显式传入
 ///   [backgroundColor]：回退为实色表面，不创建 BackdropFilter，
 ///   保证低端机流畅。
 class AppAppBar extends StatelessWidget implements PreferredSizeWidget {
@@ -78,14 +78,12 @@ class AppAppBar extends StatelessWidget implements PreferredSizeWidget {
   }
 }
 
-/// 玻璃 AppBar 的填充层，可单独用于 [SliverAppBar.flexibleSpace]。
+/// 亚克力 AppBar 的填充层，可单独用于 [SliverAppBar.flexibleSpace]。
 ///
 /// 材质由统一 [MaterialRecipe] 驱动（与 [GlassContainer] 同一套配方），不再
 /// 自持 BackdropFilter / tint / border 常量：
-/// * 玻璃 —— 裁剪后 bounded 背景模糊 + 半透明 tint + 底部发丝线；
-/// * 亚克力 —— 更强模糊 + 更高 tint + 细微噪点；
-/// * 云母 —— 不透明稳定主题表面，不创建 BackdropFilter；
-/// * 实色 / 总开关关闭 / 滑条归零 / 显式 [fallbackColor] —— 回退实色填充，
+/// * 亚克力 —— 裁剪后 bounded 背景模糊 + 半透明 tint + 细微噪点 + 底部发丝线；
+/// * 实色 / 总开关关闭 / 显式 [fallbackColor] —— 回退实色填充，
 ///   不创建 BackdropFilter，保证低端机流畅。
 ///
 /// 注意：裁剪必须放在 BackdropFilter 的祖先位置。BackdropFilter 作用于
@@ -94,7 +92,7 @@ class AppAppBar extends StatelessWidget implements PreferredSizeWidget {
 class GlassAppBarSpace extends StatelessWidget {
   const GlassAppBarSpace({super.key, this.fallbackColor});
 
-  /// 玻璃关闭时的实色回退；null 时按深浅主题取 surfaceContainer 系颜色。
+  /// 亚克力关闭时的实色回退；null 时按深浅主题取 surfaceContainer 系颜色。
   final Color? fallbackColor;
 
   @override
@@ -104,44 +102,17 @@ class GlassAppBarSpace extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final style = GlassStyleController.instance;
 
-    return AnimatedBuilder(
-      animation: Listenable.merge([
-        style.enabled,
-        style.blurSigma,
-        style.tintOpacity,
-        style.materialStyle,
-      ]),
-      builder: (context, _) {
-        final recipe = MaterialRecipe.resolve(
-          style.materialStyle.value,
-          blurBase: style.blurSigma.value,
-          tintBase: style.tintOpacity.value,
-        );
+    return ValueListenableBuilder<bool>(
+      valueListenable: style.enabled,
+      builder: (context, _, _) {
+        final recipe = MaterialRecipe.resolve(style.materialStyle);
         final baseTint = isDark
             ? cs.surfaceContainerLow
             : cs.surfaceContainerLowest;
-        // 云母回退为不透明顶栏：叠加主题色调，避免和中性实色/半透明玻璃
-        // 混同；玻璃与亚克力仍走半透明 + 实时模糊分支。
-        final tintColor =
-            fallbackColor ??
-            (recipe.style == SurfaceMaterialStyle.mica
-                ? Color.alphaBlend(
-                    cs.primary.withValues(
-                      alpha: (recipe.tintOpacity * (isDark ? 0.42 : 0.28))
-                          .clamp(0.0, 0.2),
-                    ),
-                    baseTint,
-                  )
-                : baseTint);
-        final useGlass =
-            fallbackColor == null &&
-            style.shouldBlur() &&
-            recipe.usesBackdropBlur;
-        final sigma = recipe.style == SurfaceMaterialStyle.glass
-            ? style.sigmaFor(GlassTier.nav)
-            : (recipe.blurSigma * 1.2).clamp(0.0, 44.0);
-        final borderColor =
-            useGlass || recipe.style == SurfaceMaterialStyle.mica
+        final tintColor = fallbackColor ?? baseTint;
+        final useGlass = fallbackColor == null && recipe.usesBackdropBlur;
+        final sigma = (recipe.blurSigma * 1.2).clamp(0.0, 44.0);
+        final borderColor = useGlass
             ? (isDark
                   ? Colors.white.withValues(
                       alpha: (recipe.borderOpacity * 0.15).clamp(0.0, 1.0),
@@ -152,7 +123,8 @@ class GlassAppBarSpace extends StatelessWidget {
             : Colors.transparent;
         final fill = _AppBarFill(
           tintColor: tintColor,
-          tintAlpha: useGlass ? _appBarTintAlpha(recipe, isDark) : 1.0,
+          // 顶栏 tint 策略：低到能看清模糊，高到标题仍满足 WCAG AA。
+          tintAlpha: useGlass ? (isDark ? 0.42 : 0.50) : 1.0,
           borderColor: borderColor,
           noiseOpacity: useGlass ? recipe.noiseOpacity : 0,
           isDark: isDark,
@@ -178,21 +150,6 @@ class GlassAppBarSpace extends StatelessWidget {
         );
       },
     );
-  }
-
-  /// 顶栏 tint 策略：低到能看清模糊，高到标题仍满足 WCAG AA。
-  static double _appBarTintAlpha(MaterialRecipe recipe, bool isDark) {
-    switch (recipe.style) {
-      case SurfaceMaterialStyle.solid:
-        return 1.0;
-      case SurfaceMaterialStyle.glass:
-        return isDark ? 0.34 : 0.42;
-      case SurfaceMaterialStyle.acrylic:
-        return isDark ? 0.42 : 0.50;
-      case SurfaceMaterialStyle.mica:
-        // 云母不进入模糊分支（不透明回退），此处仅为穷尽 switch 兜底。
-        return 1.0;
-    }
   }
 }
 

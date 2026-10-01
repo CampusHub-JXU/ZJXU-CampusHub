@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../schedule_constants.dart';
-import '../schedule_model.dart';
+import '../../../core/academic/schedule_constants.dart';
+import '../../../core/academic/schedule_model.dart';
 import '../schedule_week_view_model.dart';
 import 'schedule_course_cell.dart';
 import 'schedule_day_headers.dart';

@@ -1,11 +1,10 @@
-import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../logging/app_logger.dart';
+import '../storage/atomic_json_file.dart';
 import 'auth_failure.dart';
 import 'auth_file_lock.dart';
 
@@ -372,11 +371,6 @@ class AuthRecoveryStateStore {
 
   @visibleForTesting
   AuthRecoverySnapshot get debugSnapshot => _snapshot;
-
-  @visibleForTesting
-  void debugInjectSnapshot(AuthRecoverySnapshot snapshot) {
-    _snapshot = snapshot;
-  }
 
   @visibleForTesting
   void debugReset() {
@@ -796,79 +790,60 @@ class AuthRecoveryStateStore {
     return lock.withLock(action);
   }
 
+  late final AtomicJsonFile _io = AtomicJsonFile(
+    stateFileName,
+    directory: () => debugDirectoryProvider?.call(),
+  );
+
   Future<AuthFileLock> _lock() async {
-    final dir = await _resolveDir();
-    return AuthFileLock(
-      lockFile: File('${dir.path}${Platform.pathSeparator}$lockFileName'),
-    );
-  }
-
-  Future<Directory> _resolveDir() async {
-    final override = debugDirectoryProvider;
-    if (override != null) return override();
-    return getApplicationSupportDirectory();
-  }
-
-  Future<File> _stateFile() async {
-    final dir = await _resolveDir();
-    return File('${dir.path}${Platform.pathSeparator}$stateFileName');
+    return AuthFileLock(lockFile: await _io.siblingFile(lockFileName));
   }
 
   /// 读坏文件 fail closed：返回「全部未启用」的空快照，不删除、不猜测。
   Future<AuthRecoverySnapshot> _readLocked() async {
-    final file = await _stateFile();
-    if (!await file.exists()) return AuthRecoverySnapshot.empty;
-    try {
-      final raw = jsonDecode(await file.readAsString());
-      if (raw is! Map || raw['v'] != schemaVersion) {
-        throw const FormatException('unsupported auth recovery schema');
-      }
-      final domains = raw['domains'];
-      if (domains is! Map) {
-        throw const FormatException('missing auth recovery domains');
-      }
-      final records = <AuthRecoveryDomain, AuthRecoveryRecord>{};
-      for (final domain in AuthRecoveryDomain.values) {
-        final entry = domains[domain.wireName];
-        if (entry == null) continue;
-        records[domain] = AuthRecoveryRecord.fromJson(domain, entry);
-      }
-      return AuthRecoverySnapshot(records: records);
-    } catch (error, stackTrace) {
-      AppLogger.instance.auth(
-        LogLevel.warn,
-        '自动恢复状态解析失败，按未启用处理（fail closed）',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      return AuthRecoverySnapshot.empty;
-    }
+    final file = await _io.file();
+    return _io.read<AuthRecoverySnapshot>(
+      file,
+      absent: AuthRecoverySnapshot.empty,
+      decode: (raw) {
+        if (raw is! Map || raw['v'] != schemaVersion) {
+          throw const FormatException('unsupported auth recovery schema');
+        }
+        final domains = raw['domains'];
+        if (domains is! Map) {
+          throw const FormatException('missing auth recovery domains');
+        }
+        final records = <AuthRecoveryDomain, AuthRecoveryRecord>{};
+        for (final domain in AuthRecoveryDomain.values) {
+          final entry = domains[domain.wireName];
+          if (entry == null) continue;
+          records[domain] = AuthRecoveryRecord.fromJson(domain, entry);
+        }
+        return AuthRecoverySnapshot(records: records);
+      },
+      onCorrupt: (error, stackTrace) {
+        AppLogger.instance.auth(
+          LogLevel.warn,
+          '自动恢复状态解析失败，按未启用处理（fail closed）',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        return AuthRecoverySnapshot.empty;
+      },
+    );
   }
 
   Future<void> _writeLocked(AuthRecoverySnapshot snapshot) async {
-    final file = await _stateFile();
+    final file = await _io.file();
     final domains = <String, dynamic>{
       for (final domain in AuthRecoveryDomain.values)
         if (snapshot.records[domain] != null)
           domain.wireName: snapshot.records[domain]!.toJson(),
     };
-    final encoded = jsonEncode(<String, dynamic>{
+    await AtomicJsonFile.write(file, <String, dynamic>{
       'v': schemaVersion,
       'domains': domains,
     });
-    final tmp = File(
-      '${file.path}.${DateTime.now().microsecondsSinceEpoch}'
-      '-${_random.nextInt(0x7fffffff)}.tmp',
-    );
-    await tmp.writeAsString(encoded, flush: true);
-    try {
-      await tmp.rename(file.path);
-    } on FileSystemException {
-      try {
-        if (await tmp.exists()) await tmp.delete();
-      } catch (_) {}
-      rethrow;
-    }
   }
 
   final _random = Random.secure();

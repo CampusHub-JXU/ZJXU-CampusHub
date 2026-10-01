@@ -19,7 +19,7 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
     bool automatic = false,
   }) async {
     await DioClient.instance.ensureInitialized();
-    if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+    cancelToken.throwIfCancelled();
     final txMode = mode ?? _mode;
     final store = _challengeStore(automatic: automatic);
     final revisionAtStart = _sessionRevision;
@@ -28,7 +28,7 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
     final expectedEpoch = await AuthSessionPersistence.instance.readEpoch(
       CredentialSessionDomain.academic,
     );
-    if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+    cancelToken.throwIfCancelled();
     if (revisionAtStart != _sessionRevision) {
       throw CaptchaException('登录上下文已过期，请重试');
     }
@@ -47,7 +47,7 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
       accountAtStart: accountAtStart,
       cancelToken: cancelToken,
     );
-    if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+    cancelToken.throwIfCancelled();
     if (revisionAtStart != _sessionRevision) {
       throw CaptchaException('登录上下文已过期，请重试');
     }
@@ -62,7 +62,7 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
         txMode,
         cancelToken: cancelToken,
       );
-      if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+      cancelToken.throwIfCancelled();
       context = await _buildChallengeContext(
         session,
         txMode,
@@ -71,7 +71,7 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
         accountAtStart: accountAtStart,
         cancelToken: cancelToken,
       );
-      if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+      cancelToken.throwIfCancelled();
       if (revisionAtStart != _sessionRevision) {
         throw CaptchaException('登录上下文已过期，请重试');
       }
@@ -86,7 +86,7 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
       txMode,
       cancelToken: cancelToken,
     );
-    if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+    cancelToken.throwIfCancelled();
     if (revisionAtStart != _sessionRevision) {
       throw CaptchaException('登录上下文已过期，请重试');
     }
@@ -373,7 +373,7 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
     final mode = context.mode;
     bool isStale() => _isLoginStale(revisionAtStart, attemptGeneration, store);
     try {
-      if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+      cancelToken.throwIfCancelled();
       if (isStale()) {
         return _staleLoginFailure('公钥请求前');
       }
@@ -409,7 +409,7 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
           ),
         ),
       );
-      if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+      cancelToken.throwIfCancelled();
       if (isStale()) {
         return _staleLoginFailure('公钥请求后');
       }
@@ -455,7 +455,7 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
         ),
       );
 
-      if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+      cancelToken.throwIfCancelled();
       if (isStale()) {
         return _staleLoginFailure('登录响应后');
       }

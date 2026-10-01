@@ -12,7 +12,7 @@ import '../core/semester/current_term_resolver.dart';
 import '../core/semester/schedule_term_context.dart';
 import '../core/semester/semester_calendar.dart';
 import '../core/system_surface/campus_data_change_bus.dart';
-import '../features/schedule/schedule_cache_snapshot.dart';
+import '../core/academic/schedule_cache_snapshot.dart';
 import '../features/schedule/schedule_service.dart';
 import 'calendar_event_projector.dart';
 

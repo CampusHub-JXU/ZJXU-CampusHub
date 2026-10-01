@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/async/debouncer.dart';
 import '../../core/notice/notice_model.dart';
 import '../../core/notice/notice_search_service.dart';
 import '../../shared/widgets/login_shell.dart';
@@ -31,9 +32,7 @@ class CampusNoticeSiteSearch extends StatefulWidget {
 enum _Status { loading, loaded, authRequired, failed }
 
 class _CampusNoticeSiteSearchState extends State<CampusNoticeSiteSearch> {
-  static const Duration _debounce = Duration(milliseconds: 500);
-
-  Timer? _timer;
+  final Debouncer _debouncer = Debouncer(const Duration(milliseconds: 500));
   CancelToken? _cancelToken;
   int _generation = 0;
 
@@ -58,13 +57,13 @@ class _CampusNoticeSiteSearchState extends State<CampusNoticeSiteSearch> {
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _debouncer.cancel();
     _cancelToken?.cancel();
     super.dispose();
   }
 
   void _schedule() {
-    _timer?.cancel();
+    _debouncer.cancel();
     _cancelToken?.cancel();
     _generation++;
     setState(() {
@@ -75,7 +74,7 @@ class _CampusNoticeSiteSearchState extends State<CampusNoticeSiteSearch> {
       _hasMore = false;
       _loadingMore = false;
     });
-    _timer = Timer(_debounce, () => _fetch(page: 1));
+    _debouncer.run(() => _fetch(page: 1));
   }
 
   Future<void> _fetch({required int page}) async {

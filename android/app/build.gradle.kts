@@ -5,7 +5,6 @@ plugins {
     // AGP 9: do not apply the Kotlin Gradle plugin here. The Flutter Gradle
     // plugin applies it (android.builtInKotlin=false); it must come after AGP.
     id("dev.flutter.flutter-gradle-plugin")
-    id("com.google.gms.google-services")
 }
 
 val keystorePropsFile = rootProject.file("keystore.properties")
@@ -122,6 +121,4 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
-    implementation(platform("com.google.firebase:firebase-bom:33.12.0"))
-    implementation("com.google.firebase:firebase-messaging")
 }

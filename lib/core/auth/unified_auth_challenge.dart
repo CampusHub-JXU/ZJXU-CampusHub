@@ -16,14 +16,14 @@ extension UnifiedAuthChallengeExtension on UnifiedAuthService {
     CancelToken? cancelToken,
   }) async {
     await DioClient.instance.ensureInitialized();
-    if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+    cancelToken.throwIfCancelled();
     final revisionAtStart = sessionRevision;
     // prepare 时固定持久 epoch：提交必须用它做条件提交，跨 isolate 撤销后
     // 即使内存 revision 未变也会被拒绝。
     final expectedEpoch = await AuthSessionPersistence.instance.readEpoch(
       CredentialSessionDomain.unified,
     );
-    if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+    cancelToken.throwIfCancelled();
     if (revisionAtStart != sessionRevision) {
       throw UnifiedAuthIncompleteSessionException('统一认证登录上下文已过期，请重试');
     }
@@ -31,7 +31,7 @@ extension UnifiedAuthChallengeExtension on UnifiedAuthService {
     if (!isLoggedIn) {
       // 保持旧语义：无可信身份时先清 CAS host Cookie，避免孤儿身份被带入。
       await _clearCasOriginCookies();
-      if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+      cancelToken.throwIfCancelled();
       if (revisionAtStart != sessionRevision) {
         throw UnifiedAuthIncompleteSessionException('统一认证登录上下文已过期，请重试');
       }
@@ -53,7 +53,7 @@ extension UnifiedAuthChallengeExtension on UnifiedAuthService {
       expectedEpoch: expectedEpoch,
       cancelToken: cancelToken,
     );
-    if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+    cancelToken.throwIfCancelled();
     if (revisionAtStart != sessionRevision) {
       throw UnifiedAuthIncompleteSessionException('统一认证登录上下文已过期，请重试');
     }
@@ -63,7 +63,7 @@ extension UnifiedAuthChallengeExtension on UnifiedAuthService {
       serviceUrl,
       cancelToken: cancelToken,
     );
-    if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+    cancelToken.throwIfCancelled();
     if (revisionAtStart != sessionRevision) {
       throw UnifiedAuthIncompleteSessionException('统一认证登录上下文已过期，请重试');
     }
@@ -329,7 +329,7 @@ extension UnifiedAuthChallengeExtension on UnifiedAuthService {
         ),
       );
 
-      if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+      cancelToken.throwIfCancelled();
       if (_isAttemptStale(revisionAtStart, attemptGeneration)) {
         return UnifiedAuthLoginFailure(
           '登录状态已变化，请重试',
@@ -346,7 +346,7 @@ extension UnifiedAuthChallengeExtension on UnifiedAuthService {
           location,
           cancelToken: cancelToken,
         );
-        if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+        cancelToken.throwIfCancelled();
         if (_isAttemptStale(revisionAtStart, attemptGeneration)) {
           return UnifiedAuthLoginFailure(
             '登录状态已变化，请重试',
