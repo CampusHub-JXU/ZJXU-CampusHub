@@ -920,6 +920,90 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('reselecting the current building keeps the chosen room and '
+      'does not refetch rooms', (tester) async {
+    UnifiedAuthService.instance.debugSetSession(active: true, account: 'A');
+
+    await tester.pumpWidget(_app());
+    await _settleCatalog(tester);
+
+    Future<void> pick(String key, String itemText) async {
+      await tester.tap(find.byKey(Key(key)));
+      await tester.pump(const Duration(milliseconds: 250));
+      await tester.tap(find.text(itemText).last);
+      await _settleCatalog(tester);
+    }
+
+    await pick('dorm_area_dropdown', '梁林校区');
+    await pick('dorm_building_dropdown', 'HX4');
+    await pick('dorm_room_dropdown', 'HX4-111号');
+    FilledButton saveButton() =>
+        tester.widget<FilledButton>(find.widgetWithText(FilledButton, '保存'));
+    expect(saveButton().onPressed, isNotNull);
+
+    final callsBefore = gateway.callCount;
+    await pick('dorm_building_dropdown', 'HX4');
+    expect(find.text('HX4-111号'), findsOneWidget);
+    expect(saveButton().onPressed, isNotNull);
+    expect(gateway.callCount, callsBefore, reason: '同一楼幢不应重新拉取房间');
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('retry after a failed room load rebinds the unsaved building '
+      'selection to the reloaded catalog instance', (tester) async {
+    UnifiedAuthService.instance.debugSetSession(active: true, account: 'A');
+
+    await tester.pumpWidget(_app());
+    await _settleCatalog(tester);
+
+    Future<void> pick(String key, String itemText) async {
+      await tester.tap(find.byKey(Key(key)));
+      await tester.pump(const Duration(milliseconds: 250));
+      await tester.tap(find.text(itemText).last);
+      await _settleCatalog(tester);
+    }
+
+    await pick('dorm_area_dropdown', '梁林校区');
+    // 房间拉取失败 → 整页可重试错误态。
+    gateway.holdMethod = 'app.electric.getRoomList';
+    await pick('dorm_building_dropdown', 'HX4');
+    expect(gateway.holdReached, isTrue);
+    // 服务层对目录 RPC 失败会自动重试：持续失败才会落到错误态。
+    gateway.failure = const EpayGatewayException('一卡通网关网络异常，请稍后重试');
+    gateway.completeHold();
+    await _settleCatalog(tester);
+    expect(find.byType(AppErrorView), findsOneWidget);
+    gateway.failure = null;
+
+    // 重试：目录重载换成新的 DormBuilding 实例，未保存的选择须重新绑定。
+    await tester.tap(find.text('重试'));
+    await _settleCatalog(tester);
+    expect(find.byType(AppErrorView), findsNothing);
+
+    final dropdown = tester.widget<AppDropdown<DormBuilding>>(
+      find.byKey(const Key('dorm_building_dropdown')),
+    );
+    expect(dropdown.value, isNotNull);
+    expect(
+      dropdown.items.any((item) => identical(item.value, dropdown.value)),
+      isTrue,
+      reason: '选中值必须是当前目录里的实例，否则下拉显示「请选择」',
+    );
+    expect(find.text('HX4'), findsOneWidget);
+
+    // 房间随重绑后的楼幢重新加载，可继续选择并保存。
+    await pick('dorm_room_dropdown', 'HX4-111号');
+    expect(
+      tester
+          .widget<FilledButton>(find.widgetWithText(FilledButton, '保存'))
+          .onPressed,
+      isNotNull,
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('alert threshold dropdown selects and persists the threshold', (
     tester,
   ) async {

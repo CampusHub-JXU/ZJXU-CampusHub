@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -8,6 +9,11 @@ import '../../core/theme/app_design_tokens.dart';
 ///
 /// 使用 Overlay + AnimatedSwitcher 实现弹出菜单，避免原生样式的不一致。
 /// 支持泛型 [T]，通过 [items] 提供选项，[value] 标记当前选中项。
+///
+/// 菜单展开期间拦截返回手势/系统返回键：返回只关闭菜单，不会 pop 外层页面或
+/// 对话框（通过向所在 [ModalRoute] 注册 [PopEntry] 实现，关闭/销毁时注销）。
+/// 展开前会先让当前输入框失焦；若软键盘正在显示，则等键盘收起（或超时）后再
+/// 按稳定布局定位菜单，避免菜单被键盘遮挡或随布局抖动错位。
 ///
 /// 全 App 下拉选择的**唯一实现**：筛选条直接使用；表单里传 [label] 得到
 /// 「标题在上、撑满宽度」的表单字段形态。不要再使用 `DropdownButton` /
@@ -57,10 +63,34 @@ class AppDropdownItem<T> {
   final IconData? icon;
 }
 
+/// 菜单展开期间向所在路由注册的 [PopEntry]：禁止路由被 pop，并把返回意图
+/// 转为「关闭菜单」。
+class _MenuPopEntry extends PopEntry<Object?> {
+  _MenuPopEntry(this.onBack);
+
+  final VoidCallback onBack;
+
+  @override
+  final ValueNotifier<bool> canPopNotifier = ValueNotifier<bool>(false);
+
+  @override
+  void onPopInvokedWithResult(bool didPop, Object? result) {
+    if (!didPop) onBack();
+  }
+}
+
 class _AppDropdownState<T> extends State<AppDropdown<T>>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+  /// 等待软键盘收起的最长时间，超时后按当前布局直接展开。
+  static const _keyboardWaitTimeout = Duration(milliseconds: 450);
+
   late OverlayEntry? _overlayEntry;
   bool _isOpen = false;
+
+  ModalRoute<dynamic>? _popRoute;
+  _MenuPopEntry? _popEntry;
+  bool _waitingForKeyboard = false;
+  Timer? _keyboardTimer;
 
   final _buttonKey = GlobalKey();
 
@@ -89,6 +119,8 @@ class _AppDropdownState<T> extends State<AppDropdown<T>>
 
   @override
   void dispose() {
+    _cancelKeyboardWait();
+    _unregisterPopEntry();
     if (_overlayEntry != null) {
       _overlayEntry!.remove();
       _overlayEntry = null;
@@ -110,7 +142,74 @@ class _AppDropdownState<T> extends State<AppDropdown<T>>
     }
   }
 
+  double get _keyboardInset {
+    final view = View.maybeOf(context);
+    if (view == null) return 0;
+    return view.viewInsets.bottom / view.devicePixelRatio;
+  }
+
   void _openOverlay() {
+    if (_waitingForKeyboard) return;
+    // 先让输入框失焦（收起 IME），否则菜单可能被键盘遮挡。
+    FocusManager.instance.primaryFocus?.unfocus();
+    if (_keyboardInset > 0) {
+      _waitingForKeyboard = true;
+      WidgetsBinding.instance.addObserver(this);
+      _keyboardTimer = Timer(_keyboardWaitTimeout, _finishKeyboardWait);
+      return;
+    }
+    _showOverlay();
+  }
+
+  @override
+  void didChangeMetrics() {
+    if (_waitingForKeyboard && _keyboardInset <= 0) {
+      // 等布局随键盘收起重排完成后再取按钮位置。
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _finishKeyboardWait(),
+      );
+    }
+  }
+
+  void _finishKeyboardWait() {
+    if (!_waitingForKeyboard) return;
+    _cancelKeyboardWait();
+    if (mounted && !_isOpen) _showOverlay();
+  }
+
+  void _cancelKeyboardWait() {
+    if (!_waitingForKeyboard) return;
+    _waitingForKeyboard = false;
+    _keyboardTimer?.cancel();
+    _keyboardTimer = null;
+    WidgetsBinding.instance.removeObserver(this);
+  }
+
+  void _registerPopEntry() {
+    _unregisterPopEntry();
+    final route = ModalRoute.of(context);
+    if (route == null) return;
+    // 路由正在遍历 popEntries 派发回调，同步注销会触发并发修改，故延后到微任务。
+    final entry = _MenuPopEntry(
+      () => scheduleMicrotask(() {
+        if (mounted) _closeOverlay();
+      }),
+    );
+    route.registerPopEntry(entry);
+    _popRoute = route;
+    _popEntry = entry;
+  }
+
+  void _unregisterPopEntry() {
+    final entry = _popEntry;
+    if (entry == null) return;
+    _popRoute?.unregisterPopEntry(entry);
+    entry.canPopNotifier.dispose();
+    _popRoute = null;
+    _popEntry = null;
+  }
+
+  void _showOverlay() {
     final overlay = Overlay.of(context);
     final renderBox =
         _buttonKey.currentContext?.findRenderObject() as RenderBox?;
@@ -128,6 +227,7 @@ class _AppDropdownState<T> extends State<AppDropdown<T>>
       builder: (context) => _AppDropdownOverlay<T>(
         buttonRect: buttonRect,
         overlaySize: overlaySize,
+        bottomInset: _keyboardInset,
         buttonWidth: buttonSize.width,
         items: widget.items,
         selectedValue: widget.value,
@@ -142,11 +242,14 @@ class _AppDropdownState<T> extends State<AppDropdown<T>>
       ),
     );
     overlay.insert(_overlayEntry!);
+    _registerPopEntry();
     _animController.forward();
     setState(() => _isOpen = true);
   }
 
   void _closeOverlay({bool immediate = false}) {
+    _cancelKeyboardWait();
+    _unregisterPopEntry();
     if (!_isOpen && _overlayEntry == null) return;
     if (immediate) {
       _animController.reset();
@@ -300,6 +403,7 @@ class _AppDropdownOverlay<T> extends StatelessWidget {
   const _AppDropdownOverlay({
     required this.buttonRect,
     required this.overlaySize,
+    required this.bottomInset,
     required this.buttonWidth,
     required this.items,
     required this.selectedValue,
@@ -312,6 +416,9 @@ class _AppDropdownOverlay<T> extends StatelessWidget {
 
   final Rect buttonRect;
   final Size overlaySize;
+
+  /// 软键盘等遮挡底部的高度（逻辑像素），计算可用空间时扣除。
+  final double bottomInset;
   final double buttonWidth;
   final List<AppDropdownItem<T>> items;
   final T? selectedValue;
@@ -334,7 +441,8 @@ class _AppDropdownOverlay<T> extends StatelessWidget {
     final estimatedHeight = math.min(items.length * 44.0 + 8.0, 320.0);
     final aboveTop = buttonRect.top - 6.0 - estimatedHeight;
     final belowTop = buttonRect.bottom + 6.0;
-    final top = belowTop + estimatedHeight > overlaySize.height - 12.0
+    final availableBottom = overlaySize.height - bottomInset - 12.0;
+    final top = belowTop + estimatedHeight > availableBottom
         ? math.max(12.0, aboveTop)
         : belowTop;
     return Stack(

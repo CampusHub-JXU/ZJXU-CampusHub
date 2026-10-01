@@ -227,4 +227,46 @@ void main() {
     expect(find.text('图书馆登录已过期，请重新登录'), findsOneWidget);
     expect(LibrarySession.instance.accessToken, isNull);
   });
+
+  testWidgets('下拉刷新失败时保留已有借阅列表并提示，不替换为错误页', (tester) async {
+    var calls = 0;
+    final adapter = MockHttpClientAdapter();
+    adapter.register('GET', '/user/borrows', (options) async {
+      calls++;
+      if (calls == 1) {
+        return ResponseBody.fromString(
+          jsonEncode(<String, Object?>{
+            'items': <Object?>[_borrowItem()],
+            'page': 1,
+            'pageSize': 100,
+            'nextUrl': '',
+          }),
+          200,
+          headers: <String, List<String>>{
+            Headers.contentTypeHeader: <String>['application/json'],
+          },
+        );
+      }
+      return ResponseBody.fromString(
+        '{"message":"boom"}',
+        500,
+        headers: <String, List<String>>{
+          Headers.contentTypeHeader: <String>['application/json'],
+        },
+      );
+    });
+    DioClient.instance.dio.httpClientAdapter = adapter;
+
+    await tester.pumpWidget(const MaterialApp(home: LibraryBorrowsPage()));
+    await tester.pumpAndSettle();
+    expect(find.text('高等数学'), findsOneWidget);
+
+    await tester.fling(find.text('高等数学'), const Offset(0, 400), 1000);
+    await tester.pumpAndSettle();
+
+    expect(calls, 2);
+    expect(find.text('高等数学'), findsOneWidget);
+    expect(find.text('借阅记录加载失败'), findsNothing);
+    expect(find.textContaining('刷新失败'), findsOneWidget);
+  });
 }

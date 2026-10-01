@@ -534,6 +534,51 @@ void main() {
     });
   });
 
+  group('登录总预算', () {
+    test('getToken 过慢：在总预算内以超时失败，不保存 token', () async {
+      installDirectChangxingRoute();
+      final service = ChangxingJiadaService.instance;
+      service.debugLoginBudget = const Duration(milliseconds: 300);
+      addTearDown(() => service.debugLoginBudget = null);
+      final adapter = MockHttpClientAdapter()
+        ..register(
+          'GET',
+          '/api/cas_wap_login',
+          (_) async => _redirect(
+            'https://newca.zjxu.edu.cn/cas/login'
+            '?service=http%3A%2F%2Fzhx.zjxu.edu.cn%3A8443%2Fapi%2Fwap%2Fcas_login_back',
+          ),
+        )
+        ..register(
+          'GET',
+          '/cas/login',
+          (_) async => _redirect('$_callback?tokenId=T-1'),
+        )
+        ..register('GET', '/api/getToken', (_) async {
+          await Future<void>.delayed(const Duration(seconds: 5));
+          return _json({
+            'data': {'code': '20000', 'token': 'jwt'},
+          });
+        });
+      DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
+
+      final sw = Stopwatch()..start();
+      await expectLater(
+        service.loginViaCas(),
+        throwsA(
+          isA<ChangxingCasLoginException>().having(
+            (e) => e.message,
+            'message',
+            contains('超时'),
+          ),
+        ),
+      );
+      expect(sw.elapsed, lessThan(const Duration(seconds: 3)));
+      expect(adapter.requestLog, contains('GET /api/getToken'));
+      expect(service.hasToken, isFalse);
+    });
+  });
+
   group('API 重定向', () {
     test('GET 同源 302 有界跟随并保持 token 头', () async {
       installDirectChangxingRoute();
@@ -583,6 +628,120 @@ void main() {
       expect(await ChangxingJiadaService.instance.fetchUnreadCount(), 8);
       expect(adapter.requestLog, ['GET $countPath', 'GET $slashPath']);
     });
+
+    test('直连：https 默认端口同主机重定向可跟随', () async {
+      installDirectChangxingRoute();
+      await _seedToken('20260001', 'test-token');
+      final adapter = MockHttpClientAdapter()
+        ..register('GET', '/api/msg/getNoReadCount', (_) async {
+          return _redirect(
+            'https://zhx.zjxu.edu.cn:443/api/msg/getNoReadCount/',
+          );
+        })
+        ..register('GET', '/api/msg/getNoReadCount/', (_) async {
+          return _json({
+            'data': {'code': '20000', 'count': 4},
+          });
+        });
+      DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
+
+      expect(await ChangxingJiadaService.instance.fetchUnreadCount(), 4);
+      expect(adapter.requestLog, hasLength(2));
+    });
+
+    for (final target in {
+      '同主机 http 降级': 'http://zhx.zjxu.edu.cn/leak',
+      '同主机替代端口': 'https://zhx.zjxu.edu.cn:8443/leak',
+      '子域名': 'https://evil.zhx.zjxu.edu.cn/leak',
+    }.entries) {
+      test('直连：${target.key}不跟随（token 不外泄）', () async {
+        installDirectChangxingRoute();
+        await _seedToken('20260001', 'test-token');
+        final adapter = MockHttpClientAdapter()
+          ..register('GET', '/api/msg/getNoReadCount', (_) async {
+            return _redirect(target.value);
+          })
+          ..register('GET', '/leak', (_) async {
+            throw StateError('不得请求不可信目标');
+          });
+        DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
+
+        await expectLater(
+          ChangxingJiadaService.instance.fetchUnreadCount(),
+          throwsA(isA<ChangxingCasLoginException>()),
+        );
+        expect(adapter.requestLog, ['GET /api/msg/getNoReadCount']);
+      });
+    }
+
+    test('WebVPN：同 zhx 代理前缀下的重定向可跟随，token 头保持', () async {
+      installWebVpnChangxingRoute();
+      await _seedToken('20260001', 'test-token');
+      final countPath = _proxyPath(
+        'https://zhx.zjxu.edu.cn/api/msg/getNoReadCount',
+      );
+      final slashPath = _proxyPath(
+        'https://zhx.zjxu.edu.cn/api/msg/getNoReadCount/',
+      );
+      final tokens = <Object?>[];
+      final adapter = MockHttpClientAdapter()
+        ..register('GET', countPath, (o) async {
+          tokens.add(o.headers['token']);
+          return _redirect(
+            _proxy('https://zhx.zjxu.edu.cn/api/msg/getNoReadCount/'),
+          );
+        })
+        ..register('GET', slashPath, (o) async {
+          tokens.add(o.headers['token']);
+          return _json({
+            'data': {'code': '20000', 'count': 9},
+          });
+        });
+      DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
+
+      expect(await ChangxingJiadaService.instance.fetchUnreadCount(), 9);
+      expect(adapter.requestLog, ['GET $countPath', 'GET $slashPath']);
+      expect(tokens, ['test-token', 'test-token']);
+    });
+
+    final webVpnUntrusted = <String, String Function()>{
+      '同代理主机 http 降级': () => _proxy(
+        'https://zhx.zjxu.edu.cn/leak',
+      ).replaceFirst('https://webvpn.zjxu.edu.cn', 'http://webvpn.zjxu.edu.cn'),
+      '网关替代端口': () =>
+          _proxy('https://zhx.zjxu.edu.cn/leak')
+              .replaceFirst('webvpn.zjxu.edu.cn', 'webvpn.zjxu.edu.cn:8443'),
+      '另一代理前缀（zhx 的 http:8443 站点）': () =>
+          _proxy('http://zhx.zjxu.edu.cn:8443/leak'),
+      '另一代理前缀（未知加密主机段）': () {
+        final u = Uri.parse(_proxy('https://zhx.zjxu.edu.cn/leak'));
+        return u
+            .replace(pathSegments: [u.pathSegments[0], 'deadbeef', 'leak'])
+            .toString();
+      },
+      '网关根路径': () => 'https://webvpn.zjxu.edu.cn/leak',
+      '直连 zhx 的 http 地址': () => 'http://zhx.zjxu.edu.cn/leak',
+    };
+    for (final target in webVpnUntrusted.entries) {
+      test('WebVPN：${target.key}不跟随（token 不外泄）', () async {
+        installWebVpnChangxingRoute();
+        await _seedToken('20260001', 'test-token');
+        final countPath = _proxyPath(
+          'https://zhx.zjxu.edu.cn/api/msg/getNoReadCount',
+        );
+        final adapter = MockHttpClientAdapter()
+          ..register('GET', countPath, (_) async {
+            return _redirect(target.value());
+          });
+        DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
+
+        await expectLater(
+          ChangxingJiadaService.instance.fetchUnreadCount(),
+          throwsA(isA<ChangxingCasLoginException>()),
+        );
+        expect(adapter.requestLog, ['GET $countPath']);
+      });
+    }
 
     test('跨站点重定向不跟随（token 不外泄）', () async {
       installDirectChangxingRoute();

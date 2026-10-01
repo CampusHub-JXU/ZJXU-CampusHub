@@ -136,9 +136,8 @@ class GradesHarness extends OwnerCacheHarness {
       )).map((e) => e.courseName).toList();
 
   @override
-  List<String>? get cachedLabels => GradesService.instance.cachedGrades
-      ?.map((e) => e.courseName)
-      .toList();
+  List<String>? get cachedLabels =>
+      GradesService.instance.cachedGrades?.map((e) => e.courseName).toList();
   @override
   DateTime? get updatedAt => GradesService.instance.updatedAt;
   @override
@@ -261,8 +260,9 @@ void main() {
         );
         await resetTestEnvironment();
         await h.setUpEnvironment();
-        DioClient.instance.debugCookieDirectoryPathProvider =
-            (folderName) async => 'test/$folderName';
+        DioClient.instance.debugCookieDirectoryPathProvider = (
+          folderName,
+        ) async => 'test/$folderName';
         await DioClient.instance.ensureInitialized();
       });
 
@@ -334,16 +334,22 @@ void main() {
           expect(h.cachedLabels, isNull);
         });
 
-        test('in-memory cache is hidden right after an account switch', () async {
-          final epoch = await loginAcademic('A');
-          await seed(owner: 'A', epoch: epoch);
-          expect(await h.restore(), isTrue);
-          expect(h.cachedLabels, ['seeded']);
+        test(
+          'in-memory cache is hidden right after an account switch',
+          () async {
+            final epoch = await loginAcademic('A');
+            await seed(owner: 'A', epoch: epoch);
+            expect(await h.restore(), isTrue);
+            expect(h.cachedLabels, ['seeded']);
 
-          ZhengfangAuth.instance.debugSetSession(active: true, studentId: 'B');
+            ZhengfangAuth.instance.debugSetSession(
+              active: true,
+              studentId: 'B',
+            );
 
-          expect(h.cachedLabels, isNull);
-        });
+            expect(h.cachedLabels, isNull);
+          },
+        );
 
         test('fetch for a different account sends no request', () async {
           await loginAcademic('A');
@@ -424,20 +430,23 @@ void main() {
           expect(adapter.requestLog, contains('POST ${h.requestPath}'));
         });
 
-        test('successful fetch refreshes updatedAt and serves from memory', () async {
-          await loginAcademic('A');
-          final before = DateTime.now();
-          h.installAdapter();
-          await h.fetch('A', force: true);
+        test(
+          'successful fetch refreshes updatedAt and serves from memory',
+          () async {
+            await loginAcademic('A');
+            final before = DateTime.now();
+            h.installAdapter();
+            await h.fetch('A', force: true);
 
-          expect(h.cachedLabels, ['default']);
-          expect(h.updatedAt!.isBefore(before), isFalse);
-          expect(h.isFresh, isTrue);
+            expect(h.cachedLabels, ['default']);
+            expect(h.updatedAt!.isBefore(before), isFalse);
+            expect(h.isFresh, isTrue);
 
-          final adapter = h.installAdapter();
-          await h.fetch('A');
-          expect(adapter.requestLog, isEmpty);
-        });
+            final adapter = h.installAdapter();
+            await h.fetch('A');
+            expect(adapter.requestLog, isEmpty);
+          },
+        );
       });
 
       // ---- 登出 / 换号 / 同账号重登：迟到结果与内存失效 ----
@@ -508,29 +517,35 @@ void main() {
           expect(await rawOnDisk(), isNull);
         });
 
-        test('same-account re-login hides the in-memory cache at once', () async {
-          final epoch = await loginAcademic('A');
-          await seed(owner: 'A', epoch: epoch);
-          await h.restore();
-          expect(h.cachedLabels, isNotNull);
+        test(
+          'same-account re-login hides the in-memory cache at once',
+          () async {
+            final epoch = await loginAcademic('A');
+            await seed(owner: 'A', epoch: epoch);
+            await h.restore();
+            expect(h.cachedLabels, isNotNull);
 
-          await relogin('A');
+            await relogin('A');
 
-          expect(h.cachedLabels, isNull);
-          expect(h.updatedAt, isNull);
-        });
+            expect(h.cachedLabels, isNull);
+            expect(h.updatedAt, isNull);
+          },
+        );
 
-        test('durable re-login without notify: next durable read drops memory', () async {
-          final epoch = await loginAcademic('A');
-          await seed(owner: 'A', epoch: epoch);
-          await h.restore();
-          expect(h.cachedLabels, isNotNull);
+        test(
+          'durable re-login without notify: next durable read drops memory',
+          () async {
+            final epoch = await loginAcademic('A');
+            await seed(owner: 'A', epoch: epoch);
+            await h.restore();
+            expect(h.cachedLabels, isNotNull);
 
-          await CredentialStore.instance.saveZhengfangSession('A');
+            await CredentialStore.instance.saveZhengfangSession('A');
 
-          expect(await h.restore(), isFalse);
-          expect(h.cachedLabels, isNull);
-        });
+            expect(await h.restore(), isFalse);
+            expect(h.cachedLabels, isNull);
+          },
+        );
 
         test('old-epoch record is not adopted after re-login', () async {
           final epoch = await loginAcademic('A');
@@ -729,112 +744,123 @@ void main() {
 
       // ---- 持久化受身份证明约束 ----
       group('persist gated on identity proof', () {
-        test('durable revoke while in flight: result discarded, nothing written', () async {
-          await loginAcademic('A');
-          final response = Completer<ResponseBody>();
-          final started = Completer<void>();
-          h.installAdapter((_) {
-            if (!started.isCompleted) started.complete();
-            return response.future;
-          });
-          final future = h.fetch('A', force: true);
-          unawaited(future.then<void>((_) {}, onError: (Object _) {}));
-          await started.future;
+        test(
+          'durable revoke while in flight: result discarded, nothing written',
+          () async {
+            await loginAcademic('A');
+            final response = Completer<ResponseBody>();
+            final started = Completer<void>();
+            h.installAdapter((_) {
+              if (!started.isCompleted) started.complete();
+              return response.future;
+            });
+            final future = h.fetch('A', force: true);
+            unawaited(future.then<void>((_) {}, onError: (Object _) {}));
+            await started.future;
 
-          await AuthSessionPersistence.instance.revoke(
-            CredentialSessionDomain.academic,
-          );
-          response.complete(
-            jsonBody({
-              'items': [h.item('late')],
-            }),
-          );
+            await AuthSessionPersistence.instance.revoke(
+              CredentialSessionDomain.academic,
+            );
+            response.complete(
+              jsonBody({
+                'items': [h.item('late')],
+              }),
+            );
 
-          await expectLater(future, h.authExpiredException);
-          expect(await rawOnDisk(), isNull);
-          expect(h.cachedLabels, isNull);
-        });
+            await expectLater(future, h.authExpiredException);
+            expect(await rawOnDisk(), isNull);
+            expect(h.cachedLabels, isNull);
+          },
+        );
 
-        test('same-account durable re-login while in flight: nothing written', () async {
-          await loginAcademic('A');
-          final response = Completer<ResponseBody>();
-          final started = Completer<void>();
-          h.installAdapter((_) {
-            if (!started.isCompleted) started.complete();
-            return response.future;
-          });
-          final future = h.fetch('A', force: true);
-          unawaited(future.then<void>((_) {}, onError: (Object _) {}));
-          await started.future;
+        test(
+          'same-account durable re-login while in flight: nothing written',
+          () async {
+            await loginAcademic('A');
+            final response = Completer<ResponseBody>();
+            final started = Completer<void>();
+            h.installAdapter((_) {
+              if (!started.isCompleted) started.complete();
+              return response.future;
+            });
+            final future = h.fetch('A', force: true);
+            unawaited(future.then<void>((_) {}, onError: (Object _) {}));
+            await started.future;
 
-          await CredentialStore.instance.saveZhengfangSession('A');
-          response.complete(
-            jsonBody({
-              'items': [h.item('late')],
-            }),
-          );
+            await CredentialStore.instance.saveZhengfangSession('A');
+            response.complete(
+              jsonBody({
+                'items': [h.item('late')],
+              }),
+            );
 
-          await expectLater(future, h.authExpiredException);
-          expect(await rawOnDisk(), isNull);
-        });
+            await expectLater(future, h.authExpiredException);
+            expect(await rawOnDisk(), isNull);
+          },
+        );
 
-        test('committed record carries the durable epoch of its identity', () async {
-          final epoch = await loginAcademic('A');
-          h.installAdapter();
-          await h.fetch('A', force: true);
+        test(
+          'committed record carries the durable epoch of its identity',
+          () async {
+            final epoch = await loginAcademic('A');
+            h.installAdapter();
+            await h.fetch('A', force: true);
 
-          final record = await SharedPreferencesPrivateCacheStore(
-            h.cacheKey,
-          ).read();
-          expect(record, isNotNull);
-          expect(record!.owner, 'A');
-          expect(record.epoch, epoch);
+            final record = await SharedPreferencesPrivateCacheStore(h.cacheKey)
+                .read();
+            expect(record, isNotNull);
+            expect(record!.owner, 'A');
+            expect(record.epoch, epoch);
 
-          // 写完成后同账号重登：旧记录属于旧纪元，不再被采纳。
-          await CredentialStore.instance.saveZhengfangSession('A');
-          h.reset();
-          expect(await h.restore(), isFalse);
-          expect(h.cachedLabels, isNull);
-        });
+            // 写完成后同账号重登：旧记录属于旧纪元，不再被采纳。
+            await CredentialStore.instance.saveZhengfangSession('A');
+            h.reset();
+            expect(await h.restore(), isFalse);
+            expect(h.cachedLabels, isNull);
+          },
+        );
       });
 
       // ---- 磁盘格式兼容（现有用户缓存必须仍可读） ----
       group('on-disk format compatibility', () {
-        test('v2 envelope written by the previous implementation loads', () async {
-          final epoch = await loginAcademic('A');
-          final savedAt = DateTime.now().subtract(const Duration(minutes: 3));
-          // 字面 fixture：按旧实现的 envelope 形状手写，不经过任何新代码。
-          await seedRaw(
-            jsonEncode({
-              'v': 2,
-              'owner': 'A',
-              'updatedAt': savedAt.toIso8601String(),
-              'epoch': epoch,
-              'payload': [h.item('fixture')],
-            }),
-          );
+        test(
+          'v2 envelope written by the previous implementation loads',
+          () async {
+            final epoch = await loginAcademic('A');
+            final savedAt = DateTime.now().subtract(const Duration(minutes: 3));
+            // 字面 fixture：按旧实现的 envelope 形状手写，不经过任何新代码。
+            await seedRaw(
+              jsonEncode({
+                'v': 2,
+                'owner': 'A',
+                'updatedAt': savedAt.toIso8601String(),
+                'epoch': epoch,
+                'payload': [h.item('fixture')],
+              }),
+            );
 
-          expect(await h.restore(), isTrue);
-          expect(h.cachedLabels, ['fixture']);
-          expect(
-            h.updatedAt!.toIso8601String(),
-            savedAt.toIso8601String(),
-          );
-          expect(h.isFresh, isTrue);
-        });
+            expect(await h.restore(), isTrue);
+            expect(h.cachedLabels, ['fixture']);
+            expect(h.updatedAt!.toIso8601String(), savedAt.toIso8601String());
+            expect(h.isFresh, isTrue);
+          },
+        );
 
         test('a fetch persists the exact envelope shape', () async {
           final epoch = await loginAcademic('A');
           h.installAdapter();
           await h.fetch('A', force: true);
 
-          final decoded =
-              jsonDecode((await rawOnDisk())! as String)
-                  as Map<String, dynamic>;
-          expect(
-            decoded.keys.toSet(),
-            {'v', 'owner', 'updatedAt', 'epoch', 'payload'},
-          );
+          final decoded = jsonDecode(
+            (await rawOnDisk())! as String,
+          ) as Map<String, dynamic>;
+          expect(decoded.keys.toSet(), {
+            'v',
+            'owner',
+            'updatedAt',
+            'epoch',
+            'payload',
+          });
           expect(decoded['v'], 2);
           expect(decoded['owner'], 'A');
           expect(decoded['epoch'], epoch);

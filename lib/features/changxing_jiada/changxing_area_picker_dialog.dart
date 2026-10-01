@@ -13,6 +13,9 @@ Future<ChangxingAreaSelection?> showChangxingAreaPickerDialog({
 }) {
   return showGlassDialog<ChangxingAreaSelection>(
     context: context,
+    // 外层 Dialog 的边距由这里统一给定，内层 AlertDialog 的 insetPadding 置零，
+    // 避免窄屏上边距被叠加两次。
+    insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
     builder: (_) => _ChangxingAreaPickerDialog(
       service: service,
       initialAreaId: initialAreaId,
@@ -245,6 +248,7 @@ class _ChangxingAreaPickerDialogState
       backgroundColor: Colors.transparent,
       elevation: 0,
       surfaceTintColor: Colors.transparent,
+      insetPadding: EdgeInsets.zero,
       title: const Text('选择生源地'),
       content: SizedBox(
         width: 380,
@@ -253,36 +257,38 @@ class _ChangxingAreaPickerDialogState
                 height: 120,
                 child: Center(child: CircularProgressIndicator()),
               )
-            : Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (_error != null) ...[
-                    AppBanner(message: _error!, tone: AppBannerTone.error),
-                    const SizedBox(height: 12),
+            : SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_error != null) ...[
+                      AppBanner(message: _error!, tone: AppBannerTone.error),
+                      const SizedBox(height: 12),
+                    ],
+                    _buildDropdown(
+                      label: '省份',
+                      items: _provinces,
+                      value: _selectedProvince,
+                      onChanged: _onProvinceChanged,
+                    ),
+                    const SizedBox(height: 10),
+                    _buildDropdown(
+                      label: '城市',
+                      items: _cities,
+                      value: _selectedCity,
+                      onChanged: _onCityChanged,
+                    ),
+                    const SizedBox(height: 10),
+                    _buildDropdown(
+                      label: '区县',
+                      items: _districts,
+                      value: _selectedDistrict,
+                      onChanged: (value) {
+                        setState(() => _selectedDistrict = value);
+                      },
+                    ),
                   ],
-                  _buildDropdown(
-                    label: '省份',
-                    items: _provinces,
-                    value: _selectedProvince,
-                    onChanged: _onProvinceChanged,
-                  ),
-                  const SizedBox(height: 10),
-                  _buildDropdown(
-                    label: '城市',
-                    items: _cities,
-                    value: _selectedCity,
-                    onChanged: _onCityChanged,
-                  ),
-                  const SizedBox(height: 10),
-                  _buildDropdown(
-                    label: '区县',
-                    items: _districts,
-                    value: _selectedDistrict,
-                    onChanged: (value) {
-                      setState(() => _selectedDistrict = value);
-                    },
-                  ),
-                ],
+                ),
               ),
       ),
       actions: [

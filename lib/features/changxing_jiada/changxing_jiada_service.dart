@@ -59,6 +59,10 @@ class ChangxingJiadaService {
   /// 一次 CAS 登录的总预算（含网关会话、逐跳跟随与一次恢复）。
   static const _loginBudget = Duration(seconds: 30);
 
+  /// 测试用：缩短登录总预算（生产恒为 [_loginBudget]）。
+  @visibleForTesting
+  Duration? debugLoginBudget;
+
   /// 选路缓存有效期：API 调用不必每次重验 CAS service / 网关会话。
   static const _routeTtl = Duration(seconds: 60);
 
@@ -123,7 +127,15 @@ class ChangxingJiadaService {
     }
 
     final cancelToken = CancelToken();
-    final deadline = DateTime.now().add(_loginBudget);
+    final budget = debugLoginBudget ?? _loginBudget;
+    final deadline = DateTime.now().add(budget);
+    // getResource / prepare 返回时会取消各自的预算计时器，之后的 /getToken
+    // 不再受约束：这里持有覆盖整次登录的计时器，到期统一取消共享 token。
+    final budgetTimer = Timer(budget, () {
+      if (!cancelToken.isCancelled) {
+        cancelToken.cancel('changxing login budget exceeded');
+      }
+    });
     try {
       // 1. 会话确认 + 选路（WebVPN 时先补网关会话）。
       final route = await CasRoutedAccess.prepare(
@@ -230,6 +242,7 @@ class ChangxingJiadaService {
       );
       throw ChangxingCasLoginException('网络异常：${e.message}');
     } finally {
+      budgetTimer.cancel();
       if (!cancelToken.isCancelled) cancelToken.cancel('changxing login done');
     }
   }
@@ -359,18 +372,51 @@ class ChangxingJiadaService {
         isZhengfangGatewayLoginUrl(url);
   }
 
-  /// 把 GET 重定向的下一跳映射到本次路由下允许的目标；不允许（跨站点）返回
-  /// null——绝不把 `token` 头带到非畅行 / 非网关主机。
-  /// 同主机 / 网关主机保持原样；WebVPN 路由下出现直连 zhx 地址则按路由改写。
+  /// 把 GET 重定向的下一跳映射到本次路由下允许的目标；不允许返回 null——
+  /// 绝不把 `token` 头带到非畅行目标。判定同时校验 scheme / 端口 / 主机 / 路径：
+  /// - 一律要求 https + 默认端口（拒绝 http 降级与替代端口）；
+  /// - 直连：主机必须恰为 `zhx.zjxu.edu.cn`；
+  /// - WebVPN：目标必须位于 zhx 的代理前缀（`route.url` 对 zhx 源产生的
+  ///   `/https/<enc>/`）之下，其它代理前缀（别的站点 / 别的端口）一律拒绝；
+  ///   出现直连 https zhx 地址时按路由改写回代理地址。
   Uri? _mapApiRedirect(CasRoute route, Uri current, Uri next) {
-    final host = next.host.toLowerCase();
-    if (host == current.host.toLowerCase()) return next;
-    if (route.isWebVpn) {
-      if (host == 'webvpn.zjxu.edu.cn') return next;
-      if (host == 'zhx.zjxu.edu.cn') return Uri.parse(route.url('$next'));
+    if (next.scheme != 'https' || (next.hasPort && next.port != 443)) {
       return null;
     }
-    return host == 'zhx.zjxu.edu.cn' ? next : null;
+    final host = next.host.toLowerCase();
+    if (!route.isWebVpn) {
+      return host == _changxingHost ? next : null;
+    }
+    if (host == _changxingHost) {
+      final mapped = Uri.tryParse(route.url('$next'));
+      return mapped != null && _isChangxingWebVpnProxyUri(route, mapped)
+          ? mapped
+          : null;
+    }
+    return _isChangxingWebVpnProxyUri(route, next) ? next : null;
+  }
+
+  static const _changxingHost = 'zhx.zjxu.edu.cn';
+
+  /// [uri] 是否位于 zhx（https，默认端口）的 WebVPN 代理前缀之下。
+  bool _isChangxingWebVpnProxyUri(CasRoute route, Uri uri) {
+    if (uri.scheme != 'https' || (uri.hasPort && uri.port != 443)) {
+      return false;
+    }
+    final expected = Uri.tryParse(route.url('https://$_changxingHost/'));
+    if (expected == null ||
+        expected.host.isEmpty ||
+        expected.host.toLowerCase() == _changxingHost) {
+      return false; // 没有代理映射：无法证明前缀，fail closed。
+    }
+    if (uri.host.toLowerCase() != expected.host.toLowerCase()) return false;
+    final prefix = expected.pathSegments.where((s) => s.isNotEmpty).toList();
+    final segments = uri.pathSegments;
+    if (prefix.isEmpty || segments.length < prefix.length) return false;
+    for (var i = 0; i < prefix.length; i++) {
+      if (segments[i] != prefix[i]) return false;
+    }
+    return true;
   }
 
   /// 发送 API 请求。GET 最多手动跟随 [_maxApiRedirects] 跳（逐跳做登录页
