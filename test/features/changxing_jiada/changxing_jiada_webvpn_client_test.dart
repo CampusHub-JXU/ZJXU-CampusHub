@@ -10,6 +10,7 @@ import 'package:jxu_campus_hub/features/changxing_jiada/changxing_jiada_service.
 
 import '../../helpers/mock_http_client_adapter.dart';
 import '../../helpers/test_setup.dart';
+import '../../helpers/changxing_route_test_helpers.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -19,6 +20,7 @@ void main() {
     DioClient.instance.debugCookieDirectoryPathProvider = (folderName) async =>
         'test/$folderName';
     await DioClient.instance.ensureInitialized();
+    installDirectChangxingRoute();
   });
 
   test('changxing requests use unified auth dio', () async {

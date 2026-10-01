@@ -36,6 +36,12 @@ enum CasService {
   /// [CasSession.ensure]。
   physicalTest('http://jkjy.zjxu.edu.cn/weixin/login.jsp'),
 
+  /// 畅行嘉大（zhx）CAS 回调：ticket 校验后站点签发一次性 tokenId。
+  /// 资源入口（`/api/cas_wap_login`、`/api/*`）不是 service，禁止传给
+  /// [CasSession.ensure]；WebVPN 路由经 `zhx.zjxu.edu.cn` host 映射
+  /// （端口段 `-8443`）改写。
+  changxing('http://zhx.zjxu.edu.cn:8443/api/wap/cas_login_back'),
+
   /// WebVPN 网关会话（教务两阶段登录的第一阶段，见 ZhengfangAuth）。
   webVpnGateway(ZhengfangAuth.webVpnGatewayServiceUrl);
 
@@ -112,6 +118,9 @@ class CasAuthBroker {
   /// Dio 请求，而不是只丢弃 Future。[cancelToken] 贯穿每跳，调用方可
   /// 在 dispose 时取消。调用方已选好的 [resourceUrl] 原样跟随；本入口
   /// 不做业务 WebVPN 回退。
+  ///
+  /// [stopAtRedirect] 可选：某一跳 3xx 的解析后 Location 命中时，直接返回
+  /// 该 3xx 响应（调用方自行读 `location` 头），不再跟随。
   @visibleForTesting
   static Future<Response<List<int>>> Function(
     String resourceUrl, {
@@ -130,6 +139,7 @@ class CasAuthBroker {
     CancelToken? cancelToken,
     Duration timeout = defaultResourceBudget,
     DateTime? deadline,
+    bool Function(Uri nextLocation)? stopAtRedirect,
   }) async {
     final override = debugGetResourceOverride;
     if (override != null) {
@@ -199,10 +209,15 @@ class CasAuthBroker {
           completedCasExchange |= isUnifiedAuthLoginEntryUrl(
             current.toString(),
           );
-          current = current.resolve(location);
-          if (current.scheme != 'http' && current.scheme != 'https') {
+          final next = current.resolve(location);
+          if (next.scheme != 'http' && next.scheme != 'https') {
             throw StateError('认证重定向协议不受支持');
           }
+          // 调用方只需要某一跳的 Location（如业务回调把一次性 tokenId 放在
+          // 重定向里）：命中即原样返回该 3xx 响应，不再请求下一跳，避免
+          // 额外消费 ticket / 一次性参数。
+          if (stopAtRedirect?.call(next) ?? false) return response;
+          current = next;
           continue;
         }
         final html = utf8.decode(

@@ -14,6 +14,7 @@ import 'package:jxu_campus_hub/features/changxing_jiada/changxing_jiada_service.
 import '../../helpers/gated_secure_storage.dart';
 import '../../helpers/mock_http_client_adapter.dart';
 import '../../helpers/test_setup.dart';
+import '../../helpers/changxing_route_test_helpers.dart';
 
 /// 注册一条最小 CAS SSO 链路：最终换取 [jwtToken]。
 void _registerSsoChain(MockHttpClientAdapter adapter, String jwtToken) {
@@ -161,6 +162,7 @@ void main() {
         folderName,
       ) async => 'test/$folderName';
       await DioClient.instance.ensureInitialized();
+      installDirectChangxingRoute();
     });
 
     test('refuses SSO without a trusted unified auth identity', () async {
@@ -200,97 +202,6 @@ void main() {
       });
     });
 
-    test('resumes SSO chain after webvpn gateway session bootstrap', () async {
-      UnifiedAuthService.instance.debugSetSession(
-        active: true,
-        account: '20260001',
-      );
-      const proxyTarget = 'http://zhx.zjxu.edu.cn:8443/api/wap/cas_login_back';
-      final proxyPath = Uri.parse(
-        ZhengfangAuth.instance.buildWebVpnProxyUrl(proxyTarget),
-      ).path;
-
-      var proxyCallbackHits = 0;
-      final adapter = MockHttpClientAdapter()
-        ..registerText(
-          'GET',
-          '/api/cas_wap_login',
-          '',
-          statusCode: 302,
-          headers: {
-            'location': [
-              'https://newca.zjxu.edu.cn/cas/login?service=http%3A%2F%2Fzhx.zjxu.edu.cn%3A8443%2Fapi%2Fwap%2Fcas_login_back',
-            ],
-          },
-        )
-        ..registerText(
-          'GET',
-          '/cas/login',
-          '',
-          statusCode: 302,
-          headers: {
-            'location': ['$proxyTarget?ticket=ST-1'],
-          },
-        )
-        ..register('GET', proxyPath, (_) async {
-          proxyCallbackHits += 1;
-          if (proxyCallbackHits == 1) {
-            // 网关会话未建立：代理请求被劫持到网关登录页。
-            return ResponseBody.fromString(
-              '',
-              302,
-              headers: {
-                'location': ['https://webvpn.zjxu.edu.cn/login'],
-              },
-            );
-          }
-          // 会话建立后续走：回调签发 tokenId。
-          return ResponseBody.fromString(
-            '',
-            302,
-            headers: {
-              'location': [
-                'https://webvpn.zjxu.edu.cn/https/ENCRYPTED/wap?type=jxxy_tysfrz&to_tysfrz=1&tokenId=T-9',
-              ],
-            },
-          );
-        })
-        ..registerText(
-          'GET',
-          '/login',
-          '',
-          statusCode: 302,
-          headers: {
-            'location': [
-              'https://webvpn.zjxu.edu.cn/wengine-vpn-token-login?token=tok-1',
-            ],
-          },
-        )
-        ..registerText(
-          'GET',
-          '/wengine-vpn-token-login',
-          '<html><body>wengine token login</body></html>',
-        )
-        ..registerJson('GET', '/api/getToken', {
-          'data': {'code': '20000', 'token': 'jwt-token'},
-        });
-
-      DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
-
-      await ChangxingJiadaService.instance.loginViaCas();
-
-      expect(ChangxingJiadaService.instance.hasToken, isTrue);
-      expect(adapter.requestLog, [
-        'GET /api/cas_wap_login',
-        'GET /cas/login',
-        'GET $proxyPath',
-        'GET /login',
-        'GET /wengine-vpn-token-login',
-        'GET $proxyPath',
-        'GET /api/getToken',
-      ]);
-    });
-
     test('asks for unified auth when SSO chain ends on login form', () async {
       UnifiedAuthService.instance.debugSetSession(
         active: true,
@@ -326,7 +237,13 @@ void main() {
         throwsA(isA<ChangxingNeedUnifiedAuthException>()),
       );
 
-      expect(adapter.requestLog, ['GET /api/cas_wap_login', 'GET /cas/login']);
+      // 首轮落到登录页 → 一次恢复（会话校验仍通过）→ 仅重试一次，随后引导重登。
+      expect(adapter.requestLog, [
+        'GET /api/cas_wap_login',
+        'GET /cas/login',
+        'GET /api/cas_wap_login',
+        'GET /cas/login',
+      ]);
     });
   });
 
@@ -340,6 +257,7 @@ void main() {
         folderName,
       ) async => 'test/$folderName';
       await DioClient.instance.ensureInitialized();
+      installDirectChangxingRoute();
     });
 
     test('legacy unowned token is refused and deleted', () async {

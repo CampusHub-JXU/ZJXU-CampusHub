@@ -341,7 +341,7 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
     final loggedIn = await showUnifiedAuthLoginModal(
       context,
       title: '登录一卡通',
-      description: '畅行嘉大仅支持校园网内直连访问，请连接校园网后完成统一认证',
+      description: '请先完成统一认证登录后使用畅行嘉大',
     );
     if (!mounted) return;
     if (!loggedIn) {

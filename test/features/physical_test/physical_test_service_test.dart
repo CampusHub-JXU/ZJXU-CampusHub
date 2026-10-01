@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/core/auth/cas_auth_broker.dart';
+import 'package:jxu_campus_hub/core/auth/cas_routed_access.dart';
 import 'package:jxu_campus_hub/core/auth/connect_mode_resolver.dart';
 import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
@@ -91,6 +92,7 @@ void main() {
   });
 
   tearDown(() {
+    CasRoutedAccess.debugGatewayEnsurer = null;
     PhysicalTestService.instance.debugReset();
   });
 
@@ -748,6 +750,90 @@ void main() {
         requestUris.map((uri) => uri.host),
         everyElement('jkjy.zjxu.edu.cn'),
       );
+    });
+  });
+
+  group('WebVPN 路由（共享 CasRoutedAccess）', () {
+    const proxyPrefix =
+        '/http/77726476706e69737468656265737421fafc4b85692a62486b468ca88d1b203b';
+
+    void forceWebVpn() {
+      ConnectModeResolver.instance.targetDirectReachabilityChecker = (
+        _,
+      ) async => false;
+      ConnectModeResolver.instance.webVpnReachabilityChecker = () async => true;
+    }
+
+    test('选路 WebVPN 时经共享网关钩子建会话，资源走代理路径且不改全局 mode', () async {
+      forceWebVpn();
+      final before = ZhengfangAuth.instance.mode;
+      var gatewayCalls = 0;
+      CasRoutedAccess.debugGatewayEnsurer = (_, _) async => gatewayCalls++;
+      final adapter = MockHttpClientAdapter(
+        handlers: {
+          'GET $proxyPrefix/weixin/main.jsp': (_) async =>
+              ResponseBody.fromString(_menuHtml, 200),
+          'POST $proxyPrefix/spQuery': (options) async {
+            final method = options.data is Map ? options.data['method'] : null;
+            return ResponseBody.fromString(
+              method == 'healthscore' ? _currentHtml : _yearListHtml,
+              200,
+            );
+          },
+          'GET $proxyPrefix/spQuery': (_) async =>
+              ResponseBody.fromString(_detailHtml, 200),
+        },
+      );
+      final service = PhysicalTestService.instance
+        ..debugSetDio(_dioWith(adapter));
+
+      final snapshot = await service.fetchSnapshot();
+
+      expect(snapshot.records, hasLength(2));
+      expect(gatewayCalls, 1);
+      expect(ZhengfangAuth.instance.mode, before);
+      expect(adapter.requestLog, everyElement(contains(proxyPrefix)));
+    });
+
+    test('WebVPN 下 bounce 有界重试一次：恢复时再建一次网关，仍 bounce 则过期', () async {
+      forceWebVpn();
+      var gatewayCalls = 0;
+      CasRoutedAccess.debugGatewayEnsurer = (_, _) async => gatewayCalls++;
+      var menuRequests = 0;
+      final adapter = MockHttpClientAdapter(
+        handlers: {
+          'GET $proxyPrefix/weixin/main.jsp': (_) async {
+            menuRequests++;
+            return ResponseBody.fromString(_loginHtml, 200);
+          },
+        },
+      );
+      final service = PhysicalTestService.instance
+        ..debugSetDio(_dioWith(adapter));
+
+      await expectLater(
+        service.fetchSnapshot(),
+        throwsA(isA<CasAuthExpiredException>()),
+      );
+      expect(menuRequests, 2);
+      expect(gatewayCalls, 2);
+      expect(UnifiedAuthService.instance.isLoggedIn, isTrue);
+    });
+
+    test('网关明确过期抛 CasAuthExpiredException 且不发业务请求', () async {
+      forceWebVpn();
+      CasRoutedAccess.debugGatewayEnsurer = (_, _) async =>
+          throw const CasAuthExpiredException();
+      final adapter = MockHttpClientAdapter();
+      final service = PhysicalTestService.instance
+        ..debugSetDio(_dioWith(adapter));
+
+      await expectLater(
+        service.fetchSnapshot(),
+        throwsA(isA<CasAuthExpiredException>()),
+      );
+      expect(adapter.requestLog, isEmpty);
+      expect(UnifiedAuthService.instance.isLoggedIn, isTrue);
     });
   });
 
