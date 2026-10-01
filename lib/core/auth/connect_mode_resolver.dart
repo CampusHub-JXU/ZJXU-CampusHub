@@ -175,15 +175,20 @@ class ConnectModeResolver {
               throw TimeoutException('connect-mode probe timeout');
             },
           );
+      final location = response.headers.value('location') ?? '';
       final reachable = classifyDirectReachable(
         statusCode: response.statusCode ?? 0,
-        location: response.headers.value('location') ?? '',
+        location: location,
         requestUri: requestUri,
       );
+      // 只记跳转目标的 host，不记 path / query。
+      final redirectHost = location.trim().isEmpty
+          ? ''
+          : ' → ${requestUri.resolve(location.trim()).host}';
       AppLogger.instance.auth(
         LogLevel.info,
         '目标直连探测 ${requestUri.origin}: '
-        '${reachable ? "可达" : "不可达"} (${response.statusCode})',
+        '${reachable ? "可达" : "不可达"} (${response.statusCode}$redirectHost)',
       );
       return reachable;
     } on DioException catch (e) {
