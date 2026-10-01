@@ -111,7 +111,10 @@ class AppTileSurface extends StatelessWidget {
     final sigma = recipe.blurSigma;
     return ClipRSuperellipse(
       borderRadius: radius,
-      child: BackdropFilter(
+      // grouped：同一 [BackdropGroup] 下的磁贴共用一次背景读取，滚动时不再
+      // 每块磁贴各自重采样壁纸（首页功能区十几块磁贴时 raster 会超预算）。
+      // 没有 BackdropGroup 祖先时退化为普通 BackdropFilter。
+      child: BackdropFilter.grouped(
         filterConfig: ImageFilterConfig.compose(
           outer: ImageFilterConfig.blur(
             sigmaX: sigma,

@@ -514,26 +514,30 @@ class _HomePageState extends State<HomePage> {
           ),
       child: Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        body: Stack(
-          fit: StackFit.expand,
-          children: [
-            const AppWallpaperBackdrop(),
-            SafeArea(
-              bottom: false,
-              child: ValueListenableBuilder<HomeTextColorMode>(
-                valueListenable: AppThemeController.instance.homeTextColorMode,
-                builder: (context, _, _) =>
-                    // 「今日全部课程」开关变化时重建滚动内容，Today 段落
-                    // 在剩余/全天形态间即时切换。
-                    ValueListenableBuilder<bool>(
-                      valueListenable: PersonalizationController
-                          .instance
-                          .fullDayCoursesEnabled,
-                      builder: (context, _, _) => _buildScrollBody(context),
-                    ),
+        // 功能区磁贴的亚克力模糊共用一次背景读取（见 AppTileSurface）。
+        body: BackdropGroup(
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              const AppWallpaperBackdrop(),
+              SafeArea(
+                bottom: false,
+                child: ValueListenableBuilder<HomeTextColorMode>(
+                  valueListenable:
+                      AppThemeController.instance.homeTextColorMode,
+                  builder: (context, _, _) =>
+                      // 「今日全部课程」开关变化时重建滚动内容，Today 段落
+                      // 在剩余/全天形态间即时切换。
+                      ValueListenableBuilder<bool>(
+                        valueListenable: PersonalizationController
+                            .instance
+                            .fullDayCoursesEnabled,
+                        builder: (context, _, _) => _buildScrollBody(context),
+                      ),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

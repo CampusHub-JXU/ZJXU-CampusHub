@@ -456,94 +456,101 @@ class _MyPageState extends State<MyPage> {
     final cs = Theme.of(context).colorScheme;
     final loggedIn = _campusLoggedIn || _academicLoggedIn;
     return Scaffold(
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          // 与主页 / 功能页同一层壁纸与 Shader 背景，三个 tab 视觉连续。
-          const AppWallpaperBackdrop(),
-          SafeArea(
-            bottom: false,
-            child: LayoutBuilder(
-              builder: (context, constraints) => SingleChildScrollView(
-                // 内容不满一屏时撑到视口高度，让 [Spacer] 把底部版本号锚到
-                // 页面底缘；大字号/内容超屏时自然回退为普通滚动。
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                  child: IntrinsicHeight(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                        kPlainListGutter,
-                        AppSpacing.xl,
-                        kPlainListGutter,
-                        0,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _MyHeader(
-                            identity: _identity(),
-                            onLogout: loggedIn
-                                ? () => unawaited(_promptLogout())
-                                : null,
-                          ),
-                          const SizedBox(height: AppSpacing.xxl),
-                          const _MySectionHeader(),
-                          const SizedBox(height: AppSpacing.md),
-                          // 两块等高：按较高一块的内容撑齐。
-                          IntrinsicHeight(
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Expanded(
-                                  child: _MyAccountTile(
-                                    icon: Icons.badge_outlined,
-                                    title: '统一认证',
-                                    loggedIn: _campusLoggedIn,
-                                    status: _statusLabel(_campusLoggedIn),
-                                    statusKey: const Key('my_campus_status'),
-                                    // 已登录进一卡通；未登录先弹统一认证登录。
-                                    onTap: () =>
-                                        unawaited(_openCampusCardAction()),
-                                  ),
-                                ),
-                                const SizedBox(width: _tileGap),
-                                Expanded(
-                                  child: _MyAccountTile(
-                                    icon: Icons.school_outlined,
-                                    title: '教务系统',
-                                    loggedIn: _academicLoggedIn,
-                                    status: _statusLabel(_academicLoggedIn),
-                                    statusKey: const Key('my_academic_status'),
-                                    // 已登录直达教务 H5；未登录先弹教务登录。
-                                    onTap: () =>
-                                        unawaited(_openAcademicAction()),
-                                  ),
-                                ),
-                              ],
+      // 账号 / 设置磁贴的亚克力模糊共用一次背景读取（见 AppTileSurface）。
+      body: BackdropGroup(
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // 与主页 / 功能页同一层壁纸与 Shader 背景，三个 tab 视觉连续。
+            const AppWallpaperBackdrop(),
+            SafeArea(
+              bottom: false,
+              child: LayoutBuilder(
+                builder: (context, constraints) => SingleChildScrollView(
+                  // 内容不满一屏时撑到视口高度，让 [Spacer] 把底部版本号锚到
+                  // 页面底缘；大字号/内容超屏时自然回退为普通滚动。
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: constraints.maxHeight,
+                    ),
+                    child: IntrinsicHeight(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          kPlainListGutter,
+                          AppSpacing.xl,
+                          kPlainListGutter,
+                          0,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _MyHeader(
+                              identity: _identity(),
+                              onLogout: loggedIn
+                                  ? () => unawaited(_promptLogout())
+                                  : null,
                             ),
-                          ),
-                          const SizedBox(height: _tileGap),
-                          _MyTile(
-                            icon: Icons.settings_outlined,
-                            title: '设置',
-                            status: '主题、学期、网络与关于',
-                            onTap: () async {
-                              await context.pushNamed('settings');
-                              if (!mounted) return;
-                              await _refreshStatus();
-                            },
-                          ),
-                          const Spacer(),
-                          _buildFooter(context, cs),
-                        ],
+                            const SizedBox(height: AppSpacing.xxl),
+                            const _MySectionHeader(),
+                            const SizedBox(height: AppSpacing.md),
+                            // 两块等高：按较高一块的内容撑齐。
+                            IntrinsicHeight(
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Expanded(
+                                    child: _MyAccountTile(
+                                      icon: Icons.badge_outlined,
+                                      title: '统一认证',
+                                      loggedIn: _campusLoggedIn,
+                                      status: _statusLabel(_campusLoggedIn),
+                                      statusKey: const Key('my_campus_status'),
+                                      // 已登录进一卡通；未登录先弹统一认证登录。
+                                      onTap: () =>
+                                          unawaited(_openCampusCardAction()),
+                                    ),
+                                  ),
+                                  const SizedBox(width: _tileGap),
+                                  Expanded(
+                                    child: _MyAccountTile(
+                                      icon: Icons.school_outlined,
+                                      title: '教务系统',
+                                      loggedIn: _academicLoggedIn,
+                                      status: _statusLabel(_academicLoggedIn),
+                                      statusKey: const Key(
+                                        'my_academic_status',
+                                      ),
+                                      // 已登录直达教务 H5；未登录先弹教务登录。
+                                      onTap: () =>
+                                          unawaited(_openAcademicAction()),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: _tileGap),
+                            _MyTile(
+                              icon: Icons.settings_outlined,
+                              title: '设置',
+                              status: '主题、学期、网络与关于',
+                              onTap: () async {
+                                await context.pushNamed('settings');
+                                if (!mounted) return;
+                                await _refreshStatus();
+                              },
+                            ),
+                            const Spacer(),
+                            _buildFooter(context, cs),
+                          ],
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
