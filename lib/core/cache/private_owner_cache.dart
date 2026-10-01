@@ -248,8 +248,7 @@ class PrivateOwnerCache<T extends Object> {
     required bool forceRefresh,
     required Object Function() authExpired,
     required Object Function() identityChanged,
-    required Future<PrivateCacheFetched<T>> Function(PrivateCacheRun run)
-    fetch,
+    required Future<PrivateCacheFetched<T>> Function(PrivateCacheRun run) fetch,
   }) async {
     final auth = ZhengfangAuth.instance;
 
@@ -308,8 +307,7 @@ class PrivateOwnerCache<T extends Object> {
     required int generation,
     required Object Function() authExpired,
     required Object Function() identityChanged,
-    required Future<PrivateCacheFetched<T>> Function(PrivateCacheRun run)
-    fetch,
+    required Future<PrivateCacheFetched<T>> Function(PrivateCacheRun run) fetch,
   }) async {
     final owner = guard.owner;
     final fetched = await fetch(
