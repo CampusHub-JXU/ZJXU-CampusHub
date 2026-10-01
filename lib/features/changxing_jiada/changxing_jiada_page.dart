@@ -4,12 +4,18 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/auth/unified_auth.dart';
+import '../../core/theme/app_design_tokens.dart';
+import '../../core/theme/app_typography.dart';
 import '../../shared/widgets/app_app_bar.dart';
+import '../../shared/widgets/app_banner.dart';
 import '../../shared/widgets/app_card.dart';
 import '../../shared/widgets/app_error_view.dart';
 import '../../shared/widgets/app_icon_badge.dart';
+import '../../shared/widgets/app_status_tag.dart';
 import '../../shared/widgets/auth_required_view.dart';
 import '../../shared/widgets/login_shell.dart';
+import '../../shared/widgets/plain_list.dart';
+import '../../shared/widgets/skeleton_box.dart';
 import 'changxing_jiada_model.dart';
 import 'changxing_jiada_service.dart';
 import 'changxing_jiada_widgets.dart';
@@ -475,11 +481,7 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
     // 绝不把上一个身份的 profile / 申请渲染给当前会话。
     return Scaffold(
       appBar: AppAppBar(
-        title: Text(
-          ChangxingJiadaPage.titleText,
-          style: Theme.of(context).textTheme.titleMedium
-              ?.copyWith(fontWeight: FontWeight.w600),
-        ),
+        title: const Text(ChangxingJiadaPage.titleText),
         actions: loggedIn
             ? [
                 IconButton(
@@ -590,31 +592,34 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
       onRefresh: () => _loadDashboard(),
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.pageMargin,
+          AppSpacing.md,
+          AppSpacing.pageMargin,
+          28,
+        ),
         children: [
           _buildProfileCard(profile),
-          const SizedBox(height: 22),
-          ChangxingSectionHeading(
-            title: '快速办理',
-            trailing: '${ChangxingFormType.values.length} 项',
-          ),
-          const SizedBox(height: 10),
-          _buildActionCard(),
-          const SizedBox(height: 22),
-          ChangxingSectionHeading(
-            title: '我的申请',
-            trailing: '${_applications.length} 条',
+          const SizedBox(height: AppSpacing.listGroupGap),
+          const PlainSectionHeader('快速办理'),
+          _buildActionGroup(),
+          const SizedBox(height: AppSpacing.listGroupGap),
+          PlainSectionHeader(
+            _applications.isEmpty ? '我的申请' : '我的申请 · ${_applications.length}',
           ),
           if ((_error ?? '').isNotEmpty) ...[
-            const SizedBox(height: 10),
-            ChangxingErrorBanner(message: _error!),
+            AppBanner(
+              icon: Icons.error_outline,
+              tone: AppBannerTone.error,
+              message: _error!,
+            ),
+            const SizedBox(height: AppSpacing.md),
           ],
-          const SizedBox(height: 10),
           if (_loadingContent && _applications.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 48),
-              child: Center(child: CircularProgressIndicator()),
-            )
+            for (var i = 0; i < 2; i++) ...[
+              if (i > 0) const SizedBox(height: 10),
+              const SkeletonBox(height: 132, radius: AppRadius.card),
+            ]
           else if (_applications.isEmpty)
             const ChangxingEmptyApplications()
           else
@@ -661,15 +666,14 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
                       trimmedName.isEmpty ? '未命名用户' : trimmedName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
+                      style: context.appText.listTitle.copyWith(
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                     const SizedBox(height: 3),
                     Text(
                       profile.jobNo.isEmpty ? '学号未同步' : profile.jobNo,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: cs.onSurfaceVariant,
+                      style: context.appText.secondary.copyWith(
                         fontFeatures: const [FontFeature.tabularFigures()],
                       ),
                     ),
@@ -720,20 +724,15 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
             const SizedBox(height: 12),
             Row(
               children: [
-                Text(
-                  '最近申请',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: cs.onSurfaceVariant,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                Text('最近申请', style: context.appText.meta),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
                     '${latest.typeLabel} · ${latest.statusLabel}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
+                    style: context.appText.secondary.copyWith(
+                      color: cs.onSurface,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -741,8 +740,7 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
                 if (latest.upTime != null)
                   Text(
                     _fmt(latest.upTime),
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: cs.onSurfaceVariant,
+                    style: context.appText.meta.copyWith(
                       fontFeatures: const [FontFeature.tabularFigures()],
                     ),
                   ),
@@ -754,38 +752,29 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
     );
   }
 
-  Widget _buildActionCard() {
+  Widget _buildActionGroup() {
     final cs = Theme.of(context).colorScheme;
-    final actions = ChangxingFormType.values;
-    return AppCard(
-      padding: EdgeInsets.zero,
-      child: Column(
-        children: [
-          for (var i = 0; i < actions.length; i++) ...[
-            ChangxingActionRow(
-              icon: _actionIcon(actions[i]),
-              title: actions[i].actionLabel,
-              hint: _actionHint(actions[i]),
-              onTap: () => _openForm(actions[i]),
+    return PlainListGroup(
+      children: [
+        for (final action in ChangxingFormType.values)
+          PlainListRow(
+            leading: AppIconBadge(
+              icon: _actionIcon(action),
+              accentColor: cs.primary,
+              size: AppIconBadgeSize.small,
             ),
-            if (i < actions.length - 1)
-              Divider(
-                height: 1,
-                thickness: 1,
-                indent: 64,
-                endIndent: 16,
-                color: cs.outlineVariant,
-              ),
-          ],
-        ],
-      ),
+            title: action.actionLabel,
+            value: _actionHint(action),
+            onTap: () => _openForm(action),
+          ),
+      ],
     );
   }
 
   Widget _buildApplicationCard(ChangxingApplication item) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
-    final color = _statusColor(cs, item.status);
+    final text = context.appText;
 
     final specs = <({String label, String value})>[
       if (item.departmentName.isNotEmpty)
@@ -819,7 +808,7 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
                 icon: _actionIcon(
                   item.formType ?? ChangxingFormType.leaveRequest,
                 ),
-                accentColor: color,
+                accentColor: cs.primary,
                 size: AppIconBadgeSize.medium,
               ),
               const SizedBox(width: 11),
@@ -831,23 +820,19 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
                       item.typeLabel,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                      style: text.rowTitle,
                     ),
                     const SizedBox(height: 3),
                     Text(
                       item.userName.isEmpty ? '未知用户' : item.userName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: cs.onSurfaceVariant,
-                      ),
+                      style: text.meta,
                     ),
                   ],
                 ),
               ),
-              ChangxingStatusChip(label: item.statusLabel, color: color),
+              AppStatusTag(item.statusLabel, tone: _statusTone(item.status)),
             ],
           ),
           if (specs.isNotEmpty) ...[
@@ -925,22 +910,21 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
     }
   }
 
-  Color _statusColor(ColorScheme cs, int status) {
+  /// 申请状态只映射主题 container 色调：审批中 → attention，驳回 → danger，
+  /// 通过 → positive，其余中性。
+  AppStatusTone _statusTone(int status) {
     switch (status) {
       case 0:
       case 1:
-        return cs.tertiary;
+      case 5:
+        return AppStatusTone.attention;
       case 2:
-        return cs.error;
-      case 3:
-        return cs.onSurfaceVariant;
+        return AppStatusTone.danger;
       case 4:
       case 6:
-        return cs.primary;
-      case 5:
-        return cs.secondary;
+        return AppStatusTone.positive;
       default:
-        return cs.onSurfaceVariant;
+        return AppStatusTone.neutral;
     }
   }
 

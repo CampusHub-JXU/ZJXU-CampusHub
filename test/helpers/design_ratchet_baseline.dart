@@ -13,22 +13,6 @@ const designRatchetBaseline = <String, Map<String, int>>{
     'showSnackBar': 2,
   },
   'features/campus_card/campus_card_payment_page.dart': {'showSnackBar': 1},
-  'features/changxing_jiada/changxing_area_picker_dialog.dart': {
-    'fontSize': 1,
-    'showDialog': 1,
-  },
-  'features/changxing_jiada/changxing_back_school_form_page.dart': {
-    'rawCard': 3,
-    'showSnackBar': 1,
-  },
-  'features/changxing_jiada/changxing_jiada_widgets.dart': {'fontSize': 1},
-  'features/changxing_jiada/changxing_leave_form_page.dart': {
-    'rawCard': 3,
-    'showSnackBar': 1,
-  },
-  'features/changxing_jiada/changxing_overtime_form_page.dart': {
-    'showSnackBar': 1,
-  },
   'features/dorm_electricity/dorm_electricity_page.dart': {
     'fontSize': 3,
     'showSnackBar': 1,

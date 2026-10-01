@@ -185,7 +185,7 @@ void main() {
     // 「我的申请」在首屏之下（ListView 懒构建），滚入视口后再断言。
     await tester.drag(find.byType(ListView), const Offset(0, -350));
     await tester.pumpAndSettle();
-    expect(find.text('我的申请'), findsOneWidget);
+    expect(find.textContaining('我的申请 · '), findsOneWidget);
     expect(find.text('王小明'), findsOneWidget);
     expect(casCalls, 1);
     expect(loadCalls, 1);
