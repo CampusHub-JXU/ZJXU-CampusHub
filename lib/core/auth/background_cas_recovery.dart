@@ -20,8 +20,13 @@ enum BackgroundRecoveryResult {
   /// 前台正在使用（或读写门失败）：不申领、不动会话，交给前台自己处理。
   foregroundActive,
 
-  /// 无保存凭据 / 未开启自动恢复 / 已暂停 / 冷却中：后台不该也不能自动登录。
+  /// 曾有已确认的统一认证身份，但无法自动恢复（未开启自动恢复 / 已暂停 /
+  /// 冷却中 / 账号不一致）：后台不该也不能自动登录，应提醒用户回来重新登录。
   notEligible,
+
+  /// 根本没有可恢复的身份：从未登录 / 无账号 / 用户主动退出登录（含已撤销）/
+  /// 当前无活跃身份且自动恢复本就未开启。没有「过期」可言，**绝不提醒**。
+  noIdentity,
 
   /// 服务端会话其实仍有效或探测不出（网络异常）：后台不做任何登录。
   undetermined,
@@ -170,7 +175,7 @@ class BackgroundCasRecovery {
       await _restoreSession();
       final account = (_currentAccount() ?? await _credentialAccount())?.trim();
       if (account == null || account.isEmpty) {
-        return BackgroundRecoveryResult.notEligible;
+        return BackgroundRecoveryResult.noIdentity;
       }
       final decision = await _eligibility(account);
       if (decision != AuthRecoveryDecision.proceed) {
@@ -178,6 +183,15 @@ class BackgroundCasRecovery {
           LogLevel.info,
           '后台统一认证恢复：不在自动恢复范围（${decision.name}）',
         );
+        // 用户主动退出登录（持久撤销）不是「过期」；未开启自动恢复 / 账号不一致
+        // 且当前也没有活跃身份时同样没有东西可提醒。暂停 / 冷却 / 人工持有意味着
+        // 自动恢复曾开启且账号一致，属于真实身份无法自动恢复。
+        if (decision == AuthRecoveryDecision.revoked ||
+            ((decision == AuthRecoveryDecision.disabled ||
+                    decision == AuthRecoveryDecision.accountMismatch) &&
+                !_isLoggedIn())) {
+          return BackgroundRecoveryResult.noIdentity;
+        }
         return BackgroundRecoveryResult.notEligible;
       }
 

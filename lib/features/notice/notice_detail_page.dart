@@ -93,7 +93,7 @@ class _NoticeDetailPageState extends State<NoticeDetailPage> {
       context.pushNamed('notice-detail', extra: {'title': '通知详情', 'url': url});
       return;
     }
-    if (url.contains('DownloadAttachUrl')) {
+    if (isJwcAttachmentUrl(url)) {
       unawaited(_download(NoticeAttachment(name: 'attachment', url: url)));
       return;
     }
@@ -105,9 +105,10 @@ class _NoticeDetailPageState extends State<NoticeDetailPage> {
 
   Future<void> _download(NoticeAttachment attachment) async {
     final messenger = ScaffoldMessenger.of(context);
-    final cookie = await NoticeDetailService.instance.cookieHeaderFor(
-      attachment.url,
-    );
+    // 只对教务处域名注入登录 Cookie；其它主机的链接绝不带统一认证 Cookie。
+    final cookie = isJwcAttachmentUrl(attachment.url)
+        ? await NoticeDetailService.instance.cookieHeaderFor(attachment.url)
+        : null;
     bool enqueued;
     try {
       enqueued = await SystemDownloader.enqueue(

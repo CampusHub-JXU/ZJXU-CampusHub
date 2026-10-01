@@ -108,7 +108,6 @@ void main() {
   test('enterForeground waits for an active claim to be released', () async {
     final claim = await gate.tryClaim();
     final entering = gate.enterForeground(
-      coldStart: true,
       waitForClaim: const Duration(seconds: 3),
     );
     await Future<void>.delayed(const Duration(milliseconds: 300));
@@ -117,8 +116,21 @@ void main() {
     expect(await gate.isForegroundActive(), isTrue);
   });
 
+  test('cold start does not wait for an active claim', () async {
+    final claim = await gate.tryClaim();
+    final started = DateTime.now();
+    await gate.enterForeground(
+      coldStart: true,
+      waitForClaim: const Duration(seconds: 5),
+    );
+    expect(DateTime.now().difference(started).inMilliseconds, lessThan(1000));
+    // 心跳已写入，后台据此让位。
+    expect(await gate.isForegroundActive(), isTrue);
+    expect(await gate.shouldYield(claim!), isTrue);
+  });
+
   test(
-    'expired-prompt is rate limited; rollback and foreground reset it',
+    'expired-prompt is rate limited; rollback resets it, foreground does not',
     () async {
       expect(await gate.claimExpiredPrompt(), isTrue);
       expect(await gate.claimExpiredPrompt(), isFalse);
@@ -132,8 +144,11 @@ void main() {
       expect(await gate.claimExpiredPrompt(), isTrue);
 
       expect(await gate.claimExpiredPrompt(), isFalse);
+      // 进入前台（冷启动 / 回前台）不得重置限频，否则常开应用的用户每轮都被提醒。
       await enterColdStart();
-      expect(await gate.claimExpiredPrompt(), isTrue);
+      expect(await gate.claimExpiredPrompt(), isFalse);
+      await gate.enterForeground(waitForClaim: Duration.zero);
+      expect(await gate.claimExpiredPrompt(), isFalse);
     },
   );
 

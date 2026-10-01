@@ -23,6 +23,21 @@ void main() {
     expect(entry.message, isNot(contains('2025000123')));
   });
 
+  test('scrubs CAS ticket and tokenId query values', () {
+    AppLogger.instance.log(
+      LogLevel.info,
+      LogCategory.auth,
+      'GET /login?ticket=ST-1-abc&tokenId=9f8e7d6c5b4a&x=1 tokenid=zzz',
+      force: true,
+    );
+
+    final message = AppLogger.instance.entries.single.message;
+    expect(message, contains('ticket=[REDACTED]'));
+    expect(message, contains('tokenId=[REDACTED]&x=1'));
+    expect(message, isNot(contains('9f8e7d6c5b4a')));
+    expect(message, isNot(contains('zzz')));
+  });
+
   test('formats entries with app prefix for filtering', () {
     AppLogger.instance.log(
       LogLevel.info,
