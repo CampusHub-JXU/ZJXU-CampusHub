@@ -3,10 +3,15 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/theme/app_design_tokens.dart';
+import '../../core/theme/app_typography.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_card.dart';
 import '../../shared/widgets/app_empty_view.dart';
 import '../../shared/widgets/app_error_view.dart';
+import '../../shared/widgets/app_feedback.dart';
+import '../../shared/widgets/app_status_tag.dart';
+import '../../shared/widgets/auth_required_view.dart';
+import '../../shared/widgets/skeleton_box.dart';
 import 'library_models.dart';
 import 'library_page.dart';
 import 'library_service.dart';
@@ -87,6 +92,16 @@ class _LibraryBorrowsPageState extends State<LibraryBorrowsPage> {
     });
   }
 
+  /// 下拉刷新：重新加载并等到结果（成功或失败）落定再收起指示器。
+  Future<void> _refresh() async {
+    _reload();
+    try {
+      await _future;
+    } catch (_) {
+      // 失败由 FutureBuilder 渲染错误态，这里只负责收起指示器。
+    }
+  }
+
   Future<void> _renew(LibraryBorrowItem item) async {
     final token = _token;
     if (token == null || token.isEmpty) return;
@@ -100,15 +115,15 @@ class _LibraryBorrowsPageState extends State<LibraryBorrowsPage> {
         accessToken: token,
         cid: item.renewId,
       );
-      messenger?.showSnackBar(const SnackBar(content: Text('续借成功')));
+      if (messenger != null) AppFeedback.toastOn(messenger, '续借成功');
       if (mounted) _reload();
     } on LibraryApiException catch (error) {
       if (error.message == _expiredTokenMessage) {
         LibrarySession.instance.clearToken();
       }
-      messenger?.showSnackBar(SnackBar(content: Text(error.message)));
+      if (messenger != null) AppFeedback.toastOn(messenger, error.message);
     } on LibrarySessionChangedException catch (error) {
-      messenger?.showSnackBar(SnackBar(content: Text(error.message)));
+      if (messenger != null) AppFeedback.toastOn(messenger, error.message);
     } finally {
       if (mounted) setState(() => _renewing.remove(item.renewId));
     }
@@ -146,7 +161,7 @@ class _LibraryBorrowsPageState extends State<LibraryBorrowsPage> {
               future: _future,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
+                  return _buildSkeleton();
                 }
                 final page = snapshot.data;
                 if (page == null) {
@@ -172,17 +187,21 @@ class _LibraryBorrowsPageState extends State<LibraryBorrowsPage> {
                     icon: Icons.menu_book_outlined,
                   );
                 }
-                return ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.pageMargin,
-                    0,
-                    AppSpacing.pageMargin,
-                    AppSpacing.xl,
-                  ),
-                  itemCount: page.items.length,
-                  itemBuilder: (context, index) => Padding(
-                    padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                    child: _buildItem(context, page.items[index]),
+                return RefreshIndicator(
+                  onRefresh: _refresh,
+                  child: ListView.builder(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.pageMargin,
+                      0,
+                      AppSpacing.pageMargin,
+                      AppSpacing.xl,
+                    ),
+                    itemCount: page.items.length,
+                    itemBuilder: (context, index) => Padding(
+                      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                      child: _buildItem(context, page.items[index]),
+                    ),
                   ),
                 );
               },
@@ -194,48 +213,34 @@ class _LibraryBorrowsPageState extends State<LibraryBorrowsPage> {
   }
 
   Widget _buildLoginRequired(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Icon(
-              Icons.lock_outline,
-              size: 40,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              '未登录图书馆',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: Theme.of(context).colorScheme.onSurface,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '请先在图书馆页面完成一卡通登录，再查看借阅记录',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 13,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            FilledButton.tonal(
-              onPressed: () => context.pushNamed('library'),
-              child: const Text('打开图书馆'),
-            ),
-          ],
-        ),
+    return AuthRequiredView(
+      title: '未登录图书馆',
+      message: '请先在图书馆页面完成一卡通登录，再查看借阅记录',
+      buttonLabel: '打开图书馆',
+      icon: Icons.menu_book_outlined,
+      onAction: () => context.pushNamed('library'),
+    );
+  }
+
+  Widget _buildSkeleton() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.pageMargin,
+        0,
+        AppSpacing.pageMargin,
+        AppSpacing.xl,
       ),
+      children: [
+        for (var i = 0; i < 3; i++) ...[
+          if (i > 0) const SizedBox(height: AppSpacing.sm),
+          const SkeletonBox(height: 120, radius: 16),
+        ],
+      ],
     );
   }
 
   Widget _buildItem(BuildContext context, LibraryBorrowItem item) {
-    final cs = Theme.of(context).colorScheme;
+    final text = context.appText;
     final busy = _renewing.contains(item.renewId);
     final hint = item.dueHint;
     return AppCard(
@@ -250,43 +255,18 @@ class _LibraryBorrowsPageState extends State<LibraryBorrowsPage> {
                   item.bookName,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: cs.onSurface,
-                    height: 1.25,
-                  ),
+                  style: text.rowTitle.copyWith(height: 1.25),
                 ),
               ),
               if (hint != null) ...<Widget>[
                 const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: cs.errorContainer,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    hint,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: cs.onErrorContainer,
-                    ),
-                  ),
-                ),
+                AppStatusTag(hint, tone: AppStatusTone.danger),
               ],
             ],
           ),
           if (item.author.isNotEmpty) ...<Widget>[
             const SizedBox(height: 3),
-            Text(
-              item.author,
-              style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
-            ),
+            Text(item.author, style: text.secondary),
           ],
           if (item.desc.isNotEmpty) ...<Widget>[
             const SizedBox(height: 4),
@@ -294,7 +274,7 @@ class _LibraryBorrowsPageState extends State<LibraryBorrowsPage> {
               item.desc,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+              style: text.meta,
             ),
           ],
           const SizedBox(height: 8),
@@ -341,20 +321,15 @@ class _BorrowLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final meta = context.appText.meta;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        SizedBox(
-          width: 56,
-          child: Text(
-            label,
-            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-          ),
-        ),
+        SizedBox(width: 56, child: Text(label, style: meta)),
         Expanded(
           child: Text(
             value.isEmpty ? '—' : value,
-            style: TextStyle(fontSize: 12.5, color: cs.onSurface),
+            style: meta.copyWith(color: cs.onSurface),
           ),
         ),
       ],

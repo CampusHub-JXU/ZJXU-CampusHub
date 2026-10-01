@@ -42,18 +42,12 @@ const designRatchetBaseline = <String, Map<String, int>>{
   'features/home/widgets/home_event_banner.dart': {'fontSize': 1},
   'features/home/widgets/home_primary_status_hero.dart': {'fontSize': 14},
   'features/home/widgets/home_today_section.dart': {'fontSize': 6},
-  'features/library/library_book_page.dart': {'fontSize': 3},
-  'features/library/library_borrows_page.dart': {
-    'fontSize': 8,
-    'showSnackBar': 3,
-  },
   'features/my/my_page.dart': {
     'fontSize': 8,
     'showDialog': 1,
     'showSnackBar': 1,
   },
   'features/notice/notice_detail_page.dart': {'showSnackBar': 1},
-  'features/notification_center/notification_center_page.dart': {'fontSize': 6},
   'features/schedule/widgets/schedule_change_sheet.dart': {'fontSize': 11},
   'features/schedule/widgets/schedule_course_cell.dart': {
     'fontSize': 1,
@@ -83,7 +77,6 @@ const designRatchetBaseline = <String, Map<String, int>>{
     'fontSize': 1,
   },
   'features/shuati/shuati_webview_page.dart': {'showSnackBar': 1},
-  'features/sjjx_notice/sjjx_notice_list_page.dart': {'fontSize': 5},
   'shared/widgets/app_dropdown.dart': {'fontSize': 2},
   'shared/widgets/app_surface_style.dart': {'hexColor': 1},
   'shared/widgets/auth_required_view.dart': {'rawCard': 1},

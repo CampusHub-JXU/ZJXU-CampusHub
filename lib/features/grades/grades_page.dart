@@ -6,6 +6,7 @@ import '../../core/theme/app_typography.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../shared/widgets/app_empty_view.dart';
 import '../../shared/widgets/app_error_view.dart';
+import '../../shared/widgets/app_filter_chips.dart';
 import '../../shared/widgets/app_search_field.dart';
 import '../../shared/widgets/auth_required_view.dart';
 import '../../shared/widgets/login_shell.dart';
@@ -554,42 +555,21 @@ class _GradesPageState extends State<GradesPage>
 
   /// 横向可滑的学期 chip：最新在前，「全部」固定末尾。
   Widget _buildTermChips() {
-    final cs = Theme.of(context).colorScheme;
-    final options = [
-      for (final t in _availableTerms)
-        (
-          '${t.academicYear}|${t.semester}',
-          GradesTermResolver.shortLabelOf(t.academicYear, t.semester),
-        ),
-      (GradesTermResolver.allTermKey, '全部'),
-    ];
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-      child: Row(
-        children: [
-          for (final (index, (key, label)) in options.indexed) ...[
-            if (index > 0) const SizedBox(width: 8),
-            ChoiceChip(
-              label: Text(label),
-              selected: key == _selectedTermKey,
-              onSelected: (_) => _onTermChanged(key),
-              showCheckmark: false,
-              selectedColor: cs.secondaryContainer,
-              labelStyle: context.appText.secondary.copyWith(
-                color: key == _selectedTermKey
-                    ? cs.onSecondaryContainer
-                    : cs.onSurfaceVariant,
-              ),
-              side: key == _selectedTermKey
-                  ? BorderSide.none
-                  : BorderSide(color: cs.outlineVariant),
-              shape: const StadiumBorder(),
-              visualDensity: VisualDensity.compact,
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: AppFilterChips<String?>(
+        options: [
+          for (final t in _availableTerms)
+            AppFilterOption(
+              '${t.academicYear}|${t.semester}',
+              GradesTermResolver.shortLabelOf(t.academicYear, t.semester),
             ),
-          ],
+          const AppFilterOption(GradesTermResolver.allTermKey, '全部'),
         ],
+        selected: _selectedTermKey,
+        onSelected: (key) {
+          if (key != null) _onTermChanged(key);
+        },
       ),
     );
   }

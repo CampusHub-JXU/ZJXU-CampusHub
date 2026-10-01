@@ -99,7 +99,12 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        final list = find.byType(Scrollable).first;
+        // 顶部的类型 chip 条也是（横向）Scrollable，这里要的是纵向列表。
+        final list = find
+            .byWidgetPredicate(
+              (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
+            )
+            .first;
         await tester.dragUntilVisible(
           find.text('通知15', skipOffstage: false),
           list,

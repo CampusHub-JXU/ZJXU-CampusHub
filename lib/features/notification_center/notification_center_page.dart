@@ -11,13 +11,18 @@ import '../../core/notice/notice_relevance.dart';
 import '../../core/notice/notice_sync_service.dart';
 import '../../core/notice/notice_sync_store.dart';
 import '../../core/profile/user_profile_controller.dart';
+import '../../core/theme/app_design_tokens.dart';
+import '../../core/theme/app_typography.dart';
 import '../sjjx_notice/sjjx_notice_model.dart';
 import '../sjjx_notice/sjjx_notice_service.dart';
 import 'campus_notice_site_search.dart';
 import '../../shared/widgets/app_app_bar.dart';
+import '../../shared/widgets/app_banner.dart';
 import '../../shared/widgets/app_empty_view.dart';
 import '../../shared/widgets/app_error_view.dart';
+import '../../shared/widgets/app_filter_chips.dart';
 import '../../shared/widgets/app_search_field.dart';
+import '../../shared/widgets/app_status_tag.dart';
 import '../../shared/widgets/copy_text_feedback.dart';
 import '../../shared/widgets/auth_required_view.dart';
 import '../../shared/widgets/login_shell.dart';
@@ -96,10 +101,7 @@ class _NotificationCenterPageState extends State<NotificationCenterPage>
                   _query = '';
                 }),
               )
-            : const Text(
-                '通知',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-              ),
+            : const Text('通知'),
         actions: [
           IconButton(
             onPressed: _toggleSearch,
@@ -118,7 +120,7 @@ class _NotificationCenterPageState extends State<NotificationCenterPage>
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+            padding: const EdgeInsets.only(top: 12, bottom: 4),
             child: _NoticeTabPills(
               controller: _tabController,
               unreadCount: _unreadCount,
@@ -140,7 +142,7 @@ class _NotificationCenterPageState extends State<NotificationCenterPage>
   }
 }
 
-/// 两颗胶囊 Tab：校园公告（带未读数）/ 实践通知。
+/// 两颗 chip：校园公告（带未读数）/ 实践通知，用共享的 [AppFilterChips]。
 class _NoticeTabPills extends StatelessWidget {
   const _NoticeTabPills({required this.controller, required this.unreadCount});
 
@@ -152,62 +154,18 @@ class _NoticeTabPills extends StatelessWidget {
     return AnimatedBuilder(
       animation: controller,
       builder: (context, _) {
-        return Row(
-          children: [
-            _NoticePillChip(
-              label: unreadCount > 0 ? '校园公告 · $unreadCount' : '校园公告',
-              selected: controller.index == 0,
-              onTap: () => controller.animateTo(0),
+        return AppFilterChips<int>(
+          options: [
+            AppFilterOption(
+              0,
+              unreadCount > 0 ? '校园公告 · $unreadCount' : '校园公告',
             ),
-            const SizedBox(width: 8),
-            _NoticePillChip(
-              label: '实践通知',
-              selected: controller.index == 1,
-              onTap: () => controller.animateTo(1),
-            ),
+            const AppFilterOption(1, '实践通知'),
           ],
+          selected: controller.index,
+          onSelected: controller.animateTo,
         );
       },
-    );
-  }
-}
-
-class _NoticePillChip extends StatelessWidget {
-  const _NoticePillChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Material(
-      color: selected
-          ? cs.primary.withValues(alpha: 0.14)
-          : cs.surfaceContainerHigh,
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: onTap,
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 36),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          alignment: Alignment.center,
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              color: selected ? cs.primary : cs.onSurfaceVariant,
-              fontWeight: selected ? FontWeight.w500 : FontWeight.w400,
-            ),
-          ),
-        ),
-      ),
     );
   }
 }
@@ -439,7 +397,7 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
     final divider = Divider(
       height: 1,
       thickness: 1,
-      indent: 28,
+      indent: 24,
       color: Theme.of(context).colorScheme.outlineVariant
           .withValues(alpha: 0.25),
     );
@@ -494,7 +452,7 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
           return Divider(
             height: 1,
             thickness: 1,
-            indent: 28,
+            indent: 24,
             color: Theme.of(context).colorScheme.outlineVariant
                 .withValues(alpha: 0.25),
           );
@@ -502,8 +460,19 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
         itemBuilder: (context, index) {
           if (showAuthBanner && index == 0) {
             return Padding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
-              child: _AuthStaleBanner(onLoginTap: _presentLoginPrompt),
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.pageMargin,
+                4,
+                AppSpacing.pageMargin,
+                8,
+              ),
+              child: AppBanner(
+                icon: Icons.lock_outline,
+                tone: AppBannerTone.error,
+                message: '统一认证已失效，以下为缓存内容，登录后恢复同步',
+                actionLabel: '登录',
+                onAction: _presentLoginPrompt,
+              ),
             );
           }
           final noticeIndex = index - bannerCount;
@@ -658,7 +627,7 @@ class _PracticeNoticeTabState extends State<_PracticeNoticeTab>
         separatorBuilder: (_, _) => Divider(
           height: 1,
           thickness: 1,
-          indent: 28,
+          indent: 24,
           color: cs.outlineVariant.withValues(alpha: 0.25),
         ),
         itemBuilder: (context, index) {
@@ -667,7 +636,6 @@ class _PracticeNoticeTabState extends State<_PracticeNoticeTab>
             title: notice.title,
             date: notice.date,
             tag: notice.category,
-            tagColor: _sjjxCategoryColor(notice.category, cs),
             onTap: () => context.pushNamed(
               'external-webview',
               extra: {
@@ -697,7 +665,6 @@ class _NoticeTile extends StatelessWidget {
     this.onLongPress,
     this.unread = false,
     this.tag,
-    this.tagColor,
   });
 
   final String title;
@@ -706,18 +673,21 @@ class _NoticeTile extends StatelessWidget {
   final VoidCallback? onLongPress;
   final bool unread;
   final String? tag;
-  final Color? tagColor;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final text = context.appText;
     final publishDate = (date ?? '').trim();
     final showTag = (tag ?? '').trim().isNotEmpty;
     return InkWell(
       onTap: onTap,
       onLongPress: onLongPress,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.pageMargin,
+          vertical: 14,
+        ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -725,7 +695,7 @@ class _NoticeTile extends StatelessWidget {
               width: 8,
               child: unread
                   ? Padding(
-                      padding: const EdgeInsets.only(top: 6),
+                      padding: const EdgeInsets.only(top: 7),
                       child: Container(
                         width: 8,
                         height: 8,
@@ -742,10 +712,10 @@ class _NoticeTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // 高密度未读列表：行标题字号，已读常规字重、未读 w500。
                   Text(
                     title,
-                    style: TextStyle(
-                      fontSize: 15,
+                    style: text.rowTitle.copyWith(
                       height: 1.45,
                       fontWeight: unread ? FontWeight.w500 : FontWeight.w400,
                       color: unread ? cs.onSurface : cs.onSurfaceVariant,
@@ -756,35 +726,10 @@ class _NoticeTile extends StatelessWidget {
                   const SizedBox(height: 4),
                   Row(
                     children: [
-                      Text(
-                        publishDate,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: cs.onSurfaceVariant,
-                        ),
-                      ),
+                      Text(publishDate, style: text.secondary),
                       if (showTag) ...[
                         const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: (tagColor ?? cs.tertiary).withValues(
-                              alpha: 0.16,
-                            ),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            tag!,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w500,
-                              color: tagColor ?? cs.tertiary,
-                            ),
-                          ),
-                        ),
+                        AppStatusTag(tag!),
                       ],
                     ],
                   ),
@@ -802,54 +747,4 @@ bool shouldOpenCampusNoticeViaUnifiedAuth(String url) {
   final uri = Uri.tryParse(url);
   if (uri == null) return false;
   return uri.host.toLowerCase() == 'jwc.zjxu.edu.cn';
-}
-
-/// 收件箱有历史数据但刷新时认证失效：列表照常展示，顶部提示登录恢复。
-class _AuthStaleBanner extends StatelessWidget {
-  const _AuthStaleBanner({required this.onLoginTap});
-
-  final VoidCallback onLoginTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Material(
-      color: cs.errorContainer.withValues(alpha: 0.45),
-      borderRadius: BorderRadius.circular(12),
-      clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        child: Row(
-          children: [
-            Icon(Icons.lock_outline, size: 16, color: cs.onErrorContainer),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                '统一认证已失效，以下为缓存内容，登录后恢复同步',
-                style: TextStyle(fontSize: 13, color: cs.onErrorContainer),
-              ),
-            ),
-            const SizedBox(width: 8),
-            TextButton(
-              onPressed: onLoginTap,
-              style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-              child: const Text('登录'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-Color _sjjxCategoryColor(String category, ColorScheme cs) {
-  final index = SjjxNotice.categoryOrder.indexOf(category);
-  final hueOffset = index < 0 ? category.hashCode.abs() % 360 : index * 38.0;
-  final hsl = HSLColor.fromColor(cs.primary);
-  final isDark = cs.brightness == Brightness.dark;
-  return hsl
-      .withHue((hsl.hue + hueOffset) % 360.0)
-      .withSaturation((hsl.saturation * 0.86).clamp(0.42, 0.92))
-      .withLightness(isDark ? 0.66 : 0.42)
-      .toColor();
 }
