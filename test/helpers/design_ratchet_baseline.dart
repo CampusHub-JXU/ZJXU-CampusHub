@@ -33,10 +33,6 @@ const designRatchetBaseline = <String, Map<String, int>>{
     'fontSize': 3,
     'showSnackBar': 1,
   },
-  'features/exam/exam_page.dart': {'fontSize': 7, 'rawCard': 2},
-  'features/grades/grades_page.dart': {'fontSize': 5},
-  'features/grades/widgets/grades_course_row.dart': {'fontSize': 3},
-  'features/grades/widgets/grades_distribution_bar.dart': {'fontSize': 1},
   'features/home/function_zone/function_zone_section.dart': {
     'fontSize': 5,
     'showSnackBar': 1,
@@ -58,7 +54,6 @@ const designRatchetBaseline = <String, Map<String, int>>{
   },
   'features/notice/notice_detail_page.dart': {'showSnackBar': 1},
   'features/notification_center/notification_center_page.dart': {'fontSize': 6},
-  'features/physical_test/physical_test_page.dart': {'fontSize': 4},
   'features/schedule/widgets/schedule_change_sheet.dart': {'fontSize': 11},
   'features/schedule/widgets/schedule_course_cell.dart': {
     'fontSize': 1,

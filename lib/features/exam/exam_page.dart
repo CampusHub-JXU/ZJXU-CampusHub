@@ -3,11 +3,17 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/auth/zhengfang_auth.dart';
+import '../../core/theme/app_design_tokens.dart';
 import '../../shared/widgets/app_empty_view.dart';
 import '../../shared/widgets/app_error_view.dart';
+import '../../shared/widgets/app_list_tile.dart';
+import '../../shared/widgets/app_status_tag.dart';
 import '../../shared/widgets/auth_required_view.dart';
 import '../../shared/widgets/login_shell.dart';
 import '../../shared/widgets/network_error_toast.dart';
+import '../../shared/widgets/plain_list.dart';
+import '../../shared/widgets/refresh_status_line.dart';
+import '../../shared/widgets/skeleton_box.dart';
 import 'exam_model.dart';
 import 'exam_service.dart';
 import '../../shared/widgets/app_app_bar.dart';
@@ -27,6 +33,15 @@ class ExamPage extends StatefulWidget {
 class _ExamPageState extends State<ExamPage> {
   bool _loggedIn = false;
   bool _loading = false;
+
+  /// 后台刷新在途（有无数据都算），驱动 [RefreshStatusLine]。
+  bool _refreshing = false;
+
+  /// 最近一次刷新失败但保留了既有数据。
+  bool _refreshFailed = false;
+
+  /// 上次成功获取的时间；状态行只展示这个时间，不以缓存冒充本次成功。
+  DateTime? _updatedAt;
   String? _error;
   List<ExamEntry> _exams = [];
   bool _loginPromptShown = false;
@@ -78,6 +93,7 @@ class _ExamPageState extends State<ExamPage> {
     final cached = ExamService.instance.cachedExams;
     if (cached != null && cached.isNotEmpty) {
       _exams = cached;
+      _updatedAt = ExamService.instance.updatedAt;
     }
     _fetchExams();
   }
@@ -86,6 +102,7 @@ class _ExamPageState extends State<ExamPage> {
     final cached = ExamService.instance.cachedExams;
     if (cached != null && cached.isNotEmpty) {
       _exams = cached;
+      _updatedAt = ExamService.instance.updatedAt;
       return true;
     }
     return false;
@@ -144,7 +161,10 @@ class _ExamPageState extends State<ExamPage> {
       _identityOwner = null;
       _identityRevision = revision;
       _exams = [];
+      _updatedAt = null;
       _loading = false;
+      _refreshing = false;
+      _refreshFailed = false;
       _error = null;
       // 暂停标记由随后的过期异常分支重新写入；普通登出保持非暂停文案。
       _automaticLoginPaused = false;
@@ -164,7 +184,10 @@ class _ExamPageState extends State<ExamPage> {
       _identityRevision = revision;
       _fetchGeneration++;
       _exams = [];
+      _updatedAt = null;
       _loading = false;
+      _refreshing = false;
+      _refreshFailed = false;
       _error = null;
       _automaticLoginPaused = false;
     });
@@ -196,7 +219,9 @@ class _ExamPageState extends State<ExamPage> {
     final hasExistingData = _exams.isNotEmpty;
 
     setState(() {
-      _loading = _exams.isEmpty; // Only show spinner if no cached data
+      _loading = _exams.isEmpty; // 无数据时才显示骨架
+      _refreshing = true;
+      _refreshFailed = false;
       _error = null;
     });
     try {
@@ -204,7 +229,12 @@ class _ExamPageState extends State<ExamPage> {
           await (widget.fetchExams?.call(forceRefresh: forceRefresh) ??
               ExamService.instance.fetchExams(forceRefresh: forceRefresh));
       if (!_acceptFetchResult(generation, owner, revision)) return;
-      setState(() => _exams = exams);
+      setState(() {
+        _exams = exams;
+        _updatedAt = widget.fetchExams == null
+            ? (ExamService.instance.updatedAt ?? DateTime.now())
+            : DateTime.now();
+      });
     } on ExamAuthExpiredException catch (e) {
       // 过期结果只对「发起时的身份」有效：换号/重登后的迟到过期不得影响
       // 新会话的引导文案。
@@ -216,6 +246,7 @@ class _ExamPageState extends State<ExamPage> {
         _identityOwner = null;
         _identityRevision = ZhengfangAuth.instance.sessionRevision;
         _exams = [];
+        _updatedAt = null;
         _loading = false;
         _error = '登录状态已过期，请重新登录';
         _automaticLoginPaused = e.automaticLoginPaused;
@@ -229,7 +260,8 @@ class _ExamPageState extends State<ExamPage> {
       if (!mounted) return;
       if (!_acceptFetchResult(generation, owner, revision)) return;
       if (hasExistingData) {
-        // 同账号既有数据仍然有效：保留展示，只用 toast 提示本次失败。
+        // 同账号既有数据仍然有效：保留展示，状态行标「刷新失败」+ toast。
+        setState(() => _refreshFailed = true);
         NetworkErrorToast.show(context, e);
       } else {
         setState(() => _error = '获取考试信息失败：$e');
@@ -237,7 +269,10 @@ class _ExamPageState extends State<ExamPage> {
       }
     } finally {
       if (mounted && generation == _fetchGeneration) {
-        setState(() => _loading = false);
+        setState(() {
+          _loading = false;
+          _refreshing = false;
+        });
       }
     }
   }
@@ -266,6 +301,7 @@ class _ExamPageState extends State<ExamPage> {
       if (ownerChanged) {
         _fetchGeneration++;
         _exams = [];
+        _updatedAt = null;
         _loading = false;
       }
     });
@@ -316,86 +352,115 @@ class _ExamPageState extends State<ExamPage> {
   );
 
   Widget _buildExamBody() {
-    if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null && _exams.isEmpty) {
       return AppErrorView(message: _error, onRetry: _fetchExams);
     }
     if (_exams.isEmpty) {
-      return const AppEmptyView(title: '暂无考试信息', icon: Icons.quiz_outlined);
+      return _loading
+          ? _buildSkeleton()
+          : const AppEmptyView(title: '暂无考试信息', icon: Icons.quiz_outlined);
     }
 
     final upcoming = _exams.where((e) => e.hasDate && !e.isPast).toList();
     final past = _exams.where((e) => e.isPast).toList();
     final undated = _exams.where((e) => !e.hasDate).toList();
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        if (upcoming.isNotEmpty) ...[
-          _buildSectionHeader(context, '即将到来', upcoming.length),
-          const SizedBox(height: 8),
-          for (final exam in upcoming) ...[
-            _ExamCountdownCard(exam: exam),
-            const SizedBox(height: 10),
-          ],
+    return RefreshIndicator(
+      onRefresh: () => _fetchExams(forceRefresh: true),
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.pageMargin,
+          AppSpacing.sm,
+          AppSpacing.pageMargin,
+          AppSpacing.xl,
+        ),
+        children: [
+          RefreshStatusLine(
+            updatedAt: _updatedAt,
+            refreshing: _refreshing,
+            failed: _refreshFailed,
+            loadingLabel: '正在获取考试…',
+          ),
+          ..._buildSection('即将到来', upcoming, _upcomingTile),
+          ..._buildSection('时间待定', undated, (e) => _detailTile(e)),
+          ..._buildSection('已结束', past, (e) => _detailTile(e, dimmed: true)),
         ],
-        if (undated.isNotEmpty) ...[
-          _buildSectionHeader(context, '时间待定', undated.length),
-          const SizedBox(height: 8),
-          for (final exam in undated) ...[
-            _ExamDetailCard(exam: exam),
-            const SizedBox(height: 10),
-          ],
-        ],
-        if (past.isNotEmpty) ...[
-          _buildSectionHeader(context, '已结束', past.length),
-          const SizedBox(height: 8),
-          for (final exam in past) ...[
-            _ExamDetailCard(exam: exam, dimmed: true),
-            const SizedBox(height: 10),
-          ],
-        ],
+      ),
+    );
+  }
+
+  /// 分区：`PlainSectionHeader`「标题 · 数量」+ 单列行，行距 8。
+  List<Widget> _buildSection(
+    String title,
+    List<ExamEntry> exams,
+    Widget Function(ExamEntry exam) tile,
+  ) {
+    if (exams.isEmpty) return const [];
+    return [
+      const SizedBox(height: AppSpacing.lg),
+      PlainSectionHeader('$title · ${exams.length}'),
+      for (final (index, exam) in exams.indexed) ...[
+        if (index > 0) const SizedBox(height: AppSpacing.sm),
+        tile(exam),
+      ],
+    ];
+  }
+
+  Widget _upcomingTile(ExamEntry exam) {
+    final days = exam.daysUntil;
+    return AppListTile(
+      title: exam.courseName,
+      details: [
+        _dateLine(exam),
+        '${exam.location} ${exam.campus}'.trim(),
+        if (exam.seatNumber.isNotEmpty) '座号 ${exam.seatNumber}',
+      ],
+      trailing: AppStatusTag(
+        days == 0 ? '今天' : '$days天后',
+        tone: AppStatusTone.positive,
+      ),
+    );
+  }
+
+  Widget _detailTile(ExamEntry exam, {bool dimmed = false}) {
+    return AppListTile(
+      title: exam.courseName,
+      dimmed: dimmed,
+      titleTrailing: exam.isRetake
+          ? const AppStatusTag('重修', tone: AppStatusTone.attention)
+          : null,
+      details: [
+        if (exam.hasDate) _dateLine(exam),
+        exam.location.isEmpty
+            ? '地点待定'
+            : '${exam.location} ${exam.campus}'.trim(),
+        if (exam.seatNumber.isNotEmpty) '座号 ${exam.seatNumber}',
+        if (exam.examName.isNotEmpty) exam.examName,
       ],
     );
   }
 
-  Widget _buildSectionHeader(BuildContext context, String title, int count) {
-    final cs = Theme.of(context).colorScheme;
-    return Row(
+  static String _dateLine(ExamEntry exam) =>
+      '${exam.examDate!.month}/${exam.examDate!.day} '
+      '${exam.weekdayLabel} ${exam.timeRange}';
+
+  /// 无缓存首次加载：状态行 + 3 条骨架行，替代整页 spinner。
+  Widget _buildSkeleton() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.pageMargin,
+        AppSpacing.sm,
+        AppSpacing.pageMargin,
+        AppSpacing.xl,
+      ),
       children: [
-        Container(
-          width: 4,
-          height: 18,
-          decoration: BoxDecoration(
-            color: cs.primary,
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Text(
-          title,
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: cs.onSurface,
-          ),
-        ),
-        const SizedBox(width: 6),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-          decoration: BoxDecoration(
-            color: cs.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Text(
-            '$count',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: cs.onSurfaceVariant,
-            ),
-          ),
-        ),
+        const RefreshStatusLine(refreshing: true, loadingLabel: '正在获取考试…'),
+        const SizedBox(height: AppSpacing.lg),
+        for (var i = 0; i < 3; i++) ...[
+          if (i > 0) const SizedBox(height: AppSpacing.sm),
+          const SkeletonBox(height: 88, radius: 16),
+        ],
       ],
     );
   }
@@ -416,225 +481,3 @@ Widget buildExamLoginView({
   onAction: onAction,
   icon: Icons.quiz_outlined,
 );
-
-// ── Countdown Card (upcoming exams) ───────────────────────────────────────
-
-class _ExamCountdownCard extends StatelessWidget {
-  const _ExamCountdownCard({required this.exam});
-  final ExamEntry exam;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: cs.outlineVariant),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    exam.courseName,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                _CountdownChip(days: exam.daysUntil),
-              ],
-            ),
-            const SizedBox(height: 10),
-            _InfoRow(
-              icon: Icons.calendar_today,
-              text:
-                  '${exam.examDate!.month}/${exam.examDate!.day} '
-                  '${exam.weekdayLabel} ${exam.timeRange}',
-            ),
-            const SizedBox(height: 4),
-            _InfoRow(
-              icon: Icons.location_on_outlined,
-              text: '${exam.location} ${exam.campus}',
-            ),
-            if (exam.seatNumber.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              _InfoRow(
-                icon: Icons.event_seat_outlined,
-                text: '座号 ${exam.seatNumber}',
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _CountdownChip extends StatelessWidget {
-  const _CountdownChip({required this.days});
-  final int days;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final label = days == 0 ? '今天' : '$days天后';
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: cs.secondaryContainer,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
-          color: cs.onSecondaryContainer,
-        ),
-      ),
-    );
-  }
-}
-
-// ── Detail Card (past / undated exams) ────────────────────────────────────
-
-class _ExamDetailCard extends StatelessWidget {
-  const _ExamDetailCard({required this.exam, this.dimmed = false});
-  final ExamEntry exam;
-  final bool dimmed;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final textColor = dimmed ? cs.onSurfaceVariant : cs.onSurface;
-    final secondaryColor = dimmed
-        ? cs.onSurfaceVariant.withValues(alpha: 0.6)
-        : cs.onSurfaceVariant;
-
-    return Card(
-      elevation: 0,
-      color: dimmed ? cs.surfaceContainerHighest.withValues(alpha: 0.3) : null,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: dimmed ? BorderSide.none : BorderSide(color: cs.outlineVariant),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    exam.courseName,
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: textColor,
-                    ),
-                  ),
-                ),
-                if (exam.isRetake)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: cs.tertiaryContainer,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      '重修',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: cs.onTertiaryContainer,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            if (exam.hasDate) ...[
-              _InfoRow(
-                icon: Icons.access_time,
-                text:
-                    '${exam.examDate!.month}/${exam.examDate!.day} '
-                    '${exam.weekdayLabel} ${exam.timeRange}',
-                color: secondaryColor,
-              ),
-              const SizedBox(height: 4),
-            ],
-            _InfoRow(
-              icon: Icons.location_on_outlined,
-              text: exam.location.isEmpty
-                  ? '地点待定'
-                  : '${exam.location} ${exam.campus}',
-              color: secondaryColor,
-            ),
-            if (exam.seatNumber.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              _InfoRow(
-                icon: Icons.event_seat_outlined,
-                text: '座号 ${exam.seatNumber}',
-                color: secondaryColor,
-              ),
-            ],
-            if (exam.examName.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              _InfoRow(
-                icon: Icons.description_outlined,
-                text: exam.examName,
-                color: secondaryColor,
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Info Row ──────────────────────────────────────────────────────────────
-
-class _InfoRow extends StatelessWidget {
-  const _InfoRow({required this.icon, required this.text, this.color});
-
-  final IconData icon;
-  final String text;
-  final Color? color;
-
-  @override
-  Widget build(BuildContext context) {
-    final effectiveColor =
-        color ?? Theme.of(context).colorScheme.onSurfaceVariant;
-    return Row(
-      children: [
-        Icon(icon, size: 14, color: effectiveColor),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Text(
-            text,
-            style: TextStyle(fontSize: 13, color: effectiveColor),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ],
-    );
-  }
-}

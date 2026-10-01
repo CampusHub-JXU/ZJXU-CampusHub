@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/app_typography.dart';
+import '../../../shared/widgets/app_list_tile.dart';
 import '../grades_model.dart';
 import '../grades_score_palette.dart';
 
@@ -26,52 +28,14 @@ class GradesCourseRow extends StatelessWidget {
       if (termLabel != null && termLabel!.isNotEmpty) termLabel!,
     ].join(' · ');
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  grade.courseName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                    color: cs.onSurface,
-                  ),
-                ),
-                if (meta.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    meta,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          Text(
-            grade.grade,
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.w700,
-              height: 1.1,
-              color: gradeScoreColor(cs, gradeBandForEntry(grade)),
-              fontFeatures: const [FontFeature.tabularFigures()],
-            ),
-          ),
-        ],
+    return AppListTile(
+      title: grade.courseName,
+      meta: meta,
+      trailing: Text(
+        grade.grade,
+        style: context.appText.rowValue.copyWith(
+          color: gradeScoreColor(cs, gradeBandForEntry(grade)),
+        ),
       ),
     );
   }
