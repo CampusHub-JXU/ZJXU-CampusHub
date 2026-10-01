@@ -1,54 +1,54 @@
 package edu.zjxu.jxucampushub.widget
 
-import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
-import android.net.Uri
-import android.os.Build
-import android.util.SizeF
-import android.util.TypedValue
-import android.view.View
-import android.widget.RemoteViews
-import edu.zjxu.jxucampushub.MainActivity
-import edu.zjxu.jxucampushub.R
 import org.json.JSONObject
-import kotlin.math.roundToInt
 
 /**
- * 校园桌面组件（PRD 0.7.0 §12/§13）。
+ * 校园桌面组件（三种固定尺寸，共用 [CampusWidgetRenderer]）。
+ *
+ * - 小 2x2「下一节课」：[CampusWidgetSmallProvider]
+ * - 中 4x2「今日课表」：[CampusWidgetProvider]（沿用旧类名，已放置的旧实例不丢失）
+ * - 大 4x4「校园总览」：[CampusWidgetLargeProvider]
  *
  * 数据由 Dart 侧 WidgetProjection 经 MethodChannel 推送到 [CampusWidgetStore]，
  * 组件本身不访问网络 / CAS / Cookie / SecureStorage，快照中不含任何凭据。
  * 交互统一走 `jxucampushub://action/<actionId>`，由 MainActivity 分发到 CampusAction。
+ *
+ * 三种尺寸都是固定尺寸（resizeMode=none），不再按 dp 阈值自适应。
  */
-class CampusWidgetProvider : AppWidgetProvider() {
+enum class CampusWidgetKind(
+    val code: String,
+    val providerClass: Class<out AppWidgetProvider>,
+) {
+    SMALL("small", CampusWidgetSmallProvider::class.java),
+    MEDIUM("medium", CampusWidgetProvider::class.java),
+    LARGE("large", CampusWidgetLargeProvider::class.java),
+    ;
+
+    companion object {
+        fun fromCode(code: String?): CampusWidgetKind? =
+            values().firstOrNull { it.code == code }
+    }
+}
+
+abstract class BaseCampusWidgetProvider(
+    private val kind: CampusWidgetKind,
+) : AppWidgetProvider() {
     override fun onUpdate(
         context: Context,
         appWidgetManager: AppWidgetManager,
         appWidgetIds: IntArray,
     ) {
+        CampusWidgetStore.purgeLegacySizeKeys(context)
         for (widgetId in appWidgetIds) {
-            CampusWidgetStore.update(context, appWidgetManager, widgetId)
+            CampusWidgetStore.update(context, appWidgetManager, widgetId, kind)
         }
     }
 
-    /**
-     * 尺寸变化回调。回调携带的 [newOptions] 是本次事件最权威的尺寸来源，
-     * manager 里存的 options 在部分 OEM 桌面会滞后一步，必须原样传入渲染。
-     */
-    override fun onAppWidgetOptionsChanged(
-        context: Context,
-        appWidgetManager: AppWidgetManager,
-        appWidgetId: Int,
-        newOptions: android.os.Bundle?,
-    ) {
-        CampusWidgetStore.update(context, appWidgetManager, appWidgetId, newOptions)
-    }
-
-    /** 实例被删除时清理它的独立配置与尺寸持久化，避免复用同一 id 时串配置。 */
+    /** 实例被删除时清理它的独立配置与旧版尺寸持久化，避免复用同一 id 时串配置。 */
     override fun onDeleted(context: Context, appWidgetIds: IntArray) {
         for (widgetId in appWidgetIds) {
             CampusWidgetConfigStore.clear(context, widgetId)
@@ -57,47 +57,25 @@ class CampusWidgetProvider : AppWidgetProvider() {
     }
 }
 
+/** 小 2x2「下一节课」。 */
+class CampusWidgetSmallProvider : BaseCampusWidgetProvider(CampusWidgetKind.SMALL)
+
+/** 中 4x2「今日课表」。类名与 receiver 沿用旧版，保证已放置实例继续存活。 */
+class CampusWidgetProvider : BaseCampusWidgetProvider(CampusWidgetKind.MEDIUM)
+
+/** 大 4x4「校园总览」。 */
+class CampusWidgetLargeProvider : BaseCampusWidgetProvider(CampusWidgetKind.LARGE)
+
 object CampusWidgetStore {
     private const val PREFS = "campus_widget"
     private const val KEY_SNAPSHOT = "snapshot"
     private const val KEY_GENERATED_AT = "generated_at"
-    private const val KEY_SIZE_W_PREFIX = "size_w_"
-    private const val KEY_SIZE_H_PREFIX = "size_h_"
-    private const val DEFAULT_WIDTH_DP = 180
-    private const val DEFAULT_HEIGHT_DP = 220
+
+    // 旧版（可缩放组件）持久化的尺寸键；现已不用，仅用于清理残留。
+    private const val LEGACY_KEY_SIZE_W_PREFIX = "size_w_"
+    private const val LEGACY_KEY_SIZE_H_PREFIX = "size_h_"
+
     private const val STALE_AFTER_MS = 6L * 60L * 60L * 1000L
-
-    private const val HERO_COURSE_SP = 20f
-    private const val HERO_COURSE_COMPACT_SP = 17f
-
-    /**
-     * 组件可用尺寸（dp），来源优先级见 [resolveSize]：API 31+ 精确尺寸 →
-     * 传统方向范围键 → 上次可信尺寸。范围键必须同一次上报配对：MIN_WIDTH 配
-     * MAX_HEIGHT，方向语义不同，混用会把宽矮实例误判成高实例。
-     */
-    private data class WidgetSize(val widthDp: Int, val heightDp: Int) {
-        /** 矮尺寸（≈2 行高）：只保留主课程与时间，其余行让位。 */
-        val isCompact: Boolean get() = heightDp < COMPACT_HEIGHT_DP
-
-        /** 高尺寸（≈4 行高及以上）：才展开今日课程 / 考试 / 通知等多行信息。 */
-        val isRoomy: Boolean get() = heightDp >= ROOMY_HEIGHT_DP
-
-        /** 今日课程最多行数：极高尺寸才从 2 行升到 3 行。 */
-        val maxTodayRows: Int
-            get() = when {
-                !isRoomy -> 0
-                heightDp >= 300 -> 3
-                else -> 2
-            }
-
-        private companion object {
-            // Launcher 单元高约 70n-30 dp：2 行 ≈ 110、3 行 ≈ 180、4 行 ≈ 250、5 行 ≈ 320。
-            // 非紧凑可见栈（根内边距 + 头部 + 主课程 + 资产行）至少 ≈162dp，
-            // 150–164dp 落不下，一律按紧凑渲染，故阈值取 165。
-            const val COMPACT_HEIGHT_DP = 165
-            const val ROOMY_HEIGHT_DP = 250
-        }
-    }
 
     fun store(context: Context, snapshotJson: String) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -108,416 +86,51 @@ object CampusWidgetStore {
         refreshAll(context)
     }
 
+    /** 刷新三种尺寸的全部已放置实例。 */
     fun refreshAll(context: Context) {
         val manager = AppWidgetManager.getInstance(context)
-        val ids = manager.getAppWidgetIds(
-            ComponentName(context, CampusWidgetProvider::class.java),
-        )
-        for (id in ids) {
-            update(context, manager, id)
+        purgeLegacySizeKeys(context)
+        for (kind in CampusWidgetKind.values()) {
+            val ids = manager.getAppWidgetIds(ComponentName(context, kind.providerClass))
+            for (id in ids) {
+                update(context, manager, id, kind)
+            }
         }
     }
 
-    /** 实例被删除时清掉该 id 的尺寸持久化；widget id 会被复用，不得继承旧尺寸。 */
+    /** 实例被删除时清掉该 id 可能残留的旧版尺寸键；widget id 会被复用。 */
     fun clearInstanceState(context: Context, widgetId: Int) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
-            .remove(sizeKey(KEY_SIZE_W_PREFIX, widgetId))
-            .remove(sizeKey(KEY_SIZE_H_PREFIX, widgetId))
+            .remove("$LEGACY_KEY_SIZE_W_PREFIX$widgetId")
+            .remove("$LEGACY_KEY_SIZE_H_PREFIX$widgetId")
             .apply()
     }
 
-    /**
-     * 渲染一个实例。
-     *
-     * 回调（onAppWidgetOptionsChanged）携带的 [newOptions] 是本次事件最权威的
-     * 尺寸来源，manager 里存的 options 在部分 OEM 桌面会滞后一步；无新尺寸
-     * （onUpdate / 数据刷新）时回落到上次可信尺寸，避免按过期末寸渲染，
-     * 见 [resolveSize]。
-     */
+    /** 一次性清理旧版遗留的 size_w_/size_h_ 键（升级后不再被读取）。 */
+    fun purgeLegacySizeKeys(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val legacy = prefs.all.keys.filter {
+            it.startsWith(LEGACY_KEY_SIZE_W_PREFIX) || it.startsWith(LEGACY_KEY_SIZE_H_PREFIX)
+        }
+        if (legacy.isEmpty()) return
+        prefs.edit().also { editor -> legacy.forEach { editor.remove(it) } }.apply()
+    }
+
+    /** 渲染一个实例；快照缺失 / 损坏时渲染「打开 App 加载」占位。 */
     fun update(
         context: Context,
         manager: AppWidgetManager,
         widgetId: Int,
-        newOptions: android.os.Bundle? = null,
+        kind: CampusWidgetKind,
     ) {
-        val views = RemoteViews(context.packageName, R.layout.campus_widget)
-        bindClicks(context, views)
-
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val raw = prefs.getString(KEY_SNAPSHOT, null)
-        val json = raw?.let { runCatching { JSONObject(it) }.getOrNull() }
-        if (json == null) {
-            views.setTextViewText(R.id.widget_hero_label, "打开 App 加载校园数据")
-            views.setTextViewText(R.id.widget_hero_course, "嘉兴大学")
-            views.setTextViewText(R.id.widget_hero_meta, "下一节课 · 一卡通 · 电费")
-            for (id in hiddenIds) {
-                views.setViewVisibility(id, View.GONE)
-            }
-            manager.updateAppWidget(widgetId, views)
-            return
-        }
-
-        val size = resolveSize(context, manager, widgetId, newOptions)
-
-        views.setViewVisibility(
-            R.id.widget_header,
-            if (!size.isCompact && size.widthDp >= 210) View.VISIBLE else View.GONE,
-        )
-        views.setTextViewText(R.id.widget_header, json.text("weekLabel"))
-
-        views.setTextViewText(R.id.widget_hero_label, "下一节课")
-        val heroCourse = json.text("heroCourseName").ifBlank {
-            json.text("heroHeadline")
-        }
-        views.setTextViewText(
-            R.id.widget_hero_course,
-            heroCourse.ifBlank { "今天没课" },
-        )
-        // 每次更新显式写入字号：RemoteViews 复用视图，紧凑尺寸缩到 17sp 后
-        // 若恢复正常尺寸不写回，旧字号会残留。
-        views.setTextViewTextSize(
-            R.id.widget_hero_course,
-            TypedValue.COMPLEX_UNIT_SP,
-            if (size.isCompact) HERO_COURSE_COMPACT_SP else HERO_COURSE_SP,
-        )
-        // 时间优先：紧凑尺寸只保留主课程时间，没有时间才退回地点。
-        val heroTime = json.text("heroTimeText")
-        val heroLocation = json.text("heroLocationText")
-        views.setTextViewText(
-            R.id.widget_hero_meta,
-            if (size.isCompact) {
-                heroTime.ifBlank { heroLocation }
-            } else {
-                buildMeta(heroTime, heroLocation)
-            },
-        )
-
-        renderToday(views, json.optJSONArray("todayCourses"), size)
-        // 每实例显示开关（配置页写入）：只影响该实例的还款/电费/通知条目。
-        val config = CampusWidgetConfigStore.load(context, widgetId)
-        renderAssets(views, json, size, config)
-        renderExtras(views, json, size, config)
-
+        val json = prefs.getString(KEY_SNAPSHOT, null)
+            ?.let { runCatching { JSONObject(it) }.getOrNull() }
         val generatedAt = prefs.getLong(KEY_GENERATED_AT, 0L)
         val stale = generatedAt > 0L &&
             System.currentTimeMillis() - generatedAt > STALE_AFTER_MS
-        if (stale) {
-            views.setTextViewText(R.id.widget_stale, "数据可能已过期，打开 App 更新")
-        }
-        views.setViewVisibility(
-            R.id.widget_stale,
-            if (stale) View.VISIBLE else View.GONE,
-        )
-
+        val views = CampusWidgetRenderer.render(context, kind, widgetId, json, stale)
         manager.updateAppWidget(widgetId, views)
-    }
-
-    /**
-     * 解析本次渲染应使用的尺寸（dp）。
-     *
-     * 优先级：本次事件携带的 newOptions（最权威）→ 上次可信尺寸（最近一次
-     * resize 事件的真实尺寸，数据刷新按它保持形态）→ manager options（仅在
-     * 尚无持久化时首次播种；部分 OEM 桌面该值滞后于 resize 手势，不能盖掉
-     * 已有可信尺寸）→ 默认值。只有 newOptions 与 manager 播种会回写持久化。
-     */
-    private fun resolveSize(
-        context: Context,
-        manager: AppWidgetManager,
-        widgetId: Int,
-        newOptions: android.os.Bundle?,
-    ): WidgetSize {
-        val landscape = context.resources.configuration.orientation ==
-            android.content.res.Configuration.ORIENTATION_LANDSCAPE
-
-        if (newOptions != null) {
-            sizeFromBundle(newOptions, landscape)?.let {
-                persistLastKnownSize(context, widgetId, it)
-                return it
-            }
-        }
-        lastKnownSize(context, widgetId)?.let { return it }
-        sizeFromBundle(manager.getAppWidgetOptions(widgetId), landscape)?.let {
-            persistLastKnownSize(context, widgetId, it)
-            return it
-        }
-        return WidgetSize(DEFAULT_WIDTH_DP, DEFAULT_HEIGHT_DP)
-    }
-
-    /** 单个 options 包内先取 API 31+ 精确尺寸，再退传统方向范围键。 */
-    private fun sizeFromBundle(
-        options: android.os.Bundle,
-        landscape: Boolean,
-    ): WidgetSize? {
-        api31SizesFromBundle(options, landscape)?.let { return it }
-        return legacySizeFromBundle(options, landscape)
-    }
-
-    /**
-     * API 31+ 桌面经 [AppWidgetManager.OPTION_APPWIDGET_SIZES] 上报的精确尺寸，
-     * 单位已是 dp，列表顺序为 [竖屏, 横屏]。解析失败一律视为来源缺失（回落
-     * 传统键），不因反序列化异常中断渲染。
-     */
-    @Suppress("DEPRECATION")
-    private fun api31SizesFromBundle(
-        options: android.os.Bundle,
-        landscape: Boolean,
-    ): WidgetSize? {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return null
-        if (!options.containsKey(AppWidgetManager.OPTION_APPWIDGET_SIZES)) return null
-        val raw = runCatching {
-            options.getSerializable(AppWidgetManager.OPTION_APPWIDGET_SIZES)
-        }.getOrNull() as? List<*> ?: return null
-        val sizeFs = raw.filterIsInstance<SizeF>()
-        // 文档顺序为 [竖屏, 横屏]；按宽高比挑选当前方向项，方向标注异常时退首项。
-        val picked = sizeFs.firstOrNull { aspectMatches(it, landscape) }
-            ?: sizeFs.firstOrNull()
-            ?: return null
-        return WidgetSize(
-            widthDp = picked.width.roundToInt(),
-            heightDp = picked.height.roundToInt(),
-        )
-    }
-
-    private fun aspectMatches(size: SizeF, landscape: Boolean): Boolean {
-        return if (landscape) size.width > size.height else size.width <= size.height
-    }
-
-    /**
-     * 传统 launcher options 给出横竖屏范围：竖屏窄而高，横屏宽而矮。
-     * 竖屏取 MIN_WIDTH + MAX_HEIGHT，横屏取 MAX_WIDTH + MIN_HEIGHT。
-     * 用 containsKey 判存在性，0/负值视同缺席，不得当作可信尺寸渲染或持久化。
-     */
-    private fun legacySizeFromBundle(
-        options: android.os.Bundle,
-        landscape: Boolean,
-    ): WidgetSize? {
-        val widthKey = if (landscape) {
-            AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH
-        } else {
-            AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH
-        }
-        val heightKey = if (landscape) {
-            AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT
-        } else {
-            AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT
-        }
-        if (!options.containsKey(widthKey) || !options.containsKey(heightKey)) return null
-        val width = options.getInt(widthKey, 0)
-        val height = options.getInt(heightKey, 0)
-        if (width <= 0 || height <= 0) return null
-        return WidgetSize(widthDp = width, heightDp = height)
-    }
-
-    /**
-     * 上次可信尺寸（仅由实时来源回写）。只有实时来源全部无果时才读：
-     * options 缺键的桌面上，数据刷新（refreshAll）靠它保持既有形态。
-     */
-    private fun lastKnownSize(context: Context, widgetId: Int): WidgetSize? {
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val wKey = sizeKey(KEY_SIZE_W_PREFIX, widgetId)
-        val hKey = sizeKey(KEY_SIZE_H_PREFIX, widgetId)
-        if (!prefs.contains(wKey) || !prefs.contains(hKey)) return null
-        val width = prefs.getInt(wKey, 0)
-        val height = prefs.getInt(hKey, 0)
-        if (width <= 0 || height <= 0) return null
-        return WidgetSize(width, height)
-    }
-
-    private fun persistLastKnownSize(context: Context, widgetId: Int, size: WidgetSize) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .putInt(sizeKey(KEY_SIZE_W_PREFIX, widgetId), size.widthDp)
-            .putInt(sizeKey(KEY_SIZE_H_PREFIX, widgetId), size.heightDp)
-            .apply()
-    }
-
-    private fun sizeKey(prefix: String, widgetId: Int): String = "$prefix$widgetId"
-
-    private val hiddenIds = intArrayOf(
-        R.id.widget_header,
-        R.id.widget_today_container,
-        R.id.widget_assets,
-        R.id.widget_exam,
-        R.id.widget_notice,
-        R.id.widget_stale,
-    )
-
-    private fun renderToday(
-        views: RemoteViews,
-        today: org.json.JSONArray?,
-        size: WidgetSize,
-    ) {
-        val maxRows = if (size.widthDp >= 300) size.maxTodayRows else 0
-        if (maxRows == 0 || today == null || today.length() == 0) {
-            views.setViewVisibility(R.id.widget_today_container, View.GONE)
-            return
-        }
-        views.setViewVisibility(R.id.widget_today_container, View.VISIBLE)
-        val rowIds = intArrayOf(
-            R.id.widget_today_1,
-            R.id.widget_today_2,
-            R.id.widget_today_3,
-        )
-        for (i in rowIds.indices) {
-            val row = if (i < maxRows) today.optJSONObject(i) else null
-            if (row == null) {
-                views.setViewVisibility(rowIds[i], View.GONE)
-                continue
-            }
-            views.setViewVisibility(rowIds[i], View.VISIBLE)
-            views.setTextViewText(
-                rowIds[i],
-                "${row.text("timeText")}  ${row.text("courseName")}",
-            )
-        }
-    }
-
-    private fun renderAssets(
-        views: RemoteViews,
-        json: JSONObject,
-        size: WidgetSize,
-        config: CampusWidgetConfigStore.Config,
-    ) {
-        val hasBalance =
-            config.showBalance && json.optBoolean("hasCampusCardData") &&
-                json.text("campusCardBalance").isNotBlank()
-        val hasElectricity =
-            config.showElectricity && json.optBoolean("hasElectricityData") &&
-                json.text("dormElectricity").isNotBlank()
-        val show = !size.isCompact && size.widthDp >= 230 &&
-            (hasBalance || hasElectricity)
-        if (!show) {
-            views.setViewVisibility(R.id.widget_assets, View.GONE)
-            return
-        }
-        views.setViewVisibility(R.id.widget_assets, View.VISIBLE)
-        // 单项关闭时隐藏该子视图（weight 行会让另一项占满整行），而不是留空位。
-        views.setViewVisibility(
-            R.id.widget_balance,
-            if (hasBalance) View.VISIBLE else View.GONE,
-        )
-        views.setTextViewText(
-            R.id.widget_balance,
-            if (hasBalance) {
-                "一卡通 ${withUnit(json.text("campusCardBalance"), "元")}"
-            } else {
-                ""
-            },
-        )
-        views.setViewVisibility(
-            R.id.widget_electricity,
-            if (hasElectricity) View.VISIBLE else View.GONE,
-        )
-        views.setTextViewText(
-            R.id.widget_electricity,
-            if (hasElectricity) {
-                "电费 ${withUnit(json.text("dormElectricity"), "度")}"
-            } else {
-                ""
-            },
-        )
-    }
-
-    private fun renderExtras(
-        views: RemoteViews,
-        json: JSONObject,
-        size: WidgetSize,
-        config: CampusWidgetConfigStore.Config,
-    ) {
-        val examName = json.text("nextExamCourseName")
-        val showExam = size.isRoomy && size.widthDp >= 300 && examName.isNotBlank()
-        if (showExam) {
-            views.setViewVisibility(R.id.widget_exam, View.VISIBLE)
-            views.setTextViewText(
-                R.id.widget_exam,
-                buildMeta(
-                    "考试 " + examName,
-                    json.text("nextExamTimeText"),
-                ),
-            )
-        } else {
-            views.setViewVisibility(R.id.widget_exam, View.GONE)
-        }
-
-        val unread = json.optInt("unreadNoticeCount", 0)
-        // 通知受实例开关控制；过期提示（stale）是数据新鲜度信息，
-        // 不受该开关影响，仍在 update() 末尾独立渲染。
-        val showNotice = config.showNotice && size.isRoomy &&
-            size.widthDp >= 300 && unread > 0
-        views.setViewVisibility(
-            R.id.widget_notice,
-            if (showNotice) View.VISIBLE else View.GONE,
-        )
-        if (showNotice) {
-            views.setTextViewText(R.id.widget_notice, "未读通知 $unread 条")
-        }
-    }
-
-    /**
-     * JSON null / 缺失一律视为空串。
-     *
-     * `optString` 会把 JSON null 读成字面量 "null"（Dart 侧 `Map<String, Object?>`
-     * 的可空字段序列化后就是 JSON null），屏幕上会直接显示 "null"。
-     */
-    private fun JSONObject.text(key: String): String {
-        if (isNull(key)) return ""
-        val value = optString(key)
-        return if (value == "null") "" else value
-    }
-
-    private fun buildMeta(primary: String, secondary: String): String {
-        return listOf(primary, secondary)
-            .filter { it.isNotBlank() }
-            .joinToString(" · ")
-    }
-
-    /**
-     * 只在纯数字后补单位；已带单位（¥ / 元 / 度 等）或非数字文本原样返回，
-     * 避免「¥32.50 元」这类重复标注。
-     */
-    private fun withUnit(value: String, unit: String): String {
-        return if (PURE_NUMBER.matches(value)) "$value $unit" else value
-    }
-
-    private val PURE_NUMBER = Regex("-?\\d+(\\.\\d+)?")
-
-    private fun bindClicks(context: Context, views: RemoteViews) {
-        bindClick(context, views, R.id.widget_hero, "schedule.today")
-        bindClick(context, views, R.id.widget_balance, "campus-card.open")
-        bindClick(context, views, R.id.widget_electricity, "electricity.open")
-        bindClick(context, views, R.id.widget_exam, "exam.open")
-        bindClick(context, views, R.id.widget_notice, "notice.inbox")
-        bindClick(context, views, R.id.widget_today_1, "schedule.today")
-        bindClick(context, views, R.id.widget_today_2, "schedule.today")
-        bindClick(context, views, R.id.widget_today_3, "schedule.today")
-    }
-
-    private fun bindClick(
-        context: Context,
-        views: RemoteViews,
-        viewId: Int,
-        actionId: String,
-    ) {
-        val intent = Intent(context, MainActivity::class.java).apply {
-            action = Intent.ACTION_VIEW
-            data = Uri.parse("jxucampushub://action/$actionId")
-            addFlags(
-                Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                    Intent.FLAG_ACTIVITY_SINGLE_TOP,
-            )
-        }
-        var flags = PendingIntent.FLAG_UPDATE_CURRENT
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            flags = flags or PendingIntent.FLAG_IMMUTABLE
-        }
-        val pending = PendingIntent.getActivity(
-            context,
-            actionId.hashCode(),
-            intent,
-            flags,
-        )
-        views.setOnClickPendingIntent(viewId, pending)
     }
 }

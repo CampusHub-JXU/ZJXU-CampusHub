@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 中组件 4x2「今日课表」：固定尺寸。沿用旧文件名 / receiver，已放置实例继续由它渲染（不再带配置页）。 -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
-    android:configure="edu.zjxu.jxucampushub.widget.CampusWidgetConfigActivity"
-    android:description="@string/campus_widget_description"
-    android:initialLayout="@layout/campus_widget"
+    android:description="@string/campus_widget_medium_description"
+    android:initialLayout="@layout/campus_widget_medium"
     android:minHeight="110dp"
-    android:minResizeHeight="80dp"
-    android:minResizeWidth="110dp"
-    android:minWidth="180dp"
-    android:resizeMode="horizontal|vertical"
+    android:minWidth="250dp"
+    android:previewLayout="@layout/campus_widget_medium_preview"
+    android:resizeMode="none"
+    android:targetCellHeight="2"
+    android:targetCellWidth="4"
     android:updatePeriodMillis="0"
-    android:widgetCategory="home_screen"
-    android:widgetFeatures="reconfigurable" />
+    android:widgetCategory="home_screen" />

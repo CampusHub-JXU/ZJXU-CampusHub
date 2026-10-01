@@ -1,36 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 桌面校园卡片：顶区周次 → 主区课程层级 → 弹性留白 → 资产底区（发丝线 + 余额/电费 + 考试/通知/过期）。
-     所有 view ID 与 CampusWidgetProvider 的绑定保持一致，不得增删 ID。 -->
+<!-- 大组件 4x4「校园总览」：标题行 → Hero（下一节课）→ 今日课程（最多 4 行）→ 弹性留白
+     → 资产行（一卡通 / 电费）→ 考试 → 未读通知。
+     最小 4x4 为 250dp 高，纵向预算见 docs/agents/platform-channels.md；
+     所有 view ID 与 CampusWidgetRenderer 绑定一致。 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/campus_widget_bg"
     android:orientation="vertical"
-    android:padding="16dp">
+    android:padding="12dp">
 
-    <!-- 顶区：周次 -->
-    <TextView
-        android:id="@+id/widget_header"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:ellipsize="end"
-        android:maxLines="1"
-        android:textColor="@color/campus_widget_text_tertiary"
-        android:textSize="12sp" />
-
-    <!-- 主区：课程层级 -->
     <LinearLayout
-        android:id="@+id/widget_hero"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
-        android:orientation="vertical">
+        android:orientation="horizontal">
 
         <TextView
-            android:id="@+id/widget_hero_label"
-            android:layout_width="match_parent"
+            android:id="@+id/widget_title"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_weight="1"
             android:ellipsize="end"
             android:letterSpacing="0.04"
             android:maxLines="1"
@@ -39,33 +29,49 @@
             android:textStyle="bold" />
 
         <TextView
+            android:id="@+id/widget_week"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/campus_widget_text_tertiary"
+            android:textSize="11sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/widget_hero"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:orientation="vertical">
+
+        <TextView
             android:id="@+id/widget_hero_course"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="3dp"
             android:ellipsize="end"
             android:maxLines="1"
             android:textColor="@color/campus_widget_text_primary"
-            android:textSize="20sp"
+            android:textSize="17sp"
             android:textStyle="bold" />
 
         <TextView
             android:id="@+id/widget_hero_meta"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
+            android:layout_marginTop="1dp"
             android:ellipsize="end"
             android:maxLines="1"
             android:textColor="@color/campus_widget_text_secondary"
-            android:textSize="13sp" />
+            android:textSize="12sp" />
     </LinearLayout>
 
-    <!-- 次区：今日课程列表 -->
     <LinearLayout
         android:id="@+id/widget_today_container"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
+        android:layout_marginTop="8dp"
         android:orientation="vertical">
 
         <TextView
@@ -75,41 +81,50 @@
             android:ellipsize="end"
             android:maxLines="1"
             android:textColor="@color/campus_widget_text_secondary"
-            android:textSize="13sp" />
+            android:textSize="12sp" />
 
         <TextView
             android:id="@+id/widget_today_2"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
+            android:layout_marginTop="2dp"
             android:ellipsize="end"
             android:maxLines="1"
             android:textColor="@color/campus_widget_text_secondary"
-            android:textSize="13sp" />
+            android:textSize="12sp" />
 
         <TextView
             android:id="@+id/widget_today_3"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
+            android:layout_marginTop="2dp"
             android:ellipsize="end"
             android:maxLines="1"
             android:textColor="@color/campus_widget_text_secondary"
-            android:textSize="13sp" />
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/widget_today_4"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/campus_widget_text_secondary"
+            android:textSize="12sp" />
     </LinearLayout>
 
-    <!-- 弹性留白：把资产底区压到卡片底部，矮尺寸时自然塌缩为 0 -->
+    <!-- 弹性留白：把资产 / 考试 / 通知压到底部，空间不足时塌缩为 0 -->
     <TextView
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1" />
 
-    <!-- 资产底区：发丝线随容器一起显隐（Provider 只切换 widget_assets 的可见性） -->
     <LinearLayout
         android:id="@+id/widget_assets"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
+        android:layout_marginTop="8dp"
         android:orientation="vertical">
 
         <TextView
@@ -120,7 +135,7 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="6dp"
             android:orientation="horizontal">
 
             <TextView
@@ -131,7 +146,7 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:textColor="@color/campus_widget_text_secondary"
-                android:textSize="13sp" />
+                android:textSize="12sp" />
 
             <TextView
                 android:id="@+id/widget_electricity"
@@ -141,7 +156,7 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:textColor="@color/campus_widget_text_secondary"
-                android:textSize="13sp" />
+                android:textSize="12sp" />
         </LinearLayout>
     </LinearLayout>
 
@@ -149,7 +164,7 @@
         android:id="@+id/widget_exam"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="4dp"
         android:ellipsize="end"
         android:maxLines="1"
         android:textColor="@color/campus_widget_text_secondary"
@@ -159,19 +174,9 @@
         android:id="@+id/widget_notice"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="2dp"
         android:ellipsize="end"
         android:maxLines="1"
         android:textColor="@color/campus_widget_accent"
         android:textSize="12sp" />
-
-    <TextView
-        android:id="@+id/widget_stale"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:ellipsize="end"
-        android:maxLines="1"
-        android:textColor="@color/campus_widget_text_tertiary"
-        android:textSize="11sp" />
 </LinearLayout>

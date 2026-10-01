@@ -20,6 +20,12 @@ void main() {
     'dexterous.com/flutter/local_notifications',
   );
 
+  const widgetChannel = MethodChannel('edu.zjxu.jxucampushub/widget');
+  const shortcutChannel = MethodChannel('edu.zjxu.jxucampushub/shortcut');
+
+  late List<MethodCall> widgetCalls;
+  late List<MethodCall> shortcutCalls;
+  late String widgetPinResult;
   late List<MethodCall> systemSettingsCalls;
   late String systemSettingsResult;
   late bool notificationsEnabled;
@@ -32,6 +38,9 @@ void main() {
   });
 
   setUp(() {
+    widgetCalls = <MethodCall>[];
+    shortcutCalls = <MethodCall>[];
+    widgetPinResult = 'requested';
     systemSettingsCalls = <MethodCall>[];
     systemSettingsResult = 'target';
     notificationsEnabled = true;
@@ -43,6 +52,14 @@ void main() {
       systemSettingsCalls.add(call);
       if (call.method != 'open') return null;
       return systemSettingsResult;
+    });
+    messenger.setMockMethodCallHandler(widgetChannel, (call) async {
+      widgetCalls.add(call);
+      return call.method == 'requestPin' ? widgetPinResult : null;
+    });
+    messenger.setMockMethodCallHandler(shortcutChannel, (call) async {
+      shortcutCalls.add(call);
+      return call.method == 'openShortcutPermissionSettings' ? true : null;
     });
     messenger.setMockMethodCallHandler(notificationsChannel, (call) async {
       if (call.method == 'areNotificationsEnabled') {
@@ -59,6 +76,8 @@ void main() {
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     messenger.setMockMethodCallHandler(systemSettingsChannel, null);
+    messenger.setMockMethodCallHandler(widgetChannel, null);
+    messenger.setMockMethodCallHandler(shortcutChannel, null);
     messenger.setMockMethodCallHandler(notificationsChannel, null);
   });
 
@@ -91,6 +110,62 @@ void main() {
         );
     await tester.pumpAndSettle();
   }
+
+  testWidgets('桌面组件三行分别以 small / medium / large 请求固定', (tester) async {
+    await pumpDesktopBackgroundPage(tester);
+
+    expect(find.text('小 · 2×2 下一节课'), findsOneWidget);
+    expect(find.text('中 · 4×2 今日课表'), findsOneWidget);
+    expect(find.text('大 · 4×4 校园总览'), findsOneWidget);
+
+    for (final (title, size) in const [
+      ('小 · 2×2 下一节课', 'small'),
+      ('中 · 4×2 今日课表', 'medium'),
+      ('大 · 4×4 校园总览', 'large'),
+    ]) {
+      await tapRow(tester, title);
+      final call = widgetCalls.last;
+      expect(call.method, 'requestPin');
+      expect(call.arguments, <String, Object?>{'size': size});
+      expect(find.text('已请求添加，请在桌面确认'), findsOneWidget);
+    }
+    expect(widgetCalls, hasLength(3));
+  });
+
+  testWidgets('桌面不支持一键添加时提示手动添加路径', (tester) async {
+    widgetPinResult = 'unsupported';
+    await pumpDesktopBackgroundPage(tester);
+
+    await tapRow(tester, '小 · 2×2 下一节课');
+
+    expect(find.textContaining('当前桌面不支持一键添加'), findsOneWidget);
+    expect(find.textContaining('小组件 → 嘉兴大学'), findsOneWidget);
+  });
+
+  testWidgets('固定被拒绝时提示并可跳转快捷方式权限设置', (tester) async {
+    widgetPinResult = 'rejected';
+    await pumpDesktopBackgroundPage(tester);
+
+    await tapRow(tester, '中 · 4×2 今日课表');
+
+    expect(find.textContaining('桌面拒绝了添加请求'), findsOneWidget);
+    expect(find.textContaining('允许「桌面快捷方式」'), findsOneWidget);
+    await tester.tap(find.text('去设置'));
+    await tester.pumpAndSettle();
+    expect(
+      shortcutCalls.map((c) => c.method),
+      contains('openShortcutPermissionSettings'),
+    );
+  });
+
+  testWidgets('原生异常时提示添加失败，不抛出', (tester) async {
+    widgetPinResult = 'error';
+    await pumpDesktopBackgroundPage(tester);
+
+    await tapRow(tester, '大 · 4×4 校园总览');
+
+    expect(find.textContaining('添加失败'), findsOneWidget);
+  });
 
   testWidgets('后台运行四行分别以对应 target 调起系统设置且不误报', (tester) async {
     await pumpDesktopBackgroundPage(tester);

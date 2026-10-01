@@ -1,7 +1,6 @@
 package edu.zjxu.jxucampushub.platform.shortcut
 
 import android.app.Activity
-import android.app.AppOpsManager
 import android.content.Intent
 import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
@@ -15,11 +14,12 @@ import android.graphics.Typeface
 import android.graphics.drawable.Icon
 import android.net.Uri
 import android.os.Build
-import android.provider.Settings
 import edu.zjxu.jxucampushub.MainActivity
 import edu.zjxu.jxucampushub.R
 import edu.zjxu.jxucampushub.platform.ACTION_HOST
 import edu.zjxu.jxucampushub.platform.EXTRA_SHORTCUT_ACTION
+import edu.zjxu.jxucampushub.platform.MiuiShortcutPermission
+import edu.zjxu.jxucampushub.platform.PinRequestResult
 import edu.zjxu.jxucampushub.platform.SHORTCUT_SCHEME
 import edu.zjxu.jxucampushub.platform.extractShortcutAction
 import edu.zjxu.jxucampushub.platform.requireStringArg
@@ -38,7 +38,6 @@ class ShortcutChannelHandler(private val activity: Activity) {
         private const val CAMPUS_CARD_PAYMENT_PINNED_SHORTCUT_ID = "campus_card_payment_pinned_v2"
         private const val SHUATI_PINNED_SHORTCUT_ID = "shuati_practice_pinned"
         private const val LEGACY_CAMPUS_CARD_PAYMENT_SHORTCUT_ID = "campus_card_payment_pinned"
-        private const val MIUI_INSTALL_SHORTCUT_OP = 10017
     }
 
     private var pendingShortcutAction: String? = null
@@ -103,7 +102,7 @@ class ShortcutChannelHandler(private val activity: Activity) {
                     }
 
                     "openShortcutPermissionSettings" -> {
-                        result.success(openShortcutPermissionSettings())
+                        result.success(MiuiShortcutPermission.openPermissionSettings(activity))
                     }
 
                     else -> result.notImplemented()
@@ -112,7 +111,7 @@ class ShortcutChannelHandler(private val activity: Activity) {
         }
     }
 
-    private fun requestCampusCardPaymentShortcut(): ShortcutRequestResult {
+    private fun requestCampusCardPaymentShortcut(): PinRequestResult {
         return requestShortcut(
             action = CAMPUS_CARD_PAYMENT_ACTION,
             shortcutId = CAMPUS_CARD_PAYMENT_PINNED_SHORTCUT_ID,
@@ -125,7 +124,7 @@ class ShortcutChannelHandler(private val activity: Activity) {
         )
     }
 
-    private fun requestShuatiShortcut(): ShortcutRequestResult {
+    private fun requestShuatiShortcut(): PinRequestResult {
         return requestShortcut(
             action = SHUATI_ACTION,
             shortcutId = SHUATI_PINNED_SHORTCUT_ID,
@@ -136,7 +135,7 @@ class ShortcutChannelHandler(private val activity: Activity) {
     }
 
     /** 通用固定快捷方式（PRD §40）：只按 Action ID + 标题重建，不再按功能定制。 */
-    private fun requestPinnedShortcut(actionId: String, title: String): ShortcutRequestResult {
+    private fun requestPinnedShortcut(actionId: String, title: String): PinRequestResult {
         val shortcutId = "pinned_" + actionId.replace(Regex("[^A-Za-z0-9_]"), "_")
         return requestShortcut(
             action = actionId,
@@ -181,12 +180,12 @@ class ShortcutChannelHandler(private val activity: Activity) {
         shortcutIdsToReplace: List<String>,
         shortLabel: String,
         longLabel: String,
-    ): ShortcutRequestResult {
+    ): PinRequestResult {
         val shortcutIntent = createShortcutIntent(action)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N_MR1) {
             val shortcutManager = activity.getSystemService(ShortcutManager::class.java)
-                ?: return ShortcutRequestResult.UNSUPPORTED
+                ?: return PinRequestResult.UNSUPPORTED
             val shortcut = buildShortcutInfo(
                 action = action,
                 shortcutId = shortcutId,
@@ -197,27 +196,27 @@ class ShortcutChannelHandler(private val activity: Activity) {
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 if (!shortcutManager.isRequestPinShortcutSupported) {
-                    return ShortcutRequestResult.UNSUPPORTED
+                    return PinRequestResult.UNSUPPORTED
                 }
-                if (isMiuiShortcutPermissionDenied()) {
+                if (MiuiShortcutPermission.isDenied(activity)) {
                     android.util.Log.w(
                         "Shortcut",
                         "MIUI/HyperOS rejected shortcut permission before pin request: $action",
                     )
-                    return ShortcutRequestResult.REJECTED
+                    return PinRequestResult.REJECTED
                 }
                 shortcutManager.removeDynamicShortcuts(shortcutIdsToReplace)
                 updateExistingShortcut(shortcutManager, shortcut)
                 return if (shortcutManager.requestPinShortcut(shortcut, null)) {
-                    ShortcutRequestResult.REQUESTED
+                    PinRequestResult.REQUESTED
                 } else {
-                    ShortcutRequestResult.REJECTED
+                    PinRequestResult.REJECTED
                 }
             }
 
             shortcutManager.removeDynamicShortcuts(shortcutIdsToReplace)
             shortcutManager.addDynamicShortcuts(listOf(shortcut))
-            return ShortcutRequestResult.REQUESTED
+            return PinRequestResult.REQUESTED
         }
 
         @Suppress("DEPRECATION")
@@ -243,7 +242,7 @@ class ShortcutChannelHandler(private val activity: Activity) {
                 putExtra("duplicate", false)
             },
         )
-        return ShortcutRequestResult.REQUESTED
+        return PinRequestResult.REQUESTED
     }
 
     private fun updateExistingShortcut(
@@ -257,99 +256,6 @@ class ShortcutChannelHandler(private val activity: Activity) {
                 "Shortcut",
                 "Unable to update existing shortcut icon: ${error.javaClass.simpleName}",
             )
-        }
-    }
-
-    private fun isMiuiShortcutPermissionDenied(): Boolean {
-        if (!isMiuiLikeDevice()) {
-            return false
-        }
-
-        val mode = readMiuiAppOpMode(MIUI_INSTALL_SHORTCUT_OP) ?: return false
-        return mode != AppOpsManager.MODE_ALLOWED && mode != AppOpsManager.MODE_DEFAULT
-    }
-
-    private fun isMiuiLikeDevice(): Boolean {
-        val manufacturer = Build.MANUFACTURER.lowercase()
-        val brand = Build.BRAND.lowercase()
-        return manufacturer.contains("xiaomi") ||
-            manufacturer.contains("redmi") ||
-            manufacturer.contains("poco") ||
-            brand.contains("xiaomi") ||
-            brand.contains("redmi") ||
-            brand.contains("poco")
-    }
-
-    private fun readMiuiAppOpMode(opCode: Int): Int? {
-        return try {
-            val appOps = activity.getSystemService(AppOpsManager::class.java) ?: return null
-            val method = AppOpsManager::class.java.getMethod(
-                "checkOpNoThrow",
-                Int::class.javaPrimitiveType,
-                Int::class.javaPrimitiveType,
-                String::class.java,
-            )
-            method.invoke(appOps, opCode, activity.applicationInfo.uid, activity.packageName) as? Int
-        } catch (error: Throwable) {
-            android.util.Log.d(
-                "Shortcut",
-                "Unable to read MIUI shortcut app-op: ${error.javaClass.simpleName}",
-            )
-            null
-        }
-    }
-
-    private fun openShortcutPermissionSettings(): Boolean {
-        for (intent in miuiPermissionSettingsIntents()) {
-            if (tryStartActivity(intent)) {
-                return true
-            }
-        }
-
-        val appDetailsIntent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-            data = Uri.parse("package:${activity.packageName}")
-        }
-        return tryStartActivity(appDetailsIntent)
-    }
-
-    private fun miuiPermissionSettingsIntents(): List<Intent> {
-        val actions = listOf(
-            "miui.intent.action.APP_PERM_EDITOR",
-            "miui.intent.action.APP_PERM_EDITOR_PRIVATE",
-        )
-        val classes = listOf(
-            "com.miui.permcenter.permissions.PermissionsEditorActivity",
-            "com.miui.permcenter.permissions.AppPermissionsEditorActivity",
-        )
-        val intents = mutableListOf<Intent>()
-
-        for (action in actions) {
-            for (className in classes) {
-                intents += Intent(action).apply {
-                    setClassName("com.miui.securitycenter", className)
-                    addMiuiPackageExtras()
-                }
-            }
-            intents += Intent(action).apply {
-                setPackage("com.miui.securitycenter")
-                addMiuiPackageExtras()
-            }
-        }
-
-        return intents
-    }
-
-    private fun Intent.addMiuiPackageExtras() {
-        putExtra("extra_pkgname", activity.packageName)
-        putExtra("packageName", activity.packageName)
-    }
-
-    private fun tryStartActivity(intent: Intent): Boolean {
-        return try {
-            activity.startActivity(intent)
-            true
-        } catch (_: Exception) {
-            false
         }
     }
 
@@ -435,11 +341,5 @@ class ShortcutChannelHandler(private val activity: Activity) {
             putExtra(EXTRA_SHORTCUT_ACTION, shortcutAction)
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         }
-    }
-
-    private enum class ShortcutRequestResult(val code: String) {
-        REQUESTED("requested"),
-        UNSUPPORTED("unsupported"),
-        REJECTED("rejected"),
     }
 }

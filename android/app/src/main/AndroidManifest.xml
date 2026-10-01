@@ -73,10 +73,23 @@
                 <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
             </intent-filter>
         </activity>
+        <!-- 桌面组件：三种固定尺寸共用一份渲染（CampusWidgetRenderer）。
+             中组件沿用旧类名 CampusWidgetProvider，保证已放置的旧实例继续存活。 -->
+        <receiver
+            android:name=".widget.CampusWidgetSmallProvider"
+            android:exported="false"
+            android:label="@string/campus_widget_small_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/campus_widget_small_info" />
+        </receiver>
         <receiver
             android:name=".widget.CampusWidgetProvider"
             android:exported="false"
-            android:label="嘉兴大学">
+            android:label="@string/campus_widget_medium_label">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
@@ -84,6 +97,21 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/campus_widget_info" />
         </receiver>
+        <receiver
+            android:name=".widget.CampusWidgetLargeProvider"
+            android:exported="false"
+            android:label="@string/campus_widget_large_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/campus_widget_large_info" />
+        </receiver>
+        <!-- requestPinAppWidget 成功回调（launcher 经我方 PendingIntent 触发），仅内部使用。 -->
+        <receiver
+            android:name=".widget.CampusWidgetPinReceiver"
+            android:exported="false" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
