@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jxu_campus_hub/core/auth/academic_web_entry_preparer.dart';
 import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
+import 'package:jxu_campus_hub/core/network/webview_direct_route.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_error_view.dart';
 import 'package:jxu_campus_hub/shared/widgets/auth_required_view.dart';
 import 'package:jxu_campus_hub/shared/widgets/webview_page.dart';
@@ -42,6 +43,7 @@ class _FakePreparer extends AcademicWebEntryPreparer {
   final List<Future<AcademicWebEntryResult> Function()> steps;
   final List<bool> forceWebVpnCalls = <bool>[];
   final List<CancelToken?> tokens = <CancelToken?>[];
+  void Function()? onPrepare;
   int calls = 0;
 
   @override
@@ -51,6 +53,7 @@ class _FakePreparer extends AcademicWebEntryPreparer {
     CancelToken? cancelToken,
     Duration totalBudget = AcademicWebEntryPreparer.defaultTotalBudget,
   }) {
+    onPrepare?.call();
     forceWebVpnCalls.add(forceWebVpn);
     tokens.add(cancelToken);
     final index = calls < steps.length ? calls : steps.length - 1;
@@ -67,11 +70,29 @@ AcademicWebEntryReady _ready(
   return AcademicWebEntryReady(url: url, headers: headers, selectedMode: mode);
 }
 
+class _FakeProxyBackend implements WebViewProxyBackend {
+  _FakeProxyBackend({this.supported = true, List<String>? log})
+    : log = log ?? <String>[];
+
+  final bool supported;
+  final List<String> log;
+
+  @override
+  Future<bool> isSupported() async => supported;
+
+  @override
+  Future<void> setDirect() async => log.add('set');
+
+  @override
+  Future<void> clear() async => log.add('clear');
+}
+
 // ── driver ───────────────────────────────────────────────────────────────────
 
 Future<void> _pumpPage(
   WidgetTester tester, {
   required _FakePreparer preparer,
+  WebViewDirectRoute? webViewDirectRoute,
   bool autoPromptLogin = false,
   Future<bool> Function(BuildContext context)? unifiedLoginPrompt,
   Future<bool> Function(BuildContext context)? academicLoginPrompt,
@@ -83,6 +104,14 @@ Future<void> _pumpPage(
         key: key,
         title: '教务系统',
         preparer: preparer,
+        // 默认注入「Dart 已走代理」的 fake，避免未 mock 的真实平台通道在 fake
+        // async 下悬挂；直连覆盖行为由专用 group 覆盖。
+        webViewDirectRoute:
+            webViewDirectRoute ??
+            WebViewDirectRoute(
+              backend: _FakeProxyBackend(),
+              isDartRouteDirect: () async => false,
+            ),
         autoPromptLogin: autoPromptLogin,
         unifiedLoginPrompt: unifiedLoginPrompt,
         academicLoginPrompt: academicLoginPrompt,
@@ -145,6 +174,64 @@ void main() {
 
   setUp(() async {
     await resetTestEnvironment();
+  });
+
+  group('WebView 直连覆盖', () {
+    testWidgets('先于准备 / 载入取得租约，页面销毁时释放', (tester) async {
+      final log = <String>[];
+      final backend = _FakeProxyBackend(log: log);
+      final route = WebViewDirectRoute(
+        backend: backend,
+        isDartRouteDirect: () async => true,
+      );
+      final preparer = _FakePreparer([() async => _ready(_directUrl)])
+        ..onPrepare = () => log.add('prepare');
+
+      await _pumpPage(tester, preparer: preparer, webViewDirectRoute: route);
+      expect(find.byType(WebViewPage), findsOneWidget);
+      expect(log, ['set', 'prepare'], reason: '覆盖必须先于 Cookie 同步 / 首次载入');
+      expect(route.debugApplied, isTrue);
+
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      await _settle(tester);
+      expect(log, ['set', 'prepare', 'clear']);
+      expect(route.debugApplied, isFalse);
+      expect(route.debugLeaseCount, 0);
+    });
+
+    testWidgets('Dart 已走代理：不覆盖、不提示', (tester) async {
+      final log = <String>[];
+      final route = WebViewDirectRoute(
+        backend: _FakeProxyBackend(log: log),
+        isDartRouteDirect: () async => false,
+      );
+      final preparer = _FakePreparer([() async => _ready(_directUrl)]);
+
+      await _pumpPage(tester, preparer: preparer, webViewDirectRoute: route);
+      expect(find.byType(WebViewPage), findsOneWidget);
+      expect(log, isEmpty);
+      expect(find.textContaining('无法让网页绕过系统代理'), findsNothing);
+    });
+
+    testWidgets('不支持覆盖：不阻塞入口，就绪后给一次非阻塞提示', (tester) async {
+      final log = <String>[];
+      final route = WebViewDirectRoute(
+        backend: _FakeProxyBackend(supported: false, log: log),
+        isDartRouteDirect: () async => true,
+      );
+      final preparer = _FakePreparer([() async => _ready(_directUrl)]);
+
+      await _pumpPage(tester, preparer: preparer, webViewDirectRoute: route);
+      await tester.pump();
+      expect(find.byType(WebViewPage), findsOneWidget);
+      expect(find.textContaining('无法让网页绕过系统代理'), findsOneWidget);
+      expect(log, isEmpty);
+
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      await _settle(tester);
+      expect(log, isEmpty, reason: '未生效的覆盖不得 clear');
+      expect(route.debugLeaseCount, 0);
+    });
   });
 
   testWidgets('Ready 用 result.url + result.headers 载入 WebView', (tester) async {

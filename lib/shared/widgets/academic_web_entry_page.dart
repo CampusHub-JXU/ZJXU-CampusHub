@@ -8,7 +8,9 @@ import '../../core/auth/academic_web_entry_preparer.dart';
 import '../../core/auth/unified_auth.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/logging/app_logger.dart';
+import '../../core/network/webview_direct_route.dart';
 import 'app_error_view.dart';
+import 'app_feedback.dart';
 import 'auth_required_view.dart';
 import 'login_shell.dart';
 import 'webview_page.dart';
@@ -56,6 +58,7 @@ class AcademicWebEntryPage extends StatefulWidget {
     this.preparer,
     this.unifiedLoginPrompt,
     this.academicLoginPrompt,
+    this.webViewDirectRoute,
   });
 
   final String title;
@@ -79,6 +82,10 @@ class AcademicWebEntryPage extends StatefulWidget {
   /// 测试注入点：替换教务登录弹窗；生产为 [showAcademicSystemLoginModal]。
   @visibleForTesting
   final Future<bool> Function(BuildContext context)? academicLoginPrompt;
+
+  /// 测试注入点：替换 WebView 直连覆盖；生产为 [WebViewDirectRoute.instance]。
+  @visibleForTesting
+  final WebViewDirectRoute? webViewDirectRoute;
 
   @override
   State<AcademicWebEntryPage> createState() => AcademicWebEntryPageState();
@@ -125,10 +132,66 @@ class AcademicWebEntryPageState extends State<AcademicWebEntryPage> {
   /// 最近一次准备使用的选路；登录成功后按同一选路重试。
   bool _lastForceWebVpn = false;
 
+  /// 页面生命周期内持有的「WebView 直连」租约（见 [WebViewDirectRoute]）。
+  ///
+  /// Dart 探测走直连而 WebView 默认跟随系统代理时，教务会话（疑似绑定出口 IP）
+  /// 会在 H5 内被要求重新登录；因此首次准备 / Cookie 同步 / 载入之前先 await
+  /// 租约，页面销毁时释放。Dart 本身已走代理时不持有租约（路由本就一致）。
+  Future<WebViewDirectLease?>? _directLeaseFuture;
+  bool _directRouteHintPending = false;
+  bool _directRouteHintShown = false;
+
+  WebViewDirectRoute get _directRoute =>
+      widget.webViewDirectRoute ?? WebViewDirectRoute.instance;
+
   @override
   void initState() {
     super.initState();
+    _directLeaseFuture = _acquireDirectRoute();
     unawaited(_prepare(forceWebVpn: false));
+  }
+
+  Future<WebViewDirectLease?> _acquireDirectRoute() async {
+    try {
+      final lease = await _directRoute.acquireIfDartDirect();
+      if (lease != null && !lease.applied) {
+        // 无法绕过系统代理：不阻塞，入口就绪后给一次轻提示。
+        _directRouteHintPending = true;
+      }
+      return lease;
+    } catch (error, stackTrace) {
+      AppLogger.instance.webview(
+        LogLevel.warn,
+        '教务 H5 入口取得 WebView 直连租约失败',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return null;
+    }
+  }
+
+  void _releaseDirectRoute() {
+    final future = _directLeaseFuture;
+    _directLeaseFuture = null;
+    if (future == null) return;
+    unawaited(
+      future.then<void>((lease) => lease?.release(), onError: (Object _) {}),
+    );
+  }
+
+  void _maybeShowDirectRouteHint() {
+    if (!_directRouteHintPending || _directRouteHintShown) return;
+    _directRouteHintShown = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      AppFeedback.toast(
+        context,
+        '无法让网页绕过系统代理，若已开启代理可能需要在网页内重新登录；'
+        '可关闭代理或将 jwzx.zjxu.edu.cn 设为直连',
+        dedupeKey: 'academic-web-entry-proxy-hint',
+        duration: const Duration(seconds: 6),
+      );
+    });
   }
 
   @override
@@ -140,6 +203,7 @@ class AcademicWebEntryPageState extends State<AcademicWebEntryPage> {
   @override
   void dispose() {
     _cancelInflight('academic web entry page disposed');
+    _releaseDirectRoute();
     super.dispose();
   }
 
@@ -176,6 +240,10 @@ class AcademicWebEntryPageState extends State<AcademicWebEntryPage> {
         _errorRetryable = false;
       });
     }
+
+    // WebView 直连覆盖必须先于 Cookie 同步 / 首次载入生效。
+    await _directLeaseFuture;
+    if (!mounted || generation != _generation || token.isCancelled) return;
 
     AcademicWebEntryResult result;
     try {
@@ -238,6 +306,7 @@ class AcademicWebEntryPageState extends State<AcademicWebEntryPage> {
       _errorMessage = '';
       _errorRetryable = false;
     });
+    _maybeShowDirectRouteHint();
   }
 
   void _showError(String message, {required bool retryable}) {
