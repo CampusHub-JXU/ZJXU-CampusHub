@@ -304,11 +304,31 @@ class AcademicAuthGuard {
 
   /// [routeOnly] 为 true 时（请求只是被改道到 WebVPN）恢复失败**绝不撤销**
   /// 会话：选路变化不是登录态失效。需手动登录时抛暂停语义的过期异常，其余
-  /// 一律按暂时失败抛 [AcademicAuthRecoveryPendingException]，保留缓存。
+  /// 一律按暂时失败抛 [AcademicAuthRecoveryPendingException]，保留缓存；并把
+  /// 恢复链路切换的全局模式回滚到发起前，免得下一次请求带着未建成的 WebVPN
+  /// 模式落入普通过期（会撤销）路径。
   static Future<_RecoveryLease> _recover(
     _RecoveryLease start,
     Object expired, {
     bool routeOnly = false,
+  }) async {
+    if (!routeOnly) return _recoverInner(start, expired, routeOnly: false);
+    final auth = ZhengfangAuth.instance;
+    final modeBefore = auth.mode;
+    try {
+      return await _recoverInner(start, expired, routeOnly: true);
+    } catch (_) {
+      if (_isSessionCurrent(auth, start.revision) && auth.mode != modeBefore) {
+        auth.restoreModeWithoutNotify(modeBefore);
+      }
+      rethrow;
+    }
+  }
+
+  static Future<_RecoveryLease> _recoverInner(
+    _RecoveryLease start,
+    Object expired, {
+    required bool routeOnly,
   }) async {
     final auth = ZhengfangAuth.instance;
     final recovered = await _attemptRecovery();

@@ -516,6 +516,11 @@ void main() {
           active: true,
           studentId: '2025000001',
         );
+        // 恢复链路会把全局模式切到 WebVPN；网关建不起来时必须回滚。
+        final resolver = ConnectModeResolver.instance;
+        resolver.webVpnReachabilityChecker = () async => true;
+        resolver.targetDirectReachabilityChecker = (_) async => false;
+        expect(ZhengfangAuth.instance.mode, ZhengfangMode.direct);
         AcademicAuthGuard.debugAutomaticLoginReceiptOverride = null;
         AcademicAuthGuard.debugAutomaticLoginOverride = (
           domain, {
@@ -543,6 +548,11 @@ void main() {
           ZhengfangAuth.instance.isLoggedIn,
           isTrue,
           reason: '$outcome：改道恢复失败不得撤销会话',
+        );
+        expect(
+          ZhengfangAuth.instance.mode,
+          ZhengfangMode.direct,
+          reason: '$outcome：改道恢复失败后回滚恢复链路切换的模式',
         );
       }
     });
