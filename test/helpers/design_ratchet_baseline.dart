@@ -3,20 +3,6 @@
 // 数字变小或条目消失。
 
 const designRatchetBaseline = <String, Map<String, int>>{
-  'features/campus_card/campus_card_fallback_payment_page.dart': {
-    'fontSize': 5,
-    'rawCard': 1,
-    'showSnackBar': 1,
-  },
-  'features/campus_card/campus_card_page.dart': {
-    'fontSize': 2,
-    'showSnackBar': 2,
-  },
-  'features/campus_card/campus_card_payment_page.dart': {'showSnackBar': 1},
-  'features/dorm_electricity/dorm_electricity_page.dart': {
-    'fontSize': 3,
-    'showSnackBar': 1,
-  },
   'features/home/function_zone/function_zone_section.dart': {
     'fontSize': 5,
     'showSnackBar': 1,

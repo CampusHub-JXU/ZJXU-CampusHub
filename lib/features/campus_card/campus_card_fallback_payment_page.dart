@@ -5,8 +5,12 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../core/auth/credential_store.dart';
 import '../../core/auth/unified_auth.dart';
+import '../../core/theme/app_design_tokens.dart';
+import '../../core/theme/app_typography.dart';
 import '../../shared/widgets/app_app_bar.dart';
+import '../../shared/widgets/app_card.dart';
 import '../../shared/widgets/app_error_view.dart';
+import '../../shared/widgets/app_feedback.dart';
 import 'ecard_service.dart';
 
 /// 旧版备用码页（自 `campus_card_payment_page.dart` 机械拆分，UI 不变）。
@@ -342,8 +346,7 @@ class _CampusCardFallbackPaymentPageState
     _cancelPolling();
     if (!mounted || _pollingStopped) return;
     setState(() => _pollingStopped = true);
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('状态轮询已暂停，请手动刷新消费码')));
+    AppFeedback.toast(context, '状态轮询已暂停，请手动刷新消费码');
   }
 
   Future<void> _refreshQRCode() async {
@@ -442,44 +445,41 @@ class _CampusCardFallbackPaymentPageState
   }
 
   Widget _buildContent(ColorScheme colorScheme) {
+    final text = context.appText;
     return Center(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(AppSpacing.pageMargin),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             if (_accName != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
-                child: Text(_accName!, style: const TextStyle(fontSize: 18)),
+                child: Text(
+                  _accName!,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
               ),
             if (_accNum != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 24),
                 child: Text(
-                  '卡号: $_accNum',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: colorScheme.onSurfaceVariant,
+                  '卡号 $_accNum',
+                  style: text.secondary.copyWith(
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
               ),
             _buildQRCodeCard(colorScheme),
             const SizedBox(height: 16),
-            Text(
-              '请将二维码对准扫码设备',
-              style: TextStyle(
-                fontSize: 14,
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
+            Text('请将二维码对准扫码设备', style: text.secondary),
             if (_pollingStopped)
               Padding(
                 padding: const EdgeInsets.only(top: 12),
                 child: Text(
                   '状态轮询已暂停，请手动刷新后继续使用',
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 13, color: colorScheme.error),
+                  style: text.secondary.copyWith(color: colorScheme.error),
                 ),
               ),
             const SizedBox(height: 24),
@@ -495,17 +495,13 @@ class _CampusCardFallbackPaymentPageState
   }
 
   Widget _buildQRCodeCard(ColorScheme colorScheme) {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 300),
-          child: _showPaymentResult
-              ? _buildPaymentResult(colorScheme)
-              : _buildQRCode(colorScheme),
-        ),
+    return AppCard(
+      padding: const EdgeInsets.all(24),
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 300),
+        child: _showPaymentResult
+            ? _buildPaymentResult(colorScheme)
+            : _buildQRCode(colorScheme),
       ),
     );
   }
@@ -526,13 +522,15 @@ class _CampusCardFallbackPaymentPageState
           version: QrVersions.auto,
           size: 260,
           backgroundColor: Colors.white,
-          eyeStyle: QrEyeStyle(
+          // 码点固定黑色：白底上的对比度与深色模式无关（onSurface 在深色
+          // 模式下是浅色，会让二维码几乎不可扫）。
+          eyeStyle: const QrEyeStyle(
             eyeShape: QrEyeShape.square,
-            color: colorScheme.primary,
+            color: Colors.black,
           ),
-          dataModuleStyle: QrDataModuleStyle(
+          dataModuleStyle: const QrDataModuleStyle(
             dataModuleShape: QrDataModuleShape.square,
-            color: colorScheme.onSurface,
+            color: Colors.black,
           ),
         ),
       ],
@@ -549,10 +547,7 @@ class _CampusCardFallbackPaymentPageState
           children: [
             Icon(Icons.check_circle, size: 64, color: colorScheme.primary),
             const SizedBox(height: 16),
-            Text(
-              _lastPaymentInfo ?? '支付成功',
-              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            ),
+            Text(_lastPaymentInfo ?? '支付成功', style: context.appText.rowValue),
           ],
         ),
       ),
