@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../shared/widgets/app_dropdown.dart';
 import '../../shared/widgets/app_banner.dart';
 import '../../shared/widgets/glass_dialog_route.dart';
 import 'changxing_jiada_model.dart';
@@ -206,31 +207,35 @@ class _ChangxingAreaPickerDialogState
     );
   }
 
-  DropdownButtonFormField<ChangxingAreaNode> _buildDropdown({
+  Widget _buildDropdown({
     required String label,
     required List<ChangxingAreaNode> items,
     required ChangxingAreaNode? value,
     required ValueChanged<ChangxingAreaNode?> onChanged,
   }) {
-    final effectiveValue =
-        value != null && items.any((item) => item.id == value.id)
-        ? value
-        : null;
+    // 按 id 在当前列表里找回同一实例，避免列表刷新后 value 对不上。
+    ChangxingAreaNode? effectiveValue;
+    if (value != null) {
+      for (final item in items) {
+        if (item.id == value.id) {
+          effectiveValue = item;
+          break;
+        }
+      }
+    }
 
-    return DropdownButtonFormField<ChangxingAreaNode>(
-      initialValue: effectiveValue,
-      dropdownColor: Theme.of(context).colorScheme.surfaceContainerHigh,
+    return AppDropdown<ChangxingAreaNode>(
+      label: label,
+      value: effectiveValue,
       items: items
           .map(
-            (item) => DropdownMenuItem<ChangxingAreaNode>(
+            (item) => AppDropdownItem<ChangxingAreaNode>(
               value: item,
-              child: Text(item.areaName, overflow: TextOverflow.ellipsis),
+              label: item.areaName,
             ),
           )
           .toList(),
-      decoration: InputDecoration(labelText: label),
       onChanged: _loading ? null : onChanged,
-      isExpanded: true,
     );
   }
 

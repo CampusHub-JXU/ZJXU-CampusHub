@@ -9,6 +9,7 @@ import 'changxing_jiada_service.dart';
 import 'changxing_jiada_widgets.dart';
 import '../../core/theme/app_design_tokens.dart';
 import '../../shared/widgets/app_app_bar.dart';
+import '../../shared/widgets/app_dropdown.dart';
 import '../../shared/widgets/app_feedback.dart';
 import '../../shared/widgets/plain_list.dart';
 
@@ -414,23 +415,14 @@ class _ChangxingBackSchoolFormPageState
                     ],
                   ),
                   const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    initialValue: _trafficTool,
-                    dropdownColor: Theme.of(context)
-                        .colorScheme
-                        .surfaceContainerHigh,
+                  AppDropdown<String>(
+                    label: '交通方式',
+                    value: _trafficTool,
                     items: _trafficOptions
                         .map(
-                          (it) => DropdownMenuItem<String>(
-                            value: it,
-                            child: Text(it),
-                          ),
+                          (it) => AppDropdownItem<String>(value: it, label: it),
                         )
                         .toList(),
-                    decoration: const InputDecoration(
-                      labelText: '交通方式',
-                      border: OutlineInputBorder(),
-                    ),
                     onChanged: (value) {
                       setState(() => _trafficTool = value);
                     },

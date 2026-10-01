@@ -96,6 +96,75 @@ void main() {
       expect(find.text('Beta'), findsOneWidget);
     });
 
+    testWidgets('renders the label caption above the trigger', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: AppDropdown<String>(
+                label: '交通方式',
+                value: 'a',
+                items: const [AppDropdownItem(value: 'a', label: 'Alpha')],
+                onChanged: (_) {},
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final captionRect = tester.getRect(find.text('交通方式'));
+      final triggerRect = tester.getRect(find.text('Alpha'));
+      expect(captionRect.bottom, lessThanOrEqualTo(triggerRect.top));
+      // 带 label 时强制撑满宽度。
+      final fieldRect = tester.getRect(find.byType(AppDropdown<String>));
+      expect(fieldRect.width, greaterThan(400));
+    });
+
+    testWidgets('does not open the menu when onChanged is null', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: AppDropdown<String>(
+                value: 'a',
+                items: [AppDropdownItem(value: 'a', label: 'Alpha')],
+                onChanged: null,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byType(AppDropdown<String>));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('app-dropdown-menu')), findsNothing);
+    });
+
+    testWidgets('does not open the menu when items are empty', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: AppDropdown<String>(
+                value: null,
+                hint: '请选择',
+                items: const [],
+                onChanged: (_) {},
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byType(AppDropdown<String>));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('app-dropdown-menu')), findsNothing);
+    });
+
     testWidgets('keeps the popup inside the viewport width', (tester) async {
       await tester.binding.setSurfaceSize(const Size(320, 640));
       addTearDown(() => tester.binding.setSurfaceSize(null));
