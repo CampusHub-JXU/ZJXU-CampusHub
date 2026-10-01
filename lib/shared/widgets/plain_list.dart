@@ -160,35 +160,46 @@ class PlainListRow extends StatelessWidget {
               child: Row(
                 children: [
                   if (leading != null) ...[leading!, const SizedBox(width: 12)],
-                  // 标题与值共用一段横向空间：标题按内容宽度，值贴右对齐；
-                  // 否则两者各占一半，值和箭头会悬在行中间。
+                  // 标题与值共用一段横向空间：标题按内容宽度（最多占 60%），
+                  // 值拿走剩下的全部宽度并贴右对齐。不能用两个 flex 平分——
+                  // 短标题省下的空间不会让给值，长值（邮箱）会被截断。
                   Expanded(
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Flexible(child: titleBlock),
-                        if (valueText != null) ...[
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Text(
-                              valueText,
-                              key: valueKey,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: TextAlign.end,
-                              style: Theme.of(context).textTheme.bodyMedium
-                                  ?.copyWith(
-                                    fontWeight: emphasizeValue
-                                        ? FontWeight.w600
-                                        : FontWeight.w400,
-                                    color: emphasizeValue
-                                        ? cs.primary
-                                        : cs.onSurfaceVariant,
-                                  ),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) => Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          if (valueText == null)
+                            Flexible(child: titleBlock)
+                          else
+                            ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxWidth: constraints.maxWidth * 0.6,
+                              ),
+                              child: titleBlock,
                             ),
-                          ),
+                          if (valueText != null) ...[
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Text(
+                                valueText,
+                                key: valueKey,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.end,
+                                style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(
+                                      fontWeight: emphasizeValue
+                                          ? FontWeight.w600
+                                          : FontWeight.w400,
+                                      color: emphasizeValue
+                                          ? cs.primary
+                                          : cs.onSurfaceVariant,
+                                    ),
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
                   ),
                   if (trailing != null) ...[
