@@ -108,13 +108,25 @@ void main() {
   test('enterForeground waits for an active claim to be released', () async {
     final claim = await gate.tryClaim();
     final entering = gate.enterForeground(
-      coldStart: true,
       waitForClaim: const Duration(seconds: 3),
     );
     await Future<void>.delayed(const Duration(milliseconds: 300));
     await gate.release(claim!);
     await entering;
     expect(await gate.isForegroundActive(), isTrue);
+  });
+
+  test('cold start does not wait for an active claim', () async {
+    final claim = await gate.tryClaim();
+    final started = DateTime.now();
+    await gate.enterForeground(
+      coldStart: true,
+      waitForClaim: const Duration(seconds: 5),
+    );
+    expect(DateTime.now().difference(started).inMilliseconds, lessThan(1000));
+    // 心跳已写入，后台据此让位。
+    expect(await gate.isForegroundActive(), isTrue);
+    expect(await gate.shouldYield(claim!), isTrue);
   });
 
   test(

@@ -179,7 +179,7 @@ class BackgroundSessionGate {
   /// 最后返回后台在前台缺席期间留下的会话变更（若有）。
   ///
   /// [coldStart] 为 true 时只建立基线（冷启动 CookieJar 本来就从磁盘读取），
-  /// 不返回历史变更。任何 IO 失败都吞掉并返回 null：门是尽力而为的协调，
+  /// 不返回历史变更，且**不等待**在途后台申领（不得拖慢首帧）。任何 IO 失败都吞掉并返回 null：门是尽力而为的协调，
   /// 不得阻断前台启动。
   Future<BackgroundSessionChange?> enterForeground({
     bool coldStart = false,
@@ -195,7 +195,9 @@ class BackgroundSessionGate {
         // 都清掉，12 小时限频形同虚设；只有后台恢复成功（release committed）
         // 才清，其余靠时间过期。
       });
-      final deadline = _now().add(waitForClaim);
+      // 冷启动不等待在途申领：心跳已落盘，后台每 2 秒复查即会让位；冷启动的
+      // CookieJar 本来就从磁盘读，也不需要对账。等待只服务于回到前台（resumed）。
+      final deadline = coldStart ? _now() : _now().add(waitForClaim);
       while (true) {
         final claimed = await _update(
           (state) => _claimOf(state, _now()) != null,
