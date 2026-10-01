@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_design_tokens.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/theme/glass_style_controller.dart';
+import '../../core/theme/surface_material.dart';
 import 'app_surface_style.dart';
 
 /// 分组列表页的左右留白，即 [AppSpacing.listGutter]（保留旧名兼容调用方）。
@@ -31,22 +32,19 @@ class PlainListGroup extends StatelessWidget {
     final style = GlassStyleController.instance;
     return ValueListenableBuilder<bool>(
       valueListenable: style.enabled,
-      builder: (context, glassEnabled, _) => ValueListenableBuilder<double>(
-        valueListenable: style.tintOpacity,
-        builder: (context, tintOpacity, _) => Material(
-          color: appSurfaceColor(
-            cs: cs,
-            isDark: isDark,
-            glassEnabled: glassEnabled,
-            tintAlpha: isDark ? tintOpacity * 0.86 : tintOpacity,
-          ),
-          shape: RoundedSuperellipseBorder(borderRadius: AppRadius.tileBorder),
-          clipBehavior: Clip.antiAlias,
-          child: Padding(
-            // 首尾行与卡片圆角之间留一点呼吸，行与行之间不再加任何东西。
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Column(mainAxisSize: MainAxisSize.min, children: children),
-          ),
+      builder: (context, glassEnabled, _) => Material(
+        color: appSurfaceColor(
+          cs: cs,
+          isDark: isDark,
+          glassEnabled: glassEnabled,
+          tintAlpha: isDark ? kSurfaceTintOpacity * 0.86 : kSurfaceTintOpacity,
+        ),
+        shape: RoundedSuperellipseBorder(borderRadius: AppRadius.tileBorder),
+        clipBehavior: Clip.antiAlias,
+        child: Padding(
+          // 首尾行与卡片圆角之间留一点呼吸，行与行之间不再加任何东西。
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Column(mainAxisSize: MainAxisSize.min, children: children),
         ),
       ),
     );

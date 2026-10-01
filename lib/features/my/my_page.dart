@@ -13,6 +13,7 @@ import '../../core/auth/zhengfang_auth.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/theme/app_design_tokens.dart';
 import '../../core/theme/widgets/app_wallpaper_backdrop.dart';
+import '../../shared/widgets/app_feedback.dart';
 import '../../shared/widgets/app_icon_badge.dart';
 import '../../shared/widgets/app_tile_surface.dart';
 import '../../shared/widgets/login_shell.dart';
@@ -225,26 +226,17 @@ class _MyPageState extends State<MyPage> {
     if (_logoutBusy) return;
     _logoutBusy = true;
     try {
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('退出登录'),
-          content: const Text('退出后，统一认证与教务都需要重新登录才能继续使用。'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('返回'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('退出登录'),
-            ),
-          ],
-        ),
+      final confirmed = await AppFeedback.confirm(
+        context,
+        title: '退出登录',
+        message: '退出后，统一认证与教务都需要重新登录才能继续使用。',
+        confirmLabel: '退出登录',
+        cancelLabel: '返回',
+        destructive: true,
       );
       // 一旦用户确认，四步效果与 mounted 无关地执行完毕：中途页面被销毁
       // 绝不允许留下「只撤销了一域」的半套登出。
-      if (confirmed != true) return;
+      if (!confirmed) return;
       await _finishLogout();
     } finally {
       _logoutBusy = false;
@@ -425,9 +417,8 @@ class _MyPageState extends State<MyPage> {
   /// 跳过新会话撤销也要说明。全部成功时不打扰（两行状态即真实反馈），并
   /// 清掉可能残留的旧失败提示，避免继续宣称「未完全完成」。
   void _showLogoutFeedback(_LogoutOutcome outcome) {
-    final messenger = ScaffoldMessenger.of(context);
     if (outcome.failures.isEmpty && outcome.preserved.isEmpty) {
-      messenger.hideCurrentSnackBar();
+      AppFeedback.dismiss(context);
       return;
     }
     final message = <String>[
@@ -435,16 +426,11 @@ class _MyPageState extends State<MyPage> {
         '退出登录未完全完成（${outcome.failures.join('、')}），可重试',
       if (outcome.preserved.isNotEmpty) '登出过程中有新的登录，已保留新会话',
     ].join('；');
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(message),
-        action: outcome.failures.isEmpty
-            ? null
-            : SnackBarAction(
-                label: '重试',
-                onPressed: () => unawaited(_retryLogout()),
-              ),
-      ),
+    AppFeedback.toast(
+      context,
+      message,
+      actionLabel: outcome.failures.isEmpty ? null : '重试',
+      onAction: () => unawaited(_retryLogout()),
     );
   }
 

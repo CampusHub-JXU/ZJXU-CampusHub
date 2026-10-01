@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/update/update_model.dart';
+import 'app_feedback.dart';
 import 'glass_dialog_route.dart';
 
 Future<void> showUpdateDialog(BuildContext context, AppRelease release) {
@@ -48,8 +49,7 @@ Future<void> showUpdateDialog(BuildContext context, AppRelease release) {
               if (!context.mounted) return;
               final uri = Uri.tryParse(release.launchUrl);
               if (uri == null) {
-                ScaffoldMessenger.maybeOf(context)
-                    ?.showSnackBar(const SnackBar(content: Text('更新链接无效')));
+                AppFeedback.toast(context, '更新链接无效');
                 return;
               }
               final launched = await launchUrl(
@@ -57,8 +57,7 @@ Future<void> showUpdateDialog(BuildContext context, AppRelease release) {
                 mode: LaunchMode.externalApplication,
               );
               if (!launched && context.mounted) {
-                ScaffoldMessenger.maybeOf(context)
-                    ?.showSnackBar(const SnackBar(content: Text('无法打开更新链接')));
+                AppFeedback.toast(context, '无法打开更新链接');
               }
             },
             child: Text(release.hasDownloadUrl ? '下载 APK' : '查看版本'),
