@@ -116,6 +116,10 @@ class AppLogger {
   static final RegExp _passwordPattern = RegExp(r'password=[^\s&;]+');
   static final RegExp _sessionIdPattern = RegExp(r'JSESSIONID=[^\s;]+');
   static final RegExp _ticketPattern = RegExp(r'ticket=[^\s&;]+');
+  static final RegExp _tokenIdPattern = RegExp(
+    r'tokenId=[^\s&;]+',
+    caseSensitive: false,
+  );
   static final RegExp _usernamePattern = RegExp(r'username=[^\s&;]+');
   static final RegExp _sysDatePattern = RegExp(r'sysDate=[^\s&;]+');
   static final RegExp _verifyPattern = RegExp(r'verify=[^\s&;]+');
@@ -406,6 +410,7 @@ class AppLogger {
     var result = input;
     result = result.replaceAll(_sessionIdPattern, 'JSESSIONID=[REDACTED]');
     result = result.replaceAll(_ticketPattern, 'ticket=[REDACTED]');
+    result = result.replaceAll(_tokenIdPattern, 'tokenId=[REDACTED]');
     result = result.replaceAll(_usernamePattern, 'username=[REDACTED]');
     result = result.replaceAll(_sysDatePattern, 'sysDate=[REDACTED]');
     result = result.replaceAll(_verifyPattern, 'verify=[REDACTED]');
