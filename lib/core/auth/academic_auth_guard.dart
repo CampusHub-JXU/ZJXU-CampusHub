@@ -138,6 +138,8 @@ class AcademicAuthGuard {
   /// [isAuthExpiredResponse] 识别。
   static bool isRouteMovedResponse<T>(Response<T>? response) {
     if (response == null) return false;
+    // 已知登录入口（含 WebVPN 代理的 `/https/<hex>/cas/login`）优先按过期处理。
+    if (isAuthExpiredResponse(response)) return false;
     final code = response.statusCode ?? 0;
     if (code < 300 || code >= 400) return false;
     final location = response.headers.value('location')?.trim() ?? '';

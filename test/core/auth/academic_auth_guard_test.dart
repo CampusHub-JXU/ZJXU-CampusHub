@@ -390,6 +390,10 @@ void main() {
         moved('https://jwzx.zjxu.edu.cn/x', 'https://webvpn.zjxu.edu.cn/login'),
         moved('https://jwzx.zjxu.edu.cn/x', '/jwglxt/xtgl/login_slogin.html'),
         moved('https://webvpn.zjxu.edu.cn/https/abc/x', webVpnResource),
+        moved(
+          'https://jwzx.zjxu.edu.cn/x',
+          'https://webvpn.zjxu.edu.cn/https/abc/cas/login?service=x',
+        ),
         Response<Object?>(
           requestOptions: RequestOptions(path: 'https://jwzx.zjxu.edu.cn/x'),
           statusCode: 200,
