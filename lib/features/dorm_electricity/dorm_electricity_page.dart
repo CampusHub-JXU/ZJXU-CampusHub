@@ -85,11 +85,7 @@ class _DormElectricityPageState extends State<DormElectricityPage> {
   /// 当前已验证的统一认证身份；未登录 / 空白账号视为账号 null（fail closed）。
   _AuthIdentity _currentIdentity() {
     final auth = UnifiedAuthService.instance;
-    final account = auth.isLoggedIn ? auth.currentAccount?.trim() : null;
-    return (
-      account: (account == null || account.isEmpty) ? null : account,
-      revision: auth.sessionRevision,
-    );
+    return (account: auth.verifiedAccount, revision: auth.sessionRevision);
   }
 
   /// 捕获一次加载 / 预警检查的身份与代际，并领取本次加载票据。

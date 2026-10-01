@@ -5,6 +5,7 @@ import android.app.DownloadManager
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import edu.zjxu.jxucampushub.platform.invalidArgs
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
 
@@ -23,7 +24,7 @@ class DownloadChannelHandler(private val activity: Activity) {
                     val url = call.argument<String>("url")
                     val fileName = call.argument<String>("fileName")
                     if (url.isNullOrBlank() || fileName.isNullOrBlank()) {
-                        result.error("invalid_args", "url and fileName are required", null)
+                        result.invalidArgs("url and fileName are required")
                         return@setMethodCallHandler
                     }
                     result.success(

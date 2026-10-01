@@ -1,6 +1,6 @@
 import 'schedule_model.dart';
 import 'schedule_change_rule.dart';
-import '../../core/semester/schedule_term_context.dart';
+import '../semester/schedule_term_context.dart';
 
 class ScheduleCacheSnapshot {
   const ScheduleCacheSnapshot({

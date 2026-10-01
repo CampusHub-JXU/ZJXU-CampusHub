@@ -15,30 +15,7 @@ import 'package:jxu_campus_hub/shared/widgets/unified_auth_protected_webview_pag
 import 'package:jxu_campus_hub/shared/widgets/webview_page.dart';
 
 import '../helpers/test_setup.dart';
-
-class _FakeInAppWebViewPlatform extends InAppWebViewPlatform {
-  @override
-  PlatformInAppWebViewWidget createPlatformInAppWebViewWidget(
-    PlatformInAppWebViewWidgetCreationParams params,
-  ) {
-    return _FakePlatformInAppWebViewWidget(params);
-  }
-}
-
-class _FakePlatformInAppWebViewWidget extends PlatformInAppWebViewWidget {
-  _FakePlatformInAppWebViewWidget(super.params) : super.implementation();
-
-  @override
-  Widget build(BuildContext context) => const SizedBox.expand();
-
-  @override
-  T controllerFromPlatform<T>(PlatformInAppWebViewController controller) {
-    throw UnimplementedError('Controller is not used by this test fake.');
-  }
-
-  @override
-  void dispose() {}
-}
+import '../helpers/fake_inappwebview.dart';
 
 Response<List<int>> _ok(String url) {
   return Response<List<int>>(
@@ -52,7 +29,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUpAll(() {
-    InAppWebViewPlatform.instance = _FakeInAppWebViewPlatform();
+    InAppWebViewPlatform.instance = FakeInAppWebViewPlatform();
   });
 
   late GoRouter router;

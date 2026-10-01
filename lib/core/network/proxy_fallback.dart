@@ -4,6 +4,7 @@ import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
 
 import '../logging/app_logger.dart';
+import 'cancel_token_x.dart';
 import 'cookie_interceptor.dart';
 import 'network_settings.dart';
 import 'proxy_mode.dart';
@@ -38,7 +39,7 @@ Future<Response<T>> sendWithSystemProxyFallback<T>({
   );
 
   Future<Response<T>> send(Dio client) async {
-    if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+    cancelToken.throwIfCancelled();
     final token = CancelToken();
     unawaited(cancelToken?.whenCancel.then((error) => token.cancel(error)));
     client.interceptors.add(capture);
@@ -55,7 +56,7 @@ Future<Response<T>> sendWithSystemProxyFallback<T>({
   try {
     return await send(primary);
   } catch (error) {
-    if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+    cancelToken.throwIfCancelled();
     final retryable = shouldRetryWithSystemProxyForError(
       error,
       ignoreSystemProxy: NetworkSettings.instance.ignoreSystemProxy.value,
@@ -80,6 +81,21 @@ Future<Response<T>> sendWithSystemProxyFallback<T>({
   }
 }
 
+/// 复制 [template] 的 BaseOptions 子集（baseUrl / 三类超时 / headers 副本 /
+/// followRedirects / validateStatus），供一次性或隔离 Dio 复用。
+BaseOptions cloneBaseOptions(Dio template) {
+  final baseOptions = template.options;
+  return BaseOptions(
+    baseUrl: baseOptions.baseUrl,
+    connectTimeout: baseOptions.connectTimeout,
+    receiveTimeout: baseOptions.receiveTimeout,
+    sendTimeout: baseOptions.sendTimeout,
+    headers: Map<String, dynamic>.from(baseOptions.headers),
+    followRedirects: baseOptions.followRedirects,
+    validateStatus: baseOptions.validateStatus,
+  );
+}
+
 /// 以 [template] 的 BaseOptions 构造走系统代理的一次性回退 Dio，cookie 读写
 /// [jar]。[adapterOverride] 仅供测试替换传输层。
 Dio createSystemProxyFallbackDio({
@@ -87,18 +103,7 @@ Dio createSystemProxyFallbackDio({
   required CookieJar jar,
   HttpClientAdapter? adapterOverride,
 }) {
-  final baseOptions = template.options;
-  final client = Dio(
-    BaseOptions(
-      baseUrl: baseOptions.baseUrl,
-      connectTimeout: baseOptions.connectTimeout,
-      receiveTimeout: baseOptions.receiveTimeout,
-      sendTimeout: baseOptions.sendTimeout,
-      headers: Map<String, dynamic>.from(baseOptions.headers),
-      followRedirects: baseOptions.followRedirects,
-      validateStatus: baseOptions.validateStatus,
-    ),
-  );
+  final client = Dio(cloneBaseOptions(template));
   client.interceptors.add(buildCookieInterceptor(jar));
   applyProxyModeToDio(client, ignoreSystemProxy: false);
   if (adapterOverride != null) {

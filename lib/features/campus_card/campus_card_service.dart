@@ -96,12 +96,7 @@ class CampusCardService {
   Epay100Gateway get _gateway => debugGateway ?? Epay100Gateway.instance;
 
   /// 必须已登录且账号非空；否则视为没有明确 CAS owner。
-  String? get _currentAccount {
-    final auth = UnifiedAuthService.instance;
-    if (!auth.isLoggedIn) return null;
-    final account = auth.currentAccount?.trim();
-    return (account == null || account.isEmpty) ? null : account;
-  }
+  String? get _currentAccount => UnifiedAuthService.instance.verifiedAccount;
 
   /// 统一认证 identity 发生变化时 notify：清内存缓存，并**前推本地
   /// generation**作废所有在途请求——同账号重登时 `sessionRevision` 可能不增，

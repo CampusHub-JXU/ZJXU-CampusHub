@@ -116,18 +116,12 @@ class DormElectricityService {
   String? _lastAuthOwner;
 
   /// 当前已验证的统一认证 owner；未登录 / 空白账号一律 null（fail closed）。
-  static String? _verifiedOwnerOf(UnifiedAuthService auth) {
-    if (!auth.isLoggedIn) return null;
-    final account = auth.currentAccount?.trim();
-    return (account == null || account.isEmpty) ? null : account;
-  }
-
-  String? get _currentOwner => _verifiedOwnerOf(UnifiedAuthService.instance);
+  String? get _currentOwner => UnifiedAuthService.instance.verifiedAccount;
 
   /// 捕获的 owner + sessionRevision 是否仍是当前身份（每个 await 边界复核）。
   bool _isCurrentIdentity(String owner, int revision) {
     final auth = UnifiedAuthService.instance;
-    return _verifiedOwnerOf(auth) == owner && auth.sessionRevision == revision;
+    return auth.verifiedAccount == owner && auth.sessionRevision == revision;
   }
 
   /// 同一 isolate 内私有 prefs 变更的串行队列与受守卫写入（zone 安全，

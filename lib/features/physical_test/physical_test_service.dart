@@ -140,35 +140,27 @@ class PhysicalTestService {
     targetUrl: _siteHomeUrl,
   );
 
-  /// 业务 bounce 后唯一一次恢复：重验 CAS service（含 WebVPN 网关）后重试。
-  /// 明确失败抛 [CasAuthExpiredException]，但绝不调用 `markLoggedOut`。
-  Future<void> _recoverSession(_SessionGuard guard, CasRoute route) async {
-    await CasRoutedAccess.recover(route, service: CasService.physicalTest);
-    _ensureGuard(guard);
-  }
-
-  /// 有界认证重试：第一次命中登录页/登录跳转时恢复会话并重试一次；
-  /// 仍然 bounce 则抛 [CasAuthExpiredException]。
+  /// 有界认证重试：第一次命中登录页/登录跳转时恢复会话（重验 CAS service，含
+  /// WebVPN 网关，绝不 `markLoggedOut`）并重试一次；仍然 bounce 则抛
+  /// [CasAuthExpiredException]。
   Future<Response<List<int>>> _withBoundedAuthRetry({
     required _SessionGuard guard,
     required CasRoute route,
     required Future<Response<List<int>>> Function() send,
-  }) async {
-    Future<Response<List<int>>> attempt() async {
-      final response = await send();
-      if (_looksLikeAuthBounce(response)) {
-        throw const CasAuthExpiredException();
-      }
-      return response;
-    }
-
-    try {
-      return await attempt();
-    } on CasAuthExpiredException {
-      _ensureGuard(guard);
-      await _recoverSession(guard, route);
-      return attempt();
-    }
+  }) {
+    return CasRoutedAccess.withRecoverOnce(
+      route: route,
+      service: CasService.physicalTest,
+      attempt: () async {
+        final response = await send();
+        if (_looksLikeAuthBounce(response)) {
+          throw const CasAuthExpiredException();
+        }
+        return response;
+      },
+      beforeRecover: () => _ensureGuard(guard),
+      afterRecover: () => _ensureGuard(guard),
+    );
   }
 
   Future<PhysicalTestIdentity> _fetchIdentity(

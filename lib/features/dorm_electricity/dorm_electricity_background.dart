@@ -53,13 +53,6 @@ String _formatElectricity(double value) {
   return value.toStringAsFixed(2);
 }
 
-/// 当前已验证的统一认证账号；未登录 / 空白账号一律 null（fail closed）。
-String? _verifiedOwnerOf(UnifiedAuthService auth) {
-  if (!auth.isLoggedIn) return null;
-  final account = auth.currentAccount?.trim();
-  return (account == null || account.isEmpty) ? null : account;
-}
-
 /// 捕获的 owner + sessionRevision + prefs owner 标记是否仍一致。
 bool _ownerStillCurrent({
   required String owner,
@@ -67,7 +60,7 @@ bool _ownerStillCurrent({
   required SharedPreferences prefs,
 }) {
   final auth = UnifiedAuthService.instance;
-  return _verifiedOwnerOf(auth) == owner &&
+  return auth.verifiedAccount == owner &&
       auth.sessionRevision == revision &&
       prefs.getString(_keyRoomOwner) == owner;
 }
@@ -444,7 +437,7 @@ class DormElectricityBackground {
       // 后台 isolate 可能刚写过设置：按磁盘最新值判定。
       await prefs.reload();
 
-      final owner = _verifiedOwnerOf(auth);
+      final owner = auth.verifiedAccount;
       final revision = auth.sessionRevision;
       final stamp = _AuthIdentityStamp(owner: owner, revision: revision);
       if (stamp == _lastAppliedIdentityStamp) return;
@@ -492,7 +485,7 @@ class DormElectricityBackground {
   Future<void> _revertStaleArtifacts({required SharedPreferences prefs}) async {
     await _cancelScheduledArtifacts();
     final auth = UnifiedAuthService.instance;
-    final latestOwner = _verifiedOwnerOf(auth);
+    final latestOwner = auth.verifiedAccount;
     final latestRevision = auth.sessionRevision;
     final latestEligible =
         latestOwner != null &&
@@ -515,7 +508,7 @@ class DormElectricityBackground {
   Future<void> _applyExplicitState() async {
     final prefs = await SharedPreferences.getInstance();
     final auth = UnifiedAuthService.instance;
-    final owner = _verifiedOwnerOf(auth);
+    final owner = auth.verifiedAccount;
     final revision = auth.sessionRevision;
     final alertEnabled = prefs.getBool(_keyAlertEnabled) ?? false;
     if (!alertEnabled ||
@@ -559,7 +552,7 @@ class DormElectricityBackground {
     return _effects.enqueue(() async {
       try {
         final auth = UnifiedAuthService.instance;
-        final owner = _verifiedOwnerOf(auth);
+        final owner = auth.verifiedAccount;
         final revision = auth.sessionRevision;
         if (owner == null) return;
         final prefs = await SharedPreferences.getInstance();
@@ -594,7 +587,7 @@ class DormElectricityBackground {
   /// 以免在登出持久撤销竞态中复活旧身份。
   Future<String?> _resolveVerifiedOwner() async {
     final auth = UnifiedAuthService.instance;
-    final current = _verifiedOwnerOf(auth);
+    final current = auth.verifiedAccount;
     if (current != null) return current;
     try {
       await auth.restoreSession(syncWebViewCookies: false);
@@ -606,7 +599,7 @@ class DormElectricityBackground {
       );
       return null;
     }
-    return _verifiedOwnerOf(auth);
+    return auth.verifiedAccount;
   }
 
   /// 后台检查入口，由 app 层 dispatcher 在 WorkManager isolate 中调用。
@@ -708,7 +701,7 @@ class DormElectricityBackground {
   Future<void> foregroundCheck() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final owner = _verifiedOwnerOf(UnifiedAuthService.instance);
+      final owner = UnifiedAuthService.instance.verifiedAccount;
       if (owner == null) return;
       final revision = UnifiedAuthService.instance.sessionRevision;
       if (prefs.getString(_keyRoomOwner) != owner) return;

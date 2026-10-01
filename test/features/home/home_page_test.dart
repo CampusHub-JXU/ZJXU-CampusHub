@@ -33,8 +33,8 @@ import 'package:jxu_campus_hub/features/home/models/home_presentation.dart';
 import 'package:jxu_campus_hub/core/theme/widgets/home_ambient_background.dart';
 import 'package:jxu_campus_hub/features/home/widgets/home_asset_strip.dart';
 import 'package:jxu_campus_hub/features/home/widgets/home_event_banner.dart';
-import 'package:jxu_campus_hub/features/schedule/schedule_cache_snapshot.dart';
-import 'package:jxu_campus_hub/features/schedule/schedule_model.dart';
+import 'package:jxu_campus_hub/core/academic/schedule_cache_snapshot.dart';
+import 'package:jxu_campus_hub/core/academic/schedule_model.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';
 import 'package:jxu_campus_hub/core/semester/schedule_term_context.dart';
 

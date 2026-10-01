@@ -1,10 +1,10 @@
 import '../../core/auth/zhengfang_auth.dart';
 import '../campus_card/campus_card_service.dart';
 import '../dorm_electricity/dorm_electricity_service.dart';
-import '../exam/exam_model.dart';
+import '../../core/academic/exam_model.dart';
 import '../exam/exam_service.dart';
 import '../grades/grades_service.dart';
-import '../schedule/schedule_cache_snapshot.dart';
+import '../../core/academic/schedule_cache_snapshot.dart';
 import '../schedule/schedule_service.dart';
 
 /// Home 首屏恢复数据（快照协调器的输出之一）。

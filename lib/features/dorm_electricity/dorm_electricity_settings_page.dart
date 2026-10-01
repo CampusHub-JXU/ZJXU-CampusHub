@@ -117,8 +117,7 @@ class _DormElectricitySettingsPageState
   ];
 
   /// 当前已验证的统一认证身份；未登录一律 null（空账号不算身份）。
-  static String? _identityOf(UnifiedAuthService auth) =>
-      auth.isLoggedIn ? auth.currentAccount?.trim() : null;
+  static String? _identityOf(UnifiedAuthService auth) => auth.verifiedAccount;
 
   /// 逐 await 复核（fail closed）：捕获的 owner + sessionRevision 必须同时
   /// 匹配「绑定身份」与**实时**统一认证身份（账号 + sessionRevision），且

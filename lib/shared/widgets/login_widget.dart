@@ -12,6 +12,7 @@ import '../../core/auth/captcha_challenge.dart';
 import '../../core/auth/credential_store.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/logging/app_logger.dart';
+import '../../core/network/cancel_token_x.dart';
 import '../../core/theme/app_design_tokens.dart';
 import 'unified_auth_login_widget.dart';
 
@@ -338,7 +339,7 @@ class _LoginWidgetState extends State<LoginWidget> {
       final challengeResult =
           await Future.any<({Uint8List bytes, String id})>([
             (() async {
-              if (token.isCancelled) throw token.cancelError!;
+              token.throwIfCancelled();
               if (widget.challengeLoader != null) {
                 final ch = await widget.challengeLoader!(cancelToken: token);
                 if (!mounted ||

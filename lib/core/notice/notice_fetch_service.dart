@@ -7,6 +7,7 @@ import 'package:html/parser.dart' as html_parser;
 
 import '../auth/cas_auth_broker.dart';
 import '../logging/app_logger.dart';
+import 'jwc_html_fetch.dart';
 import 'notice_model.dart';
 
 const _jwcNoticeBaseUrl = 'https://jwc.zjxu.edu.cn/';
@@ -139,20 +140,22 @@ class NoticeService {
     CancelToken? cancelToken,
     DateTime? deadline,
   }) async {
-    try {
-      final url = _buildNoticePageUrl(page);
-      final resp = await CasAuthBroker.getResource(
-        url,
-        dio: _noticeDio,
-        cancelToken: cancelToken,
-        deadline: deadline,
-      );
-      final data = resp.data;
-      if (data == null || data.isEmpty) {
-        return const NoticeFetchResult.unavailable();
-      }
+    final result = await fetchJwcHtml(
+      _buildNoticePageUrl(page),
+      failureLabel: '通知公告抓取失败: page=$page',
+      dio: _noticeDio,
+      cancelToken: cancelToken,
+      deadline: deadline,
+    );
+    return switch (result) {
+      JwcHtmlAuthRequired() => const NoticeFetchResult.authRequired(),
+      JwcHtmlUnavailable() => const NoticeFetchResult.unavailable(),
+      JwcHtmlOk(:final html) => _parseListPage(html, page),
+    };
+  }
 
-      final html = utf8.decode(data, allowMalformed: true);
+  NoticeFetchResult _parseListPage(String html, int page) {
+    try {
       final doc = html_parser.parse(html);
       if (doc.querySelector('#ul1') == null) {
         // 回退链路已过滤登录页；列表结构缺失视为改版/异常页，不可信。
@@ -174,8 +177,6 @@ class NoticeService {
         '通知公告第 $page 页抓取成功，共 ${notices.length} 条',
       );
       return NoticeFetchResult.ok(notices, totalPages: totalPages);
-    } on CasAuthExpiredException {
-      return const NoticeFetchResult.authRequired();
     } catch (error, stackTrace) {
       AppLogger.instance.network(
         LogLevel.warn,

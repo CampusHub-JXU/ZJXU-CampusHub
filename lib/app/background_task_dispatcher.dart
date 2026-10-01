@@ -9,6 +9,7 @@ import 'dart:ui';
 
 import 'package:workmanager/workmanager.dart';
 
+import '../core/async/run_isolated.dart';
 import '../core/logging/app_logger.dart';
 import '../core/notice/notice_sync_service.dart';
 import '../core/notice/notice_sync_store.dart';
@@ -37,19 +38,13 @@ void appBackgroundTaskDispatcher() {
 
 /// 单项后台任务异常隔离：捕获并记录后继续，绝不让单个任务失败中断
 /// 同批次其它任务的注册 / 检查。
-Future<void> _runIsolated(String label, Future<void> Function() action) async {
-  try {
-    await action();
-  } catch (error, stackTrace) {
-    AppLogger.instance.log(
-      LogLevel.warn,
-      LogCategory.bootstrap,
-      '后台任务「$label」失败，已隔离继续',
-      error: error,
-      stackTrace: stackTrace,
+Future<void> _runIsolated(String label, Future<void> Function() action) =>
+    runIsolated(
+      label,
+      action,
+      category: LogCategory.bootstrap,
+      message: (label) => '后台任务「$label」失败，已隔离继续',
     );
-  }
-}
 
 /// 初始化 WorkManager 并注册各 feature 周期任务。
 ///

@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 
 import '../logging/app_logger.dart';
+import '../platform/safe_invoke.dart';
 
 /// 系统设置页跳转目标（固定契约，设置页 / 权限引导共用）。
 enum SystemSettingsTarget {
@@ -46,23 +47,17 @@ class SystemSettingsLauncher {
 
   /// 打开 [target] 对应的系统设置页。
   Future<SystemSettingsOpenResult> open(SystemSettingsTarget target) async {
-    try {
-      final result = await _channel.invokeMethod<String>(
-        'open',
-        <String, Object?>{'target': target.name},
-      );
-      return _fromPlatformValue(result);
-    } on MissingPluginException {
-      return SystemSettingsOpenResult.unavailable;
-    } on PlatformException catch (error) {
-      AppLogger.instance.warn(
-        '打开系统设置页失败（${target.name}）：${error.message ?? error.code}',
-      );
-      return SystemSettingsOpenResult.unavailable;
-    } catch (error) {
-      AppLogger.instance.warn('打开系统设置页异常（${target.name}）：$error');
-      return SystemSettingsOpenResult.unavailable;
-    }
+    return safeInvoke<String, SystemSettingsOpenResult>(
+      _channel,
+      'open',
+      arguments: <String, Object?>{'target': target.name},
+      map: _fromPlatformValue,
+      missing: SystemSettingsOpenResult.unavailable,
+      failed: SystemSettingsOpenResult.unavailable,
+      label: '打开系统设置页（${target.name}）',
+      level: LogLevel.warn,
+      category: LogCategory.general,
+    );
   }
 
   static SystemSettingsOpenResult _fromPlatformValue(String? value) {

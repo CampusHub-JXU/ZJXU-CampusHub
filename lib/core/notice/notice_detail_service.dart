@@ -1,11 +1,9 @@
-import 'dart:convert';
-
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
-import '../auth/cas_auth_broker.dart';
 import '../logging/app_logger.dart';
 import '../network/dio_client.dart';
+import 'jwc_html_fetch.dart';
 import 'notice_detail.dart';
 
 /// 详情抓取结果。
@@ -43,44 +41,40 @@ class NoticeDetailService {
 
   static final NoticeDetailService instance = NoticeDetailService._();
 
-  static const Duration _budget = Duration(seconds: 20);
-
   Dio? _dio;
 
   Future<NoticeDetailResult> fetch(
     String url, {
     CancelToken? cancelToken,
   }) async {
-    try {
-      final resp = await CasAuthBroker.getResource(
-        url,
-        dio: _dio,
-        cancelToken: cancelToken,
-        timeout: _budget,
-      );
-      final data = resp.data;
-      if (data == null || data.isEmpty) {
+    final result = await fetchJwcHtml(
+      url,
+      failureLabel: '教务处公告详情抓取失败',
+      dio: _dio,
+      cancelToken: cancelToken,
+    );
+    switch (result) {
+      case JwcHtmlAuthRequired():
+        return const NoticeDetailAuthRequired();
+      case JwcHtmlUnavailable():
         return const NoticeDetailUnavailable(structureMismatch: false);
-      }
-      final detail = parseNoticeDetailHtml(
-        utf8.decode(data, allowMalformed: true),
-        pageUrl: url,
-      );
-      if (detail == null) {
-        AppLogger.instance.network(LogLevel.warn, '教务处公告详情结构无法识别，回退原网页');
-        return const NoticeDetailUnavailable(structureMismatch: true);
-      }
-      return NoticeDetailLoaded(detail);
-    } on CasAuthExpiredException {
-      return const NoticeDetailAuthRequired();
-    } catch (error, stackTrace) {
-      AppLogger.instance.network(
-        LogLevel.warn,
-        '教务处公告详情抓取失败',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      return const NoticeDetailUnavailable(structureMismatch: false);
+      case JwcHtmlOk(:final html):
+        try {
+          final detail = parseNoticeDetailHtml(html, pageUrl: url);
+          if (detail == null) {
+            AppLogger.instance.network(LogLevel.warn, '教务处公告详情结构无法识别，回退原网页');
+            return const NoticeDetailUnavailable(structureMismatch: true);
+          }
+          return NoticeDetailLoaded(detail);
+        } catch (error, stackTrace) {
+          AppLogger.instance.network(
+            LogLevel.warn,
+            '教务处公告详情抓取失败',
+            error: error,
+            stackTrace: stackTrace,
+          );
+          return const NoticeDetailUnavailable(structureMismatch: false);
+        }
     }
   }
 

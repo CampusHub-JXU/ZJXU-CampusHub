@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:jxu_campus_hub/core/config/feature_entry_catalog.dart';
 import 'package:jxu_campus_hub/features/home/function_zone/function_zone_section.dart';
-import 'package:jxu_campus_hub/features/service_hub/service_hub_usage_store.dart';
+import 'package:jxu_campus_hub/core/config/service_hub_usage_store.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_icon_badge.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_tile_surface.dart';
 

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../../../core/async/debouncer.dart';
 import '../../../core/auth/unified_auth.dart';
 import '../../../core/auth/zhengfang_auth.dart';
 import '../../../core/notice/notice_sync_store.dart';
@@ -18,9 +19,7 @@ class CampusWidgetSync {
 
   static final CampusWidgetSync instance = CampusWidgetSync._();
 
-  Duration _debounce = const Duration(milliseconds: 800);
-
-  Timer? _timer;
+  final Debouncer _debouncer = Debouncer(const Duration(milliseconds: 800));
   bool _started = false;
 
   /// 订阅影响模块数据的全局状态，变化时 debounce 同步（PRD §14）。
@@ -48,17 +47,16 @@ class CampusWidgetSync {
   /// debounce 归零时（测试环境）直接同步，不创建 Timer，避免测试结束后
   /// 仍有 pending timer 触发 binding 断言。
   void requestSync() {
-    _timer?.cancel();
-    _timer = null;
-    if (_debounce == Duration.zero) {
+    _debouncer.cancel();
+    if (_debouncer.delay == Duration.zero) {
       unawaited(_sync());
       return;
     }
-    _timer = Timer(_debounce, () => unawaited(_sync()));
+    _debouncer.run(() => unawaited(_sync()));
   }
 
   /// 测试用：调整 debounce 窗口（`Duration.zero` 走同步路径）。
-  void debugSetDebounce(Duration value) => _debounce = value;
+  void debugSetDebounce(Duration value) => _debouncer.delay = value;
 
   /// 立即同步（测试/关键路径用）。
   Future<void> syncNow() => _sync();
@@ -73,7 +71,6 @@ class CampusWidgetSync {
   }
 
   void debugReset() {
-    _timer?.cancel();
-    _timer = null;
+    _debouncer.cancel();
   }
 }

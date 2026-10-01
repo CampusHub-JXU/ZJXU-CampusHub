@@ -18,6 +18,7 @@ import 'package:jxu_campus_hub/shared/widgets/unified_auth_protected_webview_pag
 import 'package:jxu_campus_hub/shared/widgets/webview_page.dart';
 
 import '../../helpers/test_setup.dart';
+import '../../helpers/fake_inappwebview.dart';
 
 /// prepare 现在返回 WebVPN 代理后的站点根（ssoFromDingDing 只当 CAS
 /// service，不再是 WebView 入口）。
@@ -28,107 +29,6 @@ String get _proxiedSiteRoot =>
 String get _proxiedSsoEntry => ZhengfangAuth.instance.buildWebVpnProxyUrl(
   CasService.librarySso.serviceUrl,
 );
-
-class _FakeInAppWebViewPlatform extends InAppWebViewPlatform {
-  @override
-  PlatformInAppWebViewWidget createPlatformInAppWebViewWidget(
-    PlatformInAppWebViewWidgetCreationParams params,
-  ) {
-    return _FakePlatformInAppWebViewWidget(params);
-  }
-
-  @override
-  PlatformInAppWebViewController createPlatformInAppWebViewController(
-    PlatformInAppWebViewControllerCreationParams params,
-  ) {
-    return _FakePlatformInAppWebViewController(params);
-  }
-
-  @override
-  PlatformCookieManager createPlatformCookieManager(
-    PlatformCookieManagerCreationParams params,
-  ) {
-    return _FakePlatformCookieManager(params);
-  }
-}
-
-class _FakePlatformInAppWebViewController
-    extends PlatformInAppWebViewController {
-  _FakePlatformInAppWebViewController(super.params) : super.implementation();
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-}
-
-class _FakePlatformInAppWebViewWidget extends PlatformInAppWebViewWidget {
-  _FakePlatformInAppWebViewWidget(super.params) : super.implementation();
-
-  @override
-  Widget build(BuildContext context) => const SizedBox.expand();
-
-  @override
-  T controllerFromPlatform<T>(PlatformInAppWebViewController controller) {
-    throw UnimplementedError('Controller is not used by this test fake.');
-  }
-
-  @override
-  void dispose() {}
-}
-
-class _FakePlatformCookieManager extends PlatformCookieManager {
-  _FakePlatformCookieManager(super.params) : super.implementation();
-
-  final Map<String, Cookie> _cookies = {};
-
-  @override
-  Future<bool> setCookie({
-    required WebUri url,
-    required String name,
-    required String value,
-    String path = '/',
-    String? domain,
-    int? expiresDate,
-    int? maxAge,
-    bool? isSecure,
-    bool? isHttpOnly,
-    HTTPCookieSameSitePolicy? sameSite,
-    @Deprecated('Use webViewController instead')
-    PlatformInAppWebViewController? iosBelow11WebViewController,
-    PlatformInAppWebViewController? webViewController,
-  }) async {
-    _cookies['${url.host}|${domain ?? ''}|$path|$name'] = Cookie(
-      name: name,
-      value: value,
-      domain: domain,
-      path: path,
-    );
-    return true;
-  }
-
-  @override
-  Future<List<Cookie>> getCookies({
-    required WebUri url,
-    @Deprecated('Use webViewController instead')
-    PlatformInAppWebViewController? iosBelow11WebViewController,
-    PlatformInAppWebViewController? webViewController,
-  }) async {
-    return _cookies.values.toList(growable: false);
-  }
-
-  @override
-  Future<bool> deleteCookie({
-    required WebUri url,
-    required String name,
-    String path = '/',
-    String? domain,
-    @Deprecated('Use webViewController instead')
-    PlatformInAppWebViewController? iosBelow11WebViewController,
-    PlatformInAppWebViewController? webViewController,
-  }) async {
-    _cookies.remove('${url.host}|${domain ?? ''}|$path|$name');
-    return true;
-  }
-}
 
 /// 网关登录页请求探针：把 `realUri` 改写成非登录路径，模拟已认证门户。
 class _WebVpnPortalAdapter implements HttpClientAdapter {
@@ -153,16 +53,8 @@ class _WebVpnPortalAdapter implements HttpClientAdapter {
 }
 
 /// 读取当前 WebViewPage 实际绑定到平台层的导航回调。
-PlatformInAppWebViewWidgetCreationParams _boundParams(WidgetTester tester) {
-  final webView = tester.widget<InAppWebView>(find.byType(InAppWebView));
-  final platform = webView.platform;
-  expect(
-    platform,
-    isA<_FakePlatformInAppWebViewWidget>(),
-    reason: '测试必须运行在 fake InAppWebView 平台上',
-  );
-  return (platform as _FakePlatformInAppWebViewWidget).params;
-}
+PlatformInAppWebViewWidgetCreationParams _boundParams(WidgetTester tester) =>
+    boundInAppWebViewParams(tester);
 
 InAppWebViewController _testController() {
   return InAppWebViewController.fromPlatformCreationParams(
@@ -197,7 +89,10 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUpAll(() {
-    InAppWebViewPlatform.instance = _FakeInAppWebViewPlatform();
+    InAppWebViewPlatform.instance = FakeInAppWebViewPlatform(
+      cookieMode: FakeCookieManagerMode.inMemory,
+      withController: true,
+    );
   });
 
   setUp(() {

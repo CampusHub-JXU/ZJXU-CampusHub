@@ -1,5 +1,5 @@
 import 'schedule_model.dart';
-import '../../core/semester/schedule_term_context.dart';
+import '../semester/schedule_term_context.dart';
 
 /// 缓存 JSON 里的毫秒时间戳（int 或数字字符串）→ [DateTime]；无法解析返回 null。
 DateTime? dateFromEpochMillis(Object? value) {
@@ -94,7 +94,7 @@ class CourseChangeRule {
     final ruleCourseName = courseName?.trim() ?? '';
     if (ruleCourseName.isEmpty) return true;
 
-    return _matchesCourseName(course.courseName, ruleCourseName);
+    return matchesCourseName(course.courseName, ruleCourseName);
   }
 
   bool addsCourseToWeek(int week) => targetLesson?.week == week;
@@ -214,7 +214,7 @@ String normalizeCourseName(String value) {
   );
 }
 
-bool _matchesCourseName(String left, String right) {
+bool matchesCourseName(String left, String right) {
   final a = normalizeCourseName(left);
   final b = normalizeCourseName(right);
   if (a.isEmpty || b.isEmpty) return false;

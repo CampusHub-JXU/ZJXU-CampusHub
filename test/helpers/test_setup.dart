@@ -28,7 +28,7 @@ import 'package:jxu_campus_hub/core/epay100/epay100_gateway.dart';
 import 'package:jxu_campus_hub/features/exam/exam_service.dart';
 import 'package:jxu_campus_hub/features/grades/grades_service.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';
-import 'package:jxu_campus_hub/features/service_hub/service_hub_usage_store.dart';
+import 'package:jxu_campus_hub/core/config/service_hub_usage_store.dart';
 import 'package:jxu_campus_hub/features/home/widget/campus_widget_sync.dart';
 
 Future<void> resetTestEnvironment() async {

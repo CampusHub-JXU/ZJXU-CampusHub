@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../captcha/captcha_recognizer.dart';
 import '../logging/app_logger.dart';
+import '../network/cancel_token_x.dart';
 import 'auth_failure.dart';
 import 'auth_operation_coordinator.dart';
 import 'auth_recovery_state_store.dart';
@@ -248,7 +249,7 @@ class AutomaticLoginService {
   }) async {
     try {
       final credentials = await _loadCredentials(domain);
-      if (cancelToken.isCancelled) throw cancelToken.cancelError!;
+      cancelToken.throwIfCancelled();
       if (credentials == null) {
         return const AutomaticLoginAttemptResult(
           outcome: AutomaticLoginOutcome.notEligible,
@@ -340,7 +341,7 @@ class AutomaticLoginService {
         final mode = await ConnectModeResolver.instance.resolve(
           targetUrl: ZhengfangAuth.directAcademicServiceUrl,
         );
-        if (token.isCancelled) throw token.cancelError!;
+        token.throwIfCancelled();
         if (mode == null) {
           return const _AutomaticExchangeResult(
             failureKind: AuthFailureKind.networkUnavailable,
@@ -358,7 +359,7 @@ class AutomaticLoginService {
               expectedAccount: UnifiedAuthService.instance.currentAccount,
               cancelToken: token,
             );
-            if (token.isCancelled) throw token.cancelError!;
+            token.throwIfCancelled();
             ready = await auth.ensureWebVpnGatewaySession(
               syncWebViewCookies: false,
             );

@@ -83,7 +83,7 @@ class _GradesPageState extends State<GradesPage>
     _searchController.addListener(_onSearchChanged);
     final auth = ZhengfangAuth.instance;
     _loggedIn = auth.isLoggedIn;
-    _identityOwner = _loggedIn ? _normalizeOwner(auth.currentStudentId) : null;
+    _identityOwner = auth.verifiedStudentId;
     _identityRevision = auth.sessionRevision;
     auth.addListener(_handleAuthChanged);
 
@@ -131,12 +131,6 @@ class _GradesPageState extends State<GradesPage>
     setState(() => _query = nextQuery);
   }
 
-  String? _normalizeOwner(String? raw) {
-    final trimmed = raw?.trim();
-    if (trimmed == null || trimmed.isEmpty) return null;
-    return trimmed;
-  }
-
   /// 清空与具体账号绑定的页面状态：成绩、学期选择、搜索词与入场动画。
   ///
   /// 仅在身份归属发生变化时调用；同账号刷新失败仍保留既有数据。
@@ -165,16 +159,14 @@ class _GradesPageState extends State<GradesPage>
         _identityRevision == revision &&
         auth.isLoggedIn &&
         auth.sessionRevision == revision &&
-        _normalizeOwner(auth.currentStudentId) == owner;
+        auth.verifiedStudentId == owner;
   }
 
   void _handleAuthChanged() {
     if (!mounted) return;
     final auth = ZhengfangAuth.instance;
     final nextLoggedIn = auth.isLoggedIn;
-    final nextOwner = nextLoggedIn
-        ? _normalizeOwner(auth.currentStudentId)
-        : null;
+    final nextOwner = auth.verifiedStudentId;
     final nextRevision = auth.sessionRevision;
     final loginChanged = nextLoggedIn != _loggedIn;
     final ownerChanged = nextOwner != _identityOwner;
@@ -238,7 +230,7 @@ class _GradesPageState extends State<GradesPage>
 
   Future<void> _fetchGrades({bool forceRefresh = false}) async {
     final auth = ZhengfangAuth.instance;
-    final owner = _normalizeOwner(auth.currentStudentId);
+    final owner = auth.verifiedStudentId;
     if (!auth.isLoggedIn || owner == null || owner != _identityOwner) {
       // 身份未就绪或已被切换：不发起请求，等身份同步完成后再刷新。
       return;
@@ -298,9 +290,7 @@ class _GradesPageState extends State<GradesPage>
 
   void _onLoginSuccess() {
     final auth = ZhengfangAuth.instance;
-    final owner = auth.isLoggedIn
-        ? _normalizeOwner(auth.currentStudentId)
-        : null;
+    final owner = auth.verifiedStudentId;
     if (owner == null) {
       // 登录模态声称成功但身份不完整：按通用身份同步处理，不伪造已登录。
       _handleAuthChanged();

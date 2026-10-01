@@ -32,10 +32,3 @@ bool _looksLikeLoginExpired(String text) {
       value.contains('请先登录') ||
       value.contains('重新登录');
 }
-
-bool _matchesCourseName(String left, String right) {
-  final a = normalizeCourseName(left);
-  final b = normalizeCourseName(right);
-  if (a.isEmpty || b.isEmpty) return false;
-  return a.contains(b) || b.contains(a);
-}

@@ -50,7 +50,7 @@ extension ZhengfangAuthDirectExtension on ZhengfangAuth {
       );
     }
     // 兼容路径：只引用当前 challenge，绝不重新初始化上下文。
-    if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+    cancelToken.throwIfCancelled();
     final revisionAtStart = _sessionRevision;
     final attempt = _captchaChallenges.consumeCurrent(
       accountRevision: revisionAtStart,
@@ -80,6 +80,13 @@ extension ZhengfangAuthDirectExtension on ZhengfangAuth {
   /// 不证明身份，因此无学生号不算已登录（与统一认证一致）。
   bool get isLoggedIn =>
       _sessionActive && (currentStudentId?.trim().isNotEmpty ?? false);
+
+  /// 当前已验证的正方学生号（trim 后）；未登录 / 空白学生号一律 null（fail closed）。
+  String? get verifiedStudentId {
+    if (!isLoggedIn) return null;
+    final id = currentStudentId?.trim();
+    return (id == null || id.isEmpty) ? null : id;
+  }
 
   bool get isWebVpnLoggedIn => _webVpnSessionActive;
 

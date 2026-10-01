@@ -54,18 +54,7 @@ class IsolatedAuthSession {
       }
     }
 
-    final baseOptions = template.options;
-    final dio = Dio(
-      BaseOptions(
-        baseUrl: baseOptions.baseUrl,
-        connectTimeout: baseOptions.connectTimeout,
-        receiveTimeout: baseOptions.receiveTimeout,
-        sendTimeout: baseOptions.sendTimeout,
-        headers: Map<String, dynamic>.from(baseOptions.headers),
-        followRedirects: baseOptions.followRedirects,
-        validateStatus: baseOptions.validateStatus,
-      ),
-    );
+    final dio = Dio(cloneBaseOptions(template));
     dio.interceptors.add(buildCookieInterceptor(jar));
     // 冻结 adapter：复用 template 当前 adapter，不因后续代理模式切换而变。
     // 共享引用，禁止对本 Dio 调用 close(force:true)（会关闭共享 adapter）。

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../schedule_constants.dart';
-import '../schedule_model.dart';
+import '../../../core/academic/schedule_constants.dart';
+import '../../../core/academic/schedule_model.dart';
 
 class ScheduleSlotColumn extends StatelessWidget {
   const ScheduleSlotColumn({super.key, required this.slotColumnWidth});

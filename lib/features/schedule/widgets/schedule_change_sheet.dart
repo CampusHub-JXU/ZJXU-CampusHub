@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../schedule_change_rule.dart';
-import '../schedule_constants.dart';
+import '../../../core/academic/schedule_change_rule.dart';
+import '../../../core/academic/schedule_constants.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../shared/widgets/app_status_tag.dart';
 
