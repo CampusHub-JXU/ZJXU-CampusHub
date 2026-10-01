@@ -17,6 +17,7 @@ class CampusWidgetProjection {
     required this.heroHeadline,
     required this.todayCourses,
     required this.hasTodayCourses,
+    this.todayTitle = '今天',
     this.heroTimeText,
     this.heroCourseName,
     this.heroLocationText,
@@ -42,6 +43,9 @@ class CampusWidgetProjection {
   final List<Map<String, Object?>> todayCourses;
   final bool hasTodayCourses;
 
+  /// 今日课程段标题：'今天'，或次日预览形态的 '明天' / '开学首日'（原生中组件据此命名）。
+  final String todayTitle;
+
   final String? nextExamCourseName;
   final String? nextExamTimeText;
   final String? nextExamLocationText;
@@ -62,6 +66,7 @@ class CampusWidgetProjection {
     'heroLocationText': heroLocationText,
     'todayCourses': todayCourses,
     'hasTodayCourses': hasTodayCourses,
+    'todayTitle': todayTitle,
     'nextExamCourseName': nextExamCourseName,
     'nextExamTimeText': nextExamTimeText,
     'nextExamLocationText': nextExamLocationText,
@@ -97,6 +102,7 @@ class CampusWidgetProjection {
           },
       ],
       hasTodayCourses: presentation.today.courses.isNotEmpty,
+      todayTitle: presentation.today.title,
       nextExamCourseName: exam?.courseName,
       nextExamTimeText: exam?.timeText,
       nextExamLocationText: exam?.locationText,

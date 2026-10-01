@@ -13,8 +13,11 @@ import 'calendar_sync_models.dart';
 ///
 /// - [off]：默认；未绑定任何 owner，不允许写入。
 /// - [enabled]：已由用户显式开启，绑定一个已验证正方 owner + 目标日历。
-/// - [paused]：原 owner 的账本保留，但当前身份不是绑定 owner（登出/换号），
+///   当前没有已验证身份（教务未登录 / 会话过期 / 冷启动尚未恢复）时仍保持
+///   [enabled]，只是处于 [CalendarSyncControl.isWaitingForIdentity]（不写日历）。
+/// - [paused]：原 owner 的账本保留，但当前**已验证身份是另一个账号**（真正换号），
 ///   停止一切写入；同账号重登或重新显式 [CalendarSyncControl.enable] 才恢复。
+///   登出 / 会话缺失**不会**进入 [paused]。
 /// - [cleanupPending]：用户已要求关闭并清理，未来写入被阻断；仍有删不掉/权限
 ///   拒绝/日历被移的事件残留，等待用户再次触发清理。绝不以清空账本假装完成。
 enum CalendarSyncControlState { off, enabled, paused, cleanupPending }
@@ -274,7 +277,9 @@ class CalendarSyncCleanupResult {
 /// - 默认 [CalendarSyncControlState.off]，零写入；
 /// - 显式 [enable]：检查/申请权限、解析目标日历（用户选择或本 App 本地日历），
 ///   持久 owner + calendar 绑定与状态；
-/// - [pauseIfOwnerMismatch]：登出/换号暂停并保留全部旧账本；同账号重登不暂停，
+/// - [pauseIfOwnerMismatch]：仅在当前已验证 owner 与绑定 owner 不同（真正换号）
+///   时暂停并保留全部旧账本；登出 / 会话缺失保持 [enabled] 并进入「等待身份」
+///   （[isWaitingForIdentity]，不落盘、不写日历）；同账号重登不暂停，
 ///   但推进内部 generation 使跨 await 的旧 revision 结果失效；
 /// - [reconcilePending]：对**全部** owner / 批次的 pending 用
 ///   [CalendarSyncChannel.queryOwnedEvents] 找回 eventId，只经
@@ -325,6 +330,10 @@ class CalendarSyncControl extends ChangeNotifier {
   /// 当前已验证会话的身份修订号（由协调器经 [pauseIfOwnerMismatch] 同步）。
   int _sessionRevision = 0;
 
+  /// 协调器最近同步进来的**当前已验证 owner**；null 表示教务未登录 / 会话缺失 /
+  /// 冷启动尚未恢复。仅内存态、不落盘（持久态只认绑定 owner）。
+  String? _identityOwner;
+
   /// 内部操作代际：状态/身份变化即自增，跨 await 的旧结果据此被拒绝。
   int _generation = 0;
 
@@ -341,6 +350,11 @@ class CalendarSyncControl extends ChangeNotifier {
   /// 协调器是否允许发起新的日历写入：仅 [enabled] 为 true。
   bool get isWritable => isEnabled;
 
+  /// 已 [enabled] 但当前没有已验证身份（教务登出 / 会话过期 / 冷启动尚未恢复）：
+  /// 绑定与账本都保留，开关保持开启，但不会有任何写入；同一 owner 重新登录后
+  /// 自动继续。这是派生状态，**不持久化**，也不是 [CalendarSyncControlState]。
+  bool get isWaitingForIdentity => isEnabled && _identityOwner == null;
+
   /// 当前身份是否就是已授权可写的 owner + revision。
   bool canWriteFor({required String ownerKey, required int revision}) =>
       isEnabled && _ownerKey == ownerKey.trim() && revision == _sessionRevision;
@@ -353,6 +367,7 @@ class CalendarSyncControl extends ChangeNotifier {
     _calendarId = null;
     _loaded = false;
     _sessionRevision = 0;
+    _identityOwner = null;
     _generation++;
     _queue.reset();
   }
@@ -460,6 +475,8 @@ class CalendarSyncControl extends ChangeNotifier {
       _ownerKey = trimmedOwner;
       _calendarId = resolvedCalendarId;
       _sessionRevision = revision;
+      // enable 的调用方已校验过 owner 是当前已验证身份。
+      _identityOwner = trimmedOwner;
       _generation++;
       return CalendarSyncEnableResult(
         enabled: true,
@@ -474,9 +491,13 @@ class CalendarSyncControl extends ChangeNotifier {
 
   /// 根据当前身份同步控制状态（登出 / 换号 / 同账号重登 / 回前台）。
   ///
-  /// - [ownerKey] 为 null（登出）或与绑定 owner 不同（换号）：[enabled] → [paused]，
-  ///   保留全部旧账本，不删任何事件；
-  /// - 与绑定 owner 相同：不暂停；[paused] 恢复为 [enabled]（同账号重登）；
+  /// - [ownerKey] 为 null / 空白（教务登出、会话过期、冷启动尚未恢复）：**不暂停、
+  ///   不落盘**，保持当前持久态（[enabled] 即进入 [isWaitingForIdentity]，绑定与
+  ///   账本都保留，协调器因缺身份不写日历）；无已验证身份不等于换号；
+  /// - [ownerKey] 为非空已验证学号且与绑定 owner 不同（真正换号）：[enabled] →
+  ///   [paused]（落盘），保留全部旧账本，不删任何事件；
+  /// - 与绑定 owner 相同：不暂停；[paused] 恢复为 [enabled]（同账号重登，含旧版本
+  ///   因登出而落盘的 [paused]）；
   /// - 无论是否改变状态，只要 owner/revision 与内部记录不同就推进 generation，
   ///   使跨 await 的旧 revision 写结果被拒绝（不污染新状态）；
   /// - [cleanupPending] 不会被自动恢复，也不因身份变化而取消进行中的清理。
@@ -491,8 +512,23 @@ class CalendarSyncControl extends ChangeNotifier {
     final trimmed = ownerKey?.trim();
     final hasOwner = trimmed != null && trimmed.isNotEmpty;
     final bound = _ownerKey;
+    final wasWaiting = isWaitingForIdentity;
+    final identityChanged =
+        _identityOwner != (hasOwner ? trimmed : null) ||
+        revision != _sessionRevision;
+    _identityOwner = hasOwner ? trimmed : null;
 
-    if (!hasOwner || trimmed != bound) {
+    if (!hasOwner) {
+      // 无已验证身份（登出 / 过期 / 尚未恢复）：不是换号，不改持久态。
+      // 身份变化仍推进 generation，让跨 await 的旧结果失效。
+      if (identityChanged) _generation++;
+      _sessionRevision = revision;
+      if (wasWaiting != isWaitingForIdentity) notifyListeners();
+      return _state;
+    }
+
+    if (trimmed != bound) {
+      // 真正换号：已验证的另一账号。
       if (_state == CalendarSyncControlState.enabled) {
         await _persistStateLocked(CalendarSyncControlState.paused);
         _generation++;
@@ -516,12 +552,16 @@ class CalendarSyncControl extends ChangeNotifier {
       if (_state == CalendarSyncControlState.paused) {
         await _persistStateLocked(CalendarSyncControlState.enabled);
         notifyListeners();
+      } else if (wasWaiting) {
+        notifyListeners();
       }
       return _state;
     }
     if (_state == CalendarSyncControlState.paused) {
       await _persistStateLocked(CalendarSyncControlState.enabled);
       _generation++;
+      notifyListeners();
+    } else if (wasWaiting) {
       notifyListeners();
     }
     return _state;

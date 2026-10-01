@@ -18,6 +18,7 @@ import 'package:jxu_campus_hub/core/network/dio_client.dart';
 import 'package:jxu_campus_hub/core/network/network_settings.dart';
 import 'package:jxu_campus_hub/features/my/my_page.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';
+import 'package:jxu_campus_hub/shared/widgets/identity_watermark.dart';
 
 import '../../helpers/mock_http_client_adapter.dart';
 import '../../helpers/fake_inappwebview.dart';
@@ -146,10 +147,10 @@ void main() {
         tester.widget<Text>(find.byKey(const Key('my_campus_status'))).data,
         '去登录',
       );
-      // 无任何域已登录：顶部身份呈现「未登录」。
+      // 副标题只写学校名；身份标识改由全屏水印呈现（登录失效则无水印）。
       expect(
         tester.widget<Text>(find.byKey(const Key('my_identity'))).data,
-        '嘉兴大学 · 未登录',
+        '嘉兴大学',
       );
     },
   );
@@ -174,6 +175,152 @@ void main() {
       tester.widget<Text>(find.byKey(const Key('my_campus_status'))).data,
       '已登录',
     );
+  });
+
+  group('identity watermark', () {
+    Future<void> pumpMy(
+      WidgetTester tester, {
+      String? account,
+      String? studentId,
+    }) async {
+      if (account != null) {
+        UnifiedAuthService.instance.debugSetSession(
+          active: true,
+          account: account,
+        );
+        UnifiedAuthService.instance.debugSessionValidator = (_) async => true;
+      }
+      if (studentId != null) {
+        ZhengfangAuth.instance.debugSetSession(
+          active: true,
+          studentId: studentId,
+        );
+      }
+      await tester.pumpWidget(const MaterialApp(home: MyPage()));
+      await tester.pump();
+      await tester.pump();
+    }
+
+    List<String> watermarkLines(WidgetTester tester) =>
+        tester.widget<IdentityWatermark>(find.byType(IdentityWatermark)).lines;
+
+    Finder watermarkPaint() => find.descendant(
+      of: find.byType(IdentityWatermark),
+      matching: find.byType(CustomPaint),
+    );
+
+    testWidgets('both ids: account on top, student id below', (tester) async {
+      await pumpMy(tester, account: '2025001', studentId: '20250001');
+      expect(watermarkLines(tester), ['2025001', '20250001']);
+      expect(watermarkPaint(), findsOneWidget);
+      // 副标题不再带任何身份数字。
+      expect(
+        tester.widget<Text>(find.byKey(const Key('my_identity'))).data,
+        '嘉兴大学',
+      );
+      expect(find.textContaining('2025001'), findsNothing);
+    });
+
+    testWidgets('only CAS: single line', (tester) async {
+      await pumpMy(tester, account: '2025001');
+      expect(watermarkLines(tester), ['2025001']);
+    });
+
+    testWidgets('only academic: single line', (tester) async {
+      await pumpMy(tester, studentId: '20250001');
+      expect(watermarkLines(tester), ['20250001']);
+    });
+
+    testWidgets('neither: nothing is painted', (tester) async {
+      await pumpMy(tester);
+      expect(watermarkLines(tester), isEmpty);
+      expect(watermarkPaint(), findsNothing);
+    });
+
+    testWidgets('equal ids collapse to one line', (tester) async {
+      await pumpMy(tester, account: '2025001', studentId: '2025001');
+      expect(watermarkLines(tester), ['2025001']);
+    });
+
+    testWidgets('is the last stack child and ignores pointers', (tester) async {
+      await pumpMy(tester, account: '2025001', studentId: '20250001');
+      final ignore = find.ancestor(
+        of: find.byType(IdentityWatermark),
+        matching: find.byType(IgnorePointer),
+      );
+      expect(tester.widget<IgnorePointer>(ignore.first).ignoring, isTrue);
+      final stack = tester.widget<Stack>(
+        find.ancestor(of: ignore.first, matching: find.byType(Stack)).first,
+      );
+      final last = stack.children.last;
+      expect(last, isA<Positioned>());
+      expect((last as Positioned).child, isA<IgnorePointer>());
+    });
+
+    testWidgets('taps pass through the watermark to the tile below', (
+      tester,
+    ) async {
+      final router = GoRouter(
+        routes: [
+          GoRoute(
+            path: '/',
+            name: 'my',
+            builder: (context, state) => const MyPage(),
+          ),
+          GoRoute(
+            path: '/campus-card',
+            name: 'campus-card',
+            builder: (context, state) => const Scaffold(body: Text('校园卡一卡通页')),
+          ),
+        ],
+      );
+      UnifiedAuthService.instance.debugSetSession(
+        active: true,
+        account: '2025001',
+      );
+      UnifiedAuthService.instance.debugSessionValidator = (_) async => true;
+      ZhengfangAuth.instance.debugSetSession(
+        active: true,
+        studentId: '20250001',
+      );
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pump();
+      await tester.pump();
+
+      await tester.tap(find.text('统一认证'));
+      await tester.pumpAndSettle();
+      expect(find.text('校园卡一卡通页'), findsOneWidget);
+    });
+
+    testWidgets('no overflow at 360x640 with 1.5x text scale', (tester) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      UnifiedAuthService.instance.debugSetSession(
+        active: true,
+        account: '2025001',
+      );
+      UnifiedAuthService.instance.debugSessionValidator = (_) async => true;
+      ZhengfangAuth.instance.debugSetSession(
+        active: true,
+        studentId: '20250001',
+      );
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: MediaQuery(
+            data: MediaQueryData(
+              size: Size(360, 640),
+              textScaler: TextScaler.linear(1.5),
+            ),
+            child: MyPage(),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      expect(find.byType(IdentityWatermark), findsOneWidget);
+    });
   });
 
   testWidgets('logged-in CAS row navigates to campus card instead of modal', (

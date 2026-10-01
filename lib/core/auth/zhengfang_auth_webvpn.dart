@@ -85,6 +85,58 @@ bool _looksLikeAuthenticatedAcademicHtml(String html) {
           lower.contains('/xsxxxggl/xsgrxxwh_cxxsgrxx.html'));
 }
 
+/// 受信教务入口响应的**纯函数**分类（fail closed，无网络、无副作用）。
+///
+/// [probeTrustedEntrySession] 与登录后会话校验共用这一份判定，避免复制
+/// bounce 检测逻辑。
+@visibleForTesting
+AcademicEntrySessionStatus classifyAcademicEntryResponse({
+  required ZhengfangMode mode,
+  required Uri requestUri,
+  required int status,
+  required String location,
+  required String html,
+}) {
+  final resolvedLocation = location.isEmpty
+      ? requestUri.toString()
+      : requestUri.resolve(location).toString();
+
+  // 明确落在统一认证 / WebVPN 网关登录：属于统一认证问题，不是教务登录。
+  if (_isUnifiedOrGatewayLoginLocation(resolvedLocation) ||
+      (status == 200 && looksLikeUnifiedAuthLoginHtml(html))) {
+    return AcademicEntrySessionStatus.unifiedLoginRequired;
+  }
+  // 明确落在教务（正方）登录入口 / 验证码页：需要教务登录。
+  if (_isAcademicLoginLocation(resolvedLocation) ||
+      (status == 200 && looksLikeZhengfangLoginHtml(html))) {
+    return AcademicEntrySessionStatus.academicLoginRequired;
+  }
+
+  if (status == 302 || status == 303) {
+    // 只有落在本模式受信 origin、且是已知教务已认证页面的跳转才算就绪；
+    // 其它跳转（跨域 / 任意 / 不可识别）一律 unknown，绝不 fail-open。
+    // 该正向判定复用 [isZhengfangAuthenticatedUrl]（与登录成功解析一致）。
+    if (_isAuthenticatedAcademicLocation(mode, resolvedLocation)) {
+      return AcademicEntrySessionStatus.authenticated;
+    }
+    return AcademicEntrySessionStatus.unknown;
+  }
+  if (status == 200) {
+    // 200 未命中登录签名也不等于已登录：必须有正向已认证页面证据，否则
+    // 不得判就绪。证据与 [ZhengfangAuth.isLoginSuccess] 的成功签名一致。
+    if (_looksLikeAuthenticatedAcademicHtml(html)) {
+      return AcademicEntrySessionStatus.authenticated;
+    }
+    return AcademicEntrySessionStatus.unknown;
+  }
+  // 401/403：业务接口语义即未认证，判需要教务登录。
+  if (status == 401 || status == 403) {
+    return AcademicEntrySessionStatus.academicLoginRequired;
+  }
+  // 其它状态（5xx / 304 / 未知 3xx）：不判失效也不判就绪。
+  return AcademicEntrySessionStatus.unknown;
+}
+
 extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
   /// 同步 WebVPN Cookie 到 WebView（按当前全局模式，保留旧调用契约）。
   Future<void> syncWebVpnCookiesToWebView() async {
@@ -274,47 +326,13 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
         ),
       );
 
-      final status = response.statusCode ?? 0;
-      final location = response.headers.value('location') ?? '';
-      final html = response.data ?? '';
-      final resolvedLocation = location.isEmpty
-          ? requestUrl
-          : requestUri.resolve(location).toString();
-
-      // 明确落在统一认证 / WebVPN 网关登录：属于统一认证问题，不是教务登录。
-      if (_isUnifiedOrGatewayLoginLocation(resolvedLocation) ||
-          (status == 200 && looksLikeUnifiedAuthLoginHtml(html))) {
-        return AcademicEntrySessionStatus.unifiedLoginRequired;
-      }
-      // 明确落在教务（正方）登录入口 / 验证码页：需要教务登录。
-      if (_isAcademicLoginLocation(resolvedLocation) ||
-          (status == 200 && looksLikeZhengfangLoginHtml(html))) {
-        return AcademicEntrySessionStatus.academicLoginRequired;
-      }
-
-      if (status == 302 || status == 303) {
-        // 只有落在本模式受信 origin、且是已知教务已认证页面的跳转才算就绪；
-        // 其它跳转（跨域 / 任意 / 不可识别）一律 unknown，绝不 fail-open。
-        // 该正向判定复用 [isZhengfangAuthenticatedUrl]（与登录成功解析一致）。
-        if (_isAuthenticatedAcademicLocation(mode, resolvedLocation)) {
-          return AcademicEntrySessionStatus.authenticated;
-        }
-        return AcademicEntrySessionStatus.unknown;
-      }
-      if (status == 200) {
-        // 200 未命中登录签名也不等于已登录：必须有正向已认证页面证据，否则
-        // 不得判就绪。证据与 [ZhengfangAuth.isLoginSuccess] 的成功签名一致。
-        if (_looksLikeAuthenticatedAcademicHtml(html)) {
-          return AcademicEntrySessionStatus.authenticated;
-        }
-        return AcademicEntrySessionStatus.unknown;
-      }
-      // 401/403：业务接口语义即未认证，判需要教务登录。
-      if (status == 401 || status == 403) {
-        return AcademicEntrySessionStatus.academicLoginRequired;
-      }
-      // 其它状态（5xx / 304 / 未知 3xx）：不判失效也不判就绪。
-      return AcademicEntrySessionStatus.unknown;
+      return classifyAcademicEntryResponse(
+        mode: mode,
+        requestUri: requestUri,
+        status: response.statusCode ?? 0,
+        location: response.headers.value('location') ?? '',
+        html: response.data ?? '',
+      );
     } on DioException catch (error) {
       AppLogger.instance.auth(
         LogLevel.warn,

@@ -35,11 +35,12 @@ class DesktopBackgroundPage extends StatelessWidget {
           const PlainSectionHeader('桌面组件'),
           PlainListGroup(
             children: [
-              PlainListRow(
-                title: '添加桌面组件',
-                subtitle: '在桌面查看下一节课、余额与通知，数据随 App 更新',
-                onTap: () => _addWidget(context),
-              ),
+              for (final size in CampusWidgetSize.values)
+                PlainListRow(
+                  title: '${size.sizeLabel} ${size.contentLabel}',
+                  subtitle: _widgetSubtitle(size),
+                  onTap: () => _addWidget(context, size),
+                ),
             ],
           ),
           const SizedBox(height: kPlainListGroupGap),
@@ -105,13 +106,32 @@ class DesktopBackgroundPage extends StatelessWidget {
     );
   }
 
-  Future<void> _addWidget(BuildContext context) async {
-    final requested = await CampusWidgetBridge.instance.requestPin();
+  static String _widgetSubtitle(CampusWidgetSize size) => switch (size) {
+    CampusWidgetSize.small => '课程名、时间与地点；数据随 App 更新',
+    CampusWidgetSize.medium => '今天最多 3 节课；数据随 App 更新',
+    CampusWidgetSize.large => '课表、考试、一卡通、电费与未读通知；数据随 App 更新',
+  };
+
+  /// 请求把组件固定到桌面。放到哪一页 / 哪个空位由桌面决定，App 无法控制，
+  /// 所以只如实反馈「请求已发出」，不承诺落点。
+  Future<void> _addWidget(BuildContext context, CampusWidgetSize size) async {
+    final result = await CampusWidgetBridge.instance.requestPin(size);
     if (!context.mounted) return;
-    _showSnackBar(
-      context,
-      requested ? '已请求添加桌面组件，请在桌面确认' : '当前设备或桌面不支持固定组件，请在桌面手动添加',
-    );
+    switch (result) {
+      case CampusWidgetPinResult.requested:
+        _showSnackBar(context, '已请求添加，请在桌面确认');
+      case CampusWidgetPinResult.unsupported:
+        _showSnackBar(context, '当前桌面不支持一键添加，请长按桌面 → 小组件 → 嘉兴大学 手动添加');
+      case CampusWidgetPinResult.rejected:
+        AppFeedback.toast(
+          context,
+          '桌面拒绝了添加请求；如为小米/HyperOS，可在权限设置中允许「桌面快捷方式」后重试',
+          actionLabel: '去设置',
+          onAction: () => unawaited(_openShortcutSettings(context)),
+        );
+      case CampusWidgetPinResult.error:
+        _showSnackBar(context, '添加失败，请长按桌面 → 小组件 → 嘉兴大学 手动添加');
+    }
   }
 
   Future<void> _addShortcut(BuildContext context) async {

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 小组件 2x2「下一节课」：固定尺寸（resizeMode=none）。targetCellWidth/Height 与 previewLayout 为 API 31+ 属性，旧系统忽略。 -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/campus_widget_small_description"
+    android:initialLayout="@layout/campus_widget_small"
+    android:minHeight="110dp"
+    android:minWidth="110dp"
+    android:previewLayout="@layout/campus_widget_small_preview"
+    android:resizeMode="none"
+    android:targetCellHeight="2"
+    android:targetCellWidth="2"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="home_screen" />

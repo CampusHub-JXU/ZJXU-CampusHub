@@ -409,6 +409,10 @@ class AcademicWebEntryPreparer {
     final headerGuard = afterAwait();
     if (headerGuard != null) return headerGuard;
 
+    AppLogger.instance.auth(
+      LogLevel.info,
+      '教务 H5 入口就绪 [${selectedMode == ZhengfangMode.webVpn ? 'WebVPN' : '直连'}]',
+    );
     return AcademicWebEntryReady(
       url: finalUrl,
       headers: headers,

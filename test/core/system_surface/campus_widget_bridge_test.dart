@@ -27,22 +27,69 @@ void main() {
     });
   });
 
-  test('requestPin / isSupported 返回原生结果，null 视为 false', () async {
+  test('requestPin 携带 size 参数并映射结果码', () async {
+    final calls = <MethodCall>[];
+    var reply = 'requested';
     messenger.setMockMethodCallHandler(channel, (call) async {
-      return switch (call.method) {
-        'requestPin' => true,
-        'isSupported' => null,
-        _ => null,
-      };
+      calls.add(call);
+      return reply;
     });
 
-    expect(await CampusWidgetBridge.instance.requestPin(), isTrue);
+    for (final size in CampusWidgetSize.values) {
+      expect(
+        await CampusWidgetBridge.instance.requestPin(size),
+        CampusWidgetPinResult.requested,
+      );
+    }
+    expect(calls.map((c) => c.method), everyElement('requestPin'));
+    expect(calls.map((c) => c.arguments), [
+      {'size': 'small'},
+      {'size': 'medium'},
+      {'size': 'large'},
+    ]);
+
+    reply = 'unsupported';
+    expect(
+      await CampusWidgetBridge.instance.requestPin(CampusWidgetSize.small),
+      CampusWidgetPinResult.unsupported,
+    );
+    reply = 'rejected';
+    expect(
+      await CampusWidgetBridge.instance.requestPin(CampusWidgetSize.medium),
+      CampusWidgetPinResult.rejected,
+    );
+    reply = 'error';
+    expect(
+      await CampusWidgetBridge.instance.requestPin(CampusWidgetSize.large),
+      CampusWidgetPinResult.error,
+    );
+  });
+
+  test('requestPin 未知 / 旧版返回值降级为 error，isSupported null 视为 false', () async {
+    Object? reply = true;
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      return call.method == 'requestPin' ? reply : null;
+    });
+
+    // 旧版原生返回 bool：不再被当作成功。
+    expect(
+      await CampusWidgetBridge.instance.requestPin(CampusWidgetSize.small),
+      CampusWidgetPinResult.error,
+    );
+    reply = null;
+    expect(
+      await CampusWidgetBridge.instance.requestPin(CampusWidgetSize.small),
+      CampusWidgetPinResult.error,
+    );
     expect(await CampusWidgetBridge.instance.isSupported(), isFalse);
   });
 
   test('通道缺失时静默降级', () async {
     await CampusWidgetBridge.instance.pushSnapshot({'a': 1});
-    expect(await CampusWidgetBridge.instance.requestPin(), isFalse);
+    expect(
+      await CampusWidgetBridge.instance.requestPin(CampusWidgetSize.large),
+      CampusWidgetPinResult.unsupported,
+    );
     expect(await CampusWidgetBridge.instance.isSupported(), isFalse);
   });
 
@@ -52,7 +99,21 @@ void main() {
     });
 
     await CampusWidgetBridge.instance.pushSnapshot({'a': 1});
-    expect(await CampusWidgetBridge.instance.requestPin(), isFalse);
+    expect(
+      await CampusWidgetBridge.instance.requestPin(CampusWidgetSize.medium),
+      CampusWidgetPinResult.error,
+    );
     expect(await CampusWidgetBridge.instance.isSupported(), isFalse);
+  });
+
+  test('requestPin 遇到非平台异常映射为 error 而不抛出', () async {
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      throw StateError('boom');
+    });
+
+    expect(
+      await CampusWidgetBridge.instance.requestPin(CampusWidgetSize.small),
+      CampusWidgetPinResult.error,
+    );
   });
 }

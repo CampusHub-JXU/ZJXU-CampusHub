@@ -18,6 +18,7 @@ import 'core/auth/unified_auth.dart';
 import 'core/deep_link/campus_deep_link_service.dart';
 import 'core/logging/app_logger.dart';
 import 'core/network/dio_client.dart';
+import 'core/network/webview_direct_route.dart';
 import 'core/notice/notice_sync_service.dart';
 import 'core/notice/notice_sync_store.dart';
 import 'core/notification/app_notification_service.dart';
@@ -145,6 +146,9 @@ Future<void> main() async {
 
       await AppBootstrapController.instance.prepareForFirstFrame();
       ConnectModeResolver.instance.start();
+      // 全局 WebView 直连：与 Dart 的 ignoreSystemProxy 保持一致（默认开启），
+      // 即使系统开了代理，本 App 的 WebView 也直连。
+      WebViewDirectRoute.instance.startGlobal();
       runApp(JXUCampusHubApp());
       // 课表系统日历同步：仅主引擎前台协调器，监听必须早于暖启动数据变化，
       // 以便身份/课表恢复后立即评估；不注册后台引擎、不触发自动登录。

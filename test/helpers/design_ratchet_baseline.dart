@@ -5,7 +5,7 @@
 const designRatchetBaseline = <String, Map<String, int>>{
   'features/home/widgets/home_asset_strip.dart': {'fontSize': 1},
   'features/home/widgets/home_primary_status_hero.dart': {'fontSize': 2},
-  'features/my/my_page.dart': {'fontSize': 8},
+  'features/my/my_page.dart': {'fontSize': 7},
   'features/schedule/widgets/schedule_course_cell.dart': {'fontSize': 1},
   'features/schedule/widgets/schedule_day_headers.dart': {'fontSize': 1},
   'features/schedule/widgets/schedule_slot_column.dart': {'fontSize': 1},

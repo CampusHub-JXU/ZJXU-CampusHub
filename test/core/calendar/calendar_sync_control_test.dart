@@ -344,43 +344,182 @@ void main() {
       );
     });
 
-    test('logout (null owner) pauses but retains the ledger', () async {
+    test(
+      'logout / expired session (null or blank owner) keeps enabled and waits',
+      () async {
+        final env = build();
+        await env.control.enable(ownerKey: 'A', calendarId: 7, revision: 5);
+        await env.ledger.beginPendingBatch(
+          ownerKey: 'A',
+          calendarId: 7,
+          plans: <CalendarSyncEventPlan>[plan(1)],
+        );
+        expect(env.control.isWaitingForIdentity, isFalse);
+        var notifications = 0;
+        env.control.addListener(() => notifications++);
+
+        final state = await env.control.pauseIfOwnerMismatch(
+          ownerKey: null,
+          revision: 6,
+        );
+
+        expect(state, CalendarSyncControlState.enabled);
+        expect(env.control.state, CalendarSyncControlState.enabled);
+        expect(env.control.isWaitingForIdentity, isTrue);
+        expect(env.control.ownerKey, 'A');
+        expect(env.control.calendarId, 7);
+        expect(notifications, 1, reason: '进入等待态需通知 UI');
+        // 持久态仍是 enabled，绑定不丢。
+        final persisted = await env.store.read();
+        expect(persisted.state, CalendarSyncControlState.enabled);
+        expect(persisted.ownerKey, 'A');
+        expect((await env.ledger.reload()).owners.keys, contains('A'));
+        // 新 revision 下旧 revision 的写权限立即失效，等待期间不可写。
+        expect(env.control.canWriteFor(ownerKey: 'A', revision: 5), isFalse);
+
+        // 空白 owner 同样视为无身份；重复调用不重复通知。
+        await env.control.pauseIfOwnerMismatch(ownerKey: '  ', revision: 6);
+        expect(env.control.state, CalendarSyncControlState.enabled);
+        expect(notifications, 1);
+      },
+    );
+
+    test(
+      'same owner returning after waiting resumes without a pause',
+      () async {
+        final env = build();
+        await env.control.enable(ownerKey: 'A', calendarId: 7, revision: 5);
+        await env.control.pauseIfOwnerMismatch(ownerKey: null, revision: 6);
+        expect(env.control.isWaitingForIdentity, isTrue);
+        var notifications = 0;
+        env.control.addListener(() => notifications++);
+
+        final state = await env.control.pauseIfOwnerMismatch(
+          ownerKey: 'A',
+          revision: 7,
+        );
+
+        expect(state, CalendarSyncControlState.enabled);
+        expect(env.control.isWaitingForIdentity, isFalse);
+        expect(env.control.canWriteFor(ownerKey: 'A', revision: 7), isTrue);
+        expect(notifications, 1);
+        // 全程没有写过 paused。
+        expect(
+          (await env.store.read()).state,
+          CalendarSyncControlState.enabled,
+        );
+      },
+    );
+
+    test(
+      'a different verified owner after waiting pauses and persists',
+      () async {
+        final env = build();
+        await env.control.enable(ownerKey: 'A', calendarId: 7, revision: 5);
+        await env.control.pauseIfOwnerMismatch(ownerKey: null, revision: 6);
+
+        final state = await env.control.pauseIfOwnerMismatch(
+          ownerKey: 'B',
+          revision: 7,
+        );
+
+        expect(state, CalendarSyncControlState.paused);
+        expect(env.control.isWaitingForIdentity, isFalse);
+        expect((await env.store.read()).state, CalendarSyncControlState.paused);
+        expect((await env.store.read()).ownerKey, 'A');
+        // 之后 B 登出不改变 paused；原 owner 回来则恢复。
+        expect(
+          await env.control.pauseIfOwnerMismatch(ownerKey: null, revision: 8),
+          CalendarSyncControlState.paused,
+        );
+        expect(
+          await env.control.pauseIfOwnerMismatch(ownerKey: 'A', revision: 9),
+          CalendarSyncControlState.enabled,
+        );
+      },
+    );
+
+    test('cold start with no session stays enabled and waiting, then restore '
+        'of the same owner never persists paused', () async {
       final env = build();
-      await env.control.enable(ownerKey: 'A', calendarId: 7);
-      await env.ledger.beginPendingBatch(
-        ownerKey: 'A',
-        calendarId: 7,
-        plans: <CalendarSyncEventPlan>[plan(1)],
+      await env.control.enable(ownerKey: 'A', calendarId: 7, revision: 5);
+
+      // 新进程：只读盘，教务会话尚未恢复（协调器此时若同步则是 null owner）。
+      final store = CalendarSyncControlStore.debugNew();
+      final cold = CalendarSyncControl.debugNew(
+        channel: _FakeChannel(),
+        ledger: CalendarEventLedgerStore.debugNew(),
+        store: store,
       );
+      await cold.load();
+      expect(cold.state, CalendarSyncControlState.enabled);
+      expect(cold.isWaitingForIdentity, isTrue);
+      expect(cold.isWritable, isTrue);
 
-      final state = await env.control.pauseIfOwnerMismatch(
-        ownerKey: null,
-        revision: 6,
-      );
+      await cold.pauseIfOwnerMismatch(ownerKey: null, revision: 0);
+      expect(cold.state, CalendarSyncControlState.enabled);
+      expect((await store.read()).state, CalendarSyncControlState.enabled);
 
-      expect(state, CalendarSyncControlState.paused);
-      expect((await env.ledger.reload()).owners.keys, contains('A'));
-    });
-
-    test('same owner re-login resumes and never deletes the ledger', () async {
-      final env = build();
-      await env.control.enable(ownerKey: 'A', calendarId: 7);
-      await env.ledger.beginPendingBatch(
-        ownerKey: 'A',
-        calendarId: 7,
-        plans: <CalendarSyncEventPlan>[plan(1)],
-      );
-      await env.control.pauseIfOwnerMismatch(ownerKey: null, revision: 6);
-
-      final state = await env.control.pauseIfOwnerMismatch(
-        ownerKey: 'A',
-        revision: 7,
-      );
-
+      // restoreSession 完成：同一学号，revision 推进。
+      final state = await cold.pauseIfOwnerMismatch(ownerKey: 'A', revision: 1);
       expect(state, CalendarSyncControlState.enabled);
-      expect(env.control.ownerKey, 'A');
-      expect((await env.ledger.reload()).owners.keys, contains('A'));
+      expect(cold.isWaitingForIdentity, isFalse);
+      expect(cold.canWriteFor(ownerKey: 'A', revision: 1), isTrue);
+      expect((await store.read()).state, CalendarSyncControlState.enabled);
     });
+
+    test('migration: old-version paused (persisted by a null-owner pause) '
+        'resumes when the same owner returns', () async {
+      final store = CalendarSyncControlStore.debugNew();
+      await store.write(
+        const CalendarSyncControlBinding(
+          state: CalendarSyncControlState.paused,
+          ownerKey: 'A',
+          calendarId: 7,
+        ),
+      );
+      final env = build(store: store);
+      await env.control.load();
+      expect(env.control.state, CalendarSyncControlState.paused);
+
+      // 仍未登录：保持 paused（不是 enabled，不会写），也不是「等待」。
+      await env.control.pauseIfOwnerMismatch(ownerKey: null, revision: 1);
+      expect(env.control.state, CalendarSyncControlState.paused);
+      expect(env.control.isWaitingForIdentity, isFalse);
+
+      // 同一学号重新登录：自动恢复为 enabled 并落盘。
+      final state = await env.control.pauseIfOwnerMismatch(
+        ownerKey: 'A',
+        revision: 2,
+      );
+      expect(state, CalendarSyncControlState.enabled);
+      expect((await store.read()).state, CalendarSyncControlState.enabled);
+    });
+
+    test(
+      'same owner re-login resumes a paused binding and keeps ledger',
+      () async {
+        final env = build();
+        await env.control.enable(ownerKey: 'A', calendarId: 7);
+        await env.ledger.beginPendingBatch(
+          ownerKey: 'A',
+          calendarId: 7,
+          plans: <CalendarSyncEventPlan>[plan(1)],
+        );
+        // 真正换号 → paused。
+        await env.control.pauseIfOwnerMismatch(ownerKey: 'B', revision: 6);
+        expect(env.control.state, CalendarSyncControlState.paused);
+
+        final state = await env.control.pauseIfOwnerMismatch(
+          ownerKey: 'A',
+          revision: 7,
+        );
+
+        expect(state, CalendarSyncControlState.enabled);
+        expect(env.control.ownerKey, 'A');
+        expect((await env.ledger.reload()).owners.keys, contains('A'));
+      },
+    );
 
     test('cleanupPending is not auto-resumed', () async {
       final env = build();

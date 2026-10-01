@@ -21,6 +21,7 @@ void main() {
 
     final map = projection.toMap();
     expect(map['generatedAt'], generatedAt.toIso8601String());
+    expect(map['todayTitle'], isNotEmpty);
     expect(
       (map['todayCourses'] as List),
       hasLength(projection.todayCourses.length),

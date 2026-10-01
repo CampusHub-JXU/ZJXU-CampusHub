@@ -137,6 +137,7 @@ class _LoginWidgetState extends State<LoginWidget> {
   /// 「记住账号并自动登录」勾选状态：仅本次会话有效，重新打开默认勾选。
   bool _rememberAccount = true;
   String? _error;
+  final GlobalKey _errorKey = GlobalKey();
   ZhengfangMode _mode = ZhengfangMode.direct;
   _AcademicLoginStage _stage = _AcademicLoginStage.detecting;
 
@@ -529,6 +530,7 @@ class _LoginWidgetState extends State<LoginWidget> {
           });
           _captchaCtrl.clear();
           await _refreshCaptcha(preserveError: true);
+          _revealError();
       }
     } on DioException catch (error) {
       if (!mounted) return;
@@ -536,18 +538,36 @@ class _LoginWidgetState extends State<LoginWidget> {
         _loading = false;
         _error = _friendlyNetworkMessage(error, fallback: '登录未完成，请重试');
       });
+      _revealError();
     } catch (error) {
       if (!mounted) return;
       setState(() {
         _loading = false;
         _error = _friendlyNetworkMessage(error, fallback: '登录未完成，请重试');
       });
+      _revealError();
     } finally {
       token.cancel('Login finished');
       if (mounted) {
         setState(() => _loading = false);
       }
     }
+  }
+
+  /// 错误横幅位于按钮下方，键盘弹起时可能被遮住：登录失败后把它滚进可视区。
+  /// 没有可滚动祖先时是 no-op。
+  void _revealError() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final errorContext = _errorKey.currentContext;
+      if (errorContext == null) return;
+      Scrollable.ensureVisible(
+        errorContext,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+        alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+      );
+    });
   }
 
   /// 登录成功后按勾选状态分叉：勾选则保存凭据并启用自动恢复，未勾选则清除
@@ -681,10 +701,13 @@ class _LoginWidgetState extends State<LoginWidget> {
             ),
           if (_error != null) ...[
             const SizedBox(height: 12),
-            AppBanner(
-              message: _error!,
-              icon: Icons.error_outline,
-              tone: AppBannerTone.error,
+            KeyedSubtree(
+              key: _errorKey,
+              child: AppBanner(
+                message: _error!,
+                icon: Icons.error_outline,
+                tone: AppBannerTone.error,
+              ),
             ),
           ],
         ],

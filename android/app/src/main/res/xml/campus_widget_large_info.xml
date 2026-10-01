@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 大组件 4x4「校园总览」：固定尺寸；仅此尺寸带配置页（一卡通 / 电费 / 通知开关），
+     configuration_optional 保证一键添加时不强制弹出配置页，reconfigurable 允许事后在桌面重新配置。 -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:configure="edu.zjxu.jxucampushub.widget.CampusWidgetConfigActivity"
+    android:description="@string/campus_widget_large_description"
+    android:initialLayout="@layout/campus_widget_large"
+    android:minHeight="250dp"
+    android:minWidth="250dp"
+    android:previewLayout="@layout/campus_widget_large_preview"
+    android:resizeMode="none"
+    android:targetCellHeight="4"
+    android:targetCellWidth="4"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="home_screen"
+    android:widgetFeatures="reconfigurable|configuration_optional" />

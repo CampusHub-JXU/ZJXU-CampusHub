@@ -145,6 +145,7 @@ void main() {
           'GET /jwglxt/kaptcha',
           'GET /jwglxt/xtgl/login_getPublicKey.html',
           'POST /jwglxt/xtgl/login_slogin.html',
+          'GET /jwglxt/xtgl/index_initMenu.html',
         ]),
       );
     });
@@ -288,6 +289,18 @@ class _RecordingZhengfangAdapter implements HttpClientAdapter {
         200,
         headers: <String, List<String>>{
           Headers.contentTypeHeader: <String>['image/png'],
+        },
+      );
+    }
+
+    // 登录后会话校验：隔离会话 GET 受信菜单入口，返回已认证学生菜单页。
+    if (path.endsWith('/xtgl/index_initMenu.html') && options.method == 'GET') {
+      return ResponseBody.fromString(
+        '<html><script>var sessionUserKey="x";</script>'
+        '<a href="/jwglxt/kbcx/xskbcx_cxXskbcxIndex.html">课表</a></html>',
+        200,
+        headers: <String, List<String>>{
+          Headers.contentTypeHeader: <String>['text/html; charset=utf-8'],
         },
       );
     }

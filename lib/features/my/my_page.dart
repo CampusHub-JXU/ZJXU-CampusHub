@@ -12,10 +12,12 @@ import '../../core/auth/unified_auth.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/theme/app_design_tokens.dart';
+import '../../core/theme/app_typography.dart';
 import '../../core/theme/widgets/app_wallpaper_backdrop.dart';
 import '../../shared/widgets/app_feedback.dart';
 import '../../shared/widgets/app_icon_badge.dart';
 import '../../shared/widgets/app_tile_surface.dart';
+import '../../shared/widgets/identity_watermark.dart';
 import '../../shared/widgets/login_shell.dart';
 import '../../shared/widgets/plain_list.dart';
 
@@ -436,19 +438,18 @@ class _MyPageState extends State<MyPage> {
 
   String _statusLabel(bool loggedIn) => loggedIn ? '已登录' : '去登录';
 
-  /// 顶部身份：优先教务学号，其次统一认证账号。
-  String? _identity() {
-    final academic = ZhengfangAuth.instance;
-    if (academic.isLoggedIn) {
-      final id = academic.currentStudentId;
-      if (id != null && id.isNotEmpty) return id;
-    }
-    final campus = UnifiedAuthService.instance;
-    if (campus.isLoggedIn) {
-      final account = campus.currentAccount;
-      if (account != null && account.isNotEmpty) return account;
-    }
-    return null;
+  /// 水印文字行：上一卡通号（统一认证）、下学号（教务）。
+  ///
+  /// 缺任一则只留另一行；两者相同只留一行；都缺则空（不绘制水印）。标识只
+  /// 用于绘制，不写日志。
+  List<String> _watermarkLines() {
+    final account = UnifiedAuthService.instance.verifiedAccount;
+    final studentId = ZhengfangAuth.instance.verifiedStudentId;
+    return [
+      if (account != null && account.isNotEmpty) account,
+      if (studentId != null && studentId.isNotEmpty && studentId != account)
+        studentId,
+    ];
   }
 
   @override
@@ -485,7 +486,6 @@ class _MyPageState extends State<MyPage> {
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             _MyHeader(
-                              identity: _identity(),
                               onLogout: loggedIn
                                   ? () => unawaited(_promptLogout())
                                   : null,
@@ -547,6 +547,12 @@ class _MyPageState extends State<MyPage> {
                     ),
                   ),
                 ),
+              ),
+            ),
+            // 全屏身份水印：压在内容之上（不被磁贴模糊）、不拦截触摸、静态。
+            Positioned.fill(
+              child: IgnorePointer(
+                child: IdentityWatermark(lines: _watermarkLines()),
               ),
             ),
           ],
@@ -664,11 +670,11 @@ Future<bool> _fingerprintUnchanged(
   return await _readPersistedEpochSafe(domain) == capturedEpoch;
 }
 
-/// 顶部：大标题「我的」+ 学校与学号灰色小字；有登录时行尾放低调的登出入口。
+/// 顶部：大标题「我的」+ 学校名灰色小字（身份标识改由全屏水印呈现）；
+/// 有登录时行尾放低调的登出入口。
 class _MyHeader extends StatelessWidget {
-  const _MyHeader({required this.identity, required this.onLogout});
+  const _MyHeader({required this.onLogout});
 
-  final String? identity;
   final VoidCallback? onLogout;
 
   @override
@@ -688,14 +694,11 @@ class _MyHeader extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                '嘉兴大学 · ${identity ?? '未登录'}',
+                '嘉兴大学',
                 key: const Key('my_identity'),
-                style: TextStyle(
-                  fontSize: 13,
+                style: context.appText.secondary.copyWith(
                   height: 1.4,
                   letterSpacing: 0.2,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                  color: cs.onSurfaceVariant,
                 ),
               ),
             ],
