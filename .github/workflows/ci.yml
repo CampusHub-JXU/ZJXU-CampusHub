@@ -85,7 +85,6 @@ jobs:
         run: |
           set -euo pipefail
           flutter test test/core/update/update_service_test.dart
-          flutter test test/shared/widgets/protected_webview_auth_test.dart --plain-name "shows login guidance"
 
       - name: Run full test suite
         # Several suites exercise process-wide auth/network singletons and

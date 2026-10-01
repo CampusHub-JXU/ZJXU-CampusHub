@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:jxu_campus_hub/features/second_classroom/second_classroom_cache_store.dart';
 import 'package:jxu_campus_hub/features/second_classroom/second_classroom_model.dart';
 import 'package:jxu_campus_hub/features/second_classroom/second_classroom_page.dart';
 import 'package:jxu_campus_hub/features/second_classroom/second_classroom_service.dart';
@@ -80,6 +81,7 @@ void main() {
         home: SecondClassroomPage(
           service: _FakeSecondClassroomService(),
           subscriptionService: _testSubscriptionService(),
+          cacheStore: _MemoryCacheStore(),
         ),
       ),
     );
@@ -110,6 +112,7 @@ void main() {
         home: SecondClassroomPage(
           service: service,
           subscriptionService: _testSubscriptionService(),
+          cacheStore: _MemoryCacheStore(),
         ),
       ),
     );
@@ -152,6 +155,7 @@ void main() {
         home: SecondClassroomPage(
           service: _FakeSecondClassroomService(),
           subscriptionService: _testSubscriptionService(),
+          cacheStore: _MemoryCacheStore(),
         ),
       ),
     );
@@ -192,6 +196,7 @@ void main() {
         home: SecondClassroomPage(
           service: _FakeSecondClassroomService(),
           subscriptionService: _testSubscriptionService(),
+          cacheStore: _MemoryCacheStore(),
         ),
       ),
     );
@@ -225,6 +230,7 @@ void main() {
         home: SecondClassroomPage(
           service: _FakeSecondClassroomService(),
           subscriptionService: _testSubscriptionService(),
+          cacheStore: _MemoryCacheStore(),
         ),
       ),
     );
@@ -325,3 +331,44 @@ final _activity = SecondClassroomActivity(
   hasCheckedIn: false,
   hasRetaken: false,
 );
+
+/// 内存缓存替身：widget 测试跑在 FakeAsync 区，真实 [JsonCacheStore] 文件 I/O
+/// 不会完成，pumpAndSettle 会超时。
+class _MemoryCacheStore implements SecondClassroomCacheStore {
+  SecondClassroomCatalog? _catalog;
+  final _activities = <String, SecondClassroomActivityCacheSnapshot>{};
+
+  String _key(SecondClassroomActivityQuery query) =>
+      '${query.categoryId}|${query.status.value}|${query.departmentId}|'
+      '${query.sort.value}|${query.organizationType.value}|${query.keyword}';
+
+  @override
+  Future<SecondClassroomCatalog?> loadCatalog() async => _catalog;
+
+  @override
+  Future<void> saveCatalog(SecondClassroomCatalog catalog) async {
+    _catalog = catalog;
+  }
+
+  @override
+  Future<SecondClassroomActivityCacheSnapshot?> loadActivities(
+    SecondClassroomActivityQuery query,
+  ) async => _activities[_key(query)];
+
+  @override
+  Future<void> saveActivities(
+    SecondClassroomActivityQuery query,
+    List<SecondClassroomActivity> activities,
+  ) async {
+    _activities[_key(query)] = SecondClassroomActivityCacheSnapshot(
+      activities: activities,
+      updatedAt: DateTime.now(),
+    );
+  }
+
+  @override
+  Future<void> debugClear() async {
+    _catalog = null;
+    _activities.clear();
+  }
+}

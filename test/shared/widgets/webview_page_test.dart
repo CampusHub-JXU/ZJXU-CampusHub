@@ -419,24 +419,20 @@ void main() {
   });
 
   group('WebViewPage navigation and popup menu', () {
-    testWidgets(
-      'renders top right 3-dots popup menu and does not mount WebViewBackPill',
-      (tester) async {
-        await tester.pumpWidget(
-          const MaterialApp(
-            home: WebViewPage(
-              title: '教务通知',
-              url: 'https://jwzx.zjxu.edu.cn/notice/1.html',
-              showWebViewBottomBackButton: true,
-            ),
+    testWidgets('renders top right 3-dots popup menu', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: WebViewPage(
+            title: '教务通知',
+            url: 'https://jwzx.zjxu.edu.cn/notice/1.html',
+            showWebViewBottomBackButton: true,
           ),
-        );
-        await tester.pump();
+        ),
+      );
+      await tester.pump();
 
-        expect(find.byType(WebViewBackPill), findsNothing);
-        expect(find.byTooltip('更多操作'), findsOneWidget);
-      },
-    );
+      expect(find.byTooltip('更多操作'), findsOneWidget);
+    });
 
     testWidgets(
       'opening popup menu reveals refresh and open in external browser options',
@@ -613,20 +609,6 @@ void main() {
 
         expect(launcherCalled, isFalse);
         expect(find.text('当前页面处于登录认证跳转中，请在页面完全加载后再尝试外部打开'), findsOneWidget);
-      },
-    );
-
-    testWidgets(
-      'WebViewBackPill standalone widget renders properly for preview tests',
-      (tester) async {
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(body: WebViewBackPill(onTap: () {})),
-          ),
-        );
-        await tester.pump();
-
-        expect(find.text('网页内返回'), findsOneWidget);
       },
     );
   });

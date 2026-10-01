@@ -192,8 +192,6 @@ class CampusCardService {
 
   DateTime? get lastUpdated => _lastUpdated;
 
-  DateTime? get updatedAt => _lastUpdated;
-
   /// 最近一次余额查询的失败类型。没有明确统一认证身份时**按当前身份派生**
   /// 为 [BalanceFailureKind.authRequired]（页面首次 build 即可读到，无需先点
   /// 一次查询）；有身份时返回最近一次请求记录的失败（成功 / 身份变化后为

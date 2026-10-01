@@ -589,16 +589,6 @@ class ChangxingJiadaService {
     }
   }
 
-  Future<String?> fetchImageByMd5(String md5) async {
-    if (md5.trim().isEmpty) return null;
-    final json = await _get('/image/getOne', query: {'md5': md5.trim()});
-    _ensureSuccess(json, fallback: '获取附件预览失败');
-    final data = _extractDataMap(json)['data'] as Map<String, dynamic>? ?? {};
-    final base64 = data['base64']?.toString().trim() ?? '';
-    if (base64.isEmpty) return null;
-    return 'data:image/png;base64,$base64';
-  }
-
   Future<ChangxingUploadResult> uploadAttachment(
     String filePath,
     String fileName,

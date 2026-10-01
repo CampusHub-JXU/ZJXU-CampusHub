@@ -80,9 +80,6 @@ class IsolatedAuthSession {
     );
   }
 
-  /// 本会话触碰过的 URI（含 seed）。
-  Set<Uri> get touchedUris => Set<Uri>.unmodifiable(_touchedUris);
-
   /// 与共享代理回退同语义（[sendWithSystemProxyFallback]），但只作用于
   /// 隔离 dio/jar，并记录本会话触碰过的 URI。
   Future<Response<T>> send<T>({

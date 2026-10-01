@@ -97,7 +97,6 @@ try {
 
   Invoke-CiStep "Focused regression tests" {
     Invoke-Native $FlutterExe test test/core/update/update_service_test.dart
-    Invoke-Native $FlutterExe test test/shared/widgets/protected_webview_auth_test.dart --plain-name "shows login guidance"
   }
 
   if (-not $SkipFullTest) {

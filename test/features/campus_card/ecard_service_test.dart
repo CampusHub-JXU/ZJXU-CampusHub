@@ -70,34 +70,6 @@ void main() {
     });
   });
 
-  group('EcardService.tripleBase64Encode/Decode', () {
-    test('encodes 213544 to expected triple Base64', () {
-      expect(EcardService.tripleBase64Encode('213544'), 'VFdwRmVrNVVVVEE9');
-    });
-
-    test('decodes VFdwRmVrNVVVVEE9 back to 213544', () {
-      expect(EcardService.tripleBase64Decode('VFdwRmVrNVVVVEE9'), '213544');
-    });
-
-    test('encodes 1 to expected triple Base64', () {
-      expect(EcardService.tripleBase64Encode('1'), 'VFZFOVBRPT0=');
-    });
-
-    test('decodes VFZFOVBRPT0= back to 1', () {
-      expect(EcardService.tripleBase64Decode('VFZFOVBRPT0='), '1');
-    });
-
-    test('round-trip encode/decode', () {
-      const values = ['12345', 'abc', '213544', '1'];
-      for (final v in values) {
-        expect(
-          EcardService.tripleBase64Decode(EcardService.tripleBase64Encode(v)),
-          v,
-        );
-      }
-    });
-  });
-
   group('EcardService.formatTime', () {
     test('formats DateTime as yyyymmddhhmmss', () {
       final dt = DateTime(2026, 4, 9, 17, 44, 34);

@@ -6,7 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_background.dart';
 import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_service.dart';
-import 'package:jxu_campus_hub/features/dorm_electricity/epay_electricity_gateway.dart';
+import 'package:jxu_campus_hub/core/epay100/epay100_gateway.dart';
 
 import '../../helpers/test_setup.dart';
 
@@ -76,7 +76,7 @@ class _FakeScheduler implements DormBackgroundScheduler {
 }
 
 /// 断言后台链路绝不触网：任何 call 都视为测试失败。
-class _ThrowingGateway implements EpayElectricityGateway {
+class _ThrowingGateway implements Epay100Gateway {
   int calls = 0;
 
   @override
@@ -94,7 +94,7 @@ class _ThrowingGateway implements EpayElectricityGateway {
   Future<void> invalidate() async {}
 }
 
-class _BalanceGateway implements EpayElectricityGateway {
+class _BalanceGateway implements Epay100Gateway {
   _BalanceGateway(this.balance);
 
   final double balance;

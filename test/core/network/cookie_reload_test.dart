@@ -195,7 +195,7 @@ void main() {
       'reloads both jars in place; the existing Dio still reads new cookies',
       () async {
         await DioClient.instance.ensureInitialized();
-        final zhengfangJar = DioClient.instance.cookieJar;
+        final zhengfangJar = DioClient.instance.zhengfangCookieJar;
         final unifiedJar = DioClient.instance.unifiedAuthCookieJar;
         final dio = DioClient.instance.dio;
         final interceptorCount = dio.interceptors.length;
@@ -224,7 +224,10 @@ void main() {
         await DioClient.instance.reloadPersistedCookies();
 
         // 对象身份保持：jar / Dio / interceptor 都不替换。
-        expect(identical(zhengfangJar, DioClient.instance.cookieJar), isTrue);
+        expect(
+          identical(zhengfangJar, DioClient.instance.zhengfangCookieJar),
+          isTrue,
+        );
         expect(
           identical(unifiedJar, DioClient.instance.unifiedAuthCookieJar),
           isTrue,
@@ -268,7 +271,7 @@ void main() {
     test('initializes when called before ensureInitialized', () async {
       await DioClient.instance.reloadPersistedCookies();
 
-      expect(() => DioClient.instance.cookieJar, returnsNormally);
+      expect(() => DioClient.instance.zhengfangCookieJar, returnsNormally);
       expect(() => DioClient.instance.dio, returnsNormally);
     });
 

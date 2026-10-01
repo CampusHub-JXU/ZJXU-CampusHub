@@ -14,7 +14,6 @@ abstract final class AppConfig {
   ];
   static const updateGithubReleaseMirrorPrefix =
       'https://edgeone.gh-proxy.org/';
-  static const updateChannel = 'internal';
 
   static Uri get xiaofubaoRechargeUri => Uri.parse(
     '$xiaofubaoRechargeBaseUrl?platform=WECHAT_H5&schoolCode=$xiaofubaoSchoolCode&thirdAppid=$xiaofubaoThirdAppId',

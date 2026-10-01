@@ -2,8 +2,9 @@
 ///
 /// 学校侧的目录型数据（园区 / 楼幢 / 房间 / 活动分类）与动态数据（余额 /
 /// 成绩）变化频率差了两个数量级，共用一套 TTL 必然两头不讨好：目录缓存
-/// 半小时等于没缓存，余额缓存三十天会一直显示错数。这里把策略收敛成
-/// 四档，业务侧只挑档位，不自己写过期判定。
+/// 半小时等于没缓存，余额缓存三十天会一直显示错数。业务侧只挑策略，
+/// 不自己写过期判定；目前仅目录型 [CachePolicy.catalog] 有生产调用方，
+/// 余额 / 成绩 / 考试等私有数据走各自 service 的账号归属缓存，不经本策略。
 library;
 
 /// 缓存条目相对其 [CachePolicy.ttl] 所处的新鲜度。
@@ -37,24 +38,8 @@ class CachePolicy {
     staleGrace: Duration(days: 60),
   );
 
-  /// 日更型：通知列表、活动列表。当天内重复打开不必重拉。
-  static const daily = CachePolicy(
-    ttl: Duration(hours: 8),
-    staleGrace: Duration(days: 3),
-  );
-
-  /// 会话型：余额一类，半小时内重复看没意义，但断网时能兜底。
-  static const session = CachePolicy(
-    ttl: Duration(minutes: 30),
-    staleGrace: Duration(days: 1),
-  );
-
-  /// 实时型：不缓存，每次都取（成绩、考试安排等）。
-  static const volatile = CachePolicy(
-    ttl: Duration.zero,
-    staleGrace: Duration.zero,
-  );
-
+  /// ttl 非正即视为实时型：不缓存，每次都回源。成绩 / 考试 / 校园卡等私有
+  /// 数据不经本策略，由各自 service 的账号归属 + 固定 TTL 缓存负责。
   bool get isVolatile => ttl <= Duration.zero;
 
   /// 判定年龄为 [age] 的条目处于哪一档。

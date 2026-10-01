@@ -67,18 +67,6 @@ class SecondClassroomSubscriptionService {
     return (await _loadSubscriptionRecords()).keys.toSet();
   }
 
-  Future<bool> isSubscribed(int activityId) async {
-    return (await _loadSubscriptionRecords()).values.any(
-      (record) => record.activity.id == activityId,
-    );
-  }
-
-  Future<bool> isActivitySubscribed(SecondClassroomActivity activity) async {
-    return (await _loadSubscriptionRecords()).containsKey(
-      secondClassroomSubscriptionKey(activity.title),
-    );
-  }
-
   Future<int> subscribe(SecondClassroomActivity activity) async {
     final key = secondClassroomSubscriptionKey(activity.title);
     if (key.isEmpty) return 0;

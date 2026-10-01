@@ -472,81 +472,6 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
     }
   }
 
-  /// 校验指定 WebVPN 代理目标是否已有有效登录态。
-  /// 返回:
-  /// - `true`: WebVPN session 有效
-  /// - `false`: 已明确失效，需要重新登录
-  /// - `null`: 校验失败（网络异常），不下结论
-  Future<bool?> validateWebVpnProxySession(String targetUrl) async {
-    await DioClient.instance.ensureInitialized();
-    final revisionAtStart = _sessionRevision;
-    final probeUrl = buildWebVpnProxyUrl(targetUrl);
-
-    try {
-      final response = await _sendWithProxyFallback<String>(
-        label: 'WebVPN 目标会话校验',
-        request: (dio, token) => dio.get<String>(
-          probeUrl,
-          cancelToken: token,
-          options: Options(
-            responseType: ResponseType.plain,
-            followRedirects: false,
-            validateStatus: (status) => status != null && status < 1000,
-            headers: {'Referer': '${ZhengfangAuth._webVpnBase}/'},
-          ),
-        ),
-      );
-
-      final statusCode = response.statusCode ?? 0;
-      final location = response.headers.value('location') ?? '';
-      final resolvedLocation = location.isEmpty
-          ? ''
-          : Uri.parse(probeUrl).resolve(location).toString();
-      final html = response.data ?? '';
-      final realUrl = response.realUri.toString();
-
-      final redirectedToLogin =
-          (statusCode == 302 || statusCode == 303) &&
-          isZhengfangLoginEntryUrl(resolvedLocation);
-      final landedOnLogin = _looksLikeWebVpnAuthResponse(realUrl, html);
-
-      if (redirectedToLogin || landedOnLogin) {
-        final canAttemptSso =
-            UnifiedAuthService.instance.isLoggedIn || isWebVpnLoggedIn;
-        if (canAttemptSso) {
-          try {
-            final retryResp = await _attemptWebVpnSessionRecovery(probeUrl);
-            if (retryResp != null) {
-              AppLogger.instance.auth(LogLevel.info, 'WebVPN 目标会话 SSO 已自动恢复');
-              markWebVpnLoggedIn();
-              return true;
-            }
-          } catch (_) {}
-        }
-        AppLogger.instance.auth(LogLevel.warn, 'WebVPN 目标会话已失效: $probeUrl');
-        _markWebVpnLoggedOutIfCurrent(revisionAtStart);
-        return false;
-      }
-
-      markWebVpnLoggedIn();
-      return true;
-    } on DioException catch (e) {
-      AppLogger.instance.auth(
-        LogLevel.warn,
-        'WebVPN 目标会话校验失败（网络异常）: ${e.type} ${e.message}',
-      );
-      return null;
-    } catch (e) {
-      AppLogger.instance.auth(LogLevel.warn, 'WebVPN 目标会话校验失败（未知异常）: $e');
-      return null;
-    }
-  }
-
-  Future<bool?> validateWebVpnTargetSession(String targetUrl) async {
-    setMode(ZhengfangMode.webVpn);
-    return validateWebVpnProxySession(targetUrl);
-  }
-
   Future<bool?> ensureWebVpnGatewaySession({
     bool syncWebViewCookies = true,
     String? targetUrl,
@@ -673,36 +598,5 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
     }
 
     return looksLikeUnifiedAuthLoginHtml(html);
-  }
-
-  Future<Response<String>?> _attemptWebVpnSessionRecovery(
-    String probeUrl,
-  ) async {
-    final webVpnReady = await ensureWebVpnGatewaySession(
-      syncWebViewCookies: false,
-    );
-    if (webVpnReady != true) {
-      return null;
-    }
-
-    final retryResp = await _sendWithProxyFallback<String>(
-      label: 'WebVPN 目标会话二次校验',
-      request: (dio, token) => dio.get<String>(
-        probeUrl,
-        cancelToken: token,
-        options: Options(
-          responseType: ResponseType.plain,
-          followRedirects: true,
-          validateStatus: (status) => status != null && status < 1000,
-          headers: {'Referer': '${ZhengfangAuth._webVpnBase}/'},
-        ),
-      ),
-    );
-    final retryHtml = retryResp.data ?? '';
-    final retryUrl = retryResp.realUri.toString();
-    if (_looksLikeWebVpnAuthResponse(retryUrl, retryHtml)) {
-      return null;
-    }
-    return retryResp;
   }
 }

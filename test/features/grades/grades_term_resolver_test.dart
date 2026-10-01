@@ -26,12 +26,6 @@ void main() {
     });
   });
 
-  group('GradesTermResolver.labelOf', () {
-    test('renders "year semester" without extra suffix', () {
-      expect(GradesTermResolver.labelOf('2025-2026', '第二学期'), '2025-2026 第二学期');
-    });
-  });
-
   group('GradesTermResolver.availableTerms', () {
     test('dedupes and sorts newest first, 第二学期 before 第一学期', () {
       final terms = GradesTermResolver.availableTerms([

@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:jxu_campus_hub/features/dorm_electricity/epay_electricity_gateway.dart';
+import 'package:jxu_campus_hub/core/epay100/epay100_gateway.dart';
 
 void main() {
   group('EpayReadyProbe.parse', () {

@@ -11,7 +11,7 @@ import 'package:jxu_campus_hub/core/cache/json_cache_store.dart';
 import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_background.dart';
 import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_service.dart';
 import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_settings_page.dart';
-import 'package:jxu_campus_hub/features/dorm_electricity/epay_electricity_gateway.dart';
+import 'package:jxu_campus_hub/core/epay100/epay100_gateway.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_dropdown.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_error_view.dart';
 import 'package:jxu_campus_hub/shared/widgets/auth_required_view.dart';
@@ -21,7 +21,7 @@ import '../../helpers/test_setup.dart';
 
 /// 目录 RPC 假网关：只服务寝室配置页用到的园区/楼幢/楼层/房间目录，统计网关
 /// 调用与隐藏会话作废次数，可注入认证失效 / 网络未知失败 / 挂起中的迟到响应。
-class _FakeCatalogGateway implements EpayElectricityGateway {
+class _FakeCatalogGateway implements Epay100Gateway {
   int callCount = 0;
   int invalidateCount = 0;
 

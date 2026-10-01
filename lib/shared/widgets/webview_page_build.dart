@@ -234,12 +234,6 @@ extension _WebViewPageBuildExtension on _WebViewPageState {
     }
   }
 
-  /// 底部导航条：已移除页面内悬浮返回小岛控件（改为 AppBar 后退与系统手势拦截），
-  /// 此处返回空组件以保持布局结构纯净。
-  Widget _buildWebViewNavigationBar() {
-    return const SizedBox.shrink();
-  }
-
   Widget _buildError() {
     final cs = Theme.of(context).colorScheme;
     return Center(
@@ -252,50 +246,6 @@ extension _WebViewPageBuildExtension on _WebViewPageState {
           const SizedBox(height: 12),
           FilledButton(onPressed: _reloadCurrentPage, child: const Text('重试')),
         ],
-      ),
-    );
-  }
-}
-
-/// 悬浮「网页内返回」小岛按钮本体。
-///
-/// 保留此类以向后兼容历史预览测试（test/preview/preview_render_test.dart），
-/// 实际页面内已废弃未挂载，后续待预览测试更新后可整体清理。
-@Deprecated('网页内返回小岛已废弃，保留仅为兼容 preview_render_test.dart 编译')
-class WebViewBackPill extends StatelessWidget {
-  const WebViewBackPill({super.key, this.onTap});
-
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Material(
-      color: cs.surfaceContainerHighest.withValues(alpha: 0.92),
-      elevation: 3,
-      shadowColor: cs.shadow.withValues(alpha: 0.25),
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.arrow_back_ios_new, size: 13, color: cs.onSurface),
-              const SizedBox(width: 6),
-              Text(
-                '网页内返回',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: cs.onSurface,
-                ),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }

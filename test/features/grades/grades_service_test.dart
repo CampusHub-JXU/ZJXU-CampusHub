@@ -20,6 +20,7 @@ import 'package:jxu_campus_hub/features/grades/grades_service.dart';
 
 import '../../helpers/mock_http_client_adapter.dart';
 import '../../helpers/test_setup.dart';
+import '../../helpers/credential_store_test_ext.dart';
 
 Map<String, Object?> gradeItem({String name = '大学英语', String gpa = '3.8'}) => {
   'kcmc': name,

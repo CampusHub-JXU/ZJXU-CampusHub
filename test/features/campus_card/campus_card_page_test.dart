@@ -20,6 +20,8 @@ import 'package:jxu_campus_hub/shared/widgets/auth_required_view.dart';
 import 'package:jxu_campus_hub/shared/widgets/login_shell.dart';
 import 'package:jxu_campus_hub/shared/widgets/unified_auth_protected_webview_page.dart';
 
+import '../../helpers/credential_store_test_ext.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 

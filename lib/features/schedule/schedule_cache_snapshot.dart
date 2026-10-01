@@ -1,6 +1,6 @@
 import 'schedule_model.dart';
 import 'schedule_change_rule.dart';
-import 'schedule_term_context.dart';
+import '../../core/semester/schedule_term_context.dart';
 
 class ScheduleCacheSnapshot {
   const ScheduleCacheSnapshot({
@@ -117,8 +117,8 @@ class ScheduleCacheSnapshot {
           .whereType<Map<String, dynamic>>()
           .map(CourseChangeRule.fromJson)
           .toList(),
-      scheduleUpdatedAt: _dateFromMillis(json['scheduleUpdatedAt']),
-      changeRulesUpdatedAt: _dateFromMillis(json['changeRulesUpdatedAt']),
+      scheduleUpdatedAt: dateFromEpochMillis(json['scheduleUpdatedAt']),
+      changeRulesUpdatedAt: dateFromEpochMillis(json['changeRulesUpdatedAt']),
       changeRulesCurrentScoped: json['changeRulesCurrentScoped'] == true,
       changeRulesDateAware: json.containsKey('changeRulesDateAware')
           ? json['changeRulesDateAware'] == true
@@ -134,11 +134,5 @@ class ScheduleCacheSnapshot {
       studentId: studentId,
       termContext: termContext,
     );
-  }
-
-  static DateTime? _dateFromMillis(Object? value) {
-    final millis = value is int ? value : int.tryParse(value?.toString() ?? '');
-    if (millis == null) return null;
-    return DateTime.fromMillisecondsSinceEpoch(millis);
   }
 }

@@ -230,8 +230,6 @@ class ChangxingUploadResult {
 
   final String md5;
   final String base64;
-
-  bool get hasPreview => base64.isNotEmpty;
 }
 
 class ChangxingApplicationDetail {

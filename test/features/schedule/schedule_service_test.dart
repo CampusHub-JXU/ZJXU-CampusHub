@@ -19,7 +19,7 @@ import 'package:jxu_campus_hub/core/semester/semester_calendar.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_cache_snapshot.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_model.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';
-import 'package:jxu_campus_hub/features/schedule/schedule_term_context.dart';
+import 'package:jxu_campus_hub/core/semester/schedule_term_context.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../helpers/mock_http_client_adapter.dart';
@@ -1268,8 +1268,8 @@ void main() {
       );
       expect(reflected.status, CourseChangeNoticeStatus.reflected);
       expect(reflected.originalClassroom, '兴德楼南楼223');
-      expect(reflected.newClassroom, '博学楼(8号楼)501');
-      expect(reflected.effectiveClassroom, '博学楼(8号楼)501');
+      expect(reflected.rule.classroom, '博学楼(8号楼)501');
+      expect(reflected.effectiveCourse?.classroom, '博学楼(8号楼)501');
       expect(reflected.termContext, isNull);
 
       final unapplied = notices.firstWhere(

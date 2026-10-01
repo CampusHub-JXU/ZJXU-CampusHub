@@ -47,7 +47,10 @@ Map<String, Map<String, int>> collectDesignCounts({String root = 'lib'}) {
     for (final entity in dir.listSync(recursive: true)) {
       if (entity is! File || !entity.path.endsWith('.dart')) continue;
       final posix = entity.path.replaceAll('\\', '/');
-      final rel = posix.substring(posix.indexOf('$root/') + root.length + 1);
+      final posixRoot = root.replaceAll('\\', '/');
+      final rel = posix.substring(
+        posix.indexOf('$posixRoot/') + posixRoot.length + 1,
+      );
       if (designRatchetExempt.contains(rel)) continue;
       // 去掉行注释，文档注释里提到的 API 名不计数。
       final text = entity.readAsStringSync().replaceAll(_lineComment, '');
