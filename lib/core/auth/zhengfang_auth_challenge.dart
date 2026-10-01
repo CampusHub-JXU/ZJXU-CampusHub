@@ -1,5 +1,24 @@
 part of 'zhengfang_auth.dart';
 
+/// 登录 POST 判成功后、提交前的会话校验结论。
+enum _PostLoginVerdict {
+  /// 菜单入口返回正向已认证证据。
+  verified,
+
+  /// 被打回教务登录页 / 验证码 / 901 / 401 / 403：服务端没有保留会话。
+  bounced,
+
+  /// 被打回 WebVPN 网关 / 统一认证登录：网关会话过期，不是教务会话问题。
+  gatewayExpired,
+
+  /// 收到了响应但既无正向证据也无失效证据（如 WebVPN 菜单页签名未经设备
+  /// 验证）。**不阻断提交**：后续 `validateSession` 对 unknown 同样不撤销。
+  unconfirmed,
+
+  /// 校验请求传输失败，无法确认登录结果：fail closed，不提交。
+  networkError,
+}
+
 /// 教务验证码事务扩展。
 ///
 /// 每个 challenge 持有独立内存 CookieJar + 冻结 Dio，从**本事务显式模式**
@@ -8,6 +27,9 @@ part of 'zhengfang_auth.dart';
 /// 回共享 jar 并写 envelope，全局模式随之收敛到本事务模式。
 ///
 /// 人工与自动恢复各用一条 challenge 通道（`automatic`），互不顶替。
+///
+/// 登录 POST 判成功后、提交前会先在隔离会话里校验一次受信菜单入口
+/// （[_PostLoginVerdict]），会话未被服务端保留则不提交。
 extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
   /// 准备一次教务验证码事务：隔离会话 → 登录页上下文 → 验证码 → arm。
   ///
@@ -462,11 +484,46 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
 
       final location = loginResp.headers.value('location') ?? '';
       final html = loginResp.data ?? '';
+      // 诊断：只记状态码与 Location 的 path（无 query / 路径参数 / Cookie / 凭据）。
+      AppLogger.instance.auth(
+        LogLevel.info,
+        '教务登录 POST 响应 [${mode == ZhengfangMode.direct ? "直连" : "WebVPN"}] '
+        'status=${loginResp.statusCode} location=${_locationPathForLog(location)}',
+      );
       if (isZhengfangGatewayLoginUrl(location)) {
         AppLogger.instance.auth(LogLevel.warn, '教务系统登录被重定向到 WebVPN 登录页');
         return LoginFailure('WebVPN 认证已过期，请重新登录');
       }
       if (isLoginSuccess(loginResp.statusCode, location, html)) {
+        // POST 被判成功不等于服务端保留了会话（移动网络 / 高铁换 IP 时会话会被
+        // 立刻丢弃，随后任何业务请求都被打回登录页）。提交前先用本事务的隔离
+        // 会话校验一次；校验未通过则不提交、不通知，避免「静默假成功」。
+        final verdict = await _verifyPostLoginSession(
+          context,
+          cancelToken: cancelToken,
+        );
+        cancelToken.throwIfCancelled();
+        if (isStale()) {
+          return _staleLoginFailure('登录后会话校验后');
+        }
+        switch (verdict) {
+          case _PostLoginVerdict.bounced:
+            return LoginFailure(
+              '登录未生效：教务系统没有保持会话，可能是网络切换（如移动网络/高铁）导致，'
+              '请稍后重试或连接稳定网络',
+              kind: AuthFailureKind.sessionNotRetained,
+            );
+          case _PostLoginVerdict.gatewayExpired:
+            return LoginFailure('WebVPN 认证已过期，请重新登录');
+          case _PostLoginVerdict.networkError:
+            return LoginFailure(
+              '登录结果无法确认（网络异常），请重试',
+              kind: AuthFailureKind.networkUnavailable,
+            );
+          case _PostLoginVerdict.verified:
+          case _PostLoginVerdict.unconfirmed:
+            break;
+        }
         // 条件提交：epoch 校验通过才合并 cookie + 写 envelope；使用 prepare 时
         // 固定的 context.expectedEpoch，绝不重新读取当前 epoch。
         // 自动恢复路径（recoveryTicket != null）唯一走 typed ticket commit。
@@ -517,6 +574,11 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
       if (isStale()) {
         return _staleLoginFailure('网络异常时已过期');
       }
+      if (CancelToken.isCancel(e)) {
+        // 被人工登录接管 / 调用方取消：不是网络故障，不记 ERROR。
+        AppLogger.instance.auth(LogLevel.info, '教务登录已取消（被人工登录接管）');
+        return LoginFailure('登录已取消', kind: AuthFailureKind.staleOperation);
+      }
       AppLogger.instance.auth(
         LogLevel.error,
         '教务系统登录网络异常: ${e.type} ${e.message}',
@@ -528,6 +590,83 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
     } catch (e) {
       return LoginFailure('登录异常：$e');
     }
+  }
+
+  /// 登录 POST 判成功后、提交前的会话校验：用本事务的**隔离会话**请求受信
+  /// 菜单入口，判定逻辑复用 [classifyAcademicEntryResponse]（与受信入口探测
+  /// 同一份），不碰共享 jar、不改全局模式、不撤销任何会话。
+  ///
+  /// 取消异常原样上抛；其它传输失败归为 [_PostLoginVerdict.networkError]。
+  Future<_PostLoginVerdict> _verifyPostLoginSession(
+    _ZhengfangChallengeContext context, {
+    CancelToken? cancelToken,
+  }) async {
+    final requestUrl = '${context.baseUrl}/xtgl/index_initMenu.html';
+    try {
+      final response = await context.session.send<String>(
+        label: '教务登录后会话校验',
+        cancelToken: cancelToken,
+        request: (dio, token) => dio.get<String>(
+          requestUrl,
+          queryParameters: {'jsdm': 'xs'},
+          cancelToken: token,
+          options: Options(
+            responseType: ResponseType.plain,
+            followRedirects: false,
+            validateStatus: (status) => status != null && status < 1000,
+            headers: {'Referer': context.loginPageUrl},
+          ),
+        ),
+      );
+      final status = response.statusCode ?? 0;
+      final location = response.headers.value('location') ?? '';
+      final classified = classifyAcademicEntryResponse(
+        mode: context.mode,
+        requestUri: Uri.parse(requestUrl)
+            .replace(queryParameters: {'jsdm': 'xs'}),
+        status: status,
+        location: location,
+        html: response.data ?? '',
+      );
+      var verdict = switch (classified) {
+        AcademicEntrySessionStatus.authenticated => _PostLoginVerdict.verified,
+        AcademicEntrySessionStatus.academicLoginRequired =>
+          _PostLoginVerdict.bounced,
+        AcademicEntrySessionStatus.unifiedLoginRequired =>
+          _PostLoginVerdict.gatewayExpired,
+        AcademicEntrySessionStatus.unknown => _PostLoginVerdict.unconfirmed,
+      };
+      // 901 是正方「会话无效」状态码（与 validateSession 一致）。
+      if (verdict == _PostLoginVerdict.unconfirmed && status == 901) {
+        verdict = _PostLoginVerdict.bounced;
+      } else if (verdict == _PostLoginVerdict.unconfirmed && status >= 400) {
+        // 5xx / 400 等错误状态：服务端没有给出任何可用结论，无法确认登录结果，
+        // 与传输失败同样 fail closed（不能把错误页当作「未发现问题」）。
+        verdict = _PostLoginVerdict.networkError;
+      }
+      AppLogger.instance.auth(
+        verdict == _PostLoginVerdict.verified ? LogLevel.info : LogLevel.warn,
+        '教务登录后会话校验: ${verdict.name} status=$status '
+        'location=${_locationPathForLog(location)}',
+      );
+      return verdict;
+    } on DioException catch (e) {
+      if (CancelToken.isCancel(e)) rethrow;
+      AppLogger.instance.auth(LogLevel.warn, '教务登录后会话校验失败（网络异常）: ${e.type}');
+      return _PostLoginVerdict.networkError;
+    } catch (_) {
+      AppLogger.instance.auth(LogLevel.warn, '教务登录后会话校验失败（未知异常）');
+      return _PostLoginVerdict.networkError;
+    }
+  }
+
+  /// 仅保留 Location 的 path（去掉 query / fragment / `;jsessionid` 路径参数）。
+  String _locationPathForLog(String location) {
+    if (location.isEmpty) return '-';
+    final path = Uri.tryParse(location)?.path ?? '';
+    if (path.isEmpty) return '-';
+    final semicolon = path.indexOf(';');
+    return semicolon < 0 ? path : path.substring(0, semicolon);
   }
 
   Future<SessionCommitResult?> _commitChallengeSession(

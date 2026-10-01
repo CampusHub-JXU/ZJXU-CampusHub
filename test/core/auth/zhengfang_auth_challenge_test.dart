@@ -52,6 +52,15 @@ String _fieldFromBody(Object? data, String name) {
   return RegExp('(?:^|&)$name=([^&]+)').firstMatch(text)?.group(1) ?? '';
 }
 
+ResponseBody _authenticatedMenuResponse() => ResponseBody.fromString(
+  '<html><script>var sessionUserKey="x";</script>'
+  '<a href="/jwglxt/kbcx/xskbcx_cxXskbcxIndex.html">课表</a></html>',
+  200,
+  headers: <String, List<String>>{
+    Headers.contentTypeHeader: <String>['text/html; charset=utf-8'],
+  },
+);
+
 /// 有状态教务 mock：登录页签发 csrf nonce（token 与 ZF_SESSION cookie 同源），
 /// POST 只有二者一致才成功，用于证明 A/B challenge 的 jar 不混。
 class _ChallengeZfAdapter extends MockHttpClientAdapter {
@@ -59,9 +68,23 @@ class _ChallengeZfAdapter extends MockHttpClientAdapter {
     this.beforePost,
     this.firstCaptchaGate,
     this.onFirstCaptcha,
+    this.menuHandler,
+    this.pathPrefix = '',
   }) {
     var nonce = 0;
-    register('GET', '/jwglxt/xtgl/login_slogin.html', (options) async {
+    // 登录后会话校验（隔离会话 GET 受信菜单入口）：默认返回已认证菜单页。
+    register('GET', '$pathPrefix/jwglxt/xtgl/index_initMenu.html', (
+      options,
+    ) async {
+      menuChecks++;
+      menuUris.add(options.uri);
+      final custom = menuHandler;
+      if (custom != null) return custom(options);
+      return _authenticatedMenuResponse();
+    });
+    register('GET', '$pathPrefix/jwglxt/xtgl/login_slogin.html', (
+      options,
+    ) async {
       final n = 'n${nonce++}';
       return ResponseBody.fromString(
         '<html><input type="hidden" id="csrftoken" name="csrftoken" '
@@ -73,7 +96,7 @@ class _ChallengeZfAdapter extends MockHttpClientAdapter {
         },
       );
     });
-    register('GET', '/jwglxt/kaptcha', (options) async {
+    register('GET', '$pathPrefix/jwglxt/kaptcha', (options) async {
       final isFirst = _captchaCount++ == 0;
       if (isFirst) onFirstCaptcha?.call();
       if (isFirst && firstCaptchaGate != null) {
@@ -87,11 +110,13 @@ class _ChallengeZfAdapter extends MockHttpClientAdapter {
         },
       );
     });
-    registerJson('GET', '/jwglxt/xtgl/login_getPublicKey.html', {
+    registerJson('GET', '$pathPrefix/jwglxt/xtgl/login_getPublicKey.html', {
       'modulus': _modulus,
       'exponent': _exponent,
     });
-    register('POST', '/jwglxt/xtgl/login_slogin.html', (options) async {
+    register('POST', '$pathPrefix/jwglxt/xtgl/login_slogin.html', (
+      options,
+    ) async {
       loginPosts++;
       if (beforePost != null) await beforePost!();
       final csrf = _fieldFromBody(options.data, 'csrftoken');
@@ -106,15 +131,21 @@ class _ChallengeZfAdapter extends MockHttpClientAdapter {
         '',
         302,
         headers: <String, List<String>>{
-          'location': <String>['/jwglxt/xtgl/index_initMenu.html?jsdm=xs'],
+          'location': <String>[
+            '$pathPrefix/jwglxt/xtgl/index_initMenu.html?jsdm=xs',
+          ],
         },
       );
     });
   }
 
+  final String pathPrefix;
+  final List<Uri> menuUris = <Uri>[];
   final Future<void> Function()? beforePost;
   final Completer<void>? firstCaptchaGate;
   final void Function()? onFirstCaptcha;
+  final RequestHandler? menuHandler;
+  int menuChecks = 0;
   int sessionMismatches = 0;
   int loginPosts = 0;
   int _captchaCount = 0;
@@ -222,6 +253,370 @@ void main() {
       expect(adapter.sessionMismatches, 0);
     },
   );
+
+  // ── 登录后会话校验：POST 判成功后、提交前必须在隔离会话里确认会话被保留 ──
+
+  Future<bool> envelopeActive() async =>
+      (await CredentialStore.instance.readSessionEnvelope(
+        CredentialSessionDomain.academic,
+      )).active;
+
+  ResponseBody menuRedirect(String location) => ResponseBody.fromString(
+    '',
+    302,
+    headers: <String, List<String>>{
+      'location': <String>[location],
+    },
+  );
+
+  Future<LoginResult> submitFresh() async {
+    final challenge = await auth.prepareCaptchaChallenge();
+    return auth.submitCaptchaChallenge(
+      challengeId: challenge.id,
+      username: '2024001',
+      password: 'pw',
+      captcha: '2468',
+    );
+  }
+
+  test('POST ok + verification ok commits the session', () async {
+    final adapter = _ChallengeZfAdapter();
+    DioClient.instance.dio.httpClientAdapter = adapter;
+
+    final result = await submitFresh();
+
+    expect(result, isA<LoginSuccess>());
+    expect(adapter.menuChecks, 1, reason: '提交前必须校验一次');
+    expect(auth.isLoggedIn, isTrue);
+    expect(await envelopeActive(), isTrue);
+  });
+
+  test('POST ok + verification bounced to login: not committed, sessionNotRetained', () async {
+    final adapter = _ChallengeZfAdapter(
+      menuHandler: (_) async =>
+          menuRedirect('/jwglxt/xtgl/login_slogin.html?x=1'),
+    );
+    DioClient.instance.dio.httpClientAdapter = adapter;
+    var notifications = 0;
+    void listener() => notifications++;
+    auth.addListener(listener);
+    addTearDown(() => auth.removeListener(listener));
+    final revisionBefore = auth.sessionRevision;
+
+    final result = await submitFresh();
+
+    expect(result, isA<LoginFailure>());
+    final failure = result as LoginFailure;
+    expect(failure.kind, AuthFailureKind.sessionNotRetained);
+    expect(failure.message, contains('登录未生效'));
+    expect(auth.isLoggedIn, isFalse);
+    expect(auth.currentStudentId, isNull);
+    expect(auth.sessionRevision, revisionBefore);
+    expect(notifications, 0, reason: '未提交不得通知页面已登录');
+    expect(await envelopeActive(), isFalse);
+  });
+
+  test('verification 901 is a bounce', () async {
+    DioClient.instance.dio.httpClientAdapter = _ChallengeZfAdapter(
+      menuHandler: (_) async => ResponseBody.fromString('', 901),
+    );
+
+    final result = await submitFresh();
+
+    expect((result as LoginFailure).kind, AuthFailureKind.sessionNotRetained);
+    expect(auth.isLoggedIn, isFalse);
+  });
+
+  test('verification network error fails closed without committing', () async {
+    DioClient.instance.dio.httpClientAdapter = _ChallengeZfAdapter(
+      menuHandler: (options) async => throw DioException(
+        requestOptions: options,
+        type: DioExceptionType.connectionError,
+        error: 'down',
+      ),
+    );
+
+    final result = await submitFresh();
+
+    final failure = result as LoginFailure;
+    expect(failure.kind, AuthFailureKind.networkUnavailable);
+    expect(failure.message, contains('无法确认'));
+    expect(auth.isLoggedIn, isFalse);
+    expect(await envelopeActive(), isFalse);
+  });
+
+  test(
+    'verification redirecting to the gateway login reports gateway expiry',
+    () async {
+      DioClient.instance.dio.httpClientAdapter = _ChallengeZfAdapter(
+        menuHandler: (_) async =>
+            menuRedirect('https://webvpn.zjxu.edu.cn/login'),
+      );
+
+      final result = await submitFresh();
+
+      final failure = result as LoginFailure;
+      expect(failure.kind, isNot(AuthFailureKind.sessionNotRetained));
+      expect(failure.message, contains('WebVPN'));
+      expect(auth.isLoggedIn, isFalse);
+    },
+  );
+
+  test(
+    'unrecognised-but-not-bounced verification response still commits',
+    () async {
+      // 无正向签名也无失效证据：与 validateSession 的 unknown 语义一致，不阻断。
+      DioClient.instance.dio.httpClientAdapter = _ChallengeZfAdapter(
+        menuHandler: (_) async => ResponseBody.fromString(
+          '<html>ok</html>',
+          200,
+          headers: <String, List<String>>{
+            Headers.contentTypeHeader: <String>['text/html; charset=utf-8'],
+          },
+        ),
+      );
+
+      final result = await submitFresh();
+
+      expect(result, isA<LoginSuccess>());
+      expect(auth.isLoggedIn, isTrue);
+    },
+  );
+
+  test('verification 5xx / 404 cannot be confirmed: network failure, not committed', () async {
+    for (final status in <int>[500, 503, 404]) {
+      auth.debugReset();
+      AuthSessionPersistence.instance.debugReset();
+      AuthSessionPersistence.instance.debugDirectoryProvider = () async =>
+          lockDir;
+      DioClient.instance.dio.httpClientAdapter = _ChallengeZfAdapter(
+        menuHandler: (_) async =>
+            ResponseBody.fromString('<html>error</html>', status),
+      );
+
+      final result = await submitFresh();
+
+      final failure = result as LoginFailure;
+      expect(
+        failure.kind,
+        AuthFailureKind.networkUnavailable,
+        reason: '$status',
+      );
+      expect(failure.message, contains('登录结果无法确认'), reason: '$status');
+      expect(auth.isLoggedIn, isFalse, reason: '$status');
+      expect(await envelopeActive(), isFalse, reason: '$status');
+    }
+  });
+
+  group('WebVPN mode verification', () {
+    const webVpnPrefix =
+        '/https/77726476706e69737468656265737421fae05b84692a62486b468ca88d1b203b';
+
+    Future<LoginResult> submitWebVpn() async {
+      final challenge = await auth.prepareCaptchaChallenge(
+        mode: ZhengfangMode.webVpn,
+      );
+      return auth.submitCaptchaChallenge(
+        challengeId: challenge.id,
+        username: '2024001',
+        password: 'pw',
+        captcha: '2468',
+      );
+    }
+
+    test(
+      'GET goes to the WebVPN proxied menu entry; verified commits',
+      () async {
+        final adapter = _ChallengeZfAdapter(pathPrefix: webVpnPrefix);
+        DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
+
+        final result = await submitWebVpn();
+
+        expect(result, isA<LoginSuccess>());
+        expect(adapter.menuUris, hasLength(1));
+        final uri = adapter.menuUris.single;
+        expect(uri.host, 'webvpn.zjxu.edu.cn');
+        expect(uri.path, '$webVpnPrefix/jwglxt/xtgl/index_initMenu.html');
+        expect(uri.queryParameters['jsdm'], 'xs');
+        expect(auth.isLoggedIn, isTrue);
+        expect(auth.currentStudentId, '2024001');
+        expect(await envelopeActive(), isTrue);
+      },
+    );
+
+    test('bounce to the gateway / CAS login reports WebVPN expiry, nothing committed', () async {
+      for (final location in <String>[
+        'https://webvpn.zjxu.edu.cn/login',
+        'https://webvpn.zjxu.edu.cn/https/abc/cas/login?service=x',
+      ]) {
+        auth.debugReset();
+        AuthSessionPersistence.instance.debugReset();
+        AuthSessionPersistence.instance.debugDirectoryProvider = () async =>
+            lockDir;
+        final adapter = _ChallengeZfAdapter(
+          pathPrefix: webVpnPrefix,
+          menuHandler: (_) async => menuRedirect(location),
+        );
+        DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
+        var notifications = 0;
+        void listener() => notifications++;
+        auth.addListener(listener);
+
+        final result = await submitWebVpn();
+        auth.removeListener(listener);
+
+        final failure = result as LoginFailure;
+        expect(adapter.menuChecks, 1, reason: location);
+        expect(failure.message, contains('WebVPN 认证已过期'), reason: location);
+        expect(failure.kind, isNot(AuthFailureKind.sessionNotRetained));
+        expect(auth.isLoggedIn, isFalse, reason: location);
+        expect(auth.currentStudentId, isNull, reason: location);
+        expect(notifications, 0, reason: location);
+        expect(await envelopeActive(), isFalse, reason: location);
+      }
+    });
+  });
+
+  test('cancel during the verification GET is a quiet stale result', () async {
+    final gate = Completer<void>();
+    final reached = Completer<void>();
+    DioClient.instance.dio.httpClientAdapter = _ChallengeZfAdapter(
+      menuHandler: (_) async {
+        if (!reached.isCompleted) reached.complete();
+        await gate.future;
+        return _authenticatedMenuResponse();
+      },
+    );
+    final challenge = await auth.prepareCaptchaChallenge();
+    final token = CancelToken();
+    final pending = auth.submitCaptchaChallenge(
+      challengeId: challenge.id,
+      username: '2024001',
+      password: 'pw',
+      captcha: '1',
+      cancelToken: token,
+    );
+    await reached.future;
+    token.cancel('manual takeover');
+
+    final result = await pending;
+    gate.complete();
+
+    expect((result as LoginFailure).kind, AuthFailureKind.staleOperation);
+    expect(auth.isLoggedIn, isFalse);
+    expect(auth.currentStudentId, isNull);
+    expect(await envelopeActive(), isFalse);
+  });
+
+  test(
+    'session revision change during verification: stale, not committed',
+    () async {
+      DioClient.instance.dio.httpClientAdapter = _ChallengeZfAdapter(
+        menuHandler: (_) async {
+          // 校验期间另一条路径落定了别的身份（revision 推进）。
+          auth.debugSetSession(active: true, studentId: 'OTHER');
+          return _authenticatedMenuResponse();
+        },
+      );
+
+      final result = await submitFresh();
+
+      expect((result as LoginFailure).kind, AuthFailureKind.staleOperation);
+      expect(auth.currentStudentId, 'OTHER', reason: '不得覆盖新会话');
+      expect(await envelopeActive(), isFalse, reason: '本事务不得写入 envelope');
+    },
+  );
+
+  test('session epoch change between verification and commit: stale, nothing committed', () async {
+    DioClient.instance.dio.httpClientAdapter = _ChallengeZfAdapter(
+      menuHandler: (_) async {
+        // 模拟跨 isolate 的更新提交：只推进持久 epoch，本 isolate revision 不变。
+        await AuthSessionPersistence.instance.commit(
+          CredentialSessionDomain.academic,
+          account: 'OTHER',
+          expectedEpoch: 0,
+        );
+        return _authenticatedMenuResponse();
+      },
+    );
+
+    final result = await submitFresh();
+
+    expect((result as LoginFailure).kind, AuthFailureKind.staleOperation);
+    expect(auth.isLoggedIn, isFalse);
+    final envelope = await CredentialStore.instance.readSessionEnvelope(
+      CredentialSessionDomain.academic,
+    );
+    expect(envelope.account, 'OTHER', reason: '胜出的提交不得被本事务改写');
+  });
+
+  test('cancel during the login POST is a quiet stale result', () async {
+    final gate = Completer<void>();
+    DioClient.instance.dio.httpClientAdapter = _ChallengeZfAdapter(
+      beforePost: () => gate.future,
+    );
+    final challenge = await auth.prepareCaptchaChallenge();
+    final token = CancelToken();
+    final pending = auth.submitCaptchaChallenge(
+      challengeId: challenge.id,
+      username: '2024001',
+      password: 'pw',
+      captcha: '1',
+      cancelToken: token,
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    token.cancel('manual takeover');
+
+    final result = await pending;
+
+    expect((result as LoginFailure).kind, AuthFailureKind.staleOperation);
+    expect(auth.isLoggedIn, isFalse);
+    gate.complete();
+  });
+
+  test('automatic path: sessionNotRetained is transient, never an identity failure', () async {
+    DioClient.instance.dio.httpClientAdapter = _ChallengeZfAdapter(
+      menuHandler: (_) async => menuRedirect('/jwglxt/xtgl/login_slogin.html'),
+    );
+    await AuthRecoveryStateStore.instance.enable(
+      AuthRecoveryDomain.academic,
+      account: '2024001',
+      credentialRevision: 0,
+    );
+
+    final outcome = await AuthOperationCoordinator.instance
+        .runAutomatic<LoginResult>(
+          domain: AuthRecoveryDomain.academic,
+          account: '2024001',
+          exchange: (ticket, token) async {
+            final challenge = await auth.prepareCaptchaChallenge(
+              cancelToken: token,
+              automatic: true,
+            );
+            return auth.submitCaptchaChallenge(
+              challengeId: challenge.id,
+              username: '2024001',
+              password: 'pw',
+              captcha: '2468',
+              cancelToken: token,
+              recoveryTicket: ticket,
+            );
+          },
+          receiptOf: (value) => value is LoginSuccess ? value.receipt : null,
+          failureOf: (value) =>
+              value is LoginFailure ? value.kind : AuthFailureKind.unknown,
+        );
+
+    expect(outcome.decision, AuthRecoveryDecision.exchangeFailed);
+    expect(outcome.didCommit, isFalse);
+    expect(auth.isLoggedIn, isFalse);
+    expect(await envelopeActive(), isFalse);
+    final record = await AuthRecoveryStateStore.instance.read(
+      AuthRecoveryDomain.academic,
+    );
+    expect(record.lastFailure, AuthFailureKind.sessionNotRetained);
+    expect(record.failureCount, 0, reason: '不得计入 3 次身份失败暂停');
+  });
 
   test('a submitted challenge cannot be replayed', () async {
     DioClient.instance.dio.httpClientAdapter = _ChallengeZfAdapter();

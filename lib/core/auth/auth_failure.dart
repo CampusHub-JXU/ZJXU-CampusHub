@@ -30,6 +30,11 @@ enum AuthFailureKind {
   /// 过期操作：账号/epoch/challenge 已变化或被取消，结果必须丢弃。
   staleOperation,
 
+  /// 登录 POST 看似成功，但随后的会话校验被打回登录页：服务端没有保留会话
+  /// （常见于移动网络 / 高铁导致出口 IP 或 NAT 变化）。属于**瞬时**失败：
+  /// 既不是密码错误（不计入 3 次身份失败暂停），也不是过期操作。
+  sessionNotRetained,
+
   /// 无法可靠归类的失败。
   unknown,
 }
