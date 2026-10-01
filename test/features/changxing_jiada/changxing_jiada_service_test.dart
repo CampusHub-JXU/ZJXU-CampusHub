@@ -14,7 +14,7 @@ import 'package:jxu_campus_hub/features/changxing_jiada/changxing_jiada_service.
 import '../../helpers/gated_secure_storage.dart';
 import '../../helpers/mock_http_client_adapter.dart';
 import '../../helpers/test_setup.dart';
-import 'changxing_route_test_helpers.dart';
+import '../../helpers/changxing_route_test_helpers.dart';
 
 /// 注册一条最小 CAS SSO 链路：最终换取 [jwtToken]。
 void _registerSsoChain(MockHttpClientAdapter adapter, String jwtToken) {

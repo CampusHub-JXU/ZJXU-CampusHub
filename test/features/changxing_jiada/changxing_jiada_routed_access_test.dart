@@ -14,7 +14,7 @@ import 'package:jxu_campus_hub/features/changxing_jiada/changxing_jiada_service.
 
 import '../../helpers/mock_http_client_adapter.dart';
 import '../../helpers/test_setup.dart';
-import 'changxing_route_test_helpers.dart';
+import '../../helpers/changxing_route_test_helpers.dart';
 
 const _callback = 'http://zhx.zjxu.edu.cn:8443/api/wap/cas_login_back';
 const _loginHtml = '''
