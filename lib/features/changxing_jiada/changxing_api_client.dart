@@ -462,10 +462,7 @@ class ChangxingApiClient {
     }
   }
 
-  String extractMessage(
-    Map<String, dynamic> json, {
-    required String fallback,
-  }) {
+  String extractMessage(Map<String, dynamic> json, {required String fallback}) {
     final data = extractDataMap(json);
     return data['msg']?.toString() ??
         data['errmsg']?.toString() ??

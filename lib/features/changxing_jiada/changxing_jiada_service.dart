@@ -71,7 +71,8 @@ class ChangxingJiadaService {
         _api.extractMessage(json, fallback: '获取用户信息失败'),
       );
     }
-    final body = _api.extractDataMap(json)['body'] as Map<String, dynamic>? ?? {};
+    final body =
+        _api.extractDataMap(json)['body'] as Map<String, dynamic>? ?? {};
     return ChangxingUserProfile.fromJson(body);
   }
 
@@ -100,7 +101,8 @@ class ChangxingJiadaService {
         _api.extractMessage(json, fallback: '获取申请列表失败'),
       );
     }
-    final body = _api.extractDataMap(json)['body'] as Map<String, dynamic>? ?? {};
+    final body =
+        _api.extractDataMap(json)['body'] as Map<String, dynamic>? ?? {};
     final records = (body['records'] as List<dynamic>? ?? [])
         .whereType<Map<String, dynamic>>()
         .map(ChangxingApplication.fromJson)
@@ -111,7 +113,8 @@ class ChangxingJiadaService {
   Future<ChangxingApplicationDetail> fetchApplicationDetail(int id) async {
     final json = await _api.postForm('/approvalForm/getOne', {'id': '$id'});
     _api.ensureSuccess(json, fallback: '获取申请详情失败');
-    final data = _api.extractDataMap(json)['data'] as Map<String, dynamic>? ?? {};
+    final data =
+        _api.extractDataMap(json)['data'] as Map<String, dynamic>? ?? {};
     return ChangxingApplicationDetail.fromJson(data);
   }
 
@@ -122,7 +125,8 @@ class ChangxingJiadaService {
     );
     _api.ensureSuccess(json, fallback: '获取地区信息失败');
     final body =
-        _api.extractDataMap(json)['body'] as List<dynamic>? ?? const <dynamic>[];
+        _api.extractDataMap(json)['body'] as List<dynamic>? ??
+        const <dynamic>[];
     return body
         .whereType<Map<String, dynamic>>()
         .map(ChangxingAreaNode.fromJson)
@@ -136,7 +140,8 @@ class ChangxingJiadaService {
     );
     _api.ensureSuccess(json, fallback: '获取上级地区失败');
     final body =
-        _api.extractDataMap(json)['body'] as List<dynamic>? ?? const <dynamic>[];
+        _api.extractDataMap(json)['body'] as List<dynamic>? ??
+        const <dynamic>[];
     return body
         .whereType<Map<String, dynamic>>()
         .map(ChangxingAreaNode.fromJson)
@@ -151,7 +156,8 @@ class ChangxingJiadaService {
       );
       final code = _api.extractCode(json);
       if (code != '20000') return false;
-      final body = _api.extractDataMap(json)['body'] as Map<String, dynamic>? ?? {};
+      final body =
+          _api.extractDataMap(json)['body'] as Map<String, dynamic>? ?? {};
       final records = body['records'] as List<dynamic>? ?? const <dynamic>[];
       if (records.isEmpty) return false;
       final first = records.first as Map<String, dynamic>? ?? {};
@@ -247,7 +253,8 @@ class ChangxingJiadaService {
       );
     }
     _api.ensureSuccess(json, fallback: '上传附件失败');
-    final data = _api.extractDataMap(json)['data'] as Map<String, dynamic>? ?? {};
+    final data =
+        _api.extractDataMap(json)['data'] as Map<String, dynamic>? ?? {};
     return ChangxingUploadResult(
       md5: data['md5']?.toString().trim() ?? '',
       base64: data['base64']?.toString().trim() ?? '',

@@ -147,11 +147,7 @@ class ChangxingCasLogin {
         throw ChangxingCasLoginException('登录状态已变化，请重试');
       }
       // 本次选路已被完整链路验证：供后续 API 调用短期复用。
-      _api.rememberRoute(
-        route: route,
-        owner: owner,
-        revision: revisionAtStart,
-      );
+      _api.rememberRoute(route: route, owner: owner, revision: revisionAtStart);
       AppLogger.instance.auth(LogLevel.info, '畅行嘉大 CAS SSO 登录成功');
     } on CasAuthExpiredException {
       // prepare / recover 明确判定统一认证失效（broker 对显式失效的既有
@@ -203,7 +199,10 @@ class ChangxingCasLogin {
         deadline: deadline,
         needsLogin: _isLoginBounce,
         stopAtRedirect: (next) =>
-            _extractTokenId(normalizeChangxingSsoRedirectUrl(next.toString())) != null ||
+            _extractTokenId(
+                  normalizeChangxingSsoRedirectUrl(next.toString()),
+                ) !=
+                null ||
             (route.isWebVpn && _needsRouteRewrite(next)),
       );
 
