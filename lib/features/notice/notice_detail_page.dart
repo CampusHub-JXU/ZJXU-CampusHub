@@ -10,6 +10,7 @@ import '../../core/notice/notice_detail.dart';
 import '../../core/notice/notice_detail_service.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_error_view.dart';
+import '../../shared/widgets/app_feedback.dart';
 import '../../shared/widgets/auth_required_view.dart';
 import '../../shared/widgets/copy_text_feedback.dart';
 import '../../shared/widgets/login_shell.dart';
@@ -118,13 +119,10 @@ class _NoticeDetailPageState extends State<NoticeDetailPage> {
     } on MissingPluginException {
       enqueued = false;
     }
-    messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(enqueued ? '已开始下载：${attachment.name}' : '下载失败，请重试'),
-        ),
-      );
+    AppFeedback.toastOn(
+      messenger,
+      enqueued ? '已开始下载：${attachment.name}' : '下载失败，请重试',
+    );
   }
 
   @override
