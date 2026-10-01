@@ -11,14 +11,9 @@ const designRatchetBaseline = <String, Map<String, int>>{
     'showSnackBar': 1,
   },
   'features/notice/notice_detail_page.dart': {'showSnackBar': 1},
-  'features/schedule/widgets/schedule_change_sheet.dart': {'fontSize': 11},
-  'features/schedule/widgets/schedule_course_cell.dart': {
-    'fontSize': 1,
-    'showModalBottomSheet': 1,
-  },
-  'features/schedule/widgets/schedule_day_headers.dart': {'fontSize': 4},
-  'features/schedule/widgets/schedule_info_banner.dart': {'fontSize': 1},
-  'features/schedule/widgets/schedule_slot_column.dart': {'fontSize': 2},
+  'features/schedule/widgets/schedule_course_cell.dart': {'fontSize': 1},
+  'features/schedule/widgets/schedule_day_headers.dart': {'fontSize': 1},
+  'features/schedule/widgets/schedule_slot_column.dart': {'fontSize': 1},
   'features/settings/about_page.dart': {'fontSize': 1},
   'features/settings/background_editor_page.dart': {'fontSize': 2},
   'features/settings/push_debug_page.dart': {
