@@ -116,6 +116,19 @@ bool isJwcNoticeDetailUrl(String url) {
       RegExp(r'^/info/\d+/\d+\.htm$').hasMatch(path);
 }
 
+/// 是否为教务处附件下载 URL：必须是 `https://jwc.zjxu.edu.cn`（默认端口、无
+/// 用户信息）上的 `DownloadAttachUrl` 链接。只有命中才当作附件，并允许把统一
+/// 认证 CookieJar 的 Cookie 注入下载请求；其它主机一律不当附件、不带 Cookie。
+bool isJwcAttachmentUrl(String url) {
+  final uri = Uri.tryParse(url);
+  if (uri == null) return false;
+  return uri.scheme == 'https' &&
+      uri.host.toLowerCase() == 'jwc.zjxu.edu.cn' &&
+      uri.userInfo.isEmpty &&
+      (!uri.hasPort || uri.port == 443) &&
+      url.contains('DownloadAttachUrl');
+}
+
 /// 解析详情页 HTML；模板结构缺失返回 null。
 NoticeDetail? parseNoticeDetailHtml(String html, {required String pageUrl}) {
   final doc = html_parser.parse(html);
@@ -149,7 +162,8 @@ NoticeDetail? parseNoticeDetailHtml(String html, {required String pageUrl}) {
     if (!href.contains('DownloadAttachUrl')) continue;
     final url = _resolve(base, href);
     final name = _collapse(link.text);
-    if (url == null || name.isEmpty || !seen.add(url)) continue;
+    if (url == null || !isJwcAttachmentUrl(url)) continue;
+    if (name.isEmpty || !seen.add(url)) continue;
     attachments.add(NoticeAttachment(name: name, url: url));
   }
 

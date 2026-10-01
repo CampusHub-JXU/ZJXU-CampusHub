@@ -153,5 +153,53 @@ void main() {
         'https://jwc.zjxu.edu.cn/system/_content/download.jsp?urltype=news.DownloadAttachUrl&owner=1&wbfileid=7',
       );
     });
+
+    test(
+      'ignores DownloadAttachUrl links on other hosts or insecure schemes',
+      () {
+        final detail = _parse(
+          _page(
+            body: '<p>见附件</p>',
+            attachments: '''
+<li><a href="https://evil.example.com/download.jsp?urltype=news.DownloadAttachUrl&wbfileid=1">外站.docx</a></li>
+<li><a href="http://jwc.zjxu.edu.cn/system/_content/download.jsp?urltype=news.DownloadAttachUrl&wbfileid=2">明文.docx</a></li>
+<li><a href="https://jwc.zjxu.edu.cn.evil.example.com/d.jsp?urltype=news.DownloadAttachUrl&wbfileid=3">仿冒.docx</a></li>
+<li><a href="https://jwc.zjxu.edu.cn/system/_content/download.jsp?urltype=news.DownloadAttachUrl&wbfileid=4">正常.docx</a></li>
+''',
+          ),
+        );
+        expect(detail.attachments.map((a) => a.name), ['正常.docx']);
+      },
+    );
+  });
+
+  group('isJwcAttachmentUrl', () {
+    test('accepts only https jwc DownloadAttachUrl links', () {
+      const ok =
+          'https://jwc.zjxu.edu.cn/system/_content/download.jsp?urltype=news.DownloadAttachUrl&wbfileid=7';
+      expect(isJwcAttachmentUrl(ok), isTrue);
+      expect(isJwcAttachmentUrl(ok.replaceFirst('https', 'http')), isFalse);
+      expect(
+        isJwcAttachmentUrl(ok.replaceFirst('jwc.zjxu.edu.cn', 'example.com')),
+        isFalse,
+      );
+      expect(
+        isJwcAttachmentUrl(
+          ok.replaceFirst('jwc.zjxu.edu.cn', 'jwc.zjxu.edu.cn@evil.com'),
+        ),
+        isFalse,
+      );
+      expect(
+        isJwcAttachmentUrl(
+          ok.replaceFirst('jwc.zjxu.edu.cn', 'jwc.zjxu.edu.cn:8443'),
+        ),
+        isFalse,
+      );
+      expect(
+        isJwcAttachmentUrl('https://jwc.zjxu.edu.cn/content.jsp?wbnewsid=1'),
+        isFalse,
+      );
+      expect(isJwcAttachmentUrl('not a url'), isFalse);
+    });
   });
 }
