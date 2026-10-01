@@ -150,7 +150,21 @@ class AcademicAuthGuard {
     if (target == null || target.host.toLowerCase() != _webVpnHost) {
       return false;
     }
-    return _webVpnProxiedPath.hasMatch(target.path.toLowerCase());
+    final targetPath = target.path.toLowerCase();
+    if (!_webVpnProxiedPath.hasMatch(targetPath)) return false;
+    // 只认同一来源的 WebVPN 包装（如 jwzx 的固定前缀），被跳到其它校内站点
+    // 的包装不是本次请求的改道。
+    final expected = Uri.tryParse(
+      ZhengfangAuth.instance.buildWebVpnProxyUrl(
+        '${requestUri.scheme}://${requestUri.authority}/',
+      ),
+    );
+    if (expected == null || expected.host.toLowerCase() != _webVpnHost) {
+      return false;
+    }
+    var prefix = expected.path.toLowerCase();
+    if (prefix.endsWith('/')) prefix = prefix.substring(0, prefix.length - 1);
+    return targetPath == prefix || targetPath.startsWith('$prefix/');
   }
 
   /// 执行 [request]，若响应命中认证过期则尝试恢复会话后重试一次。

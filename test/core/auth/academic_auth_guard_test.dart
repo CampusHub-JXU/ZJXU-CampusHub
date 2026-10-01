@@ -376,8 +376,10 @@ void main() {
       expect(
         AcademicAuthGuard.isRouteMovedResponse(
           moved(
-            'https://jwzx.zjxu.edu.cn/x',
-            'https://webvpn.zjxu.edu.cn/https-8443/abc/x',
+            'https://jwzx.zjxu.edu.cn:8443/x',
+            ZhengfangAuth.instance.buildWebVpnProxyUrl(
+              'https://jwzx.zjxu.edu.cn:8443/x',
+            ),
           ),
         ),
         isTrue,
@@ -393,6 +395,17 @@ void main() {
         moved(
           'https://jwzx.zjxu.edu.cn/x',
           'https://webvpn.zjxu.edu.cn/https/abc/cas/login?service=x',
+        ),
+        // 跳到其它校内站点（如图书馆 libapp）的 WebVPN 包装，不是本次改道。
+        moved(
+          'https://jwzx.zjxu.edu.cn/x',
+          ZhengfangAuth.instance.buildWebVpnProxyUrl(
+            'https://libapp.zjxu.edu.cn/x',
+          ),
+        ),
+        moved(
+          'https://jwzx.zjxu.edu.cn/x',
+          'https://webvpn.zjxu.edu.cn/https/abc/x',
         ),
         Response<Object?>(
           requestOptions: RequestOptions(path: 'https://jwzx.zjxu.edu.cn/x'),
