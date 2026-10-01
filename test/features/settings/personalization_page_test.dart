@@ -78,13 +78,10 @@ void main() {
   testWidgets('开关写回对应控制器', (tester) async {
     await pumpPersonalization(tester);
 
+    // 亚克力始终开启：设置页不再提供材质 / 课表卡片毛玻璃开关。
     expect(glass.enabled.value, isTrue);
-    await tapKey(tester, 'personalization_acrylic');
-    expect(glass.enabled.value, isFalse);
-
-    expect(personalization.headerGlassEnabled.value, isFalse);
-    await tapKey(tester, 'personalization_header_glass');
-    expect(personalization.headerGlassEnabled.value, isTrue);
+    expect(find.byKey(const Key('personalization_acrylic')), findsNothing);
+    expect(find.byKey(const Key('personalization_header_glass')), findsNothing);
 
     expect(personalization.emblemWatermarkEnabled.value, isTrue);
     await tapKey(tester, 'personalization_emblem');
@@ -241,7 +238,6 @@ void main() {
         'personalization_reset_transform',
         'personalization_remove_wallpaper',
         'personalization_shader_opacity',
-        'personalization_header_glass',
         'personalization_campus_notice',
       ]) {
         await tester.ensureVisible(find.byKey(Key(key)));

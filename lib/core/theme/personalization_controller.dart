@@ -46,7 +46,9 @@ class PersonalizationController {
   static const _keyShaderAnimationSpeed = 'home_shader_animation_speed';
   static const _keyLegacyFilterStrength = 'home_filter_strength';
   static const _keyBackgroundOpacity = 'home_background_opacity';
-  static const _keyHeaderGlass = 'home_header_glass_enabled';
+
+  /// 已下线的「课表卡片毛玻璃」开关（只影响过预览，真实首页从未使用）；restore 时清除。
+  static const _keyRetiredHeaderGlass = 'home_header_glass_enabled';
   static const _keyBgAlignX = 'home_background_align_x';
   static const _keyBgAlignY = 'home_background_align_y';
   static const _keyBackgroundFit = 'home_background_fit';
@@ -57,7 +59,6 @@ class PersonalizationController {
 
   final ValueNotifier<String?> backgroundImagePath = ValueNotifier(null);
   final ValueNotifier<bool> shaderEnabled = ValueNotifier(false);
-  final ValueNotifier<bool> headerGlassEnabled = ValueNotifier(false);
   final ValueNotifier<double> shaderStrength = ValueNotifier(0.45);
   final ValueNotifier<double> shaderOpacity = ValueNotifier(1.0);
   final ValueNotifier<double> shaderAnimationSpeed = ValueNotifier(1.0);
@@ -334,7 +335,9 @@ class PersonalizationController {
         prefs.getBool(_keyLegacyColorFilterEnabled) ??
         false;
 
-    headerGlassEnabled.value = prefs.getBool(_keyHeaderGlass) ?? false;
+    if (prefs.containsKey(_keyRetiredHeaderGlass)) {
+      await prefs.remove(_keyRetiredHeaderGlass);
+    }
 
     shaderStrength.value =
         (prefs.getDouble(_keyShaderStrength) ??
@@ -394,12 +397,6 @@ class PersonalizationController {
     if (enabled) {
       unawaited(getMonetColors());
     }
-  }
-
-  Future<void> setHeaderGlassEnabled(bool enabled) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_keyHeaderGlass, enabled);
-    headerGlassEnabled.value = enabled;
   }
 
   Future<void> setShaderStrength(double value) async {

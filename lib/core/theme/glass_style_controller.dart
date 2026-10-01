@@ -18,11 +18,11 @@ enum GlassTier { card, nav, overlay }
 /// 所有材质组件（GlassContainer、AppTileSurface、AppBar/底栏及各页卡片）统一
 /// 从这里读取开关，避免各页各自持有一套开关导致状态不同步。
 ///
-/// 用户侧只保留一个开关：「亚克力材质」（默认开启）。开启时全局表面为
-/// [SurfaceMaterialStyle.acrylic]（真实背景模糊 + 颗粒），关闭时降级为
-/// [SurfaceMaterialStyle.solid]。风格与模糊强度、透明度不再可调，固定为
-/// [kSurfaceBlurBase] / [kSurfaceTintOpacity]。旧版本持久化的风格/模糊/透明度键在
-/// [restore] 时清除，读取时只认 [enabled] 键，因此旧的 glass / mica 取值不会复活。
+/// 亚克力**始终开启**，用户侧不再提供开关：全局表面固定为
+/// [SurfaceMaterialStyle.acrylic]（真实背景模糊 + 颗粒），模糊强度与透明度固定为
+/// [kSurfaceBlurBase] / [kSurfaceTintOpacity]。旧版本持久化的开关 / 风格 / 模糊 /
+/// 透明度键在 [restore] 时一律清除，旧的「关闭」取值不会复活。
+/// [enabled] 仍保留为可监听值，只供测试切到实色路径（[setEnabled]）。
 class GlassStyleController {
   GlassStyleController._();
 
@@ -33,7 +33,7 @@ class GlassStyleController {
   static const _keyTintOpacity = 'glass_tint_opacity_v1';
   static const _keyMaterialStyle = 'glass_material_style_v1';
 
-  /// 「亚克力材质」开关（默认开启）。关闭后所有表面降级为实色，不产生 BackdropFilter。
+  /// 亚克力是否开启：生产环境恒为 true；测试可经 [setEnabled] 切到实色。
   final ValueNotifier<bool> enabled = ValueNotifier<bool>(true);
 
   bool _restored = false;
@@ -46,32 +46,34 @@ class GlassStyleController {
   Future<void> restore() async {
     if (_restored) return;
     final prefs = await SharedPreferences.getInstance();
-    enabled.value = prefs.getBool(_keyEnabled) ?? true;
+    enabled.value = true;
     _restored = true;
-    // 旧版本可调的风格/模糊/透明度已下线，清掉残留键，避免日后误读。
+    // 开关与可调的风格/模糊/透明度均已下线，清掉残留键，避免日后误读。
     for (final key in _retiredKeys) {
       if (prefs.containsKey(key)) await prefs.remove(key);
     }
   }
 
   static const _retiredKeys = [
+    _keyEnabled,
     _keyBlurSigma,
     _keyTintOpacity,
     _keyMaterialStyle,
   ];
 
-  Future<void> setEnabled(bool value) async {
-    enabled.value = value;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_keyEnabled, value);
-  }
+  /// 仅测试：切换亚克力 / 实色路径（不落盘）。
+  @visibleForTesting
+  Future<void> setEnabled(bool value) async => enabled.value = value;
+
+  /// 仅测试：让下一次 [restore] 重新读盘（验证旧键清理）。
+  @visibleForTesting
+  void debugMarkUnrestored() => _restored = false;
 
   @visibleForTesting
   Future<void> debugReset() async {
     enabled.value = true;
     _restored = true;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_keyEnabled);
     for (final key in _retiredKeys) {
       await prefs.remove(key);
     }
