@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html><head><title>学生学业情况查询</title></head>
+<body>
+<input type="hidden" id="csrftoken" name="csrftoken" value=""/>
+<form id="requestMap"><input type="hidden" id="sessionUserKey" value="2020000000" /><input type="hidden" id="gnmkdmKey" value="N105515" /></form>
+<form id="form" name="form" action="/jwglxt/xsxy/xsxyqk_cxXsxyqkIndex.html" method="post" role="form">
+    <input type="hidden" name="xh_id" value="2020000000" id="xh_id"/>
+    <input type="hidden" name="xxdm" value="10354" id="xxdm"/>
+    <input type="hidden" name="cjlrxn" value="2026" id="cjlrxn"/>
+    <input type="hidden" name="cjlrxq" value="3" id="cjlrxq"/>
+    <input type="hidden" name="bkcjlrxn" value="2026" id="bkcjlrxn"/>
+    <input type="hidden" name="bkcjlrxq" value="3" id="bkcjlrxq"/>
+    <input type="hidden" name="xscjcxkz" value="0" id="xscjcxkz"/>
+    <input type="hidden" name="cjcxkzzt" value="0" id="cjcxkzzt"/>
+    <input type="hidden" name="cjztkz" value="0" id="cjztkz"/>
+    <input type="hidden" name="cjzt" value="" id="cjzt"/>
+    <div style="margin-bottom:0px;margin-top: 20px" role="alert" id="alertBox" >
+        <font size="2px" style="font-weight: bold">测试同学同学，您的课程修读情况：(统计时间2026-01-01 00:00:00之前有效)</font>
+        <font size="2px">所有主修课程<a class="clj" name="showGpa">平均学分绩点</a>（GPA）：<font size="2px" style="color: red;">3.000</font></font>&nbsp;
+        <font size="2px"> 计划总课程 90门      通过30门，<font size="2px" style="color: red;">未通过 2门</font>；未修45门；</font> <font size="2px" style="color: blue;"> 在读13门！</font>
+        <font size="2px"> 计划外：      通过2门，</font><font size="2px" style="color: red;">未通过 1门</font>
+    </div>
+    <div class="position_r" ><ul class="treeview" id="ul2020000000start" ></div>
+</form>
+<script type="text/javascript">
+    jQuery(function($){
+        var xxdm = '10354';
+
+    if($("#ul").size()==0&&''!='')//节点没有找到父节点ul，二级根节点
+    {
+        if('0.0' != '' && '' == ''){
+            $("<ul id='ul'><li id='li2F7FB60CC27E8277E063150B0A0A612B' class='' fxfyqjd_id='' xfyqzjdgx='1' "+getJdgx('1')+">"+
+        "<div class='title' data-content=''"+
+        " xfyqjd_id='2F7FB60CC27E8277E063150B0A0A612B' jdkcsx='' leaf='' sfmjd='0' ><p class='title1' id='p2F7FB60CC27E8277E063150B0A0A612B' yxxf='0.0' yqzdxf='0' >"+
+        "主修&nbsp;要求学分:0.0&nbsp;获得学分:0.0&nbsp;&nbsp;未获得学分:0.0&nbsp;"+
+        "<span id='showKc2F7FB60CC27E8277E063150B0A0A612B'></span></p><span id ='thzt2F7FB60CC27E8277E063150B0A0A612B' value='0,0,0'></span><i id='xfzt2F7FB60CC27E8277E063150B0A0A612B'></i></div><div class='more_con' id='kcxx2F7FB60CC27E8277E063150B0A0A612B'></div></li></ul>").appendTo($("#li"));
+        }else if('' !='' && '0.0' == ''){
+            $("<li>主修&nbsp;要求门次:&nbsp;达到要求:0&nbsp;&nbsp;未达到要求:&nbsp;</li>").appendTo($("#li"));
+        }else{
+            $("<li>主修</li>").appendTo($("#li"));
+        }
+        if('0'!=1){
+            $("<span class='zt1'>"+getJdgx('1')+"</span>").appendTo($("#p2F7FB60CC27E8277E063150B0A0A612B"));
+        }else{
+            if(''==1){
+                $("<a href='javascript:;' class='more'>"+
+        "共（<font name='zms'>0</font>）门   通过（<font name='yxmc'>0</font>）门"+
+        "<span class='glyphicon glyphicon-chevron-down'></a>").appendTo($("#showKc2F7FB60CC27E8277E063150B0A0A612B"));
+            }
+        }
+    }
+    else if($("#ul").size()==0&&''==''&&'2F7FB60CC27E8277E063150B0A0A612B'!='qtkcxfyq'&&'2F7FB60CC27E8277E063150B0A0A612B'!='cxcyqkxfyq')//根节点
+    {
+        $("<li xfyqjd_id='2F7FB60CC27E8277E063150B0A0A612B' xfyqzjdgx='' class='first start' fxfyqjd_id='' ><div class='hitarea'></div>"+
+            "<div class='title' xfyqjd_id='2F7FB60CC27E8277E063150B0A0A612B' data-content='主修'><p class='title1'>主修"+
+            "</p></div>"+
+            "<ul id='ul2F7FB60CC27E8277E063150B0A0A612B'></ul></li>").appendTo($("#ul2020000000start"));
+    }
+    else if($("#ul").size()==0&&''==''&&'2F7FB60CC27E8277E063150B0A0A612B'=='qtkcxfyq')//其他课程 节点
+    {
+        $("<a href='javascript:;' class='more'>"+
+            "共（<font name='zms'>0</font>）门  通过（<font name='tgms'>0</font>）门 "+
+            "<span class='glyphicon glyphicon-chevron-down'></a>").appendTo($("#showKc2F7FB60CC27E8277E063150B0A0A612B"));
+    }
+    else if($("#ul").size()==0&&''==''&&'2F7FB60CC27E8277E063150B0A0A612B'=='cxcyqkxfyq')//创新创业课程 节点
+    {
+        $("<li id='li2F7FB60CC27E8277E063150B0A0A612B'><p class='title1' id='p2F7FB60CC27E8277E063150B0A0A612B' yqzdxf='0'>主修(尚无数据信息)</span></p></li>").appendTo($("#ul2020000000start"));
+    }
+    else
+    {
+        if('0.0' != '' && '' == ''){
+            $("<li id='li2F7FB60CC27E8277E063150B0A0A612B' class='' fxfyqjd_id='' xfyqzjdgx='1' "+getJdgx('1')+">").appendTo($("#ul"));
+        }
+        if('0'!=1){
+        }else{
+            $("<a href='javascript:;' class='more'>"+
+        "共（<font name='zms'>0</font>）门   通过（<font name='yxmc'>0</font>）门"+
+        "<span class='glyphicon glyphicon-chevron-down'></a>").appendTo($("#showKc2F7FB60CC27E8277E063150B0A0A612B"));
+        }
+    }
+
+    if($("#ul2F7FB60CC27E8277E063150B0A0A612B").size()==0&&'2F7FB60CC27E8277E063150B0A0A612B'!='')//节点没有找到父节点ul，二级根节点
+    {
+        if('120.0' != '' && '' == ''){
+            $("<ul id='ul2F7FB60CC27E8277E063150B0A0A612B'><li id='li2F7FB60CC27F8277E063150B0A0A612B' class='' fxfyqjd_id='2F7FB60CC27E8277E063150B0A0A612B' xfyqzjdgx='1' "+getJdgx('1')+">"+
+        "<div class='title' data-content=''"+
+        " xfyqjd_id='2F7FB60CC27F8277E063150B0A0A612B' jdkcsx='' leaf='' sfmjd='0' ><p class='title1' id='p2F7FB60CC27F8277E063150B0A0A612B' yxxf='70.0' yqzdxf='120' >"+
+        "必修课合计&nbsp;要求学分:120.0&nbsp;获得学分:70.0&nbsp;&nbsp;未获得学分:0.0&nbsp;"+
+        "<span id='showKc2F7FB60CC27F8277E063150B0A0A612B'></span></p><span id ='thzt2F7FB60CC27F8277E063150B0A0A612B' value='0,0,0'></span><i id='xfzt2F7FB60CC27F8277E063150B0A0A612B'></i></div><div class='more_con' id='kcxx2F7FB60CC27F8277E063150B0A0A612B'></div></li></ul>").appendTo($("#li2F7FB60CC27E8277E063150B0A0A612B"));
+        }else if('' !='' && '120.0' == ''){
+            $("<li>必修课合计&nbsp;要求门次:&nbsp;达到要求:32&nbsp;&nbsp;未达到要求:&nbsp;</li>").appendTo($("#li2F7FB60CC27E8277E063150B0A0A612B"));
+        }else{
+            $("<li>必修课合计</li>").appendTo($("#li2F7FB60CC27E8277E063150B0A0A612B"));
+        }
+        if('0'!=1){
+            $("<span class='zt1'>"+getJdgx('1')+"</span>").appendTo($("#p2F7FB60CC27F8277E063150B0A0A612B"));
+        }else{
+            if(''==1){
+                $("<a href='javascript:;' class='more'>"+
+        "共（<font name='zms'>0</font>）门   通过（<font name='yxmc'>32</font>）门"+
+        "<span class='glyphicon glyphicon-chevron-down'></a>").appendTo($("#showKc2F7FB60CC27F8277E063150B0A0A612B"));
+            }
+        }
+    }
+    else if($("#ul2F7FB60CC27E8277E063150B0A0A612B").size()==0&&'2F7FB60CC27E8277E063150B0A0A612B'==''&&'2F7FB60CC27F8277E063150B0A0A612B'!='qtkcxfyq'&&'2F7FB60CC27F8277E063150B0A0A612B'!='cxcyqkxfyq')//根节点
+    {
+        $("<li xfyqjd_id='2F7FB60CC27F8277E063150B0A0A612B' xfyqzjdgx='' class='first start' fxfyqjd_id='2F7FB60CC27E8277E063150B0A0A612B' ><div class='hitarea'></div>"+
+            "<div class='title' xfyqjd_id='2F7FB60CC27F8277E063150B0A0A612B' data-content='必修课合计'><p class='title1'>必修课合计"+
+            "</p></div>"+
+            "<ul id='ul2F7FB60CC27F8277E063150B0A0A612B'></ul></li>").appendTo($("#ul2020000000start"));
+    }
+    else if($("#ul2F7FB60CC27E8277E063150B0A0A612B").size()==0&&'2F7FB60CC27E8277E063150B0A0A612B'==''&&'2F7FB60CC27F8277E063150B0A0A612B'=='qtkcxfyq')//其他课程 节点
+    {
+        $("<a href='javascript:;' class='more'>"+
+            "共（<font name='zms'>0</font>）门  通过（<font name='tgms'>0</font>）门 "+
+            "<span class='glyphicon glyphicon-chevron-down'></a>").appendTo($("#showKc2F7FB60CC27F8277E063150B0A0A612B"));
+    }
+    else if($("#ul2F7FB60CC27E8277E063150B0A0A612B").size()==0&&'2F7FB60CC27E8277E063150B0A0A612B'==''&&'2F7FB60CC27F8277E063150B0A0A612B'=='cxcyqkxfyq')//创新创业课程 节点
+    {
+        $("<li id='li2F7FB60CC27F8277E063150B0A0A612B'><p class='title1' id='p2F7FB60CC27F8277E063150B0A0A612B' yqzdxf='120'>必修课合计(尚无数据信息)</span></p></li>").appendTo($("#ul2020000000start"));
+    }
+    else
+    {
+        if('120.0' != '' && '' == ''){
+            $("<li id='li2F7FB60CC27F8277E063150B0A0A612B' class='' fxfyqjd_id='2F7FB60CC27E8277E063150B0A0A612B' xfyqzjdgx='1' "+getJdgx('1')+">").appendTo($("#ul2F7FB60CC27E8277E063150B0A0A612B"));
+        }
+        if('0'!=1){
+        }else{
+            $("<a href='javascript:;' class='more'>"+
+        "共（<font name='zms'>0</font>）门   通过（<font name='yxmc'>32</font>）门"+
+        "<span class='glyphicon glyphicon-chevron-down'></a>").appendTo($("#showKc2F7FB60CC27F8277E063150B0A0A612B"));
+        }
+    }
+
+    if($("#ul2F7FB60CC27F8277E063150B0A0A612B").size()==0&&'2F7FB60CC27F8277E063150B0A0A612B'!='')//节点没有找到父节点ul，二级根节点
+    {
+        if('56.0' != '' && '' == ''){
+            $("<ul id='ul2F7FB60CC27F8277E063150B0A0A612B'><li id='li2F7FB60CC2808277E063150B0A0A612B' class='' fxfyqjd_id='2F7FB60CC27F8277E063150B0A0A612B' xfyqzjdgx='' "+getJdgx('')+">"+
+        "<div class='title' data-content=''"+
+        " xfyqjd_id='2F7FB60CC2808277E063150B0A0A612B' jdkcsx='1' leaf='' sfmjd='1' ><p class='title1' id='p2F7FB60CC2808277E063150B0A0A612B' yxxf='40.0' yqzdxf='56' >"+
+        "其他必修课&nbsp;要求学分:56.0&nbsp;获得学分:40.0&nbsp;&nbsp;未获得学分:0.0&nbsp;"+
+        "<span id='showKc2F7FB60CC2808277E063150B0A0A612B'></span></p><span id ='thzt2F7FB60CC2808277E063150B0A0A612B' value='0,0,0'></span><i id='xfzt2F7FB60CC2808277E063150B0A0A612B'></i></div><div class='more_con' id='kcxx2F7FB60CC2808277E063150B0A0A612B'></div></li></ul>").appendTo($("#li2F7FB60CC27F8277E063150B0A0A612B"));
+        }else if('' !='' && '56.0' == ''){
+            $("<li>其他必修课&nbsp;要求门次:&nbsp;达到要求:20&nbsp;&nbsp;未达到要求:&nbsp;</li>").appendTo($("#li2F7FB60CC27F8277E063150B0A0A612B"));
+        }else{
+            $("<li>其他必修课</li>").appendTo($("#li2F7FB60CC27F8277E063150B0A0A612B"));
+        }
+        if('1'!=1){
+            $("<span class='zt1'>"+getJdgx('')+"</span>").appendTo($("#p2F7FB60CC2808277E063150B0A0A612B"));
+        }else{
+            if('1'==1){
+                $("<a href='javascript:;' class='more'>"+
+        "共（<font name='zms'>0</font>）门   通过（<font name='yxmc'>20</font>）门"+
+        "<span class='glyphicon glyphicon-chevron-down'></a>").appendTo($("#showKc2F7FB60CC2808277E063150B0A0A612B"));
+            }
+        }
+    }
+    else if($("#ul2F7FB60CC27F8277E063150B0A0A612B").size()==0&&'2F7FB60CC27F8277E063150B0A0A612B'==''&&'2F7FB60CC2808277E063150B0A0A612B'!='qtkcxfyq'&&'2F7FB60CC2808277E063150B0A0A612B'!='cxcyqkxfyq')//根节点
+    {
+        $("<li xfyqjd_id='2F7FB60CC2808277E063150B0A0A612B' xfyqzjdgx='' class='first start' fxfyqjd_id='2F7FB60CC27F8277E063150B0A0A612B' ><div class='hitarea'></div>"+
+            "<div class='title' xfyqjd_id='2F7FB60CC2808277E063150B0A0A612B' data-content='其他必修课'><p class='title1'>其他必修课"+
+            "</p></div>"+
+            "<ul id='ul2F7FB60CC2808277E063150B0A0A612B'></ul></li>").appendTo($("#ul2020000000start"));
+    }
+    else if($("#ul2F7FB60CC27F8277E063150B0A0A612B").size()==0&&'2F7FB60CC27F8277E063150B0A0A612B'==''&&'2F7FB60CC2808277E063150B0A0A612B'=='qtkcxfyq')//其他课程 节点
+    {
+        $("<a href='javascript:;' class='more'>"+
+            "共（<font name='zms'>0</font>）门  通过（<font name='tgms'>0</font>）门 "+
+            "<span class='glyphicon glyphicon-chevron-down'></a>").appendTo($("#showKc2F7FB60CC2808277E063150B0A0A612B"));
+    }
+    else if($("#ul2F7FB60CC27F8277E063150B0A0A612B").size()==0&&'2F7FB60CC27F8277E063150B0A0A612B'==''&&'2F7FB60CC2808277E063150B0A0A612B'=='cxcyqkxfyq')//创新创业课程 节点
+    {
+        $("<li id='li2F7FB60CC2808277E063150B0A0A612B'><p class='title1' id='p2F7FB60CC2808277E063150B0A0A612B' yqzdxf='56'>其他必修课(尚无数据信息)</span></p></li>").appendTo($("#ul2020000000start"));
+    }
+    else
+    {
+        if('56.0' != '' && '' == ''){
+            $("<li id='li2F7FB60CC2808277E063150B0A0A612B' class='' fxfyqjd_id='2F7FB60CC27F8277E063150B0A0A612B' xfyqzjdgx='' "+getJdgx('')+">").appendTo($("#ul2F7FB60CC27F8277E063150B0A0A612B"));
+        }
+        if('1'!=1){
+        }else{
+            $("<a href='javascript:;' class='more'>"+
+        "共（<font name='zms'>0</font>）门   通过（<font name='yxmc'>20</font>）门"+
+        "<span class='glyphicon glyphicon-chevron-down'></a>").appendTo($("#showKc2F7FB60CC2808277E063150B0A0A612B"));
+        }
+    }
+
+    if($("#ul2F7FB60CC27F8277E063150B0A0A612B").size()==0&&'2F7FB60CC27F8277E063150B0A0A612B'!='')//节点没有找到父节点ul，二级根节点
+    {
+        if('22.0' != '' && '' == ''){
+            $("<ul id='ul2F7FB60CC27F8277E063150B0A0A612B'><li id='li2F7FB60CC2BC8277E063150B0A0A612B' class='' fxfyqjd_id='2F7FB60CC27F8277E063150B0A0A612B' xfyqzjdgx='' "+getJdgx('')+">"+
+        "<div class='title' data-content=''"+
+        " xfyqjd_id='2F7FB60CC2BC8277E063150B0A0A612B' jdkcsx='1' leaf='' sfmjd='1' ><p class='title1' id='p2F7FB60CC2BC8277E063150B0A0A612B' yxxf='10.0' yqzdxf='22' >"+
+        "实践环节&nbsp;要求学分:22.0&nbsp;获得学分:10.0&nbsp;&nbsp;未获得学分:0.0&nbsp;"+
+        "<span id='showKc2F7FB60CC2BC8277E063150B0A0A612B'></span></p><span id ='thzt2F7FB60CC2BC8277E063150B0A0A612B' value='0,0,0'></span><i id='xfzt2F7FB60CC2BC8277E063150B0A0A612B'></i></div><div class='more_con' id='kcxx2F7FB60CC2BC8277E063150B0A0A612B'></div></li></ul>").appendTo($("#li2F7FB60CC27F8277E063150B0A0A612B"));
+        }else if('' !='' && '22.0' == ''){
+            $("<li>实践环节&nbsp;要求门次:&nbsp;达到要求:4&nbsp;&nbsp;未达到要求:&nbsp;</li>").appendTo($("#li2F7FB60CC27F8277E063150B0A0A612B"));
+        }else{
+            $("<li>实践环节</li>").appendTo($("#li2F7FB60CC27F8277E063150B0A0A612B"));
+        }
+        if('1'!=1){
+            $("<span class='zt1'>"+getJdgx('')+"</span>").appendTo($("#p2F7FB60CC2BC8277E063150B0A0A612B"));
+        }else{
+            if('1'==1){
+                $("<a href='javascript:;' class='more'>"+
+        "共（<font name='zms'>0</font>）门   通过（<font name='yxmc'>4</font>）门"+
+        "<span class='glyphicon glyphicon-chevron-down'></a>").appendTo($("#showKc2F7FB60CC2BC8277E063150B0A0A612B"));
+            }
+        }
+    }
+    else if($("#ul2F7FB60CC27F8277E063150B0A0A612B").size()==0&&'2F7FB60CC27F8277E063150B0A0A612B'==''&&'2F7FB60CC2BC8277E063150B0A0A612B'!='qtkcxfyq'&&'2F7FB60CC2BC8277E063150B0A0A612B'!='cxcyqkxfyq')//根节点
+    {
+        $("<li xfyqjd_id='2F7FB60CC2BC8277E063150B0A0A612B' xfyqzjdgx='' class='first start' fxfyqjd_id='2F7FB60CC27F8277E063150B0A0A612B' ><div class='hitarea'></div>"+
+            "<div class='title' xfyqjd_id='2F7FB60CC2BC8277E063150B0A0A612B' data-content='实践环节'><p class='title1'>实践环节"+
+            "</p></div>"+
+            "<ul id='ul2F7FB60CC2BC8277E063150B0A0A612B'></ul></li>").appendTo($("#ul2020000000start"));
+    }
+    else if($("#ul2F7FB60CC27F8277E063150B0A0A612B").size()==0&&'2F7FB60CC27F8277E063150B0A0A612B'==''&&'2F7FB60CC2BC8277E063150B0A0A612B'=='qtkcxfyq')//其他课程 节点
+    {
+        $("<a href='javascript:;' class='more'>"+
+            "共（<font name='zms'>0</font>）门  通过（<font name='tgms'>0</font>）门 "+
+            "<span class='glyphicon glyphicon-chevron-down'></a>").appendTo($("#showKc2F7FB60CC2BC8277E063150B0A0A612B"));
+    }
+    else if($("#ul2F7FB60CC27F8277E063150B0A0A612B").size()==0&&'2F7FB60CC27F8277E063150B0A0A612B'==''&&'2F7FB60CC2BC8277E063150B0A0A612B'=='cxcyqkxfyq')//创新创业课程 节点
+    {
+        $("<li id='li2F7FB60CC2BC8277E063150B0A0A612B'><p class='title1' id='p2F7FB60CC2BC8277E063150B0A0A612B' yqzdxf='22'>实践环节(尚无数据信息)</span></p></li>").appendTo($("#ul2020000000start"));
+    }
+    else
+    {
+        if('22.0' != '' && '' == ''){
+            $("<li id='li2F7FB60CC2BC8277E063150B0A0A612B' class='' fxfyqjd_id='2F7FB60CC27F8277E063150B0A0A612B' xfyqzjdgx='' "+getJdgx('')+">").appendTo($("#ul2F7FB60CC27F8277E063150B0A0A612B"));
+        }
+        if('1'!=1){
+        }else{
+            $("<a href='javascript:;' class='more'>"+
+        "共（<font name='zms'>0</font>）门   通过（<font name='yxmc'>4</font>）门"+
+        "<span class='glyphicon glyphicon-chevron-down'></a>").appendTo($("#showKc2F7FB60CC2BC8277E063150B0A0A612B"));
+        }
+    }
+
+    if($("#ul2F7FB60CC27E8277E063150B0A0A612B").size()==0&&'2F7FB60CC27E8277E063150B0A0A612B'!='')//节点没有找到父节点ul，二级根节点
+    {
+        if('9.0' != '' && '' == ''){
+            $("<ul id='ul2F7FB60CC27E8277E063150B0A0A612B'><li id='li2F7FB60CC2E28277E063150B0A0A612B' class='' fxfyqjd_id='2F7FB60CC27E8277E063150B0A0A612B' xfyqzjdgx='0' "+getJdgx('0')+">"+
+        "<div class='title' data-content=''"+
+        " xfyqjd_id='2F7FB60CC2E28277E063150B0A0A612B' jdkcsx='' leaf='' sfmjd='0' ><p class='title1' id='p2F7FB60CC2E28277E063150B0A0A612B' yxxf='5.0' yqzdxf='9' >"+
+        "校通识课合计&nbsp;要求学分:9.0&nbsp;获得学分:5.0&nbsp;&nbsp;未获得学分:0.0&nbsp;"+
+        "<span id='showKc2F7FB60CC2E28277E063150B0A0A612B'></span></p><span id ='thzt2F7FB60CC2E28277E063150B0A0A612B' value='0,0,0'></span><i id='xfzt2F7FB60CC2E28277E063150B0A0A612B'></i></div><div class='more_con' id='kcxx2F7FB60CC2E28277E063150B0A0A612B'></div></li></ul>").appendTo($("#li2F7FB60CC27E8277E063150B0A0A612B"));
+        }else if('' !='' && '9.0' == ''){
+            $("<li>校通识课合计&nbsp;要求门次:&nbsp;达到要求:3&nbsp;&nbsp;未达到要求:&nbsp;</li>").appendTo($("#li2F7FB60CC27E8277E063150B0A0A612B"));
+        }else{
+            $("<li>校通识课合计</li>").appendTo($("#li2F7FB60CC27E8277E063150B0A0A612B"));
+        }
+        if('0'!=1){
+            $("<span class='zt1'>"+getJdgx('0')+"</span>").appendTo($("#p2F7FB60CC2E28277E063150B0A0A612B"));
+        }else{
+            if(''==1){
+                $("<a href='javascript:;' class='more'>"+
+        "共（<font name='zms'>0</font>）门   通过（<font name='yxmc'>3</font>）门"+
+        "<span class='glyphicon glyphicon-chevron-down'></a>").appendTo($("#showKc2F7FB60CC2E28277E063150B0A0A612B"));
+            }
+        }
+    }
+    else if($("#ul2F7FB60CC27E8277E063150B0A0A612B").size()==0&&'2F7FB60CC27E8277E063150B0A0A612B'==''&&'2F7FB60CC2E28277E063150B0A0A612B'!='qtkcxfyq'&&'2F7FB60CC2E28277E063150B0A0A612B'!='cxcyqkxfyq')//根节点
+    {
+        $("<li xfyqjd_id='2F7FB60CC2E28277E063150B0A0A612B' xfyqzjdgx='' class='first start' fxfyqjd_id='2F7FB60CC27E8277E063150B0A0A612B' ><div class='hitarea'></div>"+
+            "<div class='title' xfyqjd_id='2F7FB60CC2E28277E063150B0A0A612B' data-content='校通识课合计'><p class='title1'>校通识课合计"+
+            "</p></div>"+
+            "<ul id='ul2F7FB60CC2E28277E063150B0A0A612B'></ul></li>").appendTo($("#ul2020000000start"));
+    }
+    else if($("#ul2F7FB60CC27E8277E063150B0A0A612B").size()==0&&'2F7FB60CC27E8277E063150B0A0A612B'==''&&'2F7FB60CC2E28277E063150B0A0A612B'=='qtkcxfyq')//其他课程 节点
+    {
+        $("<a href='javascript:;' class='more'>"+
+            "共（<font name='zms'>0</font>）门  通过（<font name='tgms'>0</font>）门 "+
+            "<span class='glyphicon glyphicon-chevron-down'></a>").appendTo($("#showKc2F7FB60CC2E28277E063150B0A0A612B"));
+    }
+    else if($("#ul2F7FB60CC27E8277E063150B0A0A612B").size()==0&&'2F7FB60CC27E8277E063150B0A0A612B'==''&&'2F7FB60CC2E28277E063150B0A0A612B'=='cxcyqkxfyq')//创新创业课程 节点
+    {
+        $("<li id='li2F7FB60CC2E28277E063150B0A0A612B'><p class='title1' id='p2F7FB60CC2E28277E063150B0A0A612B' yqzdxf='9'>校通识课合计(尚无数据信息)</span></p></li>").appendTo($("#ul2020000000start"));
+    }
+    else
+    {
+        if('9.0' != '' && '' == ''){
+            $("<li id='li2F7FB60CC2E28277E063150B0A0A612B' class='' fxfyqjd_id='2F7FB60CC27E8277E063150B0A0A612B' xfyqzjdgx='0' "+getJdgx('0')+">").appendTo($("#ul2F7FB60CC27E8277E063150B0A0A612B"));
+        }
+        if('0'!=1){
+        }else{
+            $("<a href='javascript:;' class='more'>"+
+        "共（<font name='zms'>0</font>）门   通过（<font name='yxmc'>3</font>）门"+
+        "<span class='glyphicon glyphicon-chevron-down'></a>").appendTo($("#showKc2F7FB60CC2E28277E063150B0A0A612B"));
+        }
+    }
+
+    if($("#ul2F7FB60CC2E28277E063150B0A0A612B").size()==0&&'2F7FB60CC2E28277E063150B0A0A612B'!='')//节点没有找到父节点ul，二级根节点
+    {
+        if('1.0' != '' && '' == ''){
+            $("<ul id='ul2F7FB60CC2E28277E063150B0A0A612B'><li id='li2F7FB60CC2E58277E063150B0A0A612B' class='' fxfyqjd_id='2F7FB60CC2E28277E063150B0A0A612B' xfyqzjdgx='' "+getJdgx('')+">"+
+        "<div class='title' data-content=''"+
+        " xfyqjd_id='2F7FB60CC2E58277E063150B0A0A612B' jdkcsx='4' leaf='' sfmjd='1' ><p class='title1' id='p2F7FB60CC2E58277E063150B0A0A612B' yxxf='1.0' yqzdxf='1' >"+
+        "“四史”类&nbsp;要求学分:1.0&nbsp;获得学分:1.0&nbsp;&nbsp;未获得学分:0.0&nbsp;"+
+        "<span id='showKc2F7FB60CC2E58277E063150B0A0A612B'></span></p><span id ='thzt2F7FB60CC2E58277E063150B0A0A612B' value='0,0,0'></span><i id='xfzt2F7FB60CC2E58277E063150B0A0A612B'></i></div><div class='more_con' id='kcxx2F7FB60CC2E58277E063150B0A0A612B'></div></li></ul>").appendTo($("#li2F7FB60CC2E28277E063150B0A0A612B"));
+        }else if('' !='' && '1.0' == ''){
+            $("<li>“四史”类&nbsp;要求门次:&nbsp;达到要求:1&nbsp;&nbsp;未达到要求:&nbsp;</li>").appendTo($("#li2F7FB60CC2E28277E063150B0A0A612B"));
+        }else{
+            $("<li>“四史”类</li>").appendTo($("#li2F7FB60CC2E28277E063150B0A0A612B"));
+        }
+        if('1'!=1){
+            $("<span class='zt1'>"+getJdgx('')+"</span>").appendTo($("#p2F7FB60CC2E58277E063150B0A0A612B"));
+        }else{
+            if('4'==1){
+                $("<a href='javascript:;' class='more'>"+
+        "共（<font name='zms'>0</font>）门   通过（<font name='yxmc'>1</font>）门"+
+        "<span class='glyphicon glyphicon-chevron-down'></a>").appendTo($("#showKc2F7FB60CC2E58277E063150B0A0A612B"));
+            }
+        }
+    }
+    else if($("#ul2F7FB60CC2E28277E063150B0A0A612B").size()==0&&'2F7FB60CC2E28277E063150B0A0A612B'==''&&'2F7FB60CC2E58277E063150B0A0A612B'!='qtkcxfyq'&&'2F7FB60CC2E58277E063150B0A0A612B'!='cxcyqkxfyq')//根节点
+    {
+        $("<li xfyqjd_id='2F7FB60CC2E58277E063150B0A0A612B' xfyqzjdgx='' class='first start' fxfyqjd_id='2F7FB60CC2E28277E063150B0A0A612B' ><div class='hitarea'></div>"+
+            "<div class='title' xfyqjd_id='2F7FB60CC2E58277E063150B0A0A612B' data-content='“四史”类'><p class='title1'>“四史”类"+
+            "</p></div>"+
+            "<ul id='ul2F7FB60CC2E58277E063150B0A0A612B'></ul></li>").appendTo($("#ul2020000000start"));
+    }
+    else if($("#ul2F7FB60CC2E28277E063150B0A0A612B").size()==0&&'2F7FB60CC2E28277E063150B0A0A612B'==''&&'2F7FB60CC2E58277E063150B0A0A612B'=='qtkcxfyq')//其他课程 节点
+    {
+        $("<a href='javascript:;' class='more'>"+
+            "共（<font name='zms'>0</font>）门  通过（<font name='tgms'>0</font>）门 "+
+            "<span class='glyphicon glyphicon-chevron-down'></a>").appendTo($("#showKc2F7FB60CC2E58277E063150B0A0A612B"));
+    }
+    else if($("#ul2F7FB60CC2E28277E063150B0A0A612B").size()==0&&'2F7FB60CC2E28277E063150B0A0A612B'==''&&'2F7FB60CC2E58277E063150B0A0A612B'=='cxcyqkxfyq')//创新创业课程 节点
+    {
+        $("<li id='li2F7FB60CC2E58277E063150B0A0A612B'><p class='title1' id='p2F7FB60CC2E58277E063150B0A0A612B' yqzdxf='1'>“四史”类(尚无数据信息)</span></p></li>").appendTo($("#ul2020000000start"));
+    }
+    else
+    {
+        if('1.0' != '' && '' == ''){
+            $("<li id='li2F7FB60CC2E58277E063150B0A0A612B' class='' fxfyqjd_id='2F7FB60CC2E28277E063150B0A0A612B' xfyqzjdgx='' "+getJdgx('')+">").appendTo($("#ul2F7FB60CC2E28277E063150B0A0A612B"));
+        }
+        if('1'!=1){
+        }else{
+            $("<a href='javascript:;' class='more'>"+
+        "共（<font name='zms'>0</font>）门   通过（<font name='yxmc'>1</font>）门"+
+        "<span class='glyphicon glyphicon-chevron-down'></a>").appendTo($("#showKc2F7FB60CC2E58277E063150B0A0A612B"));
+        }
+    }
+
+    if($("#ul2F7FB60CC2E28277E063150B0A0A612B").size()==0&&'2F7FB60CC2E28277E063150B0A0A612B'!='')//节点没有找到父节点ul，二级根节点
+    {
+        if('2.0' != '' && '' == ''){
+            $("<ul id='ul2F7FB60CC2E28277E063150B0A0A612B'><li id='li2F7FB60CC2EF8277E063150B0A0A612B' class='' fxfyqjd_id='2F7FB60CC2E28277E063150B0A0A612B' xfyqzjdgx='' "+getJdgx('')+">"+
+        "<div class='title' data-content=''"+
+        " xfyqjd_id='2F7FB60CC2EF8277E063150B0A0A612B' jdkcsx='4' leaf='' sfmjd='1' ><p class='title1' id='p2F7FB60CC2EF8277E063150B0A0A612B' yxxf='2.0' yqzdxf='2' >"+
+        "自然科学类&nbsp;要求学分:2.0&nbsp;获得学分:2.0&nbsp;&nbsp;未获得学分:0.0&nbsp;"+
+        "<span id='showKc2F7FB60CC2EF8277E063150B0A0A612B'></span></p><span id ='thzt2F7FB60CC2EF8277E063150B0A0A612B' value='0,0,0'></span><i id='xfzt2F7FB60CC2EF8277E063150B0A0A612B'></i></div><div class='more_con' id='kcxx2F7FB60CC2EF8277E063150B0A0A612B'></div></li></ul>").appendTo($("#li2F7FB60CC2E28277E063150B0A0A612B"));
+        }else if('' !='' && '2.0' == ''){
+            $("<li>自然科学类&nbsp;要求门次:&nbsp;达到要求:1&nbsp;&nbsp;未达到要求:&nbsp;</li>").appendTo($("#li2F7FB60CC2E28277E063150B0A0A612B"));
+        }else{
+            $("<li>自然科学类</li>").appendTo($("#li2F7FB60CC2E28277E063150B0A0A612B"));
+        }
+        if('1'!=1){
+            $("<span class='zt1'>"+getJdgx('')+"</span>").appendTo($("#p2F7FB60CC2EF8277E063150B0A0A612B"));
+        }else{
+            if('4'==1){
+                $("<a href='javascript:;' class='more'>"+
+        "共（<font name='zms'>0</font>）门   通过（<font name='yxmc'>1</font>）门"+
+        "<span class='glyphicon glyphicon-chevron-down'></a>").appendTo($("#showKc2F7FB60CC2EF8277E063150B0A0A612B"));
+            }
+        }
+    }
+    else if($("#ul2F7FB60CC2E28277E063150B0A0A612B").size()==0&&'2F7FB60CC2E28277E063150B0A0A612B'==''&&'2F7FB60CC2EF8277E063150B0A0A612B'!='qtkcxfyq'&&'2F7FB60CC2EF8277E063150B0A0A612B'!='cxcyqkxfyq')//根节点
+    {
+        $("<li xfyqjd_id='2F7FB60CC2EF8277E063150B0A0A612B' xfyqzjdgx='' class='first start' fxfyqjd_id='2F7FB60CC2E28277E063150B0A0A612B' ><div class='hitarea'></div>"+
+            "<div class='title' xfyqjd_id='2F7FB60CC2EF8277E063150B0A0A612B' data-content='自然科学类'><p class='title1'>自然科学类"+
+            "</p></div>"+
+            "<ul id='ul2F7FB60CC2EF8277E063150B0A0A612B'></ul></li>").appendTo($("#ul2020000000start"));
+    }
+    else if($("#ul2F7FB60CC2E28277E063150B0A0A612B").size()==0&&'2F7FB60CC2E28277E063150B0A0A612B'==''&&'2F7FB60CC2EF8277E063150B0A0A612B'=='qtkcxfyq')//其他课程 节点
+    {
+        $("<a href='javascript:;' class='more'>"+
+            "共（<font name='zms'>0</font>）门  通过（<font name='tgms'>0</font>）门 "+
+            "<span class='glyphicon glyphicon-chevron-down'></a>").appendTo($("#showKc2F7FB60CC2EF8277E063150B0A0A612B"));
+    }
+    else if($("#ul2F7FB60CC2E28277E063150B0A0A612B").size()==0&&'2F7FB60CC2E28277E063150B0A0A612B'==''&&'2F7FB60CC2EF8277E063150B0A0A612B'=='cxcyqkxfyq')//创新创业课程 节点
+    {
+        $("<li id='li2F7FB60CC2EF8277E063150B0A0A612B'><p class='title1' id='p2F7FB60CC2EF8277E063150B0A0A612B' yqzdxf='2'>自然科学类(尚无数据信息)</span></p></li>").appendTo($("#ul2020000000start"));
+    }
+    else
+    {
+        if('2.0' != '' && '' == ''){
+            $("<li id='li2F7FB60CC2EF8277E063150B0A0A612B' class='' fxfyqjd_id='2F7FB60CC2E28277E063150B0A0A612B' xfyqzjdgx='' "+getJdgx('')+">").appendTo($("#ul2F7FB60CC2E28277E063150B0A0A612B"));
+        }
+        if('1'!=1){
+        }else{
+            $("<a href='javascript:;' class='more'>"+
+        "共（<font name='zms'>0</font>）门   通过（<font name='yxmc'>1</font>）门"+
+        "<span class='glyphicon glyphicon-chevron-down'></a>").appendTo($("#showKc2F7FB60CC2EF8277E063150B0A0A612B"));
+        }
+    }
+
+    if($("#ul").size()==0&&''!='')//节点没有找到父节点ul，二级根节点
+    {
+        if('' != '' && '' == ''){
+            $("<ul id='ul'><li id='liqtkcxfyq' class='' fxfyqjd_id='' xfyqzjdgx='' "+getJdgx('')+">"+
+        "<div class='title' data-content=''"+
+        " xfyqjd_id='qtkcxfyq' jdkcsx='1' leaf='' sfmjd='1' ><p class='title1' id='pqtkcxfyq' yxxf='' yqzdxf='' >"+
+        "其他课程&nbsp;要求学分:&nbsp;获得学分:&nbsp;&nbsp;未获得学分:0.0&nbsp;"+
+        "<span id='showKcqtkcxfyq'></span></p><span id ='thztqtkcxfyq' value='0,0,0'></span><i id='xfztqtkcxfyq'></i></div><div class='more_con' id='kcxxqtkcxfyq'></div></li></ul>").appendTo($("#li"));
+        }else if('' !='' && '' == ''){
+            $("<li>其他课程&nbsp;要求门次:&nbsp;达到要求:0&nbsp;&nbsp;未达到要求:&nbsp;</li>").appendTo($("#li"));
+        }else{
+            $("<li>其他课程</li>").appendTo($("#li"));
+        }
+        if('1'!=1){
+            $("<span class='zt1'>"+getJdgx('')+"</span>").appendTo($("#pqtkcxfyq"));
+        }else{
+            if('1'==1){
+                $("<a href='javascript:;' class='more'>"+
+        "共（<font name='zms'>0</font>）门   通过（<font name='yxmc'>0</font>）门"+
+        "<span class='glyphicon glyphicon-chevron-down'></a>").appendTo($("#showKcqtkcxfyq"));
+            }
+        }
+    }
+    else if($("#ul").size()==0&&''==''&&'qtkcxfyq'!='qtkcxfyq'&&'qtkcxfyq'!='cxcyqkxfyq')//根节点
+    {
+        $("<li xfyqjd_id='qtkcxfyq' xfyqzjdgx='' class='first start' fxfyqjd_id='' ><div class='hitarea'></div>"+
+            "<div class='title' xfyqjd_id='qtkcxfyq' data-content='其他课程'><p class='title1'>其他课程"+
+            "</p></div>"+
+            "<ul id='ulqtkcxfyq'></ul></li>").appendTo($("#ul2020000000start"));
+    }
+    else if($("#ul").size()==0&&''==''&&'qtkcxfyq'=='qtkcxfyq')//其他课程 节点
+    {
+        $("<a href='javascript:;' class='more'>"+
+            "共（<font name='zms'>0</font>）门  通过（<font name='tgms'>0</font>）门 "+
+            "<span class='glyphicon glyphicon-chevron-down'></a>").appendTo($("#showKcqtkcxfyq"));
+    }
+    else if($("#ul").size()==0&&''==''&&'qtkcxfyq'=='cxcyqkxfyq')//创新创业课程 节点
+    {
+        $("<li id='liqtkcxfyq'><p class='title1' id='pqtkcxfyq' yqzdxf=''>其他课程(尚无数据信息)</span></p></li>").appendTo($("#ul2020000000start"));
+    }
+    else
+    {
+        if('' != '' && '' == ''){
+            $("<li id='liqtkcxfyq' class='' fxfyqjd_id='' xfyqzjdgx='' "+getJdgx('')+">").appendTo($("#ul"));
+        }
+        if('1'!=1){
+        }else{
+            $("<a href='javascript:;' class='more'>"+
+        "共（<font name='zms'>0</font>）门   通过（<font name='yxmc'>0</font>）门"+
+        "<span class='glyphicon glyphicon-chevron-down'></a>").appendTo($("#showKcqtkcxfyq"));
+        }
+    }
+
+    if($("#ul").size()==0&&''!='')//节点没有找到父节点ul，二级根节点
+    {
+        if('' != '' && '' == ''){
+            $("<ul id='ul'><li id='licxcyqkxfyq' class='' fxfyqjd_id='' xfyqzjdgx='' "+getJdgx('')+">"+
+        "<div class='title' data-content=''"+
+        " xfyqjd_id='cxcyqkxfyq' jdkcsx='1' leaf='' sfmjd='1' ><p class='title1' id='pcxcyqkxfyq' yxxf='' yqzdxf='' >"+
+        "创新创业情况&nbsp;要求学分:&nbsp;获得学分:&nbsp;&nbsp;未获得学分:0.0&nbsp;"+
+        "<span id='showKccxcyqkxfyq'></span></p><span id ='thztcxcyqkxfyq' value='0,0,0'></span><i id='xfztcxcyqkxfyq'></i></div><div class='more_con' id='kcxxcxcyqkxfyq'></div></li></ul>").appendTo($("#li"));
+        }else if('' !='' && '' == ''){
+            $("<li>创新创业情况&nbsp;要求门次:&nbsp;达到要求:0&nbsp;&nbsp;未达到要求:&nbsp;</li>").appendTo($("#li"));
+        }else{
+            $("<li>创新创业情况</li>").appendTo($("#li"));
+        }
+        if('1'!=1){
+            $("<span class='zt1'>"+getJdgx('')+"</span>").appendTo($("#pcxcyqkxfyq"));
+        }else{
+            if('1'==1){
+                $("<a href='javascript:;' class='more'>"+
+        "共（<font name='zms'>0</font>）门   通过（<font name='yxmc'>0</font>）门"+
+        "<span class='glyphicon glyphicon-chevron-down'></a>").appendTo($("#showKccxcyqkxfyq"));
+            }
+        }
+    }
+    else if($("#ul").size()==0&&''==''&&'cxcyqkxfyq'!='qtkcxfyq'&&'cxcyqkxfyq'!='cxcyqkxfyq')//根节点
+    {
+        $("<li xfyqjd_id='cxcyqkxfyq' xfyqzjdgx='' class='first start' fxfyqjd_id='' ><div class='hitarea'></div>"+
+            "<div class='title' xfyqjd_id='cxcyqkxfyq' data-content='创新创业情况'><p class='title1'>创新创业情况"+
+            "</p></div>"+
+            "<ul id='ulcxcyqkxfyq'></ul></li>").appendTo($("#ul2020000000start"));
+    }
+    else if($("#ul").size()==0&&''==''&&'cxcyqkxfyq'=='qtkcxfyq')//其他课程 节点
+    {
+        $("<a href='javascript:;' class='more'>"+
+            "共（<font name='zms'>0</font>）门  通过（<font name='tgms'>0</font>）门 "+
+            "<span class='glyphicon glyphicon-chevron-down'></a>").appendTo($("#showKccxcyqkxfyq"));
+    }
+    else if($("#ul").size()==0&&''==''&&'cxcyqkxfyq'=='cxcyqkxfyq')//创新创业课程 节点
+    {
+        $("<li id='licxcyqkxfyq'><p class='title1' id='pcxcyqkxfyq' yqzdxf=''>创新创业情况(尚无数据信息)</span></p></li>").appendTo($("#ul2020000000start"));
+    }
+    else
+    {
+        if('' != '' && '' == ''){
+            $("<li id='licxcyqkxfyq' class='' fxfyqjd_id='' xfyqzjdgx='' "+getJdgx('')+">").appendTo($("#ul"));
+        }
+        if('1'!=1){
+        }else{
+            $("<a href='javascript:;' class='more'>"+
+        "共（<font name='zms'>0</font>）门   通过（<font name='yxmc'>0</font>）门"+
+        "<span class='glyphicon glyphicon-chevron-down'></a>").appendTo($("#showKccxcyqkxfyq"));
+        }
+    }
+
+        loadKc();
+        loadJd();
+        zTree();
+        loadBtn();
+    });
+</script>
+</body></html>

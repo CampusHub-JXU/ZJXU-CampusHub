@@ -251,9 +251,10 @@ class RequirementNode {
       ? courses.where((c) => c.countsInPlan).length
       : courses.length;
 
-  /// 「通过 n 门」：课程组按状态重算，其余取服务端值（缺失时按状态计）。
+  /// 「通过 n 门」：课程组与「其他课程」按状态重算（服务端给 0，原页面由前端
+  /// 计算），其余取服务端值（缺失时按状态计）。
   int get passedTotal {
-    if (usesGroupEndpoint || serverPassedCount == null) {
+    if (usesGroupEndpoint || isOtherCourses || serverPassedCount == null) {
       return courses.where((c) => c.status.countsAsPassed).length;
     }
     return serverPassedCount!;
