@@ -115,6 +115,86 @@ void main() {
     expect(find.text('55'), findsOneWidget);
   });
 
+  testWidgets('更深的非末节点不丢子树', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AcademicProgressPage(
+          fetchReport: ({bool forceRefresh = false}) async =>
+              const AcademicProgressReport(
+                summary: AcademicProgressSummary(),
+                roots: [
+                  RequirementNode(
+                    id: 'root',
+                    name: '主修',
+                    children: [
+                      RequirementNode(
+                        id: 'sec',
+                        name: '选修课合计',
+                        children: [
+                          RequirementNode(
+                            id: 'mid',
+                            name: '专业方向',
+                            requiredCredits: 10,
+                            earnedCredits: 4,
+                            children: [
+                              RequirementNode(
+                                id: 'deep',
+                                name: '方向一',
+                                isLeaf: true,
+                                courseAttribute: '1',
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('专业方向 · 4/10 学分'), findsOneWidget);
+    expect(find.text('方向一'), findsOneWidget);
+  });
+
+  testWidgets('树状图视图：点末节点弹出课程', (tester) async {
+    await pumpPage(tester);
+
+    await tester.tap(find.byTooltip('树状图'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(InteractiveViewer), findsOneWidget);
+    expect(find.text('必修课合计'), findsOneWidget);
+    expect(find.text('40/120 学分'), findsOneWidget);
+
+    await tester.tap(find.text('其他必修课'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('高等数学C1'), findsOneWidget);
+    expect(find.text('其他必修课 · 共 3 门 · 通过 1 门'), findsOneWidget);
+
+    Navigator.of(tester.element(find.text('高等数学C1'))).pop();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('列表'));
+    await tester.pumpAndSettle();
+    expect(find.byType(InteractiveViewer), findsNothing);
+  });
+
+  testWidgets('点门数瓦片切到对应状态筛选', (tester) async {
+    await pumpPage(tester);
+
+    await tester.tap(find.bySemanticsLabel('未通过 2 门'));
+    await tester.pump();
+
+    expect(find.text('未过 · 1 门 · 4 学分'), findsOneWidget);
+    expect(find.text('高等数学C1'), findsOneWidget);
+    expect(find.text('体育3'), findsNothing);
+  });
+
   testWidgets('按状态筛选平铺课程', (tester) async {
     await pumpPage(tester);
 

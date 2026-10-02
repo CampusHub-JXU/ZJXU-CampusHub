@@ -8,10 +8,13 @@ import '../../core/theme/app_typography.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_empty_view.dart';
 import '../../shared/widgets/app_error_view.dart';
+import '../../shared/widgets/app_feedback.dart';
 import '../../shared/widgets/app_filter_chips.dart';
 import '../../shared/widgets/app_list_tile.dart';
 import '../../shared/widgets/app_status_tag.dart';
+import '../../shared/widgets/app_tile_surface.dart';
 import '../../shared/widgets/auth_required_view.dart';
+import '../../shared/widgets/detail_readout.dart';
 import '../../shared/widgets/login_shell.dart';
 import '../../shared/widgets/network_error_toast.dart';
 import '../../shared/widgets/plain_list.dart';
@@ -19,6 +22,7 @@ import '../../shared/widgets/refresh_status_line.dart';
 import '../../shared/widgets/skeleton_box.dart';
 import 'academic_progress_model.dart';
 import 'academic_progress_service.dart';
+import 'requirement_tree_canvas.dart';
 
 typedef AcademicProgressFetcher = Future<AcademicProgressReport> Function({
   bool forceRefresh,
@@ -75,6 +79,9 @@ class _AcademicProgressPageState extends State<AcademicProgressPage> {
 
   _StatusFilter _filter = _StatusFilter.tree;
   final Set<String> _expanded = {};
+
+  /// 树状图视图：画布可拖动缩放，不能放进可滚动的列表里。
+  bool _canvasView = false;
 
   @override
   void initState() {
@@ -246,6 +253,16 @@ class _AcademicProgressPageState extends State<AcademicProgressPage> {
         title: const Text('学业情况'),
         actions: (_loggedIn || hasData)
             ? [
+                if (hasData)
+                  IconButton(
+                    icon: Icon(
+                      _canvasView
+                          ? Icons.view_agenda_outlined
+                          : Icons.account_tree_outlined,
+                    ),
+                    tooltip: _canvasView ? '列表' : '树状图',
+                    onPressed: () => setState(() => _canvasView = !_canvasView),
+                  ),
                 IconButton(
                   icon: const Icon(Icons.refresh),
                   tooltip: '刷新',
@@ -282,6 +299,36 @@ class _AcademicProgressPageState extends State<AcademicProgressPage> {
             );
     }
 
+    if (_canvasView) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.pageMargin,
+              AppSpacing.sm,
+              AppSpacing.pageMargin,
+              AppSpacing.sm,
+            ),
+            child: RefreshStatusLine(
+              updatedAt: _updatedAt,
+              refreshing: _refreshing,
+              failed: _refreshFailed,
+              loadingLabel: '正在获取学业情况…',
+            ),
+          ),
+          Expanded(
+            child: ClipRect(
+              child: RequirementTreeCanvas(
+                roots: report.roots,
+                onLeafTap: _showLeafCourses,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
     return RefreshIndicator(
       onRefresh: () => _fetch(forceRefresh: true),
       child: ListView(
@@ -293,14 +340,23 @@ class _AcademicProgressPageState extends State<AcademicProgressPage> {
           AppSpacing.xl,
         ),
         children: [
-          RefreshStatusLine(
-            updatedAt: _updatedAt,
-            refreshing: _refreshing,
-            failed: _refreshFailed,
-            loadingLabel: '正在获取学业情况…',
+          AcademicProgressOverview(
+            summary: report.summary,
+            statusLine: RefreshStatusLine(
+              updatedAt: _updatedAt,
+              refreshing: _refreshing,
+              failed: _refreshFailed,
+              loadingLabel: '正在获取学业情况…',
+            ),
+            onStatTap: (status) => setState(
+              () => _filter = switch (status) {
+                CourseStudyStatus.passed => _StatusFilter.passed,
+                CourseStudyStatus.failed => _StatusFilter.failed,
+                CourseStudyStatus.studying => _StatusFilter.studying,
+                _ => _StatusFilter.notTaken,
+              },
+            ),
           ),
-          const SizedBox(height: AppSpacing.md),
-          AcademicProgressOverview(summary: report.summary),
           const SizedBox(height: AppSpacing.lg),
           AppFilterChips<_StatusFilter>(
             padding: EdgeInsets.zero,
@@ -337,14 +393,68 @@ class _AcademicProgressPageState extends State<AcademicProgressPage> {
         widgets
           ..add(const SizedBox(height: AppSpacing.lg))
           ..add(_SectionHeader(node: section));
-        final leaves = section.children.isEmpty ? [section] : section.children;
-        for (final (index, leaf) in leaves.indexed) {
-          if (index > 0) widgets.add(const SizedBox(height: AppSpacing.sm));
-          widgets.add(_buildLeaf(leaf));
-        }
+        final children = section.children.isEmpty
+            ? [section]
+            : section.children;
+        _addNodes(widgets, children, depth: 0);
       }
     }
     return widgets;
+  }
+
+  /// 递归展开：更深的非末节点画成缩进的小标题，不丢子树。
+  void _addNodes(
+    List<Widget> widgets,
+    List<RequirementNode> nodes, {
+    required int depth,
+  }) {
+    final indent = EdgeInsets.only(left: AppSpacing.md * depth);
+    for (final (index, node) in nodes.indexed) {
+      if (index > 0) widgets.add(const SizedBox(height: AppSpacing.sm));
+      if (node.children.isEmpty) {
+        widgets.add(Padding(padding: indent, child: _buildLeaf(node)));
+        continue;
+      }
+      widgets.add(
+        Padding(
+          padding: indent.add(const EdgeInsets.only(top: AppSpacing.xs)),
+          child: _SectionHeader(node: node),
+        ),
+      );
+      _addNodes(widgets, node.children, depth: depth + 1);
+    }
+  }
+
+  void _showLeafCourses(RequirementNode node) {
+    if (node.courses.isEmpty) {
+      AppFeedback.toast(
+        context,
+        node.id == RequirementNode.innovationId ? '尚无数据信息' : '该类别暂无课程',
+      );
+      return;
+    }
+    AppFeedback.sheet<void>(
+      context,
+      builder: (context) => ListView(
+        shrinkWrap: true,
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.pageMargin,
+          0,
+          AppSpacing.pageMargin,
+          AppSpacing.xl,
+        ),
+        children: [
+          PlainSectionHeader(
+            '${node.name} · 共 ${node.courseTotal} 门 · '
+            '通过 ${node.passedTotal} 门',
+          ),
+          for (final (index, course) in node.courses.indexed) ...[
+            if (index > 0) const SizedBox(height: AppSpacing.sm),
+            _CourseTile(course: course),
+          ],
+        ],
+      ),
+    );
   }
 
   Widget _buildLeaf(RequirementNode node) {
@@ -444,9 +554,13 @@ class _AcademicProgressPageState extends State<AcademicProgressPage> {
         AppSpacing.xl,
       ),
       children: [
-        const RefreshStatusLine(refreshing: true, loadingLabel: '正在获取学业情况…'),
-        const SizedBox(height: AppSpacing.md),
-        const AcademicProgressOverview(summary: null),
+        const AcademicProgressOverview(
+          summary: null,
+          statusLine: RefreshStatusLine(
+            refreshing: true,
+            loadingLabel: '正在获取学业情况…',
+          ),
+        ),
         const SizedBox(height: AppSpacing.lg),
         for (var i = 0; i < 4; i++) ...[
           if (i > 0) const SizedBox(height: AppSpacing.sm),
@@ -481,13 +595,9 @@ class _SectionHeader extends StatelessWidget {
         PlainSectionHeader(title),
         if (req != null && req > 0) ...[
           const SizedBox(height: AppSpacing.xs),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: (earned / req).clamp(0, 1).toDouble(),
-              minHeight: 6,
-              backgroundColor: cs.surfaceContainerHighest,
-            ),
+          DetailLevelBar(
+            fraction: earned / req,
+            color: earned >= req ? cs.primary : cs.tertiary,
           ),
         ],
         if (node.children.length > 1)
@@ -549,104 +659,143 @@ class _CourseTile extends StatelessWidget {
   }
 }
 
-/// 顶部概览：GPA 大字 + 计划内门数。[summary] 为 null 时显示 `--`。
+/// 顶部概览：与校园卡详情页同一套版式——无框 GPA 读数 + 状态行，下方
+/// 四格门数瓦片（点按切到对应状态筛选），再下一行灰色脚注。
+/// [summary] 为 null（骨架）时数字显示 `--`。
 class AcademicProgressOverview extends StatelessWidget {
-  const AcademicProgressOverview({super.key, required this.summary});
+  const AcademicProgressOverview({
+    super.key,
+    required this.summary,
+    this.statusLine,
+    this.onStatTap,
+  });
 
   final AcademicProgressSummary? summary;
 
+  /// 读数下方的刷新状态行（[RefreshStatusLine]）。
+  final Widget? statusLine;
+  final ValueChanged<CourseStudyStatus>? onStatTap;
+
+  static const double _tileGap = 10;
+
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final s = summary;
     final gpa = s?.gpa;
-    String n(int? v) => v == null ? '--' : '$v';
+    final footnote = [
+      if (s?.planTotal != null) '计划总课程 ${s!.planTotal} 门',
+      if (s != null && (s.outsidePassed != null || s.outsideFailed != null))
+        '计划外通过 ${_n(s.outsidePassed)} 门、未通过 ${_n(s.outsideFailed)} 门',
+    ].join(' · ');
+    final statTime = s != null && s.statTime.isNotEmpty
+        ? '统计截至 ${s.statTime}'
+        : '';
+    final notes = [footnote, statTime].where((t) => t.isNotEmpty).join('\n');
+    final stats = [
+      ('通过', s?.planPassed, CourseStudyStatus.passed),
+      ('未通过', s?.planFailed, CourseStudyStatus.failed),
+      ('在读', s?.studying, CourseStudyStatus.studying),
+      ('未修', s?.planNotTaken, CourseStudyStatus.notTaken),
+    ];
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Expanded(
-              flex: 4,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('主修 GPA', style: context.appText.meta),
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      gpa ?? '--',
-                      style: context.appText.overview.copyWith(
-                        color: gpa != null ? cs.primary : cs.outlineVariant,
-                      ),
-                    ),
-                  ),
-                ],
+        Padding(
+          // 与校园卡读数一致：比瓦片多缩进 8。
+          padding: const EdgeInsets.only(left: AppSpacing.sm, top: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              DetailReadout(
+                label: '主修 GPA',
+                valueText: gpa ?? '--',
+                muted: gpa == null,
               ),
-            ),
-            Expanded(
-              flex: 7,
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Row(
-                  children: [
-                    _Stat(label: '通过', value: n(s?.planPassed)),
-                    _Stat(label: '未通过', value: n(s?.planFailed)),
-                    _Stat(label: '在读', value: n(s?.studying)),
-                    _Stat(label: '未修', value: n(s?.planNotTaken)),
-                  ],
-                ),
-              ),
-            ),
-          ],
+              if (statusLine != null) ...[
+                const SizedBox(height: AppSpacing.sm),
+                statusLine!,
+              ],
+            ],
+          ),
         ),
-        if (s != null && s.planTotal != null) ...[
-          const SizedBox(height: AppSpacing.sm),
-          Text(
-            [
-              '计划总课程 ${s.planTotal} 门',
-              if (s.outsidePassed != null || s.outsideFailed != null)
-                '计划外通过 ${n(s.outsidePassed)} 门、未通过 ${n(s.outsideFailed)} 门',
-            ].join(' · '),
-            style: context.appText.meta,
+        const SizedBox(height: AppSpacing.lg),
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final (index, (label, value, status)) in stats.indexed) ...[
+                if (index > 0) const SizedBox(width: _tileGap),
+                Expanded(
+                  child: _StatTile(
+                    label: label,
+                    value: _n(value),
+                    onTap: onStatTap == null || value == null
+                        ? null
+                        : () => onStatTap!(status),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        if (notes.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.md),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+            child: Text(
+              notes,
+              style: context.appText.meta.copyWith(height: 1.4),
+            ),
           ),
         ],
-        if (s != null && s.statTime.isNotEmpty)
-          Text('统计截至 ${s.statTime}', style: context.appText.meta),
       ],
     );
   }
+
+  static String _n(int? v) => v == null ? '--' : '$v';
 }
 
-class _Stat extends StatelessWidget {
-  const _Stat({required this.label, required this.value});
+/// 门数瓦片：亚克力表面（同校园卡动作格），数字在上、标签在下。
+class _StatTile extends StatelessWidget {
+  const _StatTile({required this.label, required this.value, this.onTap});
 
   final String label;
   final String value;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Expanded(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, maxLines: 1, style: context.appText.meta),
-          const SizedBox(height: 2),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(
-              value,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                color: cs.onSurface,
-                fontFeatures: const [FontFeature.tabularFigures()],
+    return Semantics(
+      button: onTap != null,
+      label: '$label $value 门',
+      excludeSemantics: true,
+      onTap: onTap,
+      child: AppTileSurface(
+        padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                value,
+                style: context.appText.rowValue.copyWith(
+                  color: value == '--' ? cs.outlineVariant : null,
+                ),
               ),
             ),
-          ),
-        ],
+            const SizedBox(height: 2),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: context.appText.meta,
+            ),
+          ],
+        ),
       ),
     );
   }
