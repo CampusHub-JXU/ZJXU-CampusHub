@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/theme/glass_style_controller.dart';
 import '../../core/theme/surface_material.dart';
-import 'material_noise.dart';
+import 'app_surface_style.dart';
 
 /// 全局亚克力质感 AppBar。
 ///
@@ -82,7 +82,7 @@ class AppAppBar extends StatelessWidget implements PreferredSizeWidget {
 ///
 /// 材质由统一 [MaterialRecipe] 驱动（与 [GlassContainer] 同一套配方），不再
 /// 自持 BackdropFilter / tint / border 常量：
-/// * 亚克力 —— 裁剪后 bounded 背景模糊 + 半透明 tint + 细微噪点 + 底部发丝线；
+/// * 亚克力 —— 裁剪后 bounded 背景模糊 + 半透明 tint + 底部发丝线；
 /// * 实色 / 总开关关闭 / 显式 [fallbackColor] —— 回退实色填充，
 ///   不创建 BackdropFilter，保证低端机流畅。
 ///
@@ -126,23 +126,14 @@ class GlassAppBarSpace extends StatelessWidget {
           // 顶栏 tint 策略：低到能看清模糊，高到标题仍满足 WCAG AA。
           tintAlpha: useGlass ? (isDark ? 0.42 : 0.50) : 1.0,
           borderColor: borderColor,
-          noiseOpacity: useGlass ? recipe.noiseOpacity : 0,
-          isDark: isDark,
         );
         return ClipRect(
           child: useGlass
               ? BackdropFilter(
-                  filterConfig: ImageFilterConfig.compose(
-                    outer: ImageFilterConfig.blur(
-                      sigmaX: sigma,
-                      sigmaY: sigma,
-                      bounded: true,
-                    ),
-                    inner: ImageFilterConfig(
-                      ColorFilter.matrix(
-                        saturationColorMatrix(recipe.saturation),
-                      ),
-                    ),
+                  filterConfig: acrylicBackdropFilter(
+                    recipe,
+                    sigma: sigma,
+                    bounded: true,
                   ),
                   child: fill,
                 )
@@ -154,48 +145,25 @@ class GlassAppBarSpace extends StatelessWidget {
 }
 
 /// 平色 tint 填充 + 底部发丝线（无受光渐变，深色模式不出现顶缘亮带）。
-/// 亚克力按配方叠加细微程序化微粒噪点。
 class _AppBarFill extends StatelessWidget {
   const _AppBarFill({
     required this.tintColor,
     required this.tintAlpha,
     required this.borderColor,
-    this.noiseOpacity = 0,
-    this.isDark = true,
   });
 
   final Color tintColor;
   final double tintAlpha;
   final Color borderColor;
-  final double noiseOpacity;
-  final bool isDark;
 
   @override
   Widget build(BuildContext context) {
-    final fill = DecoratedBox(
+    return DecoratedBox(
       decoration: BoxDecoration(
         color: tintColor.withValues(alpha: tintAlpha),
         border: Border(bottom: BorderSide(color: borderColor, width: 0.8)),
       ),
       child: const SizedBox.expand(),
-    );
-
-    if (noiseOpacity <= 0.001) return fill;
-
-    return Stack(
-      children: [
-        fill,
-        Positioned.fill(
-          child: IgnorePointer(
-            child: CustomPaint(
-              painter: MaterialNoisePainter(
-                opacity: noiseOpacity,
-                isDark: isDark,
-              ),
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

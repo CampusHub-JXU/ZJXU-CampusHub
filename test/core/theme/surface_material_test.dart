@@ -17,10 +17,10 @@ void main() {
       expect(recipe.usesBackdropBlur, isFalse);
       expect(recipe.blurSigma, 0.0);
       expect(recipe.surfaceOpacity, 1.0);
-      expect(recipe.hasNoise, isFalse);
+      expect(recipe.adjustsSaturation, isFalse);
     });
 
-    test('亚克力：有界实时模糊、明显半透明、细微噪点、提饱和', () {
+    test('亚克力：实时模糊、明显半透明，无颗粒、不提饱和', () {
       final recipe = MaterialRecipe.resolve(SurfaceMaterialStyle.acrylic);
       expect(recipe.style, SurfaceMaterialStyle.acrylic);
       expect(recipe.usesBackdropBlur, isTrue);
@@ -28,9 +28,8 @@ void main() {
       expect(recipe.blurSigma, lessThanOrEqualTo(44.0));
       expect(recipe.surfaceOpacity, lessThan(1.0));
       expect(recipe.surfaceOpacity, greaterThanOrEqualTo(0.40));
-      expect(recipe.hasNoise, isTrue);
-      expect(recipe.noiseOpacity, lessThanOrEqualTo(0.04));
-      expect(recipe.saturation, greaterThan(1.0));
+      // 视觉减负：不提饱和，滤镜只剩模糊（见 acrylicBackdropFilter）。
+      expect(recipe.adjustsSaturation, isFalse);
     });
 
     test('各风格均产出有限非负参数', () {
@@ -39,7 +38,6 @@ void main() {
         for (final value in [
           recipe.blurSigma,
           recipe.surfaceOpacity,
-          recipe.noiseOpacity,
           recipe.borderOpacity,
           recipe.shadowOpacity,
           recipe.saturation,

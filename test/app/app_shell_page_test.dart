@@ -35,7 +35,10 @@ void main() {
       ..updateZone(0);
   });
 
-  Future<void> pumpShell(WidgetTester tester) async {
+  Future<void> pumpShell(
+    WidgetTester tester, {
+    bool reduceMotion = false,
+  }) async {
     final router = GoRouter(
       initialLocation: '/',
       routes: [
@@ -74,7 +77,17 @@ void main() {
       ],
     );
 
-    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpWidget(
+      MaterialApp.router(
+        routerConfig: router,
+        builder: (context, child) => reduceMotion
+            ? MediaQuery(
+                data: MediaQuery.of(context).copyWith(disableAnimations: true),
+                child: child!,
+              )
+            : child!,
+      ),
+    );
     await tester.pumpAndSettle();
   }
 
@@ -170,5 +183,45 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('首页页面'), findsNothing);
     expect(find.text('我的页面'), findsOneWidget);
+  });
+
+  testWidgets('过渡中旧分支被快照栅格化，结束后释放快照', (tester) async {
+    await pumpShell(tester);
+    await tester.tap(find.text('我的'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+
+    SnapshotWidget snapshotOf(String text) => tester.widget<SnapshotWidget>(
+      find.ancestor(of: find.text(text), matching: find.byType(SnapshotWidget)),
+    );
+    expect(snapshotOf('首页页面').controller.allowSnapshotting, isTrue);
+    // 新分支不包快照：切换后立刻开始的锚点滚动不能被定格。
+    expect(
+      find.ancestor(
+        of: find.text('我的页面'),
+        matching: find.byType(SnapshotWidget),
+      ),
+      findsNothing,
+    );
+
+    await tester.pumpAndSettle();
+    expect(find.text('首页页面'), findsNothing);
+    final hidden = tester.widget<SnapshotWidget>(
+      find.ancestor(
+        of: find.text('首页页面', skipOffstage: false),
+        matching: find.byType(SnapshotWidget, skipOffstage: false),
+      ),
+    );
+    expect(hidden.controller.allowSnapshotting, isFalse);
+  });
+
+  testWidgets('系统移除动画时分支直接切换，不留过渡帧', (tester) async {
+    await pumpShell(tester, reduceMotion: true);
+    await tester.tap(find.text('我的'));
+    await tester.pump();
+
+    expect(find.text('首页页面'), findsNothing);
+    expect(find.text('我的页面'), findsOneWidget);
+    expect(selectedDockItems(tester), {'我的'});
   });
 }

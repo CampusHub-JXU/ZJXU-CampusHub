@@ -128,6 +128,13 @@ class _AppShellPageState extends State<AppShellPage> {
 ///
 /// 非当前、非过渡中的分支 Offstage + TickerMode 关闭，与 IndexedStack
 /// 一样保活状态且不跑动画 / Shader ticker。
+///
+/// 过渡期间旧分支经 [SnapshotWidget] 栅格化为一张静态纹理：它本就静止且
+/// 不可交互，但页面里的亚克力磁贴（BackdropFilter）压在新分支的半透明层
+/// 下面，不快照时每帧都要重跑一遍模糊。新分支不快照——dock「功能」会在
+/// 切换后立刻开始锚点滚动，快照会让滚动先定格再跳变。
+///
+/// 系统开启「移除动画」时直接切换，不播放过渡。
 class AppShellBranchContainer extends StatefulWidget {
   const AppShellBranchContainer({
     super.key,
@@ -162,19 +169,32 @@ class _AppShellBranchContainerState extends State<AppShellBranchContainer>
   int? _previous;
   double _slideFrom = 0;
 
+  /// 旧分支快照开关：仅过渡进行中允许栅格化。
+  final SnapshotController _previousSnapshot = SnapshotController();
+
   @override
   void didUpdateWidget(covariant AppShellBranchContainer oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.currentIndex == _current) return;
+    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) {
+      _controller.stop();
+      _previousSnapshot.allowSnapshotting = false;
+      _previous = null;
+      _current = widget.currentIndex;
+      _controller.value = 1;
+      return;
+    }
     // 进入更高 index 的分支（主页→我的）从右侧轻推入；返回则从左侧。
     _slideFrom = widget.currentIndex > _current ? 0.04 : -0.04;
     _previous = _current;
     _current = widget.currentIndex;
+    _previousSnapshot.allowSnapshotting = true;
     _controller.forward(from: 0);
   }
 
   void _onStatus(AnimationStatus status) {
     if (status == AnimationStatus.completed && _previous != null) {
+      _previousSnapshot.allowSnapshotting = false;
       setState(() => _previous = null);
     }
   }
@@ -183,6 +203,7 @@ class _AppShellBranchContainerState extends State<AppShellBranchContainer>
   void dispose() {
     _curved.dispose();
     _controller.dispose();
+    _previousSnapshot.dispose();
     super.dispose();
   }
 
@@ -199,7 +220,16 @@ class _AppShellBranchContainerState extends State<AppShellBranchContainer>
               offstage: i != previous,
               child: TickerMode(
                 enabled: i == previous,
-                child: IgnorePointer(child: widget.children[i]),
+                child: IgnorePointer(
+                  // 所有非当前分支都包同一层 SnapshotWidget，保证树形稳定；
+                  // 只有 allowSnapshotting 时（过渡中）才真正栅格化。
+                  child: SnapshotWidget(
+                    controller: _previousSnapshot,
+                    mode: SnapshotMode.permissive,
+                    autoresize: true,
+                    child: widget.children[i],
+                  ),
+                ),
               ),
             ),
         // 当前分支最后绘制，盖在过渡中的旧分支之上。

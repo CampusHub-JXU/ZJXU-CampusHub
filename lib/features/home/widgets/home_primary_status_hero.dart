@@ -180,19 +180,17 @@ class HomePrimaryStatusHero extends StatelessWidget {
               // y=0.7：整体偏右下角，与 Hero 右下留白对齐；x=1 贴页面右缘。
               return Align(
                 alignment: const Alignment(1, 0.7),
-                child: Opacity(
-                  // 0.12：保证环形英文与嘉字细节可辨，同时不与正文抢视觉。
-                  opacity: 0.12,
-                  child: ColorFiltered(
-                    colorFilter: ColorFilter.mode(tintColor, BlendMode.srcIn),
-                    child: Image.asset(
-                      _emblemAsset,
-                      width: side,
-                      height: side,
-                      fit: BoxFit.contain,
-                      filterQuality: FilterQuality.medium,
-                    ),
-                  ),
+                // 着色 + 透明度合并进图片自身的 srcIn 颜色滤镜：0.12 保证
+                // 环形英文与嘉字细节可辨、不与正文抢视觉；不再套 Opacity +
+                // ColorFiltered（两层离屏 saveLayer，滚动重绘时每帧都要额外合成）。
+                child: Image.asset(
+                  _emblemAsset,
+                  width: side,
+                  height: side,
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.medium,
+                  color: tintColor.withValues(alpha: 0.12),
+                  colorBlendMode: BlendMode.srcIn,
                 ),
               );
             },

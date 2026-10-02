@@ -548,6 +548,8 @@ class _SlideFadePageTransitionsBuilder extends PageTransitionsBuilder {
     Animation<double> secondaryAnimation,
     Widget child,
   ) {
+    // 系统「移除动画」：直接换页，不做位移 / 淡入 / 缩放。
+    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) return child;
     return _SlideFadePageTransition(
       animation: animation,
       secondaryAnimation: secondaryAnimation,

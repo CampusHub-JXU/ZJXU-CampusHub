@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme/surface_material.dart';
+
 /// Apple 风格平色卡面配方（浅 / 深双模式，零高光、零 BackdropFilter）。
 ///
 /// 视觉做减法：卡面只剩「平色填充 + 深色柔影」，不做描边——重复的
@@ -55,4 +57,25 @@ List<BoxShadow> appSurfaceShadows({required bool isDark}) {
     ];
   }
   return const [];
+}
+
+/// 亚克力背景滤镜：配方饱和度为 1 时只做模糊，省掉一层颜色矩阵合成；
+/// 亚克力磁贴 / 顶栏 / dock 共用，组件不要各自拼 [ImageFilterConfig]。
+ImageFilterConfig acrylicBackdropFilter(
+  MaterialRecipe recipe, {
+  required double sigma,
+  required bool bounded,
+}) {
+  final blur = ImageFilterConfig.blur(
+    sigmaX: sigma,
+    sigmaY: sigma,
+    bounded: bounded,
+  );
+  if (!recipe.adjustsSaturation) return blur;
+  return ImageFilterConfig.compose(
+    outer: blur,
+    inner: ImageFilterConfig(
+      ColorFilter.matrix(saturationColorMatrix(recipe.saturation)),
+    ),
+  );
 }

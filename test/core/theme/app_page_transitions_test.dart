@@ -117,4 +117,50 @@ void main() {
       reason: '返回转场应先快后慢：半程应走完一半以上行程（实测 ${progress.toStringAsFixed(2)}）',
     );
   });
+
+  // 系统「移除动画」：push 不再包位移 / 淡入转场，新页直接就位。
+  testWidgets('app theme push skips transition when animations are disabled', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.darkThemeFor(AppColors.primary),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(disableAnimations: true),
+          child: child!,
+        ),
+        home: const Scaffold(body: Center(child: Text('home-page'))),
+      ),
+    );
+
+    tester
+        .state<NavigatorState>(find.byType(Navigator))
+        .push(
+          MaterialPageRoute<void>(
+            builder: (_) =>
+                const Scaffold(body: Center(child: Text('sub-page'))),
+          ),
+        );
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      find.ancestor(
+        of: find.text('sub-page'),
+        matching: find.byType(SlideTransition),
+      ),
+      findsNothing,
+    );
+    expect(
+      tester
+          .widgetList<FadeTransition>(
+            find.ancestor(
+              of: find.text('sub-page'),
+              matching: find.byType(FadeTransition),
+            ),
+          )
+          .where((t) => t.opacity.value < 1),
+      isEmpty,
+    );
+  });
 }
