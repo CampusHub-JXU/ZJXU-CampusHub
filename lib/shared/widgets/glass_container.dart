@@ -4,6 +4,7 @@ import '../../core/theme/app_design_tokens.dart';
 import '../../core/theme/glass_style_controller.dart';
 import '../../core/theme/surface_material.dart';
 import 'app_surface_style.dart';
+import 'frost_grain.dart';
 
 export '../../core/theme/glass_style_controller.dart' show GlassTier;
 export '../../core/theme/surface_material.dart'
@@ -104,6 +105,9 @@ class GlassContainer extends StatelessWidget {
       padding: padding,
       decoration: ShapeDecoration(
         color: fillColor,
+        image: useBlur && recipe.style == SurfaceMaterialStyle.acrylic
+            ? frostGrainImage(isDark: isDark)
+            : null,
         shadows: useBlur ? _shadows(isDark, recipe) : null,
         shape: RoundedSuperellipseBorder(
           borderRadius: radius,
