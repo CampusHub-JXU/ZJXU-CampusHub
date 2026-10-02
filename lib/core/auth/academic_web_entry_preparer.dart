@@ -334,7 +334,8 @@ class AcademicWebEntryPreparer {
         if (gatewayGuard != null) return gatewayGuard;
         AppLogger.instance.auth(
           LogLevel.warn,
-          '教务 H5 入口准备：WebVPN 网关会话失败 ${error.type}',
+          '教务 H5 入口准备：WebVPN 网关会话失败 '
+          '${describeGatewayDioFailure(error)}',
         );
         return const AcademicWebEntryUnavailable('WebVPN 网关会话校验失败');
       } catch (error, stackTrace) {

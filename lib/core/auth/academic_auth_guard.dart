@@ -70,7 +70,8 @@ class _RecoveryLease {
 class AcademicAuthGuard {
   const AcademicAuthGuard._();
 
-  static final _recoveries = <(String?, int, int?), Future<_RecoveryLease>>{};
+  static final _recoveries =
+      <(String?, int, int?, bool), Future<_RecoveryLease>>{};
 
   /// 测试注入：替换静默自动登录动作（默认走 [AutomaticLoginService.instance]）。
   ///
@@ -126,6 +127,46 @@ class AcademicAuthGuard {
     return false;
   }
 
+  static const _webVpnHost = 'webvpn.zjxu.edu.cn';
+  static final _webVpnProxiedPath = RegExp(r'^/https?(-\d+)?/');
+
+  /// 判断非 WebVPN 请求是否被 3xx 改道到 WebVPN 代理资源
+  /// （`webvpn.zjxu.edu.cn/https/<hex>/…`）。
+  ///
+  /// 这表示当前出口不在校内、选路已过期，而不是教务登录态失效：只应重新选路
+  /// 并恢复会话，**不得**据此撤销会话。WebVPN 自身的 `/login` 仍由
+  /// [isAuthExpiredResponse] 识别。
+  static bool isRouteMovedResponse<T>(Response<T>? response) {
+    if (response == null) return false;
+    // 已知登录入口（含 WebVPN 代理的 `/https/<hex>/cas/login`）优先按过期处理。
+    if (isAuthExpiredResponse(response)) return false;
+    final code = response.statusCode ?? 0;
+    if (code < 300 || code >= 400) return false;
+    final location = response.headers.value('location')?.trim() ?? '';
+    if (location.isEmpty) return false;
+    final requestUri = response.requestOptions.uri;
+    if (requestUri.host.toLowerCase() == _webVpnHost) return false;
+    final target = Uri.tryParse(location);
+    if (target == null || target.host.toLowerCase() != _webVpnHost) {
+      return false;
+    }
+    final targetPath = target.path.toLowerCase();
+    if (!_webVpnProxiedPath.hasMatch(targetPath)) return false;
+    // 只认同一来源的 WebVPN 包装（如 jwzx 的固定前缀），被跳到其它校内站点
+    // 的包装不是本次请求的改道。
+    final expected = Uri.tryParse(
+      ZhengfangAuth.instance.buildWebVpnProxyUrl(
+        '${requestUri.scheme}://${requestUri.authority}/',
+      ),
+    );
+    if (expected == null || expected.host.toLowerCase() != _webVpnHost) {
+      return false;
+    }
+    var prefix = expected.path.toLowerCase();
+    if (prefix.endsWith('/')) prefix = prefix.substring(0, prefix.length - 1);
+    return targetPath == prefix || targetPath.startsWith('$prefix/');
+  }
+
   /// 执行 [request]，若响应命中认证过期则尝试恢复会话后重试一次。
   ///
   /// - 首次命中过期 → 调用 [ConnectModeResolver] 判定模式并做**无登出副作用**
@@ -166,11 +207,22 @@ class AcademicAuthGuard {
     final first = await _safeRequest(request);
     if (!_isSessionCurrent(auth, revision)) throw authExpiredException;
     var lease = _RecoveryLease(account, revision, epoch);
-    if (isAuthExpiredResponse(first)) {
-      final key = (account, revision, epoch);
+    final routeMoved = isRouteMovedResponse(first);
+    if (routeMoved || isAuthExpiredResponse(first)) {
+      // 改道恢复与过期恢复分开去重：前者绝不走撤销终态。
+      final key = (account, revision, epoch, routeMoved);
+      if (routeMoved && !_recoveries.containsKey(key)) {
+        AppLogger.instance.auth(LogLevel.info, '教务请求被改道到 WebVPN，重新选路后重试');
+        // 缓存里的 direct 已过期：让恢复链路里的 resolve() 重新探测。
+        ConnectModeResolver.instance.invalidate();
+      }
       final pending = _recoveries.putIfAbsent(
         key,
-        () => _recover(lease, const AcademicAuthExpiredException()),
+        () => _recover(
+          lease,
+          const AcademicAuthExpiredException(),
+          routeOnly: routeMoved,
+        ),
       );
       try {
         lease = await pending;
@@ -190,6 +242,10 @@ class AcademicAuthGuard {
       if (!await _leaseIsCurrent(lease)) throw authExpiredException;
       final retry = await _safeRequest(request);
       if (!await _leaseIsCurrent(lease)) throw authExpiredException;
+      if (isRouteMovedResponse(retry)) {
+        // 重新选路后仍被改道：属于暂时性选路失败，保留会话与旧数据。
+        throw const AcademicAuthRecoveryPendingException();
+      }
       if (isAuthExpiredResponse(retry)) {
         await auth.revokeExpiredSessionIfCurrent(
           revision: lease.revision,
@@ -246,10 +302,34 @@ class AcademicAuthGuard {
     }
   }
 
+  /// [routeOnly] 为 true 时（请求只是被改道到 WebVPN）恢复失败**绝不撤销**
+  /// 会话：选路变化不是登录态失效。需手动登录时抛暂停语义的过期异常，其余
+  /// 一律按暂时失败抛 [AcademicAuthRecoveryPendingException]，保留缓存；并把
+  /// 恢复链路切换的全局模式回滚到发起前，免得下一次请求带着未建成的 WebVPN
+  /// 模式落入普通过期（会撤销）路径。
   static Future<_RecoveryLease> _recover(
     _RecoveryLease start,
-    Object expired,
-  ) async {
+    Object expired, {
+    bool routeOnly = false,
+  }) async {
+    if (!routeOnly) return _recoverInner(start, expired, routeOnly: false);
+    final auth = ZhengfangAuth.instance;
+    final modeBefore = auth.mode;
+    try {
+      return await _recoverInner(start, expired, routeOnly: true);
+    } catch (_) {
+      if (_isSessionCurrent(auth, start.revision) && auth.mode != modeBefore) {
+        auth.restoreModeWithoutNotify(modeBefore);
+      }
+      rethrow;
+    }
+  }
+
+  static Future<_RecoveryLease> _recoverInner(
+    _RecoveryLease start,
+    Object expired, {
+    required bool routeOnly,
+  }) async {
     final auth = ZhengfangAuth.instance;
     final recovered = await _attemptRecovery();
     if (!_isSessionCurrent(auth, start.revision)) throw expired;
@@ -275,6 +355,12 @@ class AcademicAuthGuard {
         attempt.outcome == AutomaticLoginOutcome.cooldown ||
         attempt.outcome == AutomaticLoginOutcome.failed) {
       // 暂时失败不能撤销另一条恢复事务，也不能清掉同账号最后成功快照。
+      throw const AcademicAuthRecoveryPendingException();
+    }
+    if (routeOnly) {
+      if (attempt.outcome == AutomaticLoginOutcome.manualRequired) {
+        throw _expiredExceptionFor(expired, attempt.outcome);
+      }
       throw const AcademicAuthRecoveryPendingException();
     }
     await auth.revokeExpiredSessionIfCurrent(
@@ -386,10 +472,15 @@ class AcademicAuthGuard {
     try {
       return await request();
     } on DioException catch (e) {
-      // 仅将明确过期的 901/401、指向已知登录入口的 302/303 或 200 登录 HTML
-      // 封装为可识别响应；403、未知重定向及传输异常按原错误抛出。
+      // 仅将明确过期的 901/401、指向已知登录入口的 302/303、改道到 WebVPN
+      // 的 3xx 或 200 登录 HTML 封装为可识别响应；403、未知重定向及传输
+      // 异常按原错误抛出。
       final response = e.response;
-      if (response == null || !isAuthExpiredResponse(response)) rethrow;
+      if (response == null ||
+          !(isAuthExpiredResponse(response) ||
+              isRouteMovedResponse(response))) {
+        rethrow;
+      }
       // Dio 抛出的 DioException.response 运行期类型是 Response<dynamic>，
       // 直接 `as Response<T>` 在 T 为具体类型时抛 TypeError；这里按 T 安全重建。
       return Response<T>(

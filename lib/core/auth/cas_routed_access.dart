@@ -160,7 +160,7 @@ class CasRoutedAccess {
       if (CancelToken.isCancel(error)) rethrow;
       AppLogger.instance.auth(
         LogLevel.warn,
-        'WebVPN 网关会话建立失败（网络异常）: ${error.type}',
+        'WebVPN 网关会话建立失败（网络异常）: ${describeGatewayDioFailure(error)}',
       );
       throw TimeoutException('WebVPN 网关暂时无法连接，请稍后重试');
     }
@@ -175,6 +175,16 @@ bool isWebVpnGatewayLoginBounce(String realUrl, String html) {
     return true;
   }
   return looksLikeUnifiedAuthLoginHtml(html);
+}
+
+/// 网关换票失败的诊断描述：异常类型 + 状态码 + 出错那一跳的 host/path。
+/// 去掉 query、fragment 与 `;jsessionid` 等路径参数，ticket 与会话标识
+/// 不进日志。
+String describeGatewayDioFailure(DioException error) {
+  final status = error.response?.statusCode;
+  final uri = error.response?.realUri ?? error.requestOptions.uri;
+  final path = uri.path.split(';').first;
+  return '${error.type} status=${status ?? '-'} at ${uri.host}$path';
 }
 
 /// [CasAuthBroker.getResource] 的 `needsLogin` 适配：对响应应用

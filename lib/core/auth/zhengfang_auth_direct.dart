@@ -11,6 +11,10 @@ extension ZhengfangAuthDirectExtension on ZhengfangAuth {
     _notifyAuthListeners();
   }
 
+  /// 回滚全局模式且不通知监听者：供「改道恢复」失败时撤回恢复链路里做的
+  /// 切换，避免下一次请求带着未建成的 WebVPN 模式走普通过期路径。
+  void restoreModeWithoutNotify(ZhengfangMode mode) => _adoptMode(mode);
+
   /// 只切换全局模式与 base URL，不通知；返回是否真的变化。
   bool _adoptMode(ZhengfangMode mode) {
     if (_mode == mode) return false;

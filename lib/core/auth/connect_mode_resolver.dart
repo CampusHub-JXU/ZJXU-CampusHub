@@ -175,15 +175,17 @@ class ConnectModeResolver {
               throw TimeoutException('connect-mode probe timeout');
             },
           );
+      final location = response.headers.value('location') ?? '';
       final reachable = classifyDirectReachable(
         statusCode: response.statusCode ?? 0,
-        location: response.headers.value('location') ?? '',
+        location: location,
         requestUri: requestUri,
       );
+      final redirectHost = _redirectHostForLog(requestUri, location);
       AppLogger.instance.auth(
         LogLevel.info,
         '目标直连探测 ${requestUri.origin}: '
-        '${reachable ? "可达" : "不可达"} (${response.statusCode})',
+        '${reachable ? "可达" : "不可达"} (${response.statusCode}$redirectHost)',
       );
       return reachable;
     } on DioException catch (e) {
@@ -231,6 +233,16 @@ class ConnectModeResolver {
     if (resolved.host.toLowerCase() == _webVpnHost) return false;
     if (_isSameOrigin(requestUri, resolved)) return true;
     return false;
+  }
+
+  /// 日志用：只记跳转目标的 host，不记 path / query。畸形 Location 不抛异常，
+  /// 避免诊断日志改变探测结果。
+  static String _redirectHostForLog(Uri requestUri, String location) {
+    final raw = location.trim();
+    if (raw.isEmpty) return '';
+    final parsed = Uri.tryParse(raw);
+    if (parsed == null) return ' → (invalid location)';
+    return ' → ${requestUri.resolveUri(parsed).host}';
   }
 
   static bool _isSameOrigin(Uri a, Uri b) {

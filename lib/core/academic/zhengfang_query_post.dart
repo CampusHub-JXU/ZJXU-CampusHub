@@ -7,7 +7,7 @@ import '../auth/zhengfang_auth.dart';
 class ZhengfangQueryResult {
   const ZhengfangQueryResult({required this.guarded, required this.items});
 
-  final AcademicGuardedResponse<Map<String, dynamic>> guarded;
+  final AcademicGuardedResponse<Object?> guarded;
   final List<dynamic> items;
 }
 
@@ -25,31 +25,28 @@ Future<ZhengfangQueryResult> postZhengfangQuery({
   required Object authExpiredException,
   required Object unexpectedResponseException,
 }) async {
-  final guarded =
-      await AcademicAuthGuard.guardWithSession<Map<String, dynamic>>(
-        authExpiredException: authExpiredException,
-        request: () =>
-            ZhengfangAuth.instance.academicDio.post<Map<String, dynamic>>(
-              ZhengfangAuth.instance.buildPortalUrl(path),
-              queryParameters: {
-                'doType': 'query',
-                'gnmkdm': gnmkdm,
-                'su': owner,
-              },
-              data: formBody,
-              options: Options(
-                contentType: 'application/x-www-form-urlencoded',
-                headers: {
-                  'Referer': ZhengfangAuth.instance.academicServiceUrl,
-                  'X-Requested-With': 'XMLHttpRequest',
-                },
-              ),
-            ),
-      );
+  // 用 Object? 接收：302 改道 / 登录页等 HTML 响应体若按 Map 强转，会在
+  // Dio 内部抛 TypeError（DioException.unknown），guard 就看不到状态码。
+  final guarded = await AcademicAuthGuard.guardWithSession<Object?>(
+    authExpiredException: authExpiredException,
+    request: () => ZhengfangAuth.instance.academicDio.post<Object?>(
+      ZhengfangAuth.instance.buildPortalUrl(path),
+      queryParameters: {'doType': 'query', 'gnmkdm': gnmkdm, 'su': owner},
+      data: formBody,
+      options: Options(
+        contentType: 'application/x-www-form-urlencoded',
+        headers: {
+          'Referer': ZhengfangAuth.instance.academicServiceUrl,
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+      ),
+    ),
+  );
   if (guarded.account != owner || guarded.epoch == null) {
     throw authExpiredException;
   }
-  final items = guarded.response.data?['items'];
+  final data = guarded.response.data;
+  final items = data is Map ? data['items'] : null;
   if (guarded.response.statusCode != 200 || items is! List) {
     throw unexpectedResponseException;
   }
