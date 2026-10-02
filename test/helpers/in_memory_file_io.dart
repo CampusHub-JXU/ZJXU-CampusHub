@@ -128,7 +128,9 @@ class _MemDirectory implements Directory {
   @override
   Future<FileSystemEntity> delete({bool recursive = false}) async {
     _fs._dirs.remove(path);
-    _fs._files.removeWhere((key, _) => key.startsWith('$path${Platform.pathSeparator}'));
+    _fs._files.removeWhere(
+      (key, _) => key.startsWith('$path${Platform.pathSeparator}'),
+    );
     return this;
   }
 

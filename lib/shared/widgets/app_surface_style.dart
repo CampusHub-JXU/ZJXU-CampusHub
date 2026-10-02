@@ -76,9 +76,7 @@ Color frostedBorderColor({
   required bool isDark,
   double scale = 1.0,
 }) {
-  final alpha = isDark
-      ? recipe.borderOpacity * 0.2 * scale
-      : 0.60 * scale;
+  final alpha = isDark ? recipe.borderOpacity * 0.2 * scale : 0.60 * scale;
   return Colors.white.withValues(alpha: alpha.clamp(0.0, 1.0));
 }
 

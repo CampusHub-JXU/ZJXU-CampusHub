@@ -75,8 +75,7 @@ void _chunk(BytesBuilder out, String type, Uint8List data) {
   out.add(length.buffer.asUint8List());
   out.add(typeBytes);
   out.add(data);
-  final crc = ByteData(4)
-    ..setUint32(0, _crc32([...typeBytes, ...data]));
+  final crc = ByteData(4)..setUint32(0, _crc32([...typeBytes, ...data]));
   out.add(crc.buffer.asUint8List());
 }
 
