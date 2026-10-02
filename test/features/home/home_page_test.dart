@@ -17,6 +17,7 @@ import 'package:jxu_campus_hub/core/notice/notice_model.dart';
 import 'package:jxu_campus_hub/core/notice/notice_sync_store.dart';
 import 'package:jxu_campus_hub/core/semester/semester_calendar.dart';
 import 'package:jxu_campus_hub/core/system_surface/campus_data_change_bus.dart';
+import 'package:jxu_campus_hub/core/theme/page_transition_activity.dart';
 import 'package:jxu_campus_hub/core/theme/personalization_controller.dart';
 import 'package:jxu_campus_hub/core/theme/widgets/home_background_layer.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_card.dart';
@@ -66,9 +67,11 @@ void main() {
     await ScheduleService.instance.debugClearCache();
     CampusWidgetSync.instance.debugSetDebounce(Duration.zero);
     CampusDataChangeBus.instance.debugReset();
+    PageTransitionActivity.instance.debugReset();
   });
 
   tearDown(() {
+    PageTransitionActivity.instance.debugReset();
     PersonalizationController.instance.shaderEnabled.value = false;
     PersonalizationController.instance.backgroundImagePath.value = null;
     // 单例注入点在页面 dispose 时置空；这里兜底防止失败用例泄漏。
@@ -799,6 +802,91 @@ void main() {
     await tester.pump();
     await tester.pump();
     expect(bus.revision.value, revisionBefore + 1);
+  });
+
+  testWidgets(
+    'campus data bus ping during a page transition is applied only after it ends',
+    (tester) async {
+      UnifiedAuthService.instance.debugSetSession(
+        active: true,
+        account: 'casuser',
+      );
+      await tester.pumpWidget(const MaterialApp(home: HomePage()));
+      AppBootstrapController.instance.debugSetPhase(
+        AppBootstrapPhase.localStateReady,
+      );
+      await tester.pump();
+      await tester.pump();
+
+      // 模拟「课表页 pop 回首页」的 220ms：转场进行中课表写缓存并 ping 总线。
+      PageTransitionActivity.instance.acquire();
+      DormElectricityService.instance.debugSetCachedElectricity(
+        42,
+        updatedAt: DateTime.now(),
+      );
+      CampusDataChangeBus.instance.notifyChanged();
+      CampusDataChangeBus.instance.notifyChanged();
+      await tester.pump();
+      expect(find.text('42 度'), findsNothing, reason: '转场期间不重建首页');
+
+      // 转场结束：补一次采纳，拿到最新缓存。
+      PageTransitionActivity.instance.release();
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('42 度'), findsOneWidget);
+    },
+  );
+
+  testWidgets('returning from a pushed feature route waits for the pop transition', (
+    tester,
+  ) async {
+    UnifiedAuthService.instance.debugSetSession(
+      active: true,
+      account: 'casuser',
+    );
+    final router = GoRouter(
+      routes: [
+        GoRoute(
+          path: '/',
+          name: 'home',
+          builder: (context, state) => const HomePage(),
+        ),
+        GoRoute(
+          path: '/campus-card',
+          name: 'campus-card',
+          builder: (context, state) => const Scaffold(body: Text('校园卡页面')),
+        ),
+      ],
+    );
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    AppBootstrapController.instance.debugSetPhase(
+      AppBootstrapPhase.localStateReady,
+    );
+    await tester.pump(const Duration(milliseconds: 200));
+
+    await tester.tap(find.text('校园卡'));
+    await tester.pumpAndSettle();
+    expect(find.text('校园卡页面'), findsOneWidget);
+
+    // 返回：push 的 Future 在 pop 开始时就完成，但刷新 / 重建必须等转场落定。
+    PageTransitionActivity.instance.acquire();
+    router.pop();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('校园卡页面'), findsNothing);
+
+    // 转场期间余额缓存更新（校园卡页内刷新落盘）：首页此刻不应响应。
+    await _seedCampusCardBalance(
+      now: DateTime.now(),
+      account: 'casuser',
+      balance: 88,
+    );
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.text('¥88'), findsNothing, reason: '转场未落定，首页不应重建 / 刷新');
+
+    PageTransitionActivity.instance.release();
+    await tester.pumpAndSettle();
+    expect(find.text('¥88'), findsOneWidget, reason: '转场落定后刷新采纳新余额');
   });
 
   testWidgets('campus data bus projects cache and drops it when cache clears', (
