@@ -18,6 +18,7 @@ import '../features/sjjx_notice/sjjx_notice_list_page.dart';
 import '../features/service_hall/service_hall_page.dart';
 import '../features/notification_center/notification_center_page.dart';
 import '../features/exam/exam_page.dart';
+import '../features/academic_progress/academic_progress_page.dart';
 import '../features/shuati/shuati_webview_page.dart';
 import '../features/settings/settings_page.dart';
 import '../features/settings/about_page.dart';
@@ -120,6 +121,11 @@ final GoRouter appRouter = GoRouter(
       path: '/exam',
       name: 'exam',
       builder: (context, state) => const ExamPage(),
+    ),
+    _appRoute(
+      path: '/academic-progress',
+      name: 'academic-progress',
+      builder: (context, state) => const AcademicProgressPage(),
     ),
     _appRoute(
       path: '/shuati-practice',

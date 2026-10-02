@@ -52,6 +52,11 @@ class CampusActionRegistry {
       title: '考试安排',
       target: RouteActionTarget('exam'),
     ),
+    const CampusAction(
+      id: CampusActionIds.academicProgressOpen,
+      title: '学业情况',
+      target: RouteActionTarget('academic-progress'),
+    ),
     // 受信教务 H5 入口：由 AcademicWebEntryPage 预检登录态与直连/WebVPN
     // 选路，未登录时引导先登录；与「我的 › 教务系统」同一入口。
     const CampusAction(
