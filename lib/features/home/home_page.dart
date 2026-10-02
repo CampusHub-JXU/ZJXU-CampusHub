@@ -14,6 +14,7 @@ import '../../core/semester/semester_calendar.dart';
 import '../../core/system_surface/campus_data_change_bus.dart';
 import '../../core/theme/app_design_tokens.dart';
 import '../../core/theme/app_theme_controller.dart';
+import '../../core/theme/page_transition_activity.dart';
 import '../../core/theme/personalization_controller.dart';
 import '../../core/theme/widgets/app_wallpaper_backdrop.dart';
 import '../../core/update/update_checker.dart';
@@ -78,6 +79,9 @@ class _HomePageState extends State<HomePage> {
   bool _hasScheduleCache = false;
   bool _hasAvailableUpdate = false;
   bool _hasHydratedBootstrapState = false;
+
+  /// 转场期间收到数据变更广播、等转场结束后补一次采纳。
+  bool _campusDataPendingAfterTransition = false;
 
   /// 认证上下文世代：统一认证 / 教务任一身份通知即推进。私有刷新在 await
   /// 前捕获它，返回后不一致说明期间发生过登录 / 登出 / 换号 / 同号重登
@@ -271,8 +275,24 @@ class _HomePageState extends State<HomePage> {
   /// 只从内存缓存重新采纳投影并重建，**不**再发 fetch/网络：否则
   /// notify → fetch → notify 会成环。bootstrap 本地状态恢复前直接跳过，
   /// 交给既有 hydrate 时序，避免用半截缓存覆盖。
+  ///
+  /// 页面转场进行中（课表等页 pop 回首页的 220ms 内，课表写缓存正好 ping
+  /// 总线）不立刻 setState：整页重建 + 重绘会和转场抢帧。记一笔，转场结束后
+  /// 再采纳一次——采纳的是内存缓存最新值，合并多次 ping 不丢数据。
   void _onCampusDataChanged() {
     if (!mounted || !_hasHydratedBootstrapState) return;
+    final activity = PageTransitionActivity.instance;
+    if (activity.isBusy) {
+      if (_campusDataPendingAfterTransition) return;
+      _campusDataPendingAfterTransition = true;
+      unawaited(
+        activity.whenIdle().then((_) {
+          _campusDataPendingAfterTransition = false;
+          _onCampusDataChanged();
+        }),
+      );
+      return;
+    }
     setState(() {
       _adoptRestoreData(_snapshotCoordinator.restore(DateTime.now()));
     });
@@ -396,6 +416,11 @@ class _HomePageState extends State<HomePage> {
   /// 统一的路由跳转：返回首页后按目的地触发对应的延迟刷新。
   Future<void> _pushFeatureRoute(BuildContext context, String routeName) async {
     await context.pushNamed(routeName);
+    if (!mounted) return;
+    // push 的 Future 在 pop **开始**时就完成（路由 didPop 之后），此时返回转场
+    // 才刚起步。刷新里的缓存读取 / JSON 解码 / setState 都跑在 UI 线程，
+    // 等转场落定再开始，避免与首页重新露出的头几帧抢帧。
+    await PageTransitionActivity.instance.whenIdle();
     if (!mounted) return;
     switch (routeName) {
       case 'schedule':

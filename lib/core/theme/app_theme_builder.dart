@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'app_design_tokens.dart';
 import 'app_typography.dart';
+import 'page_transition_activity.dart';
 
 /// Material 3 theme builder.
 ///
@@ -606,10 +607,21 @@ class _SlideFadePageTransitionState extends State<_SlideFadePageTransition> {
   /// 自动跳过快照、正常渲染）。
   final SnapshotController _snapshotController = SnapshotController();
 
+  /// 本页是否已向 [PageTransitionActivity] 登记了一次转场。
+  bool _holdingActivity = false;
+
   void _updateSnapshotting(AnimationStatus _) {
-    _snapshotController.allowSnapshotting =
-        !kIsWeb &&
-        (widget.animation.isAnimating || widget.secondaryAnimation.isAnimating);
+    final animating =
+        widget.animation.isAnimating || widget.secondaryAnimation.isAnimating;
+    _snapshotController.allowSnapshotting = !kIsWeb && animating;
+    // 向全局登记转场起止（外壳快照 / 首页让路据此工作）。
+    if (animating && !_holdingActivity) {
+      _holdingActivity = true;
+      PageTransitionActivity.instance.acquire();
+    } else if (!animating && _holdingActivity) {
+      _holdingActivity = false;
+      PageTransitionActivity.instance.release();
+    }
   }
 
   @override
@@ -624,6 +636,11 @@ class _SlideFadePageTransitionState extends State<_SlideFadePageTransition> {
   void dispose() {
     widget.animation.removeStatusListener(_updateSnapshotting);
     widget.secondaryAnimation.removeStatusListener(_updateSnapshotting);
+    if (_holdingActivity) {
+      // 转场中途被销毁（pop 打断 push 等）也必须归还登记。
+      _holdingActivity = false;
+      PageTransitionActivity.instance.release();
+    }
     _snapshotController.dispose();
     super.dispose();
   }
