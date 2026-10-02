@@ -60,13 +60,23 @@ void main() {
     // full artifact, never stack with it, and its Java API is still the upstream
     // ai.onnxruntime package, so the keep rule above keeps covering it.
     const aarPath =
-        'packages/campus_captcha_ocr/android/libs/onnxruntime-android-minimal-1.30.0.aar';
+        'packages/campus_captcha_ocr/android/maven-repo/edu/zjxu/campus_captcha_ocr/onnxruntime-android-minimal/1.30.0/onnxruntime-android-minimal-1.30.0.aar';
     final buildGradle = File(buildGradlePath).readAsStringSync();
+    // AGP 9 rejects `implementation files("x.aar")` in a library module
+    // (bundleAar fails with "Direct local .aar file dependencies are not
+    // supported"), so the AAR is consumed as a Maven artifact from a repo that
+    // lives next to the plugin's build.gradle.
     expect(
       buildGradle,
       contains(
-        'implementation files("libs/onnxruntime-android-minimal-1.30.0.aar")',
+        'implementation "edu.zjxu.campus_captcha_ocr:onnxruntime-android-minimal:1.30.0"',
       ),
+    );
+    expect(buildGradle, contains('maven-repo'));
+    expect(
+      buildGradle,
+      isNot(contains('files("libs/')),
+      reason: 'Direct local AAR dependencies break the AGP 9 plugin build.',
     );
     expect(
       buildGradle,

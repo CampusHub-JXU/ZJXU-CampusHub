@@ -22,7 +22,7 @@
 #   ANDROID_HOME=... ANDROID_NDK_HOME=... tools/ocr_slim/build_ort_minimal_aar.sh [work dir]
 # Output:
 #   <work dir>/aar_out/onnxruntime-android-minimal-1.30.0.aar (assembled without AGP)
-#   copy it to packages/campus_captcha_ocr/android/libs/ (see README.md).
+#   copy it to packages/campus_captcha_ocr/android/maven-repo/edu/zjxu/campus_captcha_ocr/onnxruntime-android-minimal/1.30.0/ (see README.md).
 #
 # Needs: git, python3, cmake >= 3.28, ninja, zip, JDK 17+, an Android SDK with
 # platforms;android-34 and the NDK above, and network access to

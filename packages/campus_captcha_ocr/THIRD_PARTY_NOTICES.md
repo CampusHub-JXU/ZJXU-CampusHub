@@ -53,7 +53,7 @@ THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR I
 ## 2. ONNX Runtime（Android，自编精简版）
 
 - 组件：ONNX Runtime — **从源码自行编译的精简（minimal）Android AAR**，不再使用 Maven Central 上的 `com.microsoft.onnxruntime:onnxruntime-android`
-- 本项目内文件：`android/libs/onnxruntime-android-minimal-1.30.0.aar`
+- 本项目内文件：`android/maven-repo/edu/zjxu/campus_captcha_ocr/onnxruntime-android-minimal/1.30.0/onnxruntime-android-minimal-1.30.0.aar`（同目录 `.pom` 为本项目手写的最小 POM，插件 `build.gradle` 把该目录注册为本地 Maven 仓库）
   - SHA-256：`1c06feb53429d4a163294513b8aa8486fb2d6c42f19d23d8617e476c30c02dde`（3,437,385 字节）
   - 内含 ABI：`arm64-v8a`、`armeabi-v7a`、`x86_64`；Java 包名仍为上游 `ai.onnxruntime`
 - 上游仓库：https://github.com/microsoft/onnxruntime

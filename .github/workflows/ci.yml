@@ -155,7 +155,7 @@ jobs:
         run: |
           set -euo pipefail
           # The captcha OCR plugin consumes a local minimal ORT AAR
-          # (packages/campus_captcha_ocr/android/libs/); make sure AGP merged its
+          # (packages/campus_captcha_ocr/android/maven-repo/); make sure AGP merged its
           # native libs and the ORT-format model into the app for every ABI.
           apk="build/app/outputs/flutter-apk/app-debug.apk"
           listing="$(unzip -l "${apk}")"
