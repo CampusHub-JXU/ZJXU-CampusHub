@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/core/academic/exam_model.dart';
+import 'package:jxu_campus_hub/core/academic/schedule_change_rule.dart';
+import 'package:jxu_campus_hub/core/semester/schedule_term_context.dart';
 import 'package:jxu_campus_hub/features/home/home_presentation_resolver.dart';
 import 'package:jxu_campus_hub/features/home/models/home_presentation.dart';
 import 'package:jxu_campus_hub/features/home/models/home_snapshot.dart';
@@ -18,6 +20,7 @@ void main() {
     bool courseLoggedIn = true,
     bool hasScheduleCache = true,
     List<CourseEntry> courses = const [],
+    List<CourseChangeRule> changeRules = const [],
     bool isBeforeSemesterStart = false,
     bool isAfterSemesterEnd = false,
     int currentWeek = 2,
@@ -31,7 +34,7 @@ void main() {
       courseLoggedIn: courseLoggedIn,
       hasScheduleCache: hasScheduleCache,
       courses: courses,
-      changeRules: const [],
+      changeRules: changeRules,
       isBeforeSemesterStart: isBeforeSemesterStart,
       isAfterSemesterEnd: isAfterSemesterEnd,
       currentWeek: currentWeek,
@@ -521,6 +524,116 @@ void main() {
       final presentation = resolveHomePresentation(snapshot);
 
       expect(presentation.weekLabel, isEmpty);
+    });
+  });
+
+  group('假期', () {
+    // 2026 国庆：10/1(周四)-10/7(周三)；开学 9/7，10/2 为第 4 周周五。
+    final thursday = DateTime(2026, 10, 8);
+    final friday = DateTime(2026, 10, 9);
+
+    test('国庆假期中且明天不上课：假期文案 + 恢复上课日期', () {
+      final snapshot = buildSnapshot(
+        now: DateTime(2026, 10, 2, 10, 0),
+        currentWeek: 4,
+        courses: [
+          courseAt(thursday, startLesson: 1, courseName: '高等数学'),
+          courseAt(friday, startLesson: 1),
+        ],
+      );
+
+      final presentation = resolveHomePresentation(snapshot);
+
+      expect(presentation.hero.kind, HomeHeroKind.holiday);
+      expect(presentation.hero.kicker, '国庆节 · 放假中');
+      expect(presentation.hero.headline, isNotEmpty);
+      // 假期里的周四（10/1）、周五（10/2）不算课，恢复上课日是 10/8。
+      expect(presentation.hero.timeText, '10/8 周四 恢复上课');
+      expect(presentation.hero.courseName, isNull);
+      expect(presentation.today.isPreview, isTrue);
+      expect(presentation.today.title, '10/8 周四');
+      expect(presentation.today.courses.single.courseName, '高等数学');
+    });
+
+    test('法定假期首日显示节日问候', () {
+      final snapshot = buildSnapshot(
+        now: DateTime(2026, 10, 1, 9, 0),
+        currentWeek: 4,
+        courses: [courseAt(thursday, startLesson: 1)],
+      );
+
+      final presentation = resolveHomePresentation(snapshot);
+
+      expect(presentation.hero.kind, HomeHeroKind.holiday);
+      expect(presentation.hero.headline, '国庆快乐，享受假期吧～');
+    });
+
+    test('假期当天课表上的课不算「正在上课」', () {
+      final snapshot = buildSnapshot(
+        now: DateTime(2026, 10, 2, 8, 30),
+        currentWeek: 4,
+        courses: [courseAt(friday, startLesson: 1, endLesson: 2)],
+      );
+
+      final presentation = resolveHomePresentation(snapshot);
+
+      expect(presentation.hero.kind, HomeHeroKind.holiday);
+      expect(presentation.today.courses.map((row) => row.isOngoing), [false]);
+    });
+
+    test('假期最后一天、明天有课：老老实实显示下一节课', () {
+      final snapshot = buildSnapshot(
+        now: DateTime(2026, 10, 7, 20, 0),
+        currentWeek: 5,
+        courses: [courseAt(thursday, startLesson: 1, courseName: '高等数学')],
+      );
+
+      final presentation = resolveHomePresentation(snapshot);
+
+      expect(presentation.hero.kind, HomeHeroKind.nextCourseUpcoming);
+      expect(presentation.hero.courseName, '高等数学');
+      expect(presentation.hero.timeText, '明天 08:00');
+    });
+
+    test('课表推断：今天的课被停课规则全部取消且明天没课时视为放假', () {
+      final wednesday = DateTime(2026, 9, 16); // 第 2 周周三
+      final snapshot = buildSnapshot(
+        now: DateTime(2026, 9, 16, 7, 0),
+        courses: [
+          courseAt(wednesday, startLesson: 1, courseName: '大学物理'),
+          courseAt(DateTime(2026, 9, 18), startLesson: 3),
+        ],
+        changeRules: const [
+          CourseChangeRule(
+            type: CourseChangeType.cancel,
+            originalLesson: CourseLessonSlot(
+              week: 2,
+              weekday: 3,
+              startLesson: 1,
+              endLesson: 1,
+            ),
+            courseName: '大学物理',
+            termContext: ScheduleTermContext(academicYear: 2026, term: 3),
+          ),
+        ],
+      );
+
+      final presentation = resolveHomePresentation(snapshot);
+
+      expect(presentation.hero.kind, HomeHeroKind.holiday);
+      expect(presentation.hero.kicker, '放假中');
+      expect(presentation.hero.timeText, '9/18 周五 恢复上课');
+    });
+
+    test('本来就没课的普通周末不算放假', () {
+      final snapshot = buildSnapshot(
+        now: DateTime(2026, 9, 19, 10, 0), // 周六
+        courses: [courseAt(DateTime(2026, 9, 21), startLesson: 1)],
+      );
+
+      final presentation = resolveHomePresentation(snapshot);
+
+      expect(presentation.hero.kind, HomeHeroKind.nextCourseUpcoming);
     });
   });
 }

@@ -23,6 +23,10 @@ enum HomeHeroKind {
   /// 「今天没课」并入 kicker，日期标签（如「明天 08:00」）并入时间行。
   nextCourseUpcoming,
 
+  /// 假期：今天是法定节假日或整天停课，且明天也不上课；显示轻松的
+  /// 假期文案 + 恢复上课日期（明天有课时回到 [nextCourseUpcoming]）。
+  holiday,
+
   /// 未登录且无本地课表缓存。
   loggedOut,
 }
@@ -32,6 +36,7 @@ class HomeHeroPresentation {
   const HomeHeroPresentation({
     required this.kind,
     required this.headline,
+    this.kicker,
     this.timeText,
     this.courseName,
     this.locationText,
@@ -39,6 +44,10 @@ class HomeHeroPresentation {
   });
 
   final HomeHeroKind kind;
+
+  /// 覆盖默认 kicker 的文案（如假期态的「国庆节 · 放假中」）；
+  /// 为 null 时由 Hero 组件按 [kind] 取默认值。
+  final String? kicker;
 
   /// 状态大字，如「42 分钟后上课」「正在上课」「距离开学还有 9 天」。
   final String headline;
