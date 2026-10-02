@@ -77,17 +77,15 @@ class _NavDestination extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final color = selected ? accent : cs.onSurfaceVariant;
     // 系统「移除动画」时指示器与图标直接切换。
-    final reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    final reduceMotion = AppMotion.reduced(context);
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Center(
         child: AnimatedContainer(
-          duration: reduceMotion
-              ? Duration.zero
-              : const Duration(milliseconds: 240),
-          curve: Curves.easeOutCubic,
+          duration: reduceMotion ? Duration.zero : AppMotion.quick,
+          curve: AppMotion.standard,
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
           decoration: ShapeDecoration(
             color: selected ? accent.withValues(alpha: 0.16) : null,
@@ -99,9 +97,7 @@ class _NavDestination extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               AnimatedSwitcher(
-                duration: reduceMotion
-                    ? Duration.zero
-                    : const Duration(milliseconds: 200),
+                duration: reduceMotion ? Duration.zero : AppMotion.quick,
                 child: Icon(
                   selected ? destination.selectedIcon : destination.icon,
                   key: ValueKey(selected),

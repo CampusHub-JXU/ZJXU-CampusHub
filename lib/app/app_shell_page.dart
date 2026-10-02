@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../core/theme/app_design_tokens.dart';
 import '../core/theme/glass_style_controller.dart';
 import '../features/home/home_zone_controller.dart';
 import '../shared/widgets/glass_nav_bar.dart';
@@ -122,9 +123,13 @@ class _AppShellPageState extends State<AppShellPage> {
 }
 
 /// 分支容器：替代 `indexedStack` 的 IndexedStack，切换时新分支在旧分支
-/// **之上**淡入并轻微侧移，旧分支保持可见直到被完全盖住——两页都自带
-/// 不透明壁纸背景，因此过渡是页与页的交叉淡化，不会透出 Scaffold 底色
-/// （旧实现整体淡入单个 shell，暗色下会闪一下黑）。
+/// **之上**短促淡入（[AppMotion.switchFade]），旧分支保持可见直到被完全
+/// 盖住——两页都自带不透明壁纸背景，因此过渡是页与页的交叉淡化，不会透出
+/// Scaffold 底色（旧实现整体淡入单个 shell，暗色下会闪一下黑）。
+///
+/// 刻意不加位移：底部分支是同级、高频、可来回切的入口，位移在反复切换时
+/// 叠成左右晃动，看久了累；淡入只传达「换了」，不制造运动。过渡未结束又切
+/// 换时直接落到新分支，不重播淡入——重播会让刚盖上的页先闪回透明再淡入。
 ///
 /// 非当前、非过渡中的分支 Offstage + TickerMode 关闭，与 IndexedStack
 /// 一样保活状态且不跑动画 / Shader ticker。
@@ -154,7 +159,7 @@ class _AppShellBranchContainerState extends State<AppShellBranchContainer>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 260),
+    duration: AppMotion.switchFade,
     value: 1,
   )..addStatusListener(_onStatus);
 
@@ -162,12 +167,11 @@ class _AppShellBranchContainerState extends State<AppShellBranchContainer>
   // 里每次重建都新建一个就会一直累积。
   late final CurvedAnimation _curved = CurvedAnimation(
     parent: _controller,
-    curve: Curves.easeOutCubic,
+    curve: AppMotion.standard,
   );
 
   late int _current = widget.currentIndex;
   int? _previous;
-  double _slideFrom = 0;
 
   /// 旧分支快照开关：仅过渡进行中允许栅格化。
   final SnapshotController _previousSnapshot = SnapshotController();
@@ -176,7 +180,7 @@ class _AppShellBranchContainerState extends State<AppShellBranchContainer>
   void didUpdateWidget(covariant AppShellBranchContainer oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.currentIndex == _current) return;
-    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) {
+    if (AppMotion.reduced(context) || _controller.isAnimating) {
       _controller.stop();
       _previousSnapshot.allowSnapshotting = false;
       _previous = null;
@@ -184,8 +188,6 @@ class _AppShellBranchContainerState extends State<AppShellBranchContainer>
       _controller.value = 1;
       return;
     }
-    // 进入更高 index 的分支（主页→我的）从右侧轻推入；返回则从左侧。
-    _slideFrom = widget.currentIndex > _current ? 0.04 : -0.04;
     _previous = _current;
     _current = widget.currentIndex;
     _previousSnapshot.allowSnapshotting = true;
@@ -233,16 +235,7 @@ class _AppShellBranchContainerState extends State<AppShellBranchContainer>
               ),
             ),
         // 当前分支最后绘制，盖在过渡中的旧分支之上。
-        FadeTransition(
-          opacity: curved,
-          child: SlideTransition(
-            position: Tween<Offset>(
-              begin: Offset(_slideFrom, 0),
-              end: Offset.zero,
-            ).animate(curved),
-            child: widget.children[_current],
-          ),
-        ),
+        FadeTransition(opacity: curved, child: widget.children[_current]),
       ],
     );
   }

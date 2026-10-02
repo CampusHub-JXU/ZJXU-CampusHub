@@ -508,8 +508,12 @@ class AppThemeBuilder {
   }
 }
 
-/// 应用统一的页面转场：新页从右侧滑入 12% 并淡入，旧页向左视差退出
-/// （淡出至 0.55、微缩到 0.98）。
+/// 应用统一的页面转场：新页从右侧滑入 8% 并淡入，旧页向左轻微视差退出
+/// 并压暗至 0.55。
+///
+/// 动效减负：旧页曾同时微缩到 0.98，新页位移 12%——五种运动同时发生，
+/// 连续进出页面时画面「抖」得累。现只保留「新页滑入 + 旧页反向视差」这
+/// 一对相对运动传达层级，缩放移除、位移收窄；节奏统一取 [AppMotion]。
 ///
 /// Flutter 3.29 起 Android 的默认转场改为 PredictiveBackPageTransitionsBuilder，
 /// 非手势导航（点击按钮 push）时退化成 FadeForwardsPageTransitionsBuilder
@@ -517,8 +521,8 @@ class AppThemeBuilder {
 /// 旧页纯淡出且不位移，在深色背景下几乎等同于瞬切。这里显式覆盖，换回
 /// 明确的方向感，与 app_shell_page 底部 tab 切换的语言保持一致。
 ///
-/// 位移量刻意比系统默认更足：深色主题下各页底色几乎无差，交叉淡入本身
-/// 读不出「过渡」，只有新旧两页反向位移形成的相对运动才是可感知的信号。
+/// 位移量仍比系统默认（30px）更足：深色主题下各页底色几乎无差，交叉淡入
+/// 本身读不出「过渡」，新旧两页反向位移形成的相对运动才是可感知的信号。
 ///
 /// 各平台必须列全：builders 未命中的平台会退回 ZoomPageTransitionsBuilder，
 /// 只写 Android 会让 iOS/macOS 丢掉 Cupertino 侧滑。
@@ -535,7 +539,7 @@ const PageTransitionsTheme _appPageTransitionsTheme = PageTransitionsTheme(
 class _SlideFadePageTransitionsBuilder extends PageTransitionsBuilder {
   const _SlideFadePageTransitionsBuilder();
 
-  static const Duration _duration = Duration(milliseconds: 220);
+  static const Duration _duration = AppMotion.page;
 
   @override
   Duration get transitionDuration => _duration;
@@ -549,7 +553,7 @@ class _SlideFadePageTransitionsBuilder extends PageTransitionsBuilder {
     Widget child,
   ) {
     // 系统「移除动画」：直接换页，不做位移 / 淡入 / 缩放。
-    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) return child;
+    if (AppMotion.reduced(context)) return child;
     return _SlideFadePageTransition(
       animation: animation,
       secondaryAnimation: secondaryAnimation,
@@ -576,22 +580,19 @@ class _SlideFadePageTransition extends StatefulWidget {
 
 class _SlideFadePageTransitionState extends State<_SlideFadePageTransition> {
   /// 入场（push）曲线：起步快、收尾慢。
-  static const Curve _curve = Curves.easeOutCubic;
+  static const Curve _curve = AppMotion.standard;
 
   /// 出场（pop）曲线：返回时转场是「倒放」的，`CurvedAnimation` 在
   /// `reverseCurve` 为空时会直接复用正向曲线（SDK  animations.dart:377），
   /// 于是 easeOutCubic 被倒放成 easeInCubic——起步慢吞吞、末尾突然冲刺，
   /// 观感就是「先慢后快」。这里显式给反向指定镜像曲线，让返回同样是先快后慢。
-  static const Curve _reverseCurve = Curves.easeInCubic;
+  static const Curve _reverseCurve = AppMotion.standardReverse;
 
   /// 新页的起点位移（相对自身宽度）。
-  static const double _enterOffset = 0.12;
+  static const double _enterOffset = 0.08;
 
   /// 旧页退出的终点位移（反向视差，与新页位移共同构成相对运动）。
   static const double _exitSlideOffset = -0.04;
-
-  /// 旧页退出的终点缩放。
-  static const double _exitScale = 0.98;
 
   /// 旧页退出的终点不透明度。
   ///
@@ -655,19 +656,16 @@ class _SlideFadePageTransitionState extends State<_SlideFadePageTransition> {
         ).animate(entering),
         child: FadeTransition(
           opacity: Tween<double>(begin: 1, end: _exitOpacity).animate(leaving),
-          child: ScaleTransition(
-            scale: Tween<double>(begin: 1, end: _exitScale).animate(leaving),
-            child: SlideTransition(
-              position: Tween<Offset>(
-                begin: Offset.zero,
-                end: Offset(_exitSlideOffset * direction, 0),
-              ).animate(leaving),
-              child: SnapshotWidget(
-                controller: _snapshotController,
-                mode: SnapshotMode.permissive,
-                autoresize: true,
-                child: widget.child,
-              ),
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: Offset.zero,
+              end: Offset(_exitSlideOffset * direction, 0),
+            ).animate(leaving),
+            child: SnapshotWidget(
+              controller: _snapshotController,
+              mode: SnapshotMode.permissive,
+              autoresize: true,
+              child: widget.child,
             ),
           ),
         ),

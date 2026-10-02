@@ -224,4 +224,35 @@ void main() {
     expect(find.text('我的页面'), findsOneWidget);
     expect(selectedDockItems(tester), {'我的'});
   });
+
+  testWidgets('分支切换只淡入不位移；过渡中再切换直接落位不重播', (tester) async {
+    await pumpShell(tester);
+    await tester.tap(find.text('我的'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 60));
+
+    // 同级高频切换不做位移，反复切不会左右晃。
+    expect(
+      find.ancestor(
+        of: find.text('我的页面'),
+        matching: find.byType(SlideTransition),
+      ),
+      findsNothing,
+    );
+
+    // 淡入未结束就切回主页：直接落位，旧页不再留在台上。
+    await tester.tap(find.text('主页'));
+    await tester.pump();
+    expect(find.text('首页页面'), findsOneWidget);
+    expect(find.text('我的页面'), findsNothing);
+    final fade = tester.widget<FadeTransition>(
+      find
+          .ancestor(
+            of: find.text('首页页面'),
+            matching: find.byType(FadeTransition),
+          )
+          .first,
+    );
+    expect(fade.opacity.value, 1.0);
+  });
 }
