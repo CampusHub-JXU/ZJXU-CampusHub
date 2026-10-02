@@ -122,7 +122,9 @@ class GlassAppBarSpace extends StatelessWidget {
                     ))
             : Colors.transparent;
         final fill = _AppBarFill(
-          tintColor: tintColor,
+          tintColor: useGlass
+              ? frostedFillColor(base: tintColor, isDark: isDark, alpha: 1.0)
+              : tintColor,
           // 顶栏 tint 策略：低到能看清模糊，高到标题仍满足 WCAG AA。
           tintAlpha: useGlass ? (isDark ? 0.42 : 0.50) : 1.0,
           borderColor: borderColor,

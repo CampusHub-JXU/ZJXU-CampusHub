@@ -60,14 +60,15 @@ class AppTileSurface extends StatelessWidget {
 
     final decoration = useAcrylic
         ? ShapeDecoration(
-            color: (isDark ? cs.surfaceContainerLow : cs.surfaceContainerLowest)
-                .withValues(alpha: recipe.surfaceOpacity),
+            color: frostedFillColor(
+              base: isDark ? cs.surfaceContainerLow : cs.surfaceContainerLowest,
+              isDark: isDark,
+              alpha: recipe.surfaceOpacity,
+            ),
             shape: RoundedSuperellipseBorder(
               borderRadius: radius,
               side: BorderSide(
-                color: isDark
-                    ? Colors.white.withValues(alpha: recipe.borderOpacity * 0.2)
-                    : cs.outlineVariant.withValues(alpha: recipe.borderOpacity),
+                color: frostedBorderColor(recipe: recipe, isDark: isDark),
                 width: isDark ? 0.8 : 1.0,
               ),
             ),

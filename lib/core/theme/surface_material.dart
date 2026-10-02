@@ -65,13 +65,15 @@ class MaterialRecipe {
 
   static const MaterialRecipe _acrylic = MaterialRecipe._(
     style: SurfaceMaterialStyle.acrylic,
-    blurSigma: kSurfaceBlurBase * 1.35 + 4,
+    // 磨砂玻璃：更重的模糊把壁纸细节揉成色块，提饱和让透出的色彩更「润」，
+    // 再叠一层乳白雾化（见 [frostedFillColor]）与亮边（[frostedBorderColor]）。
+    blurSigma: kSurfaceBlurBase * 1.6 + 4,
     // 填充必须保持明显半透明：实时模糊由 BackdropFilter 提供，若填充
     // 接近不透明会把模糊完全盖住，视觉上退化成实色。
-    surfaceOpacity: kSurfaceTintOpacity * 0.70,
+    surfaceOpacity: kSurfaceTintOpacity * 0.74,
     borderOpacity: 0.30,
     shadowOpacity: 0.14,
-    saturation: 1,
+    saturation: 1.2,
   );
 
   /// 取风格对应的配方。
