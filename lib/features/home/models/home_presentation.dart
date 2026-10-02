@@ -24,7 +24,7 @@ enum HomeHeroKind {
   nextCourseUpcoming,
 
   /// 假期：今天是法定节假日或整天停课，且明天也不上课；显示轻松的
-  /// 假期文案 + 恢复上课日期（明天有课时回到 [nextCourseUpcoming]）。
+  /// 只放假的文案，不提示恢复上课日（明天有课时回到 [nextCourseUpcoming]）。
   holiday,
 
   /// 未登录且无本地课表缓存。

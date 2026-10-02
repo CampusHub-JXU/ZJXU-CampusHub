@@ -145,6 +145,15 @@ HomeTodayPresentation _resolveTodayPresentation({
     );
   }
 
+  // 放假就只放假：不提前预览之后的课程，等到「明天就有课」时 Hero 与
+  // Today 段落自然恢复正常提醒。
+  if (heroKind == HomeHeroKind.holiday) {
+    return HomeTodayPresentation(
+      courses: todayState.rows,
+      exams: todayState.exams,
+    );
+  }
+
   final previewDate = nextCourseState.date;
   if (!hasCourseData ||
       previewDate == null ||
@@ -411,13 +420,13 @@ HomeHeroPresentation _resolveHero({
   }
 
   // P3：假期。今天是法定假期或整天停课，且明天也不上课时，换成
-  // 轻松的假期文案；明天就有课则老老实实走下方「今天没课 · 下一节」。
+  // 轻松的假期文案（只放假，不提示何时恢复上课、也不预览之后的课）；
+  // 明天就有课则老老实实走下方「今天没课 · 下一节」。
   if (holiday != null && nextCourseLabel != '明天') {
     return HomeHeroPresentation(
       kind: HomeHeroKind.holiday,
       kicker: holiday.name == null ? '放假中' : '${holiday.name} · 放假中',
       headline: _holidayHeadline(holiday, today),
-      timeText: nextCourse == null ? null : '$nextCourseLabel 恢复上课',
     );
   }
 

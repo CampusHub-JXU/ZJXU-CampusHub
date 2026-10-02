@@ -532,7 +532,7 @@ void main() {
     final thursday = DateTime(2026, 10, 8);
     final friday = DateTime(2026, 10, 9);
 
-    test('国庆假期中且明天不上课：假期文案 + 恢复上课日期', () {
+    test('国庆假期中且明天不上课：只显示假期文案，不提示恢复上课、不预览课程', () {
       final snapshot = buildSnapshot(
         now: DateTime(2026, 10, 2, 10, 0),
         currentWeek: 4,
@@ -547,12 +547,10 @@ void main() {
       expect(presentation.hero.kind, HomeHeroKind.holiday);
       expect(presentation.hero.kicker, '国庆节 · 放假中');
       expect(presentation.hero.headline, isNotEmpty);
-      // 假期里的周四（10/1）、周五（10/2）不算课，恢复上课日是 10/8。
-      expect(presentation.hero.timeText, '10/8 周四 恢复上课');
+      expect(presentation.hero.timeText, isNull);
       expect(presentation.hero.courseName, isNull);
-      expect(presentation.today.isPreview, isTrue);
-      expect(presentation.today.title, '10/8 周四');
-      expect(presentation.today.courses.single.courseName, '高等数学');
+      expect(presentation.today.isPreview, isFalse);
+      expect(presentation.today.isEmpty, isTrue);
     });
 
     test('法定假期首日显示节日问候', () {
@@ -578,7 +576,9 @@ void main() {
       final presentation = resolveHomePresentation(snapshot);
 
       expect(presentation.hero.kind, HomeHeroKind.holiday);
-      expect(presentation.today.courses.map((row) => row.isOngoing), [false]);
+      // 假期当天的课不进「今天」列表，也不会被当成正在上的课。
+      expect(presentation.hero.courseName, isNull);
+      expect(presentation.today.courses.any((row) => row.isOngoing), isFalse);
     });
 
     test('假期最后一天、明天有课：老老实实显示下一节课', () {
@@ -622,7 +622,7 @@ void main() {
 
       expect(presentation.hero.kind, HomeHeroKind.holiday);
       expect(presentation.hero.kicker, '放假中');
-      expect(presentation.hero.timeText, '9/18 周五 恢复上课');
+      expect(presentation.hero.timeText, isNull);
     });
 
     test('本来就没课的普通周末不算放假', () {
