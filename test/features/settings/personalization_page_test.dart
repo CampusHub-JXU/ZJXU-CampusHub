@@ -76,6 +76,8 @@ void main() {
   });
 
   testWidgets('开关写回对应控制器', (tester) async {
+    // Shader 默认开启会展开四条滑条把下方开关挤出首屏；这里只测下方开关。
+    personalization.shaderEnabled.value = false;
     await pumpPersonalization(tester);
 
     // 亚克力始终开启：设置页不再提供材质 / 课表卡片毛玻璃开关。
@@ -96,10 +98,48 @@ void main() {
     expect(personalization.homeCampusNoticeEnabled.value, isTrue);
   });
 
-  testWidgets('Shader 关闭时不显示三条参数滑条，开启后展开', (tester) async {
+  testWidgets('Shader 默认开启：展开帧率 / 速度 / 强度 / 不透明度四条滑条', (tester) async {
+    // 出厂默认：开。
+    expect(personalization.shaderEnabled.value, isTrue);
+    await pumpPersonalization(tester);
+    for (final key in const [
+      'personalization_shader_fps',
+      'personalization_shader_speed',
+      'personalization_shader_strength',
+      'personalization_shader_opacity',
+    ]) {
+      expect(find.byKey(Key(key)), findsOneWidget);
+    }
+    expect(find.text('60 fps'), findsOneWidget);
+  });
+
+  testWidgets('帧率滑条：档位写回控制器并持久化，关闭 Shader 后消失', (tester) async {
+    await pumpPersonalization(tester);
+    final slider = find.byKey(const Key('personalization_shader_fps'));
+    expect(slider, findsOneWidget);
+    expect(personalization.shaderFps.value, 60);
+
+    // 档位 30 / 45 / 60 / 90 / 120 对应 0..4；拖到最左 = 30，最右 = 120。
+    await tester.drag(slider, const Offset(-600, 0));
+    await tester.pump();
+    expect(personalization.shaderFps.value, 30);
+    expect(find.text('30 fps'), findsOneWidget);
+
+    await tester.drag(slider, const Offset(600, 0));
+    await tester.pump();
+    expect(personalization.shaderFps.value, 120);
+
+    await tapKey(tester, 'personalization_shader');
+    expect(personalization.shaderEnabled.value, isFalse);
+    expect(find.byKey(const Key('personalization_shader_fps')), findsNothing);
+  });
+
+  testWidgets('Shader 关闭时不显示参数滑条，开启后展开', (tester) async {
+    personalization.shaderEnabled.value = false;
     await pumpPersonalization(tester);
 
     const sliders = [
+      'personalization_shader_fps',
       'personalization_shader_speed',
       'personalization_shader_strength',
       'personalization_shader_opacity',

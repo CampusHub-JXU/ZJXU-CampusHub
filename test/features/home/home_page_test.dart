@@ -686,7 +686,8 @@ void main() {
 
       await tester.pumpWidget(const MaterialApp(home: HomePage()));
       await tester.pump();
-      await tester.pumpAndSettle();
+      // 流体 Shader 不依赖壁纸、持续动画，pumpAndSettle 不会收敛；推进固定时长即可。
+      await tester.pump(const Duration(seconds: 1));
 
       // Even when shader/background is enabled, content sections stay unboxed without AppCard
       expect(find.byType(AppCard), findsNothing);
@@ -845,57 +846,58 @@ void main() {
     },
   );
 
-  testWidgets('returning from a pushed feature route waits for the pop transition', (
-    tester,
-  ) async {
-    UnifiedAuthService.instance.debugSetSession(
-      active: true,
-      account: 'casuser',
-    );
-    final router = GoRouter(
-      routes: [
-        GoRoute(
-          path: '/',
-          name: 'home',
-          builder: (context, state) => const HomePage(),
-        ),
-        GoRoute(
-          path: '/campus-card',
-          name: 'campus-card',
-          builder: (context, state) => const Scaffold(body: Text('校园卡页面')),
-        ),
-      ],
-    );
-    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
-    AppBootstrapController.instance.debugSetPhase(
-      AppBootstrapPhase.localStateReady,
-    );
-    await tester.pump(const Duration(milliseconds: 200));
+  testWidgets(
+    'returning from a pushed feature route waits for the pop transition',
+    (tester) async {
+      UnifiedAuthService.instance.debugSetSession(
+        active: true,
+        account: 'casuser',
+      );
+      final router = GoRouter(
+        routes: [
+          GoRoute(
+            path: '/',
+            name: 'home',
+            builder: (context, state) => const HomePage(),
+          ),
+          GoRoute(
+            path: '/campus-card',
+            name: 'campus-card',
+            builder: (context, state) => const Scaffold(body: Text('校园卡页面')),
+          ),
+        ],
+      );
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      AppBootstrapController.instance.debugSetPhase(
+        AppBootstrapPhase.localStateReady,
+      );
+      await tester.pump(const Duration(milliseconds: 200));
 
-    await tester.tap(find.text('校园卡'));
-    await tester.pumpAndSettle();
-    expect(find.text('校园卡页面'), findsOneWidget);
+      await tester.tap(find.text('校园卡'));
+      await tester.pumpAndSettle();
+      expect(find.text('校园卡页面'), findsOneWidget);
 
-    // 返回：push 的 Future 在 pop 开始时就完成，但刷新 / 重建必须等转场落定。
-    PageTransitionActivity.instance.acquire();
-    router.pop();
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
-    expect(find.text('校园卡页面'), findsNothing);
+      // 返回：push 的 Future 在 pop 开始时就完成，但刷新 / 重建必须等转场落定。
+      PageTransitionActivity.instance.acquire();
+      router.pop();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('校园卡页面'), findsNothing);
 
-    // 转场期间余额缓存更新（校园卡页内刷新落盘）：首页此刻不应响应。
-    await _seedCampusCardBalance(
-      now: DateTime.now(),
-      account: 'casuser',
-      balance: 88,
-    );
-    await tester.pump(const Duration(milliseconds: 50));
-    expect(find.text('¥88'), findsNothing, reason: '转场未落定，首页不应重建 / 刷新');
+      // 转场期间余额缓存更新（校园卡页内刷新落盘）：首页此刻不应响应。
+      await _seedCampusCardBalance(
+        now: DateTime.now(),
+        account: 'casuser',
+        balance: 88,
+      );
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.text('¥88'), findsNothing, reason: '转场未落定，首页不应重建 / 刷新');
 
-    PageTransitionActivity.instance.release();
-    await tester.pumpAndSettle();
-    expect(find.text('¥88'), findsOneWidget, reason: '转场落定后刷新采纳新余额');
-  });
+      PageTransitionActivity.instance.release();
+      await tester.pumpAndSettle();
+      expect(find.text('¥88'), findsOneWidget, reason: '转场落定后刷新采纳新余额');
+    },
+  );
 
   testWidgets('campus data bus projects cache and drops it when cache clears', (
     tester,

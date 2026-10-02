@@ -12,15 +12,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// 原为 features/home 下的主屏控制器；因被 settings 个性化页共享而下沉至
 /// core/theme，prefs key 保持不变。
 
-enum HomeShaderMode {
-  glass('玻璃背景'),
-  ribbon('流光丝带'),
-  collage('流体纹理');
-
-  const HomeShaderMode(this.label);
-  final String label;
-}
-
 enum HomeBackgroundFit {
   cover('填充', BoxFit.cover),
   contain('适应', BoxFit.contain),
@@ -44,6 +35,7 @@ class PersonalizationController {
   static const _keyShaderStrength = 'home_shader_strength';
   static const _keyShaderOpacity = 'home_shader_opacity';
   static const _keyShaderAnimationSpeed = 'home_shader_animation_speed';
+  static const _keyShaderFps = 'home_shader_fps';
   static const _keyLegacyFilterStrength = 'home_filter_strength';
   static const _keyBackgroundOpacity = 'home_background_opacity';
 
@@ -58,10 +50,35 @@ class PersonalizationController {
   static const _keyHomeCampusNotice = 'home_campus_notice_enabled';
 
   final ValueNotifier<String?> backgroundImagePath = ValueNotifier(null);
-  final ValueNotifier<bool> shaderEnabled = ValueNotifier(false);
+
+  /// 流体 Shader 的出厂默认值（新安装为开）。
+  ///
+  /// 流体 Shader 并非对壁纸做滤镜：它用壁纸取色（未设壁纸时用主题色）**程序化生成**
+  /// 背景，不依赖壁纸，设了壁纸则会替换壁纸画面。所以升级用户里「已设壁纸、从未碰过此开关」的人不能被静默
+  /// 切换，见 [init] 的迁移分支。
+  static const bool kShaderEnabledDefault = true;
+
+  final ValueNotifier<bool> shaderEnabled = ValueNotifier(
+    kShaderEnabledDefault,
+  );
   final ValueNotifier<double> shaderStrength = ValueNotifier(0.45);
   final ValueNotifier<double> shaderOpacity = ValueNotifier(1.0);
   final ValueNotifier<double> shaderAnimationSpeed = ValueNotifier(1.0);
+
+  /// 流体 Shader 帧率档位（fps）。高于屏幕刷新率的档位等同「每个 vsync 一帧」。
+  static const List<int> kShaderFpsSteps = [30, 45, 60, 90, 120];
+  static const int kShaderFpsDefault = 60;
+
+  /// 把任意值吸附到最近的档位（持久化值被手改 / 旧版本缺失时兜底）。
+  static int snapShaderFps(int value) {
+    var best = kShaderFpsSteps.first;
+    for (final step in kShaderFpsSteps) {
+      if ((step - value).abs() < (best - value).abs()) best = step;
+    }
+    return best;
+  }
+
+  final ValueNotifier<int> shaderFps = ValueNotifier(kShaderFpsDefault);
   final ValueNotifier<double> backgroundOpacity = ValueNotifier(1.0);
   final ValueNotifier<Alignment> backgroundAlignment = ValueNotifier(
     Alignment.center,
@@ -96,10 +113,11 @@ class PersonalizationController {
   Future<List<Color>> getMonetColors() async {
     final path = backgroundImagePath.value;
     if (path == null) {
-      _monetColors = _defaultBrandColors();
+      // 未设壁纸：不给取色板，HomeFluidBackground 回退到按主题色推导配色。
+      _monetColors = null;
       _monetSourcePath = null;
-      monetColors.value = _monetColors;
-      return _monetColors!;
+      monetColors.value = null;
+      return const [];
     }
     if (_monetColors != null && _monetSourcePath == path) {
       monetColors.value = _monetColors;
@@ -323,6 +341,7 @@ class PersonalizationController {
     final prefs = await SharedPreferences.getInstance();
 
     final path = prefs.getString(_keyBackgroundPath);
+    final hadStoredWallpaper = path != null;
     if (path != null && await File(path).exists()) {
       backgroundImagePath.value = path;
     } else {
@@ -330,10 +349,20 @@ class PersonalizationController {
       backgroundImagePath.value = null;
     }
 
-    shaderEnabled.value =
+    final storedShader =
         prefs.getBool(_keyShaderEnabled) ??
-        prefs.getBool(_keyLegacyColorFilterEnabled) ??
-        false;
+        prefs.getBool(_keyLegacyColorFilterEnabled);
+    if (storedShader != null) {
+      // 用户（或旧版本）明确存过的值永远优先，包括显式 false。
+      shaderEnabled.value = storedShader;
+    } else if (hadStoredWallpaper) {
+      // 键缺失 + 已有壁纸 = 升级前的老用户从未选择过 Shader：保持他们看到的
+      // 纯壁纸，并落盘成显式 false，避免之后删壁纸 / 重装前再次被默认值翻转。
+      shaderEnabled.value = false;
+      await prefs.setBool(_keyShaderEnabled, false);
+    } else {
+      shaderEnabled.value = kShaderEnabledDefault;
+    }
 
     if (prefs.containsKey(_keyRetiredHeaderGlass)) {
       await prefs.remove(_keyRetiredHeaderGlass);
@@ -350,6 +379,9 @@ class PersonalizationController {
     );
     shaderAnimationSpeed.value =
         (prefs.getDouble(_keyShaderAnimationSpeed) ?? 1.0).clamp(0.0, 2.0);
+    shaderFps.value = snapShaderFps(
+      prefs.getInt(_keyShaderFps) ?? kShaderFpsDefault,
+    );
     backgroundOpacity.value = prefs.getDouble(_keyBackgroundOpacity) ?? 1.0;
 
     final bgX = prefs.getDouble(_keyBgAlignX);
@@ -414,6 +446,13 @@ class PersonalizationController {
     await _persistDouble(_keyShaderAnimationSpeed, speed, shaderAnimationSpeed);
   }
 
+  Future<void> setShaderFps(int fps) async {
+    final snapped = snapShaderFps(fps);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keyShaderFps, snapped);
+    shaderFps.value = snapped;
+  }
+
   Future<void> setBackgroundOpacity(double value) async {
     final opacity = value.clamp(0.0, 1.0);
     await _persistDouble(_keyBackgroundOpacity, opacity, backgroundOpacity);
@@ -468,10 +507,11 @@ class PersonalizationController {
   @visibleForTesting
   void debugReset() {
     backgroundImagePath.value = null;
-    shaderEnabled.value = false;
+    shaderEnabled.value = kShaderEnabledDefault;
     shaderStrength.value = 0.45;
     shaderOpacity.value = 1.0;
     shaderAnimationSpeed.value = 1.0;
+    shaderFps.value = kShaderFpsDefault;
     backgroundOpacity.value = 1.0;
     backgroundAlignment.value = Alignment.center;
     backgroundFit.value = HomeBackgroundFit.cover;

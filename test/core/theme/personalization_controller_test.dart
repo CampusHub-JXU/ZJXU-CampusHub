@@ -50,6 +50,99 @@ void main() {
     expect(controller.homeCampusNoticeEnabled.value, isFalse);
   });
 
+  group('流体 Shader 默认值', () {
+    test('出厂默认为开，全新安装（无键、无壁纸）读到开', () async {
+      expect(PersonalizationController.kShaderEnabledDefault, isTrue);
+      controller.shaderEnabled.value = false;
+
+      await controller.init();
+
+      expect(controller.shaderEnabled.value, isTrue);
+    });
+
+    test('用户显式关闭过（存了 false）不被默认值覆盖', () async {
+      SharedPreferences.setMockInitialValues({'home_shader_enabled': false});
+
+      await controller.init();
+
+      expect(controller.shaderEnabled.value, isFalse);
+    });
+
+    test('用户显式开启过保持开启', () async {
+      SharedPreferences.setMockInitialValues({'home_shader_enabled': true});
+      controller.shaderEnabled.value = false;
+
+      await controller.init();
+
+      expect(controller.shaderEnabled.value, isTrue);
+    });
+
+    test('旧版显式 false（home_color_filter_enabled）同样优先', () async {
+      SharedPreferences.setMockInitialValues({
+        'home_color_filter_enabled': false,
+      });
+
+      await controller.init();
+
+      expect(controller.shaderEnabled.value, isFalse);
+    });
+
+    test('升级用户：已存壁纸路径且从未选过 Shader → 保持关并落盘为显式 false', () async {
+      SharedPreferences.setMockInitialValues({
+        'home_background_image_path': '/nonexistent/old_wallpaper.png',
+      });
+
+      await controller.init();
+
+      expect(controller.shaderEnabled.value, isFalse);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool('home_shader_enabled'), isFalse);
+
+      // 之后（壁纸文件已不在、路径键被清掉）重启也不会被默认值翻转。
+      controller.debugReset();
+      await controller.init();
+      expect(controller.shaderEnabled.value, isFalse);
+    });
+
+    test('帧率默认 60，档位为 30/45/60/90/120', () async {
+      expect(PersonalizationController.kShaderFpsDefault, 60);
+      expect(PersonalizationController.kShaderFpsSteps, [30, 45, 60, 90, 120]);
+
+      await controller.init();
+
+      expect(controller.shaderFps.value, 60);
+    });
+
+    test('帧率持久化后重启读回，非档位值吸附到最近档', () async {
+      await controller.setShaderFps(30);
+      controller.debugReset();
+      await controller.init();
+      expect(controller.shaderFps.value, 30);
+
+      await controller.setShaderFps(100);
+      expect(controller.shaderFps.value, 90);
+      await controller.setShaderFps(1000);
+      expect(controller.shaderFps.value, 120);
+      await controller.setShaderFps(1);
+      expect(controller.shaderFps.value, 30);
+    });
+
+    test('被手改成非法帧率的持久化值读回时吸附', () async {
+      SharedPreferences.setMockInitialValues({'home_shader_fps': 77});
+
+      await controller.init();
+
+      expect(controller.shaderFps.value, 90);
+    });
+
+    test('setShaderEnabled 写入后重启读回', () async {
+      await controller.setShaderEnabled(false);
+      controller.debugReset();
+      await controller.init();
+      expect(controller.shaderEnabled.value, isFalse);
+    });
+  });
+
   testWidgets('monet colors come from the background image, not defaults', (
     tester,
   ) async {

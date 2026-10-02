@@ -4,7 +4,8 @@ import 'package:flutter/material.dart';
 
 import '../app_theme_controller.dart';
 import '../personalization_controller.dart';
-import 'home_glass_background_filter.dart';
+import 'home_ambient_background.dart';
+import 'home_fluid_background.dart';
 
 class HomeBackgroundLayer extends StatelessWidget {
   const HomeBackgroundLayer({
@@ -14,7 +15,8 @@ class HomeBackgroundLayer extends StatelessWidget {
     this.errorBuilder,
   });
 
-  final String path;
+  /// 壁纸路径；为 null 时仅渲染流体 Shader（不可用时回退 [HomeAmbientBackground]）。
+  final String? path;
   final bool useAsyncFilter;
   final WidgetBuilder? errorBuilder;
 
@@ -44,6 +46,7 @@ class HomeBackgroundLayer extends StatelessWidget {
                           fit,
                           scale,
                         );
+                        if (path == null && !useAsyncFilter) return image;
                         if (!shaderEnabled || !useAsyncFilter) {
                           return Opacity(opacity: opacity, child: image);
                         }
@@ -66,24 +69,32 @@ class HomeBackgroundLayer extends StatelessWidget {
                                           .instance
                                           .shaderAnimationSpeed,
                                       builder: (context, animationSpeed, _) {
-                                        // 流体纹理是唯一保留的 Shader 模式。
-                                        const mode = HomeShaderMode.collage;
-                                        final themeColor = AppThemeController
-                                            .instance
-                                            .seedColor
-                                            .value;
-                                        return HomeGlassBackgroundFilter(
-                                          mode: mode,
-                                          intensity: strength.clamp(0.0, 1.0),
-                                          levels: 14.0 - strength * 4.0,
-                                          themeColor: themeColor,
-                                          monetColors: monetColors,
-                                          isDarkMode:
-                                              Theme.of(context).brightness ==
-                                              Brightness.dark,
-                                          opacity: shaderOpacity,
-                                          animationSpeed: animationSpeed,
-                                          child: image,
+                                        return ValueListenableBuilder<int>(
+                                          valueListenable:
+                                              PersonalizationController
+                                                  .instance
+                                                  .shaderFps,
+                                          builder: (context, fps, _) {
+                                            return HomeFluidBackground(
+                                              intensity: strength.clamp(
+                                                0.0,
+                                                1.0,
+                                              ),
+                                              themeColor: AppThemeController
+                                                  .instance
+                                                  .seedColor
+                                                  .value,
+                                              monetColors: monetColors,
+                                              isDarkMode:
+                                                  Theme.of(context)
+                                                      .brightness ==
+                                                  Brightness.dark,
+                                              opacity: shaderOpacity,
+                                              animationSpeed: animationSpeed,
+                                              targetFps: fps,
+                                              fallback: image,
+                                            );
+                                          },
                                         );
                                       },
                                     );
@@ -111,6 +122,8 @@ class HomeBackgroundLayer extends StatelessWidget {
     HomeBackgroundFit fit,
     double scale,
   ) {
+    final path = this.path;
+    if (path == null) return const HomeAmbientBackground();
     final image = LayoutBuilder(
       builder: (context, constraints) {
         final offset = Offset(
