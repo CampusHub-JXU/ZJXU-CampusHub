@@ -185,8 +185,9 @@ class AppMotion {
   /// 同级切换：底部分支交叉淡化。
   static const Duration switchFade = Duration(milliseconds: 180);
 
-  /// 层级跳转：页面 push / pop。
-  static const Duration page = Duration(milliseconds: 220);
+  /// 层级跳转：页面 push / pop（对齐 Android 14 系统 Activity 转场的 450ms，
+  /// 位移曲线 [emphasized] 前段已走完大部分行程，尾段只是收尾减速）。
+  static const Duration page = Duration(milliseconds: 450);
 
   /// 页内自动滚动（dock 主页 / 功能锚点）。
   static const Duration scroll = Duration(milliseconds: 360);
@@ -196,6 +197,12 @@ class AppMotion {
 
   /// 返回 / 反向：[standard] 的镜像，倒放时仍是先快后慢。
   static const Curve standardReverse = Curves.easeInCubic;
+
+  /// 层级跳转位移：Material 3 emphasized（Android `fast_out_extra_slow_in`）。
+  static const Curve emphasized = Curves.fastEaseInToSlowEaseOut;
+
+  /// [emphasized] 的镜像：路由倒放（pop）时同样先快后慢。
+  static const Curve emphasizedReverse = FlippedCurve(emphasized);
 
   /// 系统是否要求移除动画（无障碍「移除动画」/ 开发者选项动画缩放为 0）。
   static bool reduced(BuildContext context) =>

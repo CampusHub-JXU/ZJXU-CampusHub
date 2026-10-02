@@ -509,27 +509,28 @@ class AppThemeBuilder {
   }
 }
 
-/// 应用统一的页面转场：新页从右侧滑入 8% 并淡入，旧页向左轻微视差退出
-/// 并压暗至 0.55。
+/// 应用统一的页面转场：对齐 Android 14+ 系统默认的 Activity 转场
+/// （AOSP `activity_open_enter/exit`、`activity_close_enter/exit`，即
+/// Material「共享轴 X」的系统版本）。
 ///
-/// 动效减负：旧页曾同时微缩到 0.98，新页位移 12%——五种运动同时发生，
-/// 连续进出页面时画面「抖」得累。现只保留「新页滑入 + 旧页反向视差」这
-/// 一对相对运动传达层级，缩放移除、位移收窄；节奏统一取 [AppMotion]。
+/// * 上层页（被 push / pop 的那一页）：横向位移 10% 宽度 ↔ 0，曲线
+///   emphasized（`fast_out_extra_slow_in`），时长 [AppMotion.page]；
+///   不透明度只在开头约 80ms 内快速交叉淡化（push 淡入、pop 淡出）。
+/// * 下层页：反向视差 0 ↔ -10%，同一条曲线；**不淡出**——它始终不透明垫底，
+///   上层页的快速淡化就构成交叉淡化，也不会透出窗口底色（浅色下闪黑）。
 ///
-/// Flutter 3.29 起 Android 的默认转场改为 PredictiveBackPageTransitionsBuilder，
-/// 非手势导航（点击按钮 push）时退化成 FadeForwardsPageTransitionsBuilder
-/// （predictive_back_page_transitions_builder.dart:95）——新页仅位移 30px、
-/// 旧页纯淡出且不位移，在深色背景下几乎等同于瞬切。这里显式覆盖，换回
-/// 明确的方向感，与 app_shell_page 底部 tab 切换的语言保持一致。
+/// push 与 pop 共用同一组 Tween：pop 是路由动画倒放，位移用镜像曲线保持
+/// 先快后慢，淡化区间按 AOSP close 时序单独给 `reverseCurve`。
 ///
-/// 位移量仍比系统默认（30px）更足：深色主题下各页底色几乎无差，交叉淡入
-/// 本身读不出「过渡」，新旧两页反向位移形成的相对运动才是可感知的信号。
+/// Flutter 3.29 起 Android 的默认转场是 PredictiveBackPageTransitionsBuilder，
+/// 非手势导航时退化成 FadeForwardsPageTransitionsBuilder——新页仅位移 30px、
+/// 旧页纯淡出，深色下几乎等同瞬切。这里显式覆盖。
 ///
 /// 各平台必须列全：builders 未命中的平台会退回 ZoomPageTransitionsBuilder，
 /// 只写 Android 会让 iOS/macOS 丢掉 Cupertino 侧滑。
 const PageTransitionsTheme _appPageTransitionsTheme = PageTransitionsTheme(
   builders: <TargetPlatform, PageTransitionsBuilder>{
-    TargetPlatform.android: _SlideFadePageTransitionsBuilder(),
+    TargetPlatform.android: _SharedAxisPageTransitionsBuilder(),
     TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
     TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
     TargetPlatform.windows: ZoomPageTransitionsBuilder(),
@@ -537,8 +538,8 @@ const PageTransitionsTheme _appPageTransitionsTheme = PageTransitionsTheme(
   },
 );
 
-class _SlideFadePageTransitionsBuilder extends PageTransitionsBuilder {
-  const _SlideFadePageTransitionsBuilder();
+class _SharedAxisPageTransitionsBuilder extends PageTransitionsBuilder {
+  const _SharedAxisPageTransitionsBuilder();
 
   static const Duration _duration = AppMotion.page;
 
@@ -555,7 +556,7 @@ class _SlideFadePageTransitionsBuilder extends PageTransitionsBuilder {
   ) {
     // 系统「移除动画」：直接换页，不做位移 / 淡入 / 缩放。
     if (AppMotion.reduced(context)) return child;
-    return _SlideFadePageTransition(
+    return _SharedAxisPageTransition(
       animation: animation,
       secondaryAnimation: secondaryAnimation,
       child: child,
@@ -563,8 +564,8 @@ class _SlideFadePageTransitionsBuilder extends PageTransitionsBuilder {
   }
 }
 
-class _SlideFadePageTransition extends StatefulWidget {
-  const _SlideFadePageTransition({
+class _SharedAxisPageTransition extends StatefulWidget {
+  const _SharedAxisPageTransition({
     required this.animation,
     required this.secondaryAnimation,
     required this.child,
@@ -575,31 +576,28 @@ class _SlideFadePageTransition extends StatefulWidget {
   final Widget child;
 
   @override
-  State<_SlideFadePageTransition> createState() =>
-      _SlideFadePageTransitionState();
+  State<_SharedAxisPageTransition> createState() =>
+      _SharedAxisPageTransitionState();
 }
 
-class _SlideFadePageTransitionState extends State<_SlideFadePageTransition> {
-  /// 入场（push）曲线：起步快、收尾慢。
-  static const Curve _curve = AppMotion.standard;
+class _SharedAxisPageTransitionState extends State<_SharedAxisPageTransition> {
+  /// 位移曲线：起步快、收尾慢。
+  static const Curve _slideCurve = AppMotion.emphasized;
 
-  /// 出场（pop）曲线：返回时转场是「倒放」的，`CurvedAnimation` 在
-  /// `reverseCurve` 为空时会直接复用正向曲线（SDK  animations.dart:377），
-  /// 于是 easeOutCubic 被倒放成 easeInCubic——起步慢吞吞、末尾突然冲刺，
-  /// 观感就是「先慢后快」。这里显式给反向指定镜像曲线，让返回同样是先快后慢。
-  static const Curve _reverseCurve = AppMotion.standardReverse;
+  /// 位移的倒放曲线：pop 时路由动画倒放，`CurvedAnimation` 在 `reverseCurve`
+  /// 为空时会直接复用正向曲线（SDK animations.dart:377），倒放出来就是
+  /// 「先慢后快」。显式给镜像曲线，让返回同样是先快后慢。
+  static const Curve _slideReverseCurve = AppMotion.emphasizedReverse;
 
-  /// 新页的起点位移（相对自身宽度）。
-  static const double _enterOffset = 0.08;
+  /// 上层页 push 淡入：AOSP open_enter alpha startOffset 50ms / 83ms（÷450ms）。
+  static const Curve _fadeInCurve = Interval(0.111, 0.296);
 
-  /// 旧页退出的终点位移（反向视差，与新页位移共同构成相对运动）。
-  static const double _exitSlideOffset = -0.04;
+  /// 上层页 pop 淡出：AOSP close_exit alpha startOffset 35ms / 83ms。路由值
+  /// 从 1 倒放到 0，故区间写成「1 - 已用时比例」。
+  static const Curve _fadeOutReverseCurve = Interval(0.738, 0.922);
 
-  /// 旧页退出的终点不透明度。
-  ///
-  /// 刻意不淡到 0：新页滑入的过程中会短暂露出下方页面，旧页若完全消失
-  /// 就会透出窗口背景（深色主题下尤其明显）。留 0.55 保证底层始终有内容。
-  static const double _exitOpacity = 0.55;
+  /// 上层页的起点位移 / 下层页的终点位移（相对自身宽度）。
+  static const double _offset = 0.10;
 
   /// 转场期间把页面内容栅格化成快照后再做淡入/位移/缩放。
   ///
@@ -627,9 +625,56 @@ class _SlideFadePageTransitionState extends State<_SlideFadePageTransition> {
     }
   }
 
+  // CurvedAnimation 会在 parent 上登记状态监听，必须持有并 dispose；在 build
+  // 里每次新建会一直累积。
+  late CurvedAnimation _slideIn;
+  late CurvedAnimation _fade;
+  late CurvedAnimation _slideOut;
+
+  void _createCurves() {
+    _slideIn = CurvedAnimation(
+      parent: widget.animation,
+      curve: _slideCurve,
+      reverseCurve: _slideReverseCurve,
+    );
+    _fade = CurvedAnimation(
+      parent: widget.animation,
+      curve: _fadeInCurve,
+      reverseCurve: _fadeOutReverseCurve,
+    );
+    _slideOut = CurvedAnimation(
+      parent: widget.secondaryAnimation,
+      curve: _slideCurve,
+      reverseCurve: _slideReverseCurve,
+    );
+  }
+
+  void _disposeCurves() {
+    _slideIn.dispose();
+    _fade.dispose();
+    _slideOut.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
+    _createCurves();
+    widget.animation.addStatusListener(_updateSnapshotting);
+    widget.secondaryAnimation.addStatusListener(_updateSnapshotting);
+    _updateSnapshotting(widget.animation.status);
+  }
+
+  @override
+  void didUpdateWidget(covariant _SharedAxisPageTransition oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.animation == widget.animation &&
+        oldWidget.secondaryAnimation == widget.secondaryAnimation) {
+      return;
+    }
+    oldWidget.animation.removeStatusListener(_updateSnapshotting);
+    oldWidget.secondaryAnimation.removeStatusListener(_updateSnapshotting);
+    _disposeCurves();
+    _createCurves();
     widget.animation.addStatusListener(_updateSnapshotting);
     widget.secondaryAnimation.addStatusListener(_updateSnapshotting);
     _updateSnapshotting(widget.animation.status);
@@ -644,6 +689,7 @@ class _SlideFadePageTransitionState extends State<_SlideFadePageTransition> {
       _holdingActivity = false;
       PageTransitionActivity.instance.release();
     }
+    _disposeCurves();
     _snapshotController.dispose();
     super.dispose();
   }
@@ -654,36 +700,23 @@ class _SlideFadePageTransitionState extends State<_SlideFadePageTransition> {
     final double direction = Directionality.of(context) == TextDirection.rtl
         ? -1
         : 1;
-    final entering = CurvedAnimation(
-      parent: widget.animation,
-      curve: _curve,
-      reverseCurve: _reverseCurve,
-    );
-    final leaving = CurvedAnimation(
-      parent: widget.secondaryAnimation,
-      curve: _curve,
-      reverseCurve: _reverseCurve,
-    );
     return FadeTransition(
-      opacity: entering,
+      opacity: _fade,
       child: SlideTransition(
         position: Tween<Offset>(
-          begin: Offset(_enterOffset * direction, 0),
+          begin: Offset(_offset * direction, 0),
           end: Offset.zero,
-        ).animate(entering),
-        child: FadeTransition(
-          opacity: Tween<double>(begin: 1, end: _exitOpacity).animate(leaving),
-          child: SlideTransition(
-            position: Tween<Offset>(
-              begin: Offset.zero,
-              end: Offset(_exitSlideOffset * direction, 0),
-            ).animate(leaving),
-            child: SnapshotWidget(
-              controller: _snapshotController,
-              mode: SnapshotMode.permissive,
-              autoresize: true,
-              child: widget.child,
-            ),
+        ).animate(_slideIn),
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: Offset.zero,
+            end: Offset(-_offset * direction, 0),
+          ).animate(_slideOut),
+          child: SnapshotWidget(
+            controller: _snapshotController,
+            mode: SnapshotMode.permissive,
+            autoresize: true,
+            child: widget.child,
           ),
         ),
       ),

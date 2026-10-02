@@ -47,19 +47,26 @@ void main() {
     final Duration total = ModalRoute.of(tester.element(find.text('sub-page')))!
         .transitionDuration;
 
-    await tester.pump(total ~/ 2);
+    // 对齐 Android 系统 Activity 转场：上层页只在开头一小段快速淡入。
+    await tester.pump(total * 20 ~/ 100);
+    final earlyFades = tester
+        .widgetList<FadeTransition>(find.byType(FadeTransition))
+        .map((t) => t.opacity.value)
+        .where((v) => v > 0.05 && v < 0.95)
+        .toList();
+    expect(earlyFades, isNotEmpty, reason: '转场前段应有渐变层未完成');
+
+    await tester.pump(total * 30 ~/ 100);
     expect(
       animation.value,
       allOf(greaterThan(0.1), lessThan(0.9)),
       reason: '转场中段应仍在进行（实测 ${animation.value}），瞬切会直接到 1.0',
     );
-    // 转场中段树上应存在处于半透明状态的入场渐变层。
-    final midFades = tester
-        .widgetList<FadeTransition>(find.byType(FadeTransition))
-        .map((t) => t.opacity.value)
-        .where((v) => v > 0.05 && v < 0.95)
-        .toList();
-    expect(midFades, isNotEmpty, reason: '转场中段应有渐变层未完成');
+    expect(
+      _maxSlideDx(tester, find.text('sub-page')),
+      greaterThan(0.0),
+      reason: '转场中段新页仍应有横向位移',
+    );
 
     await tester.pump(total);
     expect(animation.value, 1.0, reason: '转场结束后新页应完全就位');

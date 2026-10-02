@@ -102,7 +102,12 @@ class HomeFluidBackground extends StatefulWidget {
 
 class HomeFluidBackgroundState extends State<HomeFluidBackground>
     with WidgetsBindingObserver {
-  static const _busyPollInterval = Duration(milliseconds: 100);
+  /// 转场让路期间的兜底唤醒间隔：正常由 [PageTransitionActivity.active] 的
+  /// 变化立即唤醒；看门狗判定陈旧登记时 `active` 不会翻转，靠这个兜底恢复。
+  static const _busyFallbackInterval = Duration(milliseconds: 500);
+
+  /// 是否正挂在 [PageTransitionActivity.active] 上等转场结束。
+  bool _waitingForTransition = false;
 
   final _FrameSignal _signal = _FrameSignal();
   ui.FragmentShader? _shader;
@@ -237,7 +242,29 @@ class HomeFluidBackgroundState extends State<HomeFluidBackground>
     _stopDriver();
   }
 
+  void _waitForTransitionEnd() {
+    if (_waitingForTransition) return;
+    _waitingForTransition = true;
+    PageTransitionActivity.instance.active.addListener(_onTransitionActivity);
+  }
+
+  void _stopWaitingForTransition() {
+    if (!_waitingForTransition) return;
+    _waitingForTransition = false;
+    PageTransitionActivity.instance.active.removeListener(
+      _onTransitionActivity,
+    );
+  }
+
+  void _onTransitionActivity() {
+    if (PageTransitionActivity.instance.active.value) return;
+    // 通知可能在 build / 帧回调中途派发：只做取消 + 请求帧，不 setState。
+    _stopDriver();
+    if (mounted) _syncDriver();
+  }
+
   void _stopDriver() {
+    _stopWaitingForTransition();
     final id = _frameCallbackId;
     if (id != null) {
       SchedulerBinding.instance.cancelFrameCallbackWithId(id);
@@ -268,12 +295,17 @@ class HomeFluidBackgroundState extends State<HomeFluidBackground>
     if (PageTransitionActivity.instance.isBusy) {
       _lastStamp = null;
       _nextDue = null;
-      _wakeTimer = Timer(_busyPollInterval, () {
+      // 不轮询：转场一结束（active 翻转）就在下一帧恢复。旧实现每 100ms
+      // 轮询一次，返回页面后 Shader 最多还要多冻结 100ms。
+      _waitForTransitionEnd();
+      _wakeTimer = Timer(_busyFallbackInterval, () {
         _wakeTimer = null;
         _syncDriver();
       });
       return;
     }
+    // 看门狗兜底恢复时也摘掉监听，避免之后 active 翻转再重启一次驱动。
+    _stopWaitingForTransition();
 
     final last = _lastStamp;
     _lastStamp = stamp;
