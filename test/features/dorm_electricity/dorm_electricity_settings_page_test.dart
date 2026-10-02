@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -18,6 +17,7 @@ import 'package:jxu_campus_hub/shared/widgets/auth_required_view.dart';
 import 'package:jxu_campus_hub/shared/widgets/login_shell.dart';
 import 'package:jxu_campus_hub/shared/widgets/plain_list.dart';
 
+import '../../helpers/in_memory_file_io.dart';
 import '../../helpers/test_setup.dart';
 
 /// 目录 RPC 假网关：只服务寝室配置页用到的园区/楼幢/楼层/房间目录，统计网关
@@ -203,20 +203,22 @@ Future<void> _pumpUntilFound(
 
 /// 推进目录拉取链路直至自然结束（或 [until] 成立）。
 ///
-/// widget 测试跑在 FakeAsync 区，`JsonCacheStore` 的文件 I/O future 不会完成
-/// （同 `docs/agents/testing.md` 中 CookieJar FileStorage 的已知问题），
-/// `pumpAndSettle` 会被加载转圈拖到超时。这里用 `runAsync` 真实事件窗口放行
-/// 磁盘读写，再用假时时钟推进（目录 RPC 失败重试的 600ms 延迟也靠它触发）。
+/// 全程只用假时钟推进（目录 RPC 失败重试的 600ms 延迟也靠它触发）。
+/// `JsonCacheStore` 的文件 I/O 已由 `InMemoryFileIo` 换成纯 microtask 实现，
+/// 因此这里**不能也不需要**再用 `runAsync` 赌真实磁盘在固定毫秒内完成——
+/// 那样的测试在机器忙（并行全量、CI）时会偶发失败。
 Future<void> _settleCatalog(
   WidgetTester tester, {
   int rounds = 24,
   bool Function()? until,
 }) async {
   for (var i = 0; i < rounds; i++) {
-    if (until != null && until()) return;
-    await tester.runAsync<void>(
-      () => Future<void>.delayed(const Duration(milliseconds: 20)),
-    );
+    if (until != null && until()) {
+      // 条件可能恰在上一次 pump 的 microtask 冲刷阶段才成立：补一帧，让由它
+      // 触发的 setState 在调用方断言前已渲染（不推进假时钟）。
+      await tester.pump();
+      return;
+    }
     await tester.pump(const Duration(milliseconds: 100));
   }
 }
@@ -276,6 +278,7 @@ void main() {
 
   late _FakeCatalogGateway gateway;
   late _CountingScheduler scheduler;
+  late InMemoryFileIo memoryIo;
   var loaderCalls = 0;
 
   setUp(() async {
@@ -291,16 +294,14 @@ void main() {
       loaderCalls++;
       return null;
     };
-    // 目录缓存走 JSON 文件分桶（JsonCacheStore）：每个用例独立临时目录 +
-    // 清空内存镜像，避免上个用例的缓存让本用例跳过网关调用。
-    final tempDir = Directory.systemTemp.createTempSync('dorm_settings_test');
-    addTearDown(() {
-      try {
-        tempDir.deleteSync(recursive: true);
-      } catch (_) {}
-    });
+    // 目录缓存走 JSON 文件分桶（JsonCacheStore）：每个用例独立的内存文件系统 +
+    // 清空内存镜像，避免上个用例的缓存让本用例跳过网关调用，也避免真实磁盘 I/O
+    // 让用例依赖机器负载（见 `test/helpers/in_memory_file_io.dart`）。
+    memoryIo = InMemoryFileIo()..install();
+    addTearDown(memoryIo.uninstall);
+    final cacheRoot = memoryIo.createRoot('dorm_settings_test');
     JsonCacheStore.instance.debugReset();
-    JsonCacheStore.instance.debugDirectoryProvider = () async => tempDir;
+    JsonCacheStore.instance.debugDirectoryProvider = () async => cacheRoot;
   });
 
   testWidgets(
@@ -630,12 +631,7 @@ void main() {
 
       // 冷却目录缓存并把网关改成「命中即挂起」：迟到作废若清掉 B 的界面 /
       // 复活转圈 / 重复拉目录会立刻现形；正常情况下本阶段零网关调用。
-      final coldDir = Directory.systemTemp.createTempSync('dorm_settings_cold');
-      addTearDown(() {
-        try {
-          coldDir.deleteSync(recursive: true);
-        } catch (_) {}
-      });
+      final coldDir = memoryIo.createRoot('dorm_settings_cold');
       DormElectricityService.instance.debugReset();
       DormElectricityService.instance.debugSetGateway(gateway);
       JsonCacheStore.instance.debugReset();
