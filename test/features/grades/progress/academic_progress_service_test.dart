@@ -8,11 +8,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/core/auth/credential_store.dart';
 import 'package:jxu_campus_hub/core/network/dio_client.dart';
-import 'package:jxu_campus_hub/features/academic_progress/academic_progress_service.dart';
+import 'package:jxu_campus_hub/features/grades/progress/academic_progress_service.dart';
 
-import '../../helpers/mock_http_client_adapter.dart';
-import '../../helpers/test_setup.dart';
-import '../../helpers/credential_store_test_ext.dart';
+import '../../../helpers/mock_http_client_adapter.dart';
+import '../../../helpers/test_setup.dart';
+import '../../../helpers/credential_store_test_ext.dart';
 
 const _index = '/jwglxt/xsxy/xsxyqk_cxXsxyqkIndex.html';
 const _kcxx = '/jwglxt/xsxy/xsxyqk_cxJxzxjhxfyqKcxx.html';

@@ -18,6 +18,7 @@ import 'grades_model.dart';
 import 'grades_service.dart';
 import 'grades_summary.dart';
 import 'grades_term_resolver.dart';
+import 'progress/academic_progress_view.dart';
 import 'widgets/grades_course_row.dart';
 import 'widgets/grades_distribution_bar.dart';
 import '../../shared/widgets/app_app_bar.dart';
@@ -27,10 +28,24 @@ typedef GradesFetcher = Future<List<GradeEntry>> Function(
   bool forceRefresh,
 });
 
+/// 成绩页的两个分段：课程成绩 / 学业进度（原「学业情况」页）。
+enum GradesPageView { grades, progress }
+
 class GradesPage extends StatefulWidget {
-  const GradesPage({super.key, this.fetchGrades});
+  const GradesPage({
+    super.key,
+    this.fetchGrades,
+    this.fetchReport,
+    this.initialView = GradesPageView.grades,
+  });
 
   final GradesFetcher? fetchGrades;
+
+  /// 学业进度分段的测试注入点。
+  final AcademicProgressFetcher? fetchReport;
+
+  /// 打开时所在分段；`/academic-progress` 路由直接进入学业进度。
+  final GradesPageView initialView;
 
   @override
   State<GradesPage> createState() => _GradesPageState();
@@ -78,6 +93,16 @@ class _GradesPageState extends State<GradesPage>
 
   late final AnimationController _staggerController;
 
+  late GradesPageView _view = widget.initialView;
+
+  /// 成绩分段首次可见后才拉取 / 弹登录；从学业进度进入时不提前请求成绩。
+  bool _gradesActivated = false;
+
+  /// 学业进度分段首次可见后才构建（其明细是逐节点串行请求，代价高）。
+  bool _progressBuilt = false;
+
+  final _progressKey = GlobalKey<AcademicProgressViewState>();
+
   @override
   void initState() {
     super.initState();
@@ -93,6 +118,15 @@ class _GradesPageState extends State<GradesPage>
       vsync: this,
     );
 
+    if (_view == GradesPageView.grades) {
+      _activateGrades();
+    } else {
+      _progressBuilt = true;
+    }
+  }
+
+  void _activateGrades() {
+    _gradesActivated = true;
     if (_loggedIn) {
       _seedFromCache();
       _fetchGrades();
@@ -101,6 +135,23 @@ class _GradesPageState extends State<GradesPage>
         if (!mounted) return;
         unawaited(_presentLoginPrompt());
       });
+    }
+  }
+
+  void _onViewChanged(GradesPageView view) {
+    if (view == _view) return;
+    setState(() {
+      _view = view;
+      if (view == GradesPageView.progress) {
+        _progressBuilt = true;
+        // 搜索只作用于课程成绩，切走即收起。
+        _searchOpen = false;
+        _query = '';
+        _searchController.clear();
+      }
+    });
+    if (view == GradesPageView.grades && !_gradesActivated) {
+      _activateGrades();
     }
   }
 
@@ -230,6 +281,7 @@ class _GradesPageState extends State<GradesPage>
   }
 
   Future<void> _fetchGrades({bool forceRefresh = false}) async {
+    if (!_gradesActivated) return;
     final auth = ZhengfangAuth.instance;
     final owner = auth.verifiedStudentId;
     if (!auth.isLoggedIn || owner == null || owner != _identityOwner) {
@@ -320,6 +372,8 @@ class _GradesPageState extends State<GradesPage>
 
   Future<void> _presentLoginPrompt({bool force = false}) async {
     if (!mounted || _loginPromptInFlight || _loggedIn) return;
+    // 学业进度分段自己负责登录引导，两边不叠弹。
+    if (_view != GradesPageView.grades) return;
     if (!force && _loginPromptShown) return;
 
     _loginPromptShown = true;
@@ -372,30 +426,93 @@ class _GradesPageState extends State<GradesPage>
 
   @override
   Widget build(BuildContext context) {
+    final onGrades = _view == GradesPageView.grades;
+    final searching = onGrades && _searchOpen && _loggedIn;
     return Scaffold(
       appBar: AppAppBar(
-        title: const Text('成绩'),
-        actions: _loggedIn
-            ? [
-                IconButton(
-                  icon: Icon(
-                    _searchOpen ? Icons.search_off_rounded : Icons.search,
-                  ),
-                  onPressed: _grades.isEmpty ? null : _toggleSearch,
-                  tooltip: _searchOpen ? '关闭搜索' : '搜索课程',
-                ),
-                IconButton(
-                  icon: const Icon(Icons.refresh),
-                  onPressed: _loading
-                      ? null
-                      : () => _fetchGrades(forceRefresh: true),
-                  tooltip: '刷新',
-                ),
-              ]
-            : null,
+        // 与通知页一致：搜索展开时标题位换成紧凑搜索胶囊，图标切为关闭。
+        centerTitle: searching ? false : null,
+        titleSpacing: searching ? 0 : null,
+        title: searching
+            ? AppSearchField(
+                controller: _searchController,
+                hintText: '搜索课程、考核方式',
+                compact: true,
+                autofocus: true,
+                onChanged: (_) {},
+                onClear: () => _searchController.clear(),
+              )
+            : const Text('成绩'),
+        actions: onGrades
+            ? _gradesActions()
+            : (_progressKey.currentState?.buildAppBarActions() ?? const []),
       ),
-      body: _loggedIn ? _buildGradesBody() : _buildLoginBody(),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.pageMargin,
+              AppSpacing.sm,
+              AppSpacing.pageMargin,
+              0,
+            ),
+            child: SegmentedButton<GradesPageView>(
+              key: const Key('grades_view_switch'),
+              showSelectedIcon: false,
+              segments: const [
+                ButtonSegment(
+                  value: GradesPageView.grades,
+                  label: Text('课程成绩'),
+                ),
+                ButtonSegment(
+                  value: GradesPageView.progress,
+                  label: Text('学业进度'),
+                ),
+              ],
+              selected: {_view},
+              onSelectionChanged: (selection) =>
+                  _onViewChanged(selection.first),
+            ),
+          ),
+          Expanded(
+            child: IndexedStack(
+              index: _view.index,
+              children: [
+                _loggedIn ? _buildGradesBody() : _buildLoginBody(),
+                if (_progressBuilt)
+                  AcademicProgressView(
+                    key: _progressKey,
+                    fetchReport: widget.fetchReport,
+                    active: !onGrades,
+                    onChromeChanged: () {
+                      if (mounted) setState(() {});
+                    },
+                  )
+                else
+                  const SizedBox.shrink(),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
+  }
+
+  List<Widget>? _gradesActions() {
+    if (!_loggedIn) return null;
+    return [
+      IconButton(
+        icon: Icon(_searchOpen ? Icons.close_rounded : Icons.search_rounded),
+        onPressed: _grades.isEmpty ? null : _toggleSearch,
+        tooltip: _searchOpen ? '关闭搜索' : '搜索',
+      ),
+      IconButton(
+        icon: const Icon(Icons.refresh),
+        onPressed: _loading ? null : () => _fetchGrades(forceRefresh: true),
+        tooltip: '刷新',
+      ),
+    ];
   }
 
   Widget _buildLoginBody() => buildGradesLoginView(
@@ -429,19 +546,6 @@ class _GradesPageState extends State<GradesPage>
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
-          if (_searchOpen)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                child: AppSearchField(
-                  controller: _searchController,
-                  hintText: '搜索课程',
-                  autofocus: true,
-                  onChanged: (_) {},
-                  onClear: () => _searchController.clear(),
-                ),
-              ),
-            ),
           SliverToBoxAdapter(child: _buildTermChips()),
           SliverToBoxAdapter(
             child: Padding(

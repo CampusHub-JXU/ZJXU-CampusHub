@@ -63,13 +63,13 @@ class AppFeaturesConfig {
     const FeatureEntryDefinition(
       id: 'grades',
       title: '成绩查询',
-      subtitle: '查看成绩与绩点',
+      subtitle: '成绩、绩点与学业进度',
       icon: Icons.school_outlined,
       accentColor: AppColors.warning,
       primaryActionId: 'grades.open',
       sortOrder: 10,
       category: FeatureEntryCategory.study,
-      keywords: ['绩点', 'GPA', '学分'],
+      keywords: ['绩点', 'GPA', '学分', '学业情况', '培养方案', '毕业审核'],
     ),
     const FeatureEntryDefinition(
       id: 'exam',
@@ -81,17 +81,6 @@ class AppFeaturesConfig {
       sortOrder: 15,
       category: FeatureEntryCategory.study,
       keywords: ['考场', '期末', '补考'],
-    ),
-    const FeatureEntryDefinition(
-      id: 'academic-progress',
-      title: '学业情况',
-      subtitle: '培养方案学分进度与修读状态',
-      icon: Icons.fact_check_outlined,
-      accentColor: Color(0xFF2E7D32),
-      primaryActionId: 'academic-progress.open',
-      sortOrder: 16,
-      category: FeatureEntryCategory.study,
-      keywords: ['培养方案', '学分', '毕业审核'],
     ),
     const FeatureEntryDefinition(
       id: 'academic-web',

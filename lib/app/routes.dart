@@ -18,7 +18,6 @@ import '../features/sjjx_notice/sjjx_notice_list_page.dart';
 import '../features/service_hall/service_hall_page.dart';
 import '../features/notification_center/notification_center_page.dart';
 import '../features/exam/exam_page.dart';
-import '../features/academic_progress/academic_progress_page.dart';
 import '../features/shuati/shuati_webview_page.dart';
 import '../features/settings/settings_page.dart';
 import '../features/settings/about_page.dart';
@@ -125,7 +124,9 @@ final GoRouter appRouter = GoRouter(
     _appRoute(
       path: '/academic-progress',
       name: 'academic-progress',
-      builder: (context, state) => const AcademicProgressPage(),
+      // 学业情况已并入成绩页，旧路由（快捷方式 / 动作）直接打开「学业进度」分段。
+      builder: (context, state) =>
+          const GradesPage(initialView: GradesPageView.progress),
     ),
     _appRoute(
       path: '/shuati-practice',

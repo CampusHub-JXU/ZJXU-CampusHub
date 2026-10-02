@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:html/parser.dart' as html_parser;
-import 'package:jxu_campus_hub/features/academic_progress/academic_progress_model.dart';
-import 'package:jxu_campus_hub/features/academic_progress/academic_progress_parser.dart';
-import 'package:jxu_campus_hub/features/academic_progress/academic_progress_service.dart';
+import 'package:jxu_campus_hub/features/grades/progress/academic_progress_model.dart';
+import 'package:jxu_campus_hub/features/grades/progress/academic_progress_parser.dart';
+import 'package:jxu_campus_hub/features/grades/progress/academic_progress_service.dart';
 
 // 结构取自 2026-10 抓包（docs/academic-progress-xsxyqk-api.md），姓名与数值为假数据。
 const _alertBox = '''

@@ -6,7 +6,10 @@ import 'package:flutter/material.dart';
 import '../../core/async/debouncer.dart';
 import '../../core/notice/notice_model.dart';
 import '../../core/notice/notice_search_service.dart';
+import '../../core/theme/app_design_tokens.dart';
 import '../../shared/widgets/login_shell.dart';
+import '../../shared/widgets/plain_list.dart';
+import 'notice_group_section.dart';
 
 /// 校园公告搜索的「教务处全站」分区：本地收件箱只有最近同步的一批，
 /// 更早的通知靠站内全文检索补齐。输入停顿后自动检索，关键词变化即取消
@@ -130,115 +133,99 @@ class _CampusNoticeSiteSearchState extends State<CampusNoticeSiteSearch> {
         .where((n) => !widget.excludeIds.contains(n.id))
         .toList(growable: false);
 
-    Widget hint(String text, {Widget? action}) => Padding(
-      padding: const EdgeInsets.fromLTRB(32, 8, 16, 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              text,
-              style: textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
-            ),
-          ),
-          ?action,
-        ],
-      ),
-    );
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    Widget hint(String text, {Widget? action}) => PlainListGroup(
       children: [
-        _SectionLabel(
-          '教务处全站',
-          trailing: _status == _Status.loaded && _total > 0
-              ? '共 $_total 条'
-              : null,
-        ),
-        switch (_status) {
-          _Status.loading => const Padding(
-            padding: EdgeInsets.symmetric(vertical: 20),
-            child: Center(
-              child: SizedBox.square(
-                dimension: 22,
-                child: CircularProgressIndicator(strokeWidth: 2.4),
-              ),
-            ),
+        Padding(
+          padding: EdgeInsets.fromLTRB(
+            kPlainListRowInset,
+            action == null ? 12 : 4,
+            action == null ? kPlainListRowInset : 4,
+            action == null ? 12 : 4,
           ),
-          _Status.authRequired => hint(
-            '登录统一认证后可搜索全部通知',
-            action: TextButton(onPressed: _login, child: const Text('登录')),
-          ),
-          _Status.failed => hint(
-            '全站搜索暂时不可用',
-            action: TextButton(onPressed: _schedule, child: const Text('重试')),
-          ),
-          _Status.loaded when visible.isEmpty && !_hasMore => hint(
-            _notices.isEmpty ? '没有找到相关通知' : '没有更多结果',
-          ),
-          _Status.loaded => Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+          child: Row(
             children: [
-              for (var i = 0; i < visible.length; i++) ...[
-                if (i > 0)
-                  Divider(
-                    height: 1,
-                    thickness: 1,
-                    indent: 28,
-                    color: cs.outlineVariant.withValues(alpha: 0.25),
-                  ),
-                widget.tileBuilder(visible[i]),
-              ],
-              if (_hasMore)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Center(
-                    child: _loadingMore
-                        ? const SizedBox.square(
-                            dimension: 22,
-                            child: CircularProgressIndicator(strokeWidth: 2.4),
-                          )
-                        : TextButton(
-                            onPressed: _loadMore,
-                            child: const Text('加载更多'),
-                          ),
+              Expanded(
+                child: Text(
+                  text,
+                  style: textTheme.bodyMedium?.copyWith(
+                    color: cs.onSurfaceVariant,
                   ),
                 ),
+              ),
+              ?action,
             ],
           ),
-        },
+        ),
       ],
     );
-  }
-}
 
-/// 搜索结果分区标题：与列表标题同一左缘（圆点列之后）。
-class CampusNoticeSectionLabel extends StatelessWidget {
-  const CampusNoticeSectionLabel(this.text, {super.key, this.trailing});
-
-  final String text;
-  final String? trailing;
-
-  @override
-  Widget build(BuildContext context) => _SectionLabel(text, trailing: trailing);
-}
-
-class _SectionLabel extends StatelessWidget {
-  const _SectionLabel(this.text, {this.trailing});
-
-  final String text;
-  final String? trailing;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final style = Theme.of(context).textTheme.labelMedium
-        ?.copyWith(color: cs.onSurfaceVariant);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(32, 16, 16, 4),
-      child: Row(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.listGutter,
+        AppSpacing.listGroupGap / 2,
+        AppSpacing.listGutter,
+        AppSpacing.listGroupGap / 2,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(child: Text(text, style: style)),
-          if (trailing != null) Text(trailing!, style: style),
+          NoticeGroupHeader(
+            '教务处全站',
+            trailing: _status == _Status.loaded && _total > 0
+                ? '共 $_total 条'
+                : null,
+          ),
+          switch (_status) {
+            _Status.loading => const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Center(
+                child: SizedBox.square(
+                  dimension: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2.4),
+                ),
+              ),
+            ),
+            _Status.authRequired => hint(
+              '登录统一认证后可搜索全部通知',
+              action: TextButton(onPressed: _login, child: const Text('登录')),
+            ),
+            _Status.failed => hint(
+              '全站搜索暂时不可用',
+              action: TextButton(onPressed: _schedule, child: const Text('重试')),
+            ),
+            _Status.loaded when visible.isEmpty && !_hasMore => hint(
+              _notices.isEmpty ? '没有找到相关通知' : '没有更多结果',
+            ),
+            _Status.loaded => Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (visible.isNotEmpty)
+                  PlainListGroup(
+                    children: [for (final n in visible) widget.tileBuilder(n)],
+                  ),
+                if (_hasMore)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Center(
+                      child: _loadingMore
+                          ? const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 8),
+                              child: SizedBox.square(
+                                dimension: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.4,
+                                ),
+                              ),
+                            )
+                          : TextButton(
+                              onPressed: _loadMore,
+                              child: const Text('加载更多'),
+                            ),
+                    ),
+                  ),
+              ],
+            ),
+          },
         ],
       ),
     );

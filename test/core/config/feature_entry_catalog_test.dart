@@ -23,7 +23,6 @@ void main() {
         5,
         10,
         15,
-        16,
         17,
         20,
         25,
@@ -56,14 +55,10 @@ void main() {
     );
     expect(physicalTest.title, '体测成绩');
     expect(physicalTest.primaryActionId, CampusActionIds.physicalTestOpen);
-    final academicProgress = entries.firstWhere(
-      (entry) => entry.id == 'academic-progress',
-    );
-    expect(academicProgress.title, '学业情况');
-    expect(
-      academicProgress.primaryActionId,
-      CampusActionIds.academicProgressOpen,
-    );
+    // 学业情况已并入成绩页，不再单独占一个功能入口；搜索仍能命中成绩。
+    expect(entries.where((entry) => entry.id == 'academic-progress'), isEmpty);
+    final grades = entries.firstWhere((entry) => entry.id == 'grades');
+    expect(grades.keywords, contains('学业情况'));
   });
 
   test('每个功能入口都归入一个分类，搜索别名不为空白', () {

@@ -9,11 +9,36 @@ import 'home_background_layer.dart';
 /// [HomeAmbientBackground]。
 ///
 /// 需在紧约束下使用（如 `Stack(fit: StackFit.expand)` 的首个子节点）。
+///
+/// 背景高度锁定为整屏高度：软键盘弹出时 Scaffold 会压缩 body，若背景跟着
+/// 变矮，Shader 画布与渐隐遮罩会整体被「顶起」。这里让背景按屏幕高度顶部
+/// 对齐溢出，被键盘遮住的部分由父级 Stack 裁掉。
 class AppWallpaperBackdrop extends StatelessWidget {
   const AppWallpaperBackdrop({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final height = constraints.maxHeight.isFinite
+            ? (constraints.maxHeight > screenHeight
+                  ? constraints.maxHeight
+                  : screenHeight)
+            : screenHeight;
+        return ClipRect(
+          child: OverflowBox(
+            alignment: Alignment.topCenter,
+            minHeight: height,
+            maxHeight: height,
+            child: _buildBackdrop(context),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildBackdrop(BuildContext context) {
     final personalization = PersonalizationController.instance;
     return ValueListenableBuilder<String?>(
       valueListenable: personalization.backgroundImagePath,

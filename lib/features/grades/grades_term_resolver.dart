@@ -42,12 +42,22 @@ class GradesTermResolver {
     list.sort((a, b) {
       final yearCmp = b.academicYear.compareTo(a.academicYear);
       if (yearCmp != 0) return yearCmp;
-      if (a.semester == '第二学期' && b.semester == '第一学期') return -1;
-      if (a.semester == '第一学期' && b.semester == '第二学期') return 1;
-      return 0;
+      return _semesterRank(b.semester).compareTo(_semesterRank(a.semester));
     });
     return list;
   }
+
+  /// 学期在学年内的先后：秋（1）< 春（2）< 夏（3）。
+  ///
+  /// 正方成绩接口的 `xqmmc` 实际是 `"1"` / `"2"` / `"3"`，不是「第一学期」；
+  /// 只认中文名会让同学年两学期比较结果为 0，按接口原序（秋在前）展示。
+  /// 无法识别的学期排在最后。
+  static int _semesterRank(String semester) => switch (semester.trim()) {
+    '第一学期' || '1' => 1,
+    '第二学期' || '2' => 2,
+    '第三学期' || '3' => 3,
+    _ => 0,
+  };
 
   /// 选择默认学期：若 [previousKey] 仍可用则保持，否则默认选**最新可用学期**
   ///（即排序后第一个），而非当前学期——用户最关心的是最近出分的结果。
