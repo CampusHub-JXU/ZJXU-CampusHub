@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/core/logging/app_logger.dart';
+import 'package:jxu_campus_hub/core/theme/page_transition_activity.dart';
 import 'package:jxu_campus_hub/core/theme/personalization_controller.dart';
 import 'package:jxu_campus_hub/core/theme/widgets/home_glass_background_filter.dart';
 
@@ -328,5 +329,33 @@ void main() {
     final mutedTime = stateOf(tester).debugShaderTimeSeconds;
     await tester.pump(const Duration(milliseconds: 80));
     expect(stateOf(tester).debugShaderTimeSeconds, mutedTime);
+  });
+  testWidgets('页面转场期间 Shader 不推进，转场结束后时间连续无跳变', (tester) async {
+    HomeGlassBackgroundFilter.debugProgramLoader = (mode) async =>
+        ribbonProgram;
+    final activity = PageTransitionActivity.instance..debugReset();
+    addTearDown(activity.debugReset);
+
+    await pumpFilter(tester, mode: HomeShaderMode.ribbon);
+    await tester.pump();
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(milliseconds: 40));
+    }
+    final before = stateOf(tester).debugShaderTimeSeconds;
+    expect(before, greaterThan(0));
+
+    activity.acquire();
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 40));
+    }
+    expect(stateOf(tester).debugShaderTimeSeconds, before, reason: '转场中定格');
+
+    activity.release();
+    await tester.pump(const Duration(milliseconds: 40));
+    await tester.pump(const Duration(milliseconds: 40));
+    final after = stateOf(tester).debugShaderTimeSeconds;
+    expect(after, greaterThan(before));
+    // 转场里被丢掉的 ~240ms 不得补回：恢复后只前进约两帧的时间。
+    expect(after - before, lessThan(0.2), reason: '恢复不跳变');
   });
 }

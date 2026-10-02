@@ -159,7 +159,7 @@ class HomeGlassBackgroundFilterState extends State<HomeGlassBackgroundFilter>
     }
     // 页面转场期间不推进 Shader：转场帧预算留给转场本身（外壳此时已快照，
     // 重绘壁纸也看不到），丢掉这段时间也避免结束后动画跳变。
-    if (PageTransitionActivity.instance.active.value) return;
+    if (PageTransitionActivity.instance.isBusy) return;
     _pendingTickDelta += delta;
     if (elapsed - _lastPaintElapsed < _frameInterval) {
       return;

@@ -282,7 +282,7 @@ class _HomePageState extends State<HomePage> {
   void _onCampusDataChanged() {
     if (!mounted || !_hasHydratedBootstrapState) return;
     final activity = PageTransitionActivity.instance;
-    if (activity.active.value) {
+    if (activity.isBusy) {
       if (_campusDataPendingAfterTransition) return;
       _campusDataPendingAfterTransition = true;
       unawaited(
