@@ -20,16 +20,18 @@ void main() {
       expect(recipe.adjustsSaturation, isFalse);
     });
 
-    test('亚克力：实时模糊、明显半透明，无颗粒、不提饱和', () {
+    test('亚克力（磨砂）：重模糊、明显半透明、无颗粒、轻度提饱和', () {
       final recipe = MaterialRecipe.resolve(SurfaceMaterialStyle.acrylic);
       expect(recipe.style, SurfaceMaterialStyle.acrylic);
       expect(recipe.usesBackdropBlur, isTrue);
-      expect(recipe.blurSigma, closeTo(kSurfaceBlurBase * 1.35 + 4, 1e-9));
+      expect(recipe.blurSigma, closeTo(kSurfaceBlurBase * 1.6 + 4, 1e-9));
+      // 顶栏 / overlay 档会再乘 1.2 / 1.4，仍须落在 44 夹紧上限内的合理区间。
       expect(recipe.blurSigma, lessThanOrEqualTo(44.0));
       expect(recipe.surfaceOpacity, lessThan(1.0));
       expect(recipe.surfaceOpacity, greaterThanOrEqualTo(0.40));
-      // 视觉减负：不提饱和，滤镜只剩模糊（见 acrylicBackdropFilter）。
-      expect(recipe.adjustsSaturation, isFalse);
+      // 提饱和仅非 bounded 滤镜生效（见 acrylicBackdropFilter）。
+      expect(recipe.adjustsSaturation, isTrue);
+      expect(recipe.saturation, inInclusiveRange(1.0, 1.4));
     });
 
     test('各风格均产出有限非负参数', () {

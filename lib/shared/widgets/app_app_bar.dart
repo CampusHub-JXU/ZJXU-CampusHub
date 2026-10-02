@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../core/theme/glass_style_controller.dart';
 import '../../core/theme/surface_material.dart';
 import 'app_surface_style.dart';
+import 'frost_grain.dart';
 
 /// 全局亚克力质感 AppBar。
 ///
@@ -122,10 +123,13 @@ class GlassAppBarSpace extends StatelessWidget {
                     ))
             : Colors.transparent;
         final fill = _AppBarFill(
-          tintColor: tintColor,
+          tintColor: useGlass
+              ? frostedFillColor(base: tintColor, isDark: isDark, alpha: 1.0)
+              : tintColor,
           // 顶栏 tint 策略：低到能看清模糊，高到标题仍满足 WCAG AA。
           tintAlpha: useGlass ? (isDark ? 0.42 : 0.50) : 1.0,
           borderColor: borderColor,
+          grain: useGlass,
         );
         return ClipRect(
           child: useGlass
@@ -150,8 +154,10 @@ class _AppBarFill extends StatelessWidget {
     required this.tintColor,
     required this.tintAlpha,
     required this.borderColor,
+    required this.grain,
   });
 
+  final bool grain;
   final Color tintColor;
   final double tintAlpha;
   final Color borderColor;
@@ -161,6 +167,11 @@ class _AppBarFill extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: tintColor.withValues(alpha: tintAlpha),
+        image: grain
+            ? frostGrainImage(
+                isDark: Theme.of(context).brightness == Brightness.dark,
+              )
+            : null,
         border: Border(bottom: BorderSide(color: borderColor, width: 0.8)),
       ),
       child: const SizedBox.expand(),

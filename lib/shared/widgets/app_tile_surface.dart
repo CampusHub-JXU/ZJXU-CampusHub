@@ -4,6 +4,7 @@ import '../../core/theme/app_design_tokens.dart';
 import '../../core/theme/glass_style_controller.dart';
 import '../../core/theme/surface_material.dart';
 import 'app_surface_style.dart';
+import 'frost_grain.dart';
 
 /// 可点卡面的统一质感容器。
 ///
@@ -60,14 +61,16 @@ class AppTileSurface extends StatelessWidget {
 
     final decoration = useAcrylic
         ? ShapeDecoration(
-            color: (isDark ? cs.surfaceContainerLow : cs.surfaceContainerLowest)
-                .withValues(alpha: recipe.surfaceOpacity),
+            color: frostedFillColor(
+              base: isDark ? cs.surfaceContainerLow : cs.surfaceContainerLowest,
+              isDark: isDark,
+              alpha: recipe.surfaceOpacity,
+            ),
+            image: frostGrainImage(isDark: isDark),
             shape: RoundedSuperellipseBorder(
               borderRadius: radius,
               side: BorderSide(
-                color: isDark
-                    ? Colors.white.withValues(alpha: recipe.borderOpacity * 0.2)
-                    : cs.outlineVariant.withValues(alpha: recipe.borderOpacity),
+                color: frostedBorderColor(recipe: recipe, isDark: isDark),
                 width: isDark ? 0.8 : 1.0,
               ),
             ),

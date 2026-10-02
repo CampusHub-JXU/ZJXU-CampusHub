@@ -4,6 +4,7 @@ import '../../core/theme/app_design_tokens.dart';
 import '../../core/theme/glass_style_controller.dart';
 import '../../core/theme/surface_material.dart';
 import 'app_surface_style.dart';
+import 'frost_grain.dart';
 
 export '../../core/theme/glass_style_controller.dart' show GlassTier;
 export '../../core/theme/surface_material.dart'
@@ -85,9 +86,14 @@ class GlassContainer extends StatelessWidget {
 
     final fillColor = switch (recipe.style) {
       SurfaceMaterialStyle.solid => baseSurface,
-      SurfaceMaterialStyle.acrylic => baseSurface.withValues(
-        alpha: useBlur ? _fillAlpha(recipe) : 1.0,
-      ),
+      SurfaceMaterialStyle.acrylic =>
+        useBlur
+            ? frostedFillColor(
+                base: baseSurface,
+                isDark: isDark,
+                alpha: _fillAlpha(recipe),
+              )
+            : baseSurface,
     };
 
     final borderColor = _borderColor(recipe, isDark, cs);
@@ -99,6 +105,9 @@ class GlassContainer extends StatelessWidget {
       padding: padding,
       decoration: ShapeDecoration(
         color: fillColor,
+        image: useBlur && recipe.style == SurfaceMaterialStyle.acrylic
+            ? frostGrainImage(isDark: isDark)
+            : null,
         shadows: useBlur ? _shadows(isDark, recipe) : null,
         shape: RoundedSuperellipseBorder(
           borderRadius: radius,
@@ -151,12 +160,10 @@ class GlassContainer extends StatelessWidget {
   }
 
   Color _borderColor(MaterialRecipe recipe, bool isDark, ColorScheme cs) {
-    final alpha = isDark
-        ? (recipe.borderOpacity * 0.20).clamp(0.0, 1.0)
-        : recipe.borderOpacity.clamp(0.0, 1.0);
-    return isDark
-        ? Colors.white.withValues(alpha: alpha)
-        : cs.outlineVariant.withValues(alpha: alpha);
+    if (recipe.style == SurfaceMaterialStyle.solid) {
+      return cs.outlineVariant.withValues(alpha: recipe.borderOpacity);
+    }
+    return frostedBorderColor(recipe: recipe, isDark: isDark);
   }
 
   List<BoxShadow> _shadows(bool isDark, MaterialRecipe recipe) {
