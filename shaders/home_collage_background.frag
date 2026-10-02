@@ -79,11 +79,11 @@ void main() {
 
   vec2 q = (frag_coord - 0.5 * u_size) / min(u_size.x, u_size.y) * 2.2;
 
-  // 液态扭曲：每层频率递增、幅度按 fi^1.45 衰减（高层压得更狠，弧线不出尖角），相位随时间缓慢漂移。
+  // 液态扭曲：每层频率递增、幅度按 fi^1.3 衰减（高层保留一点折角，褶皱更利落），相位随时间缓慢漂移。
   float warp = mix(0.50, 0.92, intensity);
   for (int i = 1; i < 6; i++) {
     float fi = float(i);
-    q += (warp / pow(fi, 1.45)) * vec2(
+    q += (warp / pow(fi, 1.3)) * vec2(
       sin(fi * 0.90 * q.y + time * (0.19 + 0.045 * fi) + fi * 1.3),
       cos(fi * 0.80 * q.x - time * (0.16 + 0.040 * fi) + fi * 2.1)
     );
@@ -96,6 +96,9 @@ void main() {
   float fold = 0.5 + 0.5 * sin(phase);
   float phase2 = q.y * 1.55 - q.x * 0.55 + n * 0.9 + 1.3;
   float fold2 = 0.5 + 0.5 * sin(phase2);
+  // 尖脊：1-|sin(x/2)| 在脊线处成尖角，只用于明暗和高光（配色仍用平滑褶皱，避免色块被压暗）。
+  float ridge = pow(1.0 - abs(sin(phase * 0.5)), 2.0);
+  float ridge2 = pow(1.0 - abs(sin(phase2 * 0.5)), 2.0);
 
   vec3 theme = vec3(u_theme_r, u_theme_g, u_theme_b);
   vec3 light_tint = mix(vec3(0.78, 0.88, 1.0), theme, 0.34);
@@ -118,15 +121,32 @@ void main() {
   color = mix(color, theme, (0.08 + 0.14 * intensity) * mix(1.0, 0.68, light_mode));
 
   // 褶皱明暗：谷暗峰亮，给出曲面的体积感；浅色模式下收一点对比。
-  float shade = mix(0.76, 1.07, smoothstep(0.0, 1.0, fold * 0.75 + fold2 * 0.25));
+  float shade = mix(0.72, 1.10, smoothstep(0.0, 1.0, mix(fold * 0.75 + fold2 * 0.25, ridge * 0.75 + ridge2 * 0.25, 0.6)));
   color *= mix(shade, 1.0 + (shade - 1.0) * 0.85, light_mode);
 
-  // 光泽：相位偏移后的窄高光（落在褶皱斜面上）+ 一层宽而柔的反光。
-  float crest = sin(phase + 0.9);
-  float sheen = pow(max(crest, 0.0), 8.0) * 0.55 + pow(max(crest, 0.0), 2.0) * 0.16;
-  float sheen2 = pow(max(sin(phase2 + 0.7), 0.0), 18.0) * 0.35;
+  // 光泽：贴着尖脊的窄亮线 + 一层宽而柔的反光。
+  float crest = 1.0 - abs(sin(phase * 0.5 + 0.2));
+  float sheen = pow(crest, 20.0) * 0.80 + pow(crest, 5.0) * 0.20;
+  float sheen2 = pow(1.0 - abs(sin(phase2 * 0.5 + 0.16)), 24.0) * 0.40;
   vec3 highlight = mix(mix(vec3(0.94, 0.97, 1.0), light_tint, 0.35), mix(theme, c1, 0.5), 0.18);
   color = mix(color, highlight, clamp((sheen + sheen2) * (0.30 + 0.25 * intensity) * mix(1.0, 0.75, light_mode), 0.0, 1.0));
+
+  // 流麻亮片：格子取在扭曲后的流动坐标里，颗粒随流体漂移、被拉成细长亮片；
+  // 每颗按各自节奏闪烁，主要聚在亮脊上；颜色取互补色板并偏白。
+  vec2 gp = q * 40.0;
+  vec2 cell = floor(gp);
+  vec2 cf = gp - cell;
+  float hb = dot(cell, vec2(12.9898, 78.233));
+  vec4 gr = fract(sin(vec4(hb, hb + 1.7, hb + 3.1, hb + 5.3)) * 43758.5453123);
+  float band = clamp(ridge * 0.8 + pow(crest, 3.0) * 0.5, 0.0, 1.0);
+  float present = step(0.97 - 0.35 * band, gr.x);
+  float rad = 0.10 + 0.10 * gr.w;
+  float dist = length(cf - (gr.yz * 0.6 + 0.2));
+  float grain = ((1.0 - smoothstep(rad * 0.25, rad, dist)) +
+    0.35 * (1.0 - smoothstep(rad, rad * 3.2, dist))) * present;
+  float twinkle = pow(0.5 + 0.5 * sin(time * (1.5 + 3.0 * gr.w) + gr.x * 40.0), 6.0);
+  vec3 grain_color = mix(vec3(1.0), min(gradient_color(gr.w, k0, k1, k2) * 1.7, vec3(1.6)), 0.65);
+  color += grain_color * grain * twinkle * (0.25 + 0.75 * band) * mix(0.75, 0.45, light_mode);
 
   color = saturate_color(color, mix(mix(1.08, 1.26, intensity), mix(1.30, 1.50, intensity), light_mode));
   color = mix(color, light_tint, (0.045 + 0.055 * intensity) * light_mode);

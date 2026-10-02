@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../app_theme_controller.dart';
 import '../personalization_controller.dart';
+import 'home_ambient_background.dart';
 import 'home_fluid_background.dart';
 
 class HomeBackgroundLayer extends StatelessWidget {
@@ -14,7 +15,8 @@ class HomeBackgroundLayer extends StatelessWidget {
     this.errorBuilder,
   });
 
-  final String path;
+  /// 壁纸路径；为 null 时仅渲染流体 Shader（不可用时回退 [HomeAmbientBackground]）。
+  final String? path;
   final bool useAsyncFilter;
   final WidgetBuilder? errorBuilder;
 
@@ -44,6 +46,7 @@ class HomeBackgroundLayer extends StatelessWidget {
                           fit,
                           scale,
                         );
+                        if (path == null && !useAsyncFilter) return image;
                         if (!shaderEnabled || !useAsyncFilter) {
                           return Opacity(opacity: opacity, child: image);
                         }
@@ -119,6 +122,8 @@ class HomeBackgroundLayer extends StatelessWidget {
     HomeBackgroundFit fit,
     double scale,
   ) {
+    final path = this.path;
+    if (path == null) return const HomeAmbientBackground();
     final image = LayoutBuilder(
       builder: (context, constraints) {
         final offset = Offset(

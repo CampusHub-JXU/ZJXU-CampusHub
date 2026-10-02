@@ -4,8 +4,9 @@ import '../personalization_controller.dart';
 import 'home_ambient_background.dart';
 import 'home_background_layer.dart';
 
-/// tab 页（主页 / 我的）共用的整屏背景：用户壁纸 + Shader 渐隐遮罩，
-/// 未设置壁纸时退回 [HomeAmbientBackground]。
+/// tab 页（主页 / 我的）共用的整屏背景：流体 Shader（不依赖壁纸，未设壁纸时
+/// 按主题色配色）或用户壁纸 + 渐隐遮罩；既无壁纸又关了 Shader 时退回
+/// [HomeAmbientBackground]。
 ///
 /// 需在紧约束下使用（如 `Stack(fit: StackFit.expand)` 的首个子节点）。
 class AppWallpaperBackdrop extends StatelessWidget {
@@ -19,7 +20,9 @@ class AppWallpaperBackdrop extends StatelessWidget {
       builder: (context, bgImagePath, _) => ValueListenableBuilder<bool>(
         valueListenable: personalization.shaderEnabled,
         builder: (context, shaderEnabled, _) {
-          if (bgImagePath == null) return const HomeAmbientBackground();
+          if (bgImagePath == null && !shaderEnabled) {
+            return const HomeAmbientBackground();
+          }
           return Stack(
             fit: StackFit.expand,
             children: [

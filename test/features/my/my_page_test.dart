@@ -16,6 +16,7 @@ import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/core/network/dio_client.dart';
 import 'package:jxu_campus_hub/core/network/network_settings.dart';
+import 'package:jxu_campus_hub/core/theme/personalization_controller.dart';
 import 'package:jxu_campus_hub/features/my/my_page.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';
 
@@ -67,12 +68,15 @@ void main() {
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
+    // 流体 Shader 默认开且不依赖壁纸：持续动画会让 pumpAndSettle 永不收敛。
+    PersonalizationController.instance.shaderEnabled.value = false;
     UnifiedAuthService.instance.debugReset();
     ZhengfangAuth.instance.debugReset();
     await ScheduleService.instance.debugClearCache();
   });
 
   tearDown(() {
+    PersonalizationController.instance.debugReset();
     UnifiedAuthService.instance.debugReset();
     ZhengfangAuth.instance.debugReset();
   });

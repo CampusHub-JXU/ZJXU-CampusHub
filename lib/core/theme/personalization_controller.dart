@@ -53,8 +53,8 @@ class PersonalizationController {
 
   /// 流体 Shader 的出厂默认值（新安装为开）。
   ///
-  /// 流体 Shader 并非对壁纸做滤镜：它用壁纸取色 + 主题色**程序化生成**背景，
-  /// 会替换壁纸画面。所以升级用户里「已设壁纸、从未碰过此开关」的人不能被静默
+  /// 流体 Shader 并非对壁纸做滤镜：它用壁纸取色（未设壁纸时用主题色）**程序化生成**
+  /// 背景，不依赖壁纸，设了壁纸则会替换壁纸画面。所以升级用户里「已设壁纸、从未碰过此开关」的人不能被静默
   /// 切换，见 [init] 的迁移分支。
   static const bool kShaderEnabledDefault = true;
 
@@ -113,10 +113,11 @@ class PersonalizationController {
   Future<List<Color>> getMonetColors() async {
     final path = backgroundImagePath.value;
     if (path == null) {
-      _monetColors = _defaultBrandColors();
+      // 未设壁纸：不给取色板，HomeFluidBackground 回退到按主题色推导配色。
+      _monetColors = null;
       _monetSourcePath = null;
-      monetColors.value = _monetColors;
-      return _monetColors!;
+      monetColors.value = null;
+      return const [];
     }
     if (_monetColors != null && _monetSourcePath == path) {
       monetColors.value = _monetColors;
