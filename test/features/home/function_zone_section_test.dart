@@ -9,6 +9,12 @@ import 'package:jxu_campus_hub/core/config/service_hub_usage_store.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_icon_badge.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_tile_surface.dart';
 
+/// 默认（无使用记录）状态下的卡面数：全部入口各一块 + 「常用」快捷方式
+/// （默认补位 5 个，入口本体仍留在分类里）+ 搜索框卡面 1 块。
+const _defaultCommonCount = 5;
+int get _defaultSurfaceCount =>
+    AppFeaturesConfig.entries.length + _defaultCommonCount + 1;
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -42,19 +48,17 @@ void main() {
       expect(find.text('功能'), findsOneWidget);
       expect(find.text('长按置顶'), findsOneWidget);
 
-      // All tiles are wrapped in AppTileSurface with rounded squircle shape
-      expect(
-        find.byType(AppTileSurface),
-        findsNWidgets(AppFeaturesConfig.entries.length),
-      );
+      // All tiles (and the search field) are wrapped in AppTileSurface
+      expect(find.byType(AppTileSurface), findsNWidgets(_defaultSurfaceCount));
 
-      // Rank 0 (课表) is a wide tile showing title and subtitle
-      expect(find.text('课表'), findsOneWidget);
+      // Rank 0 (课表) is a wide tile showing title and subtitle; the entry
+      // itself also stays in its category.
+      expect(find.text('课表'), findsNWidgets(2));
       expect(find.text('查看本学期课程、周次与调课提醒'), findsOneWidget);
 
-      // Standard entries are present
-      expect(find.text('成绩'), findsOneWidget);
-      expect(find.text('考试'), findsOneWidget);
+      // Standard entries are present (default 常用 shortcuts appear twice)
+      expect(find.text('成绩'), findsNWidgets(2));
+      expect(find.text('考试'), findsNWidgets(2));
       expect(find.text('付款码'), findsOneWidget);
       expect(find.text('图书馆'), findsOneWidget);
       expect(find.text('第二课堂'), findsOneWidget);
@@ -76,9 +80,10 @@ void main() {
       );
       await tester.pump();
 
-      // Library should now have a pin icon and be at the top as a wide tile with its subtitle
+      // Library should now have a pin icon and be at the top as a wide tile
+      // with its subtitle, while its own tile stays in the category.
       expect(find.byIcon(Icons.push_pin_rounded), findsWidgets);
-      expect(find.text('图书馆'), findsOneWidget);
+      expect(find.text('图书馆'), findsNWidgets(2));
       expect(find.text('馆藏检索、借阅与电子资源入口'), findsOneWidget);
     },
   );
@@ -105,8 +110,8 @@ void main() {
     expect(find.text('已置顶 图书馆'), findsOneWidget);
     expect(ServiceHubUsageStore.instance.snapshot.isPinned('library'), isTrue);
 
-    // Long press again to unpin
-    await tester.longPress(find.text('图书馆'));
+    // Long press again to unpin (now also shown as a 常用 shortcut)
+    await tester.longPress(find.text('图书馆').first);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
@@ -179,7 +184,7 @@ void main() {
         0;
     expect(visitsBefore, 0);
 
-    await tester.tap(find.text('考试'));
+    await tester.tap(find.text('考试').first);
     await tester.pumpAndSettle();
 
     expect(navigatedRoute, 'exam');
@@ -208,13 +213,10 @@ void main() {
       await tester.pump();
 
       // All entries are rendered
-      expect(
-        find.byType(AppTileSurface),
-        findsNWidgets(AppFeaturesConfig.entries.length),
-      );
-      expect(find.text('课表'), findsOneWidget);
-      expect(find.text('成绩'), findsOneWidget);
-      expect(find.text('考试'), findsOneWidget);
+      expect(find.byType(AppTileSurface), findsNWidgets(_defaultSurfaceCount));
+      expect(find.text('课表'), findsNWidgets(2));
+      expect(find.text('成绩'), findsNWidgets(2));
+      expect(find.text('考试'), findsNWidgets(2));
     },
   );
 
@@ -240,10 +242,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(
-      find.byType(AppTileSurface),
-      findsNWidgets(AppFeaturesConfig.entries.length),
-    );
+    expect(find.byType(AppTileSurface), findsNWidgets(_defaultSurfaceCount));
     expect(tester.takeException(), isNull);
   });
 
@@ -272,10 +271,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(
-      find.byType(AppTileSurface),
-      findsNWidgets(AppFeaturesConfig.entries.length),
-    );
+    expect(find.byType(AppTileSurface), findsNWidgets(_defaultSurfaceCount));
     expect(tester.takeException(), isNull);
   });
 
@@ -321,10 +317,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(
-      find.byType(AppTileSurface),
-      findsNWidgets(AppFeaturesConfig.entries.length),
-    );
+    expect(find.byType(AppTileSurface), findsNWidgets(_defaultSurfaceCount));
     expect(tester.takeException(), isNull);
   });
 
@@ -371,37 +364,30 @@ void main() {
     );
     expect(find.text('功能'), findsOneWidget);
     expect(find.text('长按置顶'), findsOneWidget);
-    expect(
-      find.byType(AppTileSurface),
-      findsNWidgets(AppFeaturesConfig.entries.length),
-    );
+    expect(find.byType(AppTileSurface), findsNWidgets(_defaultSurfaceCount));
   });
 
-  testWidgets(
-    'groups entries into 常用 and fixed categories without duplicates',
-    (tester) async {
-      await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(
-            body: SingleChildScrollView(child: FunctionZoneSection()),
-          ),
+  testWidgets('常用 holds shortcuts while every entry stays in its category', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(child: FunctionZoneSection()),
         ),
-      );
-      await tester.pump();
+      ),
+    );
+    await tester.pump();
 
-      expect(find.text('常用'), findsOneWidget);
-      for (final category in FeatureEntryCategory.values) {
-        expect(find.text(category.label), findsOneWidget);
-      }
-      // 默认常用（课表/成绩/考试/一卡通/电费）不在分类里重复。
-      expect(find.text('一卡通'), findsOneWidget);
-      expect(find.text('宿舍电费'), findsOneWidget);
-      expect(
-        find.byType(AppTileSurface),
-        findsNWidgets(AppFeaturesConfig.entries.length),
-      );
-    },
-  );
+    expect(find.text('常用'), findsOneWidget);
+    for (final category in FeatureEntryCategory.values) {
+      expect(find.text(category.label), findsOneWidget);
+    }
+    // 默认常用（课表/成绩/考试/一卡通/电费）是快捷方式，本体仍在分类里。
+    expect(find.text('一卡通'), findsNWidgets(2));
+    expect(find.text('宿舍电费'), findsNWidgets(2));
+    expect(find.byType(AppTileSurface), findsNWidgets(_defaultSurfaceCount));
+  });
 
   testWidgets('frequently visited entries move into 常用', (tester) async {
     await ServiceHubUsageStore.instance.recordVisit('physical-test');
@@ -415,9 +401,9 @@ void main() {
     );
     await tester.pump();
 
-    // 访问过的体测成为常用首位宽磁贴（显示副标题）。
+    // 访问过的体测成为常用首位宽磁贴（显示副标题），本体仍在分类里。
     expect(find.text('体质测试成绩与预约（WebVPN 访问）'), findsOneWidget);
-    expect(find.text('体测成绩'), findsOneWidget);
+    expect(find.text('体测成绩'), findsNWidgets(2));
   });
 
   testWidgets('search filters entries by title, subtitle and keywords', (
@@ -439,24 +425,22 @@ void main() {
     expect(find.text('搜索结果 · 2'), findsOneWidget);
     expect(find.text('一卡通'), findsOneWidget);
     expect(find.text('付款码'), findsOneWidget);
-    expect(find.byType(AppTileSurface), findsNWidgets(2));
+    // 结果磁贴 + 搜索框卡面。
+    expect(find.byType(AppTileSurface), findsNWidgets(3));
 
     await tester.enterText(find.byType(TextField), 'gpa');
     await tester.pump();
     expect(find.text('成绩'), findsOneWidget);
-    expect(find.byType(AppTileSurface), findsOneWidget);
+    expect(find.byType(AppTileSurface), findsNWidgets(2));
 
     await tester.enterText(find.byType(TextField), '不存在的功能');
     await tester.pump();
     expect(find.text('没有找到相关功能'), findsOneWidget);
-    expect(find.byType(AppTileSurface), findsNothing);
+    expect(find.byType(AppTileSurface), findsOneWidget);
 
     await tester.tap(find.byTooltip('清除搜索'));
     await tester.pump();
     expect(find.text('常用'), findsOneWidget);
-    expect(
-      find.byType(AppTileSurface),
-      findsNWidgets(AppFeaturesConfig.entries.length),
-    );
+    expect(find.byType(AppTileSurface), findsNWidgets(_defaultSurfaceCount));
   });
 }

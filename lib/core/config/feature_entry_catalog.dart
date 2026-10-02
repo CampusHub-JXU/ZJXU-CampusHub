@@ -90,6 +90,8 @@ class AppFeaturesConfig {
       accentColor: Color(0xFF2E7D32),
       primaryActionId: 'academic-progress.open',
       sortOrder: 16,
+      category: FeatureEntryCategory.study,
+      keywords: ['培养方案', '学分', '毕业审核'],
     ),
     const FeatureEntryDefinition(
       id: 'academic-web',

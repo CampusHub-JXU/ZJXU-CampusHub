@@ -15,6 +15,7 @@ class AppSearchField extends StatelessWidget {
     required this.onClear,
     this.fillAlpha = 0.5,
     this.compact = false,
+    this.borderless = false,
     this.autofocus = false,
     this.onSubmitted,
   });
@@ -27,6 +28,10 @@ class AppSearchField extends StatelessWidget {
 
   /// 紧凑胶囊形态：嵌入 AppBar 等窄高度位置，无描边、实色底。
   final bool compact;
+
+  /// 无框形态：无底色、无描边（含聚焦态），由外层容器（如磁贴卡面）负责
+  /// 底色与聚焦提示。
+  final bool borderless;
   final bool autofocus;
 
   /// 按键盘「搜索」时触发；只在提交时才查询的页面（如第二课堂）用它。
@@ -48,34 +53,66 @@ class AppSearchField extends StatelessWidget {
           onSubmitted: onSubmitted,
           decoration: InputDecoration(
             hintText: hintText,
-            prefixIcon: const Icon(Icons.search_rounded),
+            isDense: borderless,
+            // 无框形态按小号徽标几何排版（36dp 图标位 + 6dp 间距，加上输入框自带
+            // 约 4dp 起始留白 ≈ 磁贴的 10dp），
+            // 嵌进磁贴卡面时与相邻磁贴的徽标、标题左缘对齐。
+            prefixIcon: borderless
+                ? const Padding(
+                    padding: EdgeInsets.only(right: 6),
+                    child: SizedBox(
+                      width: AppBadgeSize.smallBox,
+                      height: AppBadgeSize.smallBox,
+                      child: Icon(
+                        Icons.search_rounded,
+                        size: AppBadgeSize.smallIcon,
+                      ),
+                    ),
+                  )
+                : const Icon(Icons.search_rounded),
+            prefixIconConstraints: borderless
+                ? const BoxConstraints(minWidth: 0, minHeight: 0)
+                : null,
             suffixIcon: showClear
                 ? IconButton(
                     onPressed: onClear,
                     icon: const Icon(Icons.close_rounded),
                     tooltip: '清除搜索',
+                    iconSize: borderless ? 20 : null,
+                    padding: borderless ? EdgeInsets.zero : null,
                   )
                 : null,
-            filled: true,
-            fillColor: cs.surfaceContainerHighest.withValues(alpha: fillAlpha),
-            border: OutlineInputBorder(
-              borderRadius: AppRadius.inputBorder,
-              borderSide: BorderSide.none,
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: AppRadius.inputBorder,
-              borderSide: BorderSide(
-                color: cs.outlineVariant.withValues(alpha: 0.45),
-              ),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: AppRadius.inputBorder,
-              borderSide: BorderSide(color: cs.primary, width: 1.4),
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 14,
-            ),
+            // 无框形态固定 36dp 高：清除按钮出现 / 消失时卡面高度不跳。
+            suffixIconConstraints: borderless
+                ? const BoxConstraints.tightFor(width: 36, height: 36)
+                : null,
+            filled: !borderless,
+            fillColor: borderless
+                ? null
+                : cs.surfaceContainerHighest.withValues(alpha: fillAlpha),
+            border: borderless
+                ? InputBorder.none
+                : OutlineInputBorder(
+                    borderRadius: AppRadius.inputBorder,
+                    borderSide: BorderSide.none,
+                  ),
+            enabledBorder: borderless
+                ? InputBorder.none
+                : OutlineInputBorder(
+                    borderRadius: AppRadius.inputBorder,
+                    borderSide: BorderSide(
+                      color: cs.outlineVariant.withValues(alpha: 0.45),
+                    ),
+                  ),
+            focusedBorder: borderless
+                ? InputBorder.none
+                : OutlineInputBorder(
+                    borderRadius: AppRadius.inputBorder,
+                    borderSide: BorderSide(color: cs.primary, width: 1.4),
+                  ),
+            contentPadding: borderless
+                ? const EdgeInsets.symmetric(vertical: 8)
+                : const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           ),
         );
       },

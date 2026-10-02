@@ -212,7 +212,6 @@ class _FunctionZoneSectionState extends State<FunctionZoneSection> {
     final snapshot = _usageStore.snapshot;
     final common = _commonEntries();
     final primaryEntry = common.first;
-    final commonIds = {for (final entry in common) entry.id};
 
     return [
       const _FunctionGroupLabel('常用'),
@@ -227,15 +226,12 @@ class _FunctionZoneSectionState extends State<FunctionZoneSection> {
         SizedBox(height: gap),
         _buildGrid(common.skip(1).toList(), itemWidth: itemWidth, gap: gap),
       ],
-      // 其余入口按固定分类展示；已在「常用」里的不重复出现。
+      // 「常用」只是快捷方式：入口本体仍完整留在各自分类里。
       for (final category in FeatureEntryCategory.values)
         ..._buildCategory(
           category,
           AppFeaturesConfig.entries
-              .where(
-                (entry) =>
-                    entry.category == category && !commonIds.contains(entry.id),
-              )
+              .where((entry) => entry.category == category)
               .toList(),
           itemWidth: itemWidth,
           gap: gap,
@@ -307,9 +303,8 @@ class _FunctionZoneSectionState extends State<FunctionZoneSection> {
             children: [
               const _FunctionZoneHeader(),
               const SizedBox(height: AppSpacing.md),
-              AppSearchField(
+              _FunctionSearchTile(
                 controller: _searchController,
-                hintText: '搜索功能，如 成绩、电费、请假',
                 onChanged: _onQueryChanged,
                 onClear: _clearQuery,
               ),
@@ -321,6 +316,60 @@ class _FunctionZoneSectionState extends State<FunctionZoneSection> {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+/// 功能搜索框：与功能磁贴同款亚克力卡面，读作功能区第一行；
+/// 聚焦时卡面描边换成 primary 色作为输入提示。
+class _FunctionSearchTile extends StatefulWidget {
+  const _FunctionSearchTile({
+    required this.controller,
+    required this.onChanged,
+    required this.onClear,
+  });
+
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClear;
+
+  @override
+  State<_FunctionSearchTile> createState() => _FunctionSearchTileState();
+}
+
+class _FunctionSearchTileState extends State<_FunctionSearchTile> {
+  bool _focused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final radius = BorderRadius.circular(AppRadius.tileBorder.topLeft.x);
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
+      foregroundDecoration: ShapeDecoration(
+        shape: RoundedSuperellipseBorder(
+          borderRadius: radius,
+          side: _focused
+              ? BorderSide(color: cs.primary, width: 1.4)
+              : BorderSide.none,
+        ),
+      ),
+      child: AppTileSurface(
+        borderRadius: radius,
+        // 水平内边距与 _SmallFunctionTile 一致（徽标 / 标题左缘对齐）；
+        // 垂直收窄成 48dp 细条，避免比磁贴还高显得臃肿。
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        child: Focus(
+          onFocusChange: (focused) => setState(() => _focused = focused),
+          child: AppSearchField(
+            controller: widget.controller,
+            hintText: '搜索功能，如 成绩、电费、请假',
+            onChanged: widget.onChanged,
+            onClear: widget.onClear,
+            borderless: true,
+          ),
+        ),
       ),
     );
   }
