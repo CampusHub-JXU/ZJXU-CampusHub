@@ -44,7 +44,7 @@ class AppFeaturesConfig {
     const FeatureEntryDefinition(
       id: 'grades',
       title: '成绩查询',
-      subtitle: '查看成绩、绩点和学业进展',
+      subtitle: '查看成绩与绩点',
       icon: Icons.school_outlined,
       accentColor: AppColors.warning,
       primaryActionId: 'grades.open',
@@ -58,6 +58,15 @@ class AppFeaturesConfig {
       accentColor: Color(0xFF7B61FF),
       primaryActionId: 'exam.open',
       sortOrder: 15,
+    ),
+    const FeatureEntryDefinition(
+      id: 'academic-progress',
+      title: '学业情况',
+      subtitle: '培养方案学分进度与修读状态',
+      icon: Icons.fact_check_outlined,
+      accentColor: Color(0xFF2E7D32),
+      primaryActionId: 'academic-progress.open',
+      sortOrder: 16,
     ),
     const FeatureEntryDefinition(
       id: 'academic-web',

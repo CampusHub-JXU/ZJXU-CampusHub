@@ -135,14 +135,48 @@ Future<T?> showGlassModalBottomSheet<T>({
     barrierLabel: barrierLabel,
     routeSettings: routeSettings,
     constraints: constraints,
-    showDragHandle: showDragHandle,
+    // 拖拽把手自己画在玻璃表面里：Material 的把手画在透明 BottomSheet 上、
+    // 玻璃表面之外，会悬在遮罩上。拖拽手势仍由 BottomSheet（enableDrag）处理。
+    showDragHandle: false,
     useRootNavigator: useRootNavigator,
     builder: (sheetContext) => GlassOverlaySurface(
       borderRadius:
           borderRadius ??
           BorderRadius.vertical(top: Radius.circular(AppRadius.sheet)),
       padding: surfacePadding,
-      child: SizedBox(width: double.infinity, child: builder(sheetContext)),
+      child: SizedBox(
+        width: double.infinity,
+        child: showDragHandle
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const _GlassSheetDragHandle(),
+                  Flexible(child: builder(sheetContext)),
+                ],
+              )
+            : builder(sheetContext),
+      ),
     ),
   );
+}
+
+/// 与 M3 `DragHandle` 同尺寸（32×4，上下留白合计 22）的把手。
+class _GlassSheetDragHandle extends StatelessWidget {
+  const _GlassSheetDragHandle();
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 12, bottom: 10),
+      child: Container(
+        width: 32,
+        height: 4,
+        decoration: ShapeDecoration(
+          color: cs.onSurfaceVariant.withValues(alpha: 0.4),
+          shape: const StadiumBorder(),
+        ),
+      ),
+    );
+  }
 }

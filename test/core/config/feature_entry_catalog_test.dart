@@ -23,6 +23,7 @@ void main() {
         5,
         10,
         15,
+        16,
         17,
         20,
         25,
@@ -55,5 +56,13 @@ void main() {
     );
     expect(physicalTest.title, '体测成绩');
     expect(physicalTest.primaryActionId, CampusActionIds.physicalTestOpen);
+    final academicProgress = entries.firstWhere(
+      (entry) => entry.id == 'academic-progress',
+    );
+    expect(academicProgress.title, '学业情况');
+    expect(
+      academicProgress.primaryActionId,
+      CampusActionIds.academicProgressOpen,
+    );
   });
 }

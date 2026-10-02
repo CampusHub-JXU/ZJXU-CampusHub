@@ -11,7 +11,7 @@ class DetailReadout extends StatelessWidget {
     super.key,
     required this.label,
     required this.valueText,
-    required this.unit,
+    this.unit,
     this.trailing,
     this.muted = false,
   });
@@ -22,8 +22,8 @@ class DetailReadout extends StatelessWidget {
   /// 主数值；无数据传 `--`，隐藏传 `****`。
   final String valueText;
 
-  /// 写在数字后的单位，如「度」「元」。
-  final String unit;
+  /// 写在数字后的单位，如「度」「元」；无单位的量（GPA）传 null。
+  final String? unit;
 
   /// 标签行尾元素（状态文字或 44×44 图标按钮）。
   final Widget? trailing;
@@ -68,8 +68,10 @@ class DetailReadout extends StatelessWidget {
                     ? text.readout.copyWith(color: cs.outlineVariant)
                     : text.readout,
               ),
-              const SizedBox(width: AppSpacing.sm),
-              Text(unit, style: text.unit),
+              if (unit != null) ...[
+                const SizedBox(width: AppSpacing.sm),
+                Text(unit!, style: text.unit),
+              ],
             ],
           ),
         ),

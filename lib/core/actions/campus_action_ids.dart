@@ -7,6 +7,7 @@ abstract final class CampusActionIds {
 
   static const gradesOpen = 'grades.open';
   static const examOpen = 'exam.open';
+  static const academicProgressOpen = 'academic-progress.open';
   static const academicWebOpen = 'academic-web.open';
 
   static const shuatiOpen = 'shuati.open';
