@@ -299,6 +299,9 @@ def check_test_file_naming(repo: RepoView) -> list[DiagnosticIssue]:
             continue
         if path.name.endswith("_test.dart"):
             continue
+        # flutter_test 约定的全局配置文件（任意目录层级都会被自动加载），不是测试。
+        if path.name == "flutter_test_config.dart":
+            continue
         issues.append(
             DiagnosticIssue(
                 "error",
