@@ -467,8 +467,9 @@ void main() {
 
     // 旧版首页区块已删除。
     expect(find.text('本周'), findsNothing);
-    expect(find.text('常用'), findsNothing);
     expect(find.text('全部校园服务'), findsNothing);
+    // 功能区内的「常用」分组（置顶 + 高频 + 默认补位）。
+    expect(find.text('常用'), findsOneWidget);
     // 快捷入口行已并入功能区小按钮段落：全部入口只出现一次，使用口语化
     // 短标签（课表/成绩/考试/付款码/刷题），全称瓦片不再存在。
     expect(find.text('校园卡'), findsOneWidget);

@@ -12,11 +12,15 @@ import '../../../shared/widgets/app_icon_badge.dart';
 import '../../../shared/widgets/app_tile_surface.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../shared/widgets/app_feedback.dart';
+import '../../../shared/widgets/app_search_field.dart';
 
 /// 首页单滚动页底部的「功能」锚点段落：圆润磁贴网格（有主次层级）。
 ///
+/// 结构：标题 → 搜索框 → 「常用」分组 → 按 [FeatureEntryCategory] 固定分类。
+/// 输入关键词时分组收起，只显示匹配结果（标题 / 副标题 / 别名）。
+///
 /// 视觉与交互参考 Win10 磁贴设计并圆润化：
-/// - 主次分明（PRD §25）：仅排序 rank #1 的入口升级为唯一的 Primary（宽）磁贴，
+/// - 主次分明（PRD §25）：仅「常用」排序 rank #1 的入口升级为唯一的 Primary（宽）磁贴，
 ///   其余入口都是 Compact 磁贴网格（手机 2 列 / 宽屏 3-4 列）；不再出现多个
 ///   宽磁贴连续，也不再因奇数项把最后一个自动升级。
 /// - 淡淡圆角毛玻璃：使用现有表面机制 [AppTileSurface]（平色填充 / 半透明 tint +
@@ -39,7 +43,21 @@ class FunctionZoneSection extends StatefulWidget {
 }
 
 class _FunctionZoneSectionState extends State<FunctionZoneSection> {
+  /// 「常用」分组至少展示的数量（1 宽磁贴 + 4 小磁贴）；置顶项总会全部进入。
+  static const _commonMinCount = 5;
+
+  /// 新装 / 尚无使用记录时「常用」的兜底入口，按顺序补位。
+  static const _defaultCommonIds = <String>[
+    'schedule',
+    'grades',
+    'exam',
+    'campus-card',
+    'dorm-electricity',
+  ];
+
   final _usageStore = ServiceHubUsageStore.instance;
+  final _searchController = TextEditingController();
+  String _query = '';
 
   @override
   void initState() {
@@ -51,6 +69,7 @@ class _FunctionZoneSectionState extends State<FunctionZoneSection> {
   @override
   void dispose() {
     _usageStore.removeListener(_onUsageChanged);
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -70,6 +89,7 @@ class _FunctionZoneSectionState extends State<FunctionZoneSection> {
   }
 
   Future<void> _openEntry(FeatureEntryDefinition entry) async {
+    FocusScope.of(context).unfocus();
     await _usageStore.recordVisit(entry.id);
     if (!mounted) return;
     await CampusActionExecutor.instance.execute(context, entry.primaryActionId);
@@ -85,20 +105,69 @@ class _FunctionZoneSectionState extends State<FunctionZoneSection> {
     );
   }
 
-  /// 展示顺序：置顶优先，其余按访问频次降序、同频按目录 sortOrder。
-  List<FeatureEntryDefinition> _orderedEntries() {
+  void _onQueryChanged(String value) {
+    setState(() => _query = value);
+  }
+
+  void _clearQuery() {
+    _searchController.clear();
+    setState(() => _query = '');
+  }
+
+  /// 「常用」分组：置顶优先，其次按访问频次降序（同频按目录 sortOrder），
+  /// 不足 [_commonMinCount] 时用 [_defaultCommonIds] 补位。
+  List<FeatureEntryDefinition> _commonEntries() {
     final snapshot = _usageStore.snapshot;
     int visitCount(String id) => snapshot.usageById[id]?.visitCount ?? 0;
-    final entries = [...AppFeaturesConfig.entries];
-    entries.sort((a, b) {
-      final pinnedA = snapshot.isPinned(a.id) ? 1 : 0;
-      final pinnedB = snapshot.isPinned(b.id) ? 1 : 0;
-      if (pinnedA != pinnedB) return pinnedB - pinnedA;
-      final byVisits = visitCount(b.id).compareTo(visitCount(a.id));
-      if (byVisits != 0) return byVisits;
-      return a.sortOrder.compareTo(b.sortOrder);
-    });
-    return entries;
+    final ranked = [...AppFeaturesConfig.entries]
+      ..sort((a, b) {
+        final pinnedA = snapshot.isPinned(a.id) ? 1 : 0;
+        final pinnedB = snapshot.isPinned(b.id) ? 1 : 0;
+        if (pinnedA != pinnedB) return pinnedB - pinnedA;
+        final byVisits = visitCount(b.id).compareTo(visitCount(a.id));
+        if (byVisits != 0) return byVisits;
+        return a.sortOrder.compareTo(b.sortOrder);
+      });
+
+    final common = <FeatureEntryDefinition>[
+      for (final entry in ranked)
+        if (snapshot.isPinned(entry.id)) entry,
+    ];
+    for (final entry in ranked) {
+      if (common.length >= _commonMinCount) break;
+      if (visitCount(entry.id) > 0 && !common.contains(entry)) {
+        common.add(entry);
+      }
+    }
+    for (final id in _defaultCommonIds) {
+      if (common.length >= _commonMinCount) break;
+      final entry = AppFeaturesConfig.entries
+          .where((entry) => entry.id == id)
+          .firstOrNull;
+      if (entry != null && !common.contains(entry)) common.add(entry);
+    }
+    return common;
+  }
+
+  /// 搜索：按空白拆词，每个词都要命中标题 / 短标签 / 副标题 / 别名之一，
+  /// 忽略大小写；结果按目录 sortOrder 排列。
+  List<FeatureEntryDefinition> _searchResults(String query) {
+    final terms = query
+        .toLowerCase()
+        .split(RegExp(r'\s+'))
+        .where((term) => term.isNotEmpty)
+        .toList();
+    if (terms.isEmpty) return const [];
+    final results = AppFeaturesConfig.entries.where((entry) {
+      final haystack = [
+        entry.title,
+        _shortLabelById[entry.id] ?? '',
+        entry.subtitle,
+        ...entry.keywords,
+      ].join('\n').toLowerCase();
+      return terms.every(haystack.contains);
+    }).toList()..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    return results;
   }
 
   /// 实时统计副文案：一卡通余额 / 宿舍电费在宽磁贴中提供有用增量信息。
@@ -115,14 +184,104 @@ class _FunctionZoneSectionState extends State<FunctionZoneSection> {
     }
   }
 
+  Widget _buildGrid(
+    List<FeatureEntryDefinition> entries, {
+    required double itemWidth,
+    required double gap,
+  }) {
+    final snapshot = _usageStore.snapshot;
+    return Wrap(
+      spacing: gap,
+      runSpacing: gap,
+      children: [
+        for (final entry in entries)
+          SizedBox(
+            width: itemWidth,
+            child: _SmallFunctionTile(
+              entry: entry,
+              pinned: snapshot.isPinned(entry.id),
+              onTap: () => unawaited(_openEntry(entry)),
+              onLongPress: () => unawaited(_togglePinned(entry)),
+            ),
+          ),
+      ],
+    );
+  }
+
+  List<Widget> _buildGroups({required double itemWidth, required double gap}) {
+    final snapshot = _usageStore.snapshot;
+    final common = _commonEntries();
+    final primaryEntry = common.first;
+    final commonIds = {for (final entry in common) entry.id};
+
+    return [
+      const _FunctionGroupLabel('常用'),
+      _WideFunctionTile(
+        entry: primaryEntry,
+        pinned: snapshot.isPinned(primaryEntry.id),
+        statsText: _resolveStats(primaryEntry) ?? primaryEntry.subtitle,
+        onTap: () => unawaited(_openEntry(primaryEntry)),
+        onLongPress: () => unawaited(_togglePinned(primaryEntry)),
+      ),
+      if (common.length > 1) ...[
+        SizedBox(height: gap),
+        _buildGrid(common.skip(1).toList(), itemWidth: itemWidth, gap: gap),
+      ],
+      // 其余入口按固定分类展示；已在「常用」里的不重复出现。
+      for (final category in FeatureEntryCategory.values)
+        ..._buildCategory(
+          category,
+          AppFeaturesConfig.entries
+              .where(
+                (entry) =>
+                    entry.category == category && !commonIds.contains(entry.id),
+              )
+              .toList(),
+          itemWidth: itemWidth,
+          gap: gap,
+        ),
+    ];
+  }
+
+  List<Widget> _buildCategory(
+    FeatureEntryCategory category,
+    List<FeatureEntryDefinition> entries, {
+    required double itemWidth,
+    required double gap,
+  }) {
+    if (entries.isEmpty) return const [];
+    entries.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    return [
+      const SizedBox(height: AppSpacing.lg),
+      _FunctionGroupLabel(category.label),
+      _buildGrid(entries, itemWidth: itemWidth, gap: gap),
+    ];
+  }
+
+  List<Widget> _buildSearchResults({
+    required double itemWidth,
+    required double gap,
+  }) {
+    final results = _searchResults(_query);
+    if (results.isEmpty) {
+      return [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: AppSpacing.xl),
+          child: Center(
+            child: Text('没有找到相关功能', style: context.appText.secondary),
+          ),
+        ),
+      ];
+    }
+    return [
+      _FunctionGroupLabel('搜索结果 · ${results.length}'),
+      _buildGrid(results, itemWidth: itemWidth, gap: gap),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
-    final entries = _orderedEntries();
-    if (entries.isEmpty) return const SizedBox.shrink();
-
-    final snapshot = _usageStore.snapshot;
-    final primaryEntry = entries.first;
-    final compactEntries = entries.skip(1).toList();
+    if (AppFeaturesConfig.entries.isEmpty) return const SizedBox.shrink();
 
     return Padding(
       padding: widget.padding,
@@ -141,49 +300,43 @@ class _FunctionZoneSectionState extends State<FunctionZoneSection> {
             0.0,
             (maxWidth - (columns - 1) * gap) / columns,
           );
+          final searching = _query.trim().isNotEmpty;
 
           return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const _FunctionZoneHeader(),
-              const SizedBox(height: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _WideFunctionTile(
-                    entry: primaryEntry,
-                    pinned: snapshot.isPinned(primaryEntry.id),
-                    statsText:
-                        _resolveStats(primaryEntry) ?? primaryEntry.subtitle,
-                    onTap: () => unawaited(_openEntry(primaryEntry)),
-                    onLongPress: () => unawaited(_togglePinned(primaryEntry)),
-                  ),
-                  if (compactEntries.isNotEmpty) ...[
-                    const SizedBox(height: gap),
-                    Wrap(
-                      spacing: gap,
-                      runSpacing: gap,
-                      children: [
-                        for (final entry in compactEntries)
-                          SizedBox(
-                            width: itemWidth,
-                            child: _SmallFunctionTile(
-                              entry: entry,
-                              pinned: snapshot.isPinned(entry.id),
-                              onTap: () => unawaited(_openEntry(entry)),
-                              onLongPress: () =>
-                                  unawaited(_togglePinned(entry)),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ],
-                ],
+              const SizedBox(height: AppSpacing.md),
+              AppSearchField(
+                controller: _searchController,
+                hintText: '搜索功能，如 成绩、电费、请假',
+                onChanged: _onQueryChanged,
+                onClear: _clearQuery,
               ),
+              const SizedBox(height: AppSpacing.md),
+              if (searching)
+                ..._buildSearchResults(itemWidth: itemWidth, gap: gap)
+              else
+                ..._buildGroups(itemWidth: itemWidth, gap: gap),
             ],
           );
         },
       ),
+    );
+  }
+}
+
+/// 分组标题：「常用」/ 分类名 / 搜索结果计数。
+class _FunctionGroupLabel extends StatelessWidget {
+  const _FunctionGroupLabel(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 2, bottom: AppSpacing.sm),
+      child: Text(text, style: context.appText.label),
     );
   }
 }
