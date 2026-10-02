@@ -65,4 +65,17 @@ void main() {
       CampusActionIds.academicProgressOpen,
     );
   });
+
+  test('每个功能入口都归入一个分类，搜索别名不为空白', () {
+    for (final entry in AppFeaturesConfig.entries) {
+      expect(FeatureEntryCategory.values, contains(entry.category));
+      for (final keyword in entry.keywords) {
+        expect(keyword.trim(), isNotEmpty, reason: entry.id);
+      }
+    }
+    expect(
+      AppFeaturesConfig.entries.map((entry) => entry.category).toSet(),
+      FeatureEntryCategory.values.toSet(),
+    );
+  });
 }
