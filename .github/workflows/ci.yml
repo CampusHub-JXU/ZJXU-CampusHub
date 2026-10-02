@@ -87,9 +87,10 @@ jobs:
           flutter test test/core/update/update_service_test.dart
 
       - name: Run full test suite
-        # Several suites exercise process-wide auth/network singletons and
-        # filesystem-backed cookie jars. Keep the release gate deterministic.
-        run: flutter test --coverage --concurrency=1
+        # Each test file runs in its own process (singletons are per-process);
+        # test/flutter_test_config.dart gives every process its own temp dir,
+        # so the suite is safe to run with the default concurrency.
+        run: flutter test --coverage
 
       - name: Summarize test diagnostics
         if: always()

@@ -64,6 +64,11 @@ final class _Overrides extends IOOverrides {
     if (_fs._owns(path)) return _MemDirectory(_fs, path);
     return _inner?.createDirectory(path) ?? super.createDirectory(path);
   }
+
+  // 保留外层（`test/flutter_test_config.dart`）按进程隔离的临时目录。
+  @override
+  Directory getSystemTempDirectory() =>
+      _inner?.getSystemTempDirectory() ?? super.getSystemTempDirectory();
 }
 
 class _MemFile implements File {
