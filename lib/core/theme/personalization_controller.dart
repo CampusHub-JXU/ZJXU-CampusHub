@@ -91,8 +91,8 @@ class PersonalizationController {
   /// 首页 Hero 区右下的嘉兴大学校徽水印；默认开。
   final ValueNotifier<bool> emblemWatermarkEnabled = ValueNotifier(true);
 
-  /// 首页「今天」段落展示全天课程（含已结束灰显）；关闭时仅显示
-  /// 剩余课程。默认开（班级同学反馈想看一整天的课）。
+  /// 首页「今天」段落的行数上限：开启最多 6 条、关闭最多 3 条；已结束的课
+  /// 两种模式都不显示。默认开（班级同学反馈想看一整天的课）。
   final ValueNotifier<bool> fullDayCoursesEnabled = ValueNotifier(true);
 
   /// 首页「校园公告」区块（资产行下方的教务处通知内容块）；默认关

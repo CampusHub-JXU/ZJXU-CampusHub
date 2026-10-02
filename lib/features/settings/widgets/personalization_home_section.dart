@@ -29,7 +29,7 @@ class PersonalizationHomeSection extends StatelessWidget {
               key: const Key('personalization_full_day'),
               listenable: controller.fullDayCoursesEnabled,
               title: '今日全部课程',
-              subtitle: '已结束的课灰显；关闭只显示剩余',
+              subtitle: '已结束的课不显示；开启最多 6 条，关闭最多 3 条',
               onChanged: controller.setFullDayCoursesEnabled,
             ),
             _switch(

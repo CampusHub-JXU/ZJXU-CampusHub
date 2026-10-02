@@ -140,7 +140,7 @@ class HomeTodayCourseRow {
   /// 当前正在上的课，行尾追加「进行中」标记。
   final bool isOngoing;
 
-  /// 已结束的课程（仅全天模式出现），整行灰显。
+  /// 已结束的课程标记；Today 列表目前不会放入已结束的行。
   final bool isDone;
 }
 
@@ -184,8 +184,8 @@ class HomeTodayPresentation {
   /// 不渲染标题与课程行；余下为空时整段不出现。
   final bool isCollapsed;
 
-  /// 全天形态（首页个性化开关）：列出今天一整天的课程，已结束的行
-  /// 由 [HomeTodayCourseRow.isDone] 标记灰显；行数上限比剩余模式宽。
+  /// 全天形态（首页个性化开关）：行数上限比默认形态宽（6 条）；已结束的课
+  /// 不进列表。
   final bool isFullDay;
 
   final List<HomeTodayCourseRow> courses;

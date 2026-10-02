@@ -25,8 +25,8 @@ const _weekDayLabels = ['周一', '周二', '周三', '周四', '周五', '周�
 /// （仅做过滤与调课变换，无 IO）。
 ///
 /// [fullDayCourses]：首页个性化「今日全部课程」开关。开启时 Today
-/// 段落列出今天一整天的课程（已结束行灰显）；关闭时保持原有
-/// 「仅剩余课程」行为。
+/// 段落放宽行数上限（已结束的课仍不显示）；关闭时保持原有
+/// 行数上限。
 HomePresentation resolveHomePresentation(
   HomeSnapshot snapshot, {
   bool fullDayCourses = false,
