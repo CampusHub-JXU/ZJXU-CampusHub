@@ -20,6 +20,7 @@ void main() {
   });
 
   setUp(() {
+    HomeFluidBackgroundState.debugResetSharedClock();
     AppLogger.instance.debugReset();
     PageTransitionActivity.instance.debugReset();
     HomeFluidBackground.debugResetShaderCache();
@@ -408,5 +409,45 @@ void main() {
     expect(stateOf(tester).debugRenderFailed, isFalse);
     expect(find.text('wallpaper-fallback'), findsNothing);
     expect(find.byType(ImageFiltered), findsOneWidget);
+  });
+
+  testWidgets('多个实例共享同一时钟：切 tab 不跳相位，同时可见也不两倍速', (tester) async {
+    Widget sized(Widget child) =>
+        SizedBox(width: 200, height: 400, child: child);
+    var secondVisible = false;
+    late StateSetter localSetState;
+    await tester.pumpWidget(
+      StatefulBuilder(
+        builder: (context, setState) {
+          localSetState = setState;
+          return Row(
+            textDirection: TextDirection.ltr,
+            children: [
+              sized(background()),
+              sized(background(tickerEnabled: secondVisible)),
+            ],
+          );
+        },
+      ),
+    );
+    await tester.pump();
+    final states = tester
+        .stateList<HomeFluidBackgroundState>(find.byType(HomeFluidBackground))
+        .toList();
+    expect(states, hasLength(2));
+
+    // 只有第一个在跑：1 秒后约 1 秒，第二个（暂停中）读到同一时间。
+    await advance(tester, const Duration(seconds: 1));
+    final single = states[0].debugShaderTimeSeconds;
+    expect(single, closeTo(1.0, 0.1));
+    expect(states[1].debugShaderTimeSeconds, single);
+
+    // 两个都在跑：时钟仍按真实时间推进，不会翻倍。
+    localSetState(() => secondVisible = true);
+    await tester.pump();
+    await advance(tester, const Duration(seconds: 1));
+    final both = states[0].debugShaderTimeSeconds;
+    expect(both - single, closeTo(1.0, 0.1));
+    expect(states[1].debugShaderTimeSeconds, both);
   });
 }

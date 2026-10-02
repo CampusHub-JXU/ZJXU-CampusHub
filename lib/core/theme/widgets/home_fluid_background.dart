@@ -121,8 +121,21 @@ class HomeFluidBackgroundState extends State<HomeFluidBackground>
   Timer? _wakeTimer;
   Duration? _lastStamp;
   Duration? _nextDue;
-  double _timeSeconds = 0.0;
   int _renderedFrames = 0;
+
+  /// 全局共享的 Shader 时钟：主页 / 我的各有一个实例，若各自计时，切 tab
+  /// 时两边相位不同，画面会突兀跳变。所有实例读写同一时间，同一帧时间戳
+  /// 只推进一次（两页同时可见时不会变成两倍速）。
+  static double _sharedTimeSeconds = 0.0;
+  static Duration? _sharedStamp;
+
+  double get _timeSeconds => _sharedTimeSeconds;
+
+  @visibleForTesting
+  static void debugResetSharedClock() {
+    _sharedTimeSeconds = 0.0;
+    _sharedStamp = null;
+  }
 
   @visibleForTesting
   bool get debugDriverActive => _frameCallbackId != null || _wakeTimer != null;
@@ -264,17 +277,25 @@ class HomeFluidBackgroundState extends State<HomeFluidBackground>
 
     final last = _lastStamp;
     _lastStamp = stamp;
-    if (last != null) {
+    // 同一帧已由别的实例推进过共享时钟时跳过；暂停后首帧（last 为空或
+    // 间隔过大）不补算，恢复后不跳变。
+    if (last != null && _sharedStamp != stamp) {
       final delta = stamp - last;
       if (delta > Duration.zero && delta <= HomeFluidBackground.maxFrameDelta) {
-        _timeSeconds =
-            (_timeSeconds +
-                delta.inMicroseconds /
+        final sharedLast = _sharedStamp;
+        // 以共享时钟上次推进的时间戳为准，避免两个实例交替出帧时重复累加。
+        final step = sharedLast != null && stamp > sharedLast
+            ? (stamp - sharedLast < delta ? stamp - sharedLast : delta)
+            : delta;
+        _sharedTimeSeconds =
+            (_sharedTimeSeconds +
+                step.inMicroseconds /
                     1000000.0 *
                     widget.animationSpeed.clamp(0.0, 2.0)) %
             60.0;
       }
     }
+    _sharedStamp = stamp;
     _renderedFrames++;
     _signal.bump();
     _scheduleNext(stamp);

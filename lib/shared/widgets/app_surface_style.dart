@@ -66,7 +66,7 @@ Color frostedFillColor({
   required bool isDark,
   required double alpha,
 }) {
-  final veil = Colors.white.withValues(alpha: isDark ? 0.06 : 0.28);
+  final veil = Colors.white.withValues(alpha: isDark ? 0.06 : 0.18);
   return Color.alphaBlend(veil, base).withValues(alpha: alpha);
 }
 

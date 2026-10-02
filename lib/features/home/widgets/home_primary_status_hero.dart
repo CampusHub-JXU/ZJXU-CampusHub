@@ -450,7 +450,10 @@ class HomePrimaryStatusHero extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          hero.headline,
+          // 假期文案在第一个逗号后换行，两行短句不压右侧校徽。
+          hero.kind == HomeHeroKind.holiday
+              ? hero.headline.replaceFirst('，', '，\n')
+              : hero.headline,
           // 假期文案是整屏的主角，与课程 Hero 同档（headlineLarge 32）；
           // 其余状态（未开学 / 学期结束 / 无课 / 未登录）保持 25 的状态档。
           style: hero.kind == HomeHeroKind.holiday

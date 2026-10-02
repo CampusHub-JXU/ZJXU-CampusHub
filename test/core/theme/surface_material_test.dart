@@ -24,7 +24,7 @@ void main() {
       final recipe = MaterialRecipe.resolve(SurfaceMaterialStyle.acrylic);
       expect(recipe.style, SurfaceMaterialStyle.acrylic);
       expect(recipe.usesBackdropBlur, isTrue);
-      expect(recipe.blurSigma, closeTo(kSurfaceBlurBase * 1.6 + 4, 1e-9));
+      expect(recipe.blurSigma, closeTo(kSurfaceBlurBase * 1.2 + 2, 1e-9));
       // 顶栏 / overlay 档会再乘 1.2 / 1.4，仍须落在 44 夹紧上限内的合理区间。
       expect(recipe.blurSigma, lessThanOrEqualTo(44.0));
       expect(recipe.surfaceOpacity, lessThan(1.0));

@@ -637,8 +637,12 @@ class _HomePageState extends State<HomePage> {
                 // 今天列表（含次日预览与「Hero 大字首课 + 单行折叠摘要」
                 // 形态）优先于资产行：课程安排是第一屏价值最高的状态信息,
                 // 余额/电费次之。
-                const SizedBox(height: _sectionGap),
-                todayWidget,
+                // Today 段落为空（如假期）时只留一段间距，避免 Hero 与资产行
+                // 之间空出两倍段距。
+                if (!presentation.today.isEmpty) ...[
+                  const SizedBox(height: _sectionGap),
+                  todayWidget,
+                ],
                 const SizedBox(height: _sectionGap),
                 assetWidget,
               ],
