@@ -448,12 +448,19 @@ class HomePrimaryStatusHero extends StatelessWidget {
       children: [
         Text(
           hero.headline,
-          style: textTheme.headlineSmall!.copyWith(
-            fontSize: 25,
-            height: 1.2,
-            fontWeight: FontWeight.w700,
-            color: primaryTextColor,
-          ),
+          // 假期文案是整屏的主角，与课程 Hero 同档（headlineLarge 32）；
+          // 其余状态（未开学 / 学期结束 / 无课 / 未登录）保持 25 的状态档。
+          style: hero.kind == HomeHeroKind.holiday
+              ? textTheme.headlineLarge!.copyWith(
+                  height: 1.3,
+                  color: primaryTextColor,
+                )
+              : textTheme.headlineSmall!.copyWith(
+                  fontSize: 25,
+                  height: 1.2,
+                  fontWeight: FontWeight.w700,
+                  color: primaryTextColor,
+                ),
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
         ),
