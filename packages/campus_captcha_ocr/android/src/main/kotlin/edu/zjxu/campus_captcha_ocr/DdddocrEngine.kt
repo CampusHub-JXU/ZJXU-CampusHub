@@ -8,10 +8,16 @@ import android.graphics.Bitmap
 import java.nio.FloatBuffer
 
 /**
- * 本地验证码 OCR 引擎：ddddocr `common_old.onnx` + ONNX Runtime（CPU）。
+ * 本地验证码 OCR 引擎：ddddocr `common_old` 字母数字裁剪版（ORT 格式）+ 自编精简
+ * ONNX Runtime（CPU，minimal build，只能加载 `.ort`）。
  *
  * - 模型与字符集随插件 Android asset 分发（`assets/captcha_ocr/`），离线推理，
  *   不下载、不触网、不落临时文件、不记录图片或答案。
+ * - 模型 = ddddocr 1.6.1 `common_old.onnx` 的最终分类层只保留 blank + 62 个 ASCII
+ *   字母数字类（`tools/ocr_slim/make_variants.py`）：分类层按张量级量化，保留类的
+ *   logits 与原模型逐位一致；差别只在原模型 argmax 落在非字母数字类的帧（原先被
+ *   [CtcDecoder] 删除，现在落到 blank 或最佳字母数字类）。离线评估见
+ *   `tools/ocr_slim/README.md`。
  * - ORT session 懒加载并跨调用复用；单线程（intra/inter op 均 1），detach 时关闭。
  * - CTC 解码与字母数字后处理见 [CtcDecoder]（纯 JVM，有固定向量单测）。
  *
@@ -20,6 +26,7 @@ import java.nio.FloatBuffer
  * `License-File: LICENSE`），即随 wheel 分发的 `common_old.onnx` 权重一并按 MIT
  * 分发；上游**没有**针对 ONNX 权重的独立/单独许可证声明。此处仅按「wheel 级
  * MIT 覆盖分发」的解读使用，权重许可与可分发边界的最终确认不在本实现范围内。
+ * 裁剪 / ORT 格式转换属于对该权重的修改再分发（MIT 允许）。
  * 未使用 beta `common.onnx`，也未使用检测模型 `common_det.onnx`。
  */
 internal class DdddocrEngine(private val context: Context) {
@@ -27,11 +34,14 @@ internal class DdddocrEngine(private val context: Context) {
     data class Output(val text: String, val confidence: Double)
 
     private companion object {
-        const val MODEL_ASSET = "captcha_ocr/common_old.onnx"
-        const val CHARSET_ASSET = "captcha_ocr/charset_old.txt"
+        const val MODEL_ASSET = "captcha_ocr/common_old_alnum.ort"
+        const val CHARSET_ASSET = "captcha_ocr/charset_alnum.txt"
 
-        /** 模型输出类别数（含 blank），与 ddddocr 默认字符集长度一致。 */
-        const val EXPECTED_CHARSET_SIZE = 8210
+        /** 模型输出类别数：blank + 62 个 ASCII 字母数字（裁剪后的分类层宽度）。 */
+        const val EXPECTED_CHARSET_SIZE = 63
+
+        /** 精简 ORT 只认 ORT 格式；显式声明，避免按字节嗅探格式。 */
+        const val CONFIG_LOAD_MODEL_FORMAT = "session.load_model_format"
 
         /**
          * 输出帧数相对输入宽度的容差倍数。输入宽度 ≤
@@ -60,6 +70,9 @@ internal class DdddocrEngine(private val context: Context) {
         try {
             options.setIntraOpNumThreads(1)
             options.setInterOpNumThreads(1)
+            options.addConfigEntry(CONFIG_LOAD_MODEL_FORMAT, "ORT")
+            // `.ort` 已在转换时按 ALL 级离线优化（Fixed 风格）；minimal build 不含
+            // 图优化器，这里设置不会再改图，保留只为与转换参数一致。
             options.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
             val created = environment.createSession(modelBytes, options)
             session = created
@@ -75,7 +88,7 @@ internal class DdddocrEngine(private val context: Context) {
             context.assets.open(CHARSET_ASSET).use {
                 it.readBytes().toString(Charsets.UTF_8)
             }
-        // asset 存的是去掉 blank 后的 8209 个字符；索引 0 约定为 blank。
+        // asset 存的是去掉 blank 后的 62 个字母数字；索引 0 约定为 blank。
         val table = CharArray(raw.length + 1)
         table[0] = '\u0000'
         raw.toCharArray(table, 1)

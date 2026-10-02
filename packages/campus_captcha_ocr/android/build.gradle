@@ -50,10 +50,14 @@ kotlin {
 }
 
 dependencies {
-    // Sole on-device captcha engine: ddddocr common_old.onnx (bundled asset) run
-    // by the static CPU ONNX Runtime. Replaces the previous bundled ML Kit
-    // text-recognition runtime entirely (replace, not stack).
-    implementation "com.microsoft.onnxruntime:onnxruntime-android:1.30.0"
+    // Sole on-device captcha engine: ddddocr common_old (alnum-pruned, ORT format,
+    // bundled asset) run by a self-built *minimal* ONNX Runtime 1.30.0 CPU build
+    // (only the operators/types that model needs; arm64-v8a, armeabi-v7a, x86_64).
+    // Rebuild with tools/ocr_slim/build_ort_minimal_aar.sh; provenance and flags in
+    // ../THIRD_PARTY_NOTICES.md. The Java API is still the upstream ai.onnxruntime
+    // package, so consumer-rules.pro keeps applying unchanged. Replaces (does not
+    // stack with) the official full onnxruntime-android AAR from Maven Central.
+    implementation files("libs/onnxruntime-android-minimal-1.30.0.aar")
 
     testImplementation "junit:junit:4.13.2"
 }
