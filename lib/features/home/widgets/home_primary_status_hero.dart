@@ -7,7 +7,7 @@ import '../../../core/theme/app_typography.dart';
 
 /// Primary Status Hero：首页唯一的最强视觉焦点（无框纯排版）。
 ///
-/// 顶部环境行「日期 · 周次」+ 通知铃 / 更新入口；
+/// 顶部环境行「周次 · 日期」+ 通知铃 / 更新入口；
 /// 主体按 kicker → 大字 → 时间 → 地点元信息 → 「查看课表」的
 /// 纯文字层级直接坐在页面背景上，靠 typography + spacing 建立层级，
 /// 不使用任何卡片容器 / 玻璃 / 底纹。文字颜色统一走
@@ -201,7 +201,7 @@ class HomePrimaryStatusHero extends StatelessWidget {
     );
   }
 
-  /// 顶部环境行：左「日期 · 嘉兴大学 · 周次」，右更新角标 + 通知铃。
+  /// 顶部环境行：左「周次 · 日期」（如「第 5 周 · 10月2日 周五」），右更新角标 + 通知铃。
   /// 周次状态为空（未开学，语义由 Hero 倒计时承担）时省略该段。
   Widget _buildEnvRow(
     BuildContext context,
@@ -217,28 +217,31 @@ class HomePrimaryStatusHero extends StatelessWidget {
           child: Text.rich(
             TextSpan(
               children: [
-                TextSpan(
-                  text: envDateText,
-                  style: envStyle.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: secondaryTextColor,
-                  ),
-                ),
-                TextSpan(
-                  text: hasStatus ? ' · ' : '',
-                  style: envStyle.copyWith(
-                    fontWeight: FontWeight.w500,
-                    color: secondaryTextColor,
-                  ),
-                ),
-                if (hasStatus)
+                // 周次在前、日期在后（「第 5 周 · 10月2日 周五」）；周次为空
+                // （未开学）时只剩日期。
+                if (hasStatus) ...[
                   TextSpan(
                     text: envStatusText,
+                    style: envStyle.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: secondaryTextColor,
+                    ),
+                  ),
+                  TextSpan(
+                    text: ' · ',
                     style: envStyle.copyWith(
                       fontWeight: FontWeight.w500,
                       color: secondaryTextColor,
                     ),
                   ),
+                ],
+                TextSpan(
+                  text: envDateText,
+                  style: envStyle.copyWith(
+                    fontWeight: hasStatus ? FontWeight.w500 : FontWeight.w600,
+                    color: secondaryTextColor,
+                  ),
+                ),
               ],
             ),
             maxLines: 1,
