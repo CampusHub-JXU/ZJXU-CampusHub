@@ -43,6 +43,24 @@ android {
     }
 }
 
+// AGP 9 refuses `implementation files("x.aar")` in a library module (the AAR's
+// classes/.so would not be packaged into this plugin's own AAR). Publish the
+// self-built minimal ORT AAR as a Maven artifact from a repo checked in next to
+// this file instead. Dependency resolution happens in the host app (and every
+// other project) with *its* repositories, so the repo must be registered on all
+// projects, not just this one.
+def localMavenRepo = uri("${projectDir}/maven-repo")
+rootProject.allprojects {
+    repositories {
+        maven {
+            url = localMavenRepo
+            content {
+                includeGroup "edu.zjxu.campus_captcha_ocr"
+            }
+        }
+    }
+}
+
 kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
@@ -50,10 +68,14 @@ kotlin {
 }
 
 dependencies {
-    // Sole on-device captcha engine: ddddocr common_old.onnx (bundled asset) run
-    // by the static CPU ONNX Runtime. Replaces the previous bundled ML Kit
-    // text-recognition runtime entirely (replace, not stack).
-    implementation "com.microsoft.onnxruntime:onnxruntime-android:1.30.0"
+    // Sole on-device captcha engine: ddddocr common_old (alnum-pruned, ORT format,
+    // bundled asset) run by a self-built *minimal* ONNX Runtime 1.30.0 CPU build
+    // (only the operators/types that model needs; arm64-v8a, armeabi-v7a, x86_64).
+    // Rebuild with tools/ocr_slim/build_ort_minimal_aar.sh (copy the AAR into maven-repo/); provenance and flags in
+    // ../THIRD_PARTY_NOTICES.md. The Java API is still the upstream ai.onnxruntime
+    // package, so consumer-rules.pro keeps applying unchanged. Replaces (does not
+    // stack with) the official full onnxruntime-android AAR from Maven Central.
+    implementation "edu.zjxu.campus_captcha_ocr:onnxruntime-android-minimal:1.30.0"
 
     testImplementation "junit:junit:4.13.2"
 }

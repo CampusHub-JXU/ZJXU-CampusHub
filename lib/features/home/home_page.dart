@@ -448,8 +448,8 @@ class _HomePageState extends State<HomePage> {
     if (!_scrollController.hasClients) return;
     await _scrollController.animateTo(
       0,
-      duration: const Duration(milliseconds: 480),
-      curve: Curves.easeOutCubic,
+      duration: AppMotion.scroll,
+      curve: AppMotion.standard,
     );
   }
 
@@ -461,8 +461,8 @@ class _HomePageState extends State<HomePage> {
     await Scrollable.ensureVisible(
       sectionContext,
       alignment: 0.0,
-      duration: const Duration(milliseconds: 520),
-      curve: Curves.easeOutCubic,
+      duration: AppMotion.scroll,
+      curve: AppMotion.standard,
     );
   }
 

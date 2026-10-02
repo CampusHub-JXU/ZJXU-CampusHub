@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/core/theme/glass_style_controller.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_app_bar.dart';
-import 'package:jxu_campus_hub/shared/widgets/material_noise.dart';
 
 import '../../helpers/test_setup.dart';
 
@@ -24,8 +23,10 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  Finder noisePainterFinder() => find.byWidgetPredicate(
-    (widget) => widget is CustomPaint && widget.painter is MaterialNoisePainter,
+  // 颗粒噪点已移除：任何 CustomPaint 都不应出现在材质层里。
+  Finder noisePainterFinder() => find.descendant(
+    of: find.byType(BackdropFilter),
+    matching: find.byType(CustomPaint),
   );
 
   BoxDecoration appBarFill(WidgetTester tester) {
@@ -57,7 +58,7 @@ void main() {
     expect(find.byType(BackdropFilter), findsNothing);
   });
 
-  testWidgets('亚克力材质保留有界模糊、半透明填充与细微噪点', (tester) async {
+  testWidgets('亚克力材质保留有界模糊、半透明填充，不再叠加颗粒', (tester) async {
     await pumpBar(tester);
 
     expect(find.text('标题'), findsOneWidget);
@@ -67,7 +68,7 @@ void main() {
       tester.widget<BackdropFilter>(backdrop).filterConfig.toString(),
       contains('bounded'),
     );
-    expect(noisePainterFinder(), findsOneWidget);
+    expect(noisePainterFinder(), findsNothing);
     expect(appBarFill(tester).color!.a, lessThan(1.0));
   });
 

@@ -1,6 +1,7 @@
 import '../../core/academic/effective_week_courses.dart';
 import '../../core/academic/exam_model.dart';
 import '../../core/academic/schedule_model.dart';
+import '../../core/semester/china_public_holidays.dart';
 import 'models/home_presentation.dart';
 import 'models/home_snapshot.dart';
 
@@ -56,10 +57,19 @@ HomePresentation resolveHomePresentation(
     scanStart: scanStart,
   );
 
+  final holiday = hasCourseData && scanningToday
+      ? _resolveHoliday(
+          snapshot: snapshot,
+          today: today,
+          weekOneStart: weekOneStart,
+        )
+      : null;
+
   final hero = _resolveHero(
     snapshot: snapshot,
     now: now,
     today: today,
+    holiday: holiday,
     normalizedSemesterStart: normalizedSemesterStart,
     hasCourseData: hasCourseData,
     currentCourse: todayState.currentCourse,
@@ -211,13 +221,7 @@ _TodayState _resolveTodayState({
   CourseEntry? currentCourse;
 
   if (scanningToday && snapshot.courseLoggedIn && snapshot.hasScheduleCache) {
-    final week = _weekForDate(today, weekOneStart);
-    final effectiveCourses = _effectiveWeekCourses(snapshot, week);
-    final dayCourses =
-        effectiveCourses
-            .where((course) => course.weekday == today.weekday)
-            .toList()
-          ..sort((a, b) => a.startLesson.compareTo(b.startLesson));
+    final dayCourses = _dayCourses(snapshot, today, weekOneStart);
     for (final course in dayCourses) {
       final start = _lessonStartTime(course.startLesson, today);
       final end = _lessonEndTime(course.endLesson, today);
@@ -283,7 +287,8 @@ class _NextCourseState {
 
 /// 下一节课扫描（移植自 home_page._buildNextCourseState）：
 /// 从今天（未开学时从开学日起算，避免把假期里的今天映射到第 1 周的课上）
-/// 起最多向后扫 14 天，找到第一门「尚未开始」的课。
+/// 起最多向后扫 14 天，找到第一门「尚未开始」的课；法定假期当天视为
+/// 无课（见 [_dayCourses]）。
 _NextCourseState _resolveNextCourseState({
   required HomeSnapshot snapshot,
   required DateTime today,
@@ -297,19 +302,14 @@ _NextCourseState _resolveNextCourseState({
 
   for (int offset = 0; offset < 14; offset++) {
     final date = scanStart.add(Duration(days: offset));
-    final week = _weekForDate(date, weekOneStart);
-    final effectiveCourses = _effectiveWeekCourses(snapshot, week);
-    final dayCourses =
-        effectiveCourses
-            .where((course) => course.weekday == date.weekday)
-            .where(
-              (course) =>
-                  offset > 0 ||
-                  !scanningToday ||
-                  course.startLesson >= nextLessonToday,
-            )
-            .toList()
-          ..sort((a, b) => a.startLesson.compareTo(b.startLesson));
+    final dayCourses = _dayCourses(snapshot, date, weekOneStart)
+        .where(
+          (course) =>
+              offset > 0 ||
+              !scanningToday ||
+              course.startLesson >= nextLessonToday,
+        )
+        .toList();
     if (dayCourses.isNotEmpty) {
       return _NextCourseState(
         course: dayCourses.first,
@@ -324,11 +324,12 @@ _NextCourseState _resolveNextCourseState({
 
 /// Hero 优先级：
 /// 正在上课 > 下一节课(今天) > 24h 内考试 > 未开学倒计时 >
-/// 学期已结束 > 今天没课(下一节大字/近期无课) > 未登录。
+/// 学期已结束 > 假期(明天不上课) > 今天没课(下一节大字/近期无课) > 未登录。
 HomeHeroPresentation _resolveHero({
   required HomeSnapshot snapshot,
   required DateTime now,
   required DateTime today,
+  required _HolidayState? holiday,
   required DateTime normalizedSemesterStart,
   required bool hasCourseData,
   required CourseEntry? currentCourse,
@@ -406,6 +407,17 @@ HomeHeroPresentation _resolveHero({
     return const HomeHeroPresentation(
       kind: HomeHeroKind.semesterOver,
       headline: '学期已结束',
+    );
+  }
+
+  // P3：假期。今天是法定假期或整天停课，且明天也不上课时，换成
+  // 轻松的假期文案；明天就有课则老老实实走下方「今天没课 · 下一节」。
+  if (holiday != null && nextCourseLabel != '明天') {
+    return HomeHeroPresentation(
+      kind: HomeHeroKind.holiday,
+      kicker: holiday.name == null ? '放假中' : '${holiday.name} · 放假中',
+      headline: _holidayHeadline(holiday, today),
+      timeText: nextCourse == null ? null : '$nextCourseLabel 恢复上课',
     );
   }
 
@@ -493,6 +505,69 @@ HomeStatusPresentation _resolveStatus(HomeSnapshot snapshot) {
   );
 }
 
+class _HolidayState {
+  const _HolidayState({this.name, this.isFirstDay = false});
+
+  /// 法定节日名（如「国庆节」）；课表停课推断出的假期为 null。
+  final String? name;
+
+  /// 今天是否为该法定假期第一天（用节日问候替代轮换文案）。
+  final bool isFirstDay;
+}
+
+/// 今天是否放假：
+/// 1. 命中法定节假日表（[chinaPublicHolidayOn]）；
+/// 2. 或课表推断：权威课表今天原本有课，但被调课/停课规则全部取消
+///    （学校自行安排的停课日，如运动会、校庆）。
+///
+/// 本来就没课的日子（周末、空课日）不算放假，保持原有「今天没课」。
+_HolidayState? _resolveHoliday({
+  required HomeSnapshot snapshot,
+  required DateTime today,
+  required DateTime weekOneStart,
+}) {
+  final publicHoliday = chinaPublicHolidayOn(today);
+  if (publicHoliday != null) {
+    return _HolidayState(
+      name: publicHoliday.name,
+      isFirstDay: _normalizeDate(publicHoliday.start) == today,
+    );
+  }
+  final week = _weekForDate(today, weekOneStart);
+  final hadCourses = snapshot.courses.any(
+    (course) => course.isInWeek(week) && course.weekday == today.weekday,
+  );
+  if (hadCourses && _dayCourses(snapshot, today, weekOneStart).isEmpty) {
+    return const _HolidayState();
+  }
+  return null;
+}
+
+const _holidayGreetings = {
+  '元旦': '新年快乐，享受假期吧～',
+  '春节': '过年好，享受假期吧～',
+  '劳动节': '劳动节快乐，好好歇歇～',
+  '端午节': '端午安康，记得吃粽子～',
+  '中秋节': '中秋快乐，记得吃月饼～',
+  '国庆节': '国庆快乐，享受假期吧～',
+};
+
+const _holidayHeadlines = [
+  '放假啦，享受假期吧～',
+  '今天不用上课，好好放松～',
+  '没有早八，多睡一会儿～',
+  '假期愉快，出去走走吧～',
+  '充好电，假期也要开心～',
+];
+
+/// 假期大字：法定假期首日用节日问候，其余日子按日期轮换（同一天稳定）。
+String _holidayHeadline(_HolidayState holiday, DateTime today) {
+  final greeting = _holidayGreetings[holiday.name];
+  if (holiday.isFirstDay && greeting != null) return greeting;
+  final dayOfYear = today.difference(DateTime(today.year)).inDays;
+  return _holidayHeadlines[dayOfYear % _holidayHeadlines.length];
+}
+
 // ---------------------------------------------------------------------------
 // 内部工具：时间 / 周次 / 文案。均为纯函数。
 // ---------------------------------------------------------------------------
@@ -546,6 +621,22 @@ int _weekForDate(DateTime date, DateTime weekOneStart) {
 
 DateTime _normalizeDate(DateTime date) =>
     DateTime(date.year, date.month, date.day);
+
+/// [date] 当天的有效课程（按节次升序）。法定节假日当天一律视为无课：
+/// 权威课表不知道放假，放假与补课由学校调课通知另行处理。
+List<CourseEntry> _dayCourses(
+  HomeSnapshot snapshot,
+  DateTime date,
+  DateTime weekOneStart,
+) {
+  if (chinaPublicHolidayOn(date) != null) return const [];
+  final week = _weekForDate(date, weekOneStart);
+  return _effectiveWeekCourses(
+      snapshot,
+      week,
+    ).where((course) => course.weekday == date.weekday).toList()
+    ..sort((a, b) => a.startLesson.compareTo(b.startLesson));
+}
 
 List<CourseEntry> _effectiveWeekCourses(HomeSnapshot snapshot, int week) {
   return buildEffectiveWeekCourses(

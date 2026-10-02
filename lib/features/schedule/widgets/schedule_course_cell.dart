@@ -35,7 +35,7 @@ class ScheduleCourseCell extends StatelessWidget {
       builder: (context) {
         final textTheme = Theme.of(context).textTheme;
         return Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
           child: ConstrainedBox(
             // 大字号下详情行会增高：弹层内容高度有界并可滚动，避免溢出。
             constraints: BoxConstraints(

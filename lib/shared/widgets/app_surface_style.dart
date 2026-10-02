@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme/surface_material.dart';
+
 /// Apple 风格平色卡面配方（浅 / 深双模式，零高光、零 BackdropFilter）。
 ///
 /// 视觉做减法：卡面只剩「平色填充 + 深色柔影」，不做描边——重复的
@@ -55,4 +57,52 @@ List<BoxShadow> appSurfaceShadows({required bool isDark}) {
     ];
   }
   return const [];
+}
+
+/// 磨砂填充：在表面底色上叠一层乳白「雾」再按 [alpha] 半透明，
+/// 模拟磨砂玻璃的漫反射泛白（浅色更明显，深色只带一点灰雾）。
+Color frostedFillColor({
+  required Color base,
+  required bool isDark,
+  required double alpha,
+}) {
+  final veil = Colors.white.withValues(alpha: isDark ? 0.06 : 0.28);
+  return Color.alphaBlend(veil, base).withValues(alpha: alpha);
+}
+
+/// 磨砂描边：浅色用白色亮边（玻璃切边受光），深色沿用淡白发丝线。
+Color frostedBorderColor({
+  required MaterialRecipe recipe,
+  required bool isDark,
+  double scale = 1.0,
+}) {
+  final alpha = isDark
+      ? recipe.borderOpacity * 0.2 * scale
+      : 0.60 * scale;
+  return Colors.white.withValues(alpha: alpha.clamp(0.0, 1.0));
+}
+
+/// 亚克力背景滤镜：配方饱和度为 1 时只做模糊，省掉一层颜色矩阵合成；
+/// 亚克力磁贴 / 顶栏 / dock 共用，组件不要各自拼 [ImageFilterConfig]。
+///
+/// 提饱和只在非 bounded 时叠加：Impeller（Android OpenGLES）下 bounded 模糊
+/// 与颜色矩阵合成会在底边上方画出紫/青色横条（见 `AppTileSurface` 注释），
+/// bounded 的顶栏 / 玻璃容器因此只做模糊。
+ImageFilterConfig acrylicBackdropFilter(
+  MaterialRecipe recipe, {
+  required double sigma,
+  required bool bounded,
+}) {
+  final blur = ImageFilterConfig.blur(
+    sigmaX: sigma,
+    sigmaY: sigma,
+    bounded: bounded,
+  );
+  if (bounded || !recipe.adjustsSaturation) return blur;
+  return ImageFilterConfig.compose(
+    outer: blur,
+    inner: ImageFilterConfig(
+      ColorFilter.matrix(saturationColorMatrix(recipe.saturation)),
+    ),
+  );
 }

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../core/theme/app_design_tokens.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../shared/widgets/app_empty_view.dart';
@@ -508,12 +509,16 @@ class _GradesPageState extends State<GradesPage>
                 separatorBuilder: (_, _) => const SizedBox(height: 8),
                 itemBuilder: (context, index) {
                   final grade = filteredGrades[index];
-                  final fadeAnim = CurvedAnimation(
-                    parent: _staggerController,
-                    curve: Interval(
-                      (index * 0.04).clamp(0.0, 0.6),
-                      ((index * 0.04) + 0.4).clamp(0.0, 1.0),
-                      curve: Curves.easeOutCubic,
+                  // drive 不在父动画上登记监听；每行每次重建 new 一个
+                  // CurvedAnimation 会往 _staggerController 累积状态监听且
+                  // 从不释放（切学期 / 搜索输入都会重建）。
+                  final fadeAnim = _staggerController.drive(
+                    CurveTween(
+                      curve: Interval(
+                        (index * 0.04).clamp(0.0, 0.6),
+                        ((index * 0.04) + 0.4).clamp(0.0, 1.0),
+                        curve: AppMotion.standard,
+                      ),
                     ),
                   );
                   return FadeTransition(

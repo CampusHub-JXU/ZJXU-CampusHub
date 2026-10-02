@@ -15,6 +15,7 @@ import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/core/cache/private_cache_store.dart';
 import 'package:jxu_campus_hub/core/notice/notice_model.dart';
 import 'package:jxu_campus_hub/core/notice/notice_sync_store.dart';
+import 'package:jxu_campus_hub/core/semester/china_public_holidays.dart';
 import 'package:jxu_campus_hub/core/semester/semester_calendar.dart';
 import 'package:jxu_campus_hub/core/system_surface/campus_data_change_bus.dart';
 import 'package:jxu_campus_hub/core/theme/page_transition_activity.dart';
@@ -45,6 +46,9 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() async {
+    // 本文件按真实时钟构造课表：屏蔽法定节假日表，避免在假期运行时
+    // 课程被首页当作放假。
+    debugChinaPublicHolidaysOverride = const [];
     final now = DateTime.now();
     SharedPreferences.setMockInitialValues({});
     FlutterSecureStorage.setMockInitialValues({});
@@ -72,6 +76,7 @@ void main() {
 
   tearDown(() {
     PageTransitionActivity.instance.debugReset();
+    debugChinaPublicHolidaysOverride = null;
     PersonalizationController.instance.shaderEnabled.value = false;
     PersonalizationController.instance.backgroundImagePath.value = null;
     // 单例注入点在页面 dispose 时置空；这里兜底防止失败用例泄漏。
@@ -470,17 +475,20 @@ void main() {
 
     // 旧版首页区块已删除。
     expect(find.text('本周'), findsNothing);
-    expect(find.text('常用'), findsNothing);
     expect(find.text('全部校园服务'), findsNothing);
-    // 快捷入口行已并入功能区小按钮段落：全部入口只出现一次，使用口语化
-    // 短标签（课表/成绩/考试/付款码/刷题），全称瓦片不再存在。
+    // 功能区内的「常用」分组（置顶 + 高频 + 默认补位）。
+    expect(find.text('常用'), findsOneWidget);
+    // 快捷入口行已并入功能区小按钮段落，使用口语化短标签（课表/成绩/考试/
+    // 付款码/刷题），全称瓦片不再存在。「常用」只是快捷方式：默认常用
+    // （课表/成绩/考试/一卡通/电费）在常用与原分类里各出现一次。
     expect(find.text('校园卡'), findsOneWidget);
-    expect(find.text('宿舍电费'), findsNWidgets(2));
+    // 资产行 + 常用 + 校园生活分类。
+    expect(find.text('宿舍电费'), findsNWidgets(3));
     expect(find.text('功能'), findsOneWidget);
     expect(find.text('长按置顶'), findsOneWidget);
-    expect(find.text('课表'), findsOneWidget);
-    expect(find.text('成绩'), findsOneWidget);
-    expect(find.text('考试'), findsOneWidget);
+    expect(find.text('课表'), findsNWidgets(2));
+    expect(find.text('成绩'), findsNWidgets(2));
+    expect(find.text('考试'), findsNWidgets(2));
     expect(find.text('付款码'), findsOneWidget);
     expect(find.text('成绩查询'), findsNothing);
     expect(find.text('考试安排'), findsNothing);
@@ -589,9 +597,9 @@ void main() {
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
     await tester.pump(const Duration(milliseconds: 200));
 
-    await tester.ensureVisible(find.text('考试'));
+    await tester.ensureVisible(find.text('考试').first);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('考试'));
+    await tester.tap(find.text('考试').first);
     await tester.pumpAndSettle();
 
     expect(find.text('考试安排页面'), findsOneWidget);
