@@ -93,6 +93,7 @@ class HomePrimaryStatusHero extends StatelessWidget {
       HomeHeroKind.semesterOver => '本学期已结束',
       HomeHeroKind.noCourseToday => '今天',
       HomeHeroKind.nextCourseUpcoming => '今天没课 · 下一节',
+      HomeHeroKind.holiday => hero.kicker ?? '放假中',
       HomeHeroKind.loggedOut => '未登录',
     };
     // kicker 去重：与环境行状态相同（如「学期已结束」）时不再重复；

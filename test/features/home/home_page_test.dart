@@ -15,6 +15,7 @@ import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/core/cache/private_cache_store.dart';
 import 'package:jxu_campus_hub/core/notice/notice_model.dart';
 import 'package:jxu_campus_hub/core/notice/notice_sync_store.dart';
+import 'package:jxu_campus_hub/core/semester/china_public_holidays.dart';
 import 'package:jxu_campus_hub/core/semester/semester_calendar.dart';
 import 'package:jxu_campus_hub/core/system_surface/campus_data_change_bus.dart';
 import 'package:jxu_campus_hub/core/theme/personalization_controller.dart';
@@ -44,6 +45,9 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() async {
+    // 本文件按真实时钟构造课表：屏蔽法定节假日表，避免在假期运行时
+    // 课程被首页当作放假。
+    debugChinaPublicHolidaysOverride = const [];
     final now = DateTime.now();
     SharedPreferences.setMockInitialValues({});
     FlutterSecureStorage.setMockInitialValues({});
@@ -69,6 +73,7 @@ void main() {
   });
 
   tearDown(() {
+    debugChinaPublicHolidaysOverride = null;
     PersonalizationController.instance.shaderEnabled.value = false;
     PersonalizationController.instance.backgroundImagePath.value = null;
     // 单例注入点在页面 dispose 时置空；这里兜底防止失败用例泄漏。
