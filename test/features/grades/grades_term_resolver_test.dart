@@ -42,6 +42,27 @@ void main() {
       expect(terms[3], (academicYear: '2024-2025', semester: '第一学期'));
     });
 
+    test('sorts zhengfang numeric xqmmc newest first (春 before 秋)', () {
+      // 正方接口真实返回 xqmmc = "1" / "2"，且按时间正序（秋在前）。
+      final terms = GradesTermResolver.availableTerms([
+        _g('a', '2025-2026', '1'),
+        _g('b', '2025-2026', '2'),
+        _g('c', '2025-2026', '3'),
+      ]);
+      expect(terms, [
+        (academicYear: '2025-2026', semester: '3'),
+        (academicYear: '2025-2026', semester: '2'),
+        (academicYear: '2025-2026', semester: '1'),
+      ]);
+      expect(
+        GradesTermResolver.pickDefault([
+          _g('a', '2025-2026', '1'),
+          _g('b', '2025-2026', '2'),
+        ]),
+        '2025-2026|2',
+      );
+    });
+
     test('returns empty when no grades', () {
       expect(GradesTermResolver.availableTerms([]), isEmpty);
     });

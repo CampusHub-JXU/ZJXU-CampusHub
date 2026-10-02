@@ -16,6 +16,7 @@ import '../../core/theme/app_typography.dart';
 import '../sjjx_notice/sjjx_notice_model.dart';
 import '../sjjx_notice/sjjx_notice_service.dart';
 import 'campus_notice_site_search.dart';
+import 'notice_group_section.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_banner.dart';
 import '../../shared/widgets/app_empty_view.dart';
@@ -26,6 +27,7 @@ import '../../shared/widgets/app_status_tag.dart';
 import '../../shared/widgets/copy_text_feedback.dart';
 import '../../shared/widgets/auth_required_view.dart';
 import '../../shared/widgets/login_shell.dart';
+import '../../shared/widgets/plain_list.dart';
 
 class NotificationCenterPage extends StatefulWidget {
   const NotificationCenterPage({super.key});
@@ -394,24 +396,16 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
               _noticeMatchesQuery(notice.date, query),
         )
         .toList(growable: false);
-    final divider = Divider(
-      height: 1,
-      thickness: 1,
-      indent: 24,
-      color: Theme.of(context).colorScheme.outlineVariant
-          .withValues(alpha: 0.25),
-    );
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       children: [
-        if (local.isNotEmpty) ...[
-          CampusNoticeSectionLabel('最近通知', trailing: '${local.length} 条'),
-          for (var i = 0; i < local.length; i++) ...[
-            if (i > 0) divider,
-            _tileFor(local[i]),
-          ],
-        ],
+        if (local.isNotEmpty)
+          NoticeGroupSection(
+            title: '最近通知',
+            trailing: '${local.length} 条',
+            children: [for (final n in local) _tileFor(n)],
+          ),
         CampusNoticeSiteSearch(
           query: widget.query,
           excludeIds: {for (final n in local) n.id},
@@ -438,33 +432,29 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
         ),
       );
     }
-    final showAuthBanner = _authRequired;
-    final visibleNotices = [..._notices, ..._older];
-    final bannerCount = showAuthBanner ? 1 : 0;
-    final footerCount = _hasMore || _loadMoreFailed ? 1 : 0;
+    // 圆角分组卡片：未读 / 最近（收件箱其余）/ 更早（在线分页），与设置、
+    // 体测等页面同一套 squircle 卡面，不再用通栏分隔线。
+    final unread = [
+      for (final n in _notices)
+        if (_unreadIds.contains(n.id)) n,
+    ];
+    final read = [
+      for (final n in _notices)
+        if (!_unreadIds.contains(n.id)) n,
+    ];
+    final showFooter = _hasMore || _loadMoreFailed;
     return RefreshIndicator(
       onRefresh: _refresh,
-      child: ListView.separated(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        itemCount: bannerCount + visibleNotices.length + footerCount,
-        separatorBuilder: (_, index) {
-          if (showAuthBanner && index == 0) return const SizedBox.shrink();
-          return Divider(
-            height: 1,
-            thickness: 1,
-            indent: 24,
-            color: Theme.of(context).colorScheme.outlineVariant
-                .withValues(alpha: 0.25),
-          );
-        },
-        itemBuilder: (context, index) {
-          if (showAuthBanner && index == 0) {
-            return Padding(
+      child: ListView(
+        padding: const EdgeInsets.only(top: 4, bottom: 24),
+        children: [
+          if (_authRequired)
+            Padding(
               padding: const EdgeInsets.fromLTRB(
-                AppSpacing.pageMargin,
+                AppSpacing.listGutter,
                 4,
-                AppSpacing.pageMargin,
-                8,
+                AppSpacing.listGutter,
+                4,
               ),
               child: AppBanner(
                 icon: Icons.lock_outline,
@@ -473,14 +463,25 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
                 actionLabel: '登录',
                 onAction: _presentLoginPrompt,
               ),
-            );
-          }
-          final noticeIndex = index - bannerCount;
-          if (noticeIndex >= visibleNotices.length) {
-            return _buildLoadMoreFooter();
-          }
-          return _tileFor(visibleNotices[noticeIndex]);
-        },
+            ),
+          if (unread.isNotEmpty)
+            NoticeGroupSection(
+              title: '未读',
+              trailing: '${unread.length} 条',
+              children: [for (final n in unread) _tileFor(n)],
+            ),
+          if (read.isNotEmpty)
+            NoticeGroupSection(
+              title: unread.isEmpty ? '最近' : '已读',
+              children: [for (final n in read) _tileFor(n)],
+            ),
+          if (_older.isNotEmpty)
+            NoticeGroupSection(
+              title: '更早',
+              children: [for (final n in _older) _tileFor(n)],
+            ),
+          if (showFooter) _buildLoadMoreFooter(),
+        ],
       ),
     );
   }
@@ -585,7 +586,6 @@ class _PracticeNoticeTabState extends State<_PracticeNoticeTab>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final cs = Theme.of(context).colorScheme;
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_authRequired) {
       return AuthRequiredView(
@@ -621,32 +621,31 @@ class _PracticeNoticeTabState extends State<_PracticeNoticeTab>
     }
     return RefreshIndicator(
       onRefresh: _load,
-      child: ListView.separated(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        itemCount: visibleNotices.length,
-        separatorBuilder: (_, _) => Divider(
-          height: 1,
-          thickness: 1,
-          indent: 24,
-          color: cs.outlineVariant.withValues(alpha: 0.25),
-        ),
-        itemBuilder: (context, index) {
-          final notice = visibleNotices[index];
-          return _NoticeTile(
-            title: notice.title,
-            date: notice.date,
-            tag: notice.category,
-            onTap: () => context.pushNamed(
-              'external-webview',
-              extra: {
-                'title': notice.title,
-                'url': notice.url,
-                'emulateDingTalkEnvironment': false,
-              },
-            ),
-            onLongPress: () => copyTextWithFeedback(context, notice.url),
-          );
-        },
+      child: ListView(
+        padding: const EdgeInsets.only(top: 4, bottom: 24),
+        children: [
+          NoticeGroupSection(
+            title: query.isEmpty ? '全部' : '匹配结果',
+            trailing: '${visibleNotices.length} 条',
+            children: [
+              for (final notice in visibleNotices)
+                _NoticeTile(
+                  title: notice.title,
+                  date: notice.date,
+                  tag: notice.category,
+                  onTap: () => context.pushNamed(
+                    'external-webview',
+                    extra: {
+                      'title': notice.title,
+                      'url': notice.url,
+                      'emulateDingTalkEnvironment': false,
+                    },
+                  ),
+                  onLongPress: () => copyTextWithFeedback(context, notice.url),
+                ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -654,9 +653,9 @@ class _PracticeNoticeTabState extends State<_PracticeNoticeTab>
 
 // --- Shared tile ---
 
-/// 无卡片、无边框的通知行：未读圆点 + 标题 + 日期，例外标签（如分类差异明显
+/// 分组卡片里的通知行：未读圆点 + 标题 + 日期，例外标签（如分类差异明显
 /// 的实践通知）才追加小色块；「每条都一样」的标签（如校园公告固定的
-/// 「通知公告」）不再展示。
+/// 「通知公告」）不再展示。行之间不画分隔线，靠卡片收拢、左缘对齐。
 class _NoticeTile extends StatelessWidget {
   const _NoticeTile({
     required this.title,
@@ -684,21 +683,24 @@ class _NoticeTile extends StatelessWidget {
       onTap: onTap,
       onLongPress: onLongPress,
       child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.pageMargin,
-          vertical: 14,
+        padding: const EdgeInsets.fromLTRB(
+          kPlainListRowInset - 4,
+          12,
+          kPlainListRowInset,
+          12,
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // 圆点列固定宽度：已读 / 未读行的标题保持同一条左缘。
             SizedBox(
-              width: 8,
+              width: 12,
               child: unread
                   ? Padding(
                       padding: const EdgeInsets.only(top: 7),
                       child: Container(
-                        width: 8,
-                        height: 8,
+                        width: 7,
+                        height: 7,
                         decoration: BoxDecoration(
                           color: cs.primary,
                           shape: BoxShape.circle,
@@ -707,7 +709,6 @@ class _NoticeTile extends StatelessWidget {
                     )
                   : null,
             ),
-            const SizedBox(width: 8),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -716,23 +717,33 @@ class _NoticeTile extends StatelessWidget {
                   Text(
                     title,
                     style: text.rowTitle.copyWith(
-                      height: 1.45,
+                      height: 1.4,
                       fontWeight: unread ? FontWeight.w500 : FontWeight.w400,
                       color: unread ? cs.onSurface : cs.onSurfaceVariant,
                     ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Text(publishDate, style: text.secondary),
-                      if (showTag) ...[
-                        const SizedBox(width: 8),
-                        AppStatusTag(tag!),
+                  if (publishDate.isNotEmpty || showTag) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        if (publishDate.isNotEmpty)
+                          Text(
+                            publishDate,
+                            style: text.secondary.copyWith(
+                              fontFeatures: const [
+                                FontFeature.tabularFigures(),
+                              ],
+                            ),
+                          ),
+                        if (showTag) ...[
+                          if (publishDate.isNotEmpty) const SizedBox(width: 8),
+                          AppStatusTag(tag!),
+                        ],
                       ],
-                    ],
-                  ),
+                    ),
+                  ],
                 ],
               ),
             ),

@@ -156,7 +156,7 @@ void main() {
 
     // 搜索默认收起，点 AppBar 搜索图标才展开。
     expect(find.byType(TextField), findsNothing);
-    await tester.tap(find.byTooltip('搜索课程'));
+    await tester.tap(find.byTooltip('搜索'));
     await tester.pump();
     await tester.enterText(find.byType(TextField), '高等');
     await tester.pump();
@@ -422,7 +422,7 @@ void main() {
     await pumpUntilFound(tester, find.text('A的课程'));
     await tester.pump(const Duration(milliseconds: 500));
 
-    await tester.tap(find.byTooltip('搜索课程'));
+    await tester.tap(find.byTooltip('搜索'));
     await tester.pump();
     await tester.enterText(find.byType(TextField), 'A的课程');
     await tester.pump();

@@ -372,17 +372,30 @@ class _GradesPageState extends State<GradesPage>
 
   @override
   Widget build(BuildContext context) {
+    final searching = _searchOpen && _loggedIn;
     return Scaffold(
       appBar: AppAppBar(
-        title: const Text('成绩'),
+        // 与通知页一致：搜索展开时标题位换成紧凑搜索胶囊，图标切为关闭。
+        centerTitle: searching ? false : null,
+        titleSpacing: searching ? 0 : null,
+        title: searching
+            ? AppSearchField(
+                controller: _searchController,
+                hintText: '搜索课程、考核方式',
+                compact: true,
+                autofocus: true,
+                onChanged: (_) {},
+                onClear: () => _searchController.clear(),
+              )
+            : const Text('成绩'),
         actions: _loggedIn
             ? [
                 IconButton(
                   icon: Icon(
-                    _searchOpen ? Icons.search_off_rounded : Icons.search,
+                    _searchOpen ? Icons.close_rounded : Icons.search_rounded,
                   ),
                   onPressed: _grades.isEmpty ? null : _toggleSearch,
-                  tooltip: _searchOpen ? '关闭搜索' : '搜索课程',
+                  tooltip: _searchOpen ? '关闭搜索' : '搜索',
                 ),
                 IconButton(
                   icon: const Icon(Icons.refresh),
@@ -429,19 +442,6 @@ class _GradesPageState extends State<GradesPage>
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
-          if (_searchOpen)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                child: AppSearchField(
-                  controller: _searchController,
-                  hintText: '搜索课程',
-                  autofocus: true,
-                  onChanged: (_) {},
-                  onClear: () => _searchController.clear(),
-                ),
-              ),
-            ),
           SliverToBoxAdapter(child: _buildTermChips()),
           SliverToBoxAdapter(
             child: Padding(

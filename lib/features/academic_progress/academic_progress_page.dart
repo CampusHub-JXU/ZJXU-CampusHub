@@ -96,7 +96,11 @@ class _AcademicProgressPageState extends State<AcademicProgressPage> {
         ? null
         : AcademicProgressService.instance.updatedAt;
     if (_loggedIn) {
-      _fetch();
+      if (_report == null && widget.fetchReport == null) {
+        unawaited(_restoreThenFetch());
+      } else {
+        _fetch();
+      }
     } else if (_report == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -167,6 +171,31 @@ class _AcademicProgressPageState extends State<AcademicProgressPage> {
       }
     });
     unawaited(_fetch(forceRefresh: !ownerChanged));
+  }
+
+  /// 冷启动后内存缓存为空：先从磁盘恢复（owner / epoch 由服务校验），
+  /// 有缓存即先展示，再按 TTL 决定是否联网——学业明细是逐个末节点串行
+  /// POST，没有这一步每次重启后首次进页都要整页骨架等全部请求跑完。
+  Future<void> _restoreThenFetch() async {
+    final owner = _identityOwner;
+    final revision = _identityRevision;
+    final service = AcademicProgressService.instance;
+    await service.restoreCache();
+    // 恢复期间身份变化已由 [_handleAuthChanged] 接管刷新，这里不再插手。
+    if (!mounted ||
+        !_loggedIn ||
+        _identityOwner != owner ||
+        _identityRevision != revision) {
+      return;
+    }
+    final cached = service.cachedReport;
+    if (_report == null && cached != null) {
+      setState(() {
+        _report = cached;
+        _updatedAt = service.updatedAt;
+      });
+    }
+    await _fetch();
   }
 
   Future<void> _fetch({bool forceRefresh = false}) async {
