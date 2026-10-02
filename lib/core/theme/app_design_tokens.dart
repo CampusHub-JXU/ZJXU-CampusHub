@@ -169,3 +169,35 @@ class AppBadgeSize {
   static const double largeIcon = 22;
   static const double largeRadius = AppRadius.badge;
 }
+
+/// 动效节奏（Motion）单一来源。
+///
+/// 原则：高频、可来回切换的交互（底部分支、dock 指示器）只做短促的淡入，
+/// 不加位移——反复切换时位移会叠成「晃」，看久了累；一次性的层级跳转
+/// （push / pop）才保留方向感的位移。所有动效统一减速曲线收尾，并尊重
+/// 系统「移除动画」（[reduced]）。
+class AppMotion {
+  AppMotion._();
+
+  /// 微反馈：dock 选中指示器、图标切换。
+  static const Duration quick = Duration(milliseconds: 150);
+
+  /// 同级切换：底部分支交叉淡化。
+  static const Duration switchFade = Duration(milliseconds: 180);
+
+  /// 层级跳转：页面 push / pop。
+  static const Duration page = Duration(milliseconds: 220);
+
+  /// 页内自动滚动（dock 主页 / 功能锚点）。
+  static const Duration scroll = Duration(milliseconds: 360);
+
+  /// 入场 / 正向：起步快、收尾慢。
+  static const Curve standard = Curves.easeOutCubic;
+
+  /// 返回 / 反向：[standard] 的镜像，倒放时仍是先快后慢。
+  static const Curve standardReverse = Curves.easeInCubic;
+
+  /// 系统是否要求移除动画（无障碍「移除动画」/ 开发者选项动画缩放为 0）。
+  static bool reduced(BuildContext context) =>
+      MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+}

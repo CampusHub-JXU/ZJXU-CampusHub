@@ -4,16 +4,15 @@ import '../../core/theme/app_design_tokens.dart';
 import '../../core/theme/glass_style_controller.dart';
 import '../../core/theme/surface_material.dart';
 import 'app_surface_style.dart';
-import 'material_noise.dart';
 
 /// 可点卡面的统一质感容器。
 ///
 /// 两种形态，实时监听 [GlassStyleController]：
 /// * **亚克力**（全局风格为 [SurfaceMaterialStyle.acrylic]，即
 ///   [GlassStyleController.enabled] 开启）——ClipRSuperellipse → BackdropFilter
-///   （非 bounded 模糊 + 提饱和，按 [MaterialRecipe]）→ Material → Ink（半透明
-///   填充 + hairline 描边）→ InkWell，内容下方铺一层程序化颗粒。裁剪严格
-///   位于 BackdropFilter 祖先位置，避免糊整屏。
+///   （非 bounded 模糊，按 [MaterialRecipe]）→ Material → Ink（半透明
+///   填充 + hairline 描边）→ InkWell。裁剪严格位于 BackdropFilter 祖先位置，
+///   避免糊整屏。
 /// * **平色**——Material → Ink(配方装饰) → InkWell，零 BackdropFilter；
 ///   [GlassStyleController.enabled] 关闭时即为实色。
 ///
@@ -57,17 +56,7 @@ class AppTileSurface extends StatelessWidget {
         recipe.style == SurfaceMaterialStyle.acrylic && recipe.usesBackdropBlur;
 
     final shape = RoundedSuperellipseBorder(borderRadius: radius);
-    Widget content = Padding(padding: padding ?? EdgeInsets.zero, child: child);
-    if (useAcrylic && recipe.hasNoise) {
-      // 颗粒画在内容之下（CustomPaint.painter），不遮挡文字与涟漪命中。
-      content = CustomPaint(
-        painter: MaterialNoisePainter(
-          opacity: recipe.noiseOpacity,
-          isDark: isDark,
-        ),
-        child: content,
-      );
-    }
+    final content = Padding(padding: padding ?? EdgeInsets.zero, child: child);
 
     final decoration = useAcrylic
         ? ShapeDecoration(
@@ -108,26 +97,20 @@ class AppTileSurface extends StatelessWidget {
 
     if (!useAcrylic) return surface;
 
-    final sigma = recipe.blurSigma;
     return ClipRSuperellipse(
       borderRadius: radius,
       // grouped：同一 [BackdropGroup] 下的磁贴共用一次背景读取，滚动时不再
       // 每块磁贴各自重采样壁纸（首页功能区十几块磁贴时 raster 会超预算）。
       // 没有 BackdropGroup 祖先时退化为普通 BackdropFilter。
       child: BackdropFilter.grouped(
-        filterConfig: ImageFilterConfig.compose(
-          outer: ImageFilterConfig.blur(
-            sigmaX: sigma,
-            sigmaY: sigma,
-            // 不用 bounded：Impeller（Android OpenGLES，模拟器实测）下
-            // bounded 模糊与提饱和组合，会在卡面底边上方约 10dp 处画出一条
-            // 紫/青色横条。外层 ClipRSuperellipse 已限定输出区域，非
-            // bounded 只让边缘多采一点外侧壁纸，不会糊出卡面。
-            bounded: false,
-          ),
-          inner: ImageFilterConfig(
-            ColorFilter.matrix(saturationColorMatrix(recipe.saturation)),
-          ),
+        // 不用 bounded：Impeller（Android OpenGLES，模拟器实测）下 bounded
+        // 模糊（叠提饱和时）会在卡面底边上方约 10dp 处画出一条紫/青色横条。
+        // 外层 ClipRSuperellipse 已限定输出区域，非 bounded 只让边缘多采
+        // 一点外侧壁纸，不会糊出卡面。
+        filterConfig: acrylicBackdropFilter(
+          recipe,
+          sigma: recipe.blurSigma,
+          bounded: false,
         ),
         child: surface,
       ),

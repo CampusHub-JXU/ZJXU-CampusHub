@@ -2,14 +2,14 @@ import 'dart:math' as math;
 
 /// 表面材质风格。
 ///
-/// 应用只有两种材质：用户侧开关「亚克力材质」开启为 [acrylic]（真实背景模糊 +
-/// 颗粒），关闭为 [solid]（实色，无 BackdropFilter）。由统一的 [MaterialRecipe]
+/// 应用只有两种材质：[acrylic]（真实背景模糊 + 半透明填充 + hairline）与
+/// [solid]（实色，无 BackdropFilter，仅测试路径使用）。由统一的 [MaterialRecipe]
 /// 驱动，组件不得各自实现 BackdropFilter / tint / border / shadow。
 enum SurfaceMaterialStyle {
   /// 不透明表面，最省 GPU。
   solid,
 
-  /// 背景模糊 + tint + 极细微噪点。
+  /// 背景模糊 + tint。
   acrylic,
 }
 
@@ -27,16 +27,18 @@ const double kSurfaceBlurBase = 14;
 /// 参数含义：
 /// * [blurSigma] 背景模糊强度，0 表示不创建 BackdropFilter；
 /// * [surfaceOpacity] 表面平色填充不透明度；
-/// * [noiseOpacity] 噪点纹理不透明度（仅亚克力 > 0）；
 /// * [borderOpacity] 边缘描边不透明度；
 /// * [shadowOpacity] 投影不透明度；
-/// * [saturation] 背景提饱和倍数。
+/// * [saturation] 背景饱和倍数；1 表示不做颜色矩阵（只模糊）。
+///
+/// 视觉减负：曾叠加的程序化颗粒（每次重绘生成上千随机点）与 1.12 倍提饱和
+/// 已移除——颗粒在小屏上读作「脏」，提饱和让壁纸透到卡面上更花；两者还各
+/// 占一次合成/绘制开销。
 class MaterialRecipe {
   const MaterialRecipe._({
     required this.style,
     required this.blurSigma,
     required this.surfaceOpacity,
-    required this.noiseOpacity,
     required this.borderOpacity,
     required this.shadowOpacity,
     required this.saturation,
@@ -45,19 +47,17 @@ class MaterialRecipe {
   final SurfaceMaterialStyle style;
   final double blurSigma;
   final double surfaceOpacity;
-  final double noiseOpacity;
   final double borderOpacity;
   final double shadowOpacity;
   final double saturation;
 
   bool get usesBackdropBlur => blurSigma > 0.5;
-  bool get hasNoise => noiseOpacity > 0.001;
+  bool get adjustsSaturation => (saturation - 1).abs() > 0.001;
 
   static const MaterialRecipe _solid = MaterialRecipe._(
     style: SurfaceMaterialStyle.solid,
     blurSigma: 0,
     surfaceOpacity: 1,
-    noiseOpacity: 0,
     borderOpacity: 0.5,
     shadowOpacity: 0,
     saturation: 1,
@@ -69,10 +69,9 @@ class MaterialRecipe {
     // 填充必须保持明显半透明：实时模糊由 BackdropFilter 提供，若填充
     // 接近不透明会把模糊完全盖住，视觉上退化成实色。
     surfaceOpacity: kSurfaceTintOpacity * 0.70,
-    noiseOpacity: 0.04,
     borderOpacity: 0.30,
     shadowOpacity: 0.14,
-    saturation: 1.12,
+    saturation: 1,
   );
 
   /// 取风格对应的配方。

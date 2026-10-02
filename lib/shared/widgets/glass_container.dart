@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_design_tokens.dart';
 import '../../core/theme/glass_style_controller.dart';
 import '../../core/theme/surface_material.dart';
-import 'material_noise.dart';
+import 'app_surface_style.dart';
 
 export '../../core/theme/glass_style_controller.dart' show GlassTier;
 export '../../core/theme/surface_material.dart'
@@ -13,8 +13,7 @@ export '../../core/theme/surface_material.dart'
 ///
 /// 由统一的 [MaterialRecipe] 驱动渲染，跟随全局开关
 /// [GlassStyleController.enabled] 派生具体材质：
-/// * 开 —— [SurfaceMaterialStyle.acrylic]：背景采样模糊 + tint/明度修正 +
-///   极细微程序化 grain（微粒）+ 柔和描边；
+/// * 开 —— [SurfaceMaterialStyle.acrylic]：背景采样模糊 + tint + 柔和描边；
 /// * 关 —— [SurfaceMaterialStyle.solid]：实色不透明表面，无实时模糊，最省 GPU。
 ///
 /// 铁律：
@@ -93,7 +92,7 @@ class GlassContainer extends StatelessWidget {
 
     final borderColor = _borderColor(recipe, isDark, cs);
 
-    Widget content = Container(
+    final content = Container(
       width: width,
       height: height,
       alignment: alignment,
@@ -109,24 +108,6 @@ class GlassContainer extends StatelessWidget {
       child: child,
     );
 
-    if (recipe.hasNoise) {
-      content = Stack(
-        children: [
-          content,
-          Positioned.fill(
-            child: IgnorePointer(
-              child: CustomPaint(
-                painter: MaterialNoisePainter(
-                  opacity: recipe.noiseOpacity,
-                  isDark: isDark,
-                ),
-              ),
-            ),
-          ),
-        ],
-      );
-    }
-
     // 关键约束：
     // 1. ClipRRect 必须严格处于 BackdropFilter 祖先位置；
     // 2. 局部受限采样（bounded blur）避免边缘溢色（edge bleed）。
@@ -134,15 +115,10 @@ class GlassContainer extends StatelessWidget {
     if (useBlur) {
       final sigma = _blurSigma(recipe);
       layer = BackdropFilter(
-        filterConfig: ImageFilterConfig.compose(
-          outer: ImageFilterConfig.blur(
-            sigmaX: sigma,
-            sigmaY: sigma,
-            bounded: true,
-          ),
-          inner: ImageFilterConfig(
-            ColorFilter.matrix(saturationColorMatrix(recipe.saturation)),
-          ),
+        filterConfig: acrylicBackdropFilter(
+          recipe,
+          sigma: sigma,
+          bounded: true,
         ),
         child: content,
       );
@@ -195,5 +171,3 @@ class GlassContainer extends StatelessWidget {
     ];
   }
 }
-
-/// 程序化噪点纹理已抽取为共享 [MaterialNoisePainter]（见 material_noise.dart）。
