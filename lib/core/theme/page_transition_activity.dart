@@ -4,12 +4,12 @@ import 'package:flutter/foundation.dart';
 
 /// 全局「页面转场进行中」信号。
 ///
-/// 应用统一的页面转场（`app_theme_builder.dart` 的 `_SlideFadePageTransition`）
+/// 应用统一的页面转场（`app_theme_builder.dart` 的 `_SharedAxisPageTransition`）
 /// 在每次 push / pop 动画期间持有一次 [acquire]，动画结束或页面销毁时
-/// [release]。下面几处据此在转场的 ~220ms 内让路，避免与转场抢帧：
+/// [release]。下面几处据此在转场的 ~450ms 内让路，避免与转场抢帧：
 ///
 /// * 首页壁纸 Shader 暂停推进（转场帧预算留给转场本身）；
-/// * 首页把返回后的刷新 / 数据变更重建推迟到转场结束之后（[whenIdle]）。
+/// * 首页 / 我的把返回后的刷新 / 数据变更重建推迟到转场结束之后（[whenIdle]）。
 ///
 /// 计数制：多个转场重叠（连续 push、pop 打断 push）时，只有全部结束才算空闲。
 ///
@@ -22,7 +22,7 @@ class PageTransitionActivity {
 
   static final PageTransitionActivity instance = PageTransitionActivity._();
 
-  /// 单次转场约 220ms；留足余量，仍远小于用户可感知的「卡死」。
+  /// 单次转场约 450ms；留足余量，仍远小于用户可感知的「卡死」。
   static const Duration defaultMaxHold = Duration(seconds: 2);
 
   Duration _maxHold = defaultMaxHold;

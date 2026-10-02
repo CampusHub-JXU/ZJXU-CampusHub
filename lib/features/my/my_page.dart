@@ -13,6 +13,7 @@ import '../../core/auth/zhengfang_auth.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/theme/app_design_tokens.dart';
 import '../../core/theme/app_typography.dart';
+import '../../core/theme/page_transition_activity.dart';
 import '../../core/theme/widgets/app_wallpaper_backdrop.dart';
 import '../../shared/widgets/app_feedback.dart';
 import '../../shared/widgets/app_icon_badge.dart';
@@ -186,8 +187,7 @@ class _MyPageState extends State<MyPage> {
       return;
     }
     await context.pushNamed('campus-card');
-    if (!mounted) return;
-    await _refreshStatus();
+    await _refreshAfterReturn();
   }
 
   /// 教务行动作：已登录直达 H5 门户；未登录先弹教务登录，登录成功后
@@ -215,6 +215,17 @@ class _MyPageState extends State<MyPage> {
       'external-webview',
       extra: {'title': '教务系统', 'academicEntry': true},
     );
+    await _refreshAfterReturn();
+  }
+
+  /// 从子页面返回后刷新登录状态。
+  ///
+  /// push 的 Future 在返回转场**开始**时就完成；此时立刻 setState 会让正在
+  /// 快照的本页重绘、重新栅格化整页（亚克力模糊 + Shader），返回动画卡顿。
+  /// 等转场落定（带看门狗）再刷新。
+  Future<void> _refreshAfterReturn() async {
+    if (!mounted) return;
+    await PageTransitionActivity.instance.whenIdle();
     if (!mounted) return;
     await _refreshStatus();
   }
@@ -520,8 +531,7 @@ class _MyPageState extends State<MyPage> {
                               status: '主题、学期、网络与关于',
                               onTap: () async {
                                 await context.pushNamed('settings');
-                                if (!mounted) return;
-                                await _refreshStatus();
+                                await _refreshAfterReturn();
                               },
                             ),
                             const Spacer(),

@@ -362,8 +362,24 @@ void main() {
     await advance(tester, const Duration(milliseconds: 400));
     final after = stateOf(tester).debugShaderTimeSeconds;
     expect(after, greaterThan(before));
-    // 转场里被丢掉的时间不得补回：恢复后只前进约 0.3s（轮询延迟 + 实际运行）。
+    // 转场里被丢掉的时间不得补回：恢复后只前进约 0.4s（实际运行）。
     expect(after - before, lessThan(0.45));
+  });
+
+  testWidgets('转场结束后下一帧立即恢复出帧，不等轮询', (tester) async {
+    await tester.pumpWidget(background());
+    await tester.pump();
+    await advance(tester, const Duration(milliseconds: 300));
+
+    PageTransitionActivity.instance.acquire();
+    await tester.pump(const Duration(milliseconds: 16));
+    await advance(tester, const Duration(milliseconds: 200));
+    final frames = stateOf(tester).debugRenderedFrames;
+
+    PageTransitionActivity.instance.release();
+    // 旧实现 100ms 轮询一次：这里只给 1ms，必须已经恢复出帧。
+    await tester.pump(const Duration(milliseconds: 1));
+    expect(stateOf(tester).debugRenderedFrames, greaterThan(frames));
   });
 
   testWidgets('系统减弱动画时不出帧，恢复后继续', (tester) async {
