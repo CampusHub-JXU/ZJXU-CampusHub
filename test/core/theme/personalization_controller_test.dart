@@ -104,6 +104,37 @@ void main() {
       expect(controller.shaderEnabled.value, isFalse);
     });
 
+    test('帧率默认 60，档位为 30/45/60/90/120', () async {
+      expect(PersonalizationController.kShaderFpsDefault, 60);
+      expect(PersonalizationController.kShaderFpsSteps, [30, 45, 60, 90, 120]);
+
+      await controller.init();
+
+      expect(controller.shaderFps.value, 60);
+    });
+
+    test('帧率持久化后重启读回，非档位值吸附到最近档', () async {
+      await controller.setShaderFps(30);
+      controller.debugReset();
+      await controller.init();
+      expect(controller.shaderFps.value, 30);
+
+      await controller.setShaderFps(100);
+      expect(controller.shaderFps.value, 90);
+      await controller.setShaderFps(1000);
+      expect(controller.shaderFps.value, 120);
+      await controller.setShaderFps(1);
+      expect(controller.shaderFps.value, 30);
+    });
+
+    test('被手改成非法帧率的持久化值读回时吸附', () async {
+      SharedPreferences.setMockInitialValues({'home_shader_fps': 77});
+
+      await controller.init();
+
+      expect(controller.shaderFps.value, 90);
+    });
+
     test('setShaderEnabled 写入后重启读回', () async {
       await controller.setShaderEnabled(false);
       controller.debugReset();

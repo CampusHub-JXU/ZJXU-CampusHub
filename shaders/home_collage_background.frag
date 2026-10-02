@@ -35,44 +35,75 @@ vec3 saturate_color(vec3 color, float saturation) {
   return mix(vec3(gray), color, saturation);
 }
 
-float random(vec2 st) {
-  return fract(sin(dot(st, vec2(12.9898, 78.233))) * 43758.5453123);
+// 四个格点哈希合并成一次 vec4 sin（数值与逐点 random() 完全一致，只是向量化）。
+vec4 random4(vec2 i) {
+  vec4 d = vec4(
+    dot(i, vec2(12.9898, 78.233)),
+    dot(i + vec2(1.0, 0.0), vec2(12.9898, 78.233)),
+    dot(i + vec2(0.0, 1.0), vec2(12.9898, 78.233)),
+    dot(i + vec2(1.0, 1.0), vec2(12.9898, 78.233))
+  );
+  return fract(sin(d) * 43758.5453123);
 }
 
 float noise(vec2 st) {
   vec2 i = floor(st);
   vec2 f = fract(st);
-
-  float a = random(i);
-  float b = random(i + vec2(1.0, 0.0));
-  float c = random(i + vec2(0.0, 1.0));
-  float d = random(i + vec2(1.0, 1.0));
+  vec4 h = random4(i);
 
   vec2 u = f * f * (3.0 - 2.0 * f);
-  return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+  return mix(h.x, h.y, u.x) + (h.z - h.x) * u.y * (1.0 - u.x) + (h.w - h.y) * u.x * u.y;
 }
 
-float fbm(vec2 p) {
+// 倍频数按用途裁剪（原来全部 7 层，共 35 次 noise；现在 4+4+5+5+3=21 次）。
+// 每层振幅 0.5*0.6^k，少几层会让均值下降（noise 均值 0.5），所以乘上
+// 「7 层总振幅 / n 层总振幅」补偿，保持 organic / fine 的整体亮度偏置不变，
+// 只丢掉最高频的细节（这些细节在半分辨率渲染下本来也已超过采样频率）。
+float fbm4(vec2 p) {
   float value = 0.0;
   float freq = 1.0;
   float amp = 0.5;
-  for (int i = 0; i < 7; i++) {
+  for (int i = 0; i < 4; i++) {
     value += amp * noise((p - vec2(1.0)) * freq);
     freq *= 1.9;
     amp *= 0.6;
   }
-  return value;
+  return value * 1.1167;
+}
+
+float fbm5(vec2 p) {
+  float value = 0.0;
+  float freq = 1.0;
+  float amp = 0.5;
+  for (int i = 0; i < 5; i++) {
+    value += amp * noise((p - vec2(1.0)) * freq);
+    freq *= 1.9;
+    amp *= 0.6;
+  }
+  return value * 1.0540;
+}
+
+float fbm3(vec2 p) {
+  float value = 0.0;
+  float freq = 1.0;
+  float amp = 0.5;
+  for (int i = 0; i < 3; i++) {
+    value += amp * noise((p - vec2(1.0)) * freq);
+    freq *= 1.9;
+    amp *= 0.6;
+  }
+  return value * 1.2398;
 }
 
 float pattern(vec2 p, float time) {
   vec2 a_pos = vec2(sin(time * 0.05), sin(time * 0.10)) * 6.0;
-  float a = fbm(p * 3.0 + a_pos);
+  float a = fbm4(p * 3.0 + a_pos);
 
   vec2 b_pos = vec2(sin(time * 0.10), sin(time * 0.10));
-  float b = fbm((p + a) * 0.5 + b_pos);
+  float b = fbm4((p + a) * 0.5 + b_pos);
 
   vec2 c_pos = vec2(-0.6, -0.5) + vec2(sin(-time * 0.01), sin(time * 0.10)) * 2.0;
-  return fbm((p + b) * 2.0 + c_pos);
+  return fbm5((p + b) * 2.0 + c_pos);
 }
 
 vec3 gradient_color(float t, vec3 c0, vec3 c1, vec3 c2) {
@@ -144,8 +175,8 @@ void main() {
   ) * mix(0.035, 0.135, intensity);
   flowed_uv.x = (flowed_uv.x - 0.5) * aspect + 0.5;
 
-  float fine = fbm(flowed_uv * mix(8.0, 15.0, intensity) + flow * 0.18 + time * 0.18);
-  float micro = fbm(flowed_uv * mix(20.0, 36.0, intensity) - flow * 0.10 - time * 0.10);
+  float fine = fbm5(flowed_uv * mix(8.0, 15.0, intensity) + flow * 0.18 + time * 0.18);
+  float micro = fbm3(flowed_uv * mix(20.0, 36.0, intensity) - flow * 0.10 - time * 0.10);
   float grad_a = flowed_uv.y + sin(coupled_flow.x * 0.65 + time * 0.40) * 0.22;
   float grad_b = flowed_uv.x + cos(coupled_flow.y * 0.55 - time * 0.28) * 0.18;
   float t = clamp(

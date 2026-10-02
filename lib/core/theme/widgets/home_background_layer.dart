@@ -66,20 +66,32 @@ class HomeBackgroundLayer extends StatelessWidget {
                                           .instance
                                           .shaderAnimationSpeed,
                                       builder: (context, animationSpeed, _) {
-                                        final themeColor = AppThemeController
-                                            .instance
-                                            .seedColor
-                                            .value;
-                                        return HomeFluidBackground(
-                                          intensity: strength.clamp(0.0, 1.0),
-                                          themeColor: themeColor,
-                                          monetColors: monetColors,
-                                          isDarkMode:
-                                              Theme.of(context).brightness ==
-                                              Brightness.dark,
-                                          opacity: shaderOpacity,
-                                          animationSpeed: animationSpeed,
-                                          fallback: image,
+                                        return ValueListenableBuilder<int>(
+                                          valueListenable:
+                                              PersonalizationController
+                                                  .instance
+                                                  .shaderFps,
+                                          builder: (context, fps, _) {
+                                            return HomeFluidBackground(
+                                              intensity: strength.clamp(
+                                                0.0,
+                                                1.0,
+                                              ),
+                                              themeColor: AppThemeController
+                                                  .instance
+                                                  .seedColor
+                                                  .value,
+                                              monetColors: monetColors,
+                                              isDarkMode:
+                                                  Theme.of(context)
+                                                      .brightness ==
+                                                  Brightness.dark,
+                                              opacity: shaderOpacity,
+                                              animationSpeed: animationSpeed,
+                                              targetFps: fps,
+                                              fallback: image,
+                                            );
+                                          },
                                         );
                                       },
                                     );

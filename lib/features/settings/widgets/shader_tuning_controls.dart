@@ -23,6 +23,38 @@ class ShaderAnimationSpeedSlider extends StatelessWidget {
   }
 }
 
+/// 帧率档位滑条（30 / 45 / 60 / 90 / 120）。高于屏幕刷新率的档位等同「跟随
+/// 屏幕」，数值右侧标出实际生效情况。
+class ShaderFpsSlider extends StatelessWidget {
+  const ShaderFpsSlider({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final steps = PersonalizationController.kShaderFpsSteps;
+    final refreshRate = View.maybeOf(context)?.display.refreshRate ?? 60.0;
+    return ValueListenableBuilder<int>(
+      valueListenable: PersonalizationController.instance.shaderFps,
+      builder: (context, fps, _) {
+        final index = steps.indexOf(fps).clamp(0, steps.length - 1);
+        final capped = fps > refreshRate.round();
+        return PlainSliderRow(
+          sliderKey: const Key('personalization_shader_fps'),
+          title: '帧率',
+          value: index.toDouble(),
+          valueLabel: capped
+              ? '$fps fps（屏幕 ${refreshRate.round()}Hz）'
+              : '$fps fps',
+          max: (steps.length - 1).toDouble(),
+          divisions: steps.length - 1,
+          onChanged: (value) => PersonalizationController.instance.setShaderFps(
+            steps[value.round().clamp(0, steps.length - 1)],
+          ),
+        );
+      },
+    );
+  }
+}
+
 class ShaderStrengthSlider extends StatelessWidget {
   const ShaderStrengthSlider({super.key});
 

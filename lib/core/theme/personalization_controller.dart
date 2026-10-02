@@ -35,6 +35,7 @@ class PersonalizationController {
   static const _keyShaderStrength = 'home_shader_strength';
   static const _keyShaderOpacity = 'home_shader_opacity';
   static const _keyShaderAnimationSpeed = 'home_shader_animation_speed';
+  static const _keyShaderFps = 'home_shader_fps';
   static const _keyLegacyFilterStrength = 'home_filter_strength';
   static const _keyBackgroundOpacity = 'home_background_opacity';
 
@@ -49,6 +50,7 @@ class PersonalizationController {
   static const _keyHomeCampusNotice = 'home_campus_notice_enabled';
 
   final ValueNotifier<String?> backgroundImagePath = ValueNotifier(null);
+
   /// 流体 Shader 的出厂默认值（新安装为开）。
   ///
   /// 流体 Shader 并非对壁纸做滤镜：它用壁纸取色 + 主题色**程序化生成**背景，
@@ -56,10 +58,27 @@ class PersonalizationController {
   /// 切换，见 [init] 的迁移分支。
   static const bool kShaderEnabledDefault = true;
 
-  final ValueNotifier<bool> shaderEnabled = ValueNotifier(kShaderEnabledDefault);
+  final ValueNotifier<bool> shaderEnabled = ValueNotifier(
+    kShaderEnabledDefault,
+  );
   final ValueNotifier<double> shaderStrength = ValueNotifier(0.45);
   final ValueNotifier<double> shaderOpacity = ValueNotifier(1.0);
   final ValueNotifier<double> shaderAnimationSpeed = ValueNotifier(1.0);
+
+  /// 流体 Shader 帧率档位（fps）。高于屏幕刷新率的档位等同「每个 vsync 一帧」。
+  static const List<int> kShaderFpsSteps = [30, 45, 60, 90, 120];
+  static const int kShaderFpsDefault = 60;
+
+  /// 把任意值吸附到最近的档位（持久化值被手改 / 旧版本缺失时兜底）。
+  static int snapShaderFps(int value) {
+    var best = kShaderFpsSteps.first;
+    for (final step in kShaderFpsSteps) {
+      if ((step - value).abs() < (best - value).abs()) best = step;
+    }
+    return best;
+  }
+
+  final ValueNotifier<int> shaderFps = ValueNotifier(kShaderFpsDefault);
   final ValueNotifier<double> backgroundOpacity = ValueNotifier(1.0);
   final ValueNotifier<Alignment> backgroundAlignment = ValueNotifier(
     Alignment.center,
@@ -359,6 +378,9 @@ class PersonalizationController {
     );
     shaderAnimationSpeed.value =
         (prefs.getDouble(_keyShaderAnimationSpeed) ?? 1.0).clamp(0.0, 2.0);
+    shaderFps.value = snapShaderFps(
+      prefs.getInt(_keyShaderFps) ?? kShaderFpsDefault,
+    );
     backgroundOpacity.value = prefs.getDouble(_keyBackgroundOpacity) ?? 1.0;
 
     final bgX = prefs.getDouble(_keyBgAlignX);
@@ -423,6 +445,13 @@ class PersonalizationController {
     await _persistDouble(_keyShaderAnimationSpeed, speed, shaderAnimationSpeed);
   }
 
+  Future<void> setShaderFps(int fps) async {
+    final snapped = snapShaderFps(fps);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keyShaderFps, snapped);
+    shaderFps.value = snapped;
+  }
+
   Future<void> setBackgroundOpacity(double value) async {
     final opacity = value.clamp(0.0, 1.0);
     await _persistDouble(_keyBackgroundOpacity, opacity, backgroundOpacity);
@@ -481,6 +510,7 @@ class PersonalizationController {
     shaderStrength.value = 0.45;
     shaderOpacity.value = 1.0;
     shaderAnimationSpeed.value = 1.0;
+    shaderFps.value = kShaderFpsDefault;
     backgroundOpacity.value = 1.0;
     backgroundAlignment.value = Alignment.center;
     backgroundFit.value = HomeBackgroundFit.cover;
