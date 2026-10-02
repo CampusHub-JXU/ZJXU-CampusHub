@@ -30,7 +30,7 @@ class PersonalizationEffectsSection extends StatelessWidget {
                     switchKey: const Key('personalization_shader'),
                     title: '流体 Shader',
                     titleBadge: '耗电',
-                    subtitle: '对壁纸做块状取样与流体扰动，持续占用 GPU',
+                    subtitle: '用壁纸取色生成流体背景（会替换壁纸画面）；无操作 45 秒后自动静止',
                     value: shaderEnabled,
                     onChanged: controller.setShaderEnabled,
                   ),

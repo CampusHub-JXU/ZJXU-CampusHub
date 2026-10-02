@@ -12,15 +12,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// 原为 features/home 下的主屏控制器；因被 settings 个性化页共享而下沉至
 /// core/theme，prefs key 保持不变。
 
-enum HomeShaderMode {
-  glass('玻璃背景'),
-  ribbon('流光丝带'),
-  collage('流体纹理');
-
-  const HomeShaderMode(this.label);
-  final String label;
-}
-
 enum HomeBackgroundFit {
   cover('填充', BoxFit.cover),
   contain('适应', BoxFit.contain),
@@ -58,7 +49,14 @@ class PersonalizationController {
   static const _keyHomeCampusNotice = 'home_campus_notice_enabled';
 
   final ValueNotifier<String?> backgroundImagePath = ValueNotifier(null);
-  final ValueNotifier<bool> shaderEnabled = ValueNotifier(false);
+  /// 流体 Shader 的出厂默认值（新安装为开）。
+  ///
+  /// 流体 Shader 并非对壁纸做滤镜：它用壁纸取色 + 主题色**程序化生成**背景，
+  /// 会替换壁纸画面。所以升级用户里「已设壁纸、从未碰过此开关」的人不能被静默
+  /// 切换，见 [init] 的迁移分支。
+  static const bool kShaderEnabledDefault = true;
+
+  final ValueNotifier<bool> shaderEnabled = ValueNotifier(kShaderEnabledDefault);
   final ValueNotifier<double> shaderStrength = ValueNotifier(0.45);
   final ValueNotifier<double> shaderOpacity = ValueNotifier(1.0);
   final ValueNotifier<double> shaderAnimationSpeed = ValueNotifier(1.0);
@@ -323,6 +321,7 @@ class PersonalizationController {
     final prefs = await SharedPreferences.getInstance();
 
     final path = prefs.getString(_keyBackgroundPath);
+    final hadStoredWallpaper = path != null;
     if (path != null && await File(path).exists()) {
       backgroundImagePath.value = path;
     } else {
@@ -330,10 +329,20 @@ class PersonalizationController {
       backgroundImagePath.value = null;
     }
 
-    shaderEnabled.value =
+    final storedShader =
         prefs.getBool(_keyShaderEnabled) ??
-        prefs.getBool(_keyLegacyColorFilterEnabled) ??
-        false;
+        prefs.getBool(_keyLegacyColorFilterEnabled);
+    if (storedShader != null) {
+      // 用户（或旧版本）明确存过的值永远优先，包括显式 false。
+      shaderEnabled.value = storedShader;
+    } else if (hadStoredWallpaper) {
+      // 键缺失 + 已有壁纸 = 升级前的老用户从未选择过 Shader：保持他们看到的
+      // 纯壁纸，并落盘成显式 false，避免之后删壁纸 / 重装前再次被默认值翻转。
+      shaderEnabled.value = false;
+      await prefs.setBool(_keyShaderEnabled, false);
+    } else {
+      shaderEnabled.value = kShaderEnabledDefault;
+    }
 
     if (prefs.containsKey(_keyRetiredHeaderGlass)) {
       await prefs.remove(_keyRetiredHeaderGlass);
@@ -468,7 +477,7 @@ class PersonalizationController {
   @visibleForTesting
   void debugReset() {
     backgroundImagePath.value = null;
-    shaderEnabled.value = false;
+    shaderEnabled.value = kShaderEnabledDefault;
     shaderStrength.value = 0.45;
     shaderOpacity.value = 1.0;
     shaderAnimationSpeed.value = 1.0;

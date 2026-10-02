@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../app_theme_controller.dart';
 import '../personalization_controller.dart';
-import 'home_glass_background_filter.dart';
+import 'home_fluid_background.dart';
 
 class HomeBackgroundLayer extends StatelessWidget {
   const HomeBackgroundLayer({
@@ -66,16 +66,12 @@ class HomeBackgroundLayer extends StatelessWidget {
                                           .instance
                                           .shaderAnimationSpeed,
                                       builder: (context, animationSpeed, _) {
-                                        // 流体纹理是唯一保留的 Shader 模式。
-                                        const mode = HomeShaderMode.collage;
                                         final themeColor = AppThemeController
                                             .instance
                                             .seedColor
                                             .value;
-                                        return HomeGlassBackgroundFilter(
-                                          mode: mode,
+                                        return HomeFluidBackground(
                                           intensity: strength.clamp(0.0, 1.0),
-                                          levels: 14.0 - strength * 4.0,
                                           themeColor: themeColor,
                                           monetColors: monetColors,
                                           isDarkMode:
@@ -83,7 +79,7 @@ class HomeBackgroundLayer extends StatelessWidget {
                                               Brightness.dark,
                                           opacity: shaderOpacity,
                                           animationSpeed: animationSpeed,
-                                          child: image,
+                                          fallback: image,
                                         );
                                       },
                                     );
