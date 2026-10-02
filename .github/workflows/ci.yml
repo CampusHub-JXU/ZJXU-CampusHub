@@ -149,6 +149,24 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_apk_build == true }}
         run: flutter build apk --debug
 
+      - name: Optional check that the minimal ONNX Runtime is packaged
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_apk_build == true }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The captcha OCR plugin consumes a local minimal ORT AAR
+          # (packages/campus_captcha_ocr/android/maven-repo/); make sure AGP merged its
+          # native libs and the ORT-format model into the app for every ABI.
+          apk="build/app/outputs/flutter-apk/app-debug.apk"
+          listing="$(unzip -l "${apk}")"
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            for lib in libonnxruntime.so libonnxruntime4j_jni.so; do
+              grep -q " lib/${abi}/${lib}$" <<<"${listing}" || { echo "Missing lib/${abi}/${lib} in ${apk}" >&2; exit 1; }
+            done
+          done
+          grep -q " assets/captcha_ocr/common_old_alnum.ort$" <<<"${listing}" || { echo "Missing .ort captcha model in ${apk}" >&2; exit 1; }
+          grep -E " lib/[^/]+/libonnxruntime.*\.so$| assets/captcha_ocr/" <<<"${listing}"
+
   workflow-smoke:
     name: Workflow Smoke Test
     runs-on: ubuntu-latest

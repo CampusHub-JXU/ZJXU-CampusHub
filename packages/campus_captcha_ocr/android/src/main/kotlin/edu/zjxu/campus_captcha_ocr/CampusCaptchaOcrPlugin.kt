@@ -12,7 +12,8 @@ import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
 
 /**
- * 本地（离线）验证码 OCR 插件，唯一引擎为 ddddocr `common_old.onnx` + ONNX Runtime。
+ * 本地（离线）验证码 OCR 插件，唯一引擎为 ddddocr `common_old` 字母数字裁剪版（`.ort`）
+ * + 自编精简 ONNX Runtime（见 [DdddocrEngine]）。
  *
  * - 只依赖 [FlutterPlugin]，**不依赖 Activity**，因此主引擎与 WorkManager
  *   创建的后台引擎都会经 GeneratedPluginRegistrant 自动注册本类。

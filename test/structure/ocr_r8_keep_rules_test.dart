@@ -54,11 +54,63 @@ void main() {
     );
   });
 
-  test('captcha OCR plugin depends on the ONNX Runtime Android artifact', () {
+  test('captcha OCR plugin depends on the self-built minimal ONNX Runtime AAR', () {
+    // tools/ocr_slim/: the official full onnxruntime-android AAR was replaced by
+    // a minimal build (only the captcha model's operators). It must replace the
+    // full artifact, never stack with it, and its Java API is still the upstream
+    // ai.onnxruntime package, so the keep rule above keeps covering it.
+    const aarPath =
+        'packages/campus_captcha_ocr/android/maven-repo/edu/zjxu/campus_captcha_ocr/onnxruntime-android-minimal/1.30.0/onnxruntime-android-minimal-1.30.0.aar';
     final buildGradle = File(buildGradlePath).readAsStringSync();
+    // AGP 9 rejects `implementation files("x.aar")` in a library module
+    // (bundleAar fails with "Direct local .aar file dependencies are not
+    // supported"), so the AAR is consumed as a Maven artifact from a repo that
+    // lives next to the plugin's build.gradle.
     expect(
       buildGradle,
-      contains('com.microsoft.onnxruntime:onnxruntime-android'),
+      contains(
+        'implementation "edu.zjxu.campus_captcha_ocr:onnxruntime-android-minimal:1.30.0"',
+      ),
     );
+    expect(buildGradle, contains('maven-repo'));
+    expect(
+      buildGradle,
+      isNot(contains('files("libs/')),
+      reason: 'Direct local AAR dependencies break the AGP 9 plugin build.',
+    );
+    expect(
+      buildGradle,
+      isNot(contains('com.microsoft.onnxruntime:onnxruntime-android')),
+      reason: 'Full and minimal ONNX Runtime must not both be packaged.',
+    );
+    expect(File(aarPath).existsSync(), isTrue, reason: 'Missing $aarPath.');
+    expect(
+      File(rulesPath).readAsStringSync(),
+      contains('-keep class ai.onnxruntime.** { *; }'),
+    );
+  });
+
+  test('captcha OCR ships the ORT-format model the minimal runtime can load', () {
+    const assets =
+        'packages/campus_captcha_ocr/android/src/main/assets/captcha_ocr';
+    const engine =
+        'packages/campus_captcha_ocr/android/src/main/kotlin/edu/zjxu/campus_captcha_ocr/DdddocrEngine.kt';
+    final source = File(engine).readAsStringSync();
+    expect(source, contains('"captcha_ocr/common_old_alnum.ort"'));
+    expect(source, contains('"captcha_ocr/charset_alnum.txt"'));
+    expect(source, contains('EXPECTED_CHARSET_SIZE = 63'));
+    expect(File('$assets/common_old_alnum.ort').existsSync(), isTrue);
+    // A minimal ORT build cannot load .onnx; shipping it again would only add
+    // ~6.5MB of dead weight.
+    expect(File('$assets/common_old.onnx').existsSync(), isFalse);
+
+    final charset = File('$assets/charset_alnum.txt').readAsStringSync();
+    expect(charset.length, 62, reason: 'blank (implicit) + 62 classes = 63');
+    expect(RegExp(r'^[A-Za-z0-9]{62}$').hasMatch(charset), isTrue);
+    expect(charset.split('').toSet().length, 62);
+
+    // ORT format: FlatBuffers file identifier "ORTM" at byte offset 4.
+    final model = File('$assets/common_old_alnum.ort').readAsBytesSync();
+    expect(String.fromCharCodes(model.sublist(4, 8)), 'ORTM');
   });
 }

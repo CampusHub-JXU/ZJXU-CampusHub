@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>edu.zjxu.campus_captcha_ocr</groupId>
+  <artifactId>onnxruntime-android-minimal</artifactId>
+  <version>1.30.0</version>
+  <packaging>aar</packaging>
+  <name>ONNX Runtime Android (minimal build)</name>
+  <description>Self-built minimal ONNX Runtime 1.30.0 CPU build; see tools/ocr_slim/ and THIRD_PARTY_NOTICES.md</description>
+  <licenses>
+    <license>
+      <name>MIT License</name>
+      <url>https://opensource.org/licenses/MIT</url>
+    </license>
+  </licenses>
+</project>
