@@ -376,4 +376,87 @@ void main() {
       findsNWidgets(AppFeaturesConfig.entries.length),
     );
   });
+
+  testWidgets(
+    'groups entries into 常用 and fixed categories without duplicates',
+    (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(child: FunctionZoneSection()),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('常用'), findsOneWidget);
+      for (final category in FeatureEntryCategory.values) {
+        expect(find.text(category.label), findsOneWidget);
+      }
+      // 默认常用（课表/成绩/考试/一卡通/电费）不在分类里重复。
+      expect(find.text('一卡通'), findsOneWidget);
+      expect(find.text('宿舍电费'), findsOneWidget);
+      expect(
+        find.byType(AppTileSurface),
+        findsNWidgets(AppFeaturesConfig.entries.length),
+      );
+    },
+  );
+
+  testWidgets('frequently visited entries move into 常用', (tester) async {
+    await ServiceHubUsageStore.instance.recordVisit('physical-test');
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(child: FunctionZoneSection()),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    // 访问过的体测成为常用首位宽磁贴（显示副标题）。
+    expect(find.text('体质测试成绩与预约（WebVPN 访问）'), findsOneWidget);
+    expect(find.text('体测成绩'), findsOneWidget);
+  });
+
+  testWidgets('search filters entries by title, subtitle and keywords', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(child: FunctionZoneSection()),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.enterText(find.byType(TextField), '校园卡');
+    await tester.pump();
+
+    expect(find.text('常用'), findsNothing);
+    expect(find.text('搜索结果 · 2'), findsOneWidget);
+    expect(find.text('一卡通'), findsOneWidget);
+    expect(find.text('付款码'), findsOneWidget);
+    expect(find.byType(AppTileSurface), findsNWidgets(2));
+
+    await tester.enterText(find.byType(TextField), 'gpa');
+    await tester.pump();
+    expect(find.text('成绩'), findsOneWidget);
+    expect(find.byType(AppTileSurface), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), '不存在的功能');
+    await tester.pump();
+    expect(find.text('没有找到相关功能'), findsOneWidget);
+    expect(find.byType(AppTileSurface), findsNothing);
+
+    await tester.tap(find.byTooltip('清除搜索'));
+    await tester.pump();
+    expect(find.text('常用'), findsOneWidget);
+    expect(
+      find.byType(AppTileSurface),
+      findsNWidgets(AppFeaturesConfig.entries.length),
+    );
+  });
 }
