@@ -25,7 +25,7 @@ import 'package:jxu_campus_hub/features/campus_card/campus_card_service.dart';
 import 'package:jxu_campus_hub/features/changxing_jiada/changxing_jiada_service.dart';
 import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_service.dart';
 import 'package:jxu_campus_hub/core/epay100/epay100_gateway.dart';
-import 'package:jxu_campus_hub/features/academic_progress/academic_progress_service.dart';
+import 'package:jxu_campus_hub/features/grades/progress/academic_progress_service.dart';
 import 'package:jxu_campus_hub/features/exam/exam_service.dart';
 import 'package:jxu_campus_hub/features/grades/grades_service.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';

@@ -2,24 +2,23 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../core/auth/zhengfang_auth.dart';
-import '../../core/theme/app_design_tokens.dart';
-import '../../core/theme/app_typography.dart';
-import '../../shared/widgets/app_app_bar.dart';
-import '../../shared/widgets/app_empty_view.dart';
-import '../../shared/widgets/app_error_view.dart';
-import '../../shared/widgets/app_feedback.dart';
-import '../../shared/widgets/app_filter_chips.dart';
-import '../../shared/widgets/app_list_tile.dart';
-import '../../shared/widgets/app_status_tag.dart';
-import '../../shared/widgets/app_tile_surface.dart';
-import '../../shared/widgets/auth_required_view.dart';
-import '../../shared/widgets/detail_readout.dart';
-import '../../shared/widgets/login_shell.dart';
-import '../../shared/widgets/network_error_toast.dart';
-import '../../shared/widgets/plain_list.dart';
-import '../../shared/widgets/refresh_status_line.dart';
-import '../../shared/widgets/skeleton_box.dart';
+import '../../../core/auth/zhengfang_auth.dart';
+import '../../../core/theme/app_design_tokens.dart';
+import '../../../core/theme/app_typography.dart';
+import '../../../shared/widgets/app_empty_view.dart';
+import '../../../shared/widgets/app_error_view.dart';
+import '../../../shared/widgets/app_feedback.dart';
+import '../../../shared/widgets/app_filter_chips.dart';
+import '../../../shared/widgets/app_list_tile.dart';
+import '../../../shared/widgets/app_status_tag.dart';
+import '../../../shared/widgets/app_tile_surface.dart';
+import '../../../shared/widgets/auth_required_view.dart';
+import '../../../shared/widgets/detail_readout.dart';
+import '../../../shared/widgets/login_shell.dart';
+import '../../../shared/widgets/network_error_toast.dart';
+import '../../../shared/widgets/plain_list.dart';
+import '../../../shared/widgets/refresh_status_line.dart';
+import '../../../shared/widgets/skeleton_box.dart';
 import 'academic_progress_model.dart';
 import 'academic_progress_service.dart';
 import 'requirement_tree_canvas.dart';
@@ -49,18 +48,32 @@ enum _StatusFilter {
   };
 }
 
-/// 学生学业情况查询的原生页面（替代正方 H5 `xsxyqk_cxXsxyqkIndex`）。
-class AcademicProgressPage extends StatefulWidget {
-  const AcademicProgressPage({super.key, this.fetchReport});
+/// 学生学业情况查询的原生视图（替代正方 H5 `xsxyqk_cxXsxyqkIndex`）。
+///
+/// 不自带 Scaffold：作为成绩页「学业进度」分段嵌入 `GradesPage`。AppBar 按钮由
+/// 宿主经 [AcademicProgressViewState.buildAppBarActions] 取得；按钮相关状态
+/// 变化时回调 [onChromeChanged]，让宿主重建 AppBar。
+class AcademicProgressView extends StatefulWidget {
+  const AcademicProgressView({
+    super.key,
+    this.fetchReport,
+    this.onChromeChanged,
+    this.active = true,
+  });
+
+  /// 是否为宿主当前可见的分段；不可见时不自动弹登录框，避免与成绩分段叠弹。
+  final bool active;
 
   /// 测试注入点：默认走 [AcademicProgressService.fetchReport]。
   final AcademicProgressFetcher? fetchReport;
 
+  final VoidCallback? onChromeChanged;
+
   @override
-  State<AcademicProgressPage> createState() => _AcademicProgressPageState();
+  State<AcademicProgressView> createState() => AcademicProgressViewState();
 }
 
-class _AcademicProgressPageState extends State<AcademicProgressPage> {
+class AcademicProgressViewState extends State<AcademicProgressView> {
   bool _loggedIn = false;
   bool _loading = false;
   bool _refreshing = false;
@@ -262,7 +275,9 @@ class _AcademicProgressPageState extends State<AcademicProgressPage> {
   }
 
   Future<void> _presentLoginPrompt({bool force = false}) async {
-    if (!mounted || _loginPromptInFlight || _loggedIn) return;
+    if (!mounted || _loginPromptInFlight || _loggedIn || !widget.active) {
+      return;
+    }
     if (!force && _loginPromptShown) return;
     _loginPromptShown = true;
     _loginPromptInFlight = true;
@@ -274,36 +289,45 @@ class _AcademicProgressPageState extends State<AcademicProgressPage> {
 
   // ── Build ─────────────────────────────────────────────────────────────
 
+  /// 上一次通知宿主时的 AppBar 相关状态（登录 / 有数据 / 树状图）。
+  (bool, bool, bool)? _notifiedChrome;
+
+  /// 宿主 AppBar 上的按钮：树状图 / 列表切换 + 刷新；未登录且无数据时为空。
+  List<Widget> buildAppBarActions() {
+    final hasData = _report != null;
+    if (!_loggedIn && !hasData) return const [];
+    return [
+      if (hasData)
+        IconButton(
+          icon: Icon(
+            _canvasView
+                ? Icons.view_agenda_outlined
+                : Icons.account_tree_outlined,
+          ),
+          tooltip: _canvasView ? '列表' : '树状图',
+          onPressed: () => setState(() => _canvasView = !_canvasView),
+        ),
+      IconButton(
+        icon: const Icon(Icons.refresh),
+        tooltip: '刷新',
+        onPressed: _loggedIn
+            ? () => _fetch(forceRefresh: true)
+            : () => _presentLoginPrompt(force: true),
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final hasData = _report != null;
-    return Scaffold(
-      appBar: AppAppBar(
-        title: const Text('学业情况'),
-        actions: (_loggedIn || hasData)
-            ? [
-                if (hasData)
-                  IconButton(
-                    icon: Icon(
-                      _canvasView
-                          ? Icons.view_agenda_outlined
-                          : Icons.account_tree_outlined,
-                    ),
-                    tooltip: _canvasView ? '列表' : '树状图',
-                    onPressed: () => setState(() => _canvasView = !_canvasView),
-                  ),
-                IconButton(
-                  icon: const Icon(Icons.refresh),
-                  tooltip: '刷新',
-                  onPressed: _loggedIn
-                      ? () => _fetch(forceRefresh: true)
-                      : () => _presentLoginPrompt(force: true),
-                ),
-              ]
-            : null,
-      ),
-      body: (_loggedIn || hasData) ? _buildBody() : _buildLoginBody(),
-    );
+    final chrome = (_loggedIn, hasData, _canvasView);
+    if (chrome != _notifiedChrome) {
+      _notifiedChrome = chrome;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) widget.onChromeChanged?.call();
+      });
+    }
+    return (_loggedIn || hasData) ? _buildBody() : _buildLoginBody();
   }
 
   Widget _buildLoginBody() => buildAcademicProgressLoginView(

@@ -3,12 +3,12 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
-import '../../core/academic/academic_exceptions.dart';
-import '../../core/auth/academic_auth_guard.dart';
-import '../../core/auth/zhengfang_auth.dart';
-import '../../core/cache/private_cache_store.dart';
-import '../../core/cache/private_owner_cache.dart';
-import '../../core/network/dio_client.dart';
+import '../../../core/academic/academic_exceptions.dart';
+import '../../../core/auth/academic_auth_guard.dart';
+import '../../../core/auth/zhengfang_auth.dart';
+import '../../../core/cache/private_cache_store.dart';
+import '../../../core/cache/private_owner_cache.dart';
+import '../../../core/network/dio_client.dart';
 import 'academic_progress_model.dart';
 import 'academic_progress_parser.dart';
 

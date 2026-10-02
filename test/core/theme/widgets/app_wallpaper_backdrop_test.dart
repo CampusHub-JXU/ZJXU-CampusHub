@@ -55,10 +55,7 @@ void main() {
           viewInsets: EdgeInsets.only(bottom: keyboard),
         ),
         child: const Scaffold(
-          body: Stack(
-            fit: StackFit.expand,
-            children: [AppWallpaperBackdrop()],
-          ),
+          body: Stack(fit: StackFit.expand, children: [AppWallpaperBackdrop()]),
         ),
       ),
     );

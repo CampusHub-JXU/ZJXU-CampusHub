@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/features/grades/grades_model.dart';
 import 'package:jxu_campus_hub/features/grades/grades_page.dart';
+import 'package:jxu_campus_hub/features/grades/progress/academic_progress_model.dart';
 import 'package:jxu_campus_hub/features/grades/widgets/grades_course_row.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_error_view.dart';
 import 'package:jxu_campus_hub/shared/widgets/skeleton_box.dart';
@@ -608,5 +609,73 @@ void main() {
     // 登出按既有行为会拉起教务登录弹窗；推进动画与其内部异步，
     // 避免测试结束时留下未完成的帧调度。
     await tester.pump(const Duration(seconds: 5));
+  });
+
+  group('课程成绩 / 学业进度分段', () {
+    const report = AcademicProgressReport(
+      summary: AcademicProgressSummary(gpa: '3.456'),
+      roots: [],
+    );
+
+    testWidgets('学业进度首次切换才请求，切回成绩不重复请求', (tester) async {
+      var gradeCalls = 0;
+      var reportCalls = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: GradesPage(
+            fetchGrades: (_, {bool forceRefresh = false}) async {
+              gradeCalls++;
+              return [GradeEntry.fromJson(grade('高等数学A', '2025-2026', '2'))];
+            },
+            fetchReport: ({bool forceRefresh = false}) async {
+              reportCalls++;
+              return report;
+            },
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(gradeCalls, 1);
+      expect(reportCalls, 0, reason: '学业明细代价高，未切到分段前不请求');
+
+      await tester.tap(find.text('学业进度'));
+      await tester.pump();
+      await tester.pump();
+      expect(reportCalls, 1);
+      expect(find.text('3.456'), findsOneWidget);
+      // 学业分段的 AppBar 换成树状图 / 刷新，没有成绩搜索。
+      expect(find.byTooltip('树状图'), findsOneWidget);
+      expect(find.byTooltip('搜索'), findsNothing);
+
+      await tester.tap(find.text('课程成绩'));
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.byTooltip('搜索'), findsOneWidget);
+      expect(gradeCalls, 1);
+      expect(reportCalls, 1);
+    });
+
+    testWidgets('从学业进度进入时不提前请求成绩', (tester) async {
+      var gradeCalls = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: GradesPage(
+            initialView: GradesPageView.progress,
+            fetchGrades: (_, {bool forceRefresh = false}) async {
+              gradeCalls++;
+              return const [];
+            },
+            fetchReport: ({bool forceRefresh = false}) async => report,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('3.456'), findsOneWidget);
+      expect(gradeCalls, 0);
+
+      await tester.tap(find.text('课程成绩'));
+      await tester.pump();
+      expect(gradeCalls, 1);
+    });
   });
 }

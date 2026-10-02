@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
-import 'package:jxu_campus_hub/features/academic_progress/academic_progress_model.dart';
-import 'package:jxu_campus_hub/features/academic_progress/academic_progress_page.dart';
+import 'package:jxu_campus_hub/features/grades/grades_page.dart';
+import 'package:jxu_campus_hub/features/grades/progress/academic_progress_model.dart';
 
-import '../../helpers/test_setup.dart';
+import '../../../helpers/test_setup.dart';
 
 const _report = AcademicProgressReport(
   summary: AcademicProgressSummary(
@@ -82,9 +82,14 @@ void main() {
   });
 
   Future<void> pumpPage(WidgetTester tester) async {
+    // 嵌入成绩页后顶部多了分段控件，加高视口让整棵树一屏可见。
+    tester.view.physicalSize = const Size(800, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     await tester.pumpWidget(
       MaterialApp(
-        home: AcademicProgressPage(
+        home: GradesPage(
+          initialView: GradesPageView.progress,
           fetchReport: ({bool forceRefresh = false}) async => _report,
         ),
       ),
@@ -118,7 +123,8 @@ void main() {
   testWidgets('更深的非末节点不丢子树', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
-        home: AcademicProgressPage(
+        home: GradesPage(
+          initialView: GradesPageView.progress,
           fetchReport: ({bool forceRefresh = false}) async =>
               const AcademicProgressReport(
                 summary: AcademicProgressSummary(),

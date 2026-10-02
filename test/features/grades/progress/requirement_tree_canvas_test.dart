@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:jxu_campus_hub/features/academic_progress/academic_progress_model.dart';
-import 'package:jxu_campus_hub/features/academic_progress/requirement_tree_canvas.dart';
+import 'package:jxu_campus_hub/features/grades/progress/academic_progress_model.dart';
+import 'package:jxu_campus_hub/features/grades/progress/requirement_tree_canvas.dart';
 
 RequirementNode _n(
   String id, [

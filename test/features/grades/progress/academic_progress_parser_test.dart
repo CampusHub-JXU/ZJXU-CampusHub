@@ -1,8 +1,8 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:jxu_campus_hub/features/academic_progress/academic_progress_model.dart';
-import 'package:jxu_campus_hub/features/academic_progress/academic_progress_parser.dart';
+import 'package:jxu_campus_hub/features/grades/progress/academic_progress_model.dart';
+import 'package:jxu_campus_hub/features/grades/progress/academic_progress_parser.dart';
 
 /// 夹具按 2026-10 抓到的首页脚本模板精简生成：学号 2020000000、姓名「测试同学」，
 /// GPA / 学分 / 门数均为假数据（docs/academic-progress-xsxyqk-api.md）。

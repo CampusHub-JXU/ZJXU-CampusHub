@@ -2,9 +2,9 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../../core/theme/app_design_tokens.dart';
-import '../../core/theme/app_typography.dart';
-import '../../shared/widgets/detail_readout.dart';
+import '../../../core/theme/app_design_tokens.dart';
+import '../../../core/theme/app_typography.dart';
+import '../../../shared/widgets/detail_readout.dart';
 import 'academic_progress_model.dart';
 
 /// 学分要求树的画布布局（纯函数，便于测试）。
