@@ -683,6 +683,46 @@ void main() {
       },
     );
 
+    test(
+      'normal AreaThree HTML mentioning 登录/session is not treated as expiry',
+      () async {
+        final current = ScheduleTermContext.current();
+        loginAs('20230001');
+        // 真实首页消息区会出现「登录」等字样（通知正文、导航、脚本变量）：
+        // 不是登录页，不得被判为过期而撤销刚建立的会话。
+        const areaThreeHtml = '''
+<div class="list-group"><a>请同学们登录教务系统确认选课结果</a></div>
+<script>var sessionUserKey = "x"; // 重新登录后生效</script>
+''';
+        final adapter = MockHttpClientAdapter()
+          ..registerJson('POST', '/jwglxt/xtgl/index_cxDbsy.html', {
+            'items': <dynamic>[],
+          })
+          ..registerText(
+            'POST',
+            '/jwglxt/xtgl/index_cxAreaThree.html',
+            areaThreeHtml,
+            headers: {
+              Headers.contentTypeHeader: ['text/html;charset=UTF-8'],
+            },
+          );
+        await DioClient.instance.ensureInitialized();
+        DioClient.instance.dio.httpClientAdapter = adapter;
+
+        final result = await ScheduleService.instance.fetchCourseChangeRules(
+          '20230001',
+          termContext: current,
+        );
+
+        expect(result, isEmpty);
+        expect(ZhengfangAuth.instance.isLoggedIn, isTrue);
+        expect(adapter.requestLog, [
+          'POST /jwglxt/xtgl/index_cxDbsy.html',
+          'POST /jwglxt/xtgl/index_cxAreaThree.html',
+        ]);
+      },
+    );
+
     test('does not request unscoped rules for a history term', () async {
       final previous = ScheduleTermContext.current().previous();
 

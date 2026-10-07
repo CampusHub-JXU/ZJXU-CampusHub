@@ -535,7 +535,9 @@ class ScheduleService {
     final data = resp.data;
     if (data is! Map<String, dynamic>) {
       final raw = data?.toString() ?? '';
-      if (_looksLikeLoginExpired(raw)) {
+      // 原始文本/HTML 只认严格的正方登录页：正常页面里出现「登录」字样
+      //（教学消息、导航文案）不是会话失效，误判会撤销刚建立的会话。
+      if (looksLikeZhengfangLoginHtml(raw)) {
         throw const ScheduleAuthExpiredException();
       }
       throw const ScheduleRequestException('课表返回数据格式异常');
@@ -606,7 +608,9 @@ class ScheduleService {
     }
 
     final html = resp.data ?? '';
-    if (_looksLikeLoginExpired(html)) {
+    // AreaThree 是含教学消息的整页 HTML：只认严格的正方登录页，不能按
+    // 「登录」「session」等关键字判过期（否则会撤销刚登录成功的会话）。
+    if (looksLikeZhengfangLoginHtml(html)) {
       throw const ScheduleAuthExpiredException();
     }
 
@@ -642,7 +646,9 @@ class ScheduleService {
     }
     if (data is! Map<String, dynamic>) {
       final raw = data?.toString() ?? '';
-      if (_looksLikeLoginExpired(raw)) {
+      // 原始文本/HTML 只认严格的正方登录页：正常页面里出现「登录」字样
+      //（教学消息、导航文案）不是会话失效，误判会撤销刚建立的会话。
+      if (looksLikeZhengfangLoginHtml(raw)) {
         throw const ScheduleAuthExpiredException();
       }
       return const [];
