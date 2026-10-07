@@ -1,7 +1,7 @@
 name: jxu_campus_hub
 description: "嘉兴大学校园应用"
 publish_to: 'none'
-version: 0.10.1+44
+version: 0.10.2+45
 
 environment:
   sdk: ^3.13.0
