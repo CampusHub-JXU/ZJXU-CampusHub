@@ -176,7 +176,7 @@ void main() {
       expect(find.text('一卡通账号'), findsOneWidget);
       expect(find.text('一卡通密码'), findsOneWidget);
       expect(find.text('记住账号并自动登录'), findsOneWidget);
-      expect(find.text('自动登录并自动刷新数据；不勾选则不保存密码'), findsOneWidget);
+      expect(find.text('自动登录并自动刷新数据；不勾选则不保存密码'), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );
@@ -211,7 +211,7 @@ void main() {
     expect(find.widgetWithText(FilledButton, '登录教务系统'), findsOneWidget);
     expect(find.text('教务系统密码'), findsOneWidget);
     expect(find.text('记住账号并自动登录'), findsOneWidget);
-    expect(find.text('自动登录并自动刷新数据；不勾选则不保存密码'), findsOneWidget);
+    expect(find.text('自动登录并自动刷新数据；不勾选则不保存密码'), findsNothing);
     // 加载已完成（无残留 spinner），布局无溢出。
     expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(tester.takeException(), isNull);

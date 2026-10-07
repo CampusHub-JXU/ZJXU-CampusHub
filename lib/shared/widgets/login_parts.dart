@@ -6,8 +6,8 @@ import '../../core/theme/app_design_tokens.dart';
 
 /// 「记住账号并自动登录」勾选行，统一认证与教务登录共用。
 ///
-/// 使用紧凑自定义行而非 [CheckboxListTile]：主/副标题两行文本在窄屏（含 600
-/// 高的最小测试视口）下不会把表单顶出可视区。纯展示：勾选状态由调用方持有，
+/// 使用紧凑自定义行而非 [CheckboxListTile]：在窄屏（含 600 高的最小测试
+/// 视口）下不会把表单顶出可视区。纯展示：勾选状态由调用方持有，
 /// 点整行或点复选框都回调 [onChanged]。
 class RememberAccountTile extends StatelessWidget {
   const RememberAccountTile({
@@ -44,20 +44,9 @@ class RememberAccountTile extends StatelessWidget {
               ),
               const SizedBox(width: 6),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      '记住账号并自动登录',
-                      style: tt.bodyMedium?.copyWith(color: cs.onSurface),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '自动登录并自动刷新数据；不勾选则不保存密码',
-                      style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-                    ),
-                  ],
+                child: Text(
+                  '记住账号并自动登录',
+                  style: tt.bodyMedium?.copyWith(color: cs.onSurface),
                 ),
               ),
             ],
