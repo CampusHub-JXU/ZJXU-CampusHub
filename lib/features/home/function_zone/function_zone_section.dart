@@ -339,18 +339,43 @@ class _FunctionSearchTile extends StatefulWidget {
 }
 
 class _FunctionSearchTileState extends State<_FunctionSearchTile> {
-  bool _focused = false;
+  /// 由本卡面持有并交给内部 `TextField` 的真实焦点节点。聚焦描边只跟随它的
+  /// `hasFocus`：旧实现用外层 `Focus.onFocusChange` 的布尔值，祖先 `hasFocus`
+  /// 会把卡面内其它可聚焦后代（如文本出现后的清除按钮）也算作聚焦，输入框
+  /// 本身已失焦时描边仍可能残留。
+  final FocusNode _focusNode = FocusNode(debugLabel: 'FunctionSearchField');
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode.addListener(_onFocusChanged);
+  }
+
+  @override
+  void dispose() {
+    _focusNode.removeListener(_onFocusChanged);
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _onFocusChanged() {
+    if (!mounted) return;
+    setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final radius = BorderRadius.circular(AppRadius.tileBorder.topLeft.x);
+    final focused = _focusNode.hasFocus;
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 160),
+      duration: AppMotion.reduced(context)
+          ? Duration.zero
+          : const Duration(milliseconds: 160),
       foregroundDecoration: ShapeDecoration(
         shape: RoundedSuperellipseBorder(
           borderRadius: radius,
-          side: _focused
+          side: focused
               ? BorderSide(color: cs.primary, width: 1.4)
               : BorderSide.none,
         ),
@@ -360,15 +385,13 @@ class _FunctionSearchTileState extends State<_FunctionSearchTile> {
         // 水平内边距与 _SmallFunctionTile 一致（徽标 / 标题左缘对齐）；
         // 垂直收窄成 48dp 细条，避免比磁贴还高显得臃肿。
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-        child: Focus(
-          onFocusChange: (focused) => setState(() => _focused = focused),
-          child: AppSearchField(
-            controller: widget.controller,
-            hintText: '搜索功能，如 成绩、电费、请假',
-            onChanged: widget.onChanged,
-            onClear: widget.onClear,
-            borderless: true,
-          ),
+        child: AppSearchField(
+          controller: widget.controller,
+          focusNode: _focusNode,
+          hintText: '搜索功能，如 成绩、电费、请假',
+          onChanged: widget.onChanged,
+          onClear: widget.onClear,
+          borderless: true,
         ),
       ),
     );

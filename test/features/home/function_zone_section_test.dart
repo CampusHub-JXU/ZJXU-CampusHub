@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -14,6 +15,43 @@ import 'package:jxu_campus_hub/shared/widgets/app_tile_surface.dart';
 const _defaultCommonCount = 5;
 int get _defaultSurfaceCount =>
     AppFeaturesConfig.entries.length + _defaultCommonCount + 1;
+
+/// 搜索框卡面的聚焦描边画在一个 [AnimatedContainer] 的
+/// `foregroundDecoration`（[RoundedSuperellipseBorder]）上；本函数取出它的
+/// `side` 以便断言聚焦视觉（返回 null 表示找不到该卡面）。
+BorderSide? _searchRing(WidgetTester tester) {
+  final matches = tester
+      .widgetList<AnimatedContainer>(find.byType(AnimatedContainer))
+      .where(
+        (widget) =>
+            widget.foregroundDecoration is ShapeDecoration &&
+            (widget.foregroundDecoration! as ShapeDecoration).shape
+                is RoundedSuperellipseBorder,
+      )
+      .toList();
+  if (matches.isEmpty) return null;
+  expect(matches, hasLength(1));
+  final shape =
+      (matches.single.foregroundDecoration! as ShapeDecoration).shape
+          as RoundedSuperellipseBorder;
+  return shape.side;
+}
+
+bool _ringVisible(BorderSide? side) =>
+    side != null && side.width > 0 && side.style != BorderStyle.none;
+
+/// 输入框本身（内部 `TextField` 的 [EditableText]）是否真正持有焦点。
+bool _inputFocused(WidgetTester tester) =>
+    tester.widget<EditableText>(find.byType(EditableText)).focusNode.hasFocus;
+
+Future<void> _pumpSection(WidgetTester tester) async {
+  await tester.pumpWidget(
+    const MaterialApp(
+      home: Scaffold(body: SingleChildScrollView(child: FunctionZoneSection())),
+    ),
+  );
+  await tester.pump();
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -442,5 +480,195 @@ void main() {
     await tester.pump();
     expect(find.text('常用'), findsOneWidget);
     expect(find.byType(AppTileSurface), findsNWidgets(_defaultSurfaceCount));
+  });
+
+  // ── Issue #43: search tile focus ring must follow the real TextField focus ──
+  //
+  // The ring used to be driven by an ancestor `Focus(onFocusChange:)` boolean.
+  // An ancestor's `hasFocus` is true if *any* descendant is focused, so when
+  // focus moved off the input onto the trailing clear button (both live inside
+  // that ancestor) the ring stayed painted even though the input had lost
+  // focus. These tests pin the ring to the input's own FocusNode.
+  group('search tile focus ring (Issue #43)', () {
+    testWidgets('ring is off until the input is focused, then tracks gain/loss '
+        'with and without text', (tester) async {
+      await _pumpSection(tester);
+
+      // Empty + unfocused.
+      expect(_inputFocused(tester), isFalse);
+      expect(_ringVisible(_searchRing(tester)), isFalse);
+
+      // Empty + focused (tap to edit).
+      await tester.tap(find.byType(TextField));
+      await tester.pumpAndSettle();
+      expect(_inputFocused(tester), isTrue);
+      expect(_ringVisible(_searchRing(tester)), isTrue);
+
+      // Empty + real unfocus.
+      tester.binding.focusManager.primaryFocus?.unfocus();
+      await tester.pumpAndSettle();
+      expect(_inputFocused(tester), isFalse);
+      expect(_ringVisible(_searchRing(tester)), isFalse);
+
+      // Non-empty + focused.
+      await tester.enterText(find.byType(TextField), '成绩');
+      await tester.pumpAndSettle();
+      expect(_inputFocused(tester), isTrue);
+      expect(_ringVisible(_searchRing(tester)), isTrue);
+
+      // Non-empty + real unfocus: the ring clears regardless of text.
+      tester.binding.focusManager.primaryFocus?.unfocus();
+      await tester.pumpAndSettle();
+      expect(_inputFocused(tester), isFalse);
+      expect(_ringVisible(_searchRing(tester)), isFalse);
+    });
+
+    testWidgets('hiding the keyboard while the input stays focused keeps the '
+        'ring (keyboard-hidden != focus-lost)', (tester) async {
+      await _pumpSection(tester);
+      await tester.enterText(find.byType(TextField), '成绩');
+      await tester.pumpAndSettle();
+      expect(_inputFocused(tester), isTrue);
+      expect(_ringVisible(_searchRing(tester)), isTrue);
+
+      // Dismiss the soft keyboard only; the input keeps focus.
+      tester.testTextInput.hide();
+      await tester.pumpAndSettle();
+      expect(_inputFocused(tester), isTrue);
+      expect(_ringVisible(_searchRing(tester)), isTrue);
+
+      // A genuine unfocus is what clears the ring.
+      tester.binding.focusManager.primaryFocus?.unfocus();
+      await tester.pumpAndSettle();
+      expect(_ringVisible(_searchRing(tester)), isFalse);
+    });
+
+    testWidgets('focus moving off the input (onto the clear button) clears the '
+        'ring even though the field stays inside the card', (tester) async {
+      await _pumpSection(tester);
+      await tester.enterText(find.byType(TextField), 'a');
+      await tester.pumpAndSettle();
+      expect(_inputFocused(tester), isTrue);
+      expect(_ringVisible(_searchRing(tester)), isTrue);
+
+      // Traverse focus to the trailing clear button: still inside the card,
+      // but the input itself is no longer focused.
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.pumpAndSettle();
+      expect(_inputFocused(tester), isFalse);
+      expect(_ringVisible(_searchRing(tester)), isFalse);
+    });
+
+    testWidgets('clearing text keeps the input focused, resets results, and '
+        'keeps the ring in sync', (tester) async {
+      await _pumpSection(tester);
+      await tester.enterText(find.byType(TextField), '校园卡');
+      await tester.pumpAndSettle();
+      expect(find.text('搜索结果 · 2'), findsOneWidget);
+      expect(_inputFocused(tester), isTrue);
+      expect(_ringVisible(_searchRing(tester)), isTrue);
+
+      await tester.tap(find.byTooltip('清除搜索'));
+      await tester.pumpAndSettle();
+
+      // Filtering resets; clearing text does not unfocus, so the ring stays.
+      expect(find.text('常用'), findsOneWidget);
+      expect(find.byType(AppTileSurface), findsNWidgets(_defaultSurfaceCount));
+      expect(_inputFocused(tester), isTrue);
+      expect(_ringVisible(_searchRing(tester)), isTrue);
+
+      tester.binding.focusManager.primaryFocus?.unfocus();
+      await tester.pumpAndSettle();
+      expect(_inputFocused(tester), isFalse);
+      expect(_ringVisible(_searchRing(tester)), isFalse);
+    });
+
+    testWidgets('repeated focus/unfocus cycles stay in sync and end clear', (
+      tester,
+    ) async {
+      await _pumpSection(tester);
+      for (var i = 0; i < 3; i++) {
+        await tester.tap(find.byType(TextField));
+        await tester.pumpAndSettle();
+        expect(_inputFocused(tester), isTrue, reason: 'cycle $i gain');
+        expect(
+          _ringVisible(_searchRing(tester)),
+          isTrue,
+          reason: 'cycle $i gain',
+        );
+
+        tester.binding.focusManager.primaryFocus?.unfocus();
+        await tester.pumpAndSettle();
+        expect(_inputFocused(tester), isFalse, reason: 'cycle $i loss');
+        expect(
+          _ringVisible(_searchRing(tester)),
+          isFalse,
+          reason: 'cycle $i loss',
+        );
+      }
+    });
+
+    testWidgets(
+      'tapping a feature tile unfocuses the input before navigation',
+      (tester) async {
+        final router = GoRouter(
+          routes: [
+            GoRoute(
+              path: '/',
+              name: 'home',
+              builder: (context, state) => const Scaffold(
+                body: SingleChildScrollView(child: FunctionZoneSection()),
+              ),
+            ),
+            GoRoute(
+              path: '/exam',
+              name: 'exam',
+              builder: (context, state) => const Scaffold(body: Text('考试页面')),
+            ),
+          ],
+        );
+
+        await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+        await tester.pump();
+
+        await tester.tap(find.byType(TextField));
+        await tester.pumpAndSettle();
+        expect(_ringVisible(_searchRing(tester)), isTrue);
+
+        await tester.tap(find.text('考试').first);
+        await tester.pumpAndSettle();
+
+        expect(find.text('考试页面'), findsOneWidget);
+        // The home route is offstage: the input must have been unfocused.
+        final editable = tester.widget<EditableText>(
+          find.byType(EditableText, skipOffstage: false),
+        );
+        expect(editable.focusNode.hasFocus, isFalse);
+      },
+    );
+
+    testWidgets('disposing the section releases the owned focus node cleanly '
+        'and a fresh mount still tracks focus', (tester) async {
+      await _pumpSection(tester);
+      await tester.tap(find.byType(TextField));
+      await tester.pumpAndSettle();
+      expect(_ringVisible(_searchRing(tester)), isTrue);
+
+      // Replace the whole subtree while the input is focused: the tile state
+      // (and its FocusNode) is disposed with focus held.
+      await tester.pumpWidget(
+        const MaterialApp(home: Scaffold(body: SizedBox.shrink())),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+
+      // Re-mount: a fresh node starts unfocused and still tracks focus.
+      await _pumpSection(tester);
+      expect(_ringVisible(_searchRing(tester)), isFalse);
+      await tester.tap(find.byType(TextField));
+      await tester.pumpAndSettle();
+      expect(_ringVisible(_searchRing(tester)), isTrue);
+      expect(tester.takeException(), isNull);
+    });
   });
 }
