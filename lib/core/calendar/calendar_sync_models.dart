@@ -21,6 +21,9 @@ abstract final class CalendarSyncProtocol {
   static const String methodUpsertEventBatch = 'upsertEventBatch';
   static const String methodDeleteOwnedEventsByIds = 'deleteOwnedEventsByIds';
 
+  /// 只读遗留扫描（Issue #48）：列出「当前包名 + 合法 marker」证实的自有日历。
+  static const String methodListOwnedEventCalendars = 'listOwnedEventCalendars';
+
   /// 原生单批事件上限；Dart 侧先校验，避免无谓的 IPC 往返。
   static const int maxBatchEvents = 100;
 
@@ -31,6 +34,12 @@ abstract final class CalendarSyncProtocol {
   static const int maxLocationLength = 1024;
   static const int maxTimeZoneLength = 64;
   static const int maxReminderMinutes = 10080;
+
+  /// 只读遗留扫描返回的日历数上限（与原生 `MAX_OWNED_CALENDARS` lockstep）。
+  static const int maxOwnedCalendars = 300;
+
+  /// 只读遗留扫描展示名长度上限（与原生 `MAX_DISPLAY_NAME_LENGTH` lockstep）。
+  static const int maxDisplayNameLength = 256;
 
   /// businessKey 只存私有 ledger，长度上限由本地约定，不发给原生。
   static const int maxBusinessKeyLength = 512;
@@ -536,6 +545,214 @@ class CalendarSyncDeleteResult {
   String toString() =>
       'CalendarSyncDeleteResult(deleted: ${deletedIds.length}, '
       'notDeleted: ${notDeletedIds.length})';
+}
+
+/// 只读遗留扫描（`listOwnedEventCalendars`）的完整性原因（固定 wire code）。
+///
+/// 这是**只读扫描结果**的原因码，不是写入失败类别。四值冻结，与原生
+/// `CalendarOwnedScanReasons` lockstep；新增须同步原生、文档与测试。
+enum CalendarOwnedDiscoveryReason {
+  /// provider 不可用 / 扫描整体失败（既有 `providerUnavailable` 的对应）。
+  unavailable('unavailable'),
+
+  /// 日历权限被拒 / 扫描中途撤销（既有 `permissionDenied` 的对应）。
+  permissionDenied('permissionDenied'),
+
+  /// 达到行数 / 日历数上限：结论不完整（无既有对应）。
+  scanLimit('scanLimit'),
+
+  /// 命中的自有日历元数据缺失 / 查询失败：`writable` 未知（既有
+  /// `calendarUnavailable` 的对应）。
+  calendarUnavailable('calendarUnavailable');
+
+  const CalendarOwnedDiscoveryReason(this.wireCode);
+
+  final String wireCode;
+
+  /// 解析固定 wire code；未知 / 非字符串返回 null（调用方按协议违规处理）。
+  static CalendarOwnedDiscoveryReason? fromWire(Object? raw) {
+    if (raw is! String) return null;
+    for (final value in values) {
+      if (value.wireCode == raw) return value;
+    }
+    return null;
+  }
+}
+
+/// 本 App 遗留事件所属的系统日历（`listOwnedEventCalendars` 单个候选）。
+///
+/// 只含归属证明所需的只读元数据；**不含**账号 / owner / 邮箱等身份信息。
+class CalendarOwnedCalendarInfo {
+  const CalendarOwnedCalendarInfo({
+    required this.calendarId,
+    this.displayName,
+    this.writable,
+  });
+
+  final int calendarId;
+
+  /// 展示名（已去敏、≤ [CalendarSyncProtocol.maxDisplayNameLength]）；未知为 null。
+  final String? displayName;
+
+  /// 是否可写；**null 表示未知**（元数据缺失 / 查询失败），此时不得删除。
+  final bool? writable;
+
+  static CalendarOwnedCalendarInfo? tryParse(Object? raw) {
+    if (raw is! Map) return null;
+    final calendarId = _asPositiveInt(raw['calendarId']);
+    if (calendarId == null) return null;
+
+    final rawName = raw['displayName'];
+    if (rawName != null && rawName is! String) return null;
+    final displayName = rawName is String
+        ? _sanitizeDisplayName(rawName)
+        : null;
+
+    final rawWritable = raw['writable'];
+    if (rawWritable != null && rawWritable is! bool) return null;
+    final writable = rawWritable is bool ? rawWritable : null;
+
+    return CalendarOwnedCalendarInfo(
+      calendarId: calendarId,
+      displayName: displayName,
+      writable: writable,
+    );
+  }
+
+  @override
+  String toString() =>
+      'CalendarOwnedCalendarInfo(calendarId: $calendarId, '
+      'displayName: $displayName, writable: $writable)';
+}
+
+/// 只读遗留扫描结果（`listOwnedEventCalendars`）。
+///
+/// 语义冻结：`complete == true` **仅当**原生明确返回 `complete` 为真实 `true` 且
+/// 无任何降级；不完整时 [reason] 给出固定原因。空列表 + `complete == false`
+/// **绝不**等于「已清干净」。
+class CalendarOwnedCalendarDiscovery {
+  const CalendarOwnedCalendarDiscovery({
+    required this.calendars,
+    required this.complete,
+    this.reason,
+  });
+
+  final List<CalendarOwnedCalendarInfo> calendars;
+
+  /// 是否为**完整**扫描。
+  final bool complete;
+
+  /// 不完整时的固定原因；完整时为 null。
+  final CalendarOwnedDiscoveryReason? reason;
+
+  /// 是否存在元数据未知（`writable == null`）的候选；未知候选不得删除。
+  bool get hasUnknownMetadata => calendars.any((c) => c.writable == null);
+
+  static const CalendarOwnedCalendarDiscovery _unavailable =
+      CalendarOwnedCalendarDiscovery(
+        calendars: <CalendarOwnedCalendarInfo>[],
+        complete: false,
+        reason: CalendarOwnedDiscoveryReason.unavailable,
+      );
+
+  static const CalendarOwnedCalendarDiscovery _permissionDenied =
+      CalendarOwnedCalendarDiscovery(
+        calendars: <CalendarOwnedCalendarInfo>[],
+        complete: false,
+        reason: CalendarOwnedDiscoveryReason.permissionDenied,
+      );
+
+  /// 平台缺失 / provider 不可用等无法扫描的保守结果（绝不当「零个即干净」）。
+  static CalendarOwnedCalendarDiscovery unavailable() => _unavailable;
+
+  /// 权限被拒的保守结果。
+  static CalendarOwnedCalendarDiscovery permissionDenied() => _permissionDenied;
+
+  /// 解析固定协议形状；顶层结构非法返回 null（由门面降级为 [unavailable]）。
+  ///
+  /// 行级宽松：非法 / 重复行被丢弃并**强制 `complete=false`**，绝不静默把残缺
+  /// 结果当「空即干净」。未知多余字段忽略。
+  static CalendarOwnedCalendarDiscovery? tryParse(Object? raw) {
+    if (raw is! Map) return null;
+    final rawComplete = raw['complete'];
+    if (rawComplete is! bool) return null;
+
+    final rawReason = raw['reason'];
+    final CalendarOwnedDiscoveryReason? parsedReason = rawReason == null
+        ? null
+        : CalendarOwnedDiscoveryReason.fromWire(rawReason);
+    if (rawReason != null && parsedReason == null) return null;
+
+    final rawCalendars = raw['calendars'];
+    if (rawCalendars is! List) return null;
+
+    final calendars = <CalendarOwnedCalendarInfo>[];
+    final seenIds = <int>{};
+    var dropped = false;
+    for (final item in rawCalendars) {
+      final info = CalendarOwnedCalendarInfo.tryParse(item);
+      if (info == null) {
+        dropped = true;
+        continue;
+      }
+      if (!seenIds.add(info.calendarId)) {
+        dropped = true;
+        continue;
+      }
+      if (calendars.length >= CalendarSyncProtocol.maxOwnedCalendars) {
+        dropped = true;
+        break;
+      }
+      calendars.add(info);
+    }
+
+    var effectiveComplete = rawComplete;
+    CalendarOwnedDiscoveryReason? effectiveReason = parsedReason;
+    if (dropped || (effectiveComplete && effectiveReason != null)) {
+      effectiveComplete = false;
+      effectiveReason ??= CalendarOwnedDiscoveryReason.unavailable;
+    }
+    if (effectiveComplete) {
+      effectiveReason = null;
+    } else {
+      effectiveReason ??= CalendarOwnedDiscoveryReason.unavailable;
+    }
+
+    return CalendarOwnedCalendarDiscovery(
+      calendars: List<CalendarOwnedCalendarInfo>.unmodifiable(calendars),
+      complete: effectiveComplete,
+      reason: effectiveReason,
+    );
+  }
+
+  @override
+  String toString() =>
+      'CalendarOwnedCalendarDiscovery(calendars: ${calendars.length}, '
+      'complete: $complete, reason: ${reason?.wireCode})';
+}
+
+/// displayName 去敏：控制字符折空格 / 丢弃，trim，按 UTF-16 长度上限截断
+/// （不切断代理对），空串归一为 null。与原生 `sanitizeDisplayName` 等价。
+String? _sanitizeDisplayName(String raw) {
+  final buffer = StringBuffer();
+  for (final rune in raw.runes) {
+    if (rune == 0x0a || rune == 0x0d || rune == 0x09) {
+      buffer.write(' ');
+    } else if (rune < 0x20 || rune == 0x7f) {
+      continue;
+    } else {
+      buffer.writeCharCode(rune);
+    }
+  }
+  final trimmed = buffer.toString().trim();
+  if (trimmed.isEmpty) return null;
+  if (trimmed.length <= CalendarSyncProtocol.maxDisplayNameLength) {
+    return trimmed;
+  }
+  var cut = CalendarSyncProtocol.maxDisplayNameLength;
+  final last = trimmed.codeUnitAt(cut - 1);
+  if (last >= 0xd800 && last <= 0xdbff) cut -= 1;
+  return trimmed.substring(0, cut);
 }
 
 int? _asPositiveInt(Object? value) {

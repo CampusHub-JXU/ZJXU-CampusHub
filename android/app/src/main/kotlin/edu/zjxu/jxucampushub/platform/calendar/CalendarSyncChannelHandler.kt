@@ -75,6 +75,7 @@ class CalendarSyncChannelHandler(private val activity: Activity) {
                 "createOrGetLocalCalendar" -> result.success(store.createOrGetLocalCalendar())
                 "listWritableCalendars" -> result.success(store.listWritableCalendars())
                 "queryOwnedEvents" -> result.success(queryOwnedEvents(call))
+                "listOwnedEventCalendars" -> result.success(store.listOwnedEventCalendars())
                 "upsertEventBatch" -> result.success(upsertEventBatch(call))
                 "deleteOwnedEventsByIds" -> result.success(deleteOwnedEventsByIds(call))
                 else -> result.notImplemented()

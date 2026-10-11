@@ -29,6 +29,9 @@ void main() {
   CalendarSyncChannel buildChannel() =>
       MethodChannelCalendarSyncChannel(channel: methodChannel);
 
+  MethodChannelCalendarSyncChannel buildDiscoveryChannel() =>
+      MethodChannelCalendarSyncChannel(channel: methodChannel);
+
   CalendarSyncEventDraft draft({
     String opaqueId = opaqueA,
     String title = '高等数学',
@@ -69,6 +72,10 @@ void main() {
     expect(
       CalendarSyncProtocol.methodDeleteOwnedEventsByIds,
       'deleteOwnedEventsByIds',
+    );
+    expect(
+      CalendarSyncProtocol.methodListOwnedEventCalendars,
+      'listOwnedEventCalendars',
     );
   });
 
@@ -722,6 +729,130 @@ void main() {
           ),
         ),
       );
+    });
+  });
+
+  group('listOwnedEventCalendars (read-only discovery)', () {
+    test('sends an empty payload and parses a complete scan', () async {
+      setHandler(
+        (_) async => <String, Object?>{
+          'calendars': <Object?>[
+            <String, Object?>{
+              'calendarId': 5,
+              'displayName': '嘉兴大学课程',
+              'writable': true,
+            },
+            <String, Object?>{
+              'calendarId': 7,
+              'displayName': '只读日历',
+              'writable': false,
+            },
+          ],
+          'complete': true,
+          'reason': null,
+        },
+      );
+
+      final discovery = await buildDiscoveryChannel().listOwnedEventCalendars();
+
+      expect(discovery.complete, isTrue);
+      expect(discovery.reason, isNull);
+      expect(discovery.calendars, hasLength(2));
+      expect(discovery.calendars.first.calendarId, 5);
+      expect(discovery.calendars.last.writable, isFalse);
+      expect(discovery.hasUnknownMetadata, isFalse);
+
+      final call = calls.single;
+      expect(call.method, 'listOwnedEventCalendars');
+      final arguments = call.arguments as Map<Object?, Object?>;
+      // 只读、无输入：绝不夹带 opaqueIds / 路径 / owner 包名。
+      expect(arguments, isEmpty);
+    });
+
+    test('downgrades malformed rows to an incomplete scan', () async {
+      setHandler(
+        (_) async => <String, Object?>{
+          'calendars': <Object?>[
+            <String, Object?>{'calendarId': 5, 'writable': true},
+            <String, Object?>{'calendarId': 0},
+            'not-a-map',
+            <String, Object?>{'calendarId': 5, 'writable': false},
+          ],
+          'complete': true,
+          'reason': null,
+        },
+      );
+
+      final discovery = await buildDiscoveryChannel().listOwnedEventCalendars();
+
+      // 保留唯一合法行，但绝不把残缺结果当「完整 / 空即干净」。
+      expect(discovery.complete, isFalse);
+      expect(discovery.reason, CalendarOwnedDiscoveryReason.unavailable);
+      expect(discovery.calendars.single.calendarId, 5);
+    });
+
+    test('keeps the native incomplete reason', () async {
+      setHandler(
+        (_) async => <String, Object?>{
+          'calendars': <Object?>[
+            <String, Object?>{'calendarId': 9, 'writable': null},
+          ],
+          'complete': false,
+          'reason': 'calendarUnavailable',
+        },
+      );
+
+      final discovery = await buildDiscoveryChannel().listOwnedEventCalendars();
+
+      expect(discovery.complete, isFalse);
+      expect(
+        discovery.reason,
+        CalendarOwnedDiscoveryReason.calendarUnavailable,
+      );
+      expect(discovery.hasUnknownMetadata, isTrue);
+    });
+
+    test('degrades platform failures to typed conservative results', () async {
+      // 无 handler → MissingPluginException。
+      final missing = await buildDiscoveryChannel().listOwnedEventCalendars();
+      expect(missing.complete, isFalse);
+      expect(missing.reason, CalendarOwnedDiscoveryReason.unavailable);
+      expect(missing.calendars, isEmpty);
+
+      setHandler(
+        (_) async => throw PlatformException(code: 'permission_denied'),
+      );
+      final denied = await buildDiscoveryChannel().listOwnedEventCalendars();
+      expect(denied.complete, isFalse);
+      expect(denied.reason, CalendarOwnedDiscoveryReason.permissionDenied);
+
+      setHandler(
+        (_) async => throw PlatformException(code: 'provider_unavailable'),
+      );
+      final unavailable = await buildDiscoveryChannel()
+          .listOwnedEventCalendars();
+      expect(unavailable.complete, isFalse);
+      expect(unavailable.reason, CalendarOwnedDiscoveryReason.unavailable);
+    });
+
+    test('rejects malformed top-level payloads as unavailable', () async {
+      for (final raw in <Object?>[
+        null,
+        'x',
+        <String, Object?>{'complete': true, 'reason': null},
+        <String, Object?>{'calendars': <Object?>[], 'complete': 'true'},
+        <String, Object?>{
+          'calendars': <Object?>[],
+          'complete': true,
+          'reason': 'bogus',
+        },
+      ]) {
+        setHandler((_) async => raw);
+        final discovery = await buildDiscoveryChannel()
+            .listOwnedEventCalendars();
+        expect(discovery.complete, isFalse);
+        expect(discovery.reason, CalendarOwnedDiscoveryReason.unavailable);
+      }
     });
   });
 }

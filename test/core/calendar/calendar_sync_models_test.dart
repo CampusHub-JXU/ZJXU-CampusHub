@@ -492,4 +492,195 @@ void main() {
       expect(error.message, contains('Map'));
     });
   });
+
+  group('CalendarOwnedCalendarInfo', () {
+    test('parses id + optional metadata', () {
+      final info = CalendarOwnedCalendarInfo.tryParse(<String, Object?>{
+        'calendarId': 5,
+        'displayName': '嘉兴大学课程',
+        'writable': true,
+      });
+
+      expect(info?.calendarId, 5);
+      expect(info?.displayName, '嘉兴大学课程');
+      expect(info?.writable, isTrue);
+    });
+
+    test('treats missing / null metadata as unknown', () {
+      final missing = CalendarOwnedCalendarInfo.tryParse(<String, Object?>{
+        'calendarId': 5,
+      });
+      expect(missing?.displayName, isNull);
+      expect(missing?.writable, isNull);
+
+      final nullMetadata = CalendarOwnedCalendarInfo.tryParse(<String, Object?>{
+        'calendarId': 5,
+        'displayName': null,
+        'writable': null,
+      });
+      expect(nullMetadata?.writable, isNull);
+    });
+
+    test('sanitizes displayName and drops control characters', () {
+      final info = CalendarOwnedCalendarInfo.tryParse(<String, Object?>{
+        'calendarId': 5,
+        'displayName': '  课程\n表\u0000  ',
+        'writable': false,
+      });
+
+      expect(info?.displayName, '课程 表');
+      expect(info?.writable, isFalse);
+    });
+
+    test('bounds displayName to the protocol limit', () {
+      final long = 'x' * (CalendarSyncProtocol.maxDisplayNameLength + 40);
+      final info = CalendarOwnedCalendarInfo.tryParse(<String, Object?>{
+        'calendarId': 5,
+        'displayName': long,
+      });
+
+      expect(
+        info?.displayName?.length,
+        CalendarSyncProtocol.maxDisplayNameLength,
+      );
+    });
+
+    test('rejects malformed payloads', () {
+      for (final raw in <Object?>[
+        null,
+        'x',
+        <String, Object?>{'calendarId': 0},
+        <String, Object?>{'calendarId': -1},
+        <String, Object?>{'calendarId': '5'},
+        <String, Object?>{'calendarId': 5, 'displayName': 3},
+        <String, Object?>{'calendarId': 5, 'writable': 'yes'},
+      ]) {
+        expect(CalendarOwnedCalendarInfo.tryParse(raw), isNull);
+      }
+    });
+  });
+
+  group('CalendarOwnedCalendarDiscovery', () {
+    test('parses a complete scan with null reason', () {
+      final discovery = CalendarOwnedCalendarDiscovery.tryParse(
+        <String, Object?>{
+          'calendars': <Object?>[
+            <String, Object?>{'calendarId': 1, 'writable': true},
+            <String, Object?>{'calendarId': 2, 'writable': false},
+          ],
+          'complete': true,
+          'reason': null,
+        },
+      );
+
+      expect(discovery?.complete, isTrue);
+      expect(discovery?.reason, isNull);
+      expect(discovery?.calendars, hasLength(2));
+      expect(discovery?.hasUnknownMetadata, isFalse);
+    });
+
+    test('maps every fixed reason code', () {
+      final expected = <String, CalendarOwnedDiscoveryReason>{
+        'unavailable': CalendarOwnedDiscoveryReason.unavailable,
+        'permissionDenied': CalendarOwnedDiscoveryReason.permissionDenied,
+        'scanLimit': CalendarOwnedDiscoveryReason.scanLimit,
+        'calendarUnavailable': CalendarOwnedDiscoveryReason.calendarUnavailable,
+      };
+      for (final entry in expected.entries) {
+        final discovery = CalendarOwnedCalendarDiscovery.tryParse(
+          <String, Object?>{
+            'calendars': <Object?>[],
+            'complete': false,
+            'reason': entry.key,
+          },
+        );
+        expect(discovery?.reason, entry.value, reason: entry.key);
+      }
+    });
+
+    test('forces incomplete when a row is malformed or duplicated', () {
+      final discovery = CalendarOwnedCalendarDiscovery.tryParse(
+        <String, Object?>{
+          'calendars': <Object?>[
+            <String, Object?>{'calendarId': 1, 'writable': true},
+            <String, Object?>{'calendarId': 1, 'writable': false},
+            <String, Object?>{'calendarId': 0},
+            'junk',
+          ],
+          'complete': true,
+          'reason': null,
+        },
+      );
+
+      expect(discovery?.complete, isFalse);
+      expect(discovery?.reason, CalendarOwnedDiscoveryReason.unavailable);
+      expect(discovery?.calendars.single.calendarId, 1);
+    });
+
+    test('forces incomplete when complete contradicts a non-null reason', () {
+      final discovery = CalendarOwnedCalendarDiscovery.tryParse(
+        <String, Object?>{
+          'calendars': <Object?>[],
+          'complete': true,
+          'reason': 'scanLimit',
+        },
+      );
+
+      expect(discovery?.complete, isFalse);
+      expect(discovery?.reason, CalendarOwnedDiscoveryReason.scanLimit);
+    });
+
+    test('defaults a missing reason on an incomplete scan', () {
+      final discovery = CalendarOwnedCalendarDiscovery.tryParse(
+        <String, Object?>{
+          'calendars': <Object?>[],
+          'complete': false,
+          'reason': null,
+        },
+      );
+
+      expect(discovery?.complete, isFalse);
+      expect(discovery?.reason, CalendarOwnedDiscoveryReason.unavailable);
+    });
+
+    test('caps the accepted calendar list', () {
+      final discovery = CalendarOwnedCalendarDiscovery.tryParse(
+        <String, Object?>{
+          'calendars': <Object?>[
+            for (
+              var id = 1;
+              id <= CalendarSyncProtocol.maxOwnedCalendars + 5;
+              id++
+            )
+              <String, Object?>{'calendarId': id, 'writable': true},
+          ],
+          'complete': true,
+          'reason': null,
+        },
+      );
+
+      expect(
+        discovery?.calendars,
+        hasLength(CalendarSyncProtocol.maxOwnedCalendars),
+      );
+      expect(discovery?.complete, isFalse);
+    });
+
+    test('rejects malformed top-level payloads', () {
+      for (final raw in <Object?>[
+        null,
+        'x',
+        <String, Object?>{'complete': true},
+        <String, Object?>{'calendars': <Object?>[], 'complete': 'true'},
+        <String, Object?>{
+          'calendars': <Object?>[],
+          'complete': true,
+          'reason': 'bogus',
+        },
+        <String, Object?>{'calendars': 'x', 'complete': true},
+      ]) {
+        expect(CalendarOwnedCalendarDiscovery.tryParse(raw), isNull);
+      }
+    });
+  });
 }
