@@ -214,9 +214,7 @@ class _NoticeDetailBody extends StatelessWidget {
               ),
             ),
           ],
-          const SizedBox(height: 12),
-          Divider(color: cs.outlineVariant.withValues(alpha: 0.5)),
-          const SizedBox(height: 8),
+          const SizedBox(height: 20),
           for (final block in detail.blocks)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
