@@ -102,6 +102,8 @@ class _PerformanceDiagnosticsPageState
   }
 
   void _start() {
+    // 导出在途时不开始新运行：否则导出的到底是哪一次会变得含混。
+    if (_exporting) return;
     final rate = View.maybeOf(context)?.display.refreshRate;
     final ok = _collector.start(
       PerfRunMetadata(
@@ -127,13 +129,20 @@ class _PerformanceDiagnosticsPageState
     GoRouter.maybeOf(context)?.goNamed('home');
   }
 
+  /// 采集中不导出 / 不复制：`lastResult` 是上一次**已完成**的快照，
+  /// 若在采集中导出，用户很容易把上一场景的报告误当成本次场景。
+  /// 这里再查一次采集器真实状态，防住「按钮还是旧的可用状态」这种竞态。
+  bool get _exportBlocked => _collector.isRunning || _exporting;
+
   Future<void> _copyJson() async {
+    if (_exportBlocked) return;
     final result = _lastResult;
     if (result == null) return;
     await _copy(buildPerfRunJson(result), 'JSON 报告已复制');
   }
 
   Future<void> _copyCsv() async {
+    if (_exportBlocked) return;
     final result = _lastResult;
     if (result == null) return;
     await _copy(buildPerfRunCsv(result), 'CSV 原始帧已复制');
@@ -150,8 +159,9 @@ class _PerformanceDiagnosticsPageState
   }
 
   Future<void> _exportToFile() async {
+    if (_exportBlocked) return;
     final result = _lastResult;
-    if (result == null || _exporting) return;
+    if (result == null) return;
     setState(() {
       _exporting = true;
       _exportError = null;
@@ -162,8 +172,11 @@ class _PerformanceDiagnosticsPageState
       if (!mounted) return;
       setState(() {
         _exporting = false;
+        // 明确写出导出的是哪一次（场景 + 开始时间），避免与当前运行混淆。
         _exportOk =
-            '已导出 ${outcome.jsonFileName} / ${outcome.csvFileName}（仅保留最近 3 次）';
+            '已导出 ${result.metadata.scenario.label} · '
+            '${_formatStartedAt(result.startedAt)}'
+            '（${outcome.jsonFileName} / ${outcome.csvFileName}，仅保留最近 3 次）';
       });
     } on FileSystemException {
       if (!mounted) return;
@@ -173,6 +186,14 @@ class _PerformanceDiagnosticsPageState
         _exportError = '导出失败，请稍后重试';
       });
     }
+  }
+
+  /// 只用于界面提示的本地时间（`MM-DD HH:mm:ss`），报告里另有完整 ISO 时间。
+  String _formatStartedAt(DateTime value) {
+    final local = value.toLocal();
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(local.month)}-${two(local.day)} '
+        '${two(local.hour)}:${two(local.minute)}:${two(local.second)}';
   }
 
   @override
@@ -305,7 +326,8 @@ class _PerformanceDiagnosticsPageState
         FilledButton(
           key: const Key('perf_start_button'),
           style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-          onPressed: running ? null : _start,
+          // 导出在途时也不允许开始新运行（避免混淆导出的是哪一次）。
+          onPressed: (running || _exporting) ? null : _start,
           child: const Text('开始采样'),
         ),
         const SizedBox(height: 8),
@@ -392,7 +414,7 @@ class _PerformanceDiagnosticsPageState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const PlainSectionHeader('结果（最近一次）'),
+        const PlainSectionHeader('结果（最近一次已完成）'),
         PlainListGroup(
           children: [
             _PerfStatRow(
@@ -461,7 +483,8 @@ class _PerformanceDiagnosticsPageState
 
   Widget _buildExportSection(BuildContext context) {
     final hasResult = _lastResult != null;
-    final canAct = hasResult && !_exporting;
+    // 采集中一律禁用导出 / 复制：`lastResult` 只是上一次已完成快照。
+    final canAct = hasResult && !_exportBlocked;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -494,6 +517,15 @@ class _PerformanceDiagnosticsPageState
           '其它应用与电脑无法直接读取，仅作本机留档。',
           style: context.appText.meta,
         ),
+        if (_running) ...[
+          const SizedBox(height: 8),
+          Text(
+            '采集中：先停止当前运行再导出。上面的结果只是上一次已完成的快照，'
+            '采集中导出容易把它当成本次场景。',
+            key: const Key('perf_export_blocked_hint'),
+            style: context.appText.meta,
+          ),
+        ],
         if (_exportOk != null) ...[
           const SizedBox(height: 8),
           Text(

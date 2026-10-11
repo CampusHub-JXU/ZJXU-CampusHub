@@ -17,9 +17,11 @@ import '../../helpers/test_setup.dart';
 
 class FakeExportStore implements PerfExportStore {
   final Map<String, String> files = <String, String>{};
+  int writes = 0;
 
   @override
   Future<void> write(String fileName, String content) async {
+    writes++;
     files[fileName] = content;
   }
 
@@ -80,6 +82,19 @@ void main() {
       ),
       themeMode: themeMode,
     );
+  }
+
+  /// 通过下拉菜单切换场景（点按钮 → 点选项）。
+  Future<void> selectScenario(
+    WidgetTester tester, {
+    required String current,
+    required String target,
+  }) async {
+    await tester.tap(find.text(current));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 220));
+    await tester.tap(find.text(target));
+    await tester.pumpAndSettle();
   }
 
   testWidgets('未启用时 fail closed，不提供任何开启入口', (tester) async {
@@ -150,7 +165,7 @@ void main() {
     await tester.pump();
 
     expect(valueOf(tester, 'perf_state_value'), '未开始');
-    expect(find.text('结果（最近一次）'), findsOneWidget);
+    expect(find.text('结果（最近一次已完成）'), findsOneWidget);
     expect(find.text('UI build p50 / p95 / p99'), findsOneWidget);
     expect(find.textContaining('非系统掉帧总数'), findsOneWidget);
     expect(find.textContaining('不代表 120 FPS 已达标'), findsOneWidget);
@@ -338,6 +353,131 @@ void main() {
           .onPressed,
       isNull,
     );
+  });
+
+  testWidgets('采集中禁止导出/复制；停止后导出的是当前运行', (tester) async {
+    String? copied;
+    var clipboardWrites = 0;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          clipboardWrites++;
+          copied = (call.arguments as Map)['text'] as String?;
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+
+    final store = FakeExportStore();
+    final env = FakeFrameTimingEnv();
+    final collector = env.build();
+
+    await pumpDiagnostics(
+      tester,
+      collector: collector,
+      clock: () => env.now,
+      exporter: PerfRunExporter(store),
+    );
+
+    // ── 第一次运行：设置弹窗 ─────────────────────────────────────────────
+    await selectScenario(tester, current: '首页闲置', target: '设置弹窗');
+    await tester.tap(find.byKey(const Key('perf_start_button')));
+    await tester.pump();
+    env.deliver(<FrameTiming>[fakeTiming(vsyncStart: 1000000)]);
+    await tester.tap(find.byKey(const Key('perf_stop_button')));
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key('perf_export_button')));
+    await tester.pumpAndSettle();
+    expect(store.writes, greaterThan(0));
+    final run1 = jsonDecode(
+      store.files['perf_diagnostics_1.json']!,
+    ) as Map<String, dynamic>;
+    expect(run1['scenario'], 'settingsDialog');
+    final writesAfterRun1 = store.writes;
+
+    // 记录「停止状态下」的按钮回调，用来模拟「点到了旧的可用按钮」。
+    final staleExport = tester
+        .widget<OutlinedButton>(find.byKey(const Key('perf_export_button')))
+        .onPressed;
+    final staleCopyJson = tester
+        .widget<FilledButton>(find.byKey(const Key('perf_copy_json_button')))
+        .onPressed;
+    final staleCopyCsv = tester
+        .widget<FilledButton>(find.byKey(const Key('perf_copy_csv_button')))
+        .onPressed;
+    expect(staleExport, isNotNull);
+    expect(staleCopyJson, isNotNull);
+    expect(staleCopyCsv, isNotNull);
+
+    // ── 第二次运行：首页闲置 ─────────────────────────────────────────────
+    await selectScenario(tester, current: '设置弹窗', target: '首页闲置');
+    env.now = env.now.add(const Duration(minutes: 5));
+    await tester.tap(find.byKey(const Key('perf_start_button')));
+    await tester.pump();
+    env.deliver(<FrameTiming>[fakeTiming(vsyncStart: 2000000)]);
+    await tester.pump();
+
+    // 采集中：三个动作按钮都禁用，并给出原因提示。
+    expect(
+      tester
+          .widget<OutlinedButton>(find.byKey(const Key('perf_export_button')))
+          .onPressed,
+      isNull,
+    );
+    expect(
+      tester
+          .widget<FilledButton>(find.byKey(const Key('perf_copy_json_button')))
+          .onPressed,
+      isNull,
+    );
+    expect(
+      tester
+          .widget<FilledButton>(find.byKey(const Key('perf_copy_csv_button')))
+          .onPressed,
+      isNull,
+    );
+    expect(find.byKey(const Key('perf_export_blocked_hint')), findsOneWidget);
+
+    // 即使点到「旧的可用按钮」，处理器也会再查一次真实状态 → 什么都不做。
+    staleCopyJson!();
+    staleCopyCsv!();
+    staleExport!();
+    await tester.pumpAndSettle();
+    expect(clipboardWrites, 0);
+    expect(copied, isNull);
+    expect(store.writes, writesAfterRun1);
+
+    // ── 停止第二次运行后再导出：导出的是第二次运行 ───────────────────────
+    await tester.tap(find.byKey(const Key('perf_stop_button')));
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key('perf_copy_json_button')));
+    await tester.pump();
+    expect(clipboardWrites, 1);
+    final run2 = jsonDecode(copied!) as Map<String, dynamic>;
+    expect(run2['scenario'], 'idleHome');
+    expect(run2['startedAt'], env.now.toUtc().toIso8601String());
+
+    await tester.tap(find.byKey(const Key('perf_export_button')));
+    await tester.pumpAndSettle();
+    expect(store.writes, greaterThan(writesAfterRun1));
+    final exported = jsonDecode(
+      store.files['perf_diagnostics_1.json']!,
+    ) as Map<String, dynamic>;
+    expect(exported['scenario'], 'idleHome');
+    // 成功提示写清导出的是哪一次（场景 + 开始时间）。
+    final okText = tester
+        .widget<Text>(find.byKey(const Key('perf_export_ok')))
+        .data!;
+    expect(okText, contains('首页闲置'));
   });
 
   group('无障碍 / 窄屏', () {
