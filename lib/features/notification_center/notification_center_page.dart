@@ -30,12 +30,21 @@ import '../../shared/widgets/login_shell.dart';
 import '../../shared/widgets/plain_list.dart';
 
 class NotificationCenterPage extends StatefulWidget {
-  const NotificationCenterPage({super.key, this.practiceNoticeLoader});
+  const NotificationCenterPage({
+    super.key,
+    this.practiceNoticeLoader,
+    this.debugOnPracticeTabReady,
+  });
 
   /// 实践通知数据源。为 null 时用
   /// [SjjxNoticeService.instance.fetchAllNotices]（真实抓取，走 CAS/WebVPN）。
   /// 测试可注入合成数据，避免请求真实校园环境。
   final Future<List<SjjxNotice>> Function()? practiceNoticeLoader;
+
+  /// 测试钩子：实践通知 Tab 挂载后回传它的重新加载入口，用于确定性地驱动
+  /// 同一次挂载内的多次 `_load`（验证迟到结果不覆盖新结果）。生产传 null。
+  @visibleForTesting
+  final void Function(Future<void> Function() reload)? debugOnPracticeTabReady;
 
   @override
   State<NotificationCenterPage> createState() => _NotificationCenterPageState();
@@ -142,6 +151,7 @@ class _NotificationCenterPageState extends State<NotificationCenterPage>
                 _PracticeNoticeTab(
                   query: _query,
                   loader: widget.practiceNoticeLoader,
+                  onReady: widget.debugOnPracticeTabReady,
                 ),
               ],
             ),
@@ -528,10 +538,13 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
 // --- Practice notices tab ---
 
 class _PracticeNoticeTab extends StatefulWidget {
-  const _PracticeNoticeTab({this.query = '', this.loader});
+  const _PracticeNoticeTab({this.query = '', this.loader, this.onReady});
 
   final String query;
   final Future<List<SjjxNotice>> Function()? loader;
+
+  /// 测试钩子：State 挂载后回传 `_load` 入口（生产为 null）。
+  final void Function(Future<void> Function() reload)? onReady;
 
   @override
   State<_PracticeNoticeTab> createState() => _PracticeNoticeTabState();
@@ -544,8 +557,12 @@ class _PracticeNoticeTabState extends State<_PracticeNoticeTab>
   bool _authRequired = false;
   String? _error;
 
-  /// 加载纪元：刷新 / 重新认证期间推进，迟到的旧结果直接丢弃，
-  /// 避免 A 账号的在途响应覆盖 B 账号刚拉回的数据。
+  /// 加载纪元：同一 Tab 内每次 `_load` 自增的调用序计数器。它只保证
+  /// **同一次挂载内、后发起的请求胜出**（迟到旧结果直接丢弃），
+  /// **不是账号身份隔离**：不读取任何账号 / 会话 revision。
+  /// 跨账号（A 账号在途响应落到 B 登录态）的安全性本轮**未验证**；
+  /// `SjjxNoticeService._cachedNotices` 全局兜底缓存仍非按账号作用域
+  /// （既有行为，本 PR 未改）。
   int _loadEpoch = 0;
 
   @override
@@ -555,6 +572,7 @@ class _PracticeNoticeTabState extends State<_PracticeNoticeTab>
   void initState() {
     super.initState();
     _load();
+    widget.onReady?.call(_load);
   }
 
   Future<void> _load() async {

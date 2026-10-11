@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -55,6 +57,7 @@ Future<void> pumpPage(
   WidgetTester tester, {
   required Future<List<SjjxNotice>> Function() loader,
   Size size = const Size(412, 900),
+  void Function(Future<void> Function() reload)? onPracticeTabReady,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -66,7 +69,10 @@ Future<void> pumpPage(
       GoRoute(
         name: 'notifications',
         path: '/notifications',
-        builder: (_, _) => NotificationCenterPage(practiceNoticeLoader: loader),
+        builder: (_, _) => NotificationCenterPage(
+          practiceNoticeLoader: loader,
+          debugOnPracticeTabReady: onPracticeTabReady,
+        ),
       ),
       GoRoute(
         name: 'external-webview',
@@ -300,5 +306,112 @@ void main() {
         }
       }
     }
+  });
+
+  // 迟到结果保护：同一次挂载内后发起的请求胜出（latest-wins）。
+  // 该守卫只按调用序计数，**不读账号身份**；跨账号隔离未验证（见源码注释）。
+  group('迟到结果不覆盖新结果（same-Tab call order guard）', () {
+    // loader 挂起时 Tab 显示持续转圈的 loading 态，pumpAndSettle 永不收敛，
+    // 因此这里用有界 pump 打开 Tab / 推进状态。
+    Future<void> openBounded(WidgetTester tester) async {
+      await tester.tap(find.text('实践通知'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+
+    Future<void> settle(WidgetTester tester) async {
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+
+    testWidgets('更早的旧成功结果迟到，不覆盖最新结果', (tester) async {
+      final gates = <Completer<List<SjjxNotice>>>[];
+      Future<void> Function()? reload;
+      await pumpPage(
+        tester,
+        loader: () {
+          final gate = Completer<List<SjjxNotice>>();
+          gates.add(gate);
+          return gate.future;
+        },
+        onPracticeTabReady: (r) => reload = r,
+      );
+      await openBounded(tester); // 挂载 -> 第 1 次 _load（尚在途）
+      expect(reload, isNotNull);
+      expect(gates.length, 1);
+
+      reload!(); // 第 2 次 _load（更新）
+      await settle(tester);
+      expect(gates.length, 2);
+
+      // 最新请求先完成，返回 3 条。
+      gates[1].complete(syntheticNotices(3));
+      await settle(tester);
+      expect(find.text('3 条'), findsOneWidget);
+
+      // 更早的请求迟到完成，返回 5 条，必须被丢弃。
+      gates[0].complete(syntheticNotices(5));
+      await settle(tester);
+      expect(find.text('3 条'), findsOneWidget);
+      expect(find.text('5 条'), findsNothing);
+    });
+
+    testWidgets('迟到的认证失效结果不覆盖最新成功结果', (tester) async {
+      final gates = <Completer<List<SjjxNotice>>>[];
+      Future<void> Function()? reload;
+      await pumpPage(
+        tester,
+        loader: () {
+          final gate = Completer<List<SjjxNotice>>();
+          gates.add(gate);
+          return gate.future;
+        },
+        onPracticeTabReady: (r) => reload = r,
+      );
+      await openBounded(tester);
+      expect(reload, isNotNull);
+      expect(gates.length, 1);
+
+      reload!();
+      await settle(tester);
+      gates[1].complete(syntheticNotices(7));
+      await settle(tester);
+      expect(find.text('7 条'), findsOneWidget);
+
+      // 更早的请求迟到抛认证失效，必须被丢弃，不能把已成功的列表翻成登录态。
+      gates[0].completeError(const CasAuthExpiredException('late'));
+      await settle(tester);
+      expect(find.text('7 条'), findsOneWidget);
+      expect(find.byType(AuthRequiredView), findsNothing);
+    });
+
+    testWidgets('更早的旧成功结果迟到，不覆盖最新认证失效状态', (tester) async {
+      final gates = <Completer<List<SjjxNotice>>>[];
+      Future<void> Function()? reload;
+      await pumpPage(
+        tester,
+        loader: () {
+          final gate = Completer<List<SjjxNotice>>();
+          gates.add(gate);
+          return gate.future;
+        },
+        onPracticeTabReady: (r) => reload = r,
+      );
+      await openBounded(tester);
+      expect(reload, isNotNull);
+      expect(gates.length, 1);
+
+      reload!();
+      await settle(tester);
+      gates[1].completeError(const CasAuthExpiredException('expired'));
+      await settle(tester);
+      expect(find.byType(AuthRequiredView), findsOneWidget);
+
+      // 更早的请求迟到返回成功数据，必须被丢弃，不能推翻最新认证态。
+      gates[0].complete(syntheticNotices(9));
+      await settle(tester);
+      expect(find.byType(AuthRequiredView), findsOneWidget);
+      expect(find.text('9 条'), findsNothing);
+    });
   });
 }

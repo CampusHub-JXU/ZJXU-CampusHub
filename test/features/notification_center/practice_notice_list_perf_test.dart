@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -14,21 +15,22 @@ import 'package:jxu_campus_hub/features/sjjx_notice/sjjx_notice_service.dart';
 
 /// Issue #64 的合成性能证据采集（不接触任何真实校园环境、不含个人信息）。
 ///
-/// 产出写入已忽略的 `output/issue-64/`：
-/// - `perf-metrics.txt`：修复前（eager 分组卡片内联全部行）与修复后
-///   （[PracticeNoticeListView] 惰性窗口）的**行 widget 数 / 总 element 数 /
-///   构建耗时**，以及 GBK 解码 / DOM 解析 / Dart 过滤的分阶段耗时。
-/// - `preview-practice-first-screen.png`：首屏布局结构的合成截图（测试字体把
-///   字形画成方块，只用于确认「表头 + 有界行窗口」的布局，不是视觉评审）。
+/// **每次运行产出独立、可追溯的 artifact**（不再写固定文件名，避免后续
+/// `flutter test` 覆盖基线运行）：
+/// - `output/issue-64/perf-run-<runID>.txt`：本次运行的明细（run id、被测
+///   revision / 工作树身份、场景、行数 / element 数 / 宿主墙钟耗时）。
+/// - `output/issue-64/perf-runs.jsonl`：本次运行追加一行摘要（所有历史运行
+///   都保留在该文件里，便于对照独立运行之间的差异）。
 ///
 /// 说明（诚实边界）：
+/// - **counts 是硬指标**（同一套合成数据、同一行 widget，仅隔离列表结构），
+///   在多次独立运行中稳定；**timings 是测试宿主机墙钟时间**（含 test binding
+///   开销），独立运行之间差异很大，只作数量级参考，**不是真机帧时间**。
 /// - 修复前的私有 `_NoticeTile` 已在实现中被替换，这里用**结构与行内容等价的
 ///   重建**还原旧路径（`ListView` 直接包住一个 `NoticeGroupSection`，把全部
 ///   1518 行放进 `PlainListGroup` 的 `Column`）——这正是旧代码的构造形态。
-///   两条路径使用同一个行 widget，隔离出「列表结构」这一个变量。
-/// - Widget 测试里的 `Stopwatch` 是测试宿主机的墙钟时间（含 test binding 开销），
-///   不等于真机帧时间；行数 / element 数是可复现的硬指标，时间只作数量级参考。
 const int kTotal = 1518;
+const int kPageSize = 20;
 
 List<SjjxNotice> syntheticNotices(int count) => [
   for (var i = 0; i < count; i++)
@@ -72,26 +74,79 @@ Directory _outDir() {
   return dir;
 }
 
-void _append(String name, String text) {
-  final file = _outDir().childFile(name);
-  file.writeAsStringSync(text, mode: FileMode.append);
+String _two(int v) => v.toString().padLeft(2, '0');
+
+/// 运行标识：UTC 时间戳 + 进程号，保证独立运行不互相覆盖。
+String _newRunId() {
+  final now = DateTime.now().toUtc();
+  final stamp =
+      '${now.year}${_two(now.month)}${_two(now.day)}'
+      'T${_two(now.hour)}${_two(now.minute)}${_two(now.second)}Z';
+  return '$stamp-p$pid';
 }
 
-void _resetMetrics() {
-  final file = _outDir().childFile('perf-metrics.txt');
-  if (file.existsSync()) file.deleteSync();
+/// 被测 revision / 工作树身份：读真实 git，读不到则如实标 unknown，不编造 SHA。
+String _revisionIdentity() {
+  String run(List<String> args) {
+    final r = Process.runSync(
+      'git',
+      args,
+      workingDirectory: Directory.current.path,
+    );
+    if (r.exitCode != 0) return '';
+    return (r.stdout as String).trim();
+  }
+
+  try {
+    final sha = run(['rev-parse', '--short', 'HEAD']);
+    if (sha.isEmpty) return 'unknown(git rev-parse 失败)';
+    final dirty = run(['status', '--porcelain']).isNotEmpty;
+    return dirty ? '$sha+working-tree-dirty' : sha;
+  } catch (e) {
+    return 'unknown($e)';
+  }
 }
 
-extension on Directory {
-  File childFile(String name) => File('$path${Platform.pathSeparator}$name');
+final String _runId = _newRunId();
+final String _revision = _revisionIdentity();
+final List<String> _lines = <String>[];
+final Map<String, Object?> _summary = <String, Object?>{
+  'run_id': _runId,
+  'tested_revision': _revision,
+  'item_count': kTotal,
+  'page_size': kPageSize,
+};
+
+String get _runFilePath =>
+    '${_outDir().path}${Platform.pathSeparator}perf-run-$_runId.txt';
+
+/// 记录一行并立即落盘：即使后续测试失败，已采集的数据仍在。
+void _record(String line) {
+  _lines.add(line);
+  File(_runFilePath).writeAsStringSync('${_lines.join('\n')}\n');
 }
 
 void main() {
-  setUpAll(_resetMetrics);
+  setUpAll(() {
+    _record('Issue #64 synthetic perf run');
+    _record('run_id: $_runId');
+    _record('tested_revision: $_revision');
+    _record('item_count: $kTotal');
+    _record('page_size: $kPageSize');
+    _record(
+      'note: timings are host wall time (test binding overhead included), '
+      'NOT device frame time; full `flutter test` also runs this file and '
+      'produces its own run — see output/issue-64/perf-runs.jsonl',
+    );
+    _record('');
+  });
 
-  testWidgets('修复前 eager 路径 vs 修复后惰性路径：行数 / element 数 / 耗时', (
-    tester,
-  ) async {
+  tearDownAll(() {
+    File('${_outDir().path}${Platform.pathSeparator}perf-runs.jsonl')
+        .writeAsStringSync('${jsonEncode(_summary)}\n', mode: FileMode.append);
+  });
+
+  testWidgets('修复前 eager 路径 vs 修复后惰性路径：行数 / element 数 / 耗时', (tester) async {
     tester.view.physicalSize = const Size(412, 900);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -143,30 +198,43 @@ void main() {
         .state<PracticeNoticeListViewState>(find.byType(PracticeNoticeListView))
         .debugWindowSize;
 
-    _append(
-      'perf-metrics.txt',
-      'Issue #64 synthetic perf metrics (host wall time, test harness)\n'
-      'total synthetic rows: $kTotal\n'
-      '\n[BEFORE eager: ListView -> NoticeGroupSection -> PlainListGroup(Column of all rows)]\n'
-      'rows built (PracticeNoticeRow elements): $eagerRows\n'
-      'total elements in tree: $eagerElements\n'
-      'pumpWidget wall time: ${eagerWatch.elapsedMicroseconds / 1000} ms\n'
-      '\n[AFTER lazy: PracticeNoticeListView -> CustomScrollView + SliverList.builder, pageSize=20]\n'
-      'rows built (PracticeNoticeRow elements): $lazyRows\n'
-      'total elements in tree: $lazyElements\n'
-      'itemBuilder invocations (first frame): $lazyBuilderCalls\n'
-      'window size: $lazyWindow\n'
-      'pumpWidget wall time: ${lazyWatch.elapsedMicroseconds / 1000} ms\n'
-      '\n[ratio] rows after/before = ${lazyRows == 0 ? 'n/a' : (eagerRows / lazyRows).toStringAsFixed(1)}x fewer rows built on first screen\n',
-    );
+    final eagerMs = eagerWatch.elapsedMicroseconds / 1000;
+    final lazyMs = lazyWatch.elapsedMicroseconds / 1000;
 
-    // 首屏：旧路径把 1518 行一次性放进 Column 全部实例化；新路径只构建窗口。
+    _summary
+      ..['eager_rows'] = eagerRows
+      ..['lazy_rows'] = lazyRows
+      ..['eager_elements'] = eagerElements
+      ..['lazy_elements'] = lazyElements
+      ..['item_builder_calls'] = lazyBuilderCalls
+      ..['window'] = lazyWindow
+      ..['eager_ms'] = eagerMs
+      ..['lazy_ms'] = lazyMs;
+
+    _record(
+      '[BEFORE eager: ListView -> NoticeGroupSection -> PlainListGroup(Column of all rows)]',
+    );
+    _record('rows built (PracticeNoticeRow elements): $eagerRows');
+    _record('total elements in tree: $eagerElements');
+    _record('pumpWidget wall time: $eagerMs ms');
+    _record('');
+    _record(
+      '[AFTER lazy: PracticeNoticeListView -> CustomScrollView + SliverList.builder, pageSize=$kPageSize]',
+    );
+    _record('rows built (PracticeNoticeRow elements): $lazyRows');
+    _record('total elements in tree: $lazyElements');
+    _record('itemBuilder invocations (first frame): $lazyBuilderCalls');
+    _record('window size: $lazyWindow');
+    _record('pumpWidget wall time: $lazyMs ms');
+    _record('');
+
+    // 只对可复现的 counts 断言；timings 不做阈值（避免 flaky）。
     expect(eagerRows, kTotal);
     expect(eagerElements, greaterThan(lazyElements));
     expect(lazyRows, greaterThan(0));
     expect(lazyRows, lessThanOrEqualTo(30));
     expect(lazyBuilderCalls, lessThanOrEqualTo(30));
-    expect(lazyWindow, 20);
+    expect(lazyWindow, kPageSize);
   });
 
   test('HTML GBK 解码 / DOM 解析 / Dart 过滤 分阶段耗时（1518 条合成 HTML）', () {
@@ -202,22 +270,35 @@ void main() {
     final sniffUs = best(
       () => looksLikeSjjxNoticeListHtml(decodeSjjxNoticeHtml(resp)),
     );
-    final parseUs = best(() => parseSjjxNoticeListHtml(decodeSjjxNoticeHtml(resp)));
+    final parseUs = best(
+      () => parseSjjxNoticeListHtml(decodeSjjxNoticeHtml(resp)),
+    );
     final parsed = parseSjjxNoticeListHtml(decodeSjjxNoticeHtml(resp));
     final filterUs = best(
-      () => parsed
-          .where((n) => n.title.toLowerCase().contains('1517'))
-          .toList(),
+      () =>
+          parsed.where((n) => n.title.toLowerCase().contains('1517')).toList(),
     );
 
-    _append(
-      'perf-metrics.txt',
-      'Issue #64 stage timing (min of $runs runs, host wall time, GBK source)\n'
-      'source HTML bytes (GBK): ${bytes.length}\n'
-      'decodeSjjxNoticeHtml (GBK decode): ${decodeUs / 1000} ms\n'
-      'looksLikeSjjxNoticeListHtml (decode + DOM sniff): ${sniffUs / 1000} ms\n'
-      'parseSjjxNoticeListHtml (decode + DOM parse to ${parsed.length} items): ${parseUs / 1000} ms\n'
-      'dart filter (1518 -> full match, one query): ${filterUs / 1000} ms\n',
+    _summary
+      ..['html_bytes'] = bytes.length
+      ..['decode_ms'] = decodeUs / 1000
+      ..['sniff_ms'] = sniffUs / 1000
+      ..['parse_ms'] = parseUs / 1000
+      ..['filter_ms'] = filterUs / 1000;
+
+    _record(
+      'Issue #64 stage timing (min of $runs runs, host wall time, GBK source)',
+    );
+    _record('source HTML bytes (GBK): ${bytes.length}');
+    _record('decodeSjjxNoticeHtml (GBK decode): ${decodeUs / 1000} ms');
+    _record(
+      'looksLikeSjjxNoticeListHtml (decode + DOM sniff): ${sniffUs / 1000} ms',
+    );
+    _record(
+      'parseSjjxNoticeListHtml (decode + DOM parse to ${parsed.length} items): ${parseUs / 1000} ms',
+    );
+    _record(
+      'dart filter (1518 -> full match, one query): ${filterUs / 1000} ms',
     );
 
     expect(parsed.length, kTotal);
@@ -251,16 +332,22 @@ void main() {
 
     final boundary =
         key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+    const previewName = 'preview-practice-first-screen.png';
     await tester.runAsync(() async {
       final image = await boundary.toImage(pixelRatio: 1.0);
       final png = await image.toByteData(format: ui.ImageByteFormat.png);
-      _outDir()
-          .childFile('preview-practice-first-screen.png')
+      File('${_outDir().path}${Platform.pathSeparator}$previewName')
           .writeAsBytesSync(png!.buffer.asUint8List());
     });
 
+    // 预览文件固定名（每次运行重生成，仅作结构参考，非视觉评审）。
+    _summary['preview_png'] = previewName;
+    _record('');
+    _record('preview: $previewName (test font; layout structure only)');
+
     expect(
-      _outDir().childFile('preview-practice-first-screen.png').existsSync(),
+      File('${_outDir().path}${Platform.pathSeparator}$previewName')
+          .existsSync(),
       isTrue,
     );
   });
