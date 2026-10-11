@@ -2,25 +2,35 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../tools/architecture/check_decorative_dividers.dart';
 
-/// 装饰性分割线守卫：默认任何新出现的手工分割线都报错，只有写进
-/// `decorativeDividerAllowlist` 的已知站点（带数量上限 + 理由）才放行。
-///
-/// 规则与盲区见 `tools/architecture/check_decorative_dividers.dart` 文件头、
-/// `docs/design-guidelines.md` §1.2 与 `docs/decorative-divider-audit.md`。
+/// 装饰性分割线守卫：默认任何命中的手工分割线都报错，只有写进
+/// `decorativeDividerAllowlist` 的已知站点（带数量上限 + 理由、且当前仍命中）
+/// 才放行。规则、有界覆盖与盲区见 `tools/architecture/check_decorative_dividers.dart`
+/// 文件头、`docs/design-guidelines.md` §1.2 与 `docs/decorative-divider-audit.md`。
 void main() {
-  List<String> violationsFor(String source, {String file = 'synthetic.dart'}) =>
-      decorativeDividerViolations(
-        hits: scanDividersInSource(source, file: file),
-      );
+  const changxing = 'features/changxing_jiada/changxing_jiada_page.dart';
+
+  List<DecorativeDividerHit> hitsFor(
+    String source, {
+    String file = 'synthetic.dart',
+  }) => scanDividersInSource(source, file: file);
+
+  List<String> violationsFor(
+    String source, {
+    String file = 'synthetic.dart',
+    bool checkStaleExemptions = false,
+  }) => decorativeDividerViolations(
+    hits: hitsFor(source, file: file),
+    checkStaleExemptions: checkStaleExemptions,
+  );
 
   group('真实仓库', () {
-    test('未豁免的装饰性分割线为 0', () {
+    test('未豁免 / 未过期的装饰性分割线为 0', () {
       final violations = decorativeDividerViolations();
       expect(
         violations,
         isEmpty,
         reason:
-            '发现未豁免的装饰性分割线。内容区分组请改用留白 / 字号字重层级 / 对齐 / '
+            '发现未豁免或过期的装饰性分割线。内容区分组请改用留白 / 字号字重层级 / 对齐 / '
             '低对比背景分区（docs/design-guidelines.md §1.2）；确属语义线（表格网格 / '
             '输入框 / 焦点 / 图表连线 / 时间轴）请确认它没被误判，并只在 '
             'decorativeDividerAllowlist 里加带理由的窄豁免：\n${violations.join('\n')}',
@@ -36,60 +46,103 @@ void main() {
       }
       // 新增豁免会让本断言失败，强制在 diff 里显式暴露。
       expect(decorativeDividerAllowlist.map((a) => a.file).toSet(), {
-        'features/changxing_jiada/changxing_jiada_page.dart',
+        changxing,
       }, reason: '豁免清单只应覆盖畅行嘉大（#57/#58 → PR73）；新增豁免须同步修改本断言。');
     });
   });
 
-  group('识别新增装饰线（防止回退）', () {
-    test('新出现的 Divider 会失败', () {
-      const src = '''
-Widget build(BuildContext context) {
-  return Column(children: [Text('a'), Divider(), Text('b')]);
-}
-''';
-      expect(violationsFor(src), hasLength(1));
+  group('F1 宿主完整平衡实参区间（参数顺序无关）', () {
+    final cases = <(String, String, int)>[
+      ('height 在前', 'final w = Container(height: 1, color: cs.x);', 1),
+      ('height 在后（无尾逗号）', 'final w = Container(color: cs.x, height: 1);', 1),
+      ('height 在后（有尾逗号）', 'final w = Container(color: cs.x, height: 1,);', 1),
+      ('width 在后（无尾逗号）', 'final w = Container(color: cs.x, width: 1);', 1),
+      ('多行', 'final w = Container(\n  height: 1,\n  color: cs.x,\n);', 1),
+      (
+        '多行 + 尾注释',
+        'final w = Container(\n  color: cs.x, // note\n  height: 1,\n);',
+        1,
+      ),
+      (
+        '嵌套（外层 + 内层各 1）',
+        'final w = Container(height: 1, color: cs.y, '
+            'child: Container(width: 1, height: 32, color: cs.x));',
+        2,
+      ),
+      ('重复实参名', 'final w = Container(height: 1, color: a, color: b);', 1),
+      ('width: 1.0', 'final w = Container(width: 1.0, color: cs.x);', 1),
+      ('width: 0.5', 'final w = Container(width: 0.5, color: cs.x);', 1),
+      (
+        'AnimatedContainer（前缀 token）',
+        'final w = AnimatedContainer(height: 1, color: cs.x);',
+        1,
+      ),
+      (
+        'ColoredBox 宿主 + 细 Container 子节点',
+        'final w = ColoredBox(color: cs.x, child: Container(width: 1, height: 32));',
+        1,
+      ),
+      (
+        'DecoratedBox 仅 decoration + 细 SizedBox 子节点',
+        'final w = DecoratedBox(decoration: d, child: SizedBox(height: 1, width: 1));',
+        1,
+      ),
+      (
+        '细 SizedBox 子节点（width 在前）',
+        'final w = DecoratedBox(decoration: d, child: SizedBox(width: 1, height: 32));',
+        1,
+      ),
+    ];
+    for (final (label, src, expected) in cases) {
+      test(label, () => expect(hitsFor(src), hasLength(expected)));
+    }
+
+    test('不可见的 Container 细间距（无绘制）不报', () {
+      expect(hitsFor('final w = Container(width: 1, height: 32);'), isEmpty);
     });
 
-    test('新出现的 VerticalDivider 会失败', () {
-      const src = '''
-Widget build(BuildContext context) {
-  return Row(children: [Text('a'), const VerticalDivider(), Text('b')]);
-}
-''';
-      expect(violationsFor(src), hasLength(1));
+    test('纯 SizedBox 细间距不报', () {
+      expect(
+        hitsFor("final w = SizedBox(width: 1, height: 32, child: Text('x'));"),
+        isEmpty,
+      );
+    });
+  });
+
+  group('F2 词法遮蔽（字符串 / 注释不误报）', () {
+    final quoted = <(String, String)>[
+      ('单引号', "final s = 'Container(height: 1, color: x)';"),
+      ('双引号', 'final s = "Container(height: 1, color: x)";'),
+      ('单引号内 Divider', "final s = 'Divider()';"),
+      ('三引号', 'final s = """Divider()""";'),
+      ('raw 三引号', "final s = r'''Container(height: 1, color: x)''';"),
+      ('转义双引号', 'final s = "a \\" Container(height: 1, color: x)";'),
+      ('插值整体遮蔽', "final s = '\${Container(height: 1, color: x)}';"),
+    ];
+    for (final (label, src) in quoted) {
+      test('字符串字面量：$label', () => expect(hitsFor(src), isEmpty));
+    }
+
+    test('注释里提到 Divider( 不报，注释后的真实 Divider 仍报', () {
+      expect(hitsFor("/* 'Divider()' */ final a = Divider();"), hasLength(1));
+      expect(
+        hitsFor("// 'Divider()'\nfinal a = VerticalDivider();"),
+        hasLength(1),
+      );
     });
 
-    test('整宽 height:1 手工发丝线会失败', () {
-      const src = '''
-Widget build(BuildContext context) {
-  return Container(height: 1, margin: const EdgeInsets.only(left: 46), color: cs.outlineVariant);
-}
-''';
-      expect(violationsFor(src), hasLength(1));
+    test('带引号的 color 实参值仍被识别', () {
+      expect(
+        hitsFor("final w = Container(height: 1, color: 'red');"),
+        hasLength(1),
+      );
     });
 
-    test('1×32 手工竖线会失败', () {
-      const src = '''
-Widget build(BuildContext context) {
-  return Container(width: 1, height: 32, margin: const EdgeInsets.symmetric(horizontal: 12), color: cs.outlineVariant);
-}
-''';
-      expect(violationsFor(src), hasLength(1));
-    });
-
-    test('同一文件新增第 2 处也会失败（上限不是整文件白名单）', () {
-      const src = '''
-Widget build(BuildContext context) {
-  return Column(children: [
-    Container(height: 1, color: cs.outlineVariant),
-    Container(width: 1, height: 32, color: cs.outlineVariant),
-  ]);
-}
-''';
-      final violations = violationsFor(src);
-      expect(violations, hasLength(1));
-      expect(violations.single, contains('出现 2 处'));
+    test('遮蔽保持长度与换行（精确诊断）', () {
+      const src = "// c\nfinal s = 'a\nb'; /* x */\nfinal t = 1;\n";
+      final masked = maskDartSource(src);
+      expect(masked.length, src.length);
+      expect(masked.split('\n').length, src.split('\n').length);
     });
   });
 
@@ -121,7 +174,7 @@ class _Paint extends CustomPainter {
   bool shouldRepaint(CustomPainter oldDelegate) => false;
 }
 ''';
-      expect(violationsFor(src), isEmpty);
+      expect(hitsFor(src), isEmpty);
     });
 
     test('主题配置与文本行高不报', () {
@@ -132,7 +185,7 @@ final theme = ThemeData(
 final labelStyle = textStyle.copyWith(height: 1);
 final navLabel = TextStyle(height: 1.0, color: color);
 ''';
-      expect(violationsFor(src), isEmpty);
+      expect(hitsFor(src), isEmpty);
     });
 
     test('可见的圆角卡片轮廓（非细线）不报', () {
@@ -149,52 +202,101 @@ Widget build(BuildContext context) {
   );
 }
 ''';
-      expect(violationsFor(src), isEmpty);
+      expect(hitsFor(src), isEmpty);
     });
 
-    test('不可见的 SizedBox 细间隔不报（不画线）', () {
-      const src = '''
-Widget build(BuildContext context) {
-  return const SizedBox(width: 1, height: 32);
-}
-''';
-      expect(violationsFor(src), isEmpty);
-    });
-
-    test('注释里提到 Divider( 不报', () {
-      const src = '''
-// 旧的写法是 Divider()，现在改成留白。
-/// 也不要 Container(width: 1, height: 32, color: x)。
-Widget build(BuildContext context) => const SizedBox.shrink();
-''';
-      expect(violationsFor(src), isEmpty);
+    test('子节点 / 孙节点的无关绘制不被宿主继承', () {
+      expect(
+        hitsFor(
+          "final w = Container(height: 1, child: Text('x', style: TextStyle(color: c)));",
+        ),
+        isEmpty,
+      );
+      expect(
+        hitsFor(
+          "final w = Container(height: 1, child: Column(children: [Text('x', style: TextStyle(color: c))]));",
+        ),
+        isEmpty,
+      );
     });
   });
 
-  group('豁免清单按（文件 + 模式）计数', () {
-    test('未列出的文件一律上限 0', () {
-      const src = 'final w = Divider();\n';
+  group('默认拦截新增', () {
+    test('新出现的 Divider 会失败', () {
       expect(
-        decorativeDividerViolations(
-          hits: scanDividersInSource(src, file: 'features/other/page.dart'),
+        violationsFor(
+          "Widget build(BuildContext context) => Column(children: [Text('a'), Divider(), Text('b')]);",
         ),
         hasLength(1),
       );
     });
 
-    test('恰好等于上限时通过，超出才失败', () {
-      final hits = scanDividersInSource(
-        'final a = Divider();\nfinal b = Divider();\nfinal c = Divider();\n',
-        file: 'features/changxing_jiada/changxing_jiada_page.dart',
+    test('新出现的 VerticalDivider 会失败', () {
+      expect(
+        violationsFor(
+          "Widget build(BuildContext context) => Row(children: [Text('a'), const VerticalDivider(), Text('b')]);",
+        ),
+        hasLength(1),
       );
-      expect(decorativeDividerViolations(hits: hits), isEmpty);
+    });
 
-      final exceeded = scanDividersInSource(
-        'final a = Divider();\nfinal b = Divider();\n'
-        'final c = Divider();\nfinal d = Divider();\n',
-        file: 'features/changxing_jiada/changxing_jiada_page.dart',
+    test('未列出的文件一律上限 0', () {
+      expect(
+        decorativeDividerViolations(
+          hits: hitsFor(
+            'final w = Divider();',
+            file: 'features/other/page.dart',
+          ),
+          checkStaleExemptions: false,
+        ),
+        hasLength(1),
       );
-      expect(decorativeDividerViolations(hits: exceeded), hasLength(1));
+    });
+  });
+
+  group('F3 豁免过期（站点删除后强制移除条目）', () {
+    test('空扫描：两条豁免都过期 → 失败', () {
+      final violations = decorativeDividerViolations(
+        hits: const <DecorativeDividerHit>[],
+      );
+      expect(violations, hasLength(2));
+      expect(violations.every((v) => v.contains('过期')), isTrue);
+    });
+
+    test('只满足其中一类：另一类过期 → 失败', () {
+      final violations = decorativeDividerViolations(
+        hits: hitsFor(
+          'final a = Divider();\nfinal b = Divider();\nfinal c = Divider();\n',
+          file: changxing,
+        ),
+      );
+      expect(violations, hasLength(1));
+      expect(violations.single, contains('handDrawnThinBox'));
+      expect(violations.single, contains('过期'));
+    });
+
+    test('两类都命中且不超上限 → 通过', () {
+      final violations = decorativeDividerViolations(
+        hits: hitsFor(
+          'final a = Divider();\nfinal b = Divider();\nfinal c = Divider();\n'
+          'final d = Container(width: 1, color: cs.x);\n',
+          file: changxing,
+        ),
+      );
+      expect(violations, isEmpty);
+    });
+
+    test('同文件超上限 → 失败', () {
+      final violations = decorativeDividerViolations(
+        hits: hitsFor(
+          'final a = Divider();\nfinal b = Divider();\nfinal c = Divider();\n'
+          'final d = Divider();\n'
+          'final e = Container(width: 1, color: cs.x);\n',
+          file: changxing,
+        ),
+      );
+      expect(violations, hasLength(1));
+      expect(violations.single, contains('出现 4 处'));
     });
   });
 }
