@@ -125,6 +125,77 @@ class AppThemeBuilder {
     );
   }
 
+  /// 分段控件（`SegmentedButton`）统一外观：扁平、紧凑、低对比的圆角分段，
+  /// 取代 MD3 默认的「显眼外框 + 胶囊 + 段间分隔线」，供全 App 调用点共用。
+  ///
+  /// `side = BorderSide.none` 一次去掉外框与段间分隔线（渲染盒用 `side` 画分隔
+  /// 线）；`shape` 改为 [AppRadius.segment] 圆角矩形；选中 `surfaceContainerHigh`
+  /// / 未选中 `surfaceContainer`，字色 `onSurface` / `onSurfaceVariant`；视觉高度
+  /// 40、移动端命中区由框架补到 48；键盘焦点用主色淡化。完整契约与实测见
+  /// `docs/segmented-control-style.md`。
+  static SegmentedButtonThemeData _segmentedButtonTheme(
+    ColorScheme colorScheme,
+  ) {
+    final TextStyle labelBase = _appleTextTheme.labelLarge!.copyWith(
+      fontFamily: 'Inter',
+    );
+    return SegmentedButtonThemeData(
+      style: ButtonStyle(
+        shape: WidgetStatePropertyAll<OutlinedBorder>(
+          RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.segment),
+          ),
+        ),
+        side: const WidgetStatePropertyAll<BorderSide>(BorderSide.none),
+        minimumSize: const WidgetStatePropertyAll<Size?>(Size.fromHeight(40)),
+        padding: const WidgetStatePropertyAll<EdgeInsetsGeometry>(
+          EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        ),
+        elevation: const WidgetStatePropertyAll<double>(0),
+        surfaceTintColor: const WidgetStatePropertyAll<Color>(
+          Colors.transparent,
+        ),
+        iconSize: const WidgetStatePropertyAll<double?>(18),
+        textStyle: WidgetStateProperty.resolveWith((states) {
+          final selected = states.contains(WidgetState.selected);
+          return labelBase.copyWith(
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+          );
+        }),
+        backgroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return colorScheme.surfaceContainerHigh;
+          }
+          return colorScheme.surfaceContainer;
+        }),
+        foregroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.disabled)) {
+            return colorScheme.onSurface.withValues(alpha: 0.38);
+          }
+          if (states.contains(WidgetState.selected)) {
+            return colorScheme.onSurface;
+          }
+          return colorScheme.onSurfaceVariant;
+        }),
+        overlayColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.disabled)) {
+            return Colors.transparent;
+          }
+          if (states.contains(WidgetState.pressed)) {
+            return colorScheme.onSurface.withValues(alpha: 0.12);
+          }
+          if (states.contains(WidgetState.focused)) {
+            return colorScheme.primary.withValues(alpha: 0.16);
+          }
+          if (states.contains(WidgetState.hovered)) {
+            return colorScheme.onSurface.withValues(alpha: 0.06);
+          }
+          return null;
+        }),
+      ),
+    );
+  }
+
   static ThemeData light(
     Color seedColor, {
     bool filledButtonSoftStyle = false,
@@ -230,6 +301,7 @@ class AppThemeBuilder {
         ),
       ),
       popupMenuTheme: _popupMenuTheme(colorScheme),
+      segmentedButtonTheme: _segmentedButtonTheme(colorScheme),
       bottomSheetTheme: BottomSheetThemeData(
         shape: RoundedSuperellipseBorder(
           borderRadius: BorderRadius.vertical(
@@ -456,6 +528,7 @@ class AppThemeBuilder {
         ),
       ),
       popupMenuTheme: _popupMenuTheme(colorScheme),
+      segmentedButtonTheme: _segmentedButtonTheme(colorScheme),
       bottomSheetTheme: BottomSheetThemeData(
         shape: RoundedSuperellipseBorder(
           borderRadius: BorderRadius.vertical(

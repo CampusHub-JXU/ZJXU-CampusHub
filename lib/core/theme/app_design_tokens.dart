@@ -34,6 +34,10 @@ class AppRadius {
   /// Chips。
   static const double chip = 10;
 
+  /// 短选项分段控件（`SegmentedButton`）：介于 chip 与内容面之间的一档小圆角，
+  /// 替代 MD3 默认的 StadiumBorder（胶囊）。
+  static const double segment = 11;
+
   /// Bottom sheet top.
   static const double sheet = 26;
 
