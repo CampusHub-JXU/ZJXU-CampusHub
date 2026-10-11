@@ -144,12 +144,9 @@ void main() {
         expect(manager, isNot(contains('"Authorization"')));
         expect(manager, contains('setDestinationInExternalFilesDir'));
         expect(manager, contains('MANAGED_SUBDIR'));
-        // 取消 / 清理只作用于**确认属于自己**的 downloadId / 受管文件。
-        expect(
-          manager,
-          contains('trackedRowOwnership(record) == RowOwnership.OWNED'),
-        );
-        expect(manager, contains('.remove(record.downloadId)'));
+        // 取消 / 清理复用**权威退役**路径（确认归属 → remove → 确认移除 → 删自有文件）。
+        expect(manager, contains('retireOwned(record)'));
+        expect(manager, contains('dm.remove(targetId)'));
         expect(
           manager,
           contains('startsWith(AppUpdateContract.MANAGED_FILE_PREFIX)'),
@@ -238,6 +235,45 @@ void main() {
       expect(manager, contains('reconcileNotFound'));
       // 只有目标文件也不存在时才允许重新入队。
       expect(manager, contains('if (file.exists())'));
+    });
+  });
+
+  group('cancel + install-callback generation guards (N1/N2)', () {
+    test('cancel reuses authoritative retire and never silently clears', () {
+      final manager = read('$updateDir/AppUpdateManager.kt');
+      // 取消复用与替换请求相同的权威退役，失败时保留 exact 记录（不 clear / 不谎报）。
+      expect(manager, contains('cancelDisposition('));
+      expect(manager, contains('retireOwned(record)'));
+      expect(manager, contains('CancelDisposition.CLEARED_CANCELED'));
+      expect(manager, contains('CancelDisposition.RETAIN_FAILED'));
+      // 用户明确取消：失败时消费自动安装意图，但仍保留 id / generation 以便重试。
+      expect(manager, contains('userWantsInstall = false'));
+      expect(
+        manager,
+        contains('isStale(current, record.requestKey, record.generation)'),
+      );
+
+      // 纯逻辑与可执行用例同源。
+      final ownership = read('$updateDir/AppUpdateOwnership.kt');
+      expect(ownership, contains('fun cancelDisposition('));
+      expect(ownership, contains('fun isStale('));
+    });
+
+    test('install callback is (requestKey, generation) guarded end to end', () {
+      final manager = read('$updateDir/AppUpdateManager.kt');
+      // 回调必须携带被校验记录的代际，而不是拷贝「当前」记录。
+      expect(
+        manager,
+        contains(
+          'finishInstallAttempt(activity, record.requestKey, record.generation, outcome, callback)',
+        ),
+      );
+      // 成功 / 失败 / 权限三条回填路径都用同一守卫。
+      expect(manager, contains('isStale(verified, requestKey, generation)'));
+      expect(manager, contains('isStale(matched, requestKey, generation)'));
+      expect(manager, contains('isStale(after, requestKey, generation)'));
+      // 用最新匹配记录发起安装，而非旧结果记录。
+      expect(manager, contains('launchInstaller(activity, matched!!)'));
     });
   });
 

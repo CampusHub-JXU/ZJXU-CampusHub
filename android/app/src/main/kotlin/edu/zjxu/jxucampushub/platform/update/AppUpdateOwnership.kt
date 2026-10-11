@@ -107,6 +107,45 @@ internal object AppUpdateOwnership {
     }
 
     /**
+     * 迟到回调是否已过期（requestKey + generation 精确匹配）。
+     *
+     * 与 [AppUpdateManager] 的安装 / 校验回调守卫同源：取消或新请求会让在途结果作废，
+     * 绝不在更新后的记录上回填。`currentRequestKey == null`（记录已被清除）视为过期。
+     */
+    fun isStale(
+        currentRequestKey: String?,
+        currentGeneration: Int,
+        expectedRequestKey: String,
+        expectedGeneration: Int,
+    ): Boolean =
+        currentRequestKey == null ||
+            currentRequestKey != expectedRequestKey ||
+            currentGeneration != expectedGeneration
+
+    /** 取消决策（用户取消语义，纯逻辑）。 */
+    enum class CancelDisposition {
+        /** 无记录：无活动请求，幂等返回 canceled。 */
+        IDEMPOTENT_CANCELED,
+
+        /** 权威退役确认：可清除记录并返回 canceled。 */
+        CLEARED_CANCELED,
+
+        /** 无法确认退役：保留 exact 记录、不删文件、不谎报 canceled，返回类型化失败。 */
+        RETAIN_FAILED,
+    }
+
+    /**
+     * 取消决策：只有「权威退役已确认」才允许清除；无法确认时**保留**记录以便重试，
+     * 绝不静默清除（否则可能丢弃仍在进行的受管请求 / 误伤后续状态）。
+     */
+    fun cancelDisposition(hasRecord: Boolean, retireConfirmed: Boolean): CancelDisposition =
+        when {
+            !hasRecord -> CancelDisposition.IDEMPOTENT_CANCELED
+            retireConfirmed -> CancelDisposition.CLEARED_CANCELED
+            else -> CancelDisposition.RETAIN_FAILED
+        }
+
+    /**
      * 解析 DownloadManager 的本地目标 URI：
      * - 只接受 `file:` 方案且**无 authority**（`file:///...`）；`content:` /
      *   带 host 的 `file://host/...` 一律返回 null——在不查 ContentResolver 的

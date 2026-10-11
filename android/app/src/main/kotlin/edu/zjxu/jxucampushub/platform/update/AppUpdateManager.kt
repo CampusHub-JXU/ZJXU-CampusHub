@@ -205,22 +205,49 @@ internal class AppUpdateManager private constructor(private val appContext: Cont
         computePhase(record)
     }
 
+    /**
+     * 用户取消：**只有权威退役确认后**才清除记录并返回 canceled。
+     *
+     * 复用与替换请求完全相同的 [retireOwned]（确认归属 → remove → 确认已移除 → 删自有文件）；
+     * 若归属不明 / 查询不可用 / remove 失败 / 确认仍有行，则**保留 exact 记录**（含 id /
+     * generation，可重试取消）、不删文件、不谎报 canceled。用户已明确要求取消，故消费自动
+     * 安装意图（`userWantsInstall=false`，避免随后自动拉起安装器），并返回既有
+     * `failed` / `nativeError` 类型化失败——绝不静默清除（否则可能丢弃仍在进行的受管请求）。
+     * 无记录时无活动请求，幂等返回 canceled。
+     */
     fun cancelActive(): Map<String, Any?> = synchronized(mutationLock) {
         val record = store.read()
-        if (record != null) {
-            // 只移除**确认属于自己**的那一行；归属不明 / 不匹配时绝不删无关行。
-            if (record.downloadId != 0L && trackedRowOwnership(record) == RowOwnership.OWNED) {
-                try {
-                    appContext.getSystemService(DownloadManager::class.java)
-                        ?.remove(record.downloadId)
-                } catch (error: Exception) {
-                    Log.e(TAG, "remove failed: ${error.javaClass.simpleName}")
-                }
+        val disposition = AppUpdateOwnership.cancelDisposition(
+            hasRecord = record != null,
+            retireConfirmed = record != null && retireOwned(record),
+        )
+        when (disposition) {
+            AppUpdateOwnership.CancelDisposition.IDEMPOTENT_CANCELED ->
+                stateMap(AppUpdatePhase.CANCELED)
+
+            AppUpdateOwnership.CancelDisposition.CLEARED_CANCELED -> {
+                store.clear()
+                stateMap(AppUpdatePhase.CANCELED)
             }
-            deleteManagedFile(record)
-            store.clear()
+
+            AppUpdateOwnership.CancelDisposition.RETAIN_FAILED -> {
+                // 保留 exact 记录（含 id / generation），只消费自动安装意图。
+                store.update { current ->
+                    if (record == null || isStale(current, record.requestKey, record.generation)) {
+                        current
+                    } else {
+                        current!!.copy(userWantsInstall = false)
+                    }
+                }
+                stateMap(
+                    phase = AppUpdatePhase.FAILED,
+                    reason = AppUpdateReason.NATIVE_ERROR,
+                    version = record?.version,
+                    requestKey = record?.requestKey,
+                    assetFileName = record?.fileName,
+                )
+            }
         }
-        stateMap(AppUpdatePhase.CANCELED)
     }
 
     /** 调起安装：校验后若缺「未知来源」权限则进入 permissionRequired，否则发起安装器。 */
@@ -232,7 +259,9 @@ internal class AppUpdateManager private constructor(private val appContext: Cont
         }
         executor.execute {
             val outcome = verifyRecord(record)
-            mainHandler.post { finishInstallAttempt(activity, outcome, callback) }
+            mainHandler.post {
+                finishInstallAttempt(activity, record.requestKey, record.generation, outcome, callback)
+            }
         }
     }
 
@@ -271,41 +300,90 @@ internal class AppUpdateManager private constructor(private val appContext: Cont
         }
         executor.execute {
             val outcome = verifyRecord(record)
-            mainHandler.post { finishInstallAttempt(activity, outcome, callback) }
+            mainHandler.post {
+                finishInstallAttempt(activity, record.requestKey, record.generation, outcome, callback)
+            }
         }
     }
 
     // ---- 内部实现 ----
 
+    /**
+     * 安装校验结果回填 + 发起安装。
+     *
+     * 全程以 (requestKey, generation) 守卫：任何在途取消 / 新请求都会让迟到结果作废，
+     * 绝不在**更新后的记录**上回填 verified / failureReason / permissionRequired /
+     * installerOpened，也绝不在记录已变时返回「已发起安装」（`callback(true)`）。
+     * 与 [mutationLock] 同锁，保证检查与写入相对 start / cancel 原子。
+     */
     private fun finishInstallAttempt(
         activity: Activity?,
+        requestKey: String,
+        generation: Int,
         outcome: AppUpdateVerifier.Outcome,
         callback: (Boolean) -> Unit,
-    ) {
+    ) = synchronized(mutationLock) {
         when (outcome) {
             is AppUpdateVerifier.Outcome.Failed -> {
-                store.update {
-                    it?.copy(verified = false, failureReason = outcome.reason)
+                store.update { current ->
+                    if (isStale(current, requestKey, generation)) {
+                        current
+                    } else {
+                        current!!.copy(verified = false, failureReason = outcome.reason)
+                    }
                 }
                 callback(false)
             }
+
             is AppUpdateVerifier.Outcome.Verified -> {
-                store.update { it?.copy(verified = true, failureReason = null) }
-                if (!canRequestPackageInstalls()) {
-                    store.update { it?.copy(permissionRequired = true) }
-                    callback(false)
-                    return
-                }
-                val launched = activity != null && launchInstaller(activity)
-                if (launched) {
-                    // 用户意图已消费：安装器只自动打开一次，取消后仍可手动重试。
-                    store.update {
-                        it?.copy(
-                            installerOpened = true,
-                            permissionRequired = false,
-                            userWantsInstall = false,
-                        )
+                val verified = store.update { current ->
+                    if (isStale(current, requestKey, generation)) {
+                        current
+                    } else {
+                        current!!.copy(verified = true, failureReason = null)
                     }
+                }
+                if (isStale(verified, requestKey, generation)) {
+                    // 记录已被取消 / 替换：迟到校验结果作废，绝不回填、绝不发起安装。
+                    callback(false)
+                    return@synchronized
+                }
+                if (!canRequestPackageInstalls()) {
+                    store.update { current ->
+                        if (isStale(current, requestKey, generation)) {
+                            current
+                        } else {
+                            current!!.copy(permissionRequired = true)
+                        }
+                    }
+                    callback(false)
+                    return@synchronized
+                }
+                // 用**最新匹配记录**发起安装（状态可能已变），而非旧结果记录。
+                val matched = store.read()
+                if (isStale(matched, requestKey, generation)) {
+                    callback(false)
+                    return@synchronized
+                }
+                val launched = activity != null && launchInstaller(activity, matched!!)
+                if (launched) {
+                    store.update { current ->
+                        if (isStale(current, requestKey, generation)) {
+                            current
+                        } else {
+                            current!!.copy(
+                                installerOpened = true,
+                                permissionRequired = false,
+                                userWantsInstall = false,
+                            )
+                        }
+                    }
+                }
+                // 发起后再确认记录仍属本次请求；若期间被替换，绝不把结果回填 / 返回成功。
+                val after = store.read()
+                if (isStale(after, requestKey, generation)) {
+                    callback(false)
+                    return@synchronized
                 }
                 callback(launched)
             }
@@ -321,15 +399,21 @@ internal class AppUpdateManager private constructor(private val appContext: Cont
             expectedVersion = record.version,
         )
 
-    /** 记录已被替换 / 清除（requestKey 或 generation 不匹配）时为 true。 */
+    /**
+     * 记录已被替换 / 清除（requestKey 或 generation 不匹配）时为 true。
+     * 委托 [AppUpdateOwnership.isStale] 的纯逻辑，保证守卫与可执行用例同源。
+     */
     private fun isStale(
         current: AppUpdateStore.Record?,
         requestKey: String,
         generation: Int,
     ): Boolean =
-        current == null ||
-            current.requestKey != requestKey ||
-            current.generation != generation
+        AppUpdateOwnership.isStale(
+            currentRequestKey = current?.requestKey,
+            currentGeneration = current?.generation ?: 0,
+            expectedRequestKey = requestKey,
+            expectedGeneration = generation,
+        )
 
     private fun enqueue(asset: AppUpdateContract.CanonicalAsset, managedFileName: String): Long {
         val dm = appContext.getSystemService(DownloadManager::class.java)
@@ -711,7 +795,7 @@ internal class AppUpdateManager private constructor(private val appContext: Cont
         if (!record.verified || record.installerOpened || record.permissionRequired) return
 
         val activity = activityRef?.get()
-        if (record.userWantsInstall && activity != null && launchInstaller(activity)) {
+        if (record.userWantsInstall && activity != null && launchInstaller(activity, record)) {
             store.update { current ->
                 if (isStale(current, record.requestKey, record.generation)) {
                     current
@@ -729,8 +813,8 @@ internal class AppUpdateManager private constructor(private val appContext: Cont
         AppUpdateNotifications.postCompletion(appContext, record.requestKey)
     }
 
-    private fun launchInstaller(activity: Activity): Boolean {
-        val record = store.read() ?: return false
+    /** 用给定记录（调用方已校验代际）发起安装，避免状态在读取与拉起之间漂移。 */
+    private fun launchInstaller(activity: Activity, record: AppUpdateStore.Record): Boolean {
         val file = managedFile(record)
         if (!file.isFile) return false
         return try {
