@@ -388,6 +388,114 @@ internal class CalendarProviderStore(
         return discoveryResult(calendars, reason == null, reason)
     }
 
+    /**
+     * 只读：扫描**单个** calendar 内本 App 拥有的全部事件（Issue #48 清理用）。
+     *
+     * 与 [queryOwnedEvents] 不同：**允许**同一 opaqueId 对应多个 eventId（历史重复），
+     * 逐行严格 marker 复核；拒绝重复的 (opaqueId,eventId) 精确对与非法行（令
+     * `complete=false`）；行数上限 [CalendarSyncContract.MAX_SCAN_MARKER_ROWS]。
+     * 纯读：绝不 create / insert / update / delete 任何行。
+     *
+     * 返回固定 DTO `{events:[{opaqueId,eventId}], complete, reason}`；provider /
+     * 权限异常整体降级为 `complete=false`（`unavailable` / `permissionDenied`），
+     * 绝不返回「零个即干净」。
+     */
+    fun scanOwnedEvents(calendarId: Long): Map<String, Any?> {
+        if (calendarId <= 0L) {
+            throw CalendarSyncException(
+                CalendarSyncErrors.INVALID_ARGS,
+                "calendarId must be positive",
+            )
+        }
+
+        val selection =
+            "${CalendarContract.Events.CALENDAR_ID} = ? AND " +
+                "${CalendarContract.Events.CUSTOM_APP_PACKAGE} = ? AND " +
+                "${CalendarContract.Events.CUSTOM_APP_URI} LIKE ? AND " +
+                "(${CalendarContract.Events.DELETED} IS NULL OR " +
+                "${CalendarContract.Events.DELETED} = 0)"
+        val args = arrayOf(
+            calendarId.toString(),
+            packageName,
+            "${CalendarSyncContract.EVENT_URI_PREFIX}%",
+        )
+        val projection = arrayOf(
+            CalendarContract.Events._ID,
+            CalendarContract.Events.CUSTOM_APP_URI,
+        )
+
+        val events = mutableListOf<Map<String, Any?>>()
+        val seenPairs = HashSet<String>()
+        var truncated = false
+        var invalid = false
+        try {
+            resolver.query(
+                CalendarContract.Events.CONTENT_URI,
+                projection,
+                selection,
+                args,
+                null,
+            ).use { cursor ->
+                if (cursor == null) {
+                    throw CalendarSyncException(
+                        CalendarSyncErrors.PROVIDER_UNAVAILABLE,
+                        "calendar provider unavailable",
+                    )
+                }
+                var scanned = 0
+                while (cursor.moveToNext()) {
+                    if (scanned >= CalendarSyncContract.MAX_SCAN_MARKER_ROWS) {
+                        truncated = true
+                        break
+                    }
+                    scanned++
+                    val eventId = cursor.getLong(0)
+                    val opaqueId = CalendarSyncContract.opaqueIdFromUri(cursor.getString(1))
+                    if (eventId <= 0L || opaqueId == null) {
+                        invalid = true
+                        continue
+                    }
+                    if (!seenPairs.add("$opaqueId#$eventId")) {
+                        invalid = true
+                        continue
+                    }
+                    events += mapOf("opaqueId" to opaqueId, "eventId" to eventId)
+                }
+            }
+        } catch (error: SecurityException) {
+            Log.w(TAG, "scan denied: ${error.javaClass.simpleName}")
+            return ownedEventScanResult(
+                emptyList(),
+                complete = false,
+                reason = CalendarOwnedScanReasons.PERMISSION_DENIED,
+            )
+        } catch (error: Exception) {
+            Log.w(TAG, "scan failed: ${error.javaClass.simpleName}")
+            return ownedEventScanResult(
+                emptyList(),
+                complete = false,
+                reason = CalendarOwnedScanReasons.UNAVAILABLE,
+            )
+        }
+
+        val reason: String? = when {
+            truncated -> CalendarOwnedScanReasons.SCAN_LIMIT
+            invalid -> CalendarOwnedScanReasons.UNAVAILABLE
+            else -> null
+        }
+        return ownedEventScanResult(events, reason == null, reason)
+    }
+
+    private fun ownedEventScanResult(
+        events: List<Map<String, Any?>>,
+        complete: Boolean,
+        reason: String?,
+    ): Map<String, Any?> = mapOf(
+        "events" to events,
+        "complete" to complete,
+        "reason" to reason,
+    )
+
     private fun discoveryResult(
         calendars: List<Map<String, Any?>>,
         complete: Boolean,

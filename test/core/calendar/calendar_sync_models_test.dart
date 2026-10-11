@@ -683,4 +683,64 @@ void main() {
       }
     });
   });
+
+  group('CalendarOwnedEventScan', () {
+    test('allows the same opaqueId with different eventIds', () {
+      final scan = CalendarOwnedEventScan.tryParse(<String, Object?>{
+        'events': <Object?>[
+          <String, Object?>{
+            'opaqueId': '11111111-1111-4111-8111-111111111111',
+            'eventId': 1,
+          },
+          <String, Object?>{
+            'opaqueId': '11111111-1111-4111-8111-111111111111',
+            'eventId': 2,
+          },
+        ],
+        'complete': true,
+        'reason': null,
+      });
+
+      expect(scan?.complete, isTrue);
+      expect(scan?.events, hasLength(2));
+    });
+
+    test('drops duplicate exact pairs and forces incomplete', () {
+      final scan = CalendarOwnedEventScan.tryParse(<String, Object?>{
+        'events': <Object?>[
+          <String, Object?>{
+            'opaqueId': '11111111-1111-4111-8111-111111111111',
+            'eventId': 1,
+          },
+          <String, Object?>{
+            'opaqueId': '11111111-1111-4111-8111-111111111111',
+            'eventId': 1,
+          },
+          'junk',
+        ],
+        'complete': true,
+        'reason': null,
+      });
+
+      expect(scan?.complete, isFalse);
+      expect(scan?.events, hasLength(1));
+      expect(scan?.reason, CalendarOwnedDiscoveryReason.unavailable);
+    });
+
+    test('rejects malformed top-level payloads', () {
+      for (final raw in <Object?>[
+        null,
+        'x',
+        <String, Object?>{'complete': true},
+        <String, Object?>{'events': <Object?>[], 'complete': 'true'},
+        <String, Object?>{
+          'events': <Object?>[],
+          'complete': true,
+          'reason': 'bogus',
+        },
+      ]) {
+        expect(CalendarOwnedEventScan.tryParse(raw), isNull);
+      }
+    });
+  });
 }

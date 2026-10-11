@@ -76,6 +76,7 @@ class CalendarSyncChannelHandler(private val activity: Activity) {
                 "listWritableCalendars" -> result.success(store.listWritableCalendars())
                 "queryOwnedEvents" -> result.success(queryOwnedEvents(call))
                 "listOwnedEventCalendars" -> result.success(store.listOwnedEventCalendars())
+                "scanOwnedEvents" -> result.success(scanOwnedEvents(call))
                 "upsertEventBatch" -> result.success(upsertEventBatch(call))
                 "deleteOwnedEventsByIds" -> result.success(deleteOwnedEventsByIds(call))
                 else -> result.notImplemented()
@@ -95,6 +96,11 @@ class CalendarSyncChannelHandler(private val activity: Activity) {
         val calendarId = requireCalendarId(call.argument<Number>("calendarId"))
         val opaqueIds = parseOpaqueIds(call.argument<List<*>>("opaqueIds"))
         return store.queryOwnedEvents(calendarId, opaqueIds)
+    }
+
+    private fun scanOwnedEvents(call: MethodCall): Map<String, Any?> {
+        val calendarId = requireCalendarId(call.argument<Number>("calendarId"))
+        return store.scanOwnedEvents(calendarId)
     }
 
     private fun upsertEventBatch(call: MethodCall): Map<String, Any?> {

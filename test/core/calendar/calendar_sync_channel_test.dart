@@ -855,4 +855,72 @@ void main() {
       }
     });
   });
+
+  group('scanOwnedEvents (read-only single-calendar scan)', () {
+    test('sends calendarId and parses a complete scan', () async {
+      setHandler(
+        (_) async => <String, Object?>{
+          'events': <Object?>[
+            <String, Object?>{
+              'opaqueId': '11111111-1111-4111-8111-111111111111',
+              'eventId': 5,
+            },
+          ],
+          'complete': true,
+          'reason': null,
+        },
+      );
+
+      final scan = await buildDiscoveryChannel().scanOwnedEvents(
+        calendarId: 42,
+      );
+
+      expect(scan.complete, isTrue);
+      expect(scan.events.single.eventId, 5);
+
+      final call = calls.single;
+      expect(call.method, 'scanOwnedEvents');
+      expect((call.arguments as Map<Object?, Object?>)['calendarId'], 42);
+    });
+
+    test('allows duplicate opaqueId with different eventIds', () async {
+      setHandler(
+        (_) async => <String, Object?>{
+          'events': <Object?>[
+            <String, Object?>{
+              'opaqueId': '11111111-1111-4111-8111-111111111111',
+              'eventId': 5,
+            },
+            <String, Object?>{
+              'opaqueId': '11111111-1111-4111-8111-111111111111',
+              'eventId': 6,
+            },
+          ],
+          'complete': true,
+          'reason': null,
+        },
+      );
+
+      final scan = await buildDiscoveryChannel().scanOwnedEvents(
+        calendarId: 42,
+      );
+
+      expect(scan.complete, isTrue);
+      expect(scan.events, hasLength(2));
+    });
+
+    test('degrades missing platform / malformed payloads', () async {
+      final missing = await buildDiscoveryChannel().scanOwnedEvents(
+        calendarId: 42,
+      );
+      expect(missing.complete, isFalse);
+      expect(missing.events, isEmpty);
+
+      setHandler((_) async => 'x');
+      final malformed = await buildDiscoveryChannel().scanOwnedEvents(
+        calendarId: 42,
+      );
+      expect(malformed.complete, isFalse);
+    });
+  });
 }

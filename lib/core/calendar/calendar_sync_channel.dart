@@ -59,6 +59,9 @@ abstract interface class CalendarSyncChannel {
 abstract interface class CalendarOwnedEventDiscovery {
   /// 只读列出「当前包名 + 合法 marker」证实的本 App 遗留事件日历。
   Future<CalendarOwnedCalendarDiscovery> listOwnedEventCalendars();
+
+  /// 只读扫描**单个**日历内本 App 拥有的全部事件（**允许**同 opaqueId 多 eventId）。
+  Future<CalendarOwnedEventScan> scanOwnedEvents({required int calendarId});
 }
 
 /// 默认门面实例；阶段 2 的 coordinator 直接复用它（测试注入 mock channel）。
@@ -361,6 +364,36 @@ class MethodChannelCalendarSyncChannel
     } on Exception {
       AppLogger.instance.warn('日历遗留扫描降级：$operation');
       return CalendarOwnedCalendarDiscovery.unavailable();
+    }
+  }
+
+  @override
+  Future<CalendarOwnedEventScan> scanOwnedEvents({
+    required int calendarId,
+  }) async {
+    const operation = CalendarSyncProtocol.methodScanOwnedEvents;
+    if (calendarId <= 0) return CalendarOwnedEventScan.unavailable();
+    assert(
+      _assertArgumentsAreOpaque(operation, <String, Object?>{
+        'calendarId': calendarId,
+      }),
+    );
+    try {
+      final raw = await _channel.invokeMethod<Object?>(
+        operation,
+        <String, Object?>{'calendarId': calendarId},
+      );
+      return CalendarOwnedEventScan.tryParse(raw) ??
+          CalendarOwnedEventScan.unavailable();
+    } on MissingPluginException {
+      return CalendarOwnedEventScan.unavailable();
+    } on PlatformException catch (error) {
+      // 只按固定 code 分类，绝不记录原始 payload / 课程信息。
+      AppLogger.instance.warn('日历遗留事件扫描降级：$operation (${error.code})');
+      return CalendarOwnedEventScan.unavailable();
+    } on Exception {
+      AppLogger.instance.warn('日历遗留事件扫描降级：$operation');
+      return CalendarOwnedEventScan.unavailable();
     }
   }
 

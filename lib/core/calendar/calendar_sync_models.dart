@@ -24,6 +24,10 @@ abstract final class CalendarSyncProtocol {
   /// 只读遗留扫描（Issue #48）：列出「当前包名 + 合法 marker」证实的自有日历。
   static const String methodListOwnedEventCalendars = 'listOwnedEventCalendars';
 
+  /// 只读单日历事件扫描（Issue #48 清理用）：返回该日历内全部自有事件
+  /// （**允许**同 opaqueId 多 eventId）。
+  static const String methodScanOwnedEvents = 'scanOwnedEvents';
+
   /// 原生单批事件上限；Dart 侧先校验，避免无谓的 IPC 往返。
   static const int maxBatchEvents = 100;
 
@@ -40,6 +44,9 @@ abstract final class CalendarSyncProtocol {
 
   /// 只读遗留扫描展示名长度上限（与原生 `MAX_DISPLAY_NAME_LENGTH` lockstep）。
   static const int maxDisplayNameLength = 256;
+
+  /// 只读单日历事件扫描行数上限（与原生 `MAX_SCAN_MARKER_ROWS` lockstep）。
+  static const int maxScanRows = 10000;
 
   /// businessKey 只存私有 ledger，长度上限由本地约定，不发给原生。
   static const int maxBusinessKeyLength = 512;
@@ -728,6 +735,97 @@ class CalendarOwnedCalendarDiscovery {
   @override
   String toString() =>
       'CalendarOwnedCalendarDiscovery(calendars: ${calendars.length}, '
+      'complete: $complete, reason: ${reason?.wireCode})';
+}
+
+/// 只读**单日历**事件扫描结果（`scanOwnedEvents`，Issue #48 清理用）。
+///
+/// 与 [CalendarSyncOwnedEvent]/`queryOwnedEvents` 不同：**允许**同一 opaqueId
+/// 对应多个 eventId（历史重复），因此调用方必须按 `(calendarId, opaqueId, eventId)`
+/// 三元组精确处理，绝不能按 opaqueId 去重后只删一条。
+class CalendarOwnedEventScan {
+  const CalendarOwnedEventScan({
+    required this.events,
+    required this.complete,
+    this.reason,
+  });
+
+  final List<CalendarSyncOwnedEvent> events;
+
+  /// 是否为**完整**扫描；只有原生明确 `complete == true` 且无降级才为 true。
+  final bool complete;
+
+  /// 不完整时的固定原因；完整时为 null。
+  final CalendarOwnedDiscoveryReason? reason;
+
+  static const CalendarOwnedEventScan _unavailable = CalendarOwnedEventScan(
+    events: <CalendarSyncOwnedEvent>[],
+    complete: false,
+    reason: CalendarOwnedDiscoveryReason.unavailable,
+  );
+
+  /// 平台缺失 / provider 不可用等无法扫描的保守结果（绝不当「零个即干净」）。
+  static CalendarOwnedEventScan unavailable() => _unavailable;
+
+  /// 解析固定协议形状；顶层结构非法返回 null（由门面降级为 [unavailable]）。
+  ///
+  /// 行级：非法行 / 重复 `(opaqueId,eventId)` 精确对被丢弃并**强制 `complete=false`**。
+  static CalendarOwnedEventScan? tryParse(Object? raw) {
+    if (raw is! Map) return null;
+    final rawComplete = raw['complete'];
+    if (rawComplete is! bool) return null;
+
+    final rawReason = raw['reason'];
+    final CalendarOwnedDiscoveryReason? parsedReason = rawReason == null
+        ? null
+        : CalendarOwnedDiscoveryReason.fromWire(rawReason);
+    if (rawReason != null && parsedReason == null) return null;
+
+    final rawEvents = raw['events'];
+    if (rawEvents is! List) return null;
+
+    final events = <CalendarSyncOwnedEvent>[];
+    final seenPairs = <String>{};
+    var dropped = false;
+    for (final item in rawEvents) {
+      final event = CalendarSyncOwnedEvent.tryParse(item);
+      if (event == null) {
+        dropped = true;
+        continue;
+      }
+      if (!seenPairs.add('${event.opaqueId}#${event.eventId}')) {
+        dropped = true;
+        continue;
+      }
+      if (events.length >= CalendarSyncProtocol.maxScanRows) {
+        dropped = true;
+        break;
+      }
+      events.add(event);
+    }
+
+    var effectiveComplete = rawComplete;
+    CalendarOwnedDiscoveryReason? effectiveReason = parsedReason;
+    if (dropped || (effectiveComplete && effectiveReason != null)) {
+      effectiveComplete = false;
+      effectiveReason ??= CalendarOwnedDiscoveryReason.unavailable;
+    }
+    if (effectiveComplete) {
+      effectiveReason = null;
+    } else {
+      effectiveReason ??= CalendarOwnedDiscoveryReason.unavailable;
+    }
+
+    return CalendarOwnedEventScan(
+      events: List<CalendarSyncOwnedEvent>.unmodifiable(events),
+      complete: effectiveComplete,
+      reason: effectiveReason,
+    );
+  }
+
+  @override
+  String toString() =>
+      'CalendarOwnedEventScan(events: ${events.length}, '
       'complete: $complete, reason: ${reason?.wireCode})';
 }
 
