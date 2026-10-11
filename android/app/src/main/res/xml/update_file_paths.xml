@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  应用内一键更新的 FileProvider 路径白名单。
+
+  只暴露应用外部私有目录下的受管子目录 `Downloads/updates/`；**不得**放行
+  根路径或公共目录，避免通过 content URI 暴露任意文件。
+-->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <external-files-path name="app_update_files" path="Downloads/updates/" />
+</paths>

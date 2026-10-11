@@ -380,20 +380,41 @@ void main() {
       expect(controller.state.value.phase, ApkUpdatePhase.canceled);
     });
 
+    test('requestInstall success marks installerOpened', () async {
+      await controller.startDownload(_release());
+      expect(await controller.requestInstall(), isTrue);
+      expect(controller.state.value.phase, ApkUpdatePhase.installerOpened);
+    });
+
     test(
-      'requestInstall success marks installerOpened; failure marks failed',
+      'requestInstall failure keeps native permissionRequired state',
       () async {
         await controller.startDownload(_release());
-        expect(await controller.requestInstall(), isTrue);
-        expect(controller.state.value.phase, ApkUpdatePhase.installerOpened);
-
         transport.installOk = false;
+        transport.queryResult = const ApkUpdateState(
+          phase: ApkUpdatePhase.permissionRequired,
+          reason: ApkUpdateFailureReason.permissionDenied,
+        );
+
         expect(await controller.requestInstall(), isFalse);
-        expect(controller.state.value.phase, ApkUpdatePhase.failed);
+        expect(transport.queryCalls, 1);
+        expect(controller.state.value.phase, ApkUpdatePhase.permissionRequired);
         expect(
           controller.state.value.reason,
-          ApkUpdateFailureReason.installerUnavailable,
+          ApkUpdateFailureReason.permissionDenied,
         );
+      },
+    );
+
+    test(
+      'requestInstall failure with no native record keeps prior state',
+      () async {
+        await controller.startDownload(_release());
+        transport.installOk = false;
+        transport.queryResult = null;
+
+        expect(await controller.requestInstall(), isFalse);
+        expect(controller.state.value.phase, ApkUpdatePhase.downloading);
       },
     );
 

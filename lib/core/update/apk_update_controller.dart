@@ -592,20 +592,22 @@ class ApkUpdateController {
 
   /// 调起系统安装确认。成功仅表示**已发起**（[ApkUpdatePhase.installerOpened]），
   /// 不代表用户已安装。
+  ///
+  /// 原生未发起安装器（例如缺「未知来源」权限）时返回 false，并以**原生权威状态**
+  /// 为准刷新（保留 `permissionRequired` / `readyToInstall`），绝不覆盖成 failed；
+  /// UI 可据此引导用户打开权限设置页并在回前台后重试安装。
   Future<bool> requestInstall() async {
     final ok = await _transport.requestInstall();
-    final current = state.value;
     if (!ok) {
-      _apply(
-        current.copyWith(
-          phase: ApkUpdatePhase.failed,
-          reason: ApkUpdateFailureReason.installerUnavailable,
-        ),
-      );
+      final epoch = ++_refreshEpoch;
+      final next = await _transport.queryActiveUpdate();
+      if (epoch == _refreshEpoch && next != null) {
+        _apply(next);
+      }
       return false;
     }
     _apply(
-      current.copyWith(
+      state.value.copyWith(
         phase: ApkUpdatePhase.installerOpened,
         clearReason: true,
       ),
