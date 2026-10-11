@@ -45,8 +45,8 @@ internal object AppUpdateContract {
     /** 应用外部私有目录下的受管子目录（DownloadManager 目标）。 */
     const val MANAGED_SUBDIR = "updates"
 
-    /** 受管文件名的稳定前缀（便于清理时只认自己的文件）。 */
-    const val MANAGED_FILE_PREFIX = "update_"
+    /** 受管文件名的稳定前缀（便于清理时只认自己的文件；与归属判定同源）。 */
+    const val MANAGED_FILE_PREFIX = AppUpdateOwnership.MANAGED_FILE_PREFIX
 
     const val NOTIFICATION_CHANNEL_ID = "app_update"
     const val NOTIFICATION_CHANNEL_NAME = "更新下载完成"

@@ -144,11 +144,12 @@ void main() {
         expect(manager, isNot(contains('"Authorization"')));
         expect(manager, contains('setDestinationInExternalFilesDir'));
         expect(manager, contains('MANAGED_SUBDIR'));
-        // 取消 / 清理只作用于自己的 downloadId / 受管文件。
+        // 取消 / 清理只作用于**确认属于自己**的 downloadId / 受管文件。
         expect(
           manager,
-          contains('DownloadManager::class.java)?.remove(record.downloadId)'),
+          contains('trackedRowOwnership(record) == RowOwnership.OWNED'),
         );
+        expect(manager, contains('.remove(record.downloadId)'));
         expect(
           manager,
           contains('startsWith(AppUpdateContract.MANAGED_FILE_PREFIX)'),
@@ -190,6 +191,53 @@ void main() {
       expect(notifications, contains('EXTRA_REQUEST_KEY'));
       // 绝不后台拉起 UI。
       expect(notifications, isNot(contains('startActivity')));
+    });
+  });
+
+  group('native ownership / single-request invariants', () {
+    test('ownership requires exact url AND exact managed destination', () {
+      final ownership = read('$updateDir/AppUpdateOwnership.kt');
+      expect(ownership, contains('fun matches('));
+      expect(ownership, contains('fun classify('));
+      expect(ownership, contains('resolveFileSchemeLocalPath'));
+      expect(ownership, contains('isManagedFileName'));
+      // 只接受 `file://` 且无 authority；content:// / 带 host 一律 fail closed。
+      expect(ownership, contains('file://'));
+      // 精确相等匹配，绝不做前缀 / basename 之类的宽松匹配。
+      expect(ownership, contains('actual == expected'));
+
+      final manager = read('$updateDir/AppUpdateManager.kt');
+      expect(manager, contains('COLUMN_LOCAL_URI'));
+      expect(manager, contains('scanOwnedDownloads'));
+      expect(manager, contains('AppUpdateOwnership.classify'));
+      // 扫描上限 / 非权威结论（不重新入队）。
+      expect(manager, contains('MAX_SCAN_ROWS'));
+      expect(manager, contains('Scan.Incomplete'));
+      expect(manager, contains('Scan.Unavailable'));
+      expect(manager, contains('Scan.Ambiguous'));
+      // 绝不按 URL 单独认领（旧的宽松 findOwnedDownloadId 必须不存在）。
+      expect(manager, isNot(contains('findOwnedDownloadId')));
+    });
+
+    test('replacing a managed request retires the old owned row first', () {
+      final manager = read('$updateDir/AppUpdateManager.kt');
+      expect(manager, contains('mutationLock'));
+      expect(manager, contains('retireOwned(existing)'));
+      expect(manager, contains('trackedRowOwnership'));
+      expect(manager, contains('confirmRemoved'));
+      // 无法权威退役时绝不丢弃旧记录 / 盲目入队新请求。
+      expect(
+        manager,
+        contains('if (existing != null && !retireOwned(existing))'),
+      );
+    });
+
+    test('reconcile never re-enqueues when the scan is not authoritative', () {
+      final manager = read('$updateDir/AppUpdateManager.kt');
+      expect(manager, contains('markReconcileUnresolved'));
+      expect(manager, contains('reconcileNotFound'));
+      // 只有目标文件也不存在时才允许重新入队。
+      expect(manager, contains('if (file.exists())'));
     });
   });
 

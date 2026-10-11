@@ -264,10 +264,40 @@ abstract final class ApkUpdateStateCodec {
 /// 只接受 `https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/`
 /// 之后接 `tag` / `apk` 两段路径的形态；拒绝 userinfo、fragment、query、非
 /// https、非可信主机 / 仓库、编码路径穿越、非 `.apk` 文件名。
+///
+/// 校验先对**原始字符串**做 fail-closed 检查，再做 `Uri` 解析后的结构校验
+/// （纵深防御）：`Uri` 会把 `\` 归一为 `/`、解析 dot-segments、把显式默认端口
+/// 视为 `hasPort=false`，这些规范化会掩盖恶意输入，而原生侧不做等价归一
+/// （`android.net.Uri` + `isSafeApkFileName` / `isSafePathSegment` 拒绝字面
+/// `\`、`..` 与非默认端口），因此 Dart 必须先行拒绝，保持两侧一致。
 abstract final class ApkUpdateUrlPolicy {
   static bool isCanonicalAssetUrl(String url) {
     final trimmed = url.trim();
     if (trimmed.isEmpty) return false;
+
+    // 1) 原始字符串检查（绝不依赖 Uri 规范化）。
+    final lower = trimmed.toLowerCase();
+    if (!lower.startsWith('https://')) return false;
+    for (final code in trimmed.codeUnits) {
+      // 控制字符 / DEL：绝不接受（原生同样拒绝）。
+      if (code < 0x20 || code == 0x7f) return false;
+      // 字面反斜杠：Uri 会归一为路径分隔符，原生拒绝 `\`。
+      if (code == 0x5c) return false;
+    }
+    // 编码的 `.` / `/` / `\`（`%2e` / `%2f` / `%5c`，大小写不敏感）：
+    // 拒绝任何「解码后才暴露」的路径穿越 / 分隔符向量。
+    if (lower.contains('%2e') ||
+        lower.contains('%2f') ||
+        lower.contains('%5c')) {
+      return false;
+    }
+    // authority 段（`https://` 之后到首个 `/`、`?`、`#`）：拒绝 userinfo `@`
+    // 与字面端口 `:`（含显式 `:443`——Uri 会把它视为 hasPort=false）。
+    final authority = _rawAuthority(trimmed);
+    if (authority == null) return false;
+    if (authority.contains('@') || authority.contains(':')) return false;
+
+    // 2) Uri 解析后的结构校验（纵深防御）。
     final uri = Uri.tryParse(trimmed);
     if (uri == null) return false;
     if (uri.scheme != 'https') return false;
@@ -291,6 +321,23 @@ abstract final class ApkUpdateUrlPolicy {
     if (_isUnsafeSegment(tag) || _isUnsafeSegment(file)) return false;
     if (!file.toLowerCase().endsWith('.apk')) return false;
     return true;
+  }
+
+  /// 取 `https://` 之后的 authority 原文（到首个 `/`、`?`、`#` 为止）；
+  /// 无 authority 返回 null。调用前已确认前缀为 `https://`。
+  static String? _rawAuthority(String url) {
+    final start = url.indexOf('://') + 3;
+    if (start < 3 || start >= url.length) return null;
+    var end = url.length;
+    for (var i = start; i < url.length; i++) {
+      final c = url[i];
+      if (c == '/' || c == '?' || c == '#') {
+        end = i;
+        break;
+      }
+    }
+    if (end <= start) return null;
+    return url.substring(start, end);
   }
 
   static bool _isUnsafeSegment(String segment) {

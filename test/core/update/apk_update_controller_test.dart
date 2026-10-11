@@ -183,6 +183,85 @@ void main() {
         isFalse,
       );
     });
+
+    test(
+      'rejects literal default port, backslash and control chars (raw parity)',
+      () {
+        // 显式默认端口 `:443`：Dart 曾因 hasPort=false 放行，原生拒绝。
+        expect(
+          ApkUpdateUrlPolicy.isCanonicalAssetUrl(
+            _goodUrl.replaceFirst('github.com', 'github.com:443'),
+          ),
+          isFalse,
+        );
+        // 字面反斜杠：Uri 会归一为 `/`，原生拒绝。
+        expect(
+          ApkUpdateUrlPolicy.isCanonicalAssetUrl(
+            _goodUrl.replaceFirst(
+              'JXU-CampusHub-v0.2.7-arm64-v8a.apk',
+              r'a\..\b.apk',
+            ),
+          ),
+          isFalse,
+        );
+        // 控制字符 / NUL：绝不接受。
+        expect(
+          ApkUpdateUrlPolicy.isCanonicalAssetUrl('$_goodUrl\u0001'),
+          isFalse,
+        );
+        expect(
+          ApkUpdateUrlPolicy.isCanonicalAssetUrl(
+            'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/'
+            'v0.2.7/a\u0000.apk',
+          ),
+          isFalse,
+        );
+      },
+    );
+
+    test('accepts encoded space but rejects encoded traversal / slash', () {
+      // 编码空格 `%20`：合法资产名（原生解码后安全），不得误杀。
+      expect(
+        ApkUpdateUrlPolicy.isCanonicalAssetUrl(
+          'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/'
+          'v0.2.7/JXU%20Campus%20Hub.apk',
+        ),
+        isTrue,
+      );
+      // 编码的 `.` / `/` / `\`：解码后才暴露的穿越 / 分隔符向量，拒绝。
+      expect(
+        ApkUpdateUrlPolicy.isCanonicalAssetUrl(
+          'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/'
+          'v0.2.7/a%2e%2e.apk',
+        ),
+        isFalse,
+      );
+      expect(
+        ApkUpdateUrlPolicy.isCanonicalAssetUrl(
+          'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/'
+          'v0.2.7/a%2Fb.apk',
+        ),
+        isFalse,
+      );
+      expect(
+        ApkUpdateUrlPolicy.isCanonicalAssetUrl(
+          'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/'
+          'v0.2.7/a%5cb.apk',
+        ),
+        isFalse,
+      );
+    });
+
+    test('normal canonical urls with dots and dashes still accepted', () {
+      expect(ApkUpdateUrlPolicy.isCanonicalAssetUrl(_goodUrl), isTrue);
+      expect(
+        ApkUpdateUrlPolicy.isCanonicalAssetUrl(
+          'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/'
+          'v1.2.3/JXU-CampusHub-v1.2.3-arm64-v8a.apk',
+        ),
+        isTrue,
+      );
+    });
   });
 
   group('ApkUpdateRequest', () {
