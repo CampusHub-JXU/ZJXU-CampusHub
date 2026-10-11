@@ -10,6 +10,7 @@ import '../../core/theme/app_typography.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_empty_view.dart';
 import '../../shared/widgets/app_error_view.dart';
+import '../../shared/widgets/app_status_tag.dart';
 import '../../shared/widgets/auth_required_view.dart';
 import '../../shared/widgets/login_shell.dart';
 import '../../shared/widgets/plain_list.dart';
@@ -22,12 +23,13 @@ typedef PhysicalTestSnapshotFetcher = Future<PhysicalTestSnapshot> Function();
 
 /// 体测成绩原生页面。
 ///
-/// 接入 [PhysicalTestService] 原生数据服务：
+/// 接入 [PhysicalTestService] 原生数据服务，只做表现层重排，不改登录 / 网络 /
+/// 解析口径 / 缓存与各类守卫：
 /// * 未登录：展示统一认证原生登录引导 [AuthRequiredView]，唤起登录弹窗 [showUnifiedAuthLoginModal]；
 /// * 登录成功 / 账号切换：自动拉取对应账号体测成绩，登出立即清除历史成绩；
-/// * 有数据：按学年卡片展示体测记录与单项明细；
-/// * 无数据：中性空态 [AppEmptyView]；
-/// * 失败：错误态 [AppErrorView] 并支持重试；
+/// * 有数据：第一屏单列「最新学年总分 + 等级」读数，历史学年用轻量年份选择器切换，
+///   选中学年下方是单列项目明细（项目名在左、原始测量值在右、得分 / 评价为次级带标签信息）；
+/// * 无数据：中性空态 [AppEmptyView]；失败：错误态 [AppErrorView] 并支持重试；
 /// * 严禁挂载任何 WebView、CAS H5 页面或凭据快速填充。
 class PhysicalTestPage extends StatefulWidget {
   const PhysicalTestPage({super.key, this.snapshotFetcher});
@@ -47,6 +49,10 @@ class _PhysicalTestPageState extends State<PhysicalTestPage> {
   String? _error;
   PhysicalTestSnapshot? _snapshot;
   String? _currentAccount;
+
+  /// 当前在读数与明细区展示的记录下标。默认指向服务返回顺序里的最新学年，
+  /// 快照（认证 / 记录）变化时重置，避免残留上一份数据的选中项。
+  int _selectedIndex = 0;
 
   int _authEpoch = 0;
   int _loadId = 0;
@@ -79,6 +85,7 @@ class _PhysicalTestPageState extends State<PhysicalTestPage> {
           _authRequired = true;
           _loading = false;
           _error = null;
+          _selectedIndex = 0;
         });
       }
       return;
@@ -91,6 +98,7 @@ class _PhysicalTestPageState extends State<PhysicalTestPage> {
           _snapshot = null;
           _authRequired = false;
           _error = null;
+          _selectedIndex = 0;
         });
         unawaited(_load(forceRefresh: true));
       }
@@ -138,6 +146,7 @@ class _PhysicalTestPageState extends State<PhysicalTestPage> {
         _snapshot = snapshot;
         _authRequired = false;
         _error = null;
+        _selectedIndex = _latestRecordIndex(snapshot.records);
       });
     } on CasAuthExpiredException {
       if (!mounted || loadId != _loadId || currentEpoch != _authEpoch) {
@@ -147,6 +156,7 @@ class _PhysicalTestPageState extends State<PhysicalTestPage> {
         _snapshot = null;
         _authRequired = true;
         _error = null;
+        _selectedIndex = 0;
       });
     } catch (error, stackTrace) {
       AppLogger.instance.network(
@@ -220,71 +230,266 @@ class _PhysicalTestPageState extends State<PhysicalTestPage> {
       );
     }
 
+    return _buildRecords(records);
+  }
+
+  /// 有数据：无框主读数 + 历史学年选择器 + 选中学年的单列项目明细。
+  Widget _buildRecords(List<PhysicalTestRecord> records) {
+    final maxIndex = records.length - 1;
+    final selectedIndex = _selectedIndex < 0
+        ? 0
+        : (_selectedIndex > maxIndex ? maxIndex : _selectedIndex);
+    final latestIndex = _latestRecordIndex(records);
+    final selected = records[selectedIndex];
+
     return RefreshIndicator(
       onRefresh: () => _load(forceRefresh: true),
-      child: ListView.separated(
+      child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(
           AppSpacing.pageMargin,
-          AppSpacing.sm,
+          AppSpacing.md,
           AppSpacing.pageMargin,
           AppSpacing.xl,
         ),
-        itemCount: records.length,
-        separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.md),
-        itemBuilder: (context, index) => _buildRecordCard(records[index]),
+        children: [
+          _buildReadout(selected, isLatest: selectedIndex == latestIndex),
+          if (records.length > 1) ...[
+            const SizedBox(height: AppSpacing.lg),
+            const PlainSectionHeader('历年'),
+            _buildYearSelector(records, selectedIndex),
+          ],
+          const SizedBox(height: AppSpacing.lg),
+          _buildItems(selected),
+        ],
       ),
     );
   }
 
-  /// 每个学年一组：标题行「学年 · 总分 · 等级」+ 键值行（左项目、右成绩）。
-  Widget _buildRecordCard(PhysicalTestRecord record) {
+  /// 主读数：学年（+「最新」标签）在上；「总分」大数字与「等级」状态标签分行分层，
+  /// 不把总分与等级拼成一串等权文本。缺失值如实占位，不伪造 0。
+  Widget _buildReadout(PhysicalTestRecord record, {required bool isLatest}) {
     final cs = Theme.of(context).colorScheme;
-    final label = context.appText.label;
-    final summary = [
-      record.totalScore,
-      record.grade,
-    ].where((value) => value.isNotEmpty).join(' · ');
+    final text = context.appText;
+    final year = record.academicYear.isEmpty ? '学年未知' : record.academicYear;
+    final totalMissing = record.totalScore.isEmpty;
+    final gradeMissing = record.grade.isEmpty;
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+      key: const Key('physical_test_primary_readout'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Semantics(
-          header: true,
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    record.academicYear.isEmpty ? '体测记录' : record.academicYear,
-                    style: label,
-                  ),
-                ),
-                if (summary.isNotEmpty)
-                  Text(summary, style: label.copyWith(color: cs.primary)),
-              ],
+        Row(
+          children: [
+            Flexible(
+              child: Text(
+                year,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: text.rowTitle,
+              ),
             ),
-          ),
+            if (isLatest) ...[
+              const SizedBox(width: AppSpacing.sm),
+              const AppStatusTag('最新'),
+            ],
+          ],
         ),
-        if (record.items.isNotEmpty)
-          PlainListGroup(
-            children: [for (final item in record.items) _buildItemRow(item)],
-          ),
+        const SizedBox(height: AppSpacing.sm),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              flex: 5,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('总分', style: text.meta),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      totalMissing ? '--' : record.totalScore,
+                      style: text.overview.copyWith(
+                        color: totalMissing ? cs.outlineVariant : cs.primary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: AppSpacing.lg),
+            Expanded(
+              flex: 5,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('等级', style: text.meta),
+                  const SizedBox(height: 4),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerRight,
+                    child: gradeMissing
+                        ? Text(
+                            '暂无等级',
+                            style: text.secondary.copyWith(
+                              color: cs.outlineVariant,
+                            ),
+                          )
+                        : AppStatusTag(record.grade),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ],
     );
   }
 
-  Widget _buildItemRow(PhysicalTestItem item) {
-    final trailing = [
-      item.result,
-      if (item.score.isNotEmpty) '${item.score} 分',
-      item.level,
-    ].where((value) => value.isNotEmpty).join(' · ');
+  /// 历史学年选择器：横向可滑的轻量 chip，选中项用 `secondaryContainer` 轻色面
+  /// 与加粗字重表达，不画描边 / 分隔线；每个记录一格，重复学年也不合并。
+  Widget _buildYearSelector(
+    List<PhysicalTestRecord> records,
+    int selectedIndex,
+  ) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (var i = 0; i < records.length; i++) ...[
+            if (i > 0) const SizedBox(width: AppSpacing.sm),
+            _YearChip(
+              key: ValueKey('physical_test_year_chip_$i'),
+              label: records[i].academicYear.isEmpty
+                  ? '学年未知'
+                  : records[i].academicYear,
+              selected: i == selectedIndex,
+              onTap: () => setState(() => _selectedIndex = i),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 
-    return PlainListRow(
-      title: item.name.isEmpty ? '未命名项目' : item.name,
-      value: trailing.isEmpty ? null : trailing,
+  /// 选中学年的项目明细：单列行列表，用留白分隔（无 Divider / 竖线 / 描边）。
+  Widget _buildItems(PhysicalTestRecord record) {
+    final cs = Theme.of(context).colorScheme;
+    final text = context.appText;
+    if (record.items.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.xl),
+        child: Center(
+          child: Text(
+            '暂无项目数据',
+            style: text.secondary.copyWith(color: cs.outlineVariant),
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        PlainSectionHeader('项目明细 · ${record.items.length}'),
+        PlainListGroup(
+          children: [
+            for (var i = 0; i < record.items.length; i++)
+              _buildItemRow(record.items[i], i),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// 单项行：项目名在左（第一视觉锚点）；最重要的原始测量值在右；得分 / 评价
+  /// 作为次级信息在固定位置单独一行、各自带标签，绝不 `join(' · ')` 成等权串。
+  Widget _buildItemRow(PhysicalTestItem item, int index) {
+    final cs = Theme.of(context).colorScheme;
+    final text = context.appText;
+    final name = item.name.isEmpty ? '未命名项目' : item.name;
+    final resultMissing = item.result.isEmpty;
+    final metrics = <Widget>[
+      if (item.score.isNotEmpty) _buildMetric('得分', item.score),
+      if (item.level.isNotEmpty) _buildMetric('评价', item.level),
+    ];
+
+    return LayoutBuilder(
+      key: ValueKey('physical_test_item_row_$index'),
+      builder: (context, constraints) {
+        final maxTrailing = constraints.maxWidth * 0.52;
+        return Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: kPlainListRowInset,
+            vertical: AppSpacing.md,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: Text(name, style: text.rowTitle)),
+              const SizedBox(width: AppSpacing.md),
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: maxTrailing),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        resultMissing ? '--' : item.result,
+                        style: resultMissing
+                            ? text.rowValue.copyWith(color: cs.outlineVariant)
+                            : text.rowValue,
+                      ),
+                    ),
+                    if (metrics.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Wrap(
+                        alignment: WrapAlignment.end,
+                        spacing: AppSpacing.lg,
+                        runSpacing: 2,
+                        children: metrics,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// 带标签的次级指标（`得分 90` / `评价 优秀`）：标签用 `meta`，值用同字号但
+  /// 更重的 `onSurface`，与项目名 / 原始测量值拉开层次。
+  Widget _buildMetric(String label, String value) {
+    final cs = Theme.of(context).colorScheme;
+    final text = context.appText;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(label, style: text.meta),
+        const SizedBox(width: 4),
+        Flexible(
+          child: Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: text.meta.copyWith(
+              color: cs.onSurface,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -300,10 +505,88 @@ class _PhysicalTestPageState extends State<PhysicalTestPage> {
       children: const [
         RefreshStatusLine(refreshing: true, loadingLabel: '正在获取体测成绩…'),
         SizedBox(height: AppSpacing.md),
-        SkeletonBox(width: 96, height: 12),
+        SkeletonBox(width: 120, height: 14),
         SizedBox(height: AppSpacing.sm),
+        SkeletonBox(height: 64, radius: 12),
+        SizedBox(height: AppSpacing.lg),
+        SkeletonBox(height: 44, radius: 22),
+        SizedBox(height: AppSpacing.lg),
         SkeletonBox(height: 208, radius: 16),
       ],
     );
   }
+}
+
+/// 历史学年 chip：轻量可点胶囊，选中 / 未选中只换低对比色面与字重，不画线。
+class _YearChip extends StatelessWidget {
+  const _YearChip({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final text = context.appText;
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: Material(
+        color: selected ? cs.secondaryContainer : cs.surfaceContainerHighest,
+        shape: const StadiumBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: text.secondary.copyWith(
+                color: selected ? cs.onSecondaryContainer : cs.onSurfaceVariant,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 已知学年格式：`YYYY-YYYY`，可带学期后缀 `-N`。只解析这一种格式，格式不认识
+/// 时回退到服务返回的稳定顺序，绝不猜测用户学业状态。
+final _academicYearPattern = RegExp(r'(\d{4})-(\d{4})(?:-(\d+))?');
+
+/// 学年可比较键；格式不认识返回 null（调用方回退源顺序）。
+int? _academicYearKey(String raw) {
+  final match = _academicYearPattern.firstMatch(raw.trim());
+  if (match == null) return null;
+  final start = int.tryParse(match.group(1)!);
+  if (start == null) return null;
+  final term = int.tryParse(match.group(3) ?? '1') ?? 1;
+  return start * 10 + term.clamp(0, 9);
+}
+
+/// 最新学年下标：仅在能解析出已知学年格式的记录里取最大者；全部无法解析时按
+/// 服务返回顺序取第一条（服务把当前 / 最新记录放在最前）。
+int _latestRecordIndex(List<PhysicalTestRecord> records) {
+  var best = 0;
+  int? bestKey;
+  for (var i = 0; i < records.length; i++) {
+    final key = _academicYearKey(records[i].academicYear);
+    if (key == null) continue;
+    if (bestKey == null || key > bestKey) {
+      bestKey = key;
+      best = i;
+    }
+  }
+  return bestKey == null ? 0 : best;
 }

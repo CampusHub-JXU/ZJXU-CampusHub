@@ -43,6 +43,61 @@ PhysicalTestSnapshot _snapshotWithRecords({
   );
 }
 
+PhysicalTestRecord _record({
+  required String academicYear,
+  String totalScore = '',
+  String grade = '',
+  List<PhysicalTestItem> items = const [],
+}) {
+  return PhysicalTestRecord(
+    academicYear: academicYear,
+    totalScore: totalScore,
+    grade: grade,
+    items: items,
+  );
+}
+
+PhysicalTestSnapshot _multiYearSnapshot() {
+  return PhysicalTestSnapshot(
+    records: [
+      _record(
+        academicYear: '2025-2026',
+        totalScore: '86.5',
+        grade: '良好',
+        items: const [
+          PhysicalTestItem(
+            name: '50 米跑',
+            result: '7.2 秒',
+            score: '90',
+            level: '优秀',
+          ),
+          PhysicalTestItem(name: '立定跳远', result: '2.35 米', score: '83'),
+        ],
+      ),
+      _record(
+        academicYear: '2024-2025',
+        totalScore: '78',
+        grade: '及格',
+        items: const [
+          PhysicalTestItem(
+            name: '1000 米跑',
+            result: '4 分 10 秒',
+            score: '70',
+            level: '及格',
+          ),
+        ],
+      ),
+      _record(academicYear: '2023-2024'),
+    ],
+  );
+}
+
+/// 主读数区（学年 / 总分 / 等级）内的文本；避免与年份 chip 上同名学年文字重影。
+Finder _readout(String text) => find.descendant(
+  of: find.byKey(const Key('physical_test_primary_readout')),
+  matching: find.text(text),
+);
+
 void main() {
   setUp(() async {
     await resetTestEnvironment();
@@ -66,11 +121,29 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('体测成绩'), findsOneWidget);
+
+      // 主读数分层：学年 + 「最新」标签，总分与等级各自带标签、不拼成一串。
       expect(find.text('2025-2026'), findsOneWidget);
-      expect(find.text('86.5 · 良好'), findsOneWidget);
+      expect(find.text('最新'), findsOneWidget);
+      expect(find.text('总分'), findsOneWidget);
+      expect(find.text('86.5'), findsOneWidget);
+      expect(find.text('等级'), findsOneWidget);
+      expect(find.text('良好'), findsOneWidget);
+
+      // 单项：项目名在左、原始测量值在右、得分 / 评价各自带标签。
       expect(find.text('50 米跑'), findsOneWidget);
-      expect(find.text('7.2 秒 · 90 分 · 优秀'), findsOneWidget);
+      expect(find.text('7.2 秒'), findsOneWidget);
       expect(find.text('立定跳远'), findsOneWidget);
+      expect(find.text('2.35 米'), findsOneWidget);
+      expect(find.text('得分'), findsNWidgets(2));
+      expect(find.text('评价'), findsOneWidget);
+      expect(find.text('90'), findsOneWidget);
+      expect(find.text('83'), findsOneWidget);
+      expect(find.text('优秀'), findsOneWidget);
+
+      // 旧版 `总分 · 等级` / `结果 · 得分 · 等级` 单串拼接不得回归。
+      expect(find.text('86.5 · 良好'), findsNothing);
+      expect(find.text('7.2 秒 · 90 分 · 优秀'), findsNothing);
 
       // 原生页面不得再挂 CAS 受保护 WebView，也不得出现登录 H5 的快速填充。
       expect(find.byType(WebViewPage), findsNothing);
@@ -320,4 +393,251 @@ void main() {
       expect(find.text('迟到的A成绩'), findsNothing);
     },
   );
+
+  // ── 新布局：最新学年主读数 / 历年切换 / 字段保真 ─────────────────────────────
+
+  testWidgets('latest year total is primary and every record stays reachable', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PhysicalTestPage(
+          snapshotFetcher: () async => _multiYearSnapshot(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 最新学年在主读数，总分 + 等级 + 「最新」，第一屏可见。
+    expect(_readout('2025-2026'), findsOneWidget);
+    expect(_readout('最新'), findsOneWidget);
+    expect(_readout('86.5'), findsOneWidget);
+    expect(_readout('良好'), findsOneWidget);
+    expect(find.text('50 米跑'), findsOneWidget);
+
+    // 全部历史学年都可发现（横向选择器 + 每个记录一格）。
+    expect(find.text('历年'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('physical_test_year_chip_0')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('physical_test_year_chip_1')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('physical_test_year_chip_2')),
+      findsOneWidget,
+    );
+    expect(find.text('2024-2025'), findsOneWidget);
+    expect(find.text('2023-2024'), findsOneWidget);
+
+    // 切到历史学年：读数与明细同步切换，不再显示最新学年内容。
+    await tester.tap(find.byKey(const ValueKey('physical_test_year_chip_1')));
+    await tester.pumpAndSettle();
+
+    expect(_readout('2024-2025'), findsOneWidget);
+    expect(_readout('78'), findsOneWidget);
+    expect(_readout('及格'), findsOneWidget);
+    expect(find.text('1000 米跑'), findsOneWidget);
+    expect(find.text('4 分 10 秒'), findsOneWidget);
+    expect(_readout('最新'), findsNothing);
+    expect(find.text('86.5'), findsNothing);
+    expect(find.text('50 米跑'), findsNothing);
+  });
+
+  testWidgets('missing total and grade show truthful placeholders, not 0', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PhysicalTestPage(
+          snapshotFetcher: () async => _multiYearSnapshot(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 2023-2024 无总分、无等级、无项目。
+    await tester.tap(find.byKey(const ValueKey('physical_test_year_chip_2')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('--'), findsOneWidget);
+    expect(find.text('暂无等级'), findsOneWidget);
+    expect(find.text('暂无项目数据'), findsOneWidget);
+    expect(find.text('0'), findsNothing);
+    expect(find.text('0 分'), findsNothing);
+  });
+
+  testWidgets('non-numeric results and long units are shown verbatim', (
+    tester,
+  ) async {
+    final snapshot = PhysicalTestSnapshot(
+      records: [
+        _record(
+          academicYear: '2025-2026',
+          totalScore: '免测',
+          grade: '免测',
+          items: const [
+            PhysicalTestItem(name: '肺活量', result: '4123.5 毫升'),
+            PhysicalTestItem(name: '800 米跑', result: '4 分 05 秒', score: '72.5'),
+            PhysicalTestItem(name: '引体向上', result: '未参加', level: '免测'),
+          ],
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PhysicalTestPage(snapshotFetcher: () async => snapshot),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 原始值原样呈现，不转换、不补 0、不补 %。
+    expect(find.text('免测'), findsWidgets);
+    expect(find.text('4123.5 毫升'), findsOneWidget);
+    expect(find.text('4 分 05 秒'), findsOneWidget);
+    expect(find.text('未参加'), findsOneWidget);
+    expect(find.text('72.5'), findsOneWidget);
+    expect(find.text('0'), findsNothing);
+    expect(find.textContaining('%'), findsNothing);
+  });
+
+  testWidgets('missing item name and empty result use truthful placeholders', (
+    tester,
+  ) async {
+    final snapshot = PhysicalTestSnapshot(
+      records: [
+        _record(
+          academicYear: '2025-2026',
+          totalScore: '80',
+          grade: '良好',
+          items: const [PhysicalTestItem(name: '', result: '')],
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PhysicalTestPage(snapshotFetcher: () async => snapshot),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('未命名项目'), findsOneWidget);
+    expect(find.text('--'), findsOneWidget);
+  });
+
+  testWidgets('duplicate year labels keep every record reachable', (
+    tester,
+  ) async {
+    final snapshot = PhysicalTestSnapshot(
+      records: [
+        _record(
+          academicYear: '2025-2026',
+          totalScore: '86.5',
+          grade: '良好',
+          items: const [PhysicalTestItem(name: '第一份记录', result: '7.2 秒')],
+        ),
+        _record(
+          academicYear: '2025-2026',
+          totalScore: '70',
+          grade: '及格',
+          items: const [PhysicalTestItem(name: '第二份记录', result: '8.0 秒')],
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PhysicalTestPage(snapshotFetcher: () async => snapshot),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 两个记录各自一格，不因学年同名被合并 / 丢弃。
+    expect(
+      find.byKey(const ValueKey('physical_test_year_chip_0')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('physical_test_year_chip_1')),
+      findsOneWidget,
+    );
+    expect(find.text('第一份记录'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('physical_test_year_chip_1')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('第二份记录'), findsOneWidget);
+    expect(find.text('8.0 秒'), findsOneWidget);
+    expect(find.text('第一份记录'), findsNothing);
+  });
+
+  testWidgets('account change resets a historical selection to latest', (
+    tester,
+  ) async {
+    UnifiedAuthService.instance.debugSetSession(
+      active: true,
+      account: 'student_A',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PhysicalTestPage(
+          snapshotFetcher: () async => _multiYearSnapshot(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 先选到历史学年。
+    await tester.tap(find.byKey(const ValueKey('physical_test_year_chip_1')));
+    await tester.pumpAndSettle();
+    expect(find.text('78'), findsOneWidget);
+
+    // 换号后记录变化：选中项必须一致地重置回最新学年。
+    UnifiedAuthService.instance.debugSetSession(
+      active: true,
+      account: 'student_B',
+    );
+    UnifiedAuthService.instance.notifyListeners();
+    await tester.pumpAndSettle();
+
+    expect(find.text('86.5'), findsOneWidget);
+    expect(find.text('最新'), findsOneWidget);
+    expect(find.text('78'), findsNothing);
+  });
+
+  testWidgets('narrow 360 screen with text scale 2 has no overflow', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PhysicalTestPage(
+          snapshotFetcher: () async => _multiYearSnapshot(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('86.5'), findsOneWidget);
+
+    // 大字体下切换历史学年仍不溢出；窄屏上先把横向选择器滚到目标 chip。
+    final chip1 = find.byKey(const ValueKey('physical_test_year_chip_1'));
+    await tester.ensureVisible(chip1);
+    await tester.pumpAndSettle();
+    await tester.tap(chip1);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('1000 米跑'), findsOneWidget);
+  });
 }
