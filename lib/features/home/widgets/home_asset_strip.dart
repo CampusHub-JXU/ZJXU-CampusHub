@@ -14,9 +14,10 @@ import '../models/home_presentation.dart';
 ///
 /// 两项状态彼此独立（[HomeStatusPresentation.campusCardState] /
 /// [HomeStatusPresentation.electricityState]），一项失败 / 刷新不影响另一项。
-/// 只有真实请求在途才显示小转圈，「待登录 / 恢复中」是静态文案（不假装
-/// 加载）；系统「移除动画」时转圈降级为静态提示。获取失败（无缓存）时整行
-/// 点击为受控重试；其余状态保持既有的进入对应详情页导航。
+/// 只有真实请求在途才显示小转圈（`state.isBusy`：`loading` / `refreshing`），
+/// 「准备中 / 待登录 / 恢复中」是静态文案（不假装加载）；系统「移除动画」时
+/// 转圈降级为静态提示。获取失败（无缓存）时整行点击为受控重试；其余状态保持
+/// 既有的进入对应详情页导航。
 class HomeAssetStrip extends StatelessWidget {
   const HomeAssetStrip({
     super.key,
@@ -188,7 +189,7 @@ class _AssetZone extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      if (state.isRefreshing) ...[
+                      if (state.isBusy) ...[
                         const SizedBox(width: 6),
                         _AssetBusyIndicator(color: secondaryTextColor),
                       ],
@@ -216,6 +217,7 @@ class _AssetZone extends StatelessWidget {
       case HomeAssetPhase.refreshing:
         return format(state.value ?? '');
       case HomeAssetPhase.loading:
+      case HomeAssetPhase.preparing:
         return '获取中';
       case HomeAssetPhase.recovering:
         return '正在恢复';
@@ -236,6 +238,7 @@ class _AssetZone extends StatelessWidget {
       case HomeAssetPhase.refreshing:
         return '$semanticsLabel ${format(state.value ?? '')}，正在刷新';
       case HomeAssetPhase.loading:
+      case HomeAssetPhase.preparing:
         return '$semanticsLabel正在获取';
       case HomeAssetPhase.recovering:
         return '$semanticsLabel正在恢复登录';

@@ -36,7 +36,8 @@ HomeAssetState resolveHomeAssetState({
   // 有可展示值永远优先（配置 / 认证提示不得覆盖真实值）。
   if (value != null) return HomeAssetState.ready(value);
   if (notConfigured) return const HomeAssetState.notConfigured();
-  if (!attempted) return const HomeAssetState.loading();
+  // 还没发起过真实请求：静态「准备中」，不转圈（转圈只属于真实在途）。
+  if (!attempted) return const HomeAssetState.preparing();
   if (authRequired) return const HomeAssetState.waiting();
   // 已尝试且仍无可展示值（网络 / 服务失败或响应缺字段）：可重试。
   return const HomeAssetState.error();

@@ -142,7 +142,7 @@ void main() {
   });
 
   group('获取中 / 刷新中', () {
-    testWidgets('无缓存首次获取显示「获取中」且不显示 --', (tester) async {
+    testWidgets('无缓存首次获取显示「获取中」+ 小转圈（真实在途）且不显示 --', (tester) async {
       final handle = tester.ensureSemantics();
       await pumpStrip(
         tester,
@@ -154,11 +154,43 @@ void main() {
 
       expect(find.text('获取中'), findsNWidgets(2));
       expect(find.text('--'), findsNothing);
-      // 无缓存时只用「获取中」文案表达，不叠加持续转圈。
-      expect(find.byType(CircularProgressIndicator), findsNothing);
+      // 真实首次获取（loading）也必须有「正在进行」的可见指示，不只靠文案。
+      expect(find.byType(CircularProgressIndicator), findsNWidgets(2));
       expect(find.semantics.byLabel('校园卡余额正在获取').evaluate(), hasLength(1));
       expect(find.semantics.byLabel('宿舍电费正在获取').evaluate(), hasLength(1));
       handle.dispose();
+    });
+
+    testWidgets('尚未发起请求的「准备中」（preparing）是静态文案，不转圈', (tester) async {
+      final handle = tester.ensureSemantics();
+      await pumpStrip(
+        tester,
+        status: statusOf(
+          const HomeAssetState.preparing(),
+          const HomeAssetState.preparing(),
+        ),
+      );
+
+      // 还没真正请求：只给静态「获取中」，绝不画转圈（避免假装在跑）。
+      expect(find.text('获取中'), findsNWidgets(2));
+      expect(find.text('--'), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.semantics.byLabel('校园卡余额正在获取').evaluate(), hasLength(1));
+      handle.dispose();
+    });
+
+    testWidgets('两项独立：一项在途只该有它自己的转圈', (tester) async {
+      await pumpStrip(
+        tester,
+        status: statusOf(
+          const HomeAssetState.loading(),
+          const HomeAssetState.ready('23.5'),
+        ),
+      );
+
+      expect(find.text('获取中'), findsOneWidget);
+      expect(find.text('23.5 度'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
     });
 
     testWidgets('有缓存后台刷新保留旧值并标注刷新中（不闪回占位符）', (tester) async {
@@ -301,5 +333,38 @@ void main() {
 
       expect(taps, <String>['card-retry', 'power-nav']);
     });
+  });
+
+  testWidgets('窄屏 360 / 深色 / 字号 2x：转圈与文案不溢出、行高稳定', (tester) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+        child: MaterialApp(
+          theme: ThemeData.dark(),
+          home: Scaffold(
+            body: HomeAssetStrip(
+              status: statusOf(
+                const HomeAssetState.loading(),
+                const HomeAssetState.refreshing('1234.5'),
+              ),
+              onCampusCardTap: () {},
+              onElectricityTap: () {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(CircularProgressIndicator), findsNWidgets(2));
+    // 高度稳定（≥ 既有 64 下限）、不超出视口宽度。
+    final size = tester.getSize(find.byType(HomeAssetStrip));
+    expect(size.height, greaterThanOrEqualTo(64));
+    expect(size.width, lessThanOrEqualTo(360));
   });
 }

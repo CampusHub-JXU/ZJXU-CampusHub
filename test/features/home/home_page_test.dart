@@ -1363,18 +1363,23 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      // 冷启动无缓存：两项都是真实请求中的「获取中」，不是 '--'，也不闪加载后再回落。
+      // 冷启动无缓存：两项都进入「获取中」，不是 '--'。
+      // 电费请求在校园卡请求完成后才发起（`_refreshDeferredContent` 先 await
+      // 校园卡），因此此刻只有校园卡是真实在途、显示转圈；电费仍是静态
+      // 「准备中」（preparing），不画转圈。
       expect(find.text('获取中'), findsNWidgets(2));
       expect(find.text('--'), findsNothing);
       expect(find.text('待登录'), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
       cardPending.complete(23.5);
       await tester.pump();
       await tester.pump();
 
       expect(find.text('¥23.5'), findsOneWidget);
-      // 电费仍在途：保持「获取中」而不是闪回占位符。
+      // 校园卡就绪后电费请求才发起：此刻电费真实在途，保留「获取中」和它的转圈。
       expect(find.text('获取中'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
       electricityPending.complete(
         '{"code":"200","msg":"SUC0000","data":{"balance_list":[{"id":"room","balance":"42"}]}}',
@@ -1385,6 +1390,8 @@ void main() {
       expect(find.text('42 度'), findsOneWidget);
       expect(find.text('获取中'), findsNothing);
       expect(find.text('--'), findsNothing);
+      // 请求结束：停止一切加载指示。
+      expect(find.byType(CircularProgressIndicator), findsNothing);
     },
   );
 
@@ -1473,8 +1480,10 @@ void main() {
     expect(find.text('获取失败'), findsOneWidget);
     expect(find.text('42 度'), findsOneWidget);
     expect(find.byType(SnackBar), findsNothing);
+    // 失败停止加载：不再有任何转圈。
+    expect(find.byType(CircularProgressIndicator), findsNothing);
 
-    // 点按失败项 → 受控重试；恢复后展示新值。
+    // 点按失败项 → 受控重试；恢复后展示新值（重试期间也不残留转圈）。
     CampusCardService.instance.debugBalanceFetcher = () async => 12.5;
     await tester.tap(find.text('获取失败'));
     await tester.pump();
@@ -1482,6 +1491,7 @@ void main() {
 
     expect(find.text('获取失败'), findsNothing);
     expect(find.text('¥12.5'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
   });
 
   testWidgets('系统「移除动画」下恢复态为静态文案，无持续转圈', (tester) async {
@@ -1494,6 +1504,46 @@ void main() {
     await tester.pump();
 
     expect(find.text('正在恢复'), findsNWidgets(2));
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+  });
+
+  testWidgets('系统「移除动画」下真实获取中降级为静态点，不持续转圈', (tester) async {
+    final now = DateTime.now();
+    SharedPreferences.setMockInitialValues({
+      'dorm_epay_area_id': 'area',
+      'dorm_epay_building_id': 'building',
+      'dorm_epay_floor_id': 'floor',
+      'dorm_epay_room_id': 'room',
+      DormElectricityService.roomOwnerKey: 'casuser',
+    });
+    UnifiedAuthService.instance.debugSetSession(
+      active: true,
+      account: 'casuser',
+    );
+    await CredentialStore.instance.saveUnifiedAuthSession('casuser');
+
+    final cardPending = Completer<double?>();
+    CampusCardService.instance.debugBalanceFetcher = () => cardPending.future;
+    addTearDown(() => CampusCardService.instance.debugBalanceFetcher = null);
+    DormElectricityService.instance.debugSetGateway(
+      _PendingElectricityGateway(Completer<String>()),
+    );
+    await SemesterCalendar.instance.setSemesterStartDate(now);
+
+    await tester.pumpWidget(
+      const MediaQuery(
+        data: MediaQueryData(disableAnimations: true),
+        child: MaterialApp(home: HomePage()),
+      ),
+    );
+    AppBootstrapController.instance.debugSetPhase(
+      AppBootstrapPhase.localStateReady,
+    );
+    await tester.pump();
+    await tester.pump();
+
+    // 真实在途，但系统要求移除动画：静态文案表达状态，不出现持续转圈。
+    expect(find.text('获取中'), findsNWidgets(2));
     expect(find.byType(CircularProgressIndicator), findsNothing);
   });
 }

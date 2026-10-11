@@ -10,6 +10,14 @@ enum HomeAssetPhase {
   /// 未登录：等待用户完成统一认证，登录成功后自动更新。
   waiting,
 
+  /// 尚未发起真实请求（登录后的等待窗口 / 身份变化复位后）。
+  ///
+  /// 这是「准备中」的静态态，**不**渲染转圈——转圈只属于真实在途请求
+  /// （[loading] / [refreshing]）。用它把 `!attempted`（还没请求）与
+  /// `inFlight > 0`（真的在请求）区分开，避免「还没发起请求」被误画成
+  /// 永久转圈。
+  preparing,
+
   /// 正在真正获取，且当前没有可展示的缓存值。
   loading,
 
@@ -40,6 +48,9 @@ class HomeAssetState {
   /// 未登录等待中。
   const HomeAssetState.waiting() : this._(phase: HomeAssetPhase.waiting);
 
+  /// 尚未发起真实请求的准备态（静态，不渲染转圈）。
+  const HomeAssetState.preparing() : this._(phase: HomeAssetPhase.preparing);
+
   /// 首次获取中（当前无缓存值）。
   const HomeAssetState.loading() : this._(phase: HomeAssetPhase.loading);
 
@@ -65,7 +76,10 @@ class HomeAssetState {
 
   bool get hasValue => value != null;
 
-  /// 是否有真实请求在途（决定是否渲染小转圈；等待 / 恢复态不转圈）。
+  /// 是否有真实请求在途（决定是否渲染小转圈）。
+  ///
+  /// 仅 [loading] / [refreshing] 为真；[preparing] / [waiting] / [recovering]
+  /// 等「还没发起真实请求」或「等登录」的静态态不转圈。
   bool get isBusy =>
       phase == HomeAssetPhase.loading || phase == HomeAssetPhase.refreshing;
 

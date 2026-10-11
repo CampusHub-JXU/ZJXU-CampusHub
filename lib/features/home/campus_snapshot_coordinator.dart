@@ -132,9 +132,6 @@ class CampusSnapshotCoordinator {
     return value == null ? null : service.formatElectricity(value);
   }
 
-  /// 电费最近一次失败信息；无失败为 null。
-  String? get electricityError => DormElectricityService.instance.lastError;
-
   /// 电费是否需要重新认证（共享会话不可用）。
   bool get electricityRequiresAuthentication =>
       DormElectricityService.instance.requiresAuthentication;

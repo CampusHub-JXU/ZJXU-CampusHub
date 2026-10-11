@@ -700,8 +700,8 @@ void main() {
       );
     });
 
-    test('无值、未尝试、无配置缺失：仍视为加载中', () {
-      expect(resolve(attempted: false), const HomeAssetState.loading());
+    test('无值且未尝试：准备中（静态，不转圈）', () {
+      expect(resolve(attempted: false), const HomeAssetState.preparing());
     });
 
     test('无值、已尝试、认证缺失：待登录', () {
