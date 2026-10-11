@@ -1,3 +1,4 @@
+import '../../core/auth/unified_auth.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../campus_card/campus_card_service.dart';
 import '../dorm_electricity/dorm_electricity_service.dart';
@@ -55,6 +56,9 @@ class CampusSnapshotCoordinator {
 
   bool get isAcademicLoggedIn => ZhengfangAuth.instance.isLoggedIn;
 
+  /// 当前是否有明确的统一认证身份（仅残留 Cookie / 空白账号一律 false）。
+  bool get isUnifiedLoggedIn => UnifiedAuthService.instance.isLoggedIn;
+
   /// 本地缓存首屏（不发网络）。
   HomeRestoreData restore(DateTime now) {
     final scheduleSnapshot = ScheduleService.instance.preferredSnapshot(
@@ -105,6 +109,35 @@ class CampusSnapshotCoordinator {
       networkBalance ?? CampusCardService.instance.cachedBalance,
     );
   }
+
+  /// 校园卡余额当前可展示的值文本；无可展示缓存时返回 null（不返回 '--'）。
+  /// 归属校验由 [CampusCardService.cachedBalance] 负责（未登录 / 换号天然为 null）。
+  String? campusCardDisplayValue() {
+    final cached = CampusCardService.instance.cachedBalance;
+    return cached == null
+        ? null
+        : CampusCardService.instance.formatBalance(cached);
+  }
+
+  /// 校园卡最近一次请求是否因「无明确统一认证身份」而未发起 / 未采纳：
+  /// 用于把资产行映射为「待登录」而不是「获取失败」。
+  bool get campusCardAuthRequired =>
+      CampusCardService.instance.lastBalanceFailure ==
+      BalanceFailureKind.authRequired;
+
+  /// 宿舍电费当前可展示的值文本；无可展示缓存时返回 null。
+  String? electricityDisplayValue() {
+    final service = DormElectricityService.instance;
+    final value = service.cachedElectricity;
+    return value == null ? null : service.formatElectricity(value);
+  }
+
+  /// 电费最近一次失败信息；无失败为 null。
+  String? get electricityError => DormElectricityService.instance.lastError;
+
+  /// 电费是否需要重新认证（共享会话不可用）。
+  bool get electricityRequiresAuthentication =>
+      DormElectricityService.instance.requiresAuthentication;
 
   Future<bool> hasElectricityRoomConfig() =>
       DormElectricityService.instance.hasRoomConfig();

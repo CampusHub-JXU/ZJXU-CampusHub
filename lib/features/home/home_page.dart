@@ -27,6 +27,7 @@ import 'campus_snapshot_coordinator.dart';
 import 'function_zone/function_zone_section.dart';
 import 'home_presentation_resolver.dart';
 import 'home_zone_controller.dart';
+import 'models/home_asset_state.dart';
 import 'models/home_presentation.dart';
 import 'models/home_snapshot.dart';
 import 'widgets/home_asset_strip.dart';
@@ -71,8 +72,15 @@ class _HomePageState extends State<HomePage> {
   /// 滚动视口：ScrollSpy 用它把功能区顶部的全局坐标换算成视口内坐标。
   final _scrollViewportKey = GlobalKey();
 
-  String _campusCardBalance = '--';
-  String _dormElectricity = '--';
+  /// 资产行两项的独立获取状态（在途计数 + 是否已尝试 + 配置缺失），
+  /// 由真实任务生命周期驱动；展示态在 `_resolveAssetState` 里派生，
+  /// 不在 build 中发请求、也不用计时器伪装加载。
+  int _campusCardInFlight = 0;
+  int _electricityInFlight = 0;
+  bool _campusCardAttempted = false;
+  bool _electricityAttempted = false;
+  bool _electricityNotConfigured = false;
+
   ExamEntry? _nextExam;
   ScheduleCacheSnapshot? _scheduleSnapshot;
   bool _courseLoggedIn = false;
@@ -207,6 +215,7 @@ class _HomePageState extends State<HomePage> {
   void _onUnifiedAuthChanged() {
     if (!mounted) return;
     _authGeneration++;
+    _resetAssetLifecycle();
     _reAdoptPrivateProjection();
   }
 
@@ -219,6 +228,17 @@ class _HomePageState extends State<HomePage> {
     if (_isBootstrapReady) {
       _refreshNextCourse();
     }
+  }
+
+  /// 身份变化（登录 / 登出 / 换号 / 同号重登）时复位资产行的生命周期信号：
+  /// 清在途计数与「已尝试 / 未配置」标记，配合 owner 归属校验让旧值立即
+  /// 回落，并在下轮真实请求前呈现正确的加载 / 待登录态。
+  void _resetAssetLifecycle() {
+    _campusCardInFlight = 0;
+    _electricityInFlight = 0;
+    _campusCardAttempted = false;
+    _electricityAttempted = false;
+    _electricityNotConfigured = false;
   }
 
   /// 认证身份变化后同步重新采纳内存投影（不发网络）。
@@ -265,9 +285,9 @@ class _HomePageState extends State<HomePage> {
     _scheduleSnapshot = data.scheduleSnapshot;
     _hasScheduleCache = data.hasScheduleCache;
     _courseLoggedIn = data.courseLoggedIn;
-    _campusCardBalance = data.campusCardBalance;
-    _dormElectricity = data.dormElectricity;
     _nextExam = data.nextExam;
+    // 校园卡 / 电费的展示值不再缓存成字符串：资产状态由当前服务缓存 +
+    // 在途请求派生（见 `_resolveCampusCardAsset` / `_resolveElectricityAsset`）。
   }
 
   /// 任一校园数据缓存变化（课表/成绩/考试/校园卡/电费写入点 ping 总线）。
@@ -332,52 +352,89 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  /// 校园卡余额刷新：真实任务生命周期驱动资产行状态。
+  ///
+  /// 有新鲜缓存时直接展示、不发网络；否则计入在途计数（`_campusCardInFlight`）
+  /// 并发起真实请求。值只在服务成功落盘后由 `CampusDataChangeBus` 回流，
+  /// 本方法只维护「在途 / 已尝试」信号与失败提示，绝不写死字符串。
+  /// await 前捕获认证世代，登出 / 换号后迟到的旧 owner 结果一律丢弃。
   Future<void> _refreshCampusCardBalance() async {
-    final cachedText = _snapshotCoordinator.cachedCampusCardBalanceText();
-    if (cachedText != null && mounted) {
+    if (!_isBootstrapReady) return;
+    final authGuard = _authGeneration;
+    if (_snapshotCoordinator.cachedCampusCardBalanceText() != null) {
+      // 已有新鲜缓存：直接展示，不发网络。
+      if (!mounted || authGuard != _authGeneration) return;
       setState(() {
-        _campusCardBalance = cachedText;
+        _campusCardAttempted = true;
       });
       return;
     }
-    final authGuard = _authGeneration;
+    if (!mounted || authGuard != _authGeneration) return;
+    setState(() {
+      _campusCardInFlight++;
+      _campusCardAttempted = true;
+    });
     try {
-      final text = await _snapshotCoordinator.fetchCampusCardBalanceText();
-      if (!mounted || authGuard != _authGeneration) return;
-      setState(() {
-        _campusCardBalance = text;
-      });
+      await _snapshotCoordinator.fetchCampusCardBalanceText();
     } catch (e) {
       if (!mounted || authGuard != _authGeneration) return;
       NetworkErrorToast.show(context, e);
+    } finally {
+      if (mounted && authGuard == _authGeneration) {
+        setState(_endCampusCardFetch);
+      }
     }
   }
 
+  void _endCampusCardFetch() {
+    _campusCardInFlight = _campusCardInFlight > 0 ? _campusCardInFlight - 1 : 0;
+  }
+
   /// 电费刷新：房间配置 / 余额都按当前统一认证 owner 归属（无 owner 标记
-  /// 或归属他人时 `hasRoomConfig` 即为 false，直接回落占位符）。await 前捕获
-  /// 认证世代，房间配置与网络结果都只在世代未变时写回；登出 / 换号后迟到的
-  /// 旧 owner 结果一律丢弃。
+  /// 或归属他人时 `hasRoomConfig` 即为 false，呈现「未设置」，绝不伪装成加载）。
+  /// await 前捕获认证世代，登出 / 换号后迟到的旧 owner 结果一律丢弃。
   Future<void> _refreshDormElectricity() async {
     if (!_isBootstrapReady) return;
     final authGuard = _authGeneration;
-    final hasRoomConfig = await _snapshotCoordinator.hasElectricityRoomConfig();
-    if (!mounted || authGuard != _authGeneration) return;
-    if (!hasRoomConfig) {
+    if (!_snapshotCoordinator.isUnifiedLoggedIn) {
+      // 无统一认证身份：不发请求，资产行由身份派生为「待登录」。
+      if (!mounted) return;
       setState(() {
-        _dormElectricity = '--';
+        _electricityAttempted = true;
       });
       return;
     }
+    if (!mounted || authGuard != _authGeneration) return;
+    setState(() {
+      _electricityInFlight++;
+      _electricityAttempted = true;
+    });
     try {
-      final text = await _snapshotCoordinator.fetchElectricityText();
+      final hasRoomConfig = await _snapshotCoordinator
+          .hasElectricityRoomConfig();
       if (!mounted || authGuard != _authGeneration) return;
-      setState(() {
-        _dormElectricity = text;
-      });
+      if (!hasRoomConfig) {
+        setState(() {
+          _electricityNotConfigured = true;
+        });
+        return;
+      }
+      _electricityNotConfigured = false;
+      await _snapshotCoordinator.fetchElectricityText();
     } catch (e) {
       if (!mounted || authGuard != _authGeneration) return;
       NetworkErrorToast.show(context, e);
+    } finally {
+      if (mounted && authGuard == _authGeneration) {
+        setState(_endElectricityFetch);
+      }
     }
+  }
+
+  void _endElectricityFetch() {
+    _electricityInFlight = _electricityInFlight > 0
+        ? _electricityInFlight - 1
+        : 0;
   }
 
   Future<void> _refreshExam() async {
@@ -494,8 +551,32 @@ class _HomePageState extends State<HomePage> {
     HomeZoneController.instance.updateZone(inFunctionZone ? 1 : 0);
   }
 
+  /// 校园卡余额展示状态（纯函数派生，见 [resolveHomeAssetState]）。
+  HomeAssetState _resolveCampusCardAsset() => resolveHomeAssetState(
+    bootstrapReady: _isBootstrapReady,
+    loggedIn: _snapshotCoordinator.isUnifiedLoggedIn,
+    value: _snapshotCoordinator.campusCardDisplayValue(),
+    inFlight: _campusCardInFlight,
+    attempted: _campusCardAttempted,
+    authRequired: _snapshotCoordinator.campusCardAuthRequired,
+    notConfigured: false,
+  );
+
+  /// 宿舍电费展示状态；比校园卡多一个「未设置寝室」维度。
+  HomeAssetState _resolveElectricityAsset() => resolveHomeAssetState(
+    bootstrapReady: _isBootstrapReady,
+    loggedIn: _snapshotCoordinator.isUnifiedLoggedIn,
+    value: _snapshotCoordinator.electricityDisplayValue(),
+    inFlight: _electricityInFlight,
+    attempted: _electricityAttempted,
+    authRequired: _snapshotCoordinator.electricityRequiresAuthentication,
+    notConfigured: _electricityNotConfigured,
+  );
+
   HomePresentation _resolvePresentation() {
     final now = DateTime.now();
+    final campusCardAsset = _resolveCampusCardAsset();
+    final electricityAsset = _resolveElectricityAsset();
     final snapshot = HomeSnapshot(
       now: now,
       courseLoggedIn: _courseLoggedIn,
@@ -509,8 +590,10 @@ class _HomePageState extends State<HomePage> {
       currentWeek: SemesterCalendar.instance.weekForDate(now),
       semesterStartDate: SemesterCalendar.instance.semesterStartDate.value,
       nextExam: _nextExam,
-      campusCardBalance: _campusCardBalance,
-      dormElectricity: _dormElectricity,
+      campusCardBalance: campusCardAsset.value ?? '--',
+      dormElectricity: electricityAsset.value ?? '--',
+      campusCardAsset: campusCardAsset,
+      electricityAsset: electricityAsset,
     );
     return resolveHomePresentation(
       snapshot,
@@ -603,6 +686,14 @@ class _HomePageState extends State<HomePage> {
       status: presentation.status,
       onCampusCardTap: () => _pushFeatureRoute(context, 'campus-card'),
       onElectricityTap: () => _pushFeatureRoute(context, 'dorm-electricity'),
+      // 获取失败（无缓存）时，资产行整行点击改为受控重试；其余状态仍是
+      // 既有的进入对应详情页导航，不改变正常状态的手势语义。
+      onCampusCardRetry: () async {
+        await _refreshCampusCardBalance();
+      },
+      onElectricityRetry: () async {
+        await _refreshDormElectricity();
+      },
     );
 
     return SingleChildScrollView(
@@ -683,8 +774,8 @@ class _HomePageState extends State<HomePage> {
                       bottom: bottomClearance,
                     ),
                     child: FunctionZoneSection(
-                      campusCardBalance: _campusCardBalance,
-                      dormElectricity: _dormElectricity,
+                      campusCardBalance: presentation.status.campusCardBalance,
+                      dormElectricity: presentation.status.dormElectricity,
                       padding: EdgeInsets.fromLTRB(
                         _pageGutter,
                         0,

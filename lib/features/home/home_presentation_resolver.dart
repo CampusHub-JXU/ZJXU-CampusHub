@@ -2,6 +2,7 @@ import '../../core/academic/effective_week_courses.dart';
 import '../../core/academic/exam_model.dart';
 import '../../core/academic/schedule_model.dart';
 import '../../core/semester/china_public_holidays.dart';
+import 'models/home_asset_state.dart';
 import 'models/home_presentation.dart';
 import 'models/home_snapshot.dart';
 
@@ -10,6 +11,36 @@ import 'models/home_snapshot.dart';
 /// 校园卡低余额不再参与首页强调（横幅与资产行红字均已停用），
 /// 阈值常量一并删除。
 const _lowElectricityThreshold = 10.0;
+
+/// 从真实信号派生单项资产（校园卡 / 电费）的获取状态。
+///
+/// 刻意做成纯函数：输入全部来自「身份是否就绪 / 是否有值 / 是否有在途请求 /
+/// 是否已尝试 / 是否认证缺失 / 是否配置缺失」，不再用「字符串能否解析成数字」
+/// 反推加载态。校园卡与电费各自调用一次，互不影响。
+HomeAssetState resolveHomeAssetState({
+  required bool bootstrapReady,
+  required bool loggedIn,
+  required String? value,
+  required int inFlight,
+  required bool attempted,
+  required bool authRequired,
+  required bool notConfigured,
+}) {
+  if (!bootstrapReady) return const HomeAssetState.recovering();
+  if (!loggedIn) return const HomeAssetState.waiting();
+  if (inFlight > 0) {
+    return value != null
+        ? HomeAssetState.refreshing(value)
+        : const HomeAssetState.loading();
+  }
+  // 有可展示值永远优先（配置 / 认证提示不得覆盖真实值）。
+  if (value != null) return HomeAssetState.ready(value);
+  if (notConfigured) return const HomeAssetState.notConfigured();
+  if (!attempted) return const HomeAssetState.loading();
+  if (authRequired) return const HomeAssetState.waiting();
+  // 已尝试且仍无可展示值（网络 / 服务失败或响应缺字段）：可重试。
+  return const HomeAssetState.error();
+}
 
 /// 次日预览（开学首日/明天）最多展示的课程条数。
 const _previewRowLimit = 3;
@@ -511,6 +542,10 @@ HomeStatusPresentation _resolveStatus(HomeSnapshot snapshot) {
     lowElectricity:
         electricityValue != null &&
         electricityValue <= _lowElectricityThreshold,
+    // 独立状态模型优先；旧调用方（示例 / 静态投影）未携带时按字符串回退，
+    // 不再在首页展示层用数值解析推断加载态。
+    campusCardAsset: snapshot.campusCardAsset,
+    electricityAsset: snapshot.electricityAsset,
   );
 }
 

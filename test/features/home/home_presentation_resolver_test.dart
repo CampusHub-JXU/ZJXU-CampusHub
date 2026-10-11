@@ -4,6 +4,7 @@ import 'package:jxu_campus_hub/core/academic/exam_model.dart';
 import 'package:jxu_campus_hub/core/academic/schedule_change_rule.dart';
 import 'package:jxu_campus_hub/core/semester/schedule_term_context.dart';
 import 'package:jxu_campus_hub/features/home/home_presentation_resolver.dart';
+import 'package:jxu_campus_hub/features/home/models/home_asset_state.dart';
 import 'package:jxu_campus_hub/features/home/models/home_presentation.dart';
 import 'package:jxu_campus_hub/features/home/models/home_snapshot.dart';
 import 'package:jxu_campus_hub/core/academic/schedule_model.dart';
@@ -634,6 +635,81 @@ void main() {
       final presentation = resolveHomePresentation(snapshot);
 
       expect(presentation.hero.kind, HomeHeroKind.nextCourseUpcoming);
+    });
+  });
+
+  group('resolveHomeAssetState 纯函数', () {
+    HomeAssetState resolve({
+      bool bootstrapReady = true,
+      bool loggedIn = true,
+      String? value,
+      int inFlight = 0,
+      bool attempted = true,
+      bool authRequired = false,
+      bool notConfigured = false,
+    }) => resolveHomeAssetState(
+      bootstrapReady: bootstrapReady,
+      loggedIn: loggedIn,
+      value: value,
+      inFlight: inFlight,
+      attempted: attempted,
+      authRequired: authRequired,
+      notConfigured: notConfigured,
+    );
+
+    test('bootstrap 未就绪优先于一切：恢复中', () {
+      expect(
+        resolve(bootstrapReady: false, loggedIn: false, inFlight: 1),
+        const HomeAssetState.recovering(),
+      );
+    });
+
+    test('未登录且 bootstrap 就绪：待登录（静态，不假装加载）', () {
+      expect(resolve(loggedIn: false), const HomeAssetState.waiting());
+    });
+
+    test('在途且无值：加载中', () {
+      expect(
+        resolve(inFlight: 1, attempted: false),
+        const HomeAssetState.loading(),
+      );
+    });
+
+    test('在途且有值：后台刷新保留旧值', () {
+      expect(
+        resolve(value: '42', inFlight: 1),
+        const HomeAssetState.refreshing('42'),
+      );
+    });
+
+    test('有值且无在途：就绪', () {
+      expect(resolve(value: '23.5'), const HomeAssetState.ready('23.5'));
+    });
+
+    test('有值永远优先：配置 / 认证提示不得覆盖真实值', () {
+      expect(
+        resolve(value: '23.5', notConfigured: true, authRequired: true),
+        const HomeAssetState.ready('23.5'),
+      );
+    });
+
+    test('无值且配置缺失：未设置（不伪装成加载）', () {
+      expect(
+        resolve(attempted: false, notConfigured: true),
+        const HomeAssetState.notConfigured(),
+      );
+    });
+
+    test('无值、未尝试、无配置缺失：仍视为加载中', () {
+      expect(resolve(attempted: false), const HomeAssetState.loading());
+    });
+
+    test('无值、已尝试、认证缺失：待登录', () {
+      expect(resolve(authRequired: true), const HomeAssetState.waiting());
+    });
+
+    test('无值、已尝试、无认证缺失：失败可重试', () {
+      expect(resolve(), const HomeAssetState.error());
     });
   });
 }

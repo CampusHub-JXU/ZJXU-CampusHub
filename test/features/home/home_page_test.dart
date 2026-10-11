@@ -100,8 +100,9 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
 
     expect(find.text('登录后查看课程'), findsOneWidget);
-    // 校园卡与宿舍电费均为未获取状态，资产行显示占位符。
-    expect(find.text('--'), findsNWidgets(2));
+    // bootstrap 未就绪：资产行处于冷启动恢复态，不再是无信息量的 '--'。
+    expect(find.text('正在恢复'), findsNWidgets(2));
+    expect(find.byType(CircularProgressIndicator), findsNothing);
   });
 
   testWidgets('tapping logged-out hero opens academic login prompt', (
@@ -927,7 +928,10 @@ void main() {
     await tester.pump();
 
     expect(find.text('42 度'), findsNothing);
-    expect(find.text('--'), findsNWidgets(2));
+    // 电费无 owner 房间配置：回落「未设置」而非无信息量的 '--'。
+    expect(find.text('未设置'), findsOneWidget);
+    // 校园卡无明确统一认证持久身份：不再展示任何余额。
+    expect(find.textContaining('¥'), findsNothing);
     expect(find.byType(SnackBar), findsNothing);
   });
 
@@ -948,7 +952,8 @@ void main() {
       CampusDataChangeBus.instance.notifyChanged();
       await tester.pump();
       expect(find.text('42 度'), findsNothing);
-      expect(find.text('--'), findsNWidgets(2));
+      // bootstrap 未就绪：冷启动恢复态。
+      expect(find.text('正在恢复'), findsNWidgets(2));
 
       AppBootstrapController.instance.debugSetPhase(
         AppBootstrapPhase.localStateReady,
@@ -1040,7 +1045,8 @@ void main() {
     await tester.pump();
 
     expect(find.text('¥23.5'), findsNothing);
-    expect(find.text('--'), findsNWidgets(2));
+    // 登出后无统一认证身份：两项都回落「待登录」，不保留上一身份副本。
+    expect(find.text('待登录'), findsNWidgets(2));
     // 电费同为 owner 归属私有数据：随统一认证登出立即清空。
     expect(find.text('42 度'), findsNothing);
     // 教务身份未变：考试 / 课表仍属当前 owner，保持展示。
@@ -1057,7 +1063,7 @@ void main() {
     expect(find.text('线性代数'), findsNothing);
     expect(find.text('登录后查看课程'), findsOneWidget);
     expect(find.text('42 度'), findsNothing);
-    expect(find.text('--'), findsNWidgets(2));
+    expect(find.text('待登录'), findsNWidgets(2));
   });
 
   testWidgets('mounted home re-adopts projection for the new owner on switch', (
@@ -1163,7 +1169,8 @@ void main() {
 
     expect(UnifiedAuthService.instance.sessionRevision, revisionBefore);
     expect(find.text('¥23.5'), findsNothing);
-    expect(find.text('--'), findsNWidgets(2));
+    // 同账号重登：身份复位，进入重新获取（而非无信息量的 '--'）。
+    expect(find.text('获取中'), findsNWidgets(2));
   });
 
   testWidgets(
@@ -1186,8 +1193,9 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      // 余额查询仍在途：资产行保持占位符。
-      expect(find.text('--'), findsNWidgets(2));
+      // 余额查询仍在途：资产行显示真实的「获取中」，不是无信息量的 '--'。
+      expect(find.text('获取中'), findsNWidgets(2));
+      expect(find.text('--'), findsNothing);
 
       // 登出后旧 owner 的响应才到达：认证世代已推进，结果一律不得写回。
       UnifiedAuthService.instance.debugSetSession(active: false, account: null);
@@ -1199,7 +1207,7 @@ void main() {
       await tester.pump();
 
       expect(find.text('¥23.5'), findsNothing);
-      expect(find.text('--'), findsNWidgets(2));
+      expect(find.text('待登录'), findsNWidgets(2));
       expect(find.byType(SnackBar), findsNothing);
     },
   );
@@ -1257,7 +1265,8 @@ void main() {
       expect(find.text('¥23.5'), findsNothing);
       expect(find.text('3.20 度'), findsNothing);
       expect(find.textContaining('电量偏低'), findsNothing);
-      expect(find.text('--'), findsNWidgets(2));
+      // 换号后两项身份复位：进入重新获取（不再是无信息量的 '--'）。
+      expect(find.text('获取中'), findsNWidgets(2));
 
       // A 的迟到响应（同为低电量 3.2 度）此时才返回：不得写回展示、事件
       // 横幅或桌面组件投影。
@@ -1271,7 +1280,7 @@ void main() {
       expect(DormElectricityService.instance.cachedElectricity, isNull);
       expect(find.text('3.20 度'), findsNothing);
       expect(find.textContaining('电量偏低'), findsNothing);
-      expect(find.text('--'), findsNWidgets(2));
+      expect(find.text('获取中'), findsNWidgets(2));
       expect(find.byType(SnackBar), findsNothing);
 
       final projection = buildCampusWidgetProjection();
@@ -1311,11 +1320,181 @@ void main() {
     expect(DormElectricityService.instance.cachedElectricity, isNull);
     expect(DormElectricityService.instance.hasFreshCache, isFalse);
     expect(find.text('42 度'), findsNothing);
-    expect(find.text('--'), findsNWidgets(2));
+    // 无 owner 房间配置 → 电费明确「未设置」；校园卡无余额 → 不展示 '¥'。
+    expect(find.text('未设置'), findsOneWidget);
+    expect(find.textContaining('¥'), findsNothing);
 
     final projection = buildCampusWidgetProjection();
     expect(projection.dormElectricity, '--');
     expect(projection.hasElectricityData, isFalse);
+  });
+
+  testWidgets(
+    'cold load shows 获取中 for both assets, then success stops loading',
+    (tester) async {
+      final now = DateTime.now();
+      SharedPreferences.setMockInitialValues({
+        'dorm_epay_area_id': 'area',
+        'dorm_epay_building_id': 'building',
+        'dorm_epay_floor_id': 'floor',
+        'dorm_epay_room_id': 'room',
+        DormElectricityService.roomOwnerKey: 'casuser',
+      });
+      UnifiedAuthService.instance.debugSetSession(
+        active: true,
+        account: 'casuser',
+      );
+      await CredentialStore.instance.saveUnifiedAuthSession('casuser');
+
+      // 两条真实请求都悬停在网络层，确定性制造「真正获取中」。
+      final cardPending = Completer<double?>();
+      CampusCardService.instance.debugBalanceFetcher = () => cardPending.future;
+      addTearDown(() => CampusCardService.instance.debugBalanceFetcher = null);
+      final electricityPending = Completer<String>();
+      DormElectricityService.instance.debugSetGateway(
+        _PendingElectricityGateway(electricityPending),
+      );
+      await SemesterCalendar.instance.setSemesterStartDate(now);
+
+      await tester.pumpWidget(const MaterialApp(home: HomePage()));
+      AppBootstrapController.instance.debugSetPhase(
+        AppBootstrapPhase.localStateReady,
+      );
+      await tester.pump();
+      await tester.pump();
+
+      // 冷启动无缓存：两项都是真实请求中的「获取中」，不是 '--'，也不闪加载后再回落。
+      expect(find.text('获取中'), findsNWidgets(2));
+      expect(find.text('--'), findsNothing);
+      expect(find.text('待登录'), findsNothing);
+
+      cardPending.complete(23.5);
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('¥23.5'), findsOneWidget);
+      // 电费仍在途：保持「获取中」而不是闪回占位符。
+      expect(find.text('获取中'), findsOneWidget);
+
+      electricityPending.complete(
+        '{"code":"200","msg":"SUC0000","data":{"balance_list":[{"id":"room","balance":"42"}]}}',
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('42 度'), findsOneWidget);
+      expect(find.text('获取中'), findsNothing);
+      expect(find.text('--'), findsNothing);
+    },
+  );
+
+  testWidgets('cached value keeps showing while a background refresh runs', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    // 电费：房间配置 + 刚过期的缓存值 → 触发后台刷新但保留旧值。
+    SharedPreferences.setMockInitialValues({
+      'dorm_epay_area_id': 'area',
+      'dorm_epay_building_id': 'building',
+      'dorm_epay_floor_id': 'floor',
+      'dorm_epay_room_id': 'room',
+      DormElectricityService.roomOwnerKey: 'casuser',
+    });
+    await _seedCampusCardBalance(now: now, account: 'casuser', balance: 23.5);
+    DormElectricityService.instance.debugSetCachedElectricity(
+      42,
+      updatedAt: now.subtract(const Duration(minutes: 31)),
+    );
+    final electricityPending = Completer<String>();
+    DormElectricityService.instance.debugSetGateway(
+      _PendingElectricityGateway(electricityPending),
+    );
+    await SemesterCalendar.instance.setSemesterStartDate(now);
+
+    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    AppBootstrapController.instance.debugSetPhase(
+      AppBootstrapPhase.localStateReady,
+    );
+    await tester.pump();
+    await tester.pump();
+
+    // 余额走新鲜缓存短路，电费旧值在后台刷新：两项都保留真实数值，绝不出现 '--'。
+    expect(find.text('¥23.5'), findsOneWidget);
+    expect(find.text('42 度'), findsOneWidget);
+    expect(find.text('--'), findsNothing);
+    expect(find.text('获取中'), findsNothing);
+    // 有缓存后台刷新时，数值旁的小转圈表达「正在刷新」。
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+    electricityPending.complete(
+      '{"code":"200","msg":"SUC0000","data":{"balance_list":[{"id":"room","balance":"42"}]}}',
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('42 度'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+  });
+
+  testWidgets('asset failure keeps the other asset and retry recovers', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    SharedPreferences.setMockInitialValues({
+      'dorm_epay_area_id': 'area',
+      'dorm_epay_building_id': 'building',
+      'dorm_epay_floor_id': 'floor',
+      'dorm_epay_room_id': 'room',
+      DormElectricityService.roomOwnerKey: 'casuser',
+    });
+    UnifiedAuthService.instance.debugSetSession(
+      active: true,
+      account: 'casuser',
+    );
+    await CredentialStore.instance.saveUnifiedAuthSession('casuser');
+    // 校园卡请求直接失败；电费走缓存就绪。
+    CampusCardService.instance.debugBalanceFetcher = () async {
+      throw StateError('card down');
+    };
+    addTearDown(() => CampusCardService.instance.debugBalanceFetcher = null);
+    DormElectricityService.instance.debugSetCachedElectricity(
+      42,
+      updatedAt: now,
+    );
+    await SemesterCalendar.instance.setSemesterStartDate(now);
+
+    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    AppBootstrapController.instance.debugSetPhase(
+      AppBootstrapPhase.localStateReady,
+    );
+    await tester.pump();
+    await tester.pump();
+
+    // 校园卡获取失败 → 「获取失败」；电费不受影响，仍展示就绪值。
+    expect(find.text('获取失败'), findsOneWidget);
+    expect(find.text('42 度'), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
+
+    // 点按失败项 → 受控重试；恢复后展示新值。
+    CampusCardService.instance.debugBalanceFetcher = () async => 12.5;
+    await tester.tap(find.text('获取失败'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('获取失败'), findsNothing);
+    expect(find.text('¥12.5'), findsOneWidget);
+  });
+
+  testWidgets('系统「移除动画」下恢复态为静态文案，无持续转圈', (tester) async {
+    await tester.pumpWidget(
+      const MediaQuery(
+        data: MediaQueryData(disableAnimations: true),
+        child: MaterialApp(home: HomePage()),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('正在恢复'), findsNWidgets(2));
+    expect(find.byType(CircularProgressIndicator), findsNothing);
   });
 }
 

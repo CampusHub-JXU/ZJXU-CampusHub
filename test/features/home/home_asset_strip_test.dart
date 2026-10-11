@@ -3,24 +3,27 @@ import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/core/theme/app_theme_controller.dart';
+import 'package:jxu_campus_hub/features/home/models/home_asset_state.dart';
 import 'package:jxu_campus_hub/features/home/models/home_presentation.dart';
 import 'package:jxu_campus_hub/features/home/widgets/home_asset_strip.dart';
 
 void main() {
   setUp(AppThemeController.instance.debugReset);
 
-  HomeStatusPresentation statusOf({
-    bool hasCampusCardData = true,
-    bool hasElectricityData = true,
+  HomeStatusPresentation statusOf(
+    HomeAssetState card,
+    HomeAssetState electricity, {
     bool lowElectricity = false,
   }) {
     return HomeStatusPresentation(
-      campusCardBalance: '12.50',
-      dormElectricity: '23.5',
-      hasCampusCardData: hasCampusCardData,
-      hasElectricityData: hasElectricityData,
+      campusCardBalance: card.value ?? '--',
+      dormElectricity: electricity.value ?? '--',
+      hasCampusCardData: card.value != null,
+      hasElectricityData: electricity.value != null,
       lowBalance: false,
       lowElectricity: lowElectricity,
+      campusCardAsset: card,
+      electricityAsset: electricity,
     );
   }
 
@@ -29,122 +32,274 @@ void main() {
     required HomeStatusPresentation status,
     VoidCallback? onCampusCardTap,
     VoidCallback? onElectricityTap,
+    VoidCallback? onCampusCardRetry,
+    VoidCallback? onElectricityRetry,
+    bool disableAnimations = false,
   }) async {
     await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: HomeAssetStrip(
-            status: status,
-            onCampusCardTap: onCampusCardTap ?? () {},
-            onElectricityTap: onElectricityTap ?? () {},
+      MediaQuery(
+        data: MediaQueryData(disableAnimations: disableAnimations),
+        child: MaterialApp(
+          home: Scaffold(
+            body: HomeAssetStrip(
+              status: status,
+              onCampusCardTap: onCampusCardTap ?? () {},
+              onElectricityTap: onElectricityTap ?? () {},
+              onCampusCardRetry: onCampusCardRetry,
+              onElectricityRetry: onElectricityRetry,
+            ),
           ),
         ),
       ),
     );
   }
 
-  testWidgets('两区各暴露一个带 tap 动作的按钮语义节点', (tester) async {
-    final handle = tester.ensureSemantics();
-    await pumpStrip(tester, status: statusOf());
-
-    for (final label in <String>['校园卡余额 ¥12.50', '宿舍电费 23.5 度']) {
-      final nodes = find.semantics.byLabel(label).evaluate();
-      expect(nodes, hasLength(1), reason: '「$label」应只对应一个语义节点');
-      final data = nodes.single.getSemanticsData();
-      expect(data.flagsCollection.isButton, isTrue);
-      expect(data.hasAction(SemanticsAction.tap), isTrue);
-    }
-
-    // 子文本（标签 / 数值 / 后缀）不得另行成语义节点，避免重复播报。
-    for (final label in <String>['校园卡', '¥12.50', '宿舍电费', '23.5 度']) {
-      expect(
-        find.semantics.byLabel(label).evaluate(),
-        isEmpty,
-        reason: '「$label」不应成为独立语义节点',
+  group('就绪态', () {
+    testWidgets('两区各暴露一个带 tap 动作的按钮语义节点', (tester) async {
+      final handle = tester.ensureSemantics();
+      await pumpStrip(
+        tester,
+        status: statusOf(
+          const HomeAssetState.ready('12.50'),
+          const HomeAssetState.ready('23.5'),
+        ),
       );
-    }
-    expect(find.semantics.byLabel(RegExp('校园卡')).evaluate(), hasLength(1));
-    expect(find.semantics.byLabel(RegExp('宿舍电费')).evaluate(), hasLength(1));
-    handle.dispose();
+
+      for (final label in <String>['校园卡余额 ¥12.50', '宿舍电费 23.5 度']) {
+        final nodes = find.semantics.byLabel(label).evaluate();
+        expect(nodes, hasLength(1), reason: '「$label」应只对应一个语义节点');
+        final data = nodes.single.getSemanticsData();
+        expect(data.flagsCollection.isButton, isTrue);
+        expect(data.hasAction(SemanticsAction.tap), isTrue);
+      }
+
+      // 子文本（标签 / 数值 / 后缀）不得另行成语义节点，避免重复播报。
+      for (final label in <String>['校园卡', '¥12.50', '宿舍电费', '23.5 度']) {
+        expect(
+          find.semantics.byLabel(label).evaluate(),
+          isEmpty,
+          reason: '「$label」不应成为独立语义节点',
+        );
+      }
+      handle.dispose();
+    });
+
+    testWidgets('语义 tap 只触发各自回调', (tester) async {
+      final handle = tester.ensureSemantics();
+      final taps = <String>[];
+      await pumpStrip(
+        tester,
+        status: statusOf(
+          const HomeAssetState.ready('12.50'),
+          const HomeAssetState.ready('23.5'),
+        ),
+        onCampusCardTap: () => taps.add('card'),
+        onElectricityTap: () => taps.add('power'),
+      );
+
+      tester.semantics.tap(find.semantics.byLabel('校园卡余额 ¥12.50'));
+      tester.semantics.tap(find.semantics.byLabel('宿舍电费 23.5 度'));
+      await tester.pump();
+
+      expect(taps, <String>['card', 'power']);
+      expect(tester.takeException(), isNull);
+      handle.dispose();
+    });
+
+    testWidgets('真实点击两区仍各自触发对应回调', (tester) async {
+      final taps = <String>[];
+      await pumpStrip(
+        tester,
+        status: statusOf(
+          const HomeAssetState.ready('12.50'),
+          const HomeAssetState.ready('23.5'),
+        ),
+        onCampusCardTap: () => taps.add('card'),
+        onElectricityTap: () => taps.add('power'),
+      );
+
+      await tester.tap(find.text('校园卡'));
+      await tester.tap(find.text('宿舍电费'));
+
+      expect(taps, <String>['card', 'power']);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('低电量用 error 色数值（双通道）', (tester) async {
+      final cs = ThemeData.light().colorScheme;
+      await pumpStrip(
+        tester,
+        status: statusOf(
+          const HomeAssetState.ready('12.50'),
+          const HomeAssetState.ready('3.2'),
+          lowElectricity: true,
+        ),
+      );
+
+      final low = tester.widget<Text>(find.text('3.2 度'));
+      expect(low.style?.color, cs.error);
+    });
   });
 
-  testWidgets('校园卡语义 tap 只触发 onCampusCardTap', (tester) async {
-    final handle = tester.ensureSemantics();
-    final taps = <String>[];
-    await pumpStrip(
-      tester,
-      status: statusOf(),
-      onCampusCardTap: () => taps.add('card'),
-      onElectricityTap: () => taps.add('power'),
-    );
+  group('获取中 / 刷新中', () {
+    testWidgets('无缓存首次获取显示「获取中」且不显示 --', (tester) async {
+      final handle = tester.ensureSemantics();
+      await pumpStrip(
+        tester,
+        status: statusOf(
+          const HomeAssetState.loading(),
+          const HomeAssetState.loading(),
+        ),
+      );
 
-    // tester.semantics.tap 在节点缺少 tap 动作时直接抛错，兼作可激活性断言。
-    tester.semantics.tap(find.semantics.byLabel('校园卡余额 ¥12.50'));
-    await tester.pump();
+      expect(find.text('获取中'), findsNWidgets(2));
+      expect(find.text('--'), findsNothing);
+      // 无缓存时只用「获取中」文案表达，不叠加持续转圈。
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.semantics.byLabel('校园卡余额正在获取').evaluate(), hasLength(1));
+      expect(find.semantics.byLabel('宿舍电费正在获取').evaluate(), hasLength(1));
+      handle.dispose();
+    });
 
-    expect(taps, <String>['card']);
-    expect(tester.takeException(), isNull);
-    handle.dispose();
+    testWidgets('有缓存后台刷新保留旧值并标注刷新中（不闪回占位符）', (tester) async {
+      final handle = tester.ensureSemantics();
+      await pumpStrip(
+        tester,
+        status: statusOf(
+          const HomeAssetState.refreshing('12.50'),
+          const HomeAssetState.refreshing('23.5'),
+        ),
+      );
+
+      // 旧值仍在，旁边是小转圈，绝不出现 '--' / '获取中'。
+      expect(find.text('¥12.50'), findsOneWidget);
+      expect(find.text('23.5 度'), findsOneWidget);
+      expect(find.text('获取中'), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsNWidgets(2));
+      expect(
+        find.semantics.byLabel('校园卡余额 ¥12.50，正在刷新').evaluate(),
+        hasLength(1),
+      );
+      expect(
+        find.semantics.byLabel('宿舍电费 23.5 度，正在刷新').evaluate(),
+        hasLength(1),
+      );
+      handle.dispose();
+    });
+
+    testWidgets('系统「移除动画」时转圈降级为静态提示', (tester) async {
+      await pumpStrip(
+        tester,
+        status: statusOf(
+          const HomeAssetState.loading(),
+          const HomeAssetState.refreshing('23.5'),
+        ),
+        disableAnimations: true,
+      );
+
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      // 静态文案仍表达状态。
+      expect(find.text('获取中'), findsOneWidget);
+      expect(find.text('23.5 度'), findsOneWidget);
+    });
   });
 
-  testWidgets('宿舍电费语义 tap 只触发 onElectricityTap', (tester) async {
-    final handle = tester.ensureSemantics();
-    final taps = <String>[];
-    await pumpStrip(
-      tester,
-      status: statusOf(),
-      onCampusCardTap: () => taps.add('card'),
-      onElectricityTap: () => taps.add('power'),
-    );
+  group('异常 / 待登录 / 未设置', () {
+    testWidgets('未登录显示「待登录」而非未获取', (tester) async {
+      final handle = tester.ensureSemantics();
+      await pumpStrip(
+        tester,
+        status: statusOf(
+          const HomeAssetState.waiting(),
+          const HomeAssetState.waiting(),
+        ),
+      );
 
-    tester.semantics.tap(find.semantics.byLabel('宿舍电费 23.5 度'));
-    await tester.pump();
+      expect(find.text('待登录'), findsNWidgets(2));
+      expect(find.semantics.byLabel('校园卡余额待登录').evaluate(), hasLength(1));
+      expect(find.semantics.byLabel('宿舍电费待登录').evaluate(), hasLength(1));
+      handle.dispose();
+    });
 
-    expect(taps, <String>['power']);
-    expect(tester.takeException(), isNull);
-    handle.dispose();
-  });
+    testWidgets('冷启动恢复态显示「正在恢复」', (tester) async {
+      await pumpStrip(
+        tester,
+        status: statusOf(
+          const HomeAssetState.recovering(),
+          const HomeAssetState.recovering(),
+        ),
+      );
 
-  testWidgets('真实点击两区仍各自触发对应回调', (tester) async {
-    final taps = <String>[];
-    await pumpStrip(
-      tester,
-      status: statusOf(),
-      onCampusCardTap: () => taps.add('card'),
-      onElectricityTap: () => taps.add('power'),
-    );
+      expect(find.text('正在恢复'), findsNWidgets(2));
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+    });
 
-    await tester.tap(find.text('校园卡'));
-    await tester.tap(find.text('宿舍电费'));
+    testWidgets('电费未设置寝室显示「未设置」且语义准确', (tester) async {
+      final handle = tester.ensureSemantics();
+      await pumpStrip(
+        tester,
+        status: statusOf(
+          const HomeAssetState.ready('12.50'),
+          const HomeAssetState.notConfigured(),
+        ),
+      );
 
-    expect(taps, <String>['card', 'power']);
-    expect(tester.takeException(), isNull);
-  });
+      expect(find.text('未设置'), findsOneWidget);
+      expect(find.semantics.byLabel('宿舍电费未设置').evaluate(), hasLength(1));
+      // 另一项不受影响。
+      expect(find.text('¥12.50'), findsOneWidget);
+      handle.dispose();
+    });
 
-  testWidgets('未获取数据时保持未获取语义文案且仍可激活', (tester) async {
-    final handle = tester.ensureSemantics();
-    final taps = <String>[];
-    await pumpStrip(
-      tester,
-      status: statusOf(hasCampusCardData: false, hasElectricityData: false),
-      onCampusCardTap: () => taps.add('card'),
-      onElectricityTap: () => taps.add('power'),
-    );
+    testWidgets('获取失败无缓存时显示「获取失败」，点击触发受控重试而非导航', (tester) async {
+      final handle = tester.ensureSemantics();
+      final taps = <String>[];
+      await pumpStrip(
+        tester,
+        status: statusOf(
+          const HomeAssetState.error(),
+          const HomeAssetState.error(),
+        ),
+        onCampusCardTap: () => taps.add('card-nav'),
+        onElectricityTap: () => taps.add('power-nav'),
+        onCampusCardRetry: () => taps.add('card-retry'),
+        onElectricityRetry: () => taps.add('power-retry'),
+      );
 
-    // 可见占位与语义文案都不改。
-    expect(find.text('--'), findsNWidgets(2));
+      expect(find.text('获取失败'), findsNWidgets(2));
+      final card = find.semantics.byLabel('校园卡余额获取失败，点按重试');
+      final power = find.semantics.byLabel('宿舍电费获取失败，点按重试');
+      expect(card.evaluate(), hasLength(1));
+      expect(power.evaluate(), hasLength(1));
 
-    final card = find.semantics.byLabel('校园卡余额未获取');
-    final power = find.semantics.byLabel('宿舍电费未获取');
-    expect(card.evaluate(), hasLength(1));
-    expect(power.evaluate(), hasLength(1));
+      tester.semantics.tap(card);
+      tester.semantics.tap(power);
+      await tester.pump();
 
-    tester.semantics.tap(card);
-    tester.semantics.tap(power);
-    await tester.pump();
+      expect(taps, <String>['card-retry', 'power-retry']);
+      expect(tester.takeException(), isNull);
+      handle.dispose();
+    });
 
-    expect(taps, <String>['card', 'power']);
-    expect(tester.takeException(), isNull);
-    handle.dispose();
+    testWidgets('两项状态彼此独立：一项失败不影响另一项就绪', (tester) async {
+      final taps = <String>[];
+      await pumpStrip(
+        tester,
+        status: statusOf(
+          const HomeAssetState.error(),
+          const HomeAssetState.ready('23.5'),
+        ),
+        onCampusCardTap: () => taps.add('card-nav'),
+        onCampusCardRetry: () => taps.add('card-retry'),
+        onElectricityTap: () => taps.add('power-nav'),
+      );
+
+      // 失败项点击重试；就绪项仍导航。
+      await tester.tap(find.text('获取失败'));
+      await tester.tap(find.text('宿舍电费'));
+      await tester.pump();
+
+      expect(taps, <String>['card-retry', 'power-nav']);
+    });
   });
 }
