@@ -8,10 +8,8 @@ import '../../../core/theme/app_typography.dart';
 import '../../../shared/widgets/app_empty_view.dart';
 import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/app_feedback.dart';
-import '../../../shared/widgets/app_filter_chips.dart';
 import '../../../shared/widgets/app_list_tile.dart';
 import '../../../shared/widgets/app_status_tag.dart';
-import '../../../shared/widgets/app_tile_surface.dart';
 import '../../../shared/widgets/auth_required_view.dart';
 import '../../../shared/widgets/detail_readout.dart';
 import '../../../shared/widgets/login_shell.dart';
@@ -27,28 +25,10 @@ typedef AcademicProgressFetcher = Future<AcademicProgressReport> Function({
   bool forceRefresh,
 });
 
-/// 状态筛选：「全部」按学分要求树展示，其余平铺该状态的课程。
-enum _StatusFilter {
-  tree('按类别'),
-  notTaken('未修'),
-  studying('在修'),
-  failed('未过'),
-  passed('已修');
-
-  const _StatusFilter(this.label);
-
-  final String label;
-
-  bool matches(CourseStudyStatus status) => switch (this) {
-    tree => true,
-    notTaken => status == CourseStudyStatus.notTaken,
-    studying => status == CourseStudyStatus.studying,
-    failed => status == CourseStudyStatus.failed,
-    passed => status.countsAsPassed,
-  };
-}
-
 /// 学生学业情况查询的原生视图（替代正方 H5 `xsxyqk_cxXsxyqkIndex`）。
+///
+/// 只保留两项核心内容：教务口径的主修 GPA 读数 + 可拖动缩放培养方案树
+/// （[RequirementTreeCanvas]）。不再提供平铺课程列表、状态筛选或视图切换。
 ///
 /// 不自带 Scaffold：作为成绩页「学业进度」分段嵌入 `GradesPage`。AppBar 按钮由
 /// 宿主经 [AcademicProgressViewState.buildAppBarActions] 取得；按钮相关状态
@@ -89,12 +69,6 @@ class AcademicProgressViewState extends State<AcademicProgressView> {
   String? _identityOwner;
   int _identityRevision = 0;
   int _fetchGeneration = 0;
-
-  _StatusFilter _filter = _StatusFilter.tree;
-  final Set<String> _expanded = {};
-
-  /// 树状图视图：画布可拖动缩放，不能放进可滚动的列表里。
-  bool _canvasView = false;
 
   @override
   void initState() {
@@ -180,7 +154,6 @@ class AcademicProgressViewState extends State<AcademicProgressView> {
       if (ownerChanged) {
         _report = null;
         _updatedAt = null;
-        _expanded.clear();
       }
     });
     unawaited(_fetch(forceRefresh: !ownerChanged));
@@ -289,24 +262,14 @@ class AcademicProgressViewState extends State<AcademicProgressView> {
 
   // ── Build ─────────────────────────────────────────────────────────────
 
-  /// 上一次通知宿主时的 AppBar 相关状态（登录 / 有数据 / 树状图）。
-  (bool, bool, bool)? _notifiedChrome;
+  /// 上一次通知宿主时的 AppBar 相关状态（登录 / 有数据）。
+  (bool, bool)? _notifiedChrome;
 
-  /// 宿主 AppBar 上的按钮：树状图 / 列表切换 + 刷新；未登录且无数据时为空。
+  /// 宿主 AppBar 上的按钮：仅刷新；未登录且无数据时为空。
   List<Widget> buildAppBarActions() {
     final hasData = _report != null;
     if (!_loggedIn && !hasData) return const [];
     return [
-      if (hasData)
-        IconButton(
-          icon: Icon(
-            _canvasView
-                ? Icons.view_agenda_outlined
-                : Icons.account_tree_outlined,
-          ),
-          tooltip: _canvasView ? '列表' : '树状图',
-          onPressed: () => setState(() => _canvasView = !_canvasView),
-        ),
       IconButton(
         icon: const Icon(Icons.refresh),
         tooltip: '刷新',
@@ -320,7 +283,7 @@ class AcademicProgressViewState extends State<AcademicProgressView> {
   @override
   Widget build(BuildContext context) {
     final hasData = _report != null;
-    final chrome = (_loggedIn, hasData, _canvasView);
+    final chrome = (_loggedIn, hasData);
     if (chrome != _notifiedChrome) {
       _notifiedChrome = chrome;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -352,48 +315,19 @@ class AcademicProgressViewState extends State<AcademicProgressView> {
             );
     }
 
-    if (_canvasView) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.pageMargin,
-              AppSpacing.sm,
-              AppSpacing.pageMargin,
-              AppSpacing.sm,
-            ),
-            child: RefreshStatusLine(
-              updatedAt: _updatedAt,
-              refreshing: _refreshing,
-              failed: _refreshFailed,
-              loadingLabel: '正在获取学业情况…',
-            ),
+    // 主修 GPA 读数与培养方案 Graph 同屏：读数占内容高度，Graph 吃掉剩余
+    // 全部视口（Expanded + ClipRect），因此画布始终有实际可交互的尺寸。
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.pageMargin,
+            AppSpacing.sm,
+            AppSpacing.pageMargin,
+            AppSpacing.sm,
           ),
-          Expanded(
-            child: ClipRect(
-              child: RequirementTreeCanvas(
-                roots: report.roots,
-                onLeafTap: _showLeafCourses,
-              ),
-            ),
-          ),
-        ],
-      );
-    }
-
-    return RefreshIndicator(
-      onRefresh: () => _fetch(forceRefresh: true),
-      child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.pageMargin,
-          AppSpacing.sm,
-          AppSpacing.pageMargin,
-          AppSpacing.xl,
-        ),
-        children: [
-          AcademicProgressOverview(
+          child: AcademicProgressOverview(
             summary: report.summary,
             statusLine: RefreshStatusLine(
               updatedAt: _updatedAt,
@@ -401,83 +335,22 @@ class AcademicProgressViewState extends State<AcademicProgressView> {
               failed: _refreshFailed,
               loadingLabel: '正在获取学业情况…',
             ),
-            onStatTap: (status) => setState(
-              () => _filter = switch (status) {
-                CourseStudyStatus.passed => _StatusFilter.passed,
-                CourseStudyStatus.failed => _StatusFilter.failed,
-                CourseStudyStatus.studying => _StatusFilter.studying,
-                _ => _StatusFilter.notTaken,
-              },
+          ),
+        ),
+        Expanded(
+          child: ClipRect(
+            child: RequirementTreeCanvas(
+              roots: report.roots,
+              onLeafTap: _showLeafCourses,
             ),
           ),
-          const SizedBox(height: AppSpacing.lg),
-          AppFilterChips<_StatusFilter>(
-            padding: EdgeInsets.zero,
-            options: [
-              for (final f in _StatusFilter.values)
-                AppFilterOption(f, _filterLabel(report, f)),
-            ],
-            selected: _filter,
-            onSelected: (f) => setState(() => _filter = f),
-          ),
-          if (_filter == _StatusFilter.tree)
-            ..._buildTree(report)
-          else
-            ..._buildFlatList(report),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
-  String _filterLabel(AcademicProgressReport report, _StatusFilter filter) {
-    if (filter == _StatusFilter.tree) return filter.label;
-    final count = report.allCourses
-        .where((c) => filter.matches(c.status))
-        .length;
-    return '${filter.label} $count';
-  }
-
-  List<Widget> _buildTree(AcademicProgressReport report) {
-    final widgets = <Widget>[];
-    for (final root in report.roots) {
-      // 主修根节点本身只是容器：展开为其子类别分区。
-      final sections = root.children.isNotEmpty ? root.children : [root];
-      for (final section in sections) {
-        widgets
-          ..add(const SizedBox(height: AppSpacing.lg))
-          ..add(_SectionHeader(node: section));
-        final children = section.children.isEmpty
-            ? [section]
-            : section.children;
-        _addNodes(widgets, children, depth: 0);
-      }
-    }
-    return widgets;
-  }
-
-  /// 递归展开：更深的非末节点画成缩进的小标题，不丢子树。
-  void _addNodes(
-    List<Widget> widgets,
-    List<RequirementNode> nodes, {
-    required int depth,
-  }) {
-    final indent = EdgeInsets.only(left: AppSpacing.md * depth);
-    for (final (index, node) in nodes.indexed) {
-      if (index > 0) widgets.add(const SizedBox(height: AppSpacing.sm));
-      if (node.children.isEmpty) {
-        widgets.add(Padding(padding: indent, child: _buildLeaf(node)));
-        continue;
-      }
-      widgets.add(
-        Padding(
-          padding: indent.add(const EdgeInsets.only(top: AppSpacing.xs)),
-          child: _SectionHeader(node: node),
-        ),
-      );
-      _addNodes(widgets, node.children, depth: depth + 1);
-    }
-  }
-
+  /// 末节点按需明细：只展示该培养方案节点的要求 / 已获学分与课程修读状态，
+  /// 不复刻完整成绩页（不显示成绩 / 补考 / 重修数字）。
   void _showLeafCourses(RequirementNode node) {
     if (node.courses.isEmpty) {
       AppFeedback.toast(
@@ -486,6 +359,7 @@ class AcademicProgressViewState extends State<AcademicProgressView> {
       );
       return;
     }
+    final summary = _requirementSummary(node);
     AppFeedback.sheet<void>(
       context,
       builder: (context) => ListView(
@@ -497,128 +371,77 @@ class AcademicProgressViewState extends State<AcademicProgressView> {
           AppSpacing.xl,
         ),
         children: [
-          PlainSectionHeader(
-            '${node.name} · 共 ${node.courseTotal} 门 · '
-            '通过 ${node.passedTotal} 门',
-          ),
+          PlainSectionHeader(node.name),
+          if (summary != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+              child: Text(summary, style: context.appText.meta),
+            ),
           for (final (index, course) in node.courses.indexed) ...[
             if (index > 0) const SizedBox(height: AppSpacing.sm),
-            _CourseTile(course: course),
+            AppListTile(
+              title: course.courseName,
+              titleTrailing: AppStatusTag(
+                course.status.label,
+                tone: _statusTone(course.status),
+              ),
+              dimmed: course.status == CourseStudyStatus.notTaken,
+            ),
           ],
         ],
       ),
     );
   }
 
-  Widget _buildLeaf(RequirementNode node) {
-    final expanded = _expanded.contains(node.id);
-    final hasCourses = node.courses.isNotEmpty;
+  /// 节点要求 / 已获学分与门次的紧凑摘要；无任何要求元数据时返回 null。
+  static String? _requirementSummary(RequirementNode node) {
+    final parts = <String>[];
+    final req = node.requiredCredits;
+    if (req != null) {
+      final earned = node.earnedCredits ?? 0;
+      final missing = node.missingCredits ?? 0;
+      parts.add(
+        '要求 ${_fmt(req)} 学分 · 已获 ${_fmt(earned)} 学分'
+        '${missing > 0 ? ' · 还差 ${_fmt(missing)} 学分' : ''}',
+      );
+    }
+    if (node.requiredCount != null) {
+      parts.add('要求 ${node.requiredCount} 门 · 达到 ${node.metCount ?? 0} 门');
+    }
+    parts.add('共 ${node.courseTotal} 门 · 通过 ${node.passedTotal} 门');
+    return parts.join('；');
+  }
+
+  Widget _buildSkeleton() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        AppListTile(
-          title: node.name,
-          titleTrailing: _creditTag(node),
-          meta: _nodeMeta(node),
-          details: [
-            if (node.needsCourses || hasCourses)
-              '共 ${node.courseTotal} 门 · 通过 ${node.passedTotal} 门',
-            if (node.id == RequirementNode.innovationId && !hasCourses)
-              '尚无数据信息',
-          ],
-          trailing: hasCourses
-              ? Icon(expanded ? Icons.expand_less : Icons.expand_more)
-              : null,
-          onTap: hasCourses
-              ? () => setState(() {
-                  if (!_expanded.remove(node.id)) _expanded.add(node.id);
-                })
-              : null,
-        ),
-        if (expanded)
-          for (final course in node.courses) ...[
-            const SizedBox(height: AppSpacing.xs),
-            Padding(
-              padding: const EdgeInsets.only(left: AppSpacing.md),
-              child: _CourseTile(course: course),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(
+            AppSpacing.pageMargin,
+            AppSpacing.sm,
+            AppSpacing.pageMargin,
+            AppSpacing.sm,
+          ),
+          child: AcademicProgressOverview(
+            summary: null,
+            statusLine: RefreshStatusLine(
+              refreshing: true,
+              loadingLabel: '正在获取学业情况…',
             ),
-          ],
-      ],
-    );
-  }
-
-  List<Widget> _buildFlatList(AcademicProgressReport report) {
-    final courses = report.allCourses
-        .where((c) => _filter.matches(c.status))
-        .toList();
-    if (courses.isEmpty) {
-      return const [
-        SizedBox(height: AppSpacing.xl),
-        AppEmptyView(title: '没有这类课程', icon: Icons.fact_check_outlined),
-      ];
-    }
-    final credits = courses.fold<double>(0, (sum, c) => sum + c.credits);
-    return [
-      const SizedBox(height: AppSpacing.lg),
-      PlainSectionHeader(
-        '${_filter.label} · ${courses.length} 门 · ${_fmt(credits)} 学分',
-      ),
-      for (final (index, course) in courses.indexed) ...[
-        if (index > 0) const SizedBox(height: AppSpacing.sm),
-        _CourseTile(course: course),
-      ],
-    ];
-  }
-
-  static String? _nodeMeta(RequirementNode node) {
-    final parts = <String>[
-      if (node.requiredCredits != null)
-        '要求 ${_fmt(node.requiredCredits!)} · 获得 ${_fmt(node.earnedCredits ?? 0)}'
-            '${(node.missingCredits ?? 0) > 0 ? ' · 还差 ${_fmt(node.missingCredits!)}' : ''} 学分',
-      if (node.requiredCount != null)
-        '要求 ${node.requiredCount} 门 · 达到 ${node.metCount ?? 0} 门',
-    ];
-    return parts.isEmpty ? null : parts.join('；');
-  }
-
-  static Widget? _creditTag(RequirementNode node) =>
-      switch (node.creditStatus) {
-        CreditStatus.notMet => const AppStatusTag(
-          '未满',
-          tone: AppStatusTone.attention,
-        ),
-        CreditStatus.met => const AppStatusTag(
-          '已满',
-          tone: AppStatusTone.positive,
-        ),
-        CreditStatus.exceeded => const AppStatusTag(
-          '超出',
-          tone: AppStatusTone.positive,
-        ),
-        CreditStatus.none => null,
-      };
-
-  Widget _buildSkeleton() {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.pageMargin,
-        AppSpacing.sm,
-        AppSpacing.pageMargin,
-        AppSpacing.xl,
-      ),
-      children: [
-        const AcademicProgressOverview(
-          summary: null,
-          statusLine: RefreshStatusLine(
-            refreshing: true,
-            loadingLabel: '正在获取学业情况…',
           ),
         ),
-        const SizedBox(height: AppSpacing.lg),
-        for (var i = 0; i < 4; i++) ...[
-          if (i > 0) const SizedBox(height: AppSpacing.sm),
-          const SkeletonBox(height: 72, radius: 16),
-        ],
+        const Expanded(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              AppSpacing.pageMargin,
+              0,
+              AppSpacing.pageMargin,
+              AppSpacing.xl,
+            ),
+            child: SkeletonBox(height: double.infinity, radius: 16),
+          ),
+        ),
       ],
     );
   }
@@ -628,227 +451,65 @@ String _fmt(double value) => value == value.roundToDouble()
     ? value.toStringAsFixed(0)
     : value.toStringAsFixed(1);
 
-/// 分区标题：类别名 + 学分进度条。
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.node});
+AppStatusTone _statusTone(CourseStudyStatus status) => switch (status) {
+  CourseStudyStatus.failed => AppStatusTone.danger,
+  CourseStudyStatus.studying => AppStatusTone.attention,
+  CourseStudyStatus.notTaken ||
+  CourseStudyStatus.unknown => AppStatusTone.neutral,
+  _ => AppStatusTone.positive,
+};
 
-  final RequirementNode node;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final req = node.requiredCredits;
-    final earned = node.earnedCredits ?? 0;
-    final title = req == null
-        ? node.name
-        : '${node.name} · ${_fmt(earned)}/${_fmt(req)} 学分';
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        PlainSectionHeader(title),
-        if (req != null && req > 0) ...[
-          const SizedBox(height: AppSpacing.xs),
-          DetailLevelBar(
-            fraction: earned / req,
-            color: earned >= req ? cs.primary : cs.tertiary,
-          ),
-        ],
-        if (node.children.length > 1)
-          Padding(
-            padding: const EdgeInsets.only(top: AppSpacing.xs),
-            child: Text(
-              '子项关系：${node.relation.label}',
-              style: context.appText.meta,
-            ),
-          ),
-        const SizedBox(height: AppSpacing.sm),
-      ],
-    );
-  }
-}
-
-/// 单门课程行。
-class _CourseTile extends StatelessWidget {
-  const _CourseTile({required this.course});
-
-  final AcademicProgressCourse course;
-
-  @override
-  Widget build(BuildContext context) {
-    final meta = [
-      '${_fmt(course.credits)} 学分',
-      if (course.nature.isNotEmpty) course.nature,
-      if (course.category.isNotEmpty) course.category,
-      if (!course.inPlan) '计划外',
-    ].join(' · ');
-    final score = course.displayScore;
-    return AppListTile(
-      title: course.courseName,
-      titleTrailing: AppStatusTag(
-        course.status.label,
-        tone: switch (course.status) {
-          CourseStudyStatus.failed => AppStatusTone.danger,
-          CourseStudyStatus.studying => AppStatusTone.attention,
-          CourseStudyStatus.notTaken ||
-          CourseStudyStatus.unknown => AppStatusTone.neutral,
-          _ => AppStatusTone.positive,
-        },
-      ),
-      meta: meta,
-      details: [
-        if (course.scoreTerm.isNotEmpty)
-          '${course.scoreTerm}'
-              '${course.gradePoint != null ? ' · 绩点 ${course.gradePoint}' : ''}',
-        if (course.makeupScore.isNotEmpty) '补考 ${course.makeupScore}',
-        if (course.retakeScore.isNotEmpty) '重修 ${course.retakeScore}',
-        if (course.scoreTerm.isEmpty && course.suggestedTerm.isNotEmpty)
-          '建议 ${course.suggestedTerm} 修读',
-      ],
-      dimmed: course.status == CourseStudyStatus.notTaken,
-      trailing: score.isEmpty
-          ? null
-          : Text(score, style: context.appText.rowValue),
-    );
-  }
-}
-
-/// 顶部概览：与校园卡详情页同一套版式——无框 GPA 读数 + 状态行，下方
-/// 四格门数瓦片（点按切到对应状态筛选），再下一行灰色脚注。
-/// [summary] 为 null（骨架）时数字显示 `--`。
+/// 顶部概览：教务培养方案口径的主修 GPA 读数（[DetailReadout]）+ 刷新状态行
+/// + 一行说明两个分段的 GPA 口径不同。无平铺列表 / 门数瓦片 / 状态筛选。
+///
+/// [summary] 为 null（骨架）时数字显示 `--`，不猜算也不填 0。
 class AcademicProgressOverview extends StatelessWidget {
   const AcademicProgressOverview({
     super.key,
     required this.summary,
     this.statusLine,
-    this.onStatTap,
   });
 
   final AcademicProgressSummary? summary;
 
   /// 读数下方的刷新状态行（[RefreshStatusLine]）。
   final Widget? statusLine;
-  final ValueChanged<CourseStudyStatus>? onStatTap;
 
-  static const double _tileGap = 10;
+  /// 说明本读数与「课程成绩」分段的计算口径差异，避免把两个不同来源的值
+  /// 当成同一个 GPA。教务未给出时明确占位，不擅自标为「累计 GPA」。
+  static const String _sourceNote =
+      '教务培养方案统计口径；「课程成绩」按所选学期（选「全部」则跨学期）计算，两者可能不同。';
 
   @override
   Widget build(BuildContext context) {
     final s = summary;
     final gpa = s?.gpa;
-    final footnote = [
-      if (s?.planTotal != null) '计划总课程 ${s!.planTotal} 门',
-      if (s != null && (s.outsidePassed != null || s.outsideFailed != null))
-        '计划外通过 ${_n(s.outsidePassed)} 门、未通过 ${_n(s.outsideFailed)} 门',
-    ].join(' · ');
     final statTime = s != null && s.statTime.isNotEmpty
         ? '统计截至 ${s.statTime}'
         : '';
-    final notes = [footnote, statTime].where((t) => t.isNotEmpty).join('\n');
-    final stats = [
-      ('通过', s?.planPassed, CourseStudyStatus.passed),
-      ('未通过', s?.planFailed, CourseStudyStatus.failed),
-      ('在读', s?.studying, CourseStudyStatus.studying),
-      ('未修', s?.planNotTaken, CourseStudyStatus.notTaken),
-    ];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          // 与校园卡读数一致：比瓦片多缩进 8。
-          padding: const EdgeInsets.only(left: AppSpacing.sm, top: 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              DetailReadout(
-                label: '主修 GPA',
-                valueText: gpa ?? '--',
-                muted: gpa == null,
-              ),
-              if (statusLine != null) ...[
-                const SizedBox(height: AppSpacing.sm),
-                statusLine!,
-              ],
-            ],
+    final notes = s == null
+        ? ''
+        : [_sourceNote, statTime].where((t) => t.isNotEmpty).join('\n');
+    return Padding(
+      // 与校园卡读数一致：比页边距多缩进 8。
+      padding: const EdgeInsets.only(left: AppSpacing.sm, top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          DetailReadout(
+            label: '主修平均学分绩点',
+            valueText: gpa ?? '--',
+            muted: gpa == null,
           ),
-        ),
-        const SizedBox(height: AppSpacing.lg),
-        IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              for (final (index, (label, value, status)) in stats.indexed) ...[
-                if (index > 0) const SizedBox(width: _tileGap),
-                Expanded(
-                  child: _StatTile(
-                    label: label,
-                    value: _n(value),
-                    onTap: onStatTap == null || value == null
-                        ? null
-                        : () => onStatTap!(status),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-        if (notes.isNotEmpty) ...[
-          const SizedBox(height: AppSpacing.md),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-            child: Text(
-              notes,
-              style: context.appText.meta.copyWith(height: 1.4),
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-
-  static String _n(int? v) => v == null ? '--' : '$v';
-}
-
-/// 门数瓦片：亚克力表面（同校园卡动作格），数字在上、标签在下。
-class _StatTile extends StatelessWidget {
-  const _StatTile({required this.label, required this.value, this.onTap});
-
-  final String label;
-  final String value;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Semantics(
-      button: onTap != null,
-      label: '$label $value 门',
-      excludeSemantics: true,
-      onTap: onTap,
-      child: AppTileSurface(
-        padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
-        onTap: onTap,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(
-                value,
-                style: context.appText.rowValue.copyWith(
-                  color: value == '--' ? cs.outlineVariant : null,
-                ),
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: context.appText.meta,
-            ),
+          if (statusLine != null) ...[
+            const SizedBox(height: AppSpacing.xs),
+            statusLine!,
           ],
-        ),
+          if (notes.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Text(notes, style: context.appText.meta.copyWith(height: 1.4)),
+          ],
+        ],
       ),
     );
   }
