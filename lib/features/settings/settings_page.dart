@@ -16,6 +16,7 @@ import '../../core/profile/user_profile_controller.dart';
 import '../../core/semester/current_term_resolver.dart';
 import '../../core/semester/semester_calendar.dart';
 import '../../core/semester/schedule_term_context.dart';
+import '../../core/update/apk_update_controller.dart';
 import '../../core/update/update_checker.dart';
 import '../../core/update/update_model.dart';
 import '../../shared/widgets/app_app_bar.dart';
@@ -60,6 +61,15 @@ class SettingsPage extends StatelessWidget {
   }
 
   Future<void> _checkForUpdate(BuildContext context) async {
+    // 已有受管下载在途：直接重开弹窗（弹窗会查询原生真实状态），
+    // 不做多余的版本检查、也不会新建下载。
+    final activeRelease = UpdateChecker.instance.availableRelease.value;
+    if (activeRelease != null &&
+        ApkUpdateController.instance.state.value.phase.isActive) {
+      await showUpdateDialog(context, activeRelease);
+      return;
+    }
+
     final result = await UpdateChecker.instance.check();
     if (!context.mounted) return;
 
