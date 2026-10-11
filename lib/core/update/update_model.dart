@@ -5,13 +5,41 @@ class AppRelease {
     required this.downloadUrl,
     required this.releaseUrl,
     required this.publishedAt,
+    this.canonicalAssetUrl,
+    this.assetId,
+    this.assetFileName,
+    this.assetSizeBytes,
+    this.assetSha256,
   });
 
   final String version;
   final String changelog;
+
+  /// 面向外部浏览器的下载地址（可能经镜像改写）；既有行为不变。
   final String downloadUrl;
   final String releaseUrl;
   final DateTime publishedAt;
+
+  /// 公开分发仓库 Release 资产的**规范官方 URL**（未经过镜像改写）。
+  ///
+  /// 仅用于应用内受管下载；使用前必须经 `ApkUpdateUrlPolicy` 校验为可信
+  /// 仓库（`github.com/FHfanshu/ZJXU-CampusHub/releases/download/<tag>/<apk>`）。
+  /// 未提供 / 未选中 APK 资产时为 null。
+  final String? canonicalAssetUrl;
+
+  /// GitHub Release 资产 id（可选）。
+  final int? assetId;
+
+  /// 选中资产的原始文件名（可选，例如 `JXU-CampusHub-v0.2.7-arm64-v8a.apk`）。
+  final String? assetFileName;
+
+  /// 选中资产字节数；仅当来源提供且为正整数时非 null。
+  final int? assetSizeBytes;
+
+  /// 选中资产的 SHA-256（小写 64 位 hex）；无法解析时为 null。
+  ///
+  /// 接受 `sha256:<hex>` 前缀形态；格式不合法一律忽略（不因此让整条清单失败）。
+  final String? assetSha256;
 
   bool get hasDownloadUrl => downloadUrl.isNotEmpty;
 
@@ -33,12 +61,20 @@ class AppRelease {
       throw const FormatException('更新清单缺少 downloadUrl/releaseUrl。');
     }
 
+    final assetSizeRaw = json['assetSizeBytes'];
     return AppRelease(
       version: version,
       changelog: changelog,
       downloadUrl: downloadUrl,
       releaseUrl: releaseUrl,
       publishedAt: publishedAt ?? DateTime.fromMillisecondsSinceEpoch(0),
+      canonicalAssetUrl: _optionalString(json['canonicalAssetUrl']),
+      assetId: json['assetId'] is int ? json['assetId'] as int : null,
+      assetFileName: _optionalString(json['assetFileName']),
+      assetSizeBytes: (assetSizeRaw is int && assetSizeRaw > 0)
+          ? assetSizeRaw
+          : null,
+      assetSha256: normalizeSha256(json['assetSha256']),
     );
   }
 
@@ -87,4 +123,25 @@ class AppRelease {
     }
     return result.isEmpty ? null : result;
   }
+
+  /// 规范化 SHA-256 摘要：接受裸 64 位 hex 或 `sha256:<hex>` 前缀形态，
+  /// 统一转小写；任何不合法输入（长度 / 字符 / 非字符串）返回 null。
+  static String? normalizeSha256(Object? raw) {
+    if (raw is! String) return null;
+    var value = raw.trim();
+    if (value.toLowerCase().startsWith(_sha256Prefix)) {
+      value = value.substring(_sha256Prefix.length).trim();
+    }
+    if (!_sha256Pattern.hasMatch(value)) return null;
+    return value.toLowerCase();
+  }
+
+  static const String _sha256Prefix = 'sha256:';
+  static final RegExp _sha256Pattern = RegExp(r'^[0-9a-fA-F]{64}$');
+}
+
+String? _optionalString(Object? value) {
+  if (value is! String) return null;
+  final trimmed = value.trim();
+  return trimmed.isEmpty ? null : trimmed;
 }
