@@ -58,6 +58,8 @@ flutter:
     - assets/shuatipwa/
     - assets/shuatipwa/assets/
     - assets/fonts/inter/LICENSE.txt
+    # 亚克力稀疏闪粉贴图（Issue #47，tools/materials/generate_frost_grain.py 生成）。
+    - assets/textures/
   # Inter 4.1（SIL OFL 1.1）拉丁 + 数字子集，中文仍跟随系统字体；
   # 子集范围与重新生成方式见 assets/fonts/inter/README.md。
   fonts:
