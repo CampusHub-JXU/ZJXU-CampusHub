@@ -88,9 +88,25 @@ Future<T?> showGlassDialog<T>({
             data: theme.copyWith(
               dialogTheme: theme.dialogTheme.copyWith(
                 insetPadding: EdgeInsets.zero,
+                // 内层 AlertDialog 自带一个 Dialog，其 `Align` 会撑满父级最大
+                // 高度。为了让内容给人的是「无界高度」（见下），这里必须先把
+                // 内层宽度锁成「撑满可用宽度」的紧约束：否则 AlertDialog 的
+                // `IntrinsicWidth` 会以无界高度求内在宽度，一路深入内容的懒加载
+                // 视图（如 `ListView(shrinkWrap: true)`）并抛异常。玻璃的可见宽度
+                // 本就由外层 `Align` 撑满，锁紧后视觉不变。
+                constraints: const BoxConstraints.tightFor(
+                  width: double.maxFinite,
+                ),
               ),
             ),
-            child: Builder(builder: builder),
+            // 关键：给内容无界高度，内层 Dialog 的 `Align` 便不再撑满，转而在
+            // 竖直方向收缩到内容高度——玻璃表面随之 shrink-wrap 并居中（内层
+            // Dialog 不再有整屏空白）。内容超过可用高度时视口封顶并可滚动，
+            // 操作按钮仍可触达。
+            child: SingleChildScrollView(
+              primary: false,
+              child: Builder(builder: builder),
+            ),
           ),
         ),
       );

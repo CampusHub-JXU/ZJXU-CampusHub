@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:jxu_campus_hub/features/settings/settings_page.dart';
 import 'package:jxu_campus_hub/shared/widgets/plain_list.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_dropdown.dart';
+import 'package:jxu_campus_hub/shared/widgets/glass_dialog_route.dart';
 
 import '../../helpers/pump_app.dart';
 import '../../helpers/test_setup.dart';
@@ -177,9 +178,36 @@ void main() {
     expect(find.widgetWithText(TextButton, '取消'), findsOneWidget);
     expect(find.widgetWithText(TextButton, '清除'), findsOneWidget);
 
+    // Issue #46：短确认框必须 shrink-wrap，玻璃表面不能撑到接近整屏。
+    final surface = tester.getRect(find.byType(GlassOverlaySurface));
+    final viewportHeight =
+        tester.view.physicalSize.height / tester.view.devicePixelRatio;
+    expect(tester.takeException(), isNull);
+    expect(
+      surface.height,
+      lessThan(viewportHeight * 0.5),
+      reason: '短清缓存确认框不应接近整屏（表面 ${surface.height}, 视口 $viewportHeight）',
+    );
+
     await tester.tap(find.widgetWithText(TextButton, '取消'));
     await tester.pumpAndSettle();
 
     expect(find.text('离线缓存已清除'), findsNothing);
+  });
+
+  testWidgets('清除离线缓存确认后执行清缓存并提示', (tester) async {
+    await pumpPage(tester, const SettingsPage());
+
+    await tester.scrollUntilVisible(find.text('清除离线缓存'), 300);
+    await tester.tap(find.text('清除离线缓存'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(TextButton, '清除'));
+    await tester.pumpAndSettle();
+
+    // 确认被接受：弹窗关闭，业务提示出现（走原有 clearAll 链路，无异常）。
+    expect(find.widgetWithText(TextButton, '清除'), findsNothing);
+    expect(find.text('离线缓存已清除'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }
