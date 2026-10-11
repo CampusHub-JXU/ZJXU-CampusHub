@@ -17,20 +17,25 @@ import '../sjjx_notice/sjjx_notice_model.dart';
 import '../sjjx_notice/sjjx_notice_service.dart';
 import 'campus_notice_site_search.dart';
 import 'notice_group_section.dart';
+import 'practice_notice_list_view.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_banner.dart';
 import '../../shared/widgets/app_empty_view.dart';
 import '../../shared/widgets/app_error_view.dart';
 import '../../shared/widgets/app_filter_chips.dart';
 import '../../shared/widgets/app_search_field.dart';
-import '../../shared/widgets/app_status_tag.dart';
 import '../../shared/widgets/copy_text_feedback.dart';
 import '../../shared/widgets/auth_required_view.dart';
 import '../../shared/widgets/login_shell.dart';
 import '../../shared/widgets/plain_list.dart';
 
 class NotificationCenterPage extends StatefulWidget {
-  const NotificationCenterPage({super.key});
+  const NotificationCenterPage({super.key, this.practiceNoticeLoader});
+
+  /// 实践通知数据源。为 null 时用
+  /// [SjjxNoticeService.instance.fetchAllNotices]（真实抓取，走 CAS/WebVPN）。
+  /// 测试可注入合成数据，避免请求真实校园环境。
+  final Future<List<SjjxNotice>> Function()? practiceNoticeLoader;
 
   @override
   State<NotificationCenterPage> createState() => _NotificationCenterPageState();
@@ -134,7 +139,10 @@ class _NotificationCenterPageState extends State<NotificationCenterPage>
               controller: _tabController,
               children: [
                 _CampusNoticeTab(query: _query),
-                _PracticeNoticeTab(query: _query),
+                _PracticeNoticeTab(
+                  query: _query,
+                  loader: widget.practiceNoticeLoader,
+                ),
               ],
             ),
           ),
@@ -520,9 +528,10 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
 // --- Practice notices tab ---
 
 class _PracticeNoticeTab extends StatefulWidget {
-  const _PracticeNoticeTab({this.query = ''});
+  const _PracticeNoticeTab({this.query = '', this.loader});
 
   final String query;
+  final Future<List<SjjxNotice>> Function()? loader;
 
   @override
   State<_PracticeNoticeTab> createState() => _PracticeNoticeTabState();
@@ -535,6 +544,10 @@ class _PracticeNoticeTabState extends State<_PracticeNoticeTab>
   bool _authRequired = false;
   String? _error;
 
+  /// 加载纪元：刷新 / 重新认证期间推进，迟到的旧结果直接丢弃，
+  /// 避免 A 账号的在途响应覆盖 B 账号刚拉回的数据。
+  int _loadEpoch = 0;
+
   @override
   bool get wantKeepAlive => true;
 
@@ -545,26 +558,28 @@ class _PracticeNoticeTabState extends State<_PracticeNoticeTab>
   }
 
   Future<void> _load() async {
+    final epoch = ++_loadEpoch;
     setState(() {
       _loading = true;
       _error = null;
       _authRequired = false;
     });
     try {
-      final notices = await SjjxNoticeService.instance.fetchAllNotices();
-      if (!mounted) return;
+      final notices =
+          await (widget.loader ?? SjjxNoticeService.instance.fetchAllNotices)();
+      if (!mounted || epoch != _loadEpoch) return;
       setState(() {
         _notices = notices;
         _loading = false;
       });
     } on CasAuthExpiredException {
-      if (!mounted) return;
+      if (!mounted || epoch != _loadEpoch) return;
       setState(() {
         _authRequired = true;
         _loading = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || epoch != _loadEpoch) return;
       setState(() {
         _error = '加载失败';
         _loading = false;
@@ -603,7 +618,7 @@ class _PracticeNoticeTabState extends State<_PracticeNoticeTab>
       return const AppEmptyView(title: '暂无实践通知', icon: Icons.article_outlined);
     }
     final query = widget.query.trim().toLowerCase();
-    final visibleNotices = query.isEmpty
+    final matchedNotices = query.isEmpty
         ? _notices
         : _notices
               .where(
@@ -613,40 +628,43 @@ class _PracticeNoticeTabState extends State<_PracticeNoticeTab>
                     _noticeMatchesQuery(notice.date, query),
               )
               .toList();
-    if (visibleNotices.isEmpty) {
+    if (matchedNotices.isEmpty) {
       return const AppEmptyView(
         title: '没有匹配的通知',
         icon: Icons.search_off_rounded,
       );
     }
-    return RefreshIndicator(
+    // 完整匹配数据留在内存，列表只惰性构建可见窗口：顶部显示总匹配数，行本身
+    // 无框、无卡片、无分隔线。查询变化经 resetKey 重置窗口与滚动位置。
+    return PracticeNoticeListView(
+      resetKey: query,
+      headerTitle: query.isEmpty ? '全部' : '匹配结果',
+      headerTrailing: '${matchedNotices.length} 条',
+      itemCount: matchedNotices.length,
       onRefresh: _load,
-      child: ListView(
-        padding: const EdgeInsets.only(top: 4, bottom: 24),
-        children: [
-          NoticeGroupSection(
-            title: query.isEmpty ? '全部' : '匹配结果',
-            trailing: '${visibleNotices.length} 条',
-            children: [
-              for (final notice in visibleNotices)
-                _NoticeTile(
-                  title: notice.title,
-                  date: notice.date,
-                  tag: notice.category,
-                  onTap: () => context.pushNamed(
-                    'external-webview',
-                    extra: {
-                      'title': notice.title,
-                      'url': notice.url,
-                      'emulateDingTalkEnvironment': false,
-                    },
-                  ),
-                  onLongPress: () => copyTextWithFeedback(context, notice.url),
-                ),
-            ],
-          ),
-        ],
-      ),
+      itemBuilder: (context, index) {
+        final notice = matchedNotices[index];
+        return PracticeNoticeRow(
+          title: notice.title,
+          date: notice.date,
+          tag: notice.category,
+          onTap: () => _openPracticeNotice(notice),
+          onLongPress: () => copyTextWithFeedback(context, notice.url),
+        );
+      },
+    );
+  }
+
+  /// 与实践通知原有语义一致：点开外部 WebView（同旧实现，不带统一认证保护 /
+  /// 预热），长按复制链接。
+  void _openPracticeNotice(SjjxNotice notice) {
+    context.pushNamed(
+      'external-webview',
+      extra: {
+        'title': notice.title,
+        'url': notice.url,
+        'emulateDingTalkEnvironment': false,
+      },
     );
   }
 }
@@ -663,7 +681,6 @@ class _NoticeTile extends StatelessWidget {
     required this.onTap,
     this.onLongPress,
     this.unread = false,
-    this.tag,
   });
 
   final String title;
@@ -671,14 +688,12 @@ class _NoticeTile extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
   final bool unread;
-  final String? tag;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final text = context.appText;
     final publishDate = (date ?? '').trim();
-    final showTag = (tag ?? '').trim().isNotEmpty;
     return InkWell(
       onTap: onTap,
       onLongPress: onLongPress,
@@ -724,23 +739,16 @@ class _NoticeTile extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  if (publishDate.isNotEmpty || showTag) ...[
+                  if (publishDate.isNotEmpty) ...[
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        if (publishDate.isNotEmpty)
-                          Text(
-                            publishDate,
-                            style: text.secondary.copyWith(
-                              fontFeatures: const [
-                                FontFeature.tabularFigures(),
-                              ],
-                            ),
+                        Text(
+                          publishDate,
+                          style: text.secondary.copyWith(
+                            fontFeatures: const [FontFeature.tabularFigures()],
                           ),
-                        if (showTag) ...[
-                          if (publishDate.isNotEmpty) const SizedBox(width: 8),
-                          AppStatusTag(tag!),
-                        ],
+                        ),
                       ],
                     ),
                   ],
