@@ -670,5 +670,84 @@ void main() {
       expect(_ringVisible(_searchRing(tester)), isTrue);
       expect(tester.takeException(), isNull);
     });
+
+    testWidgets('a real touch (tapAt) on blank outside the card unfocuses the '
+        'input and clears the ring', (tester) async {
+      await _pumpSection(tester);
+      await tester.tap(find.byType(TextField));
+      await tester.pumpAndSettle();
+      expect(_inputFocused(tester), isTrue);
+      expect(_ringVisible(_searchRing(tester)), isTrue);
+
+      // Real finger-style touch (touch pointer) on the section header, which
+      // sits outside the search card. On Android the framework's default
+      // `onTapOutside` intentionally does NOT unfocus on touch, so this is the
+      // behaviour the card-local TapRegion must provide.
+      await tester.tapAt(tester.getCenter(find.text('功能')));
+      await tester.pumpAndSettle();
+
+      expect(_inputFocused(tester), isFalse);
+      expect(_ringVisible(_searchRing(tester)), isFalse);
+    });
+
+    testWidgets('touching the interior of the card (search glyph) keeps the '
+        'input focused and the ring on', (tester) async {
+      await _pumpSection(tester);
+      await tester.tap(find.byType(TextField));
+      await tester.pumpAndSettle();
+      expect(_inputFocused(tester), isTrue);
+
+      // The leading search glyph is inside the card but outside the editable
+      // text; the card-local TapRegion treats the whole card as "inside".
+      await tester.tapAt(
+        tester.getCenter(find.byIcon(Icons.search_rounded).first),
+      );
+      await tester.pumpAndSettle();
+
+      expect(_inputFocused(tester), isTrue);
+      expect(_ringVisible(_searchRing(tester)), isTrue);
+    });
+
+    testWidgets('dragging / scrolling from blank is not treated as an outside '
+        'tap: it still scrolls and keeps focus', (tester) async {
+      await _pumpSection(tester);
+      await tester.tap(find.byType(TextField));
+      await tester.pumpAndSettle();
+      expect(_inputFocused(tester), isTrue);
+
+      final beforeY = tester.getTopLeft(find.text('功能')).dy;
+      // Start the scroll gesture on the blank header area.
+      await tester.drag(find.text('功能'), const Offset(0, -160));
+      await tester.pumpAndSettle();
+
+      expect(tester.getTopLeft(find.text('功能')).dy, lessThan(beforeY));
+      // A scroll drag exceeds touch slop, so it does not count as a tap.
+      expect(_inputFocused(tester), isTrue);
+      expect(_ringVisible(_searchRing(tester)), isTrue);
+    });
+
+    testWidgets('repeated real outside touches keep gain/loss and the ring in '
+        'sync', (tester) async {
+      await _pumpSection(tester);
+      for (var i = 0; i < 3; i++) {
+        await tester.tap(find.byType(TextField));
+        await tester.pumpAndSettle();
+        expect(_inputFocused(tester), isTrue, reason: 'cycle $i gain');
+        expect(
+          _ringVisible(_searchRing(tester)),
+          isTrue,
+          reason: 'cycle $i ring on',
+        );
+
+        await tester.tapAt(tester.getCenter(find.text('功能')));
+        await tester.pumpAndSettle();
+        expect(_inputFocused(tester), isFalse, reason: 'cycle $i loss');
+        expect(
+          _ringVisible(_searchRing(tester)),
+          isFalse,
+          reason: 'cycle $i ring off',
+        );
+      }
+    });
   });
 }

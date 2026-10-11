@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/actions/campus_action_executor.dart';
@@ -345,6 +346,11 @@ class _FunctionSearchTileState extends State<_FunctionSearchTile> {
   /// 本身已失焦时描边仍可能残留。
   final FocusNode _focusNode = FocusNode(debugLabel: 'FunctionSearchField');
 
+  /// 落在搜索卡面之外的指针按下位置。用来区分「点击空白处」与「以空白处起手
+  /// 的功能区滚动拖拽」：只有按下/抬起位移在系统触摸 slop 内才算点击并收起
+  /// 焦点，滚动拖拽不收起，避免干扰滚动。
+  Offset? _outsidePointerDown;
+
   @override
   void initState() {
     super.initState();
@@ -363,35 +369,55 @@ class _FunctionSearchTileState extends State<_FunctionSearchTile> {
     setState(() {});
   }
 
+  void _handleTapDownOutside(PointerDownEvent event) {
+    _outsidePointerDown = event.position;
+  }
+
+  void _handleTapUpOutside(PointerUpEvent event) {
+    final down = _outsidePointerDown;
+    _outsidePointerDown = null;
+    // 位移超过 slop：用户在滚动 / 拖拽，不算点击，保留输入焦点。
+    if (down == null || (event.position - down).distance > kTouchSlop) return;
+    _focusNode.unfocus();
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final radius = BorderRadius.circular(AppRadius.tileBorder.topLeft.x);
     final focused = _focusNode.hasFocus;
-    return AnimatedContainer(
-      duration: AppMotion.reduced(context)
-          ? Duration.zero
-          : const Duration(milliseconds: 160),
-      foregroundDecoration: ShapeDecoration(
-        shape: RoundedSuperellipseBorder(
-          borderRadius: radius,
-          side: focused
-              ? BorderSide(color: cs.primary, width: 1.4)
-              : BorderSide.none,
+    return TapRegion(
+      // 把整张搜索卡面当成「输入框内部」：点击卡面内的图标 / 内边距 / 清除按钮
+      // 不收起焦点；点击卡面外的页面空白、其它磁贴才收起。Android 真实触摸默认
+      // 不会让 TextField 失焦（只隐藏键盘），故在此本地补足——作用范围仅限功能区
+      // 搜索框，不改动其它 AppSearchField 调用方。
+      onTapOutside: _handleTapDownOutside,
+      onTapUpOutside: _handleTapUpOutside,
+      child: AnimatedContainer(
+        duration: AppMotion.reduced(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 160),
+        foregroundDecoration: ShapeDecoration(
+          shape: RoundedSuperellipseBorder(
+            borderRadius: radius,
+            side: focused
+                ? BorderSide(color: cs.primary, width: 1.4)
+                : BorderSide.none,
+          ),
         ),
-      ),
-      child: AppTileSurface(
-        borderRadius: radius,
-        // 水平内边距与 _SmallFunctionTile 一致（徽标 / 标题左缘对齐）；
-        // 垂直收窄成 48dp 细条，避免比磁贴还高显得臃肿。
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-        child: AppSearchField(
-          controller: widget.controller,
-          focusNode: _focusNode,
-          hintText: '搜索功能，如 成绩、电费、请假',
-          onChanged: widget.onChanged,
-          onClear: widget.onClear,
-          borderless: true,
+        child: AppTileSurface(
+          borderRadius: radius,
+          // 水平内边距与 _SmallFunctionTile 一致（徽标 / 标题左缘对齐）；
+          // 垂直收窄成 48dp 细条，避免比磁贴还高显得臃肿。
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          child: AppSearchField(
+            controller: widget.controller,
+            focusNode: _focusNode,
+            hintText: '搜索功能，如 成绩、电费、请假',
+            onChanged: widget.onChanged,
+            onClear: widget.onClear,
+            borderless: true,
+          ),
         ),
       ),
     );
