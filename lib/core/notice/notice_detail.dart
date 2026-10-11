@@ -94,16 +94,68 @@ class NoticeImage extends NoticeBlock {
   final double? height;
 }
 
+/// 原生阅读的表格块：按单元格保留起始坐标与跨度，忠实还原 rowspan /
+/// colspan / th 表头语义。
+///
+/// 解析阶段就完成占用矩阵与边界检查：结构过于复杂、跨度不可靠或超出上限的
+/// 表格 [supported] 为 false，页面据此回退原网页，而不是硬画错位内容。
 @immutable
 class NoticeTable extends NoticeBlock {
-  const NoticeTable(this.rows, {required this.hasMergedCells});
+  const NoticeTable({
+    required this.rowCount,
+    required this.columnCount,
+    required this.cells,
+    this.supported = true,
+  });
 
-  /// 行 → 单元格纯文本（单元格内多段以换行连接）。
-  final List<List<String>> rows;
+  /// 无法在原生渲染器中忠实还原（嵌套表格、畸形跨度等）时的占位块。
+  const NoticeTable.unsupported()
+    : rowCount = 0,
+      columnCount = 0,
+      cells = const [],
+      supported = false;
 
-  /// 存在 rowspan/colspan 合并单元格：原生网格无法忠实还原，页面应引导
-  /// 查看原网页而不是画出错位的表。
-  final bool hasMergedCells;
+  final int rowCount;
+  final int columnCount;
+
+  /// 单元格按源码顺序排列；每个单元格带起始行列与跨度。
+  final List<NoticeTableCell> cells;
+
+  /// 原生阅读页是否可忠实渲染该表格。
+  final bool supported;
+
+  /// 是否存在 `<th>` 表头单元格。
+  bool get hasHeaderCells => cells.any((c) => c.header);
+}
+
+/// 单个表格单元格：起始坐标 + 跨度 + 富文本（保留段内换行与字体样式）。
+@immutable
+class NoticeTableCell {
+  const NoticeTableCell({
+    required this.row,
+    required this.column,
+    required this.rowSpan,
+    required this.columnSpan,
+    required this.spans,
+    required this.header,
+  });
+
+  /// 起始行（0 基）。
+  final int row;
+
+  /// 起始列（0 基）。
+  final int column;
+
+  final int rowSpan;
+  final int columnSpan;
+
+  /// 单元格文本带内联样式；段落 / `<br>` 之间以 `\n` 分隔。
+  final List<NoticeSpan> spans;
+
+  /// 来自 `<th>`：表头语义（加粗 + 表头底色 + 无障碍 header）。
+  final bool header;
+
+  String get plainText => spans.map((s) => s.text).join();
 }
 
 /// 是否为可原生阅读的教务处公告详情 URL（`content.jsp` 或静态
@@ -238,6 +290,12 @@ const _blockTags = {
   'li',
   'center',
 };
+
+// 表格解析上限：超过即视为不可靠，回退原网页（避免畸形 HTML 无限扩张 / 卡死）。
+const _tableMaxRows = 200;
+const _tableMaxColumns = 64;
+const _tableMaxCells = 4000;
+const _tableMaxSpan = 200;
 
 class _InlineStyle {
   const _InlineStyle({this.bold = false, this.emphasis = false, this.link});
@@ -376,30 +434,131 @@ class _BlockCollector {
     );
   }
 
+  /// 解析 `<table>` 为带坐标/跨度的单元格。占用矩阵 + 边界检查全部在这里
+  /// 完成：结构不可靠（嵌套表格、畸形跨度、冲突/超限）返回
+  /// [NoticeTable.unsupported] 交由页面回退原网页，绝不静默错位或丢单元格。
   NoticeTable? _table(Element node) {
-    final rows = <List<String>>[];
-    var merged = false;
+    final trs = <Element>[];
     for (final tr in node.querySelectorAll('tr')) {
       // 嵌套表格的行归外层单元格文本，不单独成行。
       if (_closestTable(tr) != node) continue;
-      final cells = <String>[];
-      for (final cell in tr.children) {
-        if (cell.localName != 'td' && cell.localName != 'th') continue;
-        final rowSpan = int.tryParse(cell.attributes['rowspan'] ?? '') ?? 1;
-        final colSpan = int.tryParse(cell.attributes['colspan'] ?? '') ?? 1;
-        if (rowSpan > 1 || colSpan > 1) merged = true;
-        cells.add(_cellText(cell));
-      }
-      if (cells.any((c) => c.isNotEmpty)) rows.add(cells);
+      trs.add(tr);
     }
-    if (rows.isEmpty) return null;
-    final width = rows.map((r) => r.length).reduce((a, b) => a > b ? a : b);
-    if (rows.any((r) => r.length != width)) merged = true;
+    if (trs.isEmpty) return null;
+    if (trs.length > _tableMaxRows) return const NoticeTable.unsupported();
+
+    // 占用矩阵：occupied[r][c] = 该槽位所属单元格下标，-1 / 越界表示空闲。
+    final occupied = <List<int>>[];
+    bool isFree(int r, int c) =>
+        r >= occupied.length || c >= occupied[r].length || occupied[r][c] < 0;
+    void occupy(int r, int c, int index) {
+      while (occupied.length <= r) {
+        occupied.add(<int>[]);
+      }
+      final row = occupied[r];
+      while (row.length <= c) {
+        row.add(-1);
+      }
+      row[c] = index;
+    }
+
+    final cells = <NoticeTableCell>[];
+    for (var r = 0; r < trs.length; r++) {
+      var c = 0;
+      for (final cell in trs[r].children) {
+        final tag = cell.localName;
+        if (tag != 'td' && tag != 'th') continue;
+        // 跳过被上方 rowspan 占用的列。
+        while (!isFree(r, c)) {
+          c++;
+          if (c > _tableMaxColumns) return const NoticeTable.unsupported();
+        }
+
+        final rowSpan = _spanOf(cell, 'rowspan');
+        final columnSpan = _spanOf(cell, 'colspan');
+        // 非数字 / 非正 / 超上限的跨度不可靠，整表回退而非按 1 猜。
+        if (rowSpan == null || columnSpan == null) {
+          return const NoticeTable.unsupported();
+        }
+        // 单元格内再嵌表格：原生无法忠实还原，明确不支持。
+        if (cell.querySelector('table') != null) {
+          return const NoticeTable.unsupported();
+        }
+        // 浏览器会把超出剩余行数的 rowspan 收敛到最后一行，这里同样 clamp，
+        // 既贴合真实排版，也避免渲染器访问越界的行偏移。
+        final effectiveRowSpan = rowSpan > trs.length - r
+            ? trs.length - r
+            : rowSpan;
+        if (c + columnSpan > _tableMaxColumns) {
+          return const NoticeTable.unsupported();
+        }
+        // 冲突检测：跨度覆盖的所有槽位必须空闲。
+        for (var rr = r; rr < r + effectiveRowSpan; rr++) {
+          for (var cc = c; cc < c + columnSpan; cc++) {
+            if (!isFree(rr, cc)) return const NoticeTable.unsupported();
+          }
+        }
+        if (cells.length >= _tableMaxCells) {
+          return const NoticeTable.unsupported();
+        }
+
+        final index = cells.length;
+        cells.add(
+          NoticeTableCell(
+            row: r,
+            column: c,
+            rowSpan: effectiveRowSpan,
+            columnSpan: columnSpan,
+            spans: _cellSpans(cell, base),
+            header: tag == 'th',
+          ),
+        );
+        for (var rr = r; rr < r + effectiveRowSpan; rr++) {
+          for (var cc = c; cc < c + columnSpan; cc++) {
+            occupy(rr, cc, index);
+          }
+        }
+        c += columnSpan;
+      }
+    }
+
+    if (cells.isEmpty || cells.every((cell) => cell.plainText.trim().isEmpty)) {
+      return null;
+    }
+    var columnCount = 0;
+    for (final cell in cells) {
+      final end = cell.column + cell.columnSpan;
+      if (end > columnCount) columnCount = end;
+    }
     return NoticeTable(
-      List.unmodifiable(rows.map(List<String>.unmodifiable)),
-      hasMergedCells: merged,
+      rowCount: trs.length,
+      columnCount: columnCount,
+      cells: List.unmodifiable(cells),
     );
   }
+}
+
+/// 解析 rowspan/colspan：缺省或空串按 1；非数字 / 非正 / 超上限返回 null，
+/// 由调用方把整表判为不可靠并回退原网页（不静默按 1 处理以免错位）。
+int? _spanOf(Element cell, String name) {
+  final raw = cell.attributes[name]?.trim();
+  if (raw == null || raw.isEmpty) return 1;
+  final value = int.tryParse(raw);
+  if (value == null || value < 1 || value > _tableMaxSpan) return null;
+  return value;
+}
+
+/// 单元格富文本：复用正文的行内样式收集器，段落 / `<br>` 之间以 `\n` 连接。
+List<NoticeSpan> _cellSpans(Element cell, Uri base) {
+  final blocks = <NoticeBlock>[];
+  _BlockCollector(base, blocks).collectChildren(cell);
+  final spans = <NoticeSpan>[];
+  for (final block in blocks) {
+    if (block is! NoticeParagraph) continue;
+    if (spans.isNotEmpty) spans.add(const NoticeSpan('\n'));
+    spans.addAll(block.spans);
+  }
+  return spans;
 }
 
 Element? _closestTable(Element element) {
@@ -408,18 +567,6 @@ Element? _closestTable(Element element) {
     current = current.parent;
   }
   return current;
-}
-
-String _cellText(Element cell) {
-  final blocks = cell.querySelectorAll('p, div, li');
-  if (blocks.isEmpty) return _collapse(cell.text);
-  final lines = <String>[];
-  for (final block in blocks) {
-    if (block.querySelector('p, div, li') != null) continue;
-    final text = _collapse(block.text);
-    if (text.isNotEmpty) lines.add(text);
-  }
-  return lines.isEmpty ? _collapse(cell.text) : lines.join('\n');
 }
 
 List<NoticeSpan> _trimSpans(List<NoticeSpan> spans) {
