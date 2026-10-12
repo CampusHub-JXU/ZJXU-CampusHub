@@ -1115,7 +1115,11 @@ class CalendarSyncControl extends ChangeNotifier {
       for (final batch in ledger.allBatches) batch.calendarId,
     };
 
-    final failures = <CalendarLegacyCleanupFailure>{};
+    // 预览本身不完整（权限 / 上限 / 日历元数据未知）时如实计入失败，绝不谎称干净。
+    final failures = <CalendarLegacyCleanupFailure>{
+      if (!preview.complete)
+        preview.reason ?? CalendarLegacyCleanupFailure.providerUnavailable,
+    };
     var deletedCount = 0;
     var aborted = false;
 
@@ -1128,6 +1132,13 @@ class CalendarSyncControl extends ChangeNotifier {
       }
       final previewCandidates = byCalendar[calendarId] ?? const [];
       if (previewCandidates.isEmpty) continue;
+      // 只删冻结预览**明确证实可写**的日历；未知 / 只读一律不删并计为不完整。
+      if (!preview.calendars.any(
+        (c) => c.calendarId == calendarId && c.writable == true,
+      )) {
+        failures.add(CalendarLegacyCleanupFailure.calendarUnavailable);
+        continue;
+      }
 
       final scan = await _discovery.scanOwnedEvents(calendarId: calendarId);
       if (!_isCurrent(generation)) {
@@ -1151,7 +1162,7 @@ class CalendarSyncControl extends ChangeNotifier {
       ];
       if (verified.isEmpty) continue;
 
-      for (final round in _partitionUniqueOpaque(verified)) {
+      for (final round in partitionUniqueOpaqueCandidates(verified)) {
         for (final chunk in _chunk(
           round,
           CalendarSyncProtocol.maxBatchEvents,
@@ -1239,21 +1250,26 @@ class CalendarSyncControl extends ChangeNotifier {
     }
 
     final remainingLedger = await _tryResidualCount();
-    final complete =
+    // 完成以「冻结预览完整」+ 同一 generation 临界区原子提交为准：generation 变化 /
+    // store.clear 失败都绝不报 complete、清绑定或置 off（保留 pending 与预览供重试）。
+    var complete =
         !aborted &&
         postComplete &&
+        preview.complete &&
+        preview.reason == null &&
         residual == 0 &&
         failures.isEmpty &&
         remainingLedger == 0;
-
     if (complete) {
-      await _queue.run(() async {
+      final commit = await _queue.run(() async {
         await _ensureLoadedLocked();
-        if (!_isCurrent(generation)) return;
+        if (!_isCurrent(generation)) {
+          return (ok: false, stale: true, fail: null);
+        }
         try {
           await _store.clear();
-        } on CalendarSyncException {
-          return;
+        } on CalendarSyncException catch (error) {
+          return (ok: false, stale: false, fail: _scanFailureFor(error.kind));
         }
         _state = CalendarSyncControlState.off;
         _ownerKey = null;
@@ -1261,7 +1277,11 @@ class CalendarSyncControl extends ChangeNotifier {
         _generation++;
         _latestScan = null;
         notifyListeners();
+        return (ok: true, stale: false, fail: null);
       });
+      complete = commit.ok;
+      aborted = aborted || commit.stale;
+      if (commit.fail != null) failures.add(commit.fail!);
     }
 
     return CalendarLegacyCleanupResult(
@@ -1371,26 +1391,6 @@ class CalendarSyncControl extends ChangeNotifier {
     CalendarOwnedDiscoveryReason.unavailable =>
       CalendarLegacyCleanupFailure.providerUnavailable,
   };
-
-  /// 把候选按 opaqueId 分轮：每轮内 opaqueId 唯一，满足通道批次约束。
-  static List<List<LegacyCleanupCandidate>> _partitionUniqueOpaque(
-    List<LegacyCleanupCandidate> candidates,
-  ) {
-    final rounds = <List<LegacyCleanupCandidate>>[];
-    final seenInRound = <String>{};
-    var current = <LegacyCleanupCandidate>[];
-    for (final candidate in candidates) {
-      if (seenInRound.contains(candidate.opaqueId)) {
-        rounds.add(current);
-        current = <LegacyCleanupCandidate>[];
-        seenInRound.clear();
-      }
-      current.add(candidate);
-      seenInRound.add(candidate.opaqueId);
-    }
-    if (current.isNotEmpty) rounds.add(current);
-    return rounds;
-  }
 
   // ── 内部 ────────────────────────────────────────────────────────────
 

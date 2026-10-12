@@ -59,8 +59,10 @@ class CalendarLegacyCleanupCalendarPreview {
   /// 该日历内本 App 自有事件总数（= [recordedCount] 与孤儿之和的下界）。
   final int ownedCount;
 
-  /// 是否可安全删除（可写或未知；只读日历只报告不删除）。
-  bool get isDeletable => writable != false;
+  /// 是否可安全删除：**仅**当预览明确证实 `writable == true` 时才为真。
+  /// `false`（只读）与 `null`（元数据缺失 / 查询失败，未知）都**不得删除**
+  /// （未知需重新核验后才可删除）。
+  bool get isDeletable => writable == true;
 
   @override
   String toString() =>
@@ -164,4 +166,28 @@ class CalendarLegacyCleanupResult {
       'CalendarLegacyCleanupResult(deleted: $deletedCount, '
       'residual: $residualCount, complete: $complete, '
       'failures: ${failures.length}, aborted: $aborted)';
+}
+
+/// 把候选按 opaqueId 分轮：每轮内 opaqueId 唯一，满足通道批次约束。
+///
+/// 与 [CalendarLegacyCleanupResult] 同文件的内部工具（拆分以满足仓库
+/// `large_dart_files` ≤ 1600 行规则），**不属于**冻结的清理公开契约；
+/// 语义不变：同一 opaqueId 的多条候选被拆到不同轮，绝不合并成一条。
+List<List<LegacyCleanupCandidate>> partitionUniqueOpaqueCandidates(
+  List<LegacyCleanupCandidate> candidates,
+) {
+  final rounds = <List<LegacyCleanupCandidate>>[];
+  final seenInRound = <String>{};
+  var current = <LegacyCleanupCandidate>[];
+  for (final candidate in candidates) {
+    if (seenInRound.contains(candidate.opaqueId)) {
+      rounds.add(current);
+      current = <LegacyCleanupCandidate>[];
+      seenInRound.clear();
+    }
+    current.add(candidate);
+    seenInRound.add(candidate.opaqueId);
+  }
+  if (current.isNotEmpty) rounds.add(current);
+  return rounds;
 }
