@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/auth/cas_auth_broker.dart';
 import '../../core/auth/protected_web_entry_preparer.dart';
 import '../../shared/widgets/unified_auth_protected_webview_page.dart';
+import 'library_login_help.dart';
 import 'library_service.dart';
 import 'library_session.dart';
 
@@ -22,7 +23,15 @@ class LibraryPage extends StatelessWidget {
   /// 校验入口仍是 `Info/Thirdparty/ssoFromDingDing`（见 [prepareEntry]）。
   static const libraryUrl = 'https://libapp.zjxu.edu.cn/';
 
-  static const authLoginDescription = '图书馆经 WebVPN 访问，请先完成统一认证登录';
+  /// 统一认证成功后，图书馆网页可能仍要求它自己的一卡通 / 卡证密码。
+  ///
+  /// 这段文案在「已登录」与「未登录（原生 [AuthRequiredView] 兜底）」两种状态
+  /// 都会出现，所以只说统一认证是打开网关的前提、不是图书馆网站的账号登录，
+  /// 不写「已通过统一认证」这类只在一种状态成立的话。详细说明见
+  /// [LibraryLoginHelp]。
+  static const authLoginDescription =
+      '统一认证是经 WebVPN 打开图书馆的前提，不是图书馆网站的账号登录；'
+      '进入网页后可能仍需图书馆的卡证凭据。';
 
   /// 测试替身：跳过真实网关/CAS 网络准备。
   @visibleForTesting
@@ -93,6 +102,13 @@ class LibraryPage extends StatelessWidget {
       onLoadStop: (controller, url) =>
           LibrarySession.instance.captureFrom(controller),
       appBarActions: <Widget>[
+        // 非阻塞、可随时打开的说明：统一认证成功后，图书馆网页仍可能要求它
+        // 自己的卡证密码；用户看到登录页时能就地查清边界，不必猜。
+        IconButton(
+          tooltip: LibraryLoginHelp.title,
+          icon: const Icon(Icons.help_outline),
+          onPressed: () => LibraryLoginHelp.show(context),
+        ),
         IconButton(
           tooltip: '我的借阅',
           icon: const Icon(Icons.menu_book_outlined),
