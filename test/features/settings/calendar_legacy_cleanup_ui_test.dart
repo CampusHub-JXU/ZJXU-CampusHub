@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/core/calendar/calendar_event_ledger_store.dart';
 import 'package:jxu_campus_hub/core/calendar/calendar_sync_control.dart';
 import 'package:jxu_campus_hub/core/calendar/calendar_sync_models.dart';
@@ -105,6 +106,26 @@ void main() {
     of: find.byType(CalendarLegacyCleanupPreviewSheet),
     matching: matching,
   );
+
+  Finder syncSwitch() => find.descendant(
+    of: find.ancestor(of: find.text('同步到系统日历'), matching: find.byType(Row)),
+    matching: find.byType(Switch),
+  );
+
+  bool syncSwitchValue(WidgetTester tester) =>
+      tester.widget<Switch>(syncSwitch()).value;
+
+  /// 标记教务已登录，使「开启」路径能走到 cleanupPending 分支（而非未登录提示）。
+  void logInAndNotify(String studentId) {
+    ZhengfangAuth.instance.debugSetSession(active: true, studentId: studentId);
+    // ignore: invalid_use_of_protected_member
+    ZhengfangAuth.instance.notifyListeners();
+  }
+
+  /// 断言「未带当前应用标记 / 其他应用」的静态脚注仍在（未被新增指引替换）。
+  void expectUnmarkedFootnote(WidgetTester tester) {
+    expect(inSheet(find.textContaining('未带当前应用标记的事件')), findsOneWidget);
+  }
 
   testWidgets('关闭态：可见「扫描遗留日程」，空扫描不删除、不需要登录 / 权限', (tester) async {
     // 权限未授予、未登录也能用只读扫描入口。
@@ -221,6 +242,12 @@ void main() {
     expect(inSheet(find.text('只读日历，不能清理')), findsOneWidget);
     expect(inSheet(find.text('日历')), findsOneWidget);
     expect(inSheet(find.text('归属日历状态未确认，不能清理')), findsOneWidget);
+    // 只有存在不可删的自有事件时才出现手动处理指引，两种来源各给对应文案。
+    expect(inSheet(find.text(kReadOnlyManualHint)), findsOneWidget);
+    expect(inSheet(find.text(kUnknownOwnershipManualHint)), findsOneWidget);
+    expect(inSheet(find.text(kSyncStaysDisabledHint)), findsOneWidget);
+    // 静态「未带标记事件」脚注保留、未被替换。
+    expectUnmarkedFootnote(tester);
     expect(find.text('清理已确认的日程'), findsNothing);
     expect(native.deleteCalls, 0);
   }, timeout: perTestTimeout);
@@ -391,5 +418,156 @@ void main() {
     expect(find.text('清理已确认的日程'), findsOneWidget);
     final size = tester.getSize(find.widgetWithText(TextButton, '清理已确认的日程'));
     expect(size.height, greaterThanOrEqualTo(48));
+  }, timeout: perTestTimeout);
+
+  testWidgets('只读日历仍有自有事件：给出手动处理指引、无删除入口、同步保持关闭不能开启', (tester) async {
+    native.ownedCalendars = const <CalendarOwnedCalendarInfo>[
+      CalendarOwnedCalendarInfo(
+        calendarId: 5,
+        displayName: '只读共享日历',
+        writable: false,
+      ),
+    ];
+    native.ownedEvents = <int, List<CalendarSyncOwnedEvent>>{
+      5: <CalendarSyncOwnedEvent>[event(opaqueA, 1)],
+    };
+
+    await pumpSettingsPage(tester);
+    logInAndNotify('20230001');
+    await tester.pumpAndSettle();
+    await scan(tester);
+
+    expect(inSheet(find.text('只读共享日历')), findsOneWidget);
+    expect(inSheet(find.text('只读日历，不能清理')), findsOneWidget);
+    // 真实、可执行的手动处理指引（只读来源本应用删不掉，不承诺 App 内可删）。
+    expect(inSheet(find.text(kReadOnlyManualHint)), findsOneWidget);
+    expect(inSheet(find.text(kSyncStaysDisabledHint)), findsOneWidget);
+    expect(inSheet(find.text(kUnknownOwnershipManualHint)), findsNothing);
+    expectUnmarkedFootnote(tester);
+    // 没有任何删除入口。
+    expect(find.text('清理已确认的日程'), findsNothing);
+    expect(find.text('清除过期记录'), findsNothing);
+    expect(native.deleteCalls, 0);
+    expect(
+      CalendarSyncControl.instance.state,
+      CalendarSyncControlState.cleanupPending,
+    );
+
+    // 关闭预览后同步仍关闭，且不能直接开启：不发任何原生写入。
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(syncSwitchValue(tester), isFalse);
+    await tester.ensureVisible(find.text('同步到系统日历'));
+    await tester.tap(find.text('同步到系统日历'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('存在未完成的清理，请先点击「扫描遗留日程」'), findsOneWidget);
+    expect(
+      CalendarSyncControl.instance.state,
+      CalendarSyncControlState.cleanupPending,
+    );
+    expect(native.createCalendarCalls, 0);
+    expect(native.calls.where((m) => m == 'upsertEventBatch'), isEmpty);
+    expect(native.deleteCalls, 0);
+  }, timeout: perTestTimeout);
+
+  testWidgets('归属未知日历：提示重新授权或确认可访问后再扫描，无删除入口', (tester) async {
+    native.ownedCalendars = const <CalendarOwnedCalendarInfo>[
+      CalendarOwnedCalendarInfo(calendarId: 6, writable: null),
+    ];
+    native.ownedEvents = <int, List<CalendarSyncOwnedEvent>>{
+      6: <CalendarSyncOwnedEvent>[event(opaqueB, 2)],
+    };
+    native.discoveryComplete = false;
+    native.discoveryReason = CalendarOwnedDiscoveryReason.calendarUnavailable;
+
+    await pumpSettingsPage(tester);
+    await scan(tester);
+
+    expect(inSheet(find.text('归属日历状态未确认，不能清理')), findsOneWidget);
+    expect(inSheet(find.text(kUnknownOwnershipManualHint)), findsOneWidget);
+    expect(inSheet(find.text(kSyncStaysDisabledHint)), findsOneWidget);
+    expect(inSheet(find.text(kReadOnlyManualHint)), findsNothing);
+    expectUnmarkedFootnote(tester);
+    expect(find.text('清理已确认的日程'), findsNothing);
+    expect(native.deleteCalls, 0);
+    expect(
+      CalendarSyncControl.instance.state,
+      CalendarSyncControlState.cleanupPending,
+    );
+  }, timeout: perTestTimeout);
+
+  testWidgets('系统返回关闭预览：不删除、保持 cleanupPending、不自动开启', (tester) async {
+    native.ownedCalendars = const <CalendarOwnedCalendarInfo>[
+      CalendarOwnedCalendarInfo(calendarId: 77, writable: true),
+    ];
+    native.ownedEvents = <int, List<CalendarSyncOwnedEvent>>{
+      77: <CalendarSyncOwnedEvent>[event(opaqueA, 1)],
+    };
+
+    await pumpSettingsPage(tester);
+    await scan(tester);
+    expect(find.byType(CalendarLegacyCleanupPreviewSheet), findsOneWidget);
+    expect(native.deleteCalls, 0);
+
+    // 模拟系统返回键（`WidgetsApp.didPopRoute`），覆盖「预览路由被返回关闭」而非点击遮罩。
+    final appState = tester.state(find.byType(WidgetsApp));
+    // ignore: avoid_dynamic_calls
+    await (appState as dynamic).didPopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CalendarLegacyCleanupPreviewSheet), findsNothing);
+    expect(native.deleteCalls, 0);
+    expect(
+      CalendarSyncControl.instance.state,
+      CalendarSyncControlState.cleanupPending,
+    );
+    expect(native.createCalendarCalls, 0);
+    expect(native.calls.where((m) => m == 'upsertEventBatch'), isEmpty);
+  }, timeout: perTestTimeout);
+
+  testWidgets('360 宽 / 2 倍字号 / 深色 + 只读与未知指引：不溢出、无删除入口', (tester) async {
+    native.ownedCalendars = const <CalendarOwnedCalendarInfo>[
+      CalendarOwnedCalendarInfo(
+        calendarId: 5,
+        displayName: '只读共享日历名称较长用于验证窄屏与大字号下自动换行不被截断',
+        writable: false,
+      ),
+      CalendarOwnedCalendarInfo(calendarId: 6, writable: null),
+    ];
+    native.ownedEvents = <int, List<CalendarSyncOwnedEvent>>{
+      5: <CalendarSyncOwnedEvent>[event(opaqueA, 1)],
+      6: <CalendarSyncOwnedEvent>[event(opaqueB, 2)],
+    };
+    native.discoveryComplete = false;
+    native.discoveryReason = CalendarOwnedDiscoveryReason.calendarUnavailable;
+
+    await pumpSettingsPage(
+      tester,
+      width: 360,
+      textScale: 2.0,
+      brightness: Brightness.dark,
+    );
+    await scan(tester);
+
+    expect(find.byType(CalendarLegacyCleanupPreviewSheet), findsOneWidget);
+    // 此组合（不完整扫描 + 2 倍字号 + 深色）在加入指引前会 RenderFlex 溢出。
+    expect(tester.takeException(), isNull);
+    // 正文整体可滚动：滚到新增指引，确认两个版本的文案都可见。
+    await tester.scrollUntilVisible(
+      find.text(kReadOnlyManualHint),
+      200,
+      scrollable: find.descendant(
+        of: find.byType(CalendarLegacyCleanupPreviewSheet),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(inSheet(find.text(kReadOnlyManualHint)), findsOneWidget);
+    expect(inSheet(find.text(kUnknownOwnershipManualHint)), findsOneWidget);
+    expectUnmarkedFootnote(tester);
+    expect(find.text('清理已确认的日程'), findsNothing);
+    expect(native.deleteCalls, 0);
   }, timeout: perTestTimeout);
 }

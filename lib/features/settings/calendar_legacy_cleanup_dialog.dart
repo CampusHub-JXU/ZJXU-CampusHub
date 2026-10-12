@@ -54,6 +54,38 @@ bool hasOnlyStaleLocalRecords(CalendarLegacyCleanupScan scan) =>
     !scan.dismissible &&
     !canCleanupLegacyPreview(scan);
 
+/// 是否存在**已确认属于本应用、但本应用无权删除**的遗留日程：只读日历
+/// （`writable == false`）或归属未知（`writable == null`）上仍有自有事件。
+///
+/// 只统计带当前应用标记的事件（`ownedCount`）；不把「未带标记 / 其他应用」的事件
+/// 计入，也不做标题 / 账号枚举。
+bool hasNonDeletableOwned(CalendarLegacyCleanupScan scan) => scan.calendars.any(
+  (calendar) => calendar.writable != true && calendar.ownedCount > 0,
+);
+
+/// 存在只读日历上的自有事件（`writable == false`，access < CONTRIBUTOR）。
+bool hasReadOnlyOwned(CalendarLegacyCleanupScan scan) => scan.calendars.any(
+  (calendar) => calendar.writable == false && calendar.ownedCount > 0,
+);
+
+/// 存在归属未知日历上的自有事件（`writable == null`，元数据缺失 / 查询失败）。
+bool hasUnknownOwnershipOwned(CalendarLegacyCleanupScan scan) => scan.calendars
+    .any((calendar) => calendar.writable == null && calendar.ownedCount > 0);
+
+/// 只读日历的手动处理指引：如实说明本应用删不掉，并指向系统日历 / 日历提供方。
+///
+/// 只读来源可能属于其他日历提供方或系统账户，本应用无法代其删除，因此**不承诺**
+/// 用户一定能在 App 内删掉，只引导到系统日历或提供方处理。
+const String kReadOnlyManualHint =
+    '请在系统日历中查看上方日历；只读日历需先恢复可写权限或联系日历提供方处理。'
+    '处理后重新扫描，确认遗留已解决再开启同步。';
+
+/// 归属未知日历的手动处理指引：不承诺重新授权后一定变为可写。
+const String kUnknownOwnershipManualHint = '重新授权或确认日历可访问后，再扫描。';
+
+/// 遗留未解决前同步保持关闭（不因可删项删完就自动开启）。
+const String kSyncStaysDisabledHint = '同步会保持关闭，直到重新扫描确认遗留已解决。';
+
 /// 预览首行结论：扫描不完整时**绝不**说「未发现遗留」，避免被读成「已清干净」。
 String _summaryLine(CalendarLegacyCleanupScan scan) {
   if (scan.hasResidual) {
@@ -89,76 +121,118 @@ class CalendarLegacyCleanupPreviewSheet extends StatelessWidget {
         reason == CalendarLegacyCleanupFailure.permissionDenied;
     final maxHeight = MediaQuery.sizeOf(context).height * 0.8;
 
+    final headerBlock = Padding(
+      padding: const EdgeInsets.fromLTRB(24, 4, 24, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(incomplete ? '扫描结果（不完整）' : '扫描结果', style: text.rowTitle),
+          const SizedBox(height: 6),
+          Text(_summaryLine(scan), style: text.listTitle),
+          if (scan.recordedOrphanCount > 0) ...[
+            const SizedBox(height: 2),
+            Text(
+              '其中 ${scan.recordedOrphanCount} 条未被本地记录确认',
+              style: text.secondary,
+            ),
+          ],
+        ],
+      ),
+    );
+
+    final reasonBlock = incomplete
+        ? Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+            child: Text(
+              '扫描不完整：${legacyCleanupFailureLabel(reason ?? CalendarLegacyCleanupFailure.providerUnavailable)}。'
+              '下列结果仅为已确认部分，不代表全部遗留都已列出。',
+              style: text.meta.copyWith(color: cs.error),
+            ),
+          )
+        : null;
+
+    // 全部正文（标题 / 原因 / 日历行 / 脚注 / 指引）放进**同一个**有界懒加载列表：
+    // 窄屏 + 大字号 + 较长文案时正文整体滚动，不再撑破弹层（动作行仍固定底部）。
+    // 日历行仍由 [ListView.builder] 按需构建。
+    final leading = <Widget>[
+      headerBlock,
+      ?reasonBlock,
+      if (scan.calendars.isEmpty)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 4, 24, 4),
+          child: Text('没有可展示的日历条目。', style: text.secondary),
+        ),
+    ];
+
+    final trailing = <Widget>[
+      Padding(
+        padding: const EdgeInsets.fromLTRB(24, 8, 24, 4),
+        child: Text(
+          '未带当前应用标记的事件（其他应用，或无法确认归属的副本）不会被扫描或计数，'
+          '也不能自动清理；如需处理请在系统日历中核对。',
+          style: text.meta,
+        ),
+      ),
+      if (canCleanup || staleOnly)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 4),
+          child: Text(
+            staleOnly
+                ? '系统日历中已无带当前应用标记的事件，但本地仍有过期记录；'
+                      '确认后仅清除这些记录，不写入系统日历。'
+                : incomplete
+                ? '仅清理本次扫描确认的部分，其他未确认的范围仍会保留。'
+                : '将删除本次扫描确认的、本应用写入的全部遗留日程（含历史账号），'
+                      '不影响其他应用或系统日历中的其他事件。',
+            style: text.meta,
+          ),
+        ),
+      if (hasNonDeletableOwned(scan))
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (hasReadOnlyOwned(scan))
+                Text(kReadOnlyManualHint, style: text.secondary),
+              if (hasUnknownOwnershipOwned(scan)) ...[
+                if (hasReadOnlyOwned(scan)) const SizedBox(height: 2),
+                Text(kUnknownOwnershipManualHint, style: text.secondary),
+              ],
+              const SizedBox(height: 2),
+              Text(kSyncStaysDisabledHint, style: text.meta),
+            ],
+          ),
+        ),
+    ];
+
+    final itemCount = leading.length + scan.calendars.length + trailing.length;
+
     return ConstrainedBox(
       constraints: BoxConstraints(maxHeight: maxHeight),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 4, 24, 10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(incomplete ? '扫描结果（不完整）' : '扫描结果', style: text.rowTitle),
-                const SizedBox(height: 6),
-                Text(_summaryLine(scan), style: text.listTitle),
-                if (scan.recordedOrphanCount > 0) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    '其中 ${scan.recordedOrphanCount} 条未被本地记录确认',
-                    style: text.secondary,
-                  ),
-                ],
-              ],
-            ),
-          ),
-          if (incomplete)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
-              child: Text(
-                '扫描不完整：${legacyCleanupFailureLabel(reason ?? CalendarLegacyCleanupFailure.providerUnavailable)}。'
-                '下列结果仅为已确认部分，不代表全部遗留都已列出。',
-                style: text.meta.copyWith(color: cs.error),
-              ),
-            ),
           Flexible(
-            child: scan.calendars.isEmpty
-                ? Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 4, 24, 4),
-                    child: Text('没有可展示的日历条目。', style: text.secondary),
-                  )
-                : ListView.builder(
-                    shrinkWrap: true,
-                    padding: EdgeInsets.zero,
-                    itemCount: scan.calendars.length,
-                    itemBuilder: (context, index) =>
-                        _CalendarPreviewTile(calendar: scan.calendars[index]),
-                  ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 8, 24, 4),
-            child: Text(
-              '未带当前应用标记的事件（其他应用，或无法确认归属的副本）不会被扫描或计数，'
-              '也不能自动清理；如需处理请在系统日历中核对。',
-              style: text.meta,
+            child: ListView.builder(
+              shrinkWrap: true,
+              padding: EdgeInsets.zero,
+              itemCount: itemCount,
+              itemBuilder: (context, index) {
+                if (index < leading.length) return leading[index];
+                final calendarIndex = index - leading.length;
+                if (calendarIndex < scan.calendars.length) {
+                  return _CalendarPreviewTile(
+                    calendar: scan.calendars[calendarIndex],
+                  );
+                }
+                return trailing[calendarIndex - scan.calendars.length];
+              },
             ),
           ),
-          if (canCleanup || staleOnly)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 4),
-              child: Text(
-                staleOnly
-                    ? '系统日历中已无带当前应用标记的事件，但本地仍有过期记录；'
-                          '确认后仅清除这些记录，不写入系统日历。'
-                    : incomplete
-                    ? '仅清理本次扫描确认的部分，其他未确认的范围仍会保留。'
-                    : '将删除本次扫描确认的、本应用写入的全部遗留日程（含历史账号），'
-                          '不影响其他应用或系统日历中的其他事件。',
-                style: text.meta,
-              ),
-            ),
           SafeArea(
             top: false,
             child: Padding(
