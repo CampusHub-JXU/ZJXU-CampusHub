@@ -224,17 +224,17 @@ abstract final class GradesExportSerializer {
     for (final r in doc.records) {
       b.writeln(
         [
-          r.courseName,
-          r.grade,
-          r.percentageScore,
-          _formatPoints(r.gpaPoints),
-          _formatCredits(r.credits),
-          r.academicYear,
-          r.semester,
-          r.examType,
-          r.assessmentMethod,
-          r.courseRequirement,
-        ].map(csvField).join(','),
+          csvField(r.courseName),
+          csvField(r.grade),
+          csvField(r.percentageScore),
+          _csvNumberField(_formatPoints(r.gpaPoints)),
+          _csvNumberField(_formatCredits(r.credits)),
+          csvField(r.academicYear),
+          csvField(r.semester),
+          csvField(r.examType),
+          csvField(r.assessmentMethod),
+          csvField(r.courseRequirement),
+        ].join(','),
       );
     }
     return b.toString();
@@ -246,8 +246,22 @@ abstract final class GradesExportSerializer {
   /// CSV 单元格转义：含逗号 / 引号 / 换行时用双引号包裹，内部引号翻倍。
   /// `null` 与空串都输出空单元格（缺失不猜测）。
   static String csvField(String? value) {
-    final raw = value ?? '';
+    var raw = value ?? '';
     if (raw.isEmpty) return '';
+    // Remote text can be interpreted as a formula by spreadsheet software.
+    // Drop leading control characters first so tab/newline-prefixed formulas
+    // receive the same protection as formulas at the start of a cell.
+    raw = raw.replaceFirst(RegExp(r'^[\x00-\x1F\x7F-\x9F]+'), '');
+    if (raw.isEmpty) return '';
+    if (RegExp(r'^[=+\-@]').hasMatch(raw)) raw = "'$raw";
+    return _quoteCsvField(raw);
+  }
+
+  /// Numeric cells are generated from parsed numeric values, so a leading
+  /// minus sign is data and must remain numeric in spreadsheet applications.
+  static String _csvNumberField(String value) => _quoteCsvField(value);
+
+  static String _quoteCsvField(String raw) {
     final needsQuotes =
         raw.contains(',') ||
         raw.contains('"') ||

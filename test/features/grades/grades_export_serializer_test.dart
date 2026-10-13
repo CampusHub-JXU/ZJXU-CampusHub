@@ -155,6 +155,30 @@ void main() {
       expect(GradesExportSerializer.csvField('a\r\nb'), '"a\r\nb"');
       expect(GradesExportSerializer.csvField('中文'), '中文');
     });
+
+    test('远程文本的公式前缀与前导控制字符会被中和，负数仍是数值', () {
+      for (final prefix in const ['=', '+', '-', '@']) {
+        expect(
+          GradesExportSerializer.csvField('${prefix}1+1'),
+          "'$prefix"
+          '1+1',
+        );
+      }
+      expect(GradesExportSerializer.csvField('\t=1+1'), "'=1+1");
+      expect(
+        GradesExportSerializer.csvField('\u0001@SUM(A1:A2)'),
+        "'@SUM(A1:A2)",
+      );
+      expect(GradesExportSerializer.csvField('\t\n'), '');
+
+      final csv = GradesExportSerializer.csv(
+        _doc([
+          _entry(course: '\t=HYPERLINK("https://example.com")', gpa: '-0.5'),
+        ]),
+      );
+      expect(csv, contains("'=HYPERLINK("));
+      expect(csv, contains(",-0.50,"));
+    });
   });
 
   test('encode 按格式分派', () {
