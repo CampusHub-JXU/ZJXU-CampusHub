@@ -461,7 +461,7 @@ class _FakeImageHeaders extends Fake implements HttpHeaders {
 }
 
 final Stream<List<int>> _neverEndingStream =
-    StreamController<List<int>>().stream;
+    StreamController<List<int>>.broadcast().stream;
 
 /// 1×1 透明 PNG（合成、安全、不含任何个人信息）。
 final List<int> _syntheticPng = base64Decode(
