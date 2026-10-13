@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -14,6 +15,11 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   const wechatChannel = MethodChannel('edu.zjxu.jxucampushub/wechat');
+
+  setUpAll(() {
+    // 订阅弹层的通知渠道行要查询真实权限状态，需注册插件实现才走可 mock 的方法通道。
+    AndroidFlutterLocalNotificationsPlugin.registerWith();
+  });
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});
@@ -250,6 +256,62 @@ void main() {
     );
     expect(find.text('已打开微信，可直接查看该活动详情'), findsOneWidget);
     expect(find.widgetWithText(SnackBarAction, '复制链接'), findsOneWidget);
+  });
+
+  testWidgets('订阅弹层提供直达第二课堂通知渠道并如实说明限制', (tester) async {
+    const systemSettingsChannel = MethodChannel(
+      'edu.zjxu.jxucampushub/system_settings',
+    );
+    const notificationsChannel = MethodChannel(
+      'dexterous.com/flutter/local_notifications',
+    );
+    final calls = <MethodCall>[];
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(systemSettingsChannel, (call) async {
+      calls.add(call);
+      return 'target';
+    });
+    messenger.setMockMethodCallHandler(notificationsChannel, (call) async {
+      if (call.method == 'areNotificationsEnabled') return true;
+      return null;
+    });
+    addTearDown(() {
+      messenger.setMockMethodCallHandler(systemSettingsChannel, null);
+      messenger.setMockMethodCallHandler(notificationsChannel, null);
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SecondClassroomPage(
+          service: _FakeSecondClassroomService(),
+          subscriptionService: _testSubscriptionService(),
+          cacheStore: _MemoryCacheStore(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('已订阅活动名'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('开招提醒'), findsOneWidget);
+    expect(find.text('通知横幅设置'), findsOneWidget);
+    // 如实说明：不承诺横幅、不承诺开招瞬间提醒。
+    expect(find.textContaining('无法代为开启'), findsOneWidget);
+    expect(find.textContaining('不保证在活动刚开招的瞬间提醒'), findsOneWidget);
+
+    await tester.tap(find.text('通知横幅设置'));
+    await tester.pumpAndSettle();
+
+    expect(calls, hasLength(1));
+    expect(calls.single.method, 'open');
+    expect(calls.single.arguments, <String, Object?>{
+      'target': 'notificationChannel',
+      'channelId': 'second_classroom_activity_reminder',
+    });
+    // 命中渠道页不弹提示：打开设置页不代表横幅已开启。
+    expect(find.byType(SnackBar), findsNothing);
   });
 }
 

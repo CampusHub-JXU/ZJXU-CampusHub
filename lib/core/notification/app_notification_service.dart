@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 class AppNotificationService {
@@ -10,7 +11,12 @@ class AppNotificationService {
   static const _channelId = 'dorm_electricity_alert';
   static const _channelName = '寝室电费提醒';
   static const _channelDescription = '当寝室剩余电量低于设定阈值时发送提醒';
-  static const _secondClassroomChannelId = 'second_classroom_activity_reminder';
+
+  /// 「第二课堂活动提醒」通知渠道 ID。
+  ///
+  /// 系统设置按渠道跳转（`SystemSettingsTarget.notificationChannel`）需要它；
+  /// **一旦创建不可随意更改**，否则已安装用户的渠道设置会重置。
+  static const secondClassroomChannelId = 'second_classroom_activity_reminder';
   static const _secondClassroomChannelName = '第二课堂活动提醒';
   static const _secondClassroomChannelDescription = '订阅活动名后，同名活动开始招募时提醒';
   static const _noticeUpdateChannelId = 'jwc_notice';
@@ -55,19 +61,40 @@ class AppNotificationService {
     await _plugin.initialize(
       initSettings,
       onDidReceiveNotificationResponse: (response) {
-        final payload = response.payload;
-        if (payload == null || payload.isEmpty) return;
-        if (onTap != null) {
-          onTap!(payload);
-        } else {
-          _pendingPayload = payload;
-        }
+        _dispatchPayload(response.payload);
       },
     );
 
     await _createAndroidChannels();
+    // 冷启动：App 被通知点击拉起时 flutter_local_notifications 不会触发
+    // onDidReceiveNotificationResponse，payload 只能从 launch details 取回；
+    // 不补这一步 `second-classroom?id=` 等点击直达会丢失。
+    await captureLaunchPayloadIfAny();
 
     _initialized = true;
+  }
+
+  /// 冷启动补发：读取启动 intent 里的通知 payload，交给 [onTap] 或暂存为
+  /// [pendingPayload]。无启动通知 / 读取失败（非 Android、通道缺失）时静默返回。
+  @visibleForTesting
+  Future<void> captureLaunchPayloadIfAny() async {
+    final NotificationAppLaunchDetails? details;
+    try {
+      details = await _plugin.getNotificationAppLaunchDetails();
+    } catch (_) {
+      return;
+    }
+    if (details == null || !details.didNotificationLaunchApp) return;
+    _dispatchPayload(details.notificationResponse?.payload);
+  }
+
+  void _dispatchPayload(String? payload) {
+    if (payload == null || payload.isEmpty) return;
+    if (onTap != null) {
+      onTap!(payload);
+    } else {
+      _pendingPayload = payload;
+    }
   }
 
   Future<bool> requestPermission() async {
@@ -159,7 +186,7 @@ class AppNotificationService {
       body,
       const NotificationDetails(
         android: AndroidNotificationDetails(
-          _secondClassroomChannelId,
+          secondClassroomChannelId,
           _secondClassroomChannelName,
           channelDescription: _secondClassroomChannelDescription,
           importance: Importance.high,
@@ -188,7 +215,7 @@ class AppNotificationService {
     );
     await android.createNotificationChannel(
       const AndroidNotificationChannel(
-        _secondClassroomChannelId,
+        secondClassroomChannelId,
         _secondClassroomChannelName,
         description: _secondClassroomChannelDescription,
         importance: Importance.high,
