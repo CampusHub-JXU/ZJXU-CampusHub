@@ -52,6 +52,18 @@ void main() {
     expect(settings.reminderMinutes, 30);
   });
 
+  test('0 是受支持的预设（课程开始时提醒），不被消毒为默认值', () async {
+    final settings = CalendarReminderSettings.instance;
+    expect(CalendarReminderSettings.presetMinutes, contains(0));
+
+    await settings.load();
+    await settings.setReminderMinutes(0);
+    expect(settings.reminderMinutes, 0);
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getInt(CalendarReminderSettings.storageKey), 0);
+  });
+
   test('超出协议上限或负数一律回退默认 20，不静默截断', () async {
     final settings = CalendarReminderSettings.instance;
 

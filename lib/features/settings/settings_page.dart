@@ -587,8 +587,11 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
     return reasons.isEmpty ? '$countLabel，可重试删除' : '$countLabel（$reasons）';
   }
 
+  /// 0 不是「不提醒」：原生 `CalendarProviderStore` 对每个归属事件固定插入
+  /// 一条 `MINUTES = reminderMinutes` 的 `METHOD_ALERT` 提醒，0 表示**课程
+  /// 开始时**提醒，因此如实标注，不谎称可关闭提醒。
   static String _reminderLabel(int minutes) =>
-      minutes <= 0 ? '不提醒' : '提前 $minutes 分钟';
+      minutes <= 0 ? '课程开始时提醒' : '提前 $minutes 分钟';
 
   @override
   Widget build(BuildContext context) {

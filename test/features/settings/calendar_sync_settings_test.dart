@@ -510,6 +510,19 @@ void main() {
     );
   }, timeout: perTestTimeout);
 
+  testWidgets('课前提醒预设 0 标注为课程开始时提醒，不谎称可关闭提醒', (tester) async {
+    await pumpSettingsPage(tester);
+    await revealSyncRow(tester);
+
+    await tester.tap(find.byKey(const Key('calendar_reminder_dropdown')));
+    await tester.pumpAndSettle();
+
+    // 0 分钟 = 课程开始时提醒（原生固定插入 MINUTES=0 的提醒），不是「不提醒」。
+    expect(find.text('课程开始时提醒'), findsOneWidget);
+    expect(find.text('不提醒'), findsNothing);
+    expect(find.text('提前 20 分钟'), findsWidgets);
+  }, timeout: perTestTimeout);
+
   testWidgets('开启请求在途时重复点击不会发起第二次调用', (tester) async {
     await pumpSettingsPage(tester);
     logIn('20230001');

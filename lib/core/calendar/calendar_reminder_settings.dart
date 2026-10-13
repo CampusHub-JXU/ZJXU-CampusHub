@@ -24,7 +24,8 @@ class CalendarReminderSettings extends ChangeNotifier {
   /// 未设置时的默认提前量（分钟）。
   static const int defaultReminderMinutes = 20;
 
-  /// 设置页可选项（分钟）；顺序即展示顺序，0 表示不提醒。
+  /// 设置页可选项（分钟）；顺序即展示顺序。0 表示**课程开始时**提醒
+  /// （原生对每个归属事件固定插入一条 `MINUTES = 0` 的提醒，不是关闭提醒）。
   static const List<int> presetMinutes = <int>[0, 5, 10, 15, 20, 30, 60];
 
   int _reminderMinutes = defaultReminderMinutes;
