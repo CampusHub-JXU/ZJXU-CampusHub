@@ -244,9 +244,7 @@ class _SubscriptionSheet extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               PlainSectionHeader(
-                activities.isEmpty
-                    ? '已订阅活动名'
-                    : '已订阅活动名 · ${activities.length}',
+                activities.isEmpty ? '已订阅活动名' : '已订阅活动名 · ${activities.length}',
               ),
               if (activities.isEmpty)
                 const AppEmptyView(
@@ -375,10 +373,8 @@ class _NotificationChannelSettingsRowState
     // 命中渠道页不提示；降级 / 失败时说明真实打开的页面。
     final message = switch (result) {
       SystemSettingsOpenResult.target => null,
-      SystemSettingsOpenResult.appDetails =>
-        '未能直达该通知渠道，已打开应用详情页，请在「通知」中手动查找',
-      SystemSettingsOpenResult.settings =>
-        '未能直达该通知渠道，已打开系统设置首页，请手动查找',
+      SystemSettingsOpenResult.appDetails => '未能直达该通知渠道，已打开应用详情页，请在「通知」中手动查找',
+      SystemSettingsOpenResult.settings => '未能直达该通知渠道，已打开系统设置首页，请手动查找',
       SystemSettingsOpenResult.unavailable => '未能打开系统设置，请手动前往系统「应用管理」调整',
     };
     if (message != null) AppFeedback.toast(context, message);
