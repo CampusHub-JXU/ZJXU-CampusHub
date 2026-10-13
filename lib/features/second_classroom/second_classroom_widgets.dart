@@ -44,7 +44,7 @@ class _ActivityDetailSheet extends StatelessWidget {
               child: ListView(
                 shrinkWrap: true,
                 children: [
-                  _ActivityCoverBanner(
+                  _ActivityDetailImage(
                     imageUrl: imageUrl,
                     statusLabel: activity.recruitmentLabel,
                     statusTone: _recruitmentTone(activity),
@@ -418,57 +418,6 @@ class _ActivityCover extends StatelessWidget {
         Icons.workspace_premium_outlined,
         color: cs.primary,
         size: iconSize,
-      ),
-    );
-  }
-}
-
-class _ActivityCoverBanner extends StatelessWidget {
-  const _ActivityCoverBanner({
-    required this.imageUrl,
-    this.statusLabel,
-    this.statusTone = AppStatusTone.neutral,
-  });
-
-  final String imageUrl;
-  final String? statusLabel;
-  final AppStatusTone statusTone;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return AspectRatio(
-      aspectRatio: 16 / 9,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(AppRadius.card),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Container(color: cs.surfaceContainerHighest),
-            if (imageUrl.isEmpty)
-              Icon(
-                Icons.workspace_premium_outlined,
-                color: cs.primary,
-                size: 44,
-              )
-            else
-              Image.network(
-                imageUrl,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => Icon(
-                  Icons.workspace_premium_outlined,
-                  color: cs.primary,
-                  size: 44,
-                ),
-              ),
-            if (statusLabel != null && statusLabel!.isNotEmpty)
-              Positioned(
-                left: 12,
-                top: 12,
-                child: AppStatusTag(statusLabel!, tone: statusTone),
-              ),
-          ],
-        ),
       ),
     );
   }
