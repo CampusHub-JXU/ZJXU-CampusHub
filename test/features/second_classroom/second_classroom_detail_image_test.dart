@@ -11,6 +11,7 @@ import 'package:jxu_campus_hub/features/second_classroom/second_classroom_model.
 import 'package:jxu_campus_hub/features/second_classroom/second_classroom_page.dart';
 import 'package:jxu_campus_hub/features/second_classroom/second_classroom_service.dart';
 import 'package:jxu_campus_hub/features/second_classroom/second_classroom_subscription_service.dart';
+import 'package:jxu_campus_hub/shared/widgets/app_status_tag.dart';
 
 /// 回归 issue #86：详情页顶部图片（报名二维码）此前被 16:9 `BoxFit.cover` 裁切、
 /// 且整块不可点击。这里用假网络覆盖：完整 1:1 展示 / 加载中 / 加载失败 / 无图 /
@@ -58,6 +59,44 @@ void main() {
 
       // 加载中有反馈，不是空白区。
       expect(find.byType(CircularProgressIndicator), findsWidgets);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  testWidgets('招募状态标签移到 1:1 图片区域之外，不遮挡二维码', (tester) async {
+    await _withFakeImages(_FakeImageMode.pending, () async {
+      await _pumpPage(tester, coverUrl: 'https://dekt.test/qr.png');
+      await _openDetailSheet(tester);
+
+      final imageFinder = find.byKey(imageKey);
+      expect(imageFinder, findsOneWidget);
+
+      // 状态标签仍保留（元数据不丢）：定位到详情图片组件内部那一个。
+      final detailImageColumn = find
+          .ancestor(of: imageFinder, matching: find.byType(Column))
+          .first;
+      final tagFinder = find.descendant(
+        of: detailImageColumn,
+        matching: find.byType(AppStatusTag),
+      );
+      expect(tagFinder, findsOneWidget);
+      expect(
+        tester.widget<AppStatusTag>(tagFinder).tone,
+        AppStatusTone.positive,
+      );
+
+      final imageRect = tester.getRect(imageFinder);
+      final frameRect = tester.getRect(
+        find
+            .ancestor(of: imageFinder, matching: find.byType(AspectRatio))
+            .first,
+      );
+      final tagRect = tester.getRect(tagFinder);
+
+      // 标签完全在 1:1 外框之上：与图片像素、与图片外框都不重叠。
+      expect(tagRect.overlaps(imageRect), isFalse);
+      expect(tagRect.overlaps(frameRect), isFalse);
+      expect(tagRect.bottom, lessThanOrEqualTo(frameRect.top));
       expect(tester.takeException(), isNull);
     });
   });

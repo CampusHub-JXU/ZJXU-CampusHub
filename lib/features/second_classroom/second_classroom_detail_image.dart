@@ -35,7 +35,10 @@ class _ActivityDetailImageState extends State<_ActivityDetailImage> {
   int _reloadToken = 0;
 
   void _retry() {
-    PaintingBinding.instance.imageCache.evict(NetworkImage(widget.imageUrl));
+    // 与 build 一致地 trim：缓存键必须和实际请求的 URL 相同，否则清不掉失败项。
+    PaintingBinding.instance.imageCache.evict(
+      NetworkImage(widget.imageUrl.trim()),
+    );
     setState(() => _reloadToken++);
   }
 
@@ -48,6 +51,16 @@ class _ActivityDetailImageState extends State<_ActivityDetailImage> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        // 招募状态标签放在 1:1 图片区域**之外**：它原先叠在图片左上角，
+        // 正好压住二维码的定位图案（finder pattern），导致扫码失败。
+        if (statusLabel != null && statusLabel.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: AppStatusTag(statusLabel, tone: widget.statusTone),
+            ),
+          ),
         Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: _maxWidth),
@@ -111,15 +124,6 @@ class _ActivityDetailImageState extends State<_ActivityDetailImage> {
                               errorBuilder: (context, error, stackTrace) =>
                                   _DetailImageLoadError(onRetry: _retry),
                             ),
-                          ),
-                        ),
-                      if (statusLabel != null && statusLabel.isNotEmpty)
-                        Positioned(
-                          left: 12,
-                          top: 12,
-                          child: AppStatusTag(
-                            statusLabel,
-                            tone: widget.statusTone,
                           ),
                         ),
                     ],
