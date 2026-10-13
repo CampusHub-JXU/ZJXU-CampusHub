@@ -145,6 +145,32 @@ internal object AppUpdateOwnership {
             else -> CancelDisposition.RETAIN_FAILED
         }
 
+    data class InstallResumeState(
+        val permissionRequired: Boolean,
+        val userWantsInstall: Boolean,
+    )
+
+    /**
+     * 返回前台时重读系统权限；打开安装器不等于安装成功。
+     * 已打开过安装器的请求只恢复手动重试，避免取消后自动反复弹出。
+     */
+    fun installStateAfterResume(
+        verified: Boolean,
+        permissionGranted: Boolean,
+        installerOpened: Boolean,
+        userWantsInstall: Boolean,
+    ): InstallResumeState = InstallResumeState(
+        permissionRequired = verified && !permissionGranted,
+        userWantsInstall = userWantsInstall && !installerOpened,
+    )
+
+    /** 安装校验跨线程返回后，原 Activity 可能已退后台或被替换。 */
+    fun canLaunchInstaller(
+        isAttached: Boolean,
+        isFinishing: Boolean,
+        isDestroyed: Boolean,
+    ): Boolean = isAttached && !isFinishing && !isDestroyed
+
     /**
      * 解析 DownloadManager 的本地目标 URI：
      * - 只接受 `file:` 方案且**无 authority**（`file:///...`）；`content:` /

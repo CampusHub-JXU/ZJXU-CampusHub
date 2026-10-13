@@ -99,6 +99,27 @@ void main() {
   });
 
   group('native contract', () {
+    test(
+      'manager is initialized before FlutterActivity creates its engine',
+      () {
+        final activity = read(
+          'android/app/src/main/kotlin/edu/zjxu/jxucampushub/MainActivity.kt',
+        );
+        final onCreate = activity.substring(
+          activity.indexOf('override fun onCreate('),
+          activity.indexOf('override fun configureFlutterEngine('),
+        );
+        final initialized = onCreate.indexOf(
+          'appUpdateManager = AppUpdateManager.get(applicationContext)',
+        );
+        final superCall = onCreate.indexOf(
+          'super.onCreate(savedInstanceState)',
+        );
+        expect(initialized, greaterThanOrEqualTo(0));
+        expect(initialized, lessThan(superCall));
+      },
+    );
+
     test('channel + method names match the frozen Dart protocol', () {
       final contract = read('$updateDir/AppUpdateContract.kt');
       final controller = read(controllerPath);

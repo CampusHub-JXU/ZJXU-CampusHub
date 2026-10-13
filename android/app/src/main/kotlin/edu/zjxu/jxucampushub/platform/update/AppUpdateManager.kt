@@ -81,7 +81,29 @@ internal class AppUpdateManager private constructor(private val appContext: Cont
 
     /** 前台恢复：若受管更新已就绪且用户此前点过「更新」，补一次自动安装。 */
     fun onActivityResumed(activity: Activity) {
-        attachActivity(activity)
+        synchronized(mutationLock) {
+            attachActivity(activity)
+            val record = store.read()
+            if (record != null) {
+                val resumed = AppUpdateOwnership.installStateAfterResume(
+                    verified = record.verified,
+                    permissionGranted = canRequestPackageInstalls(),
+                    installerOpened = record.installerOpened,
+                    userWantsInstall = record.userWantsInstall,
+                )
+                store.update { current ->
+                    if (isStale(current, record.requestKey, record.generation)) {
+                        current
+                    } else {
+                        current!!.copy(
+                            permissionRequired = resumed.permissionRequired,
+                            installerOpened = false,
+                            userWantsInstall = resumed.userWantsInstall,
+                        )
+                    }
+                }
+            }
+        }
         maybeAutoOpenOrNotify()
     }
 
@@ -362,6 +384,18 @@ internal class AppUpdateManager private constructor(private val appContext: Cont
                 // 用**最新匹配记录**发起安装（状态可能已变），而非旧结果记录。
                 val matched = store.read()
                 if (isStale(matched, requestKey, generation)) {
+                    callback(false)
+                    return@synchronized
+                }
+                if (!isForegroundInstallTarget(activity)) {
+                    // 校验期间退到后台 / Activity 已替换：保留 APK，回前台只手动重试。
+                    store.update { current ->
+                        if (isStale(current, requestKey, generation)) {
+                            current
+                        } else {
+                            current!!.copy(userWantsInstall = false)
+                        }
+                    }
                     callback(false)
                     return@synchronized
                 }
@@ -791,27 +825,60 @@ internal class AppUpdateManager private constructor(private val appContext: Cont
     }
 
     private fun maybeAutoOpenOrNotify() {
-        val record = store.read() ?: return
-        if (!record.verified || record.installerOpened || record.permissionRequired) return
+        synchronized(mutationLock) {
+            val record = store.read() ?: return
+            if (!record.verified || record.installerOpened) return
 
-        val activity = activityRef?.get()
-        if (record.userWantsInstall && activity != null && launchInstaller(activity, record)) {
-            store.update { current ->
-                if (isStale(current, record.requestKey, record.generation)) {
-                    current
-                } else {
-                    current!!.copy(
-                        installerOpened = true,
-                        userWantsInstall = false,
-                        permissionRequired = false,
-                    )
+            val activity = activityRef?.get()
+            if (record.userWantsInstall && activity != null &&
+                isForegroundInstallTarget(activity)
+            ) {
+                // 自动与手动路径都必须在发起前检查权限，不能把系统授权页当成安装器已打开。
+                if (!canRequestPackageInstalls()) {
+                    store.update { current ->
+                        if (isStale(current, record.requestKey, record.generation)) {
+                            current
+                        } else {
+                            current!!.copy(permissionRequired = true)
+                        }
+                    }
+                    return
+                }
+                // 先消费一次性意图，防止 startActivity 引发的生命周期回调重复发起。
+                store.update { current ->
+                    if (isStale(current, record.requestKey, record.generation)) {
+                        current
+                    } else {
+                        current!!.copy(userWantsInstall = false, permissionRequired = false)
+                    }
+                }
+                if (launchInstaller(activity, record)) {
+                    store.update { current ->
+                        if (isStale(current, record.requestKey, record.generation)) {
+                            current
+                        } else {
+                            current!!.copy(
+                                installerOpened = true,
+                                userWantsInstall = false,
+                                permissionRequired = false,
+                            )
+                        }
+                    }
+                    return
                 }
             }
-            return
+            // 后台 / 无法自动打开：只发完成通知，绝不后台拉起 Activity。
+            AppUpdateNotifications.postCompletion(appContext, record.requestKey)
         }
-        // 后台 / 无法自动打开：只发完成通知，绝不后台拉起 Activity。
-        AppUpdateNotifications.postCompletion(appContext, record.requestKey)
     }
+
+    /** Activity 引用只在 onResume 附加，在 onPause 撤销。 */
+    private fun isForegroundInstallTarget(activity: Activity?): Boolean =
+        activity != null && AppUpdateOwnership.canLaunchInstaller(
+            isAttached = activityRef?.get() === activity,
+            isFinishing = activity.isFinishing,
+            isDestroyed = activity.isDestroyed,
+        )
 
     /** 用给定记录（调用方已校验代际）发起安装，避免状态在读取与拉起之间漂移。 */
     private fun launchInstaller(activity: Activity, record: AppUpdateStore.Record): Boolean {

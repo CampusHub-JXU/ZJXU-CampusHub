@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/core/update/apk_update_controller.dart';
@@ -198,6 +198,36 @@ void main() {
       expect(find.widgetWithText(FilledButton, '重试'), findsOneWidget);
       await disposeDialog(tester);
     });
+
+    for (final previous in [
+      ApkUpdatePhase.permissionRequired,
+      ApkUpdatePhase.installerOpened,
+    ]) {
+      testWidgets('从 ${previous.name} 返回前台可安装且不重新下载', (tester) async {
+        transport.active = ApkUpdateState(phase: previous, requestKey: 'k');
+        await open(tester, managedTestRelease());
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.inactive,
+        );
+        await tester.pump();
+        // Native reconciles real permission / installer return on resume.
+        transport.active = const ApkUpdateState(
+          phase: ApkUpdatePhase.readyToInstall,
+          requestKey: 'k',
+        );
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+        await tester.pump();
+        await tester.pump();
+        expect(find.widgetWithText(FilledButton, '安装更新'), findsOneWidget);
+        await tester.tap(find.widgetWithText(FilledButton, '安装更新'));
+        await tester.pump();
+        expect(transport.installCalls, 1);
+        expect(transport.startCalls, 0);
+        await disposeDialog(tester);
+      });
+    }
 
     testWidgets('取消后显示已取消并可手动重试', (tester) async {
       transport.active = const ApkUpdateState(

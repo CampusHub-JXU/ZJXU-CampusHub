@@ -24,11 +24,12 @@ class MainActivity : FlutterActivity() {
     private lateinit var appUpdateManager: AppUpdateManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // FlutterActivity.onCreate calls configureFlutterEngine before returning.
+        appUpdateManager = AppUpdateManager.get(applicationContext)
         super.onCreate(savedInstanceState)
         shortcutHandler.captureInitialIntent(intent)
         deepLinkHandler.captureInitialIntent(intent)
         shortcutHandler.cleanupLegacyPaymentShortcut()
-        appUpdateManager = AppUpdateManager.get(applicationContext)
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {

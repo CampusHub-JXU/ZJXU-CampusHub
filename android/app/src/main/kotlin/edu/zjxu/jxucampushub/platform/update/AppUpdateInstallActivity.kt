@@ -15,15 +15,26 @@ import android.util.Log
  *   用户在应用内可再次打开权限设置页。
  */
 class AppUpdateInstallActivity : Activity() {
+    private val manager by lazy { AppUpdateManager.get(applicationContext) }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val requestKey = intent?.getStringExtra(AppUpdateContract.EXTRA_REQUEST_KEY)
-        val manager = AppUpdateManager.get(applicationContext)
         manager.verifyAndInstall(this, requestKey) { launched ->
             if (!launched) {
                 Log.w("AppUpdate", "installer not launched from install activity")
             }
             finish()
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        manager.attachActivity(this)
+    }
+
+    override fun onPause() {
+        manager.detachActivity(this)
+        super.onPause()
     }
 }
