@@ -156,12 +156,14 @@ List<ProjectedCourseOccurrence> _defaultProjector({
   required ScheduleTermContext confirmedCurrentTerm,
   required DateTime semesterStartDate,
   required DateTime now,
+  required int reminderMinutes,
 }) => projectCurrentTermCalendarEvents(
   snapshot: snapshot,
   verifiedOwner: verifiedOwner,
   confirmedCurrentTerm: confirmedCurrentTerm,
   semesterStartDate: semesterStartDate,
   now: now,
+  reminderMinutes: reminderMinutes,
 );
 
 class _Harness {
@@ -181,6 +183,7 @@ class _Harness {
       clock: () => now,
       readSemesterStartDate: () => semesterStart,
       projector: projector ?? _defaultProjector,
+      reminderMinutesReader: () => reminderMinutes,
     );
   }
 
@@ -197,6 +200,9 @@ class _Harness {
   ScheduleTermContext? term;
   DateTime now = DateTime(2026, 9, 10, 12);
   DateTime semesterStart = DateTime(2026, 8, 31);
+
+  /// 当前生效的提醒提前量（模拟持久化设置，测试可改后重跑）。
+  int reminderMinutes = ProjectedCourseOccurrence.defaultReminderMinutes;
 
   Future<void> enable(
     String owner,
@@ -310,7 +316,7 @@ void main() {
   });
 
   group('可信投影', () {
-    test('展开 20 周且课前 10 分钟提醒', () async {
+    test('展开 20 周且按设置默认 20 分钟提醒', () async {
       final h = _Harness();
       await h.enable(_ownerA, _calendarId, revision: 1);
       h.term = _term2026;
@@ -321,7 +327,7 @@ void main() {
       expect(h.coordinator.outcome.value, CalendarSyncRunOutcome.synced);
       expect(h.channel.upsertedDrafts, hasLength(20));
       expect(
-        h.channel.upsertedDrafts.every((draft) => draft.reminderMinutes == 10),
+        h.channel.upsertedDrafts.every((draft) => draft.reminderMinutes == 20),
         isTrue,
       );
       expect(
@@ -336,6 +342,32 @@ void main() {
       expect(snapshot.pendingEntryCount, 0);
     });
 
+    test('仅改提醒提前量：既有归属事件按新值 upsert，不因 businessKey 相同被忽略', () async {
+      final h = _Harness();
+      await h.enable(_ownerA, _calendarId, revision: 1);
+      h.term = _term2026;
+      h.snapshot = h.snapshotWith();
+
+      // 首轮：按默认 20 分钟新建 20 条归属事件。
+      await h.run();
+      expect(h.coordinator.outcome.value, CalendarSyncRunOutcome.synced);
+      expect(h.channel.upsertedDrafts, hasLength(20));
+      final firstIds = Map<String, int>.of(h.channel.ownedByOpaqueId);
+      expect(firstIds, hasLength(20));
+
+      // 第二轮：只改提醒提前量为 30，businessKey / 时间全部不变。
+      h.reminderMinutes = 30;
+      await h.run();
+
+      expect(h.coordinator.outcome.value, CalendarSyncRunOutcome.synced);
+      // 既有 20 条被覆盖更新（同一 opaqueId → 同一 eventId），不新建、不删除。
+      final secondRun = h.channel.upsertedDrafts.sublist(20);
+      expect(secondRun, hasLength(20));
+      expect(secondRun.every((draft) => draft.reminderMinutes == 30), isTrue);
+      expect(h.channel.ownedByOpaqueId, firstIds);
+      expect(h.channel.deleteCalls, 0);
+    });
+
     test('businessKey 学期字段判定与 projector 输出一致', () {
       final h = _Harness();
       h.term = _term2026;
@@ -346,6 +378,7 @@ void main() {
         confirmedCurrentTerm: _term2026,
         semesterStartDate: h.semesterStart,
         now: h.now,
+        reminderMinutes: ProjectedCourseOccurrence.defaultReminderMinutes,
       );
       expect(occurrences, isNotEmpty);
       expect(
@@ -582,6 +615,7 @@ void main() {
         confirmedCurrentTerm: _term2026,
         semesterStartDate: h.semesterStart,
         now: h.now,
+        reminderMinutes: ProjectedCourseOccurrence.defaultReminderMinutes,
       );
       expect(occurrences, hasLength(20));
 
@@ -686,6 +720,7 @@ void main() {
         confirmedCurrentTerm: _term2026,
         semesterStartDate: h.semesterStart,
         now: h.now,
+        reminderMinutes: ProjectedCourseOccurrence.defaultReminderMinutes,
       );
       final desiredKey = occurrences.first.businessKey;
 
@@ -817,6 +852,7 @@ void main() {
               required confirmedCurrentTerm,
               required semesterStartDate,
               required now,
+              required reminderMinutes,
             }) => throw const CalendarProjectionException(
               CalendarProjectionFailure.scheduleStale,
               'test',
@@ -1064,6 +1100,7 @@ void main() {
         confirmedCurrentTerm: _term2026,
         semesterStartDate: h.semesterStart,
         now: h.now,
+        reminderMinutes: ProjectedCourseOccurrence.defaultReminderMinutes,
       );
       expect(occurrences, hasLength(1));
       final opaque = _opaqueId(924);

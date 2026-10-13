@@ -7,7 +7,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:jxu_campus_hub/features/settings/settings_page.dart';
 import 'package:jxu_campus_hub/shared/widgets/plain_list.dart';
-import 'package:jxu_campus_hub/shared/widgets/app_dropdown.dart';
 
 import '../../helpers/pump_app.dart';
 import '../../helpers/test_setup.dart';
@@ -70,7 +69,7 @@ void main() {
     expect(find.text('自动'), findsOneWidget);
 
     // 选择手动年级：写入持久化，按钮文案随选中项切换。
-    await tester.tap(find.byType(AppDropdown<int>));
+    await tester.tap(find.byKey(const Key('enrollment_year_dropdown')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('2024级'));
     await tester.pumpAndSettle();
@@ -80,7 +79,7 @@ void main() {
 
     // 恢复「自动」：手动值清除。菜单项用弹出层 key 定位，与按钮上的
     // 同名回显文案区分开。
-    await tester.tap(find.byType(AppDropdown<int>));
+    await tester.tap(find.byKey(const Key('enrollment_year_dropdown')));
     await tester.pumpAndSettle();
     await tester.tap(
       find.descendant(

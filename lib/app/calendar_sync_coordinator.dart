@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../core/auth/zhengfang_auth.dart';
 import '../core/calendar/calendar_event_ledger_store.dart';
+import '../core/calendar/calendar_reminder_settings.dart';
 import '../core/calendar/calendar_sync_channel.dart';
 import '../core/calendar/calendar_sync_control.dart';
 import '../core/calendar/calendar_sync_models.dart';
@@ -59,12 +60,15 @@ typedef CalendarSyncTermReader = ScheduleTermContext? Function();
 
 typedef CalendarSyncClock = DateTime Function();
 
+typedef CalendarSyncReminderReader = int Function();
+
 typedef CalendarSyncProjector = List<ProjectedCourseOccurrence> Function({
   required ScheduleCacheSnapshot snapshot,
   required String verifiedOwner,
   required ScheduleTermContext confirmedCurrentTerm,
   required DateTime semesterStartDate,
   required DateTime now,
+  required int reminderMinutes,
 });
 
 /// projector 的 businessKey 字段分隔符（unit separator）。
@@ -102,6 +106,10 @@ ScheduleCacheSnapshot? _loadProductionSnapshot({
   studentId: ownerKey,
 );
 
+/// 生产提醒提前量读取：读持久化设置单例（内存态，默认 20；不触网络/磁盘）。
+int _readProductionReminderMinutes() =>
+    CalendarReminderSettings.instance.reminderMinutes;
+
 /// 课表 → 系统日历同步的前台协调器（仅主引擎前台，零后台注册）。
 ///
 /// 触发源（由 [start] 安装，测试可调用同名公开方法）：
@@ -109,6 +117,7 @@ ScheduleCacheSnapshot? _loadProductionSnapshot({
 /// - [CampusDataChangeBus.revision] → [onCampusDataChanged]；
 /// - 学期开学日变化 → [onSemesterStartChanged]；
 /// - [CalendarSyncControl] 状态变化 → [onControlStateChanged]；
+/// - `CalendarReminderSettings` 提前量变化 → 前台触发一轮（按新提前量 upsert）；
 /// - 生命周期 → [onAppResumed] / [onAppInactive]。
 ///
 /// 安全边界：
@@ -136,6 +145,7 @@ class CalendarSyncCoordinator {
     this._clock,
     this._readSemesterStartDate,
     this._projector,
+    this._readReminderMinutes,
   );
 
   /// 测试/注入构造：替换通道、控制、账本与所有环境读取回调。
@@ -150,6 +160,8 @@ class CalendarSyncCoordinator {
     required CalendarSyncClock clock,
     required CalendarSyncClock readSemesterStartDate,
     CalendarSyncProjector projector = projectCurrentTermCalendarEvents,
+    CalendarSyncReminderReader reminderMinutesReader =
+        _readProductionReminderMinutes,
   }) => CalendarSyncCoordinator._(
     channel,
     control,
@@ -160,9 +172,10 @@ class CalendarSyncCoordinator {
     clock,
     readSemesterStartDate,
     projector,
+    reminderMinutesReader,
   );
 
-  /// 生产单例：默认通道 + 共享控制/账本 + 直接读正方身份 / 课表 / 学期。
+  /// 生产单例：默认通道 + 共享控制/账本 + 直接读正方身份 / 课表 / 学期 / 设置。
   static final CalendarSyncCoordinator instance = CalendarSyncCoordinator._(
     defaultCalendarSyncChannel,
     CalendarSyncControl.instance,
@@ -173,6 +186,7 @@ class CalendarSyncCoordinator {
     DateTime.now,
     () => SemesterCalendar.instance.semesterStartDate.value,
     projectCurrentTermCalendarEvents,
+    _readProductionReminderMinutes,
   );
 
   final CalendarSyncChannel _channel;
@@ -184,6 +198,7 @@ class CalendarSyncCoordinator {
   final CalendarSyncClock _clock;
   final CalendarSyncClock _readSemesterStartDate;
   final CalendarSyncProjector _projector;
+  final CalendarSyncReminderReader _readReminderMinutes;
 
   /// 最近一次运行去向；UI 可监听（不含业务数据）。
   final ValueNotifier<CalendarSyncRunOutcome> outcome =
@@ -203,6 +218,9 @@ class CalendarSyncCoordinator {
     CampusDataChangeBus.instance.revision.addListener(_onDataChanged);
     SemesterCalendar.instance.semesterStartDate.addListener(_onDataChanged);
     _control.addListener(_onControlChanged);
+    // 提醒提前量变化：前台触发一轮 diff，让已归属事件按新提前量 upsert。
+    // 关闭 / 未登录 / 非前台时仍走既有零写入门禁，不产生任何系统日历写入。
+    CalendarReminderSettings.instance.addListener(_onReminderChanged);
     _foreground = true;
     _requestSync();
   }
@@ -245,6 +263,7 @@ class CalendarSyncCoordinator {
   void _onAuthChanged() => unawaited(onAuthIdentityChanged());
   void _onDataChanged() => _requestSync();
   void _onControlChanged() => onControlStateChanged();
+  void _onReminderChanged() => _requestSync();
 
   /// 当前已验证 owner：未登录 / 空白一律为 null（= 无身份，控制层据此进入
   /// 「等待身份」而不是暂停；只有非空且不同于绑定 owner 才算换号）。
@@ -364,6 +383,7 @@ class CalendarSyncCoordinator {
           confirmedCurrentTerm: term,
           semesterStartDate: _readSemesterStartDate(),
           now: _clock(),
+          reminderMinutes: _readReminderMinutes(),
         );
       } on CalendarProjectionException catch (error) {
         // 只记结构性原因，绝不记课程/学号。

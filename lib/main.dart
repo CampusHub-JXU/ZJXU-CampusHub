@@ -15,6 +15,7 @@ import 'core/auth/background_session_gate.dart';
 import 'core/auth/connect_mode_resolver.dart';
 import 'core/auth/credential_store.dart';
 import 'core/auth/unified_auth.dart';
+import 'core/calendar/calendar_reminder_settings.dart';
 import 'core/deep_link/campus_deep_link_service.dart';
 import 'core/logging/app_logger.dart';
 import 'core/network/dio_client.dart';
@@ -152,6 +153,8 @@ Future<void> main() async {
       runApp(JXUCampusHubApp());
       // 课表系统日历同步：仅主引擎前台协调器，监听必须早于暖启动数据变化，
       // 以便身份/课表恢复后立即评估；不注册后台引擎、不触发自动登录。
+      // 先恢复持久化的提醒提前量，保证首轮投影即用用户选择的值（默认 20）。
+      await CalendarReminderSettings.instance.load();
       CalendarSyncCoordinator.instance.start();
       CampusRefreshCoordinator.instance.start();
       // 寝室电费身份对账：仅主引擎前台安装统一认证监听，登出 / 换号 /

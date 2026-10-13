@@ -3,9 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/core/calendar/calendar_event_ledger_store.dart';
+import 'package:jxu_campus_hub/core/calendar/calendar_reminder_settings.dart';
 import 'package:jxu_campus_hub/core/calendar/calendar_sync_control.dart';
 import 'package:jxu_campus_hub/core/calendar/calendar_sync_models.dart';
 import 'package:jxu_campus_hub/features/settings/settings_page.dart';
@@ -477,6 +479,35 @@ void main() {
     expect(find.text('已关闭课表日历同步并清理全部事件'), findsOneWidget);
     expect(await CalendarSyncControl.instance.residualCount(), 0);
     expect(find.text('清理未完成'), findsNothing);
+  }, timeout: perTestTimeout);
+
+  testWidgets('课前提醒下拉可改并持久化，关闭状态下不产生任何原生写入', (tester) async {
+    await pumpSettingsPage(tester);
+    await revealSyncRow(tester);
+
+    expect(find.text('课前提醒'), findsOneWidget);
+    expect(find.text('提前 20 分钟'), findsOneWidget);
+    expect(CalendarReminderSettings.instance.reminderMinutes, 20);
+
+    await tester.tap(find.byKey(const Key('calendar_reminder_dropdown')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('提前 30 分钟'));
+    await tester.pumpAndSettle();
+
+    expect(CalendarReminderSettings.instance.reminderMinutes, 30);
+    expect(find.text('提前 30 分钟'), findsOneWidget);
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getInt(CalendarReminderSettings.storageKey), 30);
+
+    // 同步仍关闭：改提醒不触发任何系统日历写入。
+    expect(
+      native.calls.where(
+        (method) =>
+            method == 'upsertEventBatch' || method == 'deleteOwnedEventsByIds',
+      ),
+      isEmpty,
+    );
   }, timeout: perTestTimeout);
 
   testWidgets('开启请求在途时重复点击不会发起第二次调用', (tester) async {

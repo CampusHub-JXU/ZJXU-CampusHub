@@ -69,6 +69,7 @@ void main() {
     ScheduleTermContext confirmedCurrentTerm = term,
     DateTime? semesterStartDate,
     DateTime? at,
+    int reminderMinutes = ProjectedCourseOccurrence.defaultReminderMinutes,
   }) {
     return projectCurrentTermCalendarEvents(
       snapshot: snapshot,
@@ -76,6 +77,7 @@ void main() {
       confirmedCurrentTerm: confirmedCurrentTerm,
       semesterStartDate: semesterStartDate ?? mondayStart,
       now: at ?? now,
+      reminderMinutes: reminderMinutes,
     );
   }
 
@@ -808,15 +810,44 @@ void main() {
       expect(draft.location, 'A101');
       expect(draft.startMillis, occurrence.startMillis);
       expect(draft.endMillis, occurrence.endMillis);
-      expect(draft.reminderMinutes, 10);
+      expect(draft.reminderMinutes, 20);
       expect(draft.timeZone, ProjectedCourseOccurrence.timeZoneId);
       expect(draft.timeZone, 'Asia/Shanghai');
-      expect(occurrence.reminderMinutes, 10);
+      expect(occurrence.reminderMinutes, 20);
 
       final plan = occurrence.toEventPlan(opaqueId: opaqueId);
       expect(plan.validate(), isNull);
       expect(plan.businessKey, occurrence.businessKey);
       expect(plan.opaqueId, opaqueId);
+    });
+
+    test('reminderMinutes 参数决定事件提醒提前量（默认 20）', () {
+      final occurrence = project(
+        snapshotWith(
+          courses: const [
+            CourseEntry(
+              courseName: '高等数学',
+              teacherName: '张老师',
+              weekday: 1,
+              startLesson: 1,
+              endLesson: 2,
+              weekRange: '1周',
+              classroom: 'A101',
+              campus: '梁林校区',
+              typeSymbol: '',
+            ),
+          ],
+        ),
+        reminderMinutes: 30,
+      ).single;
+
+      expect(occurrence.reminderMinutes, 30);
+      expect(
+        occurrence
+            .toEventDraft(opaqueId: '3f1a0c62-7c4a-4c8b-9a2e-6f0d5b7c1e42')
+            .reminderMinutes,
+        30,
+      );
     });
   });
 

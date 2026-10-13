@@ -7,6 +7,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/cache/json_cache_store.dart';
+import '../../core/calendar/calendar_reminder_settings.dart';
 import '../../core/calendar/calendar_sync_channel.dart';
 import '../../core/calendar/calendar_sync_control.dart';
 import '../../core/calendar/calendar_sync_models.dart';
@@ -388,6 +389,7 @@ class _EnrollmentYearRowState extends State<_EnrollmentYearRow> {
     return PlainListRow(
       title: '年级',
       trailing: AppDropdown<int>(
+        key: const Key('enrollment_year_dropdown'),
         value:
             UserProfileController.instance.manualEnrollmentYear.value ??
             _autoSentinel,
@@ -465,9 +467,10 @@ class _CurrentTermTileState extends State<_CurrentTermTile> {
 
 /// 「课表日历」分组的开关卡片（仅 Android，由调用方按平台隐藏）。
 ///
-/// 机械复用小节样式：开关行 + 关闭确认 AlertDialog + SnackBar 反馈。
+/// 机械复用小节样式：开关行 + 课前提醒行 + 关闭确认 AlertDialog + SnackBar 反馈。
 /// 状态机、权限、日历解析与清理全部由 core 的 [CalendarSyncControl] /
-/// [CalendarSyncChannel] 承担；本组件不读取课表、不生成事件、不展示学号。
+/// [CalendarSyncChannel] 承担；提醒提前量由 [CalendarReminderSettings] 持久化。
+/// 本组件不读取课表、不生成事件、不展示学号。
 class _CalendarSyncCard extends StatefulWidget {
   const _CalendarSyncCard();
 
@@ -487,6 +490,8 @@ enum _CalendarSyncTarget {
 class _CalendarSyncCardState extends State<_CalendarSyncCard> {
   CalendarSyncControl get _control => CalendarSyncControl.instance;
 
+  CalendarReminderSettings get _reminder => CalendarReminderSettings.instance;
+
   /// 有开启/清理请求在途：期间忽略重复点击，避免重复原生调用。
   bool _busy = false;
 
@@ -500,6 +505,7 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
   void initState() {
     super.initState();
     _control.addListener(_handleControlChanged);
+    _reminder.addListener(_handleControlChanged);
     // paused 的副标题取决于当前是否有已验证教务身份，登录 / 登出时需要重绘。
     ZhengfangAuth.instance.addListener(_handleControlChanged);
     unawaited(
@@ -511,11 +517,18 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
         }
       }),
     );
+    // 持久化提前量在启动时已 load；此处兜底确保设置页拿到磁盘值。
+    unawaited(
+      _reminder.load().then((_) {
+        if (mounted) setState(() {});
+      }),
+    );
   }
 
   @override
   void dispose() {
     _control.removeListener(_handleControlChanged);
+    _reminder.removeListener(_handleControlChanged);
     ZhengfangAuth.instance.removeListener(_handleControlChanged);
     super.dispose();
   }
@@ -574,6 +587,9 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
     return reasons.isEmpty ? '$countLabel，可重试删除' : '$countLabel（$reasons）';
   }
 
+  static String _reminderLabel(int minutes) =>
+      minutes <= 0 ? '不提醒' : '提前 $minutes 分钟';
+
   @override
   Widget build(BuildContext context) {
     final state = _control.state;
@@ -591,6 +607,32 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
             if (_busy) return;
             unawaited(value ? _requestEnable() : _requestDisable());
           },
+        ),
+        PlainListRow(
+          title: '课前提醒',
+          trailing: AppDropdown<int>(
+            key: const Key('calendar_reminder_dropdown'),
+            inline: true,
+            // 历史遗留的非预设值不在列表里：按钮回落显示当前值。
+            hint: _reminderLabel(_reminder.reminderMinutes),
+            value:
+                CalendarReminderSettings.presetMinutes.contains(
+                  _reminder.reminderMinutes,
+                )
+                ? _reminder.reminderMinutes
+                : null,
+            items: <AppDropdownItem<int>>[
+              for (final minutes in CalendarReminderSettings.presetMinutes)
+                AppDropdownItem<int>(
+                  value: minutes,
+                  label: _reminderLabel(minutes),
+                ),
+            ],
+            onChanged: (value) {
+              if (value == null) return;
+              unawaited(_reminder.setReminderMinutes(value));
+            },
+          ),
         ),
         if (state == CalendarSyncControlState.cleanupPending) ...[
           PlainListRow(
