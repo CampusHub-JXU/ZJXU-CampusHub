@@ -594,7 +594,10 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
           28,
         ),
         children: [
-          _buildProfileCard(profile),
+          _buildIdentityCard(profile),
+          const SizedBox(height: AppSpacing.listGroupGap),
+          const PlainSectionHeader('概览'),
+          _buildStatusSection(),
           const SizedBox(height: AppSpacing.listGroupGap),
           const PlainSectionHeader('快速办理'),
           _buildActionGroup(),
@@ -627,12 +630,14 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
     );
   }
 
-  Widget _buildProfileCard(ChangxingUserProfile profile) {
+  /// 顶部身份卡：头像 + 姓名为主视觉；学号 / 联系电话 / 紧急联系人收进
+  /// 「个人资料」轻量折叠（默认收起但始终可发现、一点即开），首屏不再把
+  /// 敏感学号、手机号当主角，也不再用装饰性分割线切开信息块。
+  Widget _buildIdentityCard(ChangxingUserProfile profile) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final trimmedName = profile.name.trim();
     final initial = trimmedName.isEmpty ? '通' : trimmedName.substring(0, 1);
-    final latest = _latestApplication;
 
     return AppCard(
       padding: const EdgeInsets.all(16),
@@ -654,96 +659,113 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
               ),
               const SizedBox(width: 14),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      trimmedName.isEmpty ? '未命名用户' : trimmedName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: context.appText.listTitle.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      profile.jobNo.isEmpty ? '学号未同步' : profile.jobNo,
-                      style: context.appText.secondary.copyWith(
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          ChangxingInfoGrid(
-            items: [
-              (
-                label: '联系电话',
-                value: profile.phone.isEmpty ? '—' : profile.phone,
-              ),
-              (
-                label: '紧急联系人',
-                value: profile.emergencyContact.isEmpty
-                    ? '—'
-                    : '${profile.emergencyContact}  ${profile.emergencyPhone}',
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Divider(height: 1, thickness: 1, color: cs.outlineVariant),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: ChangxingMetric(value: _unreadCount, label: '未读消息'),
-              ),
-              const _MetricDivider(),
-              Expanded(
-                child: ChangxingMetric(value: _pendingCount, label: '办理中'),
-              ),
-              const _MetricDivider(),
-              Expanded(
-                child: ChangxingMetric(
-                  value: _applications.length,
-                  label: '申请总数',
-                ),
-              ),
-            ],
-          ),
-          if (latest != null) ...[
-            const SizedBox(height: 14),
-            Divider(height: 1, thickness: 1, color: cs.outlineVariant),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Text('最近申请', style: context.appText.meta),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    '${latest.typeLabel} · ${latest.statusLabel}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: context.appText.secondary.copyWith(
-                      color: cs.onSurface,
-                      fontWeight: FontWeight.w500,
-                    ),
+                child: Text(
+                  trimmedName.isEmpty ? '未命名用户' : trimmedName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.appText.listTitle.copyWith(
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-                if (latest.upTime != null)
-                  Text(
-                    _fmt(latest.upTime),
-                    style: context.appText.meta.copyWith(
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                    ),
-                  ),
-              ],
-            ),
-          ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ChangxingProfileDetails(profile: profile),
         ],
       ),
+    );
+  }
+
+  /// 「概览」：无卡轻量统计——「办理中」为主读数（行值档 + 主色），
+  /// 「未读消息 / 申请总数」为次级小字；其下是「最近申请」单行
+  /// （类型 + 语义状态标签 + 更新时间）。全部靠间距与字号明暗分组，
+  /// 不使用任何装饰性横竖线。
+  Widget _buildStatusSection() {
+    final latest = _latestApplication;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildStatsOverview(),
+        if (latest != null) ...[
+          const SizedBox(height: AppSpacing.md),
+          _buildRecentApplication(latest),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildStatsOverview() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Expanded(
+          flex: 5,
+          child: ChangxingMetric(
+            value: _pendingCount,
+            label: '办理中',
+            emphasized: true,
+          ),
+        ),
+        Expanded(
+          flex: 6,
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: Row(
+              children: [
+                Expanded(
+                  child: ChangxingMetric(
+                    value: _unreadCount,
+                    label: '未读消息',
+                    emphasized: false,
+                  ),
+                ),
+                Expanded(
+                  child: ChangxingMetric(
+                    value: _applications.length,
+                    label: '申请总数',
+                    emphasized: false,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRecentApplication(ChangxingApplication latest) {
+    final text = context.appText;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('最近申请', style: text.meta),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                latest.typeLabel,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: text.rowTitle,
+              ),
+            ),
+            const SizedBox(width: 10),
+            AppStatusTag(latest.statusLabel, tone: _statusTone(latest.status)),
+          ],
+        ),
+        if (latest.upTime != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            '更新 ${_fmt(latest.upTime)}',
+            style: text.meta.copyWith(
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
+      ],
     );
   }
 
@@ -831,9 +853,7 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
             ],
           ),
           if (specs.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            Divider(height: 1, thickness: 1, color: cs.outlineVariant),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
             ChangxingInfoGrid(items: specs),
           ],
           if (item.descr.isNotEmpty) ...[
@@ -929,19 +949,5 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
     String two(int n) => n.toString().padLeft(2, '0');
     return '${local.year}/${two(local.month)}/${two(local.day)} '
         '${two(local.hour)}:${two(local.minute)}';
-  }
-}
-
-class _MetricDivider extends StatelessWidget {
-  const _MetricDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 1,
-      height: 32,
-      margin: const EdgeInsets.symmetric(horizontal: 12),
-      color: Theme.of(context).colorScheme.outlineVariant,
-    );
   }
 }
