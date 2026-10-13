@@ -38,16 +38,11 @@ void main() {
     });
 
     test('豁免清单不静默放宽：只有已知的畅行专项站点，且都带理由', () {
-      expect(decorativeDividerAllowlist, isNotEmpty);
-      for (final allowance in decorativeDividerAllowlist) {
-        expect(allowance.reason.trim(), isNotEmpty);
-        expect(allowance.file, isNot(startsWith('lib/')));
-        expect(allowance.allowed, greaterThan(0));
-      }
-      // 新增豁免会让本断言失败，强制在 diff 里显式暴露。
-      expect(decorativeDividerAllowlist.map((a) => a.file).toSet(), {
-        changxing,
-      }, reason: '豁免清单只应覆盖畅行嘉大（#57/#58 → PR73）；新增豁免须同步修改本断言。');
+      expect(
+        decorativeDividerAllowlist,
+        isEmpty,
+        reason: 'PR73 已移除畅行专项线条，过期豁免应随本变更删除。',
+      );
     });
   });
 
@@ -254,49 +249,27 @@ Widget build(BuildContext context) {
     });
   });
 
-  group('F3 豁免过期（站点删除后强制移除条目）', () {
-    test('空扫描：两条豁免都过期 → 失败', () {
-      final violations = decorativeDividerViolations(
-        hits: const <DecorativeDividerHit>[],
+  group('PR73 stacked base', () {
+    test('original base pattern remains detectable and stacked state rejects reintroduction', () {
+      final originalBaseHits = scanDividersInSource(
+        'final a = Divider();\nfinal b = Divider();\nfinal c = Divider();\n'
+        'final d = Container(width: 1, color: cs.x);',
+        file: changxing,
       );
-      expect(violations, hasLength(2));
-      expect(violations.every((v) => v.contains('过期')), isTrue);
-    });
+      expect(
+        originalBaseHits.where((hit) => hit.pattern == 'nativeDivider'),
+        hasLength(3),
+      );
+      expect(
+        originalBaseHits.where((hit) => hit.pattern == 'handDrawnThinBox'),
+        hasLength(1),
+      );
 
-    test('只满足其中一类：另一类过期 → 失败', () {
       final violations = decorativeDividerViolations(
-        hits: hitsFor(
-          'final a = Divider();\nfinal b = Divider();\nfinal c = Divider();\n',
-          file: changxing,
-        ),
+        hits: hitsFor('final a = Divider();', file: changxing),
       );
       expect(violations, hasLength(1));
-      expect(violations.single, contains('handDrawnThinBox'));
-      expect(violations.single, contains('过期'));
-    });
-
-    test('两类都命中且不超上限 → 通过', () {
-      final violations = decorativeDividerViolations(
-        hits: hitsFor(
-          'final a = Divider();\nfinal b = Divider();\nfinal c = Divider();\n'
-          'final d = Container(width: 1, color: cs.x);\n',
-          file: changxing,
-        ),
-      );
-      expect(violations, isEmpty);
-    });
-
-    test('同文件超上限 → 失败', () {
-      final violations = decorativeDividerViolations(
-        hits: hitsFor(
-          'final a = Divider();\nfinal b = Divider();\nfinal c = Divider();\n'
-          'final d = Divider();\n'
-          'final e = Container(width: 1, color: cs.x);\n',
-          file: changxing,
-        ),
-      );
-      expect(violations, hasLength(1));
-      expect(violations.single, contains('出现 4 处'));
+      expect(violations.single, contains('不在豁免清单'));
     });
   });
 }

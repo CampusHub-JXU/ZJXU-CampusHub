@@ -83,27 +83,9 @@ class DecorativeDividerAllowance {
   final String reason;
 }
 
-/// 窄豁免清单：每条都必须带理由 + 数量上限，且随对应专项 PR 合并而删除
-/// （删除后守卫会因「当前 0 处」自动失败，强制同步移除本条）。
-/// 目前只有畅行嘉大（#57/#58 → PR73）在 master 上仍带装饰线。
-const decorativeDividerAllowlist = <DecorativeDividerAllowance>[
-  DecorativeDividerAllowance(
-    file: 'features/changxing_jiada/changxing_jiada_page.dart',
-    pattern: 'nativeDivider',
-    allowed: 3,
-    reason:
-        '畅行嘉大仪表盘横向 Divider（#57/#58，PR73 专项移除，未合并）。'
-        'PR73 落地后必须删除本条，不得顺延。',
-  ),
-  DecorativeDividerAllowance(
-    file: 'features/changxing_jiada/changxing_jiada_page.dart',
-    pattern: 'handDrawnThinBox',
-    allowed: 1,
-    reason:
-        '_MetricDivider 手工 1×32 竖线（#57/#58，PR73 专项移除，未合并）。'
-        'PR73 落地后必须删除本条，不得顺延。',
-  ),
-];
+/// 窄豁免清单：每条必须带理由 + 数量上限，且当前仍命中至少 1 处。
+/// 畅行嘉大的专项线条已由 PR73 移除，此处保持为空。
+const decorativeDividerAllowlist = <DecorativeDividerAllowance>[];
 
 /// 宿主构造器：只有这些才会画出可见的 1px 线（默认拦截）。
 final RegExp _hostConstructors = RegExp(
