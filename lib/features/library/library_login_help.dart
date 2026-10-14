@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_design_tokens.dart';
 import '../../core/theme/app_typography.dart';
 import '../../shared/widgets/app_feedback.dart';
-import '../../shared/widgets/plain_list.dart';
 
 /// 图书馆登录说明（Issue 54）。
 ///
@@ -18,24 +17,11 @@ abstract final class LibraryLoginHelp {
   /// 「我的借阅」旁的 help 图标 tooltip，也是弹层标题。
   static const title = '图书馆登录说明';
 
-  /// 核心说明：统一认证是网关前提，图书馆网页可能仍需它自己的凭据。
-  static const summary =
-      '统一认证用于访问校园服务，图书馆网页可能仍需独立登录。'
-      '网页要求一卡通号和卡证密码时，请使用图书馆登记的凭据；密码问题请咨询图书馆。';
-
-  /// 输入方式：只讲「用真实键盘输入」，不断言自动填充是否可用。
-  static const keyboardHint = '请在网页输入框中使用键盘输入。';
-
-  /// 明确 App 不会代填 / 保存，也不保证系统密码管理器可用（未验证）。
-  static const noAutofillHint =
-      'CampusHub 不会代填或保存图书馆密码。'
-      '系统密码管理器是否可用取决于网页与设备，尚未验证。';
+  /// 核心说明：图书馆网站自带登录，统一认证只负责把网页打开。
+  static const summary = '图书馆网站需要单独登录，请输入一卡通号和图书馆卡证密码；密码问题请咨询图书馆。';
 
   /// 看到登录页本身不能推断统一认证失效或图书馆故障。
-  static const notFailureHint = '仅看到登录页并不表示统一认证失效或图书馆故障。';
-
-  /// 网页自身报错时以网页为准，不替它下结论。
-  static const webErrorHint = '如果网页明确提示错误，请按网页提示处理，或咨询图书馆。';
+  static const notFailureHint = '看到这个登录页是正常的，不代表统一认证失效。';
 
   /// 打开说明弹层：亚克力底部弹层，可滚动、点遮罩或返回键关闭；
   /// 不是首次进入强制弹窗，也不改变任何登录流程。
@@ -81,16 +67,8 @@ class LibraryLoginHelpSheet extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.md),
         Text(LibraryLoginHelp.summary, style: text.secondary),
-        const SizedBox(height: AppSpacing.lg),
-        const PlainSectionHeader('在网页中输入'),
-        Text(LibraryLoginHelp.keyboardHint, style: text.secondary),
-        const SizedBox(height: AppSpacing.sm),
-        Text(LibraryLoginHelp.noAutofillHint, style: text.meta),
-        const SizedBox(height: AppSpacing.lg),
-        const PlainSectionHeader('说明'),
+        const SizedBox(height: AppSpacing.md),
         const _HelpNote(LibraryLoginHelp.notFailureHint),
-        const SizedBox(height: AppSpacing.sm),
-        const _HelpNote(LibraryLoginHelp.webErrorHint),
         const SizedBox(height: AppSpacing.xl),
         SizedBox(
           width: double.infinity,

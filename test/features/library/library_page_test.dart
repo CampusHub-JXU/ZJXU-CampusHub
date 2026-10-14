@@ -124,7 +124,7 @@ void main() {
     );
     // 文案在「已登录 / 未登录」两态都对：只说统一认证是网关前提，不声称已通过。
     expect(page.loginDescription, LibraryPage.authLoginDescription);
-    expect(page.loginDescription, contains('不是图书馆网站的账号登录'));
+    expect(page.loginDescription, contains('单独登录'));
     expect(page.prepareAuthenticatedUrl, isNotNull);
     // prepare 已确认过主会话，业务 bounce 不得再清全局统一认证会话。
     expect(page.preserveSessionOnAuthBounce, isTrue);
@@ -330,11 +330,10 @@ void main() {
     // 一种状态成立的话。
     expect(description, contains('统一认证'));
     expect(description, contains('WebVPN'));
-    expect(description, contains('不是图书馆网站的账号登录'));
-    expect(description, contains('卡证凭据'));
+    expect(description, contains('单独登录'));
     expect(description, isNot(contains('已通过')));
     // 说明弹层与页面文案同一口径：图书馆网页可能仍需它自己的卡证凭据。
-    expect(LibraryLoginHelp.summary, contains('图书馆登记的凭据'));
+    expect(LibraryLoginHelp.summary, contains('一卡通号和图书馆卡证密码'));
     expect(LibraryLoginHelp.summary, contains('密码问题请咨询图书馆'));
   });
 
@@ -375,10 +374,7 @@ void main() {
 
     expect(find.text(LibraryLoginHelp.title), findsOneWidget);
     expect(find.text(LibraryLoginHelp.summary), findsOneWidget);
-    expect(find.text(LibraryLoginHelp.keyboardHint), findsOneWidget);
-    expect(find.text(LibraryLoginHelp.noAutofillHint), findsOneWidget);
     expect(find.text(LibraryLoginHelp.notFailureHint), findsOneWidget);
-    expect(find.text(LibraryLoginHelp.webErrorHint), findsOneWidget);
     // 「知道了」按钮满足 48 最小点按高度。
     expect(
       tester.getSize(find.widgetWithText(FilledButton, '知道了')).height,

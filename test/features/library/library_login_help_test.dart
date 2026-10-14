@@ -49,10 +49,7 @@ void main() {
 
     expect(find.text(LibraryLoginHelp.title), findsOneWidget);
     expect(find.text(LibraryLoginHelp.summary), findsOneWidget);
-    expect(find.text(LibraryLoginHelp.keyboardHint), findsOneWidget);
-    expect(find.text(LibraryLoginHelp.noAutofillHint), findsOneWidget);
     expect(find.text(LibraryLoginHelp.notFailureHint), findsOneWidget);
-    expect(find.text(LibraryLoginHelp.webErrorHint), findsOneWidget);
     // 不使用「安全盾」这类口号，也不承诺自动填充。
     expect(find.textContaining('安全盾'), findsNothing);
     expect(find.textContaining('自动填充'), findsNothing);

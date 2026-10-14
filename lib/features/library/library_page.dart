@@ -29,9 +29,7 @@ class LibraryPage extends StatelessWidget {
   /// 都会出现，所以只说统一认证是打开网关的前提、不是图书馆网站的账号登录，
   /// 不写「已通过统一认证」这类只在一种状态成立的话。详细说明见
   /// [LibraryLoginHelp]。
-  static const authLoginDescription =
-      '统一认证是经 WebVPN 打开图书馆的前提，不是图书馆网站的账号登录；'
-      '进入网页后可能仍需图书馆的卡证凭据。';
+  static const authLoginDescription = '统一认证用于经 WebVPN 打开图书馆，进入后图书馆网站可能还需单独登录。';
 
   /// 测试替身：跳过真实网关/CAS 网络准备。
   @visibleForTesting
