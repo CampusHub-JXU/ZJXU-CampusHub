@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/auth/zhengfang_auth.dart';
+import '../../../core/logging/app_logger.dart';
 import '../../../core/theme/app_design_tokens.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../shared/widgets/app_banner.dart';
@@ -170,8 +171,10 @@ class _GradesExportSheetState extends State<GradesExportSheet> {
       if (path == null) return;
       AppFeedback.toastOn(messenger, '已保存到 $path');
     } catch (e) {
+      // 只记录异常类型（不含路径 / 内容），提示给用户的是可理解的文案。
+      AppLogger.instance.warn('grades export save failed: ${e.runtimeType}');
       if (messenger == null) return;
-      AppFeedback.toastOn(messenger, '保存失败：$e');
+      AppFeedback.toastOn(messenger, '保存失败，请重试或改用复制');
     }
   }
 
