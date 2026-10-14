@@ -241,11 +241,14 @@ void main() {
     expect(surface.height, lessThanOrEqualTo(640 - 2 * verticalInset + 0.5));
     expect(surface.top, greaterThanOrEqualTo(verticalInset - 0.5));
 
-    // 按钮仍在树中，滚动后可达并被点击。
+    // 标题与按钮固定在玻璃表面内，不需要滚动即可见；只有正文滚动。
     final confirm = find.widgetWithText(TextButton, '退出登录');
     expect(confirm, findsOneWidget);
-    await tester.ensureVisible(confirm);
-    await tester.pumpAndSettle();
+    final confirmRect = tester.getRect(confirm);
+    expect(confirmRect.bottom, lessThanOrEqualTo(surface.bottom + 0.5));
+    expect(confirmRect.top, greaterThanOrEqualTo(surface.top - 0.5));
+    final titleRect = tester.getRect(find.text('退出登录').first);
+    expect(titleRect.top, greaterThanOrEqualTo(surface.top - 0.5));
     await tester.tap(confirm);
     await tester.pumpAndSettle();
     expect(confirmResultSink.value, isTrue);
@@ -299,6 +302,56 @@ void main() {
     expectGlassHugsContent(tester);
     final surface = surfaceRect(tester);
     expect(surface.height, lessThan(800 - 2 * verticalInset));
+  });
+
+  testWidgets('日历列表很长时封顶，取消按钮固定可见', (tester) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Center(
+            child: TextButton(
+              onPressed: () => showGlassDialog<void>(
+                context: context,
+                builder: (_) => AlertDialog(
+                  backgroundColor: Colors.transparent,
+                  elevation: 0,
+                  title: const Text('选择目标日历'),
+                  content: SizedBox(
+                    width: double.maxFinite,
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: [
+                        for (var i = 0; i < 30; i++)
+                          ListTile(title: Text('日历 $i')),
+                      ],
+                    ),
+                  ),
+                  actions: [
+                    TextButton(onPressed: () {}, child: const Text('取消')),
+                  ],
+                ),
+              ),
+              child: const Text('open-many'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open-many'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    final surface = surfaceRect(tester);
+    expect(surface.height, lessThanOrEqualTo(640 - 2 * verticalInset + 0.5));
+    final cancel = tester.getRect(find.widgetWithText(TextButton, '取消'));
+    expect(cancel.bottom, lessThanOrEqualTo(surface.bottom + 0.5));
+    expect(
+      tester.getRect(find.text('选择目标日历')).top,
+      greaterThanOrEqualTo(surface.top - 0.5),
+    );
   });
 
   testWidgets('内容含 ListView(shrinkWrap)（日历选择形态）时不崩且 shrink-wrap', (
