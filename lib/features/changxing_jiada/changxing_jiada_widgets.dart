@@ -9,7 +9,7 @@ import 'changxing_jiada_model.dart';
 /// 统计单元：标签在上、数字在下（design-guidelines §1.1 规则 4）。
 ///
 /// [emphasized] 为当前最重要的状态（「办理中」）：行值档 24 w700 + 主色，
-/// 是有数据时的唯一焦点数字；其余次级统计用轻量档（`titleMedium` 16 w600）
+/// 是有数据时的唯一焦点数字；其余次级统计用轻量档（`listTitle` 16 w600）
 /// 中性色，避免三个数字等权抢眼。零值统一转 `onSurfaceVariant`，让「0」
 /// 安静下来。数字一律等宽（`FontFeature.tabularFigures()`）。
 class ChangxingMetric extends StatelessWidget {
@@ -31,7 +31,7 @@ class ChangxingMetric extends StatelessWidget {
     final zero = value == 0;
     final valueStyle = emphasized
         ? text.rowValue.copyWith(color: zero ? cs.onSurfaceVariant : cs.primary)
-        : (Theme.of(context).textTheme.titleMedium ?? text.rowValue).copyWith(
+        : text.listTitle.copyWith(
             fontWeight: FontWeight.w600,
             color: zero ? cs.onSurfaceVariant : cs.onSurface,
             fontFeatures: const [FontFeature.tabularFigures()],
