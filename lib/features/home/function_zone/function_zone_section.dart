@@ -394,9 +394,7 @@ class _FunctionSearchTileState extends State<_FunctionSearchTile> {
       onTapOutside: _handleTapDownOutside,
       onTapUpOutside: _handleTapUpOutside,
       child: AnimatedContainer(
-        duration: AppMotion.reduced(context)
-            ? Duration.zero
-            : const Duration(milliseconds: 160),
+        duration: AppMotion.reduced(context) ? Duration.zero : AppMotion.quick,
         foregroundDecoration: ShapeDecoration(
           shape: RoundedSuperellipseBorder(
             borderRadius: radius,
