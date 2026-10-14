@@ -356,4 +356,30 @@ void main() {
       expect(isJwcAttachmentUrl('not a url'), isFalse);
     });
   });
+
+  group('table header fallback', () {
+    test('td-only table promotes the first row to header', () {
+      final table = _tableBlock(
+        '<table><tr><td>序号</td><td>课程</td></tr>'
+        '<tr><td>1</td><td>高等数学</td></tr></table>',
+      );
+      expect(_cellAt(table, 0, 0).header, isTrue);
+      expect(_cellAt(table, 0, 1).header, isTrue);
+      expect(_cellAt(table, 1, 0).header, isFalse);
+    });
+
+    test('tables with explicit th keep only the th cells as header', () {
+      final table = _tableBlock(
+        '<table><tr><td>说明</td><td>值</td></tr>'
+        '<tr><th>学分</th><td>4</td></tr></table>',
+      );
+      expect(_cellAt(table, 0, 0).header, isFalse);
+      expect(_cellAt(table, 1, 0).header, isTrue);
+    });
+
+    test('single-row td table is not promoted', () {
+      final table = _tableBlock('<table><tr><td>a</td><td>b</td></tr></table>');
+      expect(table.hasHeaderCells, isFalse);
+    });
+  });
 }

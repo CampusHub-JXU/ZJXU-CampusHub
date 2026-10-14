@@ -29,6 +29,19 @@ const _html = '''
 </div>
 ''';
 
+/// 首行是 td 表头、首列是窄「序号」列的常见教务表格。
+const _htmlWidths = '''
+<div class="newsDetail"><div class="title">关于测试事项的通知</div>
+<div class="leftInfo"><span class="newsInfo">发表时间：26-09-18 10:26:49</span></div>
+<div id="vsb_content"><div class="v_news_content">
+<table>
+<tr><td>序号</td><td>事项说明</td></tr>
+<tr><td>1</td><td>各学院请于本周五前将汇总表报送教务处教学运行科，逾期不予受理</td></tr>
+</table>
+</div></div>
+</div>
+''';
+
 /// 单元格里嵌表格：原生无法忠实还原，应回退原网页。
 const _htmlNested = '''
 <div class="newsDetail"><div class="title">关于测试事项的通知</div>
@@ -176,6 +189,20 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.textContaining('思想政治理论课', findRichText: true), findsOneWidget);
+  });
+
+  testWidgets('narrow index column is narrower than the long text column', (
+    tester,
+  ) async {
+    stubHtml(_htmlWidths);
+    await pump(tester);
+
+    final index = tester.getRect(find.text('序号'));
+    final desc = tester.getRect(find.text('事项说明'));
+    // 「事项说明」列从「序号」列右缘开始；序号列明显窄于说明列。
+    final indexColumnWidth = desc.left - index.left;
+    expect(indexColumnWidth, lessThan(120));
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('nested tables fall back to the original page', (tester) async {

@@ -427,7 +427,8 @@ class _MergedTable extends StatefulWidget {
 class _MergedTableState extends State<_MergedTable> {
   static const double _padH = 10;
   static const double _padV = 8;
-  static const double _minColumnWidth = 88;
+  static const double _minColumnWidth = 56;
+  static const double _defaultColumnWidth = 88;
   static const double _maxColumnWidth = 260;
   static const double _minRowHeight = 34;
 
@@ -464,24 +465,71 @@ class _MergedTableState extends State<_MergedTable> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final columns = table.columnCount < 1 ? 1 : table.columnCount;
-        final columnWidth = (constraints.maxWidth / columns).clamp(
-          _minColumnWidth,
-          _maxColumnWidth,
+        TextPainter painterFor(int i) => TextPainter(
+          text: cellSpans[i],
+          textDirection: TextDirection.ltr,
+          textScaler: textScaler,
         );
-        final tableWidth = columnWidth * columns;
+
+        // 列宽按内容：取该列单列单元格的最长一行（maxIntrinsicWidth），夹在
+        // [_minColumnWidth, _maxColumnWidth]；没有单列单元格的列用默认宽。
+        // 总宽不足可用宽度时按比例放大铺满，超出则横向滚动。
+        final columnWidths = List<double>.filled(columns, 0);
+        for (var i = 0; i < table.cells.length; i++) {
+          final cell = table.cells[i];
+          if (cell.columnSpan != 1) continue;
+          final painter = painterFor(i)..layout();
+          final natural = painter.maxIntrinsicWidth + 2 * _padH;
+          painter.dispose();
+          if (natural > columnWidths[cell.column]) {
+            columnWidths[cell.column] = natural;
+          }
+        }
+        // 被 _maxColumnWidth 截断的列（长文本会换行）优先吃掉多余宽度；
+        // 全部列都放得下时才按比例放大，避免把「序号」这类窄列撑宽。
+        final capped = List<bool>.filled(columns, false);
+        for (var c = 0; c < columns; c++) {
+          final natural = columnWidths[c];
+          capped[c] = natural > _maxColumnWidth;
+          columnWidths[c] = natural == 0
+              ? _defaultColumnWidth
+              : natural.clamp(_minColumnWidth, _maxColumnWidth);
+        }
+        var tableWidth = columnWidths.fold<double>(0, (a, b) => a + b);
+        if (constraints.hasBoundedWidth && tableWidth < constraints.maxWidth) {
+          final extra = constraints.maxWidth - tableWidth;
+          final growable = [
+            for (var c = 0; c < columns; c++)
+              if (capped[c]) c,
+          ];
+          if (growable.isEmpty) {
+            final scale = constraints.maxWidth / tableWidth;
+            for (var c = 0; c < columns; c++) {
+              columnWidths[c] *= scale;
+            }
+          } else {
+            for (final c in growable) {
+              columnWidths[c] += extra / growable.length;
+            }
+          }
+          tableWidth = constraints.maxWidth;
+        }
+        final columnOffsets = List<double>.filled(columns + 1, 0);
+        for (var c = 0; c < columns; c++) {
+          columnOffsets[c + 1] = columnOffsets[c] + columnWidths[c];
+        }
+        double spanWidth(NoticeTableCell cell) =>
+            columnOffsets[cell.column + cell.columnSpan] -
+            columnOffsets[cell.column];
 
         final rowHeights = List<double>.filled(table.rowCount, _minRowHeight);
         final needed = List<double>.filled(table.cells.length, 0);
         for (var i = 0; i < table.cells.length; i++) {
-          final cell = table.cells[i];
-          final contentWidth = columnWidth * cell.columnSpan - 2 * _padH;
-          final painter = TextPainter(
-            text: cellSpans[i],
-            textDirection: TextDirection.ltr,
-            textScaler: textScaler,
-            maxLines: null,
-          )..layout(maxWidth: contentWidth < 1 ? 1 : contentWidth);
+          final contentWidth = spanWidth(table.cells[i]) - 2 * _padH;
+          final painter = painterFor(i)
+            ..layout(maxWidth: contentWidth < 1 ? 1 : contentWidth);
           needed[i] = painter.height + 2 * _padV;
+          painter.dispose();
         }
         // 单行单元格决定行高基线。
         for (var i = 0; i < table.cells.length; i++) {
@@ -517,9 +565,9 @@ class _MergedTableState extends State<_MergedTable> {
         final children = <Widget>[];
         for (var i = 0; i < table.cells.length; i++) {
           final cell = table.cells[i];
-          final left = cell.column * columnWidth;
+          final left = columnOffsets[cell.column];
           final top = rowOffsets[cell.row];
-          final width = cell.columnSpan * columnWidth;
+          final width = spanWidth(cell);
           final height = rowOffsets[cell.row + cell.rowSpan] - top;
           final rect = Rect.fromLTWH(left, top, width, height);
           cellRects.add(rect);

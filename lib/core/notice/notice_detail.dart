@@ -530,10 +530,29 @@ class _BlockCollector {
       final end = cell.column + cell.columnSpan;
       if (end > columnCount) columnCount = end;
     }
+    // 教务处公告的表头多数用 `<td>` 写在首行：整表没有 `<th>` 且不止一行时，
+    // 沿用旧渲染器的约定，把首行视为表头（加粗 + 表头底色 + 读屏 header）。
+    final promoteFirstRow = trs.length > 1 && !cells.any((cell) => cell.header);
     return NoticeTable(
       rowCount: trs.length,
       columnCount: columnCount,
-      cells: List.unmodifiable(cells),
+      cells: List.unmodifiable(
+        promoteFirstRow
+            ? [
+                for (final cell in cells)
+                  cell.row == 0
+                      ? NoticeTableCell(
+                          row: cell.row,
+                          column: cell.column,
+                          rowSpan: cell.rowSpan,
+                          columnSpan: cell.columnSpan,
+                          spans: cell.spans,
+                          header: true,
+                        )
+                      : cell,
+              ]
+            : cells,
+      ),
     );
   }
 }
