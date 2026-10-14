@@ -988,13 +988,13 @@ class CalendarSyncControl extends ChangeNotifier {
       reason ??= CalendarLegacyCleanupFailure.scanLimit;
     }
 
-    final recordedCountByCalendar = <int, int>{};
-    final recordedPairs = <String>{};
+    final recordedTuples = <(int, String, int)>{};
     for (final batch in ledger.allBatches) {
       for (final entry in batch.entries.values) {
-        recordedPairs.add('${batch.calendarId}#${entry.opaqueId}');
-        recordedCountByCalendar[batch.calendarId] =
-            (recordedCountByCalendar[batch.calendarId] ?? 0) + 1;
+        // pending 尚无已确认 eventId，预览中仍归为未确认，不在只读扫描时补记。
+        final eventId = entry.eventId;
+        if (eventId == null) continue;
+        recordedTuples.add((batch.calendarId, entry.opaqueId, eventId));
       }
     }
     final metaById = <int, CalendarOwnedCalendarInfo>{
@@ -1021,11 +1021,18 @@ class CalendarSyncControl extends ChangeNotifier {
       }
       final meta = metaById[calendarId];
       var orphan = 0;
+      var recordedCount = 0;
       for (final event in scan.events) {
-        final recorded = recordedPairs.contains(
-          '$calendarId#${event.opaqueId}',
-        );
-        if (!recorded) orphan++;
+        final recorded = recordedTuples.contains((
+          calendarId,
+          event.opaqueId,
+          event.eventId,
+        ));
+        if (recorded) {
+          recordedCount++;
+        } else {
+          orphan++;
+        }
         candidates.add(
           LegacyCleanupCandidate(
             calendarId: calendarId,
@@ -1042,7 +1049,7 @@ class CalendarSyncControl extends ChangeNotifier {
           calendarId: calendarId,
           displayName: meta?.displayName,
           writable: meta?.writable,
-          recordedCount: recordedCountByCalendar[calendarId] ?? 0,
+          recordedCount: recordedCount,
           orphanCount: orphan,
           ownedCount: scan.events.length,
         ),

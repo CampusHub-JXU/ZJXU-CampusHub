@@ -250,6 +250,72 @@ void main() {
     expect(channel.deleteCalls, 2);
   });
 
+  test('scan counts an unledgered duplicate by the full event tuple', () async {
+    final batch = await ledger.beginPendingBatch(
+      ownerKey: '20240001',
+      calendarId: 42,
+      plans: <CalendarSyncEventPlan>[
+        const CalendarSyncEventPlan(opaqueId: opaqueA, businessKey: 'k'),
+      ],
+    );
+    await ledger.commitBatch(
+      ownerKey: '20240001',
+      generation: batch.generation,
+      eventIds: <String, int>{opaqueA: 10},
+    );
+    channel.owned[42] = <CalendarSyncOwnedEvent>[
+      const CalendarSyncOwnedEvent(opaqueId: opaqueA, eventId: 10),
+      const CalendarSyncOwnedEvent(opaqueId: opaqueA, eventId: 11),
+    ];
+    // 同一 opaqueId / eventId 出现在其他日历也不能算作已记账。
+    channel.owned[43] = <CalendarSyncOwnedEvent>[
+      const CalendarSyncOwnedEvent(opaqueId: opaqueA, eventId: 10),
+    ];
+
+    final scan = await control.scanLegacyOwnedEvents();
+
+    expect(scan.complete, isTrue);
+    expect(scan.totalKnownOwnedCount, 3);
+    expect(scan.recordedOrphanCount, 2);
+    final preview = scan.calendars.firstWhere((c) => c.calendarId == 42);
+    expect(preview.recordedCount, 1);
+    expect(preview.orphanCount, 1);
+    expect(preview.ownedCount, 2);
+    final other = scan.calendars.firstWhere((c) => c.calendarId == 43);
+    expect(other.recordedCount, 0);
+    expect(other.orphanCount, 1);
+    expect(scan.candidates.map((c) => c.recorded), <bool>[true, false, false]);
+    expect(channel.deleteCalls, 0);
+    expect(channel.upsertCalls, 0);
+  });
+
+  test(
+    'scan keeps pending entries unconfirmed without changing the ledger',
+    () async {
+      await ledger.beginPendingBatch(
+        ownerKey: '20240001',
+        calendarId: 42,
+        plans: <CalendarSyncEventPlan>[
+          const CalendarSyncEventPlan(opaqueId: opaqueA, businessKey: 'k'),
+        ],
+      );
+      channel.owned[42] = <CalendarSyncOwnedEvent>[
+        const CalendarSyncOwnedEvent(opaqueId: opaqueA, eventId: 10),
+      ];
+
+      final scan = await control.scanLegacyOwnedEvents();
+
+      expect(scan.calendars.single.recordedCount, 0);
+      expect(scan.calendars.single.orphanCount, 1);
+      expect(scan.totalKnownOwnedCount, 1);
+      expect(scan.recordedOrphanCount, 1);
+      expect(scan.candidates.single.recorded, isFalse);
+      expect(ledger.snapshot.pendingEntryCount, 1);
+      expect(channel.deleteCalls, 0);
+      expect(channel.upsertCalls, 0);
+    },
+  );
+
   test('incomplete scan is never treated as clean', () async {
     channel.scanComplete = false;
     channel.owned[42] = <CalendarSyncOwnedEvent>[
