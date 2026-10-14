@@ -714,6 +714,9 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
   }
 
   Future<_CalendarSyncTarget?> _askCalendarTarget() {
+    final reminderLeadTime = _reminder.reminderMinutes <= 0
+        ? '开始时'
+        : '课前 ${_reminder.reminderMinutes} 分钟';
     return showGlassDialog<_CalendarSyncTarget>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -721,8 +724,8 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
         elevation: 0,
         surfaceTintColor: Colors.transparent,
         title: const Text('开启课表日历同步'),
-        content: const Text(
-          '将把课表写入系统日历，仅在应用前台同步；课前 10 分钟由系统日历提醒（非精确闹钟）。\n\n'
+        content: Text(
+          '将把课表写入系统日历，仅在应用前台同步；$reminderLeadTime由系统日历提醒（非精确闹钟）。\n\n'
           '推荐使用本应用的专属本地日历；部分系统日历应用可能不显示它，也可以改选其他可写日历。\n\n'
           '手动编辑已写入的事件后，下一次课表同步会覆盖这些修改。',
         ),
