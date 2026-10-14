@@ -58,6 +58,8 @@ void main() {
       expect(src.contains('scheduleFrame'), isFalse);
       expect(src.contains('Timer.periodic'), isFalse);
       expect(src.contains('Ticker'), isFalse);
+      expect(src.contains('Timeline.now'), isTrue);
+      expect(src.contains('currentSystemFrameTimeStamp'), isFalse);
     });
   });
 
@@ -142,6 +144,26 @@ void main() {
 
       expect(collector.sampleCount, 2);
       expect(collector.droppedLateSamples, 1);
+    });
+
+    test('采样开始晚于最近一帧时，以采样时刻为偏移基线', () {
+      final env = FakeFrameTimingEnv()..rawMicros = 1000000;
+      final collector = env.build();
+      addTearDown(collector.dispose);
+
+      // 最近一帧发生在 990000；开始采样时单调时钟已到 1000000。
+      collector.start(PerfRunMetadata(scenario: PerfScenario.idleHome));
+      env.deliver(<FrameTiming>[
+        fakeTiming(vsyncStart: 995000), // 较最近一帧新，但早于采样开始。
+        fakeTiming(vsyncStart: 1000000),
+        fakeTiming(vsyncStart: 1008333),
+      ]);
+
+      expect(collector.droppedLateSamples, 1);
+      expect(collector.sampleCount, 2);
+      collector.stop();
+      expect(collector.lastResult!.samples.first.vsyncOffsetMicros, 0);
+      expect(collector.lastResult!.samples.last.vsyncOffsetMicros, 8333);
     });
 
     test('重启后旧回调的迟到批次按 epoch 丢弃，不混入新运行', () {

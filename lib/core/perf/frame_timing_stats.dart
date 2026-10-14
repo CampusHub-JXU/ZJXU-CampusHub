@@ -11,8 +11,9 @@ const String kPerfOverBudgetLabel = '超过120Hz理论间隔比例，非系统�
 
 /// 单帧原始时长的只读快照（毫秒）。
 ///
-/// [vsyncOffsetMicros] 是相对本次运行起点的偏移（原始单调时钟域），
-/// 不是墙钟时间，也不含任何设备/账号信息。
+/// [vsyncOffsetMicros] 是本帧 vsync 起点相对采样开始时刻的偏移，
+/// 单位为微秒，使用 [Timeline.now] 与 [FrameTiming] 共用的原始单调时钟域；
+/// 不是墙钟时间，也不含任何设备/账号信息。起点之前的迟到帧会被丢弃。
 class FrameTimingSample {
   const FrameTimingSample({
     required this.vsyncOffsetMicros,

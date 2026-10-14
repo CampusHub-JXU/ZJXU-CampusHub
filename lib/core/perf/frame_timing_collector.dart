@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' show Timeline;
 import 'dart:ui' show AppLifecycleState, FramePhase, FrameTiming;
 
 import 'package:flutter/foundation.dart';
@@ -150,12 +151,7 @@ class FrameTimingCollector with WidgetsBindingObserver {
            (() =>
                WidgetsBinding.instance.lifecycleState ??
                AppLifecycleState.resumed),
-       _rawFrameClockMicros =
-           rawFrameClockMicros ??
-           (() => SchedulerBinding
-               .instance
-               .currentSystemFrameTimeStamp
-               .inMicroseconds),
+       _rawFrameClockMicros = rawFrameClockMicros ?? (() => Timeline.now),
        _clock = clock ?? DateTime.now;
 
   /// App 级单例。仅在显式 start 时注册回调。
@@ -216,6 +212,9 @@ class FrameTimingCollector with WidgetsBindingObserver {
     _lastMetadata = metadata;
     _scenario = metadata.scenario;
     _startedAt = _clock();
+    // FrameTiming timestamps and Timeline.now share the embedding monotonic
+    // clock. SchedulerBinding.currentSystemFrameTimeStamp is only the most
+    // recent frame timestamp and may predate this sampling run.
     _startRawMicros = _rawFrameClockMicros();
     _samples.clear();
     _droppedLate = 0;
