@@ -312,7 +312,7 @@ class _NotificationChannelSettingsRowState
     with WidgetsBindingObserver {
   bool _checking = true;
 
-  /// 真实权限查询结果；null 表示查询失败，状态未知（不谎称已开启）。
+  /// 真实权限查询结果；null 表示不支持或查询失败，状态未知。
   bool? _enabled;
 
   @override
@@ -337,7 +337,8 @@ class _NotificationChannelSettingsRowState
   Future<void> _refreshStatus() async {
     bool? enabled;
     try {
-      enabled = await AppNotificationService.instance.areNotificationsEnabled();
+      enabled = await AppNotificationService.instance
+          .notificationPermissionStatus();
     } catch (_) {
       enabled = null;
     }

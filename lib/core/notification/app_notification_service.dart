@@ -53,6 +53,11 @@ class AppNotificationService {
 
   Future<void> _initializeOnce() async {
     if (_initialized) return;
+    // 只保护初始化期间的启动详情重放：callback 已交付的点击不再补发。
+    // 不按 payload 永久去重，同一通知后续的真实点击仍逐次交付。
+    final deliveredResponses =
+        <(int?, String?, String?, NotificationResponseType, String?)>{};
+    var capturingLaunch = true;
     const androidSettings = AndroidInitializationSettings(
       '@mipmap/ic_launcher',
     );
@@ -61,6 +66,7 @@ class AppNotificationService {
     await _plugin.initialize(
       initSettings,
       onDidReceiveNotificationResponse: (response) {
+        if (capturingLaunch) deliveredResponses.add(_responseKey(response));
         _dispatchPayload(response.payload);
       },
     );
@@ -69,23 +75,46 @@ class AppNotificationService {
     // 冷启动：App 被通知点击拉起时 flutter_local_notifications 不会触发
     // onDidReceiveNotificationResponse，payload 只能从 launch details 取回；
     // 不补这一步 `second-classroom?id=` 等点击直达会丢失。
-    await captureLaunchPayloadIfAny();
+    try {
+      final response = await _readLaunchResponse();
+      if (response != null &&
+          !deliveredResponses.contains(_responseKey(response))) {
+        _dispatchPayload(response.payload);
+      }
+    } finally {
+      capturingLaunch = false;
+      deliveredResponses.clear();
+    }
 
     _initialized = true;
   }
 
-  /// 冷启动补发：读取启动 intent 里的通知 payload，交给 [onTap] 或暂存为
-  /// [pendingPayload]。无启动通知 / 读取失败（非 Android、通道缺失）时静默返回。
-  @visibleForTesting
-  Future<void> captureLaunchPayloadIfAny() async {
+  Future<NotificationResponse?> _readLaunchResponse() async {
     final NotificationAppLaunchDetails? details;
     try {
       details = await _plugin.getNotificationAppLaunchDetails();
     } catch (_) {
-      return;
+      return null;
     }
-    if (details == null || !details.didNotificationLaunchApp) return;
-    _dispatchPayload(details.notificationResponse?.payload);
+    if (details == null || !details.didNotificationLaunchApp) return null;
+    return details.notificationResponse;
+  }
+
+  static (int?, String?, String?, NotificationResponseType, String?)
+  _responseKey(NotificationResponse response) => (
+    response.id,
+    response.actionId,
+    response.input,
+    response.notificationResponseType,
+    response.payload,
+  );
+
+  @visibleForTesting
+  void debugReset() {
+    _initialized = false;
+    _initializing = null;
+    onTap = null;
+    clearPendingPayload();
   }
 
   void _dispatchPayload(String? payload) {
@@ -108,13 +137,17 @@ class AppNotificationService {
 
   /// 系统通知权限是否开启（播报前置条件；被拒时同步仍更新数据与未读，
   /// 只跳过弹窗，恢复后由待播报队列补发）。
-  Future<bool> areNotificationsEnabled() async {
+  Future<bool> areNotificationsEnabled() async =>
+      await notificationPermissionStatus() == true;
+
+  /// 仅 false 表示明确未授权；平台不支持 / 无返回值时为 null（未知）。
+  Future<bool?> notificationPermissionStatus() async {
     final android = _plugin
         .resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin
         >();
-    if (android == null) return false;
-    return await android.areNotificationsEnabled() ?? false;
+    if (android == null) return null;
+    return await android.areNotificationsEnabled();
   }
 
   /// 教务处通知聚合提醒。同一 [id] 覆盖旧聚合，不在通知栏堆积。

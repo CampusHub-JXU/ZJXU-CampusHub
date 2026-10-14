@@ -16,7 +16,7 @@ void main() {
 
   const wechatChannel = MethodChannel('edu.zjxu.jxucampushub/wechat');
 
-  setUpAll(() {
+  setUp(() {
     // 订阅弹层的通知渠道行要查询真实权限状态，需注册插件实现才走可 mock 的方法通道。
     AndroidFlutterLocalNotificationsPlugin.registerWith();
   });
@@ -313,6 +313,47 @@ void main() {
     // 命中渠道页不弹提示：打开设置页不代表横幅已开启。
     expect(find.byType(SnackBar), findsNothing);
   });
+  for (final status in ['denied', 'unknown', 'unsupported']) {
+    testWidgets('订阅弹层区分权限拒绝与未知或不支持：$status', (tester) async {
+      const channel = MethodChannel(
+        'dexterous.com/flutter/local_notifications',
+      );
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      if (status == 'unsupported') {
+        // 当前目标仍是 Android，但没有对应的平台实现。
+        IOSFlutterLocalNotificationsPlugin.registerWith();
+      }
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        if (call.method == 'areNotificationsEnabled' && status == 'denied') {
+          return false;
+        }
+        return null;
+      });
+      addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SecondClassroomPage(
+            service: _FakeSecondClassroomService(),
+            subscriptionService: _testSubscriptionService(),
+            cacheStore: _MemoryCacheStore(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('已订阅活动名'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('系统通知权限未开启'),
+        status == 'denied' ? findsOneWidget : findsNothing,
+      );
+      expect(
+        find.textContaining('通知状态未知'),
+        status == 'denied' ? findsNothing : findsOneWidget,
+      );
+    });
+  }
 }
 
 SecondClassroomSubscriptionService _testSubscriptionService() {
