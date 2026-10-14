@@ -96,19 +96,47 @@ abstract final class ShuatiBackupSchema {
   /// 原 PWA 恢复整库时丢弃的 AI 设置 key 前缀。
   static const String aiSettingKeyPrefix = 'ai_';
 
+  /// 单份 JSON 的 UTF-8 大小上限。
+  static const int maxJsonBytes = 10 * 1024 * 1024;
+
+  /// 每个集合的条目上限；`questions` 按所有题库桶合并计数。
+  static const int maxEntriesPerCollection = 100000;
+
+  /// 最多报告的问题数；若发现更多问题则整体拒绝备份。
+  static const int maxIssuesReported = 100;
+
   /// 解析并检查备份 JSON 文本。
   static ShuatiBackupInspection inspectJson(String jsonText) {
+    if (jsonText.length > maxJsonBytes) {
+      return const ShuatiBackupInspection.failure('备份 JSON 超过大小上限');
+    }
+    if (utf8.encode(jsonText).length > maxJsonBytes) {
+      return const ShuatiBackupInspection.failure('备份 JSON 超过大小上限');
+    }
     final Object? decoded;
     try {
       decoded = jsonDecode(jsonText);
     } on FormatException catch (error) {
       return ShuatiBackupInspection.failure('备份不是合法 JSON：${error.message}');
     }
-    return inspect(decoded);
+    return _inspectDecoded(decoded);
   }
 
   /// 检查已解析的备份对象（可为 `null`）。
   static ShuatiBackupInspection inspect(Object? decoded) {
+    final int jsonBytes;
+    try {
+      jsonBytes = utf8.encode(jsonEncode(decoded)).length;
+    } on Object {
+      return const ShuatiBackupInspection.failure('备份对象无法编码为 JSON');
+    }
+    if (jsonBytes > maxJsonBytes) {
+      return const ShuatiBackupInspection.failure('备份 JSON 超过大小上限');
+    }
+    return _inspectDecoded(decoded);
+  }
+
+  static ShuatiBackupInspection _inspectDecoded(Object? decoded) {
     if (decoded is! Map) {
       return const ShuatiBackupInspection.failure('备份根节点必须是 JSON 对象');
     }
@@ -116,6 +144,8 @@ abstract final class ShuatiBackupSchema {
       return _inspectMap(Map<String, Object?>.from(decoded));
     } on _InvalidBackup catch (error) {
       return ShuatiBackupInspection.failure(error.message);
+    } on TypeError {
+      return const ShuatiBackupInspection.failure('备份根节点必须是 JSON 对象');
     }
   }
 
@@ -129,13 +159,17 @@ abstract final class ShuatiBackupSchema {
     if (questions is! Map) {
       throw const _InvalidBackup('备份字段 questions 必须是对象');
     }
+    if (questions.length > maxEntriesPerCollection) {
+      throw const _InvalidBackup('备份字段 questions 超过条目上限');
+    }
 
     final issues = <ShuatiBackupIssue>[];
     final banks = _readList(map, 'banks');
     final bankIds = <String>{};
     for (final entry in banks) {
       if (entry is! Map) {
-        issues.add(
+        _addIssue(
+          issues,
           const ShuatiBackupIssue(
             ShuatiBackupIssueCode.malformedEntry,
             '题库条目不是对象，已忽略',
@@ -145,14 +179,16 @@ abstract final class ShuatiBackupSchema {
       }
       final id = entry['id'];
       if (id is! String || id.isEmpty) {
-        issues.add(
+        _addIssue(
+          issues,
           const ShuatiBackupIssue(
             ShuatiBackupIssueCode.missingBankId,
             '题库缺少 id',
           ),
         );
       } else if (!bankIds.add(id)) {
-        issues.add(
+        _addIssue(
+          issues,
           ShuatiBackupIssue(
             ShuatiBackupIssueCode.duplicateBankId,
             '题库 id 重复',
@@ -164,10 +200,21 @@ abstract final class ShuatiBackupSchema {
 
     var questionCount = 0;
     final questionIds = <String>{};
+    var totalQuestionEntries = 0;
+    for (final items in questions.values) {
+      if (items is List) {
+        totalQuestionEntries += items.length;
+        if (totalQuestionEntries > maxEntriesPerCollection) {
+          throw const _InvalidBackup('备份字段 questions 超过条目上限');
+        }
+      }
+    }
+
     for (final bucket in questions.entries) {
       final items = bucket.value;
       if (items is! List) {
-        issues.add(
+        _addIssue(
+          issues,
           ShuatiBackupIssue(
             ShuatiBackupIssueCode.malformedEntry,
             '题库题目列表不是数组',
@@ -179,7 +226,8 @@ abstract final class ShuatiBackupSchema {
       for (final item in items) {
         questionCount++;
         if (item is! Map) {
-          issues.add(
+          _addIssue(
+            issues,
             const ShuatiBackupIssue(
               ShuatiBackupIssueCode.malformedEntry,
               '题目条目不是对象，已忽略',
@@ -220,14 +268,16 @@ abstract final class ShuatiBackupSchema {
     final id = item['id'];
     final questionId = id is String && id.isNotEmpty ? id : null;
     if (questionId == null) {
-      issues.add(
+      _addIssue(
+        issues,
         const ShuatiBackupIssue(
           ShuatiBackupIssueCode.missingQuestionId,
           '题目缺少 id',
         ),
       );
     } else if (!questionIds.add(questionId)) {
-      issues.add(
+      _addIssue(
+        issues,
         ShuatiBackupIssue(
           ShuatiBackupIssueCode.duplicateQuestionId,
           '题目 id 重复',
@@ -238,15 +288,17 @@ abstract final class ShuatiBackupSchema {
 
     final bankId = item['bankId'];
     if (bankId is! String || bankId.isEmpty) {
-      issues.add(
+      _addIssue(
+        issues,
         ShuatiBackupIssue(
           ShuatiBackupIssueCode.missingBankId,
           '题目缺少 bankId',
           detail: questionId,
         ),
       );
-    } else if (bankIds.isNotEmpty && !bankIds.contains(bankId)) {
-      issues.add(
+    } else if (!bankIds.contains(bankId)) {
+      _addIssue(
+        issues,
         ShuatiBackupIssue(
           ShuatiBackupIssueCode.unknownBankId,
           '题目 bankId 不在题库列表中',
@@ -257,7 +309,8 @@ abstract final class ShuatiBackupSchema {
 
     final type = item['type'];
     if (type is! String || !questionTypes.contains(type)) {
-      issues.add(
+      _addIssue(
+        issues,
         ShuatiBackupIssue(
           ShuatiBackupIssueCode.unknownQuestionType,
           '题目 type 未知',
@@ -268,7 +321,8 @@ abstract final class ShuatiBackupSchema {
 
     final answer = item['answer'];
     if (answer is! List || answer.isEmpty) {
-      issues.add(
+      _addIssue(
+        issues,
         ShuatiBackupIssue(
           ShuatiBackupIssueCode.missingAnswer,
           '题目缺少答案',
@@ -287,8 +341,23 @@ abstract final class ShuatiBackupSchema {
   static List<Object?> _readList(Map<String, Object?> map, String field) {
     final value = map[field];
     if (value == null) return const [];
-    if (value is List) return value;
+    if (value is List) {
+      if (value.length > maxEntriesPerCollection) {
+        throw _InvalidBackup('备份字段 $field 超过条目上限');
+      }
+      return value;
+    }
     throw _InvalidBackup('备份字段 $field 必须是数组');
+  }
+
+  static void _addIssue(
+    List<ShuatiBackupIssue> issues,
+    ShuatiBackupIssue issue,
+  ) {
+    if (issues.length >= maxIssuesReported) {
+      throw const _InvalidBackup('备份校验问题超过报告上限');
+    }
+    issues.add(issue);
   }
 }
 
