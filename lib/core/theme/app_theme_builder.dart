@@ -129,7 +129,7 @@ class AppThemeBuilder {
   /// 取代 MD3 默认的「显眼外框 + 胶囊 + 段间分隔线」，供全 App 调用点共用。
   ///
   /// `side = BorderSide.none` 一次去掉外框与段间分隔线（渲染盒用 `side` 画分隔
-  /// 线）；`shape` 改为 [AppRadius.segment] 圆角矩形；选中 `surfaceContainerHigh`
+  /// 线）；`shape` 改为 [AppRadius.segment] 圆角矩形；轨道 + 亮滑块（见下方取色）
   /// / 未选中 `surfaceContainer`，字色 `onSurface` / `onSurfaceVariant`；视觉高度
   /// 40、移动端命中区由框架补到 48；键盘焦点用主色淡化。完整契约与实测见
   /// `docs/segmented-control-style.md`。
@@ -139,6 +139,20 @@ class AppThemeBuilder {
     final TextStyle labelBase = _appleTextTheme.labelLarge!.copyWith(
       fontFamily: 'Inter',
     );
+    // iOS 式「轨道 + 滑块」：轨道取较深的中性面阶，选中项是明显更亮的滑块。
+    // 中性种子下相邻 surfaceContainer 面阶只差 1–3 个色调，选中态几乎不可辨，
+    // 所以浅色滑块直接用最亮的 surfaceContainerLowest（≈白），深色在最高面阶上
+    // 再叠 16% 前景色提亮。
+    final dark = colorScheme.brightness == Brightness.dark;
+    final Color track = dark
+        ? colorScheme.surfaceContainerHigh
+        : colorScheme.surfaceContainerHighest;
+    final Color selectedThumb = dark
+        ? Color.alphaBlend(
+            colorScheme.onSurface.withValues(alpha: 0.16),
+            colorScheme.surfaceContainerHighest,
+          )
+        : colorScheme.surfaceContainerLowest;
     return SegmentedButtonThemeData(
       style: ButtonStyle(
         shape: WidgetStatePropertyAll<OutlinedBorder>(
@@ -163,10 +177,8 @@ class AppThemeBuilder {
           );
         }),
         backgroundColor: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.selected)) {
-            return colorScheme.surfaceContainerHigh;
-          }
-          return colorScheme.surfaceContainer;
+          if (states.contains(WidgetState.selected)) return selectedThumb;
+          return track;
         }),
         foregroundColor: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.disabled)) {

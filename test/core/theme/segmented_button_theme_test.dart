@@ -99,21 +99,20 @@ void main() {
         }
       });
 
-      test('$name：面阶 = surfaceContainer / 选中 surfaceContainerHigh', () {
-        expect(
-          style.backgroundColor!.resolve(_selected),
-          scheme.surfaceContainerHigh,
-        );
-        expect(style.backgroundColor!.resolve(_none), scheme.surfaceContainer);
-        expect(
-          style.backgroundColor!.resolve(_hovered),
-          scheme.surfaceContainer,
-        );
-        // 选中与未选中不是同一块面（可辨识）。
-        expect(
-          style.backgroundColor!.resolve(_selected),
-          isNot(style.backgroundColor!.resolve(_none)),
-        );
+      test('$name：轨道 + 明显更亮的选中滑块', () {
+        final dark = scheme.brightness == Brightness.dark;
+        final track = dark
+            ? scheme.surfaceContainerHigh
+            : scheme.surfaceContainerHighest;
+        expect(style.backgroundColor!.resolve(_none), track);
+        expect(style.backgroundColor!.resolve(_hovered), track);
+        final thumb = style.backgroundColor!.resolve(_selected)!;
+        // 选中滑块与轨道的对比度要足够（中性种子下相邻面阶只差 1–3 个
+        // 色调，对比度约 1.05，肉眼几乎不可辨）。
+        final hi = [thumb.computeLuminance(), track.computeLuminance()]..sort();
+        final ratio = (hi[1] + 0.05) / (hi[0] + 0.05);
+        expect(ratio, greaterThan(1.2), reason: 'thumb $thumb vs track $track');
+        if (!dark) expect(thumb, scheme.surfaceContainerLowest);
       });
 
       test('$name：字色主次分明、disabled 降低对比但不透明', () {
