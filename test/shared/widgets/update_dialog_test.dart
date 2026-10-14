@@ -88,6 +88,8 @@ void main() {
     testWidgets('点「更新」调用一次原生下载并入队', (tester) async {
       transport.startResult = const ApkUpdateState(
         phase: ApkUpdatePhase.enqueued,
+        version: '0.3.0',
+        releaseTag: 'v0.3.0',
         requestKey: 'k',
       );
       await open(tester, managedTestRelease());
@@ -107,6 +109,8 @@ void main() {
         phase: ApkUpdatePhase.downloading,
         bytesDownloaded: 1024 * 1024,
         totalBytes: 2 * 1024 * 1024,
+        version: '0.3.0',
+        releaseTag: 'v0.3.0',
         requestKey: 'k',
       );
       await open(tester, managedTestRelease());
@@ -124,6 +128,8 @@ void main() {
       transport.active = const ApkUpdateState(
         phase: ApkUpdatePhase.downloading,
         bytesDownloaded: 512 * 1024,
+        version: '0.3.0',
+        releaseTag: 'v0.3.0',
         requestKey: 'k',
       );
       await open(tester, managedTestRelease());
@@ -141,6 +147,8 @@ void main() {
     testWidgets('就绪后手动「安装更新」，成功只表示已发起', (tester) async {
       transport.active = const ApkUpdateState(
         phase: ApkUpdatePhase.readyToInstall,
+        version: '0.3.0',
+        releaseTag: 'v0.3.0',
         requestKey: 'k',
       );
       await open(tester, managedTestRelease());
@@ -151,15 +159,84 @@ void main() {
       await tester.pump();
 
       expect(transport.installCalls, 1);
+      expect(transport.lastExpectedReleaseTag, 'v0.3.0');
       expect(find.text('已打开系统安装确认'), findsOneWidget);
       expect(find.textContaining('已安装'), findsNothing);
       expect(find.textContaining('更新成功'), findsNothing);
       await disposeDialog(tester);
     });
 
+    testWidgets('旧受管版本与新 Release 不同则禁止安装并可重新下载', (tester) async {
+      transport.active = const ApkUpdateState(
+        phase: ApkUpdatePhase.readyToInstall,
+        version: '0.2.9',
+        releaseTag: 'v0.2.9',
+        requestKey: 'old',
+      );
+      await open(tester, managedTestRelease(changelog: '新版本专属日志'));
+
+      expect(find.text('已有更新 v0.2.9'), findsOneWidget);
+      expect(find.text('新版本专属日志'), findsNothing);
+      expect(find.widgetWithText(FilledButton, '安装更新'), findsNothing);
+      expect(transport.installCalls, 0);
+      await tester.tap(find.widgetWithText(FilledButton, '重新下载 v0.3.0'));
+      await tester.pump();
+      expect(transport.startCalls, 1);
+      expect(transport.lastRequest?.version, '0.3.0');
+      await disposeDialog(tester);
+    });
+
+    testWidgets('同版本但 Release tag 不同也不提供安装入口', (tester) async {
+      transport.active = const ApkUpdateState(
+        phase: ApkUpdatePhase.readyToInstall,
+        version: '0.3.0',
+        releaseTag: 'v0.3.0-old',
+        requestKey: 'old',
+      );
+      await open(tester, managedTestRelease());
+
+      expect(find.widgetWithText(FilledButton, '安装更新'), findsNothing);
+      expect(find.widgetWithText(FilledButton, '重新下载 v0.3.0'), findsOneWidget);
+      await disposeDialog(tester);
+    });
+
+    testWidgets('未获取 Release 时仍可恢复已有安装包并安装', (tester) async {
+      transport.active = const ApkUpdateState(
+        phase: ApkUpdatePhase.readyToInstall,
+        version: '0.2.9',
+        releaseTag: 'v0.2.9',
+        requestKey: 'old',
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => TextButton(
+              onPressed: () =>
+                  showManagedUpdateDialog(context, controller: controller),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('已有更新 v0.2.9'), findsOneWidget);
+      expect(find.text('发布时间：'), findsNothing);
+      await tester.tap(find.widgetWithText(FilledButton, '安装更新'));
+      await tester.pump();
+      expect(transport.installCalls, 1);
+      expect(transport.lastExpectedReleaseTag, 'v0.2.9');
+      expect(transport.startCalls, 0);
+      await disposeDialog(tester);
+    });
+
     testWidgets('需要安装权限时给出明确原因与授权入口', (tester) async {
       transport.active = const ApkUpdateState(
         phase: ApkUpdatePhase.permissionRequired,
+        version: '0.3.0',
+        releaseTag: 'v0.3.0',
         requestKey: 'k',
       );
       await open(tester, managedTestRelease());
@@ -176,6 +253,8 @@ void main() {
     testWidgets('installerOpened 只说明已打开系统确认，不谎称安装成功', (tester) async {
       transport.active = const ApkUpdateState(
         phase: ApkUpdatePhase.installerOpened,
+        version: '0.3.0',
+        releaseTag: 'v0.3.0',
         requestKey: 'k',
       );
       await open(tester, managedTestRelease());
@@ -190,6 +269,8 @@ void main() {
       transport.active = const ApkUpdateState(
         phase: ApkUpdatePhase.failed,
         reason: ApkUpdateFailureReason.network,
+        version: '0.3.0',
+        releaseTag: 'v0.3.0',
         requestKey: 'k',
       );
       await open(tester, managedTestRelease());
@@ -204,7 +285,12 @@ void main() {
       ApkUpdatePhase.installerOpened,
     ]) {
       testWidgets('从 ${previous.name} 返回前台可安装且不重新下载', (tester) async {
-        transport.active = ApkUpdateState(phase: previous, requestKey: 'k');
+        transport.active = ApkUpdateState(
+          phase: previous,
+          version: '0.3.0',
+          releaseTag: 'v0.3.0',
+          requestKey: 'k',
+        );
         await open(tester, managedTestRelease());
         tester.binding.handleAppLifecycleStateChanged(
           AppLifecycleState.inactive,
@@ -213,6 +299,8 @@ void main() {
         // Native reconciles real permission / installer return on resume.
         transport.active = const ApkUpdateState(
           phase: ApkUpdatePhase.readyToInstall,
+          version: '0.3.0',
+          releaseTag: 'v0.3.0',
           requestKey: 'k',
         );
         tester.binding.handleAppLifecycleStateChanged(
@@ -232,6 +320,8 @@ void main() {
     testWidgets('取消后显示已取消并可手动重试', (tester) async {
       transport.active = const ApkUpdateState(
         phase: ApkUpdatePhase.canceled,
+        version: '0.3.0',
+        releaseTag: 'v0.3.0',
         requestKey: 'k',
       );
       await open(tester, managedTestRelease());
@@ -249,6 +339,8 @@ void main() {
         phase: ApkUpdatePhase.downloading,
         bytesDownloaded: 1024,
         totalBytes: 2048,
+        version: '0.3.0',
+        releaseTag: 'v0.3.0',
         requestKey: 'k',
       );
       await open(tester, managedTestRelease());
@@ -267,6 +359,8 @@ void main() {
         phase: ApkUpdatePhase.downloading,
         bytesDownloaded: 1024,
         totalBytes: 2048,
+        version: '0.3.0',
+        releaseTag: 'v0.3.0',
         requestKey: 'k',
       );
       await open(tester, managedTestRelease());
@@ -285,6 +379,8 @@ void main() {
         phase: ApkUpdatePhase.downloading,
         bytesDownloaded: 1024,
         totalBytes: 2048,
+        version: '0.3.0',
+        releaseTag: 'v0.3.0',
         requestKey: 'k',
       );
       await open(tester, managedTestRelease());

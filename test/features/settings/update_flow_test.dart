@@ -18,21 +18,26 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   const channel = MethodChannel(ApkUpdateProtocol.channelName);
+  Map<String, Object?>? nativeState;
 
   setUp(() async {
     await resetTestEnvironment();
     ApkUpdateController.instance.debugReset();
+    nativeState = null;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
           switch (call.method) {
             case ApkUpdateProtocol.methodIsSupported:
               return true;
             case ApkUpdateProtocol.methodQueryActiveUpdate:
+              return nativeState;
             case ApkUpdateProtocol.methodStartDownload:
               return <String, Object?>{
                 'phase': 'downloading',
                 'bytesDownloaded': 1024 * 1024,
                 'totalBytes': 2 * 1024 * 1024,
+                'version': '0.3.0',
+                'releaseTag': 'v0.3.0',
                 'requestKey': 'k',
               };
             case ApkUpdateProtocol.methodCancelActiveUpdate:
@@ -58,6 +63,14 @@ void main() {
       return managedTestRelease();
     };
     UpdateChecker.instance.availableRelease.value = managedTestRelease();
+    nativeState = <String, Object?>{
+      'phase': 'downloading',
+      'version': '0.3.0',
+      'releaseTag': 'v0.3.0',
+      'bytesDownloaded': 1024 * 1024,
+      'totalBytes': 2 * 1024 * 1024,
+      'requestKey': 'k',
+    };
     ApkUpdateController.instance.state.value = const ApkUpdateState(
       phase: ApkUpdatePhase.downloading,
       bytesDownloaded: 1024 * 1024,
@@ -78,6 +91,36 @@ void main() {
     expect(find.text('1.0 MB / 2.0 MB'), findsOneWidget);
 
     // 销毁弹窗以取消轮询定时器。
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
+
+  testWidgets('冷启动未缓存 Release 且离线时直接恢复原生已有更新', (tester) async {
+    var networkCalled = false;
+    UpdateService.instance.debugReleaseProvider = () async {
+      networkCalled = true;
+      throw StateError('offline');
+    };
+    nativeState = <String, Object?>{
+      'phase': 'readyToInstall',
+      'version': '0.2.9',
+      'releaseTag': 'v0.2.9',
+      'requestKey': 'old',
+    };
+    expect(ApkUpdateController.instance.state.value.phase, ApkUpdatePhase.idle);
+    expect(UpdateChecker.instance.availableRelease.value, isNull);
+
+    await pumpPage(tester, const SettingsPage());
+    await tester.scrollUntilVisible(find.text('检查更新'), 300);
+    await tester.tap(find.text('检查更新'));
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+
+    expect(networkCalled, isFalse);
+    expect(find.text('已有更新 v0.2.9'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, '安装更新'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
   });

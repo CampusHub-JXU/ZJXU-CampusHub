@@ -61,14 +61,22 @@ class SettingsPage extends StatelessWidget {
   }
 
   Future<void> _checkForUpdate(BuildContext context) async {
-    // 已有受管下载在途：直接重开弹窗（弹窗会查询原生真实状态），
-    // 不做多余的版本检查、也不会新建下载。
-    final activeRelease = UpdateChecker.instance.availableRelease.value;
-    if (activeRelease != null &&
-        ApkUpdateController.instance.state.value.phase.isActive) {
-      await showUpdateDialog(context, activeRelease);
-      return;
+    // 先查询持久化的原生请求，冷启动离线也能取消下载或继续安装。
+    final controller = ApkUpdateController.instance;
+    if (await controller.isSupported()) {
+      await controller.refreshActiveUpdate();
+      if (!context.mounted) return;
+      if (controller.state.value.phase.isActive) {
+        final release = UpdateChecker.instance.availableRelease.value;
+        if (release != null) {
+          await showUpdateDialog(context, release);
+        } else {
+          await showManagedUpdateDialog(context);
+        }
+        return;
+      }
     }
+    if (!context.mounted) return;
 
     final result = await UpdateChecker.instance.check();
     if (!context.mounted) return;

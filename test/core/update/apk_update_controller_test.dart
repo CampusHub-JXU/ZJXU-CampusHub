@@ -63,7 +63,7 @@ class _FakeApkUpdateTransport implements ApkUpdateTransport {
   }
 
   @override
-  Future<bool> requestInstall() async {
+  Future<bool> requestInstall({String? expectedReleaseTag}) async {
     installCalls++;
     return installOk;
   }
@@ -315,6 +315,7 @@ void main() {
         'bytesDownloaded': 42,
         'totalBytes': 100,
         'version': '0.2.7',
+        'releaseTag': 'v0.2.7',
         'requestKey': 'v1:12345:arm64-v8a:a.apk:nosha',
         'assetFileName': 'a.apk',
         'unexpected': 'ignored',
@@ -324,6 +325,7 @@ void main() {
       expect(state.totalBytes, 100);
       expect(state.reason, isNull);
       expect(state.version, '0.2.7');
+      expect(state.releaseTag, 'v0.2.7');
     });
 
     test('malformed / unknown phase fail closed to unavailable', () {
@@ -538,6 +540,23 @@ void main() {
     tearDown(() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, null);
+    });
+
+    test('installation forwards the displayed release tag to native', () async {
+      MethodCall? seen;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            seen = call;
+            return true;
+          });
+      expect(
+        await transport.requestInstall(expectedReleaseTag: 'v0.2.7'),
+        isTrue,
+      );
+      expect(seen!.method, ApkUpdateProtocol.methodRequestInstall);
+      expect(seen!.arguments, <String, Object?>{
+        'expectedReleaseTag': 'v0.2.7',
+      });
     });
 
     test('missing plugin degrades to unavailable / false / null', () async {

@@ -111,6 +111,7 @@ class ApkUpdateState {
     this.totalBytes,
     this.reason,
     this.version,
+    this.releaseTag,
     this.requestKey,
     this.assetFileName,
   });
@@ -131,6 +132,9 @@ class ApkUpdateState {
   /// 展示用版本名（`releaseVersion`，非 versionCode）。
   final String? version;
 
+  /// 当前受管资产 URL 对应的 Release tag。
+  final String? releaseTag;
+
   /// 当前受管请求的稳定 idempotency key（原生持久化的同一 id）。
   final String? requestKey;
 
@@ -144,6 +148,7 @@ class ApkUpdateState {
     ApkUpdateFailureReason? reason,
     bool clearReason = false,
     String? version,
+    String? releaseTag,
     String? requestKey,
     String? assetFileName,
   }) {
@@ -153,6 +158,7 @@ class ApkUpdateState {
       totalBytes: totalBytes ?? this.totalBytes,
       reason: clearReason ? null : (reason ?? this.reason),
       version: version ?? this.version,
+      releaseTag: releaseTag ?? this.releaseTag,
       requestKey: requestKey ?? this.requestKey,
       assetFileName: assetFileName ?? this.assetFileName,
     );
@@ -166,6 +172,7 @@ class ApkUpdateState {
       other.totalBytes == totalBytes &&
       other.reason == reason &&
       other.version == version &&
+      other.releaseTag == releaseTag &&
       other.requestKey == requestKey &&
       other.assetFileName == assetFileName;
 
@@ -176,6 +183,7 @@ class ApkUpdateState {
     totalBytes,
     reason,
     version,
+    releaseTag,
     requestKey,
     assetFileName,
   );
@@ -199,6 +207,7 @@ abstract final class ApkUpdateStateCodec {
     'totalBytes',
     'reason',
     'version',
+    'releaseTag',
     'requestKey',
     'assetFileName',
   };
@@ -232,6 +241,10 @@ abstract final class ApkUpdateStateCodec {
       reason: reason,
       version: _boundedString(
         raw['version'],
+        ApkUpdateProtocol.maxVersionLength,
+      ),
+      releaseTag: _boundedString(
+        raw['releaseTag'],
         ApkUpdateProtocol.maxVersionLength,
       ),
       requestKey: _boundedString(
@@ -443,7 +456,7 @@ abstract interface class ApkUpdateTransport {
   Future<ApkUpdateState> cancelActiveUpdate();
 
   /// 调起系统安装确认；返回是否已成功发起（**不代表**用户已安装）。
-  Future<bool> requestInstall();
+  Future<bool> requestInstall({String? expectedReleaseTag});
 
   /// 打开「未知来源安装」授权设置页；返回是否已发起。
   Future<bool> openInstallPermissionSettings();
@@ -508,16 +521,20 @@ class MethodChannelApkUpdateTransport implements ApkUpdateTransport {
       _invokeState(ApkUpdateProtocol.methodCancelActiveUpdate);
 
   @override
-  Future<bool> requestInstall() => safeInvoke<bool, bool>(
-    _channel,
-    ApkUpdateProtocol.methodRequestInstall,
-    map: (value) => value ?? false,
-    missing: false,
-    failed: false,
-    label: '调起系统安装',
-    level: LogLevel.warn,
-    category: LogCategory.general,
-  );
+  Future<bool> requestInstall({String? expectedReleaseTag}) =>
+      safeInvoke<bool, bool>(
+        _channel,
+        ApkUpdateProtocol.methodRequestInstall,
+        arguments: expectedReleaseTag == null
+            ? null
+            : <String, Object?>{'expectedReleaseTag': expectedReleaseTag},
+        map: (value) => value ?? false,
+        missing: false,
+        failed: false,
+        label: '调起系统安装',
+        level: LogLevel.warn,
+        category: LogCategory.general,
+      );
 
   @override
   Future<bool> openInstallPermissionSettings() => safeInvoke<bool, bool>(
@@ -643,8 +660,10 @@ class ApkUpdateController {
   /// 原生未发起安装器（例如缺「未知来源」权限）时返回 false，并以**原生权威状态**
   /// 为准刷新（保留 `permissionRequired` / `readyToInstall`），绝不覆盖成 failed；
   /// UI 可据此引导用户打开权限设置页并在回前台后重试安装。
-  Future<bool> requestInstall() async {
-    final ok = await _transport.requestInstall();
+  Future<bool> requestInstall({String? expectedReleaseTag}) async {
+    final ok = await _transport.requestInstall(
+      expectedReleaseTag: expectedReleaseTag,
+    );
     if (!ok) {
       final epoch = ++_refreshEpoch;
       final next = await _transport.queryActiveUpdate();

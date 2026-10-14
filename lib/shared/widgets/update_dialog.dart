@@ -36,10 +36,23 @@ Future<void> showUpdateDialog(
   );
 }
 
-class _UpdateDialogContent extends StatefulWidget {
-  const _UpdateDialogContent({required this.release, required this.controller});
+/// 无需联网获取 Release，即可恢复原生已有下载 / 安装控制。
+Future<void> showManagedUpdateDialog(
+  BuildContext context, {
+  ApkUpdateController? controller,
+}) {
+  return showGlassDialog<void>(
+    context: context,
+    builder: (_) => _UpdateDialogContent(
+      controller: controller ?? ApkUpdateController.instance,
+    ),
+  );
+}
 
-  final AppRelease release;
+class _UpdateDialogContent extends StatefulWidget {
+  const _UpdateDialogContent({this.release, required this.controller});
+
+  final AppRelease? release;
   final ApkUpdateController controller;
 
   @override
@@ -72,12 +85,26 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
 
   /// 版本是否提供了**可信的**规范安装包资产（可走应用内受管下载）。
   bool get _hasCanonicalAsset {
-    final url = widget.release.canonicalAssetUrl;
+    final url = widget.release?.canonicalAssetUrl;
     return url != null && ApkUpdateUrlPolicy.isCanonicalAssetUrl(url);
   }
 
   /// 是否可在本弹窗内走应用内受管下载 / 安装。
-  bool get _canManaged => _supported && _hasCanonicalAsset;
+  bool get _canManaged =>
+      _supported && (_hasCanonicalAsset || _state.phase.isActive);
+
+  bool get _releaseMatchesManaged {
+    final release = widget.release;
+    if (release == null || !_state.phase.isActive) return true;
+    final tag = _state.releaseTag;
+    final url = release.canonicalAssetUrl;
+    if (tag != null && url != null && _hasCanonicalAsset) {
+      return Uri.parse(url).pathSegments[4] == tag;
+    }
+    return false;
+  }
+
+  String get _managedVersion => _state.version ?? _state.releaseTag ?? '未知版本';
 
   @override
   void initState() {
@@ -147,14 +174,18 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
 
   // ── 原生调用 ──────────────────────────────────────────────────────────────
 
-  Future<void> _startDownload() =>
-      _run(() => _controller.startDownload(widget.release));
+  Future<void> _startDownload() => _run(() async {
+    final release = widget.release;
+    if (release != null) await _controller.startDownload(release);
+  });
 
   Future<void> _cancelDownload() =>
       _run(() => _controller.cancelActiveUpdate());
 
   Future<void> _requestInstall() => _run(() async {
-    await _controller.requestInstall();
+    if (_releaseMatchesManaged) {
+      await _controller.requestInstall(expectedReleaseTag: _state.releaseTag);
+    }
   });
 
   Future<void> _openInstallPermissionSettings() => _run(() async {
@@ -180,7 +211,7 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
     final messenger = ScaffoldMessenger.maybeOf(context);
     final navigator = Navigator.of(context);
     try {
-      final uri = Uri.tryParse(widget.release.launchUrl);
+      final uri = Uri.tryParse(widget.release?.launchUrl ?? '');
       if (uri == null) {
         if (messenger != null) AppFeedback.toastOn(messenger, '更新链接无效');
         return;
@@ -202,16 +233,17 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
 
   @override
   Widget build(BuildContext context) {
-    final publishedAt = _formatDate(widget.release.publishedAt);
-    final changelog = widget.release.changelog.isEmpty
-        ? '暂无更新说明'
-        : widget.release.changelog;
+    final release = widget.release;
+    final showRelease = release != null && _releaseMatchesManaged;
+    final title = showRelease
+        ? '发现新版本 v${release.version}'
+        : '已有更新 v$_managedVersion';
 
     return AlertDialog(
       backgroundColor: Colors.transparent,
       elevation: 0,
       surfaceTintColor: Colors.transparent,
-      title: Text('发现新版本 v${widget.release.version}'),
+      title: Text(title),
       content: SizedBox(
         width: 420,
         child: SingleChildScrollView(
@@ -219,15 +251,31 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('发布时间：$publishedAt', style: context.appText.secondary),
+              if (showRelease)
+                Text(
+                  '发布时间：${_formatDate(release.publishedAt)}',
+                  style: context.appText.secondary,
+                ),
               if (_bootstrapped) ...[
                 const SizedBox(height: AppSpacing.md),
                 _buildManagedSection(context),
               ],
-              const SizedBox(height: AppSpacing.md),
-              Text('更新内容', style: context.appText.label),
-              const SizedBox(height: AppSpacing.sm),
-              SelectableText(changelog, style: context.appText.secondary),
+              if (showRelease) ...[
+                const SizedBox(height: AppSpacing.md),
+                Text('更新内容', style: context.appText.label),
+                const SizedBox(height: AppSpacing.sm),
+                SelectableText(
+                  release.changelog.isEmpty ? '暂无更新说明' : release.changelog,
+                  style: context.appText.secondary,
+                ),
+              ],
+              if (!_releaseMatchesManaged) ...[
+                const SizedBox(height: AppSpacing.md),
+                Text(
+                  '现有更新与 v${release!.version} 不同；可取消现有更新，或重新下载该版本。',
+                  style: context.appText.secondary,
+                ),
+              ],
             ],
           ),
         ),
@@ -243,7 +291,10 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
     if (!_supported) {
       return Text('当前平台不支持应用内更新，可通过下方按钮前往下载页。', style: text.meta);
     }
-    if (!_hasCanonicalAsset) {
+    if (widget.release == null && !_state.phase.isActive) {
+      return Text('当前没有可继续的更新，请关闭后重新检查更新。', style: text.meta);
+    }
+    if (!_hasCanonicalAsset && !_state.phase.isActive) {
       return Text('该版本未提供可校验的安装包，无法应用内下载；可通过下方按钮前往下载页。', style: text.meta);
     }
 
@@ -366,7 +417,26 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
     // 能力探测未完成 / 不支持 / 资产不可信时都先给降级入口，避免弹窗在探测
     // 期间没有任何可操作按钮。
     if (!_canManaged) {
-      return [_dismissButton(context), _legacyButton(context, filled: true)];
+      return [
+        _dismissButton(context),
+        if (widget.release != null) _legacyButton(context, filled: true),
+      ];
+    }
+
+    if (!_releaseMatchesManaged) {
+      return [
+        _cancelButton(context),
+        _dismissButton(context),
+        if (_hasCanonicalAsset)
+          _primaryButton(
+            context,
+            '重新下载 v${widget.release!.version}',
+            _startDownload,
+          ),
+      ];
+    }
+    if (widget.release == null && !_state.phase.isActive) {
+      return [_dismissButton(context)];
     }
 
     switch (_state.phase) {
@@ -434,7 +504,7 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
 
   /// 降级为外部浏览器下载 / 版本页（仅在无法应用内受管或明确失败时出现）。
   Widget _legacyButton(BuildContext context, {required bool filled}) {
-    final label = widget.release.hasDownloadUrl ? '下载 APK' : '查看版本';
+    final label = widget.release?.hasDownloadUrl == true ? '下载 APK' : '查看版本';
     if (filled) {
       return FilledButton(
         onPressed: _busy ? null : () => unawaited(_openLegacyLink(context)),

@@ -29,6 +29,7 @@ class FakeApkUpdateTransport implements ApkUpdateTransport {
   int permissionSettingsCalls = 0;
 
   ApkUpdateRequest? lastRequest;
+  String? lastExpectedReleaseTag;
 
   /// 主动推进原生「当前受管状态」（模拟下载在后台推进）。
   set active(ApkUpdateState value) => _active = value;
@@ -61,8 +62,9 @@ class FakeApkUpdateTransport implements ApkUpdateTransport {
   }
 
   @override
-  Future<bool> requestInstall() async {
+  Future<bool> requestInstall({String? expectedReleaseTag}) async {
     installCalls++;
+    lastExpectedReleaseTag = expectedReleaseTag;
     return installResult;
   }
 
