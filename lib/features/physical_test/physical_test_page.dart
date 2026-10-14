@@ -9,6 +9,7 @@ import '../../core/theme/app_design_tokens.dart';
 import '../../core/theme/app_typography.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_empty_view.dart';
+import '../../shared/widgets/app_filter_chips.dart';
 import '../../shared/widgets/app_error_view.dart';
 import '../../shared/widgets/app_status_tag.dart';
 import '../../shared/widgets/auth_required_view.dart';
@@ -124,6 +125,8 @@ class _PhysicalTestPageState extends State<PhysicalTestPage> {
   Future<void> _load({bool forceRefresh = false}) async {
     final loadId = ++_loadId;
     final currentEpoch = _authEpoch;
+    // 刷新前用户选中的学年；仅当旧快照仍在（身份变化会先清空快照）时才有值。
+    final previousYear = _selectedAcademicYear();
 
     setState(() {
       _loading = true;
@@ -146,7 +149,7 @@ class _PhysicalTestPageState extends State<PhysicalTestPage> {
         _snapshot = snapshot;
         _authRequired = false;
         _error = null;
-        _selectedIndex = _latestRecordIndex(snapshot.records);
+        _selectedIndex = _restoreSelectedIndex(snapshot.records, previousYear);
       });
     } on CasAuthExpiredException {
       if (!mounted || loadId != _loadId || currentEpoch != _authEpoch) {
@@ -176,6 +179,30 @@ class _PhysicalTestPageState extends State<PhysicalTestPage> {
         setState(() => _loading = false);
       }
     }
+  }
+
+  /// 当前选中记录的学年；无快照 / 越界返回 null。
+  String? _selectedAcademicYear() {
+    final records = _snapshot?.records;
+    if (records == null ||
+        _selectedIndex < 0 ||
+        _selectedIndex >= records.length) {
+      return null;
+    }
+    return records[_selectedIndex].academicYear;
+  }
+
+  /// 刷新后沿用用户选中的学年（按学年字符串匹配、取第一条）；
+  /// 新快照里已没有该学年（或此前无选择）则回到最新学年。
+  int _restoreSelectedIndex(
+    List<PhysicalTestRecord> records,
+    String? previousYear,
+  ) {
+    if (previousYear != null) {
+      final index = records.indexWhere((r) => r.academicYear == previousYear);
+      if (index >= 0) return index;
+    }
+    return _latestRecordIndex(records);
   }
 
   @override
@@ -350,29 +377,24 @@ class _PhysicalTestPageState extends State<PhysicalTestPage> {
     );
   }
 
-  /// 历史学年选择器：横向可滑的轻量 chip，选中项用 `secondaryContainer` 轻色面
-  /// 与加粗字重表达，不画描边 / 分隔线；每个记录一格，重复学年也不合并。
+  /// 历史学年选择器：共享的 [AppFilterChips]（与成绩页学期 chip 同款），
+  /// 值是记录下标；每个记录一格，重复学年也不合并。
   Widget _buildYearSelector(
     List<PhysicalTestRecord> records,
     int selectedIndex,
   ) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          for (var i = 0; i < records.length; i++) ...[
-            if (i > 0) const SizedBox(width: AppSpacing.sm),
-            _YearChip(
-              key: ValueKey('physical_test_year_chip_$i'),
-              label: records[i].academicYear.isEmpty
-                  ? '学年未知'
-                  : records[i].academicYear,
-              selected: i == selectedIndex,
-              onTap: () => setState(() => _selectedIndex = i),
-            ),
-          ],
-        ],
-      ),
+    return AppFilterChips<int>(
+      key: const Key('physical_test_year_chips'),
+      padding: EdgeInsets.zero,
+      options: [
+        for (var i = 0; i < records.length; i++)
+          AppFilterOption<int>(
+            i,
+            records[i].academicYear.isEmpty ? '学年未知' : records[i].academicYear,
+          ),
+      ],
+      selected: selectedIndex,
+      onSelected: (i) => setState(() => _selectedIndex = i),
     );
   }
 
@@ -513,50 +535,6 @@ class _PhysicalTestPageState extends State<PhysicalTestPage> {
         SizedBox(height: AppSpacing.lg),
         SkeletonBox(height: 208, radius: 16),
       ],
-    );
-  }
-}
-
-/// 历史学年 chip：轻量可点胶囊，选中 / 未选中只换低对比色面与字重，不画线。
-class _YearChip extends StatelessWidget {
-  const _YearChip({
-    super.key,
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final text = context.appText;
-    return Semantics(
-      button: true,
-      selected: selected,
-      child: Material(
-        color: selected ? cs.secondaryContainer : cs.surfaceContainerHighest,
-        shape: const StadiumBorder(),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: text.secondary.copyWith(
-                color: selected ? cs.onSecondaryContainer : cs.onSurfaceVariant,
-                fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-              ),
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

@@ -57,6 +57,17 @@ PhysicalTestRecord _record({
   );
 }
 
+/// 历年选择器里第 [index] 个 chip（共享 `AppFilterChips` 渲染的 `ChoiceChip`）。
+Finder _yearChip(int index) => find
+    .descendant(
+      of: find.byKey(const Key('physical_test_year_chips')),
+      matching: find.byType(ChoiceChip),
+    )
+    .at(index);
+
+bool _chipSelected(WidgetTester tester, int index) =>
+    tester.widget<ChoiceChip>(_yearChip(index)).selected;
+
 PhysicalTestSnapshot _multiYearSnapshot() {
   return PhysicalTestSnapshot(
     records: [
@@ -417,23 +428,14 @@ void main() {
 
     // 全部历史学年都可发现（横向选择器 + 每个记录一格）。
     expect(find.text('历年'), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('physical_test_year_chip_0')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey('physical_test_year_chip_1')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey('physical_test_year_chip_2')),
-      findsOneWidget,
-    );
+    expect(_yearChip(0), findsOneWidget);
+    expect(_yearChip(1), findsOneWidget);
+    expect(_yearChip(2), findsOneWidget);
     expect(find.text('2024-2025'), findsOneWidget);
     expect(find.text('2023-2024'), findsOneWidget);
 
     // 切到历史学年：读数与明细同步切换，不再显示最新学年内容。
-    await tester.tap(find.byKey(const ValueKey('physical_test_year_chip_1')));
+    await tester.tap(_yearChip(1));
     await tester.pumpAndSettle();
 
     expect(_readout('2024-2025'), findsOneWidget);
@@ -459,7 +461,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // 2023-2024 无总分、无等级、无项目。
-    await tester.tap(find.byKey(const ValueKey('physical_test_year_chip_2')));
+    await tester.tap(_yearChip(2));
     await tester.pumpAndSettle();
 
     expect(find.text('--'), findsOneWidget);
@@ -557,17 +559,11 @@ void main() {
     await tester.pumpAndSettle();
 
     // 两个记录各自一格，不因学年同名被合并 / 丢弃。
-    expect(
-      find.byKey(const ValueKey('physical_test_year_chip_0')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey('physical_test_year_chip_1')),
-      findsOneWidget,
-    );
+    expect(_yearChip(0), findsOneWidget);
+    expect(_yearChip(1), findsOneWidget);
     expect(find.text('第一份记录'), findsOneWidget);
 
-    await tester.tap(find.byKey(const ValueKey('physical_test_year_chip_1')));
+    await tester.tap(_yearChip(1));
     await tester.pumpAndSettle();
 
     expect(find.text('第二份记录'), findsOneWidget);
@@ -593,7 +589,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // 先选到历史学年。
-    await tester.tap(find.byKey(const ValueKey('physical_test_year_chip_1')));
+    await tester.tap(_yearChip(1));
     await tester.pumpAndSettle();
     expect(find.text('78'), findsOneWidget);
 
@@ -608,6 +604,68 @@ void main() {
     expect(find.text('86.5'), findsOneWidget);
     expect(find.text('最新'), findsOneWidget);
     expect(find.text('78'), findsNothing);
+  });
+
+  testWidgets('refresh keeps the selected historical year when still present', (
+    tester,
+  ) async {
+    var calls = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PhysicalTestPage(
+          snapshotFetcher: () async {
+            calls++;
+            return _multiYearSnapshot();
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(calls, 1);
+
+    await tester.tap(_yearChip(1));
+    await tester.pumpAndSettle();
+    expect(_chipSelected(tester, 1), isTrue);
+    expect(_readout('2024-2025'), findsOneWidget);
+
+    // 点刷新：同样的数据回来后仍停在 2024-2025，不弹回最新学年。
+    await tester.tap(find.byTooltip('刷新'));
+    await tester.pumpAndSettle();
+    expect(calls, 2);
+    expect(_chipSelected(tester, 1), isTrue);
+    expect(_chipSelected(tester, 0), isFalse);
+    expect(_readout('2024-2025'), findsOneWidget);
+    expect(_readout('最新'), findsNothing);
+  });
+
+  testWidgets('refresh falls back to latest when selected year disappears', (
+    tester,
+  ) async {
+    var firstCall = true;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PhysicalTestPage(
+          snapshotFetcher: () async {
+            if (firstCall) {
+              firstCall = false;
+              return _multiYearSnapshot();
+            }
+            return _snapshotWithRecords();
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(_yearChip(2));
+    await tester.pumpAndSettle();
+    expect(_readout('2023-2024'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('刷新'));
+    await tester.pumpAndSettle();
+
+    expect(_readout('2025-2026'), findsOneWidget);
+    expect(_readout('最新'), findsOneWidget);
   });
 
   testWidgets('narrow 360 screen with text scale 2 has no overflow', (
@@ -632,7 +690,7 @@ void main() {
     expect(find.text('86.5'), findsOneWidget);
 
     // 大字体下切换历史学年仍不溢出；窄屏上先把横向选择器滚到目标 chip。
-    final chip1 = find.byKey(const ValueKey('physical_test_year_chip_1'));
+    final chip1 = _yearChip(1);
     await tester.ensureVisible(chip1);
     await tester.pumpAndSettle();
     await tester.tap(chip1);
