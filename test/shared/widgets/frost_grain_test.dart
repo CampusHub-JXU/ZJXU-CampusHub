@@ -14,7 +14,7 @@ import '../../helpers/texture_probe.dart';
 /// 已提交贴图的 sha256。**重新生成贴图后必须同步更新**（生成器会打印新值）；
 /// 见 `docs/sparse-acrylic-grain.md`。
 const String _expectedSha256 =
-    'bb1ba33282b2ca759882228fc1b94c8affe7d215447be6918af06c9f619b6a16';
+    '96936912df3f84b90dd98b0d0ef96f79e4110098a42a0df5a8a437776df48251';
 
 /// 贴图文件路径（相对包根，`flutter test` 的 cwd 就是包根）。
 const String _assetPath = 'assets/textures/frost_grain_peaks.png';
@@ -97,25 +97,34 @@ void main() {
       final coverage = texture.coverage();
       final bright = texture.brightFraction();
       expect(coverage, greaterThan(0.01));
-      expect(coverage, lessThan(0.20), reason: '覆盖比例过高会退回「密布」观感');
-      expect(bright, greaterThan(0.001));
-      expect(bright, lessThan(0.06), reason: '亮峰值过多会像星空 / 雪花');
+      expect(coverage, lessThan(0.08), reason: '覆盖比例过高会退回「密布 / 灰尘」观感');
+      expect(bright, greaterThan(0.0005));
+      expect(bright, lessThan(0.01), reason: '亮峰值过多会像星空 / 雪花');
       expect(texture.maxAlpha(), 255, reason: '最亮峰值应达到满 alpha');
     });
 
-    test('平滑成片、非逐像素噪声：平均水平游程 > 4 像素', () {
-      // 旧的 64×64 逐像素噪声游程约为 1；低频聚簇应明显更大。
-      expect(texture.meanHorizontalRun(), greaterThan(4.0));
+    test('细小闪点而非团块：平均水平游程 2–6 像素、最长游程 <= 16 像素', () {
+      // 512 像素 / 256 dp，即 1 dp = 2 像素。旧的低频贴图平均游程 15 像素、
+      // 成片 10–20 dp，在屏幕上是灰尘 / 污渍；新的闪点只有约 1–3 dp。
+      final mean = texture.meanHorizontalRun();
+      expect(mean, greaterThan(2.0), reason: '逐像素噪声游程约为 1');
+      expect(mean, lessThan(6.0), reason: '游程过长说明峰值退回成片团块');
+      expect(
+        texture.maxHorizontalRun(),
+        lessThanOrEqualTo(16),
+        reason: '任何峰值都不应超过 8 逻辑 dp 宽',
+      );
     });
 
-    test('可无缝平铺：接缝差 <= 内部相邻差', () {
-      final seam = texture.edgeSeamDelta();
-      final interior = texture.interiorNeighbourDelta();
+    test('可无缝平铺：接缝两侧的峰值像素同样连续', () {
+      final seam = texture.seamOverlap();
+      final interior = texture.interiorOverlap();
       expect(interior, greaterThan(0));
       expect(
         seam,
-        lessThanOrEqualTo(interior),
-        reason: '平铺接缝应不比 tile 内部更突兀（seam=$seam interior=$interior）',
+        greaterThan(interior * 0.5),
+        reason: '环绕连续时接缝重叠率应与内部同量级（seam=$seam interior=$interior）；'
+            '两列独立时只有约 0.04',
       );
     });
 

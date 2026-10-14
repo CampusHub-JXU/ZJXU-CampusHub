@@ -1,6 +1,6 @@
 // 磨砂玻璃的稀疏闪粉层（Issue #47）。
 //
-// 一张**预生成**的 512×512 灰度 + alpha PNG（白色稀疏峰值）经 [DecorationImage]
+// 一张**预生成**的 512×512 灰度 + alpha PNG（白色稀疏细小闪点，约 1–3 dp）经 [DecorationImage]
 // 平铺到表面装饰上——随装饰一起被 squircle / 圆角裁剪，不需要额外 widget 层，也不逐帧
 // 生成任何像素。平铺周期 = 512 / [kFrostGrainScale] = 256 逻辑 dp，**与 DPR 无关**
 // （1x / 2x / 3x 都是 256dp 重复一次，不会再出现「1 个物理像素一个点」的细碎感）。
@@ -22,14 +22,15 @@ const String kFrostGrainAsset = 'assets/textures/frost_grain_peaks.png';
 /// [DecorationImage] 的绘制缩放：512 光栅像素 → **256 逻辑 dp** 的平铺周期。
 const double kFrostGrainScale = 2.0;
 
-/// 浅色档强度。**注意**：峰值是白色，叠在浅色乳白雾（≈纯白）上几乎不可见——
-/// 见 `docs/sparse-acrylic-grain.md`「浅色模式的诚实边界」。这里保留一档数值，
-/// 便于后续单独调整，不影响深色档。
-const double kFrostGrainOpacityLight = 0.30;
+/// 浅色档强度。峰值是白色，叠在浅色乳白雾（≈ 纯白）上本来几乎看不见，所以浅色档
+/// 取接近满的 0.90：只有这样细小闪点才能在浅色填充上留下「若隐若现」的提亮
+/// （仍然很克制；没有引入第二张深色贴图 / 染色，见 `docs/sparse-acrylic-grain.md`
+/// 「浅色模式」）。
+const double kFrostGrainOpacityLight = 0.90;
 
-/// 深色档强度。贴图峰值 alpha 可达 255，故 0.40 已足以在深色填充上形成
-/// 「稀疏、柔和、若隐若现」的亮点（实测峰值 ≈ 填充 + 45% 白，覆盖率约 1.4%）。
-const double kFrostGrainOpacityDark = 0.40;
+/// 深色档强度。闪点只有约 1–3 dp 且稀疏（覆盖率约 4%），0.55 让亮点在深色填充上
+/// 清晰但不刺眼（贴图最亮峰值 alpha 255，实合成 ≈ 填充 + 55% 白）。
+const double kFrostGrainOpacityDark = 0.55;
 
 AssetImage? _grainAsset;
 DecorationImage? _lightGrain;

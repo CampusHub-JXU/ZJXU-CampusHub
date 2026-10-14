@@ -80,6 +80,67 @@ class TextureProbe {
     return runs == 0 ? 0 : total / runs;
   }
 
+  /// alpha > 0 的水平最长游程（像素）；用来拒绝「成片大团块」（旧贴图 8 逻辑 dp 级的灰尘感）。
+  int maxHorizontalRun() {
+    var best = 0;
+    for (var y = 0; y < height; y++) {
+      var run = 0;
+      for (var x = 0; x < width; x++) {
+        if (alphaAt(x, y) > 0) {
+          run++;
+          if (run > best) best = run;
+        } else {
+          run = 0;
+        }
+      }
+    }
+    return best;
+  }
+
+  /// 跨 tile 接缝（最后一列↔第一列、最后一行↔第一行）上「有峰值」像素对的重叠率
+  /// （交并比：两侧都 > 0 的对数 / 任一侧 > 0 的对数）。
+  ///
+  /// 稀疏贴图上「接缝差 <= 内部差」区分不出无缝与否（独立的两列也会得到相近的小差值），
+  /// 重叠率可以：真正环绕连续时与内部相邻像素同量级，两列独立时只有约 0.04。
+  double seamOverlap() {
+    var both = 0;
+    var either = 0;
+    void count(int a, int b) {
+      if (a > 0 && b > 0) both++;
+      if (a > 0 || b > 0) either++;
+    }
+
+    for (var y = 0; y < height; y++) {
+      count(alphaAt(width - 1, y), alphaAt(0, y));
+    }
+    for (var x = 0; x < width; x++) {
+      count(alphaAt(x, height - 1), alphaAt(x, 0));
+    }
+    return either == 0 ? 0 : both / either;
+  }
+
+  /// tile 内部相邻像素（水平 + 垂直）的同一重叠率，作为 [seamOverlap] 的参照。
+  double interiorOverlap() {
+    var both = 0;
+    var either = 0;
+    void count(int a, int b) {
+      if (a > 0 && b > 0) both++;
+      if (a > 0 || b > 0) either++;
+    }
+
+    for (var y = 0; y < height; y++) {
+      for (var x = 0; x < width - 1; x++) {
+        count(alphaAt(x, y), alphaAt(x + 1, y));
+      }
+    }
+    for (var y = 0; y < height - 1; y++) {
+      for (var x = 0; x < width; x++) {
+        count(alphaAt(x, y), alphaAt(x, y + 1));
+      }
+    }
+    return either == 0 ? 0 : both / either;
+  }
+
   /// 平铺接缝：|最后一列 - 第一列| 的平均值（跨 tile 边界）。
   double edgeSeamDelta() {
     var sum = 0;

@@ -20,10 +20,13 @@ whose distribution we do not reproduce).
 Recipe
 ------
 field    = sum over octaves of tileable value noise (smoothstep interpolation)
-octaves  = lattice 16/32/64 px-cell (feature 32/16/8 raster px), amplitudes 1.0/0.5/0.25
+octaves  = lattice 112/176 cells (cell 4.6/2.9 raster px = 2.3/1.5 dp), amplitudes 1.0/0.6
+           HIGH frequency only: low-frequency octaves turn peaks into 10-20 dp blobs that read
+           as dust; the reference's feTurbulence baseFrequency 0.42 is also high-frequency
 norm     = (field - mean) / std                       (z, unit variance)
 alpha    = clamp((z - T) / R, 0, 1)                   (T threshold, R ramp; sigma units)
-soften   = separable gaussian, integer kernel (2,5,10,14,10,5,2)/48, WRAPPING
+soften   = separable gaussian, integer kernel (1,2,1)/4, WRAPPING (light: the reference blur
+           stdDeviation 0.45 is sub-pixel; a wider kernel would smear specks into blobs)
 compose  = max(map_seed_11, map_seed_29)              (union, no additive brightening)
 output   = 8-bit grayscale+alpha PNG, gray=255 (white specks), alpha=peak
 
@@ -54,8 +57,8 @@ from pathlib import Path
 
 SIZE = 512  # raster pixels per tile edge
 LOGICAL_SCALE = 2.0  # DecorationImage scale -> 512 raster px = 256 logical dp period
-OCTAVES = ((16, 1.0), (32, 0.5), (64, 0.25))  # (lattice cells, amplitude)
-KERNEL = (2, 5, 10, 14, 10, 5, 2)  # gaussian-ish, sum = 48
+OCTAVES = ((112, 1.0), (176, 0.6))  # (lattice cells, amplitude): ~4.6 / 2.9 raster px cells
+KERNEL = (1, 2, 1)  # light gaussian-ish, sum = 4
 KERNEL_SUM = sum(KERNEL)
 MAP_SEEDS = (11, 29)  # the reference's two feTurbulence seeds
 
@@ -63,7 +66,7 @@ MAP_SEEDS = (11, 29)  # the reference's two feTurbulence seeds
 # alpha ramps linearly from 0 at the threshold to 1 at (threshold + ramp). A SHORT ramp keeps
 # peak brightness fairly even (a handful of blown-out points would read as stars) while the
 # threshold sets sparsity. Sparsity presets, for the comparison table:
-VARIANTS = {"sparse": (1.95, 0.55), "medium": (1.70, 0.60), "dense": (1.45, 0.65)}
+VARIANTS = {"sparse": (2.35, 0.40), "medium": (2.10, 0.40), "dense": (1.85, 0.45)}
 DEFAULT_VARIANT = "sparse"
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -239,6 +242,44 @@ def _mean(values) -> float:
     return sum(values) / len(values) if values else 0.0
 
 
+def _components(alpha: list[int], level: int) -> tuple[int, float, float, int]:
+    """8-connected components of alpha >= level -> (count, mean area, mean bbox side, max bbox side)."""
+    seen = bytearray(SIZE * SIZE)
+    count = 0
+    area_sum = 0
+    side_sum = 0
+    side_max = 0
+    for start in range(SIZE * SIZE):
+        if seen[start] or alpha[start] < level:
+            continue
+        seen[start] = 1
+        stack = [start]
+        area = 0
+        x0 = x1 = start % SIZE
+        y0 = y1 = start // SIZE
+        while stack:
+            k = stack.pop()
+            area += 1
+            y, x = divmod(k, SIZE)
+            x0, x1, y0, y1 = min(x0, x), max(x1, x), min(y0, y), max(y1, y)
+            for dy in (-1, 0, 1):
+                for dx in (-1, 0, 1):
+                    ny, nx = y + dy, x + dx
+                    if 0 <= ny < SIZE and 0 <= nx < SIZE:
+                        n = ny * SIZE + nx
+                        if not seen[n] and alpha[n] >= level:
+                            seen[n] = 1
+                            stack.append(n)
+        side = max(x1 - x0, y1 - y0) + 1
+        count += 1
+        area_sum += area
+        side_sum += side
+        side_max = max(side_max, side)
+    if count == 0:
+        return 0, 0.0, 0.0, 0
+    return count, area_sum / count, side_sum / count, side_max
+
+
 def measure(maps: list[list[int]], alpha: list[int]) -> dict:
     n = len(alpha)
     covered = sum(1 for v in alpha if v > 0)
@@ -256,6 +297,8 @@ def measure(maps: list[list[int]], alpha: list[int]) -> dict:
                 run = 0
         if run:
             runs.append(run)
+    # Connected specks (alpha >= 64, 8-connected, no wrap): count and bounding-box size.
+    comp_count, comp_area, comp_side, comp_max_side = _components(alpha, 64)
     # Edge-wrap continuity: |last column - first column| vs interior neighbour delta.
     seam = _mean(abs(alpha[y * SIZE + SIZE - 1] - alpha[y * SIZE]) for y in range(SIZE))
     interior = _mean(
@@ -279,6 +322,12 @@ def measure(maps: list[list[int]], alpha: list[int]) -> dict:
         "mean_peak_run_px": _mean(runs),
         "mean_peak_run_dp": _mean(runs) / LOGICAL_SCALE,
         "peak_runs": len(runs),
+        "speck_count_alpha_ge_64": comp_count,
+        "speck_mean_area_px": comp_area,
+        "speck_mean_bbox_px": comp_side,
+        "speck_mean_bbox_dp": comp_side / LOGICAL_SCALE,
+        "speck_max_bbox_px": comp_max_side,
+        "speck_max_bbox_dp": comp_max_side / LOGICAL_SCALE,
         "edge_wrap_seam_delta": seam,
         "interior_neighbour_delta": interior,
         "seam_over_interior": (seam / interior) if interior else None,
@@ -333,6 +382,9 @@ def main() -> int:
     print(f"coverage={stats['coverage_fraction']:.4f} bright={stats['bright_fraction_alpha_ge_128']:.4f} "
           f"mean_alpha={stats['mean_alpha']:.2f} peak_run={stats['mean_peak_run_px']:.2f}px "
           f"({stats['mean_peak_run_dp']:.2f}dp)")
+    print(f"specks(alpha>=64): n={stats['speck_count_alpha_ge_64']} mean_area={stats['speck_mean_area_px']:.1f}px "
+          f"bbox mean={stats['speck_mean_bbox_px']:.2f}px ({stats['speck_mean_bbox_dp']:.2f}dp) "
+          f"max={stats['speck_max_bbox_px']}px ({stats['speck_max_bbox_dp']:.1f}dp)")
     print(f"seam/interior={stats['seam_over_interior']:.3f} seeds_differ={stats['seeds_differ_fraction_gt8']:.3f}")
     return 0
 
