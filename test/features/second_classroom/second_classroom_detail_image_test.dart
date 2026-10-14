@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -28,7 +29,7 @@ void main() {
 
   tearDown(_clearImageCache);
 
-  testWidgets('详情图完整展示：1:1 外框 + contain，不裁切', (tester) async {
+  testWidgets('加载中尺寸未知：1:1 外框 + 中性底色 + 进度圈，不裁切', (tester) async {
     await _withFakeImages(_FakeImageMode.pending, () async {
       await _pumpPage(tester, coverUrl: 'https://dekt.test/qr.png');
       await _openDetailSheet(tester);
@@ -39,28 +40,90 @@ void main() {
       // 图片不再按封面裁切。
       expect(tester.widget<Image>(imageFinder).fit, BoxFit.contain);
 
-      // 外框固定 1:1。
-      final aspect = tester.widget<AspectRatio>(
-        find
-            .ancestor(of: imageFinder, matching: find.byType(AspectRatio))
-            .first,
-      );
-      expect(aspect.aspectRatio, 1);
+      // 尺寸未知时外框 1:1。
+      expect(_frameAspect(tester, imageFinder), 1);
 
-      // 图片外面留了白边（quiet zone）：外层 Padding 有正的四周内边距。
-      final padding = tester.widget<Padding>(
-        find.ancestor(of: imageFinder, matching: find.byType(Padding)).first,
-      );
-      final insets = padding.padding as EdgeInsets;
-      expect(insets.left, greaterThan(0));
-      expect(insets.top, insets.left);
-      expect(insets.bottom, insets.left);
-      expect(insets.right, insets.left);
+      // 尺寸未知时不假装是二维码：中性底色、无 quiet zone 留白。
+      expect(_frameColor(tester, imageFinder), isNot(Colors.white));
+      expect(_imagePadding(tester, imageFinder).left, 0);
 
       // 加载中有反馈，不是空白区。
       expect(find.byType(CircularProgressIndicator), findsWidgets);
       expect(tester.takeException(), isNull);
     });
+  });
+
+  testWidgets('近似正方形（二维码）：1:1 外框 + 纯白底 + quiet zone 留白', (tester) async {
+    await _withFakeImages(
+      _FakeImageMode.success,
+      pngBytes: _solidPng(100, 100),
+      () async {
+        await _pumpPage(tester, coverUrl: 'https://dekt.test/qr.png');
+        await _openDetailSheet(tester);
+        await _settleImage(tester);
+
+        final imageFinder = find.byKey(imageKey);
+        expect(tester.widget<Image>(imageFinder).fit, BoxFit.contain);
+        expect(_frameAspect(tester, imageFinder), closeTo(1, 0.001));
+        expect(_frameColor(tester, imageFinder), Colors.white);
+
+        final insets = _imagePadding(tester, imageFinder);
+        expect(insets.left, greaterThan(0));
+        expect(insets.top, insets.left);
+        expect(insets.bottom, insets.left);
+        expect(insets.right, insets.left);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  });
+
+  testWidgets('16:9 海报：按真实宽高比排版，中性底色且无留白', (tester) async {
+    final semantics = tester.ensureSemantics();
+    await _withFakeImages(
+      _FakeImageMode.success,
+      pngBytes: _solidPng(160, 90),
+      () async {
+        await _pumpPage(tester, coverUrl: 'https://dekt.test/poster.png');
+        await _openDetailSheet(tester);
+        await _settleImage(tester);
+
+        final imageFinder = find.byKey(imageKey);
+        expect(tester.widget<Image>(imageFinder).fit, BoxFit.contain);
+        expect(_frameAspect(tester, imageFinder), closeTo(16 / 9, 0.01));
+        expect(_frameColor(tester, imageFinder), isNot(Colors.white));
+        expect(_imagePadding(tester, imageFinder).left, 0);
+
+        // 宽度仍受 320 约束，高度随宽高比缩小。
+        final size = tester.getSize(
+          find
+              .ancestor(of: imageFinder, matching: find.byType(AspectRatio))
+              .first,
+        );
+        expect(size.width, lessThanOrEqualTo(320));
+        expect(size.height, closeTo(size.width / (16 / 9), 0.5));
+
+        // 无常驻「点击查看大图」文字，改由语义标签提供。
+        expect(find.text('点击查看大图'), findsNothing);
+        expect(find.bySemanticsLabel('查看大图'), findsOneWidget);
+        semantics.dispose();
+        expect(tester.takeException(), isNull);
+      },
+    );
+  });
+
+  testWidgets('极端宽高比被夹在 [0.6, 1.8] 内', (tester) async {
+    await _withFakeImages(
+      _FakeImageMode.success,
+      pngBytes: _solidPng(400, 40),
+      () async {
+        await _pumpPage(tester, coverUrl: 'https://dekt.test/banner.png');
+        await _openDetailSheet(tester);
+        await _settleImage(tester);
+
+        expect(_frameAspect(tester, find.byKey(imageKey)), closeTo(1.8, 0.001));
+        expect(tester.takeException(), isNull);
+      },
+    );
   });
 
   testWidgets('招募状态标签移到 1:1 图片区域之外，不遮挡二维码', (tester) async {
@@ -184,9 +247,45 @@ void main() {
 /// 否则 `TestWidgetsFlutterBinding` 的 invariant 会失败。
 Future<void> _withFakeImages(
   _FakeImageMode mode,
-  Future<void> Function() body,
-) {
-  return _withClient(_FakeImageHttpClient(mode: mode), body);
+  Future<void> Function() body, {
+  List<int>? pngBytes,
+}) {
+  return _withClient(
+    _FakeImageHttpClient(mode: mode, pngBytes: pngBytes),
+    body,
+  );
+}
+
+double _frameAspect(WidgetTester tester, Finder imageFinder) => tester
+    .widget<AspectRatio>(
+      find.ancestor(of: imageFinder, matching: find.byType(AspectRatio)).first,
+    )
+    .aspectRatio;
+
+Color? _frameColor(WidgetTester tester, Finder imageFinder) => tester
+    .widget<Material>(
+      find.ancestor(of: imageFinder, matching: find.byType(Material)).first,
+    )
+    .color;
+
+EdgeInsets _imagePadding(WidgetTester tester, Finder imageFinder) =>
+    tester
+            .widget<Padding>(
+              find
+                  .ancestor(of: imageFinder, matching: find.byType(Padding))
+                  .first,
+            )
+            .padding
+        as EdgeInsets;
+
+/// 等待真实引擎解码完图片（FakeAsync 之外），再泵帧让布局更新。
+Future<void> _settleImage(WidgetTester tester) async {
+  for (var i = 0; i < 5; i++) {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 50)),
+    );
+    await tester.pump();
+  }
 }
 
 Future<void> _withClient(
@@ -354,22 +453,25 @@ enum _FakeImageMode { pending, success, error }
 
 /// 受控的假图片网络：不触网，按 [mode] 返回 pending / 合成 PNG / 404。
 class _FakeImageHttpClient extends Fake implements HttpClient {
-  _FakeImageHttpClient({required this.mode});
+  _FakeImageHttpClient({required this.mode, List<int>? pngBytes})
+    : pngBytes = pngBytes ?? _syntheticPng;
 
   final _FakeImageMode mode;
+  final List<int> pngBytes;
   int getUrlCalls = 0;
 
   @override
   Future<HttpClientRequest> getUrl(Uri url) async {
     getUrlCalls++;
-    return _FakeImageRequest(mode);
+    return _FakeImageRequest(mode, pngBytes);
   }
 }
 
 class _FakeImageRequest extends Fake implements HttpClientRequest {
-  _FakeImageRequest(this.mode);
+  _FakeImageRequest(this.mode, this.pngBytes);
 
   final _FakeImageMode mode;
+  final List<int> pngBytes;
 
   @override
   final HttpHeaders headers = _FakeImageHeaders();
@@ -388,7 +490,7 @@ class _FakeImageRequest extends Fake implements HttpClientRequest {
       ),
       _FakeImageMode.success => _FakeImageResponse(
         statusCode: HttpStatus.ok,
-        content: [_syntheticPng],
+        content: [pngBytes],
       ),
     };
   }
@@ -468,3 +570,54 @@ final List<int> _syntheticPng = base64Decode(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAE'
   'hQGAhKmMIQAAAABJRU5ErkJggg==',
 );
+
+/// 生成 [width]×[height] 的纯色 RGBA PNG（合成，不含任何个人信息）。
+List<int> _solidPng(int width, int height) {
+  final raw = BytesBuilder();
+  for (var y = 0; y < height; y++) {
+    raw.addByte(0); // filter: none
+    for (var x = 0; x < width; x++) {
+      raw.add(const [0x33, 0x66, 0x99, 0xFF]);
+    }
+  }
+  final out = BytesBuilder()
+    ..add(const [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+  void chunk(String type, List<int> data) {
+    final typeAndData = [...type.codeUnits, ...data];
+    out
+      ..add(_u32(data.length))
+      ..add(typeAndData)
+      ..add(_u32(_crc32(typeAndData)));
+  }
+
+  chunk('IHDR', [
+    ..._u32(width),
+    ..._u32(height),
+    8, // bit depth
+    6, // RGBA
+    0,
+    0,
+    0,
+  ]);
+  chunk('IDAT', ZLibCodec().encode(raw.toBytes()));
+  chunk('IEND', const []);
+  return out.toBytes();
+}
+
+List<int> _u32(int v) => [
+  (v >> 24) & 0xFF,
+  (v >> 16) & 0xFF,
+  (v >> 8) & 0xFF,
+  v & 0xFF,
+];
+
+int _crc32(List<int> bytes) {
+  var crc = 0xFFFFFFFF;
+  for (final b in bytes) {
+    crc ^= b;
+    for (var i = 0; i < 8; i++) {
+      crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB88320 : crc >> 1;
+    }
+  }
+  return crc ^ 0xFFFFFFFF;
+}

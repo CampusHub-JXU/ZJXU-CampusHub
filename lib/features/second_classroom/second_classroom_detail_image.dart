@@ -5,8 +5,11 @@ part of 'second_classroom_page.dart';
 /// 详情页图片此前按 16:9 `BoxFit.cover` 展示，二维码下半部分被父容器裁掉，
 /// 且整块不可点击（issue #86）。这里改为**完整展示、不裁切**：
 ///
-/// * 外框固定 1:1，图片在框内 `BoxFit.contain`，避免任何方向被裁；
-/// * 白底 + 四周留出 [_quietZone] 的空白边界，保证二维码扫码所需的 quiet zone；
+/// * 先解析图片真实尺寸，外框按真实宽高比（夹在 [_minAspect]~[_maxAspect]）排版，
+///   图片在框内 `BoxFit.contain`，避免任何方向被裁；尺寸未知（加载中）时用 1:1；
+/// * 近似正方形（|宽高比-1| <= [_squareTolerance]，二维码形态）才用纯白底 +
+///   四周 [_quietZone] 留白，保证扫码所需的 quiet zone；横版 / 竖版海报用中性
+///   底色、不留白边，避免深色模式下一块刺眼的白方块；
 /// * 外框宽度受 [_maxWidth] 约束，窄屏 / 系统字体放大时也不会溢出；
 /// * 点击打开大图预览（[InteractiveViewer] 可缩放），加载中 / 加载失败 / 无图
 ///   都有可交互的反馈，不留无法点击的空白区。
@@ -31,15 +34,88 @@ class _ActivityDetailImageState extends State<_ActivityDetailImage> {
   /// 白底留白：二维码四边需要连续浅色区域才能被稳定识别。
   static const double _quietZone = 12;
 
+  /// 外框宽高比的夹取范围：过宽 / 过窄的海报也不会撑出异常的高矮。
+  static const double _minAspect = 0.6;
+  static const double _maxAspect = 1.8;
+
+  /// 判定「近似正方形（二维码形态）」的宽高比容差。
+  static const double _squareTolerance = 0.15;
+
   /// 加载失败后点「重试」重建图片用的令牌（同时清掉失败缓存）。
   int _reloadToken = 0;
+
+  /// 图片真实宽高比（宽 / 高）；尚未解析出来为 null。
+  double? _naturalAspect;
+  ImageStream? _sizeStream;
+  ImageStreamListener? _sizeListener;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolveSize();
+  }
+
+  @override
+  void didUpdateWidget(_ActivityDetailImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.imageUrl.trim() != widget.imageUrl.trim()) {
+      _resolveSize();
+    }
+  }
+
+  @override
+  void dispose() {
+    _detachSizeListener();
+    super.dispose();
+  }
+
+  void _detachSizeListener() {
+    final stream = _sizeStream;
+    final listener = _sizeListener;
+    if (stream != null && listener != null) {
+      stream.removeListener(listener);
+    }
+    _sizeStream = null;
+    _sizeListener = null;
+  }
+
+  /// 监听同一 [NetworkImage] 的解码结果取得真实尺寸；与下方 `Image.network`
+  /// 共用 imageCache，不会重复下载。URL 变化 / 重试时重新解析。
+  void _resolveSize() {
+    _detachSizeListener();
+    _naturalAspect = null;
+    final url = widget.imageUrl.trim();
+    if (url.isEmpty) return;
+    final stream = NetworkImage(url).resolve(ImageConfiguration.empty);
+    final listener = ImageStreamListener(
+      (info, synchronousCall) {
+        final w = info.image.width;
+        final h = info.image.height;
+        if (w <= 0 || h <= 0) return;
+        final aspect = w / h;
+        if (synchronousCall) {
+          _naturalAspect = aspect;
+        } else if (mounted) {
+          setState(() => _naturalAspect = aspect);
+        }
+      },
+      // 失败态由 Image.network 的 errorBuilder 展示，这里只需吞掉错误。
+      onError: (error, stackTrace) {},
+    );
+    _sizeStream = stream;
+    _sizeListener = listener;
+    stream.addListener(listener);
+  }
 
   void _retry() {
     // 与 build 一致地 trim：缓存键必须和实际请求的 URL 相同，否则清不掉失败项。
     PaintingBinding.instance.imageCache.evict(
       NetworkImage(widget.imageUrl.trim()),
     );
-    setState(() => _reloadToken++);
+    setState(() {
+      _reloadToken++;
+      _resolveSize();
+    });
   }
 
   @override
@@ -48,10 +124,16 @@ class _ActivityDetailImageState extends State<_ActivityDetailImage> {
     final imageUrl = widget.imageUrl.trim();
     final hasImage = imageUrl.isNotEmpty;
     final statusLabel = widget.statusLabel;
+    final natural = _naturalAspect;
+    final isSquareLike =
+        hasImage && natural != null && (natural - 1).abs() <= _squareTolerance;
+    final frameAspect = natural == null
+        ? 1.0
+        : natural.clamp(_minAspect, _maxAspect).toDouble();
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // 招募状态标签放在 1:1 图片区域**之外**：它原先叠在图片左上角，
+        // 招募状态标签放在图片区域**之外**：它原先叠在图片左上角，
         // 正好压住二维码的定位图案（finder pattern），导致扫码失败。
         if (statusLabel != null && statusLabel.isNotEmpty)
           Padding(
@@ -65,13 +147,15 @@ class _ActivityDetailImageState extends State<_ActivityDetailImage> {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: _maxWidth),
             child: AspectRatio(
-              aspectRatio: 1,
+              aspectRatio: frameAspect,
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(AppRadius.card),
                 child: Material(
-                  // 二维码需要纯白底色与留白才能被扫描设备识别；无图时退回中性
-                  // 底色，不假装有一张二维码。
-                  color: hasImage ? Colors.white : cs.surfaceContainerHighest,
+                  // 只有近似正方形（二维码形态）才需要纯白底色与留白才能被扫描
+                  // 设备识别；海报、加载中、无图都用中性底色，不假装有二维码。
+                  color: isSquareLike
+                      ? Colors.white
+                      : cs.surfaceContainerHighest,
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
@@ -98,31 +182,38 @@ class _ActivityDetailImageState extends State<_ActivityDetailImage> {
                           ),
                         )
                       else
-                        InkWell(
-                          onTap: () =>
-                              _openActivityImagePreview(context, imageUrl),
-                          child: Padding(
-                            padding: const EdgeInsets.all(_quietZone),
-                            child: Image.network(
-                              imageUrl,
-                              key: ValueKey(
-                                'activity_detail_image:$_reloadToken',
+                        Semantics(
+                          container: true,
+                          button: true,
+                          label: '查看大图',
+                          child: InkWell(
+                            onTap: () =>
+                                _openActivityImagePreview(context, imageUrl),
+                            child: Padding(
+                              padding: EdgeInsets.all(
+                                isSquareLike ? _quietZone : 0,
                               ),
-                              fit: BoxFit.contain,
-                              loadingBuilder: (context, child, progress) =>
-                                  progress == null
-                                  ? child
-                                  : const Center(
-                                      child: SizedBox(
-                                        width: 28,
-                                        height: 28,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2.5,
+                              child: Image.network(
+                                imageUrl,
+                                key: ValueKey(
+                                  'activity_detail_image:$_reloadToken',
+                                ),
+                                fit: BoxFit.contain,
+                                loadingBuilder: (context, child, progress) =>
+                                    progress == null
+                                    ? child
+                                    : const Center(
+                                        child: SizedBox(
+                                          width: 28,
+                                          height: 28,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2.5,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                              errorBuilder: (context, error, stackTrace) =>
-                                  _DetailImageLoadError(onRetry: _retry),
+                                errorBuilder: (context, error, stackTrace) =>
+                                    _DetailImageLoadError(onRetry: _retry),
+                              ),
                             ),
                           ),
                         ),
@@ -133,13 +224,6 @@ class _ActivityDetailImageState extends State<_ActivityDetailImage> {
             ),
           ),
         ),
-        if (hasImage) ...[
-          const SizedBox(height: 8),
-          Text(
-            '点击查看大图',
-            style: context.appText.meta.copyWith(color: cs.onSurfaceVariant),
-          ),
-        ],
       ],
     );
   }
