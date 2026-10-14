@@ -136,7 +136,11 @@ void main() {
     // GPA 读数：教务口径主修绩点 + 来源说明，不写「累计 / 所有课程 GPA」。
     expect(find.text('主修平均学分绩点'), findsOneWidget);
     expect(find.text('3.120'), findsOneWidget);
-    expect(find.textContaining('教务培养方案统计口径'), findsOneWidget);
+    // 口径说明不常驻，收进读数行尾的 ⓘ。
+    expect(find.textContaining('教务培养方案统计'), findsNothing);
+    await tester.tap(find.byTooltip('GPA 口径说明'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('教务培养方案统计'), findsOneWidget);
     expect(find.textContaining('统计截至 2026-09-01'), findsOneWidget);
     expect(find.text('累计 GPA'), findsNothing);
     expect(find.text('所有课程 GPA'), findsNothing);
@@ -355,6 +359,11 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.byType(InteractiveViewer), findsOneWidget);
     expect(find.text('主修平均学分绩点'), findsOneWidget);
+    // 画布必须真的有可交互的高度，而不只是存在于树里。
+    expect(
+      tester.getSize(find.byType(InteractiveViewer)).height,
+      greaterThanOrEqualTo(150),
+    );
   });
 
   testWidgets('横屏窄高下无溢出', (tester) async {
@@ -363,6 +372,11 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.byType(InteractiveViewer), findsOneWidget);
     expect(find.text('主修平均学分绩点'), findsOneWidget);
+    // 画布必须真的有可交互的高度，而不只是存在于树里。
+    expect(
+      tester.getSize(find.byType(InteractiveViewer)).height,
+      greaterThanOrEqualTo(150),
+    );
   });
 
   testWidgets('深色模式渲染正常', (tester) async {

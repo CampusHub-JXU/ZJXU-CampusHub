@@ -316,38 +316,50 @@ class AcademicProgressViewState extends State<AcademicProgressView> {
     }
 
     // 主修 GPA 读数与培养方案 Graph 同屏：读数占内容高度，Graph 吃掉剩余
-    // 全部视口（Expanded + ClipRect），因此画布始终有实际可交互的尺寸。
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-            AppSpacing.pageMargin,
-            AppSpacing.sm,
-            AppSpacing.pageMargin,
-            AppSpacing.sm,
-          ),
-          child: AcademicProgressOverview(
-            summary: report.summary,
-            statusLine: RefreshStatusLine(
-              updatedAt: _updatedAt,
-              refreshing: _refreshing,
-              failed: _refreshFailed,
-              loadingLabel: '正在获取学业情况…',
+    // 全部视口（Expanded + ClipRect）。横屏 / 大字号等矮视口改用单行紧凑读数，
+    // 保证画布仍有可交互的高度。
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
+        final compact =
+            constraints.maxHeight < _compactHeaderMaxHeight || textScale > 1.3;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.pageMargin,
+                AppSpacing.sm,
+                AppSpacing.pageMargin,
+                AppSpacing.sm,
+              ),
+              child: AcademicProgressOverview(
+                summary: report.summary,
+                compact: compact,
+                statusLine: RefreshStatusLine(
+                  updatedAt: _updatedAt,
+                  refreshing: _refreshing,
+                  failed: _refreshFailed,
+                  loadingLabel: '正在获取学业情况…',
+                ),
+              ),
             ),
-          ),
-        ),
-        Expanded(
-          child: ClipRect(
-            child: RequirementTreeCanvas(
-              roots: report.roots,
-              onLeafTap: _showLeafCourses,
+            Expanded(
+              child: ClipRect(
+                child: RequirementTreeCanvas(
+                  roots: report.roots,
+                  onLeafTap: _showLeafCourses,
+                ),
+              ),
             ),
-          ),
-        ),
-      ],
+          ],
+        );
+      },
     );
   }
+
+  /// 视口低于该高度（横屏手机等）时用单行紧凑读数。
+  static const double _compactHeaderMaxHeight = 560;
 
   /// 末节点按需明细：只展示该培养方案节点的要求 / 已获学分与课程修读状态，
   /// 不复刻完整成绩页（不显示成绩 / 补考 / 重修数字）。
@@ -468,6 +480,7 @@ class AcademicProgressOverview extends StatelessWidget {
     super.key,
     required this.summary,
     this.statusLine,
+    this.compact = false,
   });
 
   final AcademicProgressSummary? summary;
@@ -475,10 +488,35 @@ class AcademicProgressOverview extends StatelessWidget {
   /// 读数下方的刷新状态行（[RefreshStatusLine]）。
   final Widget? statusLine;
 
+  /// 矮视口（横屏 / 大字号）下的单行紧凑读数，把高度让给培养方案画布。
+  final bool compact;
+
   /// 说明本读数与「课程成绩」分段的计算口径差异，避免把两个不同来源的值
-  /// 当成同一个 GPA。教务未给出时明确占位，不擅自标为「累计 GPA」。
-  static const String _sourceNote =
-      '教务培养方案统计口径；「课程成绩」按所选学期（选「全部」则跨学期）计算，两者可能不同。';
+  /// 当成同一个 GPA。常态不铺说明文字，收进读数行尾的 ⓘ 按需查看。
+  static const String sourceNote =
+      '这是教务培养方案统计的主修 GPA；「课程成绩」里的绩点按所选学期（选「全部」则跨学期）在本地计算，两者可能不同。';
+
+  static void _showSourceNote(BuildContext context) {
+    AppFeedback.sheet<void>(
+      context,
+      builder: (context) => Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.pageMargin,
+          0,
+          AppSpacing.pageMargin,
+          AppSpacing.xl,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const PlainSectionHeader('GPA 口径'),
+            Text(sourceNote, style: context.appText.secondary),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -487,9 +525,47 @@ class AcademicProgressOverview extends StatelessWidget {
     final statTime = s != null && s.statTime.isNotEmpty
         ? '统计截至 ${s.statTime}'
         : '';
-    final notes = s == null
-        ? ''
-        : [_sourceNote, statTime].where((t) => t.isNotEmpty).join('\n');
+    final info = s == null
+        ? null
+        : IconButton(
+            tooltip: 'GPA 口径说明',
+            icon: const Icon(Icons.info_outline, size: 20),
+            onPressed: () => _showSourceNote(context),
+          );
+    if (compact) {
+      final cs = Theme.of(context).colorScheme;
+      final text = context.appText;
+      return Padding(
+        padding: const EdgeInsets.only(left: AppSpacing.sm),
+        child: Row(
+          children: [
+            Flexible(
+              child: Text(
+                '主修平均学分绩点',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: text.label.copyWith(color: cs.onSurfaceVariant),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  gpa ?? '--',
+                  maxLines: 1,
+                  style: text.rowValue.copyWith(
+                    color: gpa == null ? cs.outlineVariant : cs.onSurface,
+                  ),
+                ),
+              ),
+            ),
+            ?info,
+          ],
+        ),
+      );
+    }
     return Padding(
       // 与校园卡读数一致：比页边距多缩进 8。
       padding: const EdgeInsets.only(left: AppSpacing.sm, top: 8),
@@ -500,14 +576,15 @@ class AcademicProgressOverview extends StatelessWidget {
             label: '主修平均学分绩点',
             valueText: gpa ?? '--',
             muted: gpa == null,
+            trailing: info,
           ),
           if (statusLine != null) ...[
             const SizedBox(height: AppSpacing.xs),
             statusLine!,
           ],
-          if (notes.isNotEmpty) ...[
-            const SizedBox(height: AppSpacing.sm),
-            Text(notes, style: context.appText.meta.copyWith(height: 1.4)),
+          if (statTime.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.xs),
+            Text(statTime, style: context.appText.meta),
           ],
         ],
       ),
