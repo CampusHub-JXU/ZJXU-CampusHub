@@ -664,6 +664,21 @@ void main() {
       );
     });
 
+    test('bootstrap 未就绪但已有 owner 校验过的值：缓存优先，照常展示', () {
+      expect(
+        resolve(bootstrapReady: false, value: '23.5'),
+        const HomeAssetState.ready('23.5'),
+      );
+      expect(
+        resolve(bootstrapReady: false, loggedIn: false, value: '23.5'),
+        const HomeAssetState.ready('23.5'),
+      );
+      expect(
+        resolve(bootstrapReady: false, value: '23.5', inFlight: 1),
+        const HomeAssetState.refreshing('23.5'),
+      );
+    });
+
     test('未登录且 bootstrap 就绪：待登录（静态，不假装加载）', () {
       expect(resolve(loggedIn: false), const HomeAssetState.waiting());
     });

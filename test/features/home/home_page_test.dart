@@ -948,12 +948,13 @@ void main() {
       );
 
       await tester.pumpWidget(const MaterialApp(home: HomePage()));
-      // 尚未 hydrate：广播被跳过，不提前采纳半截缓存。
+      // 尚未 hydrate：广播被跳过（不提前采纳投影）。
       CampusDataChangeBus.instance.notifyChanged();
       await tester.pump();
-      expect(find.text('42 度'), findsNothing);
-      // bootstrap 未就绪：冷启动恢复态。
-      expect(find.text('正在恢复'), findsNWidgets(2));
+      // 缓存优先：电费已有通过 owner 校验的可展示值，冷启动照常显示，
+      // 不被「正在恢复」遮住；只有没有值的校园卡显示恢复态。
+      expect(find.text('42 度'), findsOneWidget);
+      expect(find.text('正在恢复'), findsOneWidget);
 
       AppBootstrapController.instance.debugSetPhase(
         AppBootstrapPhase.localStateReady,
@@ -1169,8 +1170,10 @@ void main() {
 
     expect(UnifiedAuthService.instance.sessionRevision, revisionBefore);
     expect(find.text('¥23.5'), findsNothing);
-    // 同账号重登：身份复位，进入重新获取（而非无信息量的 '--'）。
-    expect(find.text('获取中'), findsNWidgets(2));
+    // 同账号重登：身份复位后本页补发刷新——校园卡进入真实获取中，电费无
+    // 房间配置回落「未设置」（而非无信息量的 '--'）。
+    expect(find.text('获取中'), findsOneWidget);
+    expect(find.text('未设置'), findsOneWidget);
   });
 
   testWidgets(
@@ -1193,9 +1196,10 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      // 余额查询仍在途：资产行显示真实的「获取中」，不是无信息量的 '--'。
-      expect(find.text('获取中'), findsNWidgets(2));
-      expect(find.text('--'), findsNothing);
+      // 余额查询仍在途：校园卡显示真实的「获取中」；电费请求排在校园卡之后
+      // 尚未发起，是中性占位 '--'（不声称获取中）。
+      expect(find.text('获取中'), findsOneWidget);
+      expect(find.text('--'), findsOneWidget);
 
       // 登出后旧 owner 的响应才到达：认证世代已推进，结果一律不得写回。
       UnifiedAuthService.instance.debugSetSession(active: false, account: null);
@@ -1265,8 +1269,10 @@ void main() {
       expect(find.text('¥23.5'), findsNothing);
       expect(find.text('3.20 度'), findsNothing);
       expect(find.textContaining('电量偏低'), findsNothing);
-      // 换号后两项身份复位：进入重新获取（不再是无信息量的 '--'）。
-      expect(find.text('获取中'), findsNWidgets(2));
+      // 换号后两项身份复位并由本页补发刷新：B 没有房间配置 → 电费「未设置」，
+      // 校园卡没有 B 的余额 → 不再展示 A 的任何内容、也不停在 '获取中'。
+      expect(find.text('未设置'), findsOneWidget);
+      expect(find.text('获取中'), findsNothing);
 
       // A 的迟到响应（同为低电量 3.2 度）此时才返回：不得写回展示、事件
       // 横幅或桌面组件投影。
@@ -1280,7 +1286,8 @@ void main() {
       expect(DormElectricityService.instance.cachedElectricity, isNull);
       expect(find.text('3.20 度'), findsNothing);
       expect(find.textContaining('电量偏低'), findsNothing);
-      expect(find.text('获取中'), findsNWidgets(2));
+      expect(find.text('未设置'), findsOneWidget);
+      expect(find.text('获取中'), findsNothing);
       expect(find.byType(SnackBar), findsNothing);
 
       final projection = buildCampusWidgetProjection();
@@ -1363,12 +1370,11 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      // 冷启动无缓存：两项都进入「获取中」，不是 '--'。
-      // 电费请求在校园卡请求完成后才发起（`_refreshDeferredContent` 先 await
-      // 校园卡），因此此刻只有校园卡是真实在途、显示转圈；电费仍是静态
-      // 「准备中」（preparing），不画转圈。
-      expect(find.text('获取中'), findsNWidgets(2));
-      expect(find.text('--'), findsNothing);
+      // 冷启动无缓存：电费请求在校园卡请求完成后才发起（`_refreshDeferredContent`
+      // 先 await 校园卡），因此此刻只有校园卡是真实在途（「获取中」+ 转圈）；
+      // 电费是静态「准备中」（preparing），显示中性占位 '--'，不转圈。
+      expect(find.text('获取中'), findsOneWidget);
+      expect(find.text('--'), findsOneWidget);
       expect(find.text('待登录'), findsNothing);
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
@@ -1477,6 +1483,7 @@ void main() {
     await tester.pump();
 
     // 校园卡获取失败 → 「获取失败」；电费不受影响，仍展示就绪值。
+    await _pumpUntil(tester, () => find.text('获取失败').evaluate().isNotEmpty);
     expect(find.text('获取失败'), findsOneWidget);
     expect(find.text('42 度'), findsOneWidget);
     expect(find.byType(SnackBar), findsNothing);
@@ -1493,6 +1500,107 @@ void main() {
     expect(find.text('¥12.5'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
   });
+
+  testWidgets('rapid taps on 获取失败 start only one retry request', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    SharedPreferences.setMockInitialValues({
+      'dorm_epay_area_id': 'area',
+      'dorm_epay_building_id': 'building',
+      'dorm_epay_floor_id': 'floor',
+      'dorm_epay_room_id': 'room',
+      DormElectricityService.roomOwnerKey: 'casuser',
+    });
+    UnifiedAuthService.instance.debugSetSession(
+      active: true,
+      account: 'casuser',
+    );
+    await CredentialStore.instance.saveUnifiedAuthSession('casuser');
+    var calls = 0;
+    CampusCardService.instance.debugBalanceFetcher = () async {
+      calls++;
+      throw StateError('card down');
+    };
+    addTearDown(() => CampusCardService.instance.debugBalanceFetcher = null);
+    DormElectricityService.instance.debugSetCachedElectricity(
+      42,
+      updatedAt: now,
+    );
+    await SemesterCalendar.instance.setSemesterStartDate(now);
+
+    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    AppBootstrapController.instance.debugSetPhase(
+      AppBootstrapPhase.localStateReady,
+    );
+    await tester.pump();
+    await _pumpUntil(tester, () => find.text('获取失败').evaluate().isNotEmpty);
+    expect(find.text('获取失败'), findsOneWidget);
+    final callsBeforeRetry = calls;
+
+    // 重试请求悬停；同一帧内连点多次（树尚未重建）只允许发出一条请求。
+    final pending = Completer<double?>();
+    CampusCardService.instance.debugBalanceFetcher = () {
+      calls++;
+      return pending.future;
+    };
+    final target = find.text('获取失败');
+    await tester.tap(target);
+    await tester.tap(target);
+    await tester.tap(target);
+    await tester.pump();
+
+    expect(calls, callsBeforeRetry + 1);
+    expect(find.text('获取中'), findsOneWidget);
+
+    pending.complete(12.5);
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('¥12.5'), findsOneWidget);
+    expect(calls, callsBeforeRetry + 1);
+  });
+
+  testWidgets(
+    'login after logged-out start triggers asset refresh (no stuck preparing)',
+    (tester) async {
+      final now = DateTime.now();
+      SharedPreferences.setMockInitialValues({});
+      var calls = 0;
+      CampusCardService.instance.debugBalanceFetcher = () async {
+        calls++;
+        return 12.5;
+      };
+      addTearDown(() => CampusCardService.instance.debugBalanceFetcher = null);
+      await SemesterCalendar.instance.setSemesterStartDate(now);
+
+      await tester.pumpWidget(const MaterialApp(home: HomePage()));
+      AppBootstrapController.instance.debugSetPhase(
+        AppBootstrapPhase.localStateReady,
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('待登录'), findsNWidgets(2));
+      expect(calls, 0);
+
+      // 登录：身份变化后本页自己补发一次资产刷新（不依赖其它调度器），
+      // 资产行不会停在 '--'（preparing）。
+      UnifiedAuthService.instance.debugSetSession(
+        active: true,
+        account: 'casuser',
+      );
+      await CredentialStore.instance.saveUnifiedAuthSession('casuser');
+      UnifiedAuthService.instance.notifyListeners();
+      await _pumpUntil(tester, () => calls > 0);
+      await tester.pump();
+      await tester.pump();
+
+      expect(calls, 1);
+      expect(find.text('¥12.5'), findsOneWidget);
+      // 电费无房间配置：落到「未设置」，而不是一直 '--'。
+      expect(find.text('未设置'), findsOneWidget);
+      expect(find.text('--'), findsNothing);
+    },
+  );
 
   testWidgets('系统「移除动画」下恢复态为静态文案，无持续转圈', (tester) async {
     await tester.pumpWidget(
@@ -1543,7 +1651,8 @@ void main() {
     await tester.pump();
 
     // 真实在途，但系统要求移除动画：静态文案表达状态，不出现持续转圈。
-    expect(find.text('获取中'), findsNWidgets(2));
+    // （电费尚未发起请求，是中性占位 '--'。）
+    expect(find.text('获取中'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
   });
 }

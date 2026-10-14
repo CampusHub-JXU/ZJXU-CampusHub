@@ -171,11 +171,12 @@ void main() {
         ),
       );
 
-      // 还没真正请求：只给静态「获取中」，绝不画转圈（避免假装在跑）。
-      expect(find.text('获取中'), findsNWidgets(2));
-      expect(find.text('--'), findsNothing);
+      // 还没真正请求：中性占位 `--`（次要色），不声称「获取中」，也绝不画转圈。
+      expect(find.text('--'), findsNWidgets(2));
+      expect(find.text('获取中'), findsNothing);
       expect(find.byType(CircularProgressIndicator), findsNothing);
-      expect(find.semantics.byLabel('校园卡余额正在获取').evaluate(), hasLength(1));
+      expect(find.semantics.byLabel('校园卡余额尚未获取').evaluate(), hasLength(1));
+      expect(find.semantics.byLabel('校园卡余额正在获取').evaluate(), isEmpty);
       handle.dispose();
     });
 

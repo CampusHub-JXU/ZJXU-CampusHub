@@ -217,8 +217,10 @@ class _AssetZone extends StatelessWidget {
       case HomeAssetPhase.refreshing:
         return format(state.value ?? '');
       case HomeAssetPhase.loading:
-      case HomeAssetPhase.preparing:
         return '获取中';
+      case HomeAssetPhase.preparing:
+        // 还没发起请求：中性占位（次要色），不声称「获取中」。
+        return '--';
       case HomeAssetPhase.recovering:
         return '正在恢复';
       case HomeAssetPhase.waiting:
@@ -238,8 +240,9 @@ class _AssetZone extends StatelessWidget {
       case HomeAssetPhase.refreshing:
         return '$semanticsLabel ${format(state.value ?? '')}，正在刷新';
       case HomeAssetPhase.loading:
-      case HomeAssetPhase.preparing:
         return '$semanticsLabel正在获取';
+      case HomeAssetPhase.preparing:
+        return '$semanticsLabel尚未获取';
       case HomeAssetPhase.recovering:
         return '$semanticsLabel正在恢复登录';
       case HomeAssetPhase.waiting:

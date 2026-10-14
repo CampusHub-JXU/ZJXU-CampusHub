@@ -217,6 +217,30 @@ class _HomePageState extends State<HomePage> {
     _authGeneration++;
     _resetAssetLifecycle();
     _reAdoptPrivateProjection();
+    _scheduleAssetRefreshAfterLogin(_authGeneration);
+  }
+
+  /// 登录 / 换号 / 同号重登后补一次资产行刷新。
+  ///
+  /// 前台 [CampusRefreshCoordinator] 虽也会在身份变化时刷新服务层缓存，但它
+  /// 不经过本页的「在途 / 已尝试 / 未配置」信号：身份复位后若没有本页发起
+  /// 的请求，资产行会一直停在静态的 `preparing`（`--`），失败也无法进入
+  /// 「获取失败」可重试态。因此已登录且 bootstrap 就绪时由本页自己排一次，
+  /// 与其它刷新路径一样等页面转场落定再开始；等待期间若世代再次推进
+  /// （又一次身份变化）则放弃，由新的那次负责。登出不排（资产行为「待登录」）。
+  void _scheduleAssetRefreshAfterLogin(int generation) {
+    if (!_hasHydratedBootstrapState ||
+        !_snapshotCoordinator.isUnifiedLoggedIn) {
+      return;
+    }
+    unawaited(() async {
+      await PageTransitionActivity.instance.whenIdle();
+      if (!mounted || generation != _authGeneration) return;
+      await Future.wait<void>([
+        _refreshCampusCardBalance(),
+        _refreshDormElectricity(),
+      ]);
+    }());
   }
 
   /// 教务身份变化：与统一认证同一路径重新采纳投影（考试 / 课表带学号
@@ -360,6 +384,8 @@ class _HomePageState extends State<HomePage> {
   /// await 前捕获认证世代，登出 / 换号后迟到的旧 owner 结果一律丢弃。
   Future<void> _refreshCampusCardBalance() async {
     if (!_isBootstrapReady) return;
+    // 已有请求在途（含「获取失败」被连点重试）：不并发再发一条。
+    if (_campusCardInFlight > 0) return;
     final authGuard = _authGeneration;
     if (_snapshotCoordinator.cachedCampusCardBalanceText() != null) {
       // 已有新鲜缓存：直接展示，不发网络。
@@ -395,6 +421,8 @@ class _HomePageState extends State<HomePage> {
   /// await 前捕获认证世代，登出 / 换号后迟到的旧 owner 结果一律丢弃。
   Future<void> _refreshDormElectricity() async {
     if (!_isBootstrapReady) return;
+    // 已有请求在途（含「获取失败」被连点重试）：不并发再发一条。
+    if (_electricityInFlight > 0) return;
     final authGuard = _authGeneration;
     if (!_snapshotCoordinator.isUnifiedLoggedIn) {
       // 无统一认证身份：不发请求，资产行由身份派生为「待登录」。

@@ -26,7 +26,16 @@ HomeAssetState resolveHomeAssetState({
   required bool authRequired,
   required bool notConfigured,
 }) {
-  if (!bootstrapReady) return const HomeAssetState.recovering();
+  if (!bootstrapReady) {
+    // 缓存优先：冷启动时已通过 owner 校验的可展示值照常显示（有在途请求则
+    // 带刷新指示），只有「没有值」时才显示「正在恢复」。
+    if (value != null) {
+      return inFlight > 0
+          ? HomeAssetState.refreshing(value)
+          : HomeAssetState.ready(value);
+    }
+    return const HomeAssetState.recovering();
+  }
   if (!loggedIn) return const HomeAssetState.waiting();
   if (inFlight > 0) {
     return value != null
