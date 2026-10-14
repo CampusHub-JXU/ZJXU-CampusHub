@@ -126,11 +126,12 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/update_file_paths" />
         </provider>
-        <!-- 应用内一键更新：受管下载完成广播（非导出、只处理 DOWNLOAD_COMPLETE）。
+        <!-- 应用内一键更新：受管下载完成广播（签名权限限制发送者、只处理 DOWNLOAD_COMPLETE）。
              仅 MainActivity 动态注册在进程死亡后收不到，必须 manifest 注册。 -->
         <receiver
             android:name=".platform.update.AppUpdateDownloadReceiver"
-            android:exported="false">
+            android:exported="true"
+            android:permission="android.permission.SEND_DOWNLOAD_COMPLETED_INTENTS">
             <intent-filter>
                 <action android:name="android.intent.action.DOWNLOAD_COMPLETE" />
             </intent-filter>
@@ -141,7 +142,6 @@
             android:name=".platform.update.AppUpdateInstallActivity"
             android:exported="false"
             android:excludeFromRecents="true"
-            android:noHistory="true"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

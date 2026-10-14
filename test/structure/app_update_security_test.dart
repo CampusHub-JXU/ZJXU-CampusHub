@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// 应用内一键更新（Issue #42）的**结构性**安全断言。
 ///
 /// 这些断言只读取 manifest / XML / Kotlin / Dart 源码文本，用来锁死关键安全
-/// 契约不被回退（非导出组件、窄 FileProvider 路径、规范资产 URL 校验、包名 /
+/// 契约不被回退（签名权限接收器 / 非导出安装页、窄 FileProvider 路径、规范资产 URL 校验、包名 /
 /// 签名 / 版本校验、无 Cookie 注入、requestInstall 不再假失败）。
 ///
 /// **它们不是原生运行时行为的证明**：真正的安装安全需要设备端到端验收。
@@ -54,37 +54,33 @@ void main() {
       expect(providerTag, contains('android:grantUriPermissions="true"'));
     });
 
-    test(
-      'download-complete receiver and install activity are non-exported',
-      () {
-        final manifest = read(manifestPath);
-        expect(
-          manifest,
-          contains('.platform.update.AppUpdateDownloadReceiver'),
-        );
-        expect(manifest, contains('android.intent.action.DOWNLOAD_COMPLETE'));
+    test('download receiver requires signature permission and install activity is private', () {
+      final manifest = read(manifestPath);
+      expect(manifest, contains('.platform.update.AppUpdateDownloadReceiver'));
+      expect(manifest, contains('android.intent.action.DOWNLOAD_COMPLETE'));
 
-        final receiverTag = _tag(
-          manifest,
-          'receiver',
-          containing: '.platform.update.AppUpdateDownloadReceiver',
-        );
-        expect(
-          receiverTag,
-          isNotNull,
-          reason: 'download receiver not declared',
-        );
-        expect(receiverTag, contains('android:exported="false"'));
+      final receiverTag = _tag(
+        manifest,
+        'receiver',
+        containing: '.platform.update.AppUpdateDownloadReceiver',
+      );
+      expect(receiverTag, isNotNull, reason: 'download receiver not declared');
+      expect(receiverTag, contains('android:exported="true"'));
+      expect(
+        receiverTag,
+        contains(
+          'android:permission="android.permission.SEND_DOWNLOAD_COMPLETED_INTENTS"',
+        ),
+      );
 
-        final activityTag = _tag(
-          manifest,
-          'activity',
-          containing: '.platform.update.AppUpdateInstallActivity',
-        );
-        expect(activityTag, isNotNull, reason: 'install activity not declared');
-        expect(activityTag, contains('android:exported="false"'));
-      },
-    );
+      final activityTag = _tag(
+        manifest,
+        'activity',
+        containing: '.platform.update.AppUpdateInstallActivity',
+      );
+      expect(activityTag, isNotNull, reason: 'install activity not declared');
+      expect(activityTag, contains('android:exported="false"'));
+    });
 
     test('FileProvider paths stay inside the app-private updates dir', () {
       final paths = read(pathsPath);
@@ -199,7 +195,13 @@ void main() {
       expect(receiver, contains('onDownloadComplete'));
 
       final manager = read('$updateDir/AppUpdateManager.kt');
-      expect(manager, contains('if (record.downloadId != downloadId) return'));
+      expect(manager, contains('record.downloadId != downloadId'));
+      expect(
+        manager,
+        contains('trackedRowOwnership(record) != RowOwnership.OWNED'),
+      );
+      expect(receiver, contains('onDownloadComplete(downloadId) {'));
+      expect(receiver, contains('pending.finish()'));
     });
 
     test('notification targets explicit immutable install activity', () {

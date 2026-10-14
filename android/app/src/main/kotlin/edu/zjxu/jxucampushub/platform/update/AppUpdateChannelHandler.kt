@@ -26,27 +26,35 @@ class AppUpdateChannelHandler internal constructor(
     fun register(messenger: BinaryMessenger) {
         MethodChannel(messenger, AppUpdateContract.CHANNEL)
             .setMethodCallHandler { call, result ->
-                when (call.method) {
-                    AppUpdateContract.METHOD_IS_SUPPORTED ->
-                        result.success(manager.isSupported())
+                try {
+                    when (call.method) {
+                        AppUpdateContract.METHOD_IS_SUPPORTED ->
+                            result.success(manager.isSupported())
 
-                    AppUpdateContract.METHOD_START_DOWNLOAD -> handleStart(call, result)
+                        AppUpdateContract.METHOD_START_DOWNLOAD -> handleStart(call, result)
 
-                    AppUpdateContract.METHOD_QUERY_ACTIVE_UPDATE ->
-                        result.success(manager.queryActive())
+                        AppUpdateContract.METHOD_QUERY_ACTIVE_UPDATE ->
+                            result.success(manager.queryActive())
 
-                    AppUpdateContract.METHOD_CANCEL_ACTIVE_UPDATE ->
-                        result.success(manager.cancelActive())
+                        AppUpdateContract.METHOD_CANCEL_ACTIVE_UPDATE ->
+                            result.success(manager.cancelActive())
 
-                    AppUpdateContract.METHOD_REQUEST_INSTALL ->
-                        manager.requestInstall(activity) { launched ->
-                            result.success(launched)
-                        }
+                        AppUpdateContract.METHOD_REQUEST_INSTALL ->
+                            manager.requestInstall(
+                                activity,
+                                call.argument<String>("expectedReleaseTag"),
+                            ) { launched ->
+                                result.success(launched)
+                            }
 
-                    AppUpdateContract.METHOD_OPEN_INSTALL_PERMISSION_SETTINGS ->
-                        result.success(manager.openInstallPermissionSettings(activity))
+                        AppUpdateContract.METHOD_OPEN_INSTALL_PERMISSION_SETTINGS ->
+                            result.success(manager.openInstallPermissionSettings(activity))
 
-                    else -> result.notImplemented()
+                        else -> result.notImplemented()
+                    }
+                } catch (error: AppUpdateException) {
+                    // 持久化不可用等：返回安全错误类别，Dart 侧 safeInvoke 降级。
+                    result.error(error.category, error.message, null)
                 }
             }
     }

@@ -6,9 +6,10 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * 受管下载完成广播接收器（**manifest 注册、非导出**）。
+ * 受管下载完成广播接收器（**manifest 注册、受系统签名权限保护**）。
  *
  * - 只处理 `ACTION_DOWNLOAD_COMPLETE`，且只接受与原生持久化受管 id 匹配的下载
  *   （`AppUpdateManager.onDownloadComplete` 内部比对，忽略其它下载 id）；
@@ -30,13 +31,15 @@ class AppUpdateDownloadReceiver : BroadcastReceiver() {
 
         val appContext = context.applicationContext
         val pending = goAsync()
+        // PendingResult.finish() 重复调用会抛 IllegalStateException，故只放行一次。
+        val finished = AtomicBoolean(false)
+        val finish = { if (finished.compareAndSet(false, true)) pending.finish() }
         executor.execute {
             try {
-                AppUpdateManager.get(appContext).onDownloadComplete(downloadId)
+                AppUpdateManager.get(appContext).onDownloadComplete(downloadId) { finish() }
             } catch (error: Exception) {
                 Log.e("AppUpdate", "receiver failed: ${error.javaClass.simpleName}")
-            } finally {
-                pending.finish()
+                finish()
             }
         }
     }

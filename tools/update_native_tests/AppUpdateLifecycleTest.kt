@@ -1,7 +1,7 @@
 package edu.zjxu.jxucampushub.platform.update
 
 /** Runs the production JVM logic; no copied implementation or Android mocks. */
-fun main() {
+fun main(args: Array<String>) {
     fun resumed(
         verified: Boolean = true,
         permissionGranted: Boolean = true,
@@ -46,4 +46,5 @@ fun main() {
     check(!AppUpdateOwnership.canLaunchInstaller(true, true, false))
     check(!AppUpdateOwnership.canLaunchInstaller(true, false, true))
     println("AppUpdate native lifecycle: 17 scenarios passed")
+    runManagerTests(java.io.File(args.single()))
 }

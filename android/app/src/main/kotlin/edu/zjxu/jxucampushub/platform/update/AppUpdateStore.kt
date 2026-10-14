@@ -17,6 +17,7 @@ internal class AppUpdateStore(context: Context) {
     private val prefs: SharedPreferences =
         context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     private val lock = Any()
+    private var persistenceFailed = false
 
     internal data class Record(
         val requestKey: String,
@@ -37,13 +38,17 @@ internal class AppUpdateStore(context: Context) {
         val failureReason: String?,
     )
 
-    fun read(): Record? = synchronized(lock) { readLocked() }
+    fun read(): Record? = synchronized(lock) {
+        requirePersistenceHealthy()
+        readLocked()
+    }
 
     /** 读-改-写；[transform] 返回 null 表示清除记录。 */
     fun update(transform: (Record?) -> Record?): Record? = synchronized(lock) {
+        requirePersistenceHealthy()
         val next = transform(readLocked())
         if (next == null) {
-            prefs.edit().clear().commit()
+            clearLocked()
         } else {
             writeLocked(next)
         }
@@ -51,11 +56,41 @@ internal class AppUpdateStore(context: Context) {
     }
 
     fun clear() {
-        synchronized(lock) { prefs.edit().clear().commit() }
+        synchronized(lock) { requirePersistenceHealthy(); clearLocked() }
     }
 
-    /** 下一个 generation（不写入，只计算）。 */
-    fun nextGeneration(): Int = (read()?.generation ?: 0) + 1
+    /** 独立持久化尝试序号；清除请求也不回收，兼容旧记录的 generation。 */
+    fun nextGeneration(): Int = synchronized(lock) {
+        requirePersistenceHealthy()
+        val previous = maxOf(prefs.getInt(KEY_ATTEMPT_SEQUENCE, 0),
+            prefs.getInt(KEY_GENERATION, 0))
+        if (previous == Int.MAX_VALUE) {
+            throw AppUpdateException(AppUpdateErrors.STORAGE, "attempt sequence exhausted")
+        }
+        val next = previous + 1
+        requireCommitted(prefs.edit().putInt(KEY_ATTEMPT_SEQUENCE, next).commit())
+        next
+    }
+
+    private fun clearLocked() {
+        val sequence = maxOf(prefs.getInt(KEY_ATTEMPT_SEQUENCE, 0),
+            prefs.getInt(KEY_GENERATION, 0))
+        requireCommitted(prefs.edit().clear().putInt(KEY_ATTEMPT_SEQUENCE, sequence).commit())
+    }
+
+    private fun requireCommitted(committed: Boolean) {
+        if (!committed) {
+            // commit(false) 也已改写内存；本实例禁用，绝不把未落盘 pending 当成日志重开。
+            persistenceFailed = true
+            throw AppUpdateException(AppUpdateErrors.STORAGE, "managed update persistence failed")
+        }
+    }
+
+    private fun requirePersistenceHealthy() {
+        if (persistenceFailed) {
+            throw AppUpdateException(AppUpdateErrors.STORAGE, "managed update store unavailable")
+        }
+    }
 
     private fun readLocked(): Record? {
         val requestKey = prefs.getString(KEY_REQUEST_KEY, null) ?: return null
@@ -81,7 +116,7 @@ internal class AppUpdateStore(context: Context) {
     }
 
     private fun writeLocked(record: Record) {
-        prefs.edit()
+        requireCommitted(prefs.edit()
             .putString(KEY_REQUEST_KEY, record.requestKey)
             .putString(KEY_VERSION, record.version)
             .putString(KEY_URL, record.url)
@@ -98,7 +133,7 @@ internal class AppUpdateStore(context: Context) {
             .putBoolean(KEY_INSTALLER_OPENED, record.installerOpened)
             .putBoolean(KEY_PERMISSION_REQUIRED, record.permissionRequired)
             .putString(KEY_FAILURE_REASON, record.failureReason)
-            .commit()
+            .commit())
     }
 
     private companion object {
@@ -113,6 +148,7 @@ internal class AppUpdateStore(context: Context) {
         const val KEY_ABI = "abi"
         const val KEY_DOWNLOAD_ID = "download_id"
         const val KEY_GENERATION = "generation"
+        const val KEY_ATTEMPT_SEQUENCE = "attempt_sequence"
         const val KEY_PENDING = "pending_enqueue"
         const val KEY_USER_WANTS_INSTALL = "user_wants_install"
         const val KEY_VERIFIED = "verified"

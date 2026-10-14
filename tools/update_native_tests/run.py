@@ -49,19 +49,26 @@ def main():
     if not annotations:
         parser.error("Missing cached JetBrains annotations; run an Android build first")
     classpath.append(annotations[-1])
-    production = repo / ("android/app/src/main/kotlin/edu/zjxu/"
-                         "jxucampushub/platform/update/AppUpdateOwnership.kt")
-    with tempfile.TemporaryDirectory(prefix="jxu_update_native_") as temp:
+    source_dir = repo / "android/app/src/main/kotlin/edu/zjxu/jxucampushub/platform/update"
+    production = [source_dir / f"{name}.kt" for name in (
+        "AppUpdateOwnership", "AppUpdateContract", "AppUpdateStore", "AppUpdateManager",
+        "AppUpdateDownloadReceiver",
+    )]
+    tests = Path(__file__).parent
+    sources = production + sorted(tests.glob("*.kt")) + sorted((tests / "stubs").glob("*.kt"))
+    temp_root = repo / "output/update_native_tests"
+    temp_root.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="jxu_update_native_", dir=temp_root) as temp:
         output = Path(temp) / "tests.jar"
         subprocess.run([
             args.java, "-cp", os.pathsep.join(map(str, classpath)),
             "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler", "-no-stdlib",
-            "-no-reflect", "-classpath", str(stdlib), "-d", str(output),
-            str(production), str(Path(__file__).with_name("AppUpdateLifecycleTest.kt")),
+            "-no-reflect", "-nowarn", "-classpath", str(stdlib), "-d", str(output),
+            *map(str, sources),
         ], check=True)
         subprocess.run([
             args.java, "-cp", os.pathsep.join(map(str, (output, stdlib))),
-            "edu.zjxu.jxucampushub.platform.update.AppUpdateLifecycleTestKt",
+            "edu.zjxu.jxucampushub.platform.update.AppUpdateLifecycleTestKt", temp,
         ], check=True)
 
 
