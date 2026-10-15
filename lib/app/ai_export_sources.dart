@@ -87,6 +87,10 @@ GradesModuleData gradesModuleDataFromEntries(
   status: status,
   lastUpdatedAt: updatedAt,
   dataSource: source,
+  // 条数触及抓取上限：不能把汇总（学分 / 绩点）当作全量。
+  partialNote: GradesService.mayBeTruncated(entries.length)
+      ? '仅前 ${entries.length} 条，可能不全'
+      : null,
   records: [
     for (final e in entries)
       GradesExportRecord(
@@ -386,8 +390,68 @@ ExportModuleSource _secondClassroomSource(DateTime Function() clock) {
 /// 本地通知收件箱超过该时长未成功同步即标记为过期。
 const Duration kNoticeStaleAfter = Duration(days: 2);
 
-/// 最多翻几页教务处通知列表（每页约十几条，30 天窗口足够）。
-const int kNoticeExportMaxPages = 3;
+/// 最多翻几页教务处通知列表。列表里置顶 / 补录混排，不能假设日期单调，
+/// 因此不做提前停止：在页数预算内翻页，取回后再统一筛 30 天窗口。
+const int kNoticeExportMaxPages = 6;
+
+/// 本地收件箱只是后台同步积累的最新通知（有条数上限），无法证明覆盖了完整窗口。
+const String kNoticeInboxCoverageNote =
+    '本地收件箱只含应用同步到的最新通知（有条数上限），不保证覆盖近 '
+    '$kNoticeWindowDays 天全部通知，可点「重新获取」联网补全';
+
+/// 分页抓取教务处通知并给出覆盖范围结论（纯逻辑，便于测试）。
+///
+/// * 翻到站点最后一页（或遇到空页）才算覆盖完整；
+/// * 中途某页失败 / 登录失效、或页数预算用尽仍有后续页 → 部分结果，说明原因；
+/// * 首页就失败 / 需登录 → 没有任何数据，按失败 / 需登录返回。
+Future<ExportFetchOutcome> fetchNoticesForExport({
+  required Future<NoticeFetchResult> Function(int page) fetchPage,
+  required DateTime now,
+  int maxPages = kNoticeExportMaxPages,
+}) async {
+  final collected = <Notice>[];
+  String? partialNote;
+  var fetchedPages = 0;
+  int? totalPages;
+  for (var page = 1; page <= maxPages; page++) {
+    final result = await fetchPage(page);
+    switch (result.status) {
+      case NoticeFetchStatus.authRequired:
+        if (page == 1) return const ExportNeedsLogin();
+        partialNote = '第 $page 页获取时登录已失效，仅含前 ${page - 1} 页';
+      case NoticeFetchStatus.unavailable:
+        if (page == 1) {
+          return const ExportFetchFailed('教务处通知获取失败，请稍后重试');
+        }
+        partialNote = '第 $page 页获取失败，仅含前 ${page - 1} 页';
+      case NoticeFetchStatus.ok:
+        collected.addAll(result.notices);
+        fetchedPages = page;
+        totalPages = result.totalPages ?? totalPages;
+    }
+    if (partialNote != null) break;
+    final total = totalPages;
+    // 站点最后一页 / 空页：覆盖完整。
+    if (result.notices.isEmpty || (total != null && page >= total)) break;
+    if (page == maxPages) {
+      partialNote = total == null
+          ? '仅获取了最新 $fetchedPages 页，更早的通知未获取'
+          : '仅获取了最新 $fetchedPages 页（站点共 $total 页），更早的通知未获取';
+    }
+  }
+  return ExportFetched(
+    NoticesModuleData.fromNotices(
+      collected,
+      exportedAt: now,
+      status: ExportModuleStatus.available,
+      lastUpdatedAt: now,
+      dataSource: _freshSource,
+      partialNote: partialNote == null
+          ? null
+          : '$partialNote，近 $kNoticeWindowDays 天内的通知可能不全',
+    ),
+  );
+}
 
 ExportModuleSource _noticesSource(DateTime Function() clock) {
   return ExportModuleSource(
@@ -407,45 +471,15 @@ ExportModuleSource _noticesSource(DateTime Function() clock) {
         ),
         lastUpdatedAt: syncedAt,
         dataSource: _cacheSource,
+        partialNote: kNoticeInboxCoverageNote,
       );
     },
-    fetch: ({required force}) => guardExportFetch(() async {
-      final now = clock();
-      final collected = <Notice>[];
-      final cutoff = DateTime(
-        now.year,
-        now.month,
-        now.day,
-      ).subtract(const Duration(days: kNoticeWindowDays));
-      for (var page = 1; page <= kNoticeExportMaxPages; page++) {
-        final result = await NoticeService.instance.fetchNoticesRaw(page: page);
-        switch (result.status) {
-          case NoticeFetchStatus.authRequired:
-            return const ExportNeedsLogin();
-          case NoticeFetchStatus.unavailable:
-            if (collected.isEmpty) {
-              return const ExportFetchFailed('教务处通知获取失败，请稍后重试');
-            }
-          case NoticeFetchStatus.ok:
-            collected.addAll(result.notices);
-        }
-        if (result.status != NoticeFetchStatus.ok) break;
-        // 列表按日期倒序：本页已出现窗口外的日期，后面的页更旧。
-        final dates = result.notices.map((n) => n.parsedDate).nonNulls;
-        if (dates.any((d) => d.isBefore(cutoff))) break;
-        final total = result.totalPages;
-        if (total != null && page >= total) break;
-      }
-      return ExportFetched(
-        NoticesModuleData.fromNotices(
-          collected,
-          exportedAt: now,
-          status: ExportModuleStatus.available,
-          lastUpdatedAt: now,
-          dataSource: _freshSource,
-        ),
-      );
-    }),
+    fetch: ({required force}) => guardExportFetch(
+      () => fetchNoticesForExport(
+        fetchPage: (page) => NoticeService.instance.fetchNoticesRaw(page: page),
+        now: clock(),
+      ),
+    ),
   );
 }
 

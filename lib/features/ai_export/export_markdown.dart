@@ -51,6 +51,9 @@ String renderExportMarkdown(AiExportDocument doc) {
     if (m.status == ExportModuleStatus.stale) {
       b.writeln('> 已过期：缓存超过有效期，可能不是最新数据。');
     }
+    if (m.partialNote != null) {
+      b.writeln('> 部分结果：${m.partialNote}');
+    }
     b.writeln();
     switch (m) {
       case MissingModuleData():
@@ -78,7 +81,13 @@ void _grades(StringBuffer b, GradesModuleData m) {
   final s = m.summary;
   b
     ..writeln('### 汇总（应用口径）')
-    ..writeln()
+    ..writeln();
+  if (m.isPartial) {
+    b
+      ..writeln('- 注意：以下汇总只覆盖已取到的 ${m.records.length} 条记录，不是全部成绩。')
+      ..writeln();
+  }
+  b
     ..writeln(
       '- 记录 ${m.records.length} 条，学分合计 ${_T.formatCredits(m.totalCredits)}',
     )
@@ -256,15 +265,25 @@ void _exams(StringBuffer b, ExamsModuleData m) {
     ..writeln(
       '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
     );
+  var anyUnparsed = false;
+  var anyUnscheduled = false;
   for (final r in m.records) {
-    final time = (r.startTime != null && r.endTime != null)
+    final parsedTime = (r.startTime != null && r.endTime != null)
         ? '${r.startTime}-${r.endTime}'
         : null;
+    // 教务给了时间原文就绝不丢：解析不全时在「时间」列保留原文；
+    // 完全没有时间信息才是「时间待定」（尚未安排）。
+    final raw = r.timeText;
+    final unparsed = raw != null && (r.date == null || parsedTime == null);
+    if (unparsed) anyUnparsed = true;
+    if (r.date == null && raw == null) anyUnscheduled = true;
+    final dateCell = r.date ?? (raw == null ? '时间待定' : '未解析');
+    final time = unparsed ? '原文：$raw' : parsedTime;
     b.writeln(
       '| ${_T.mdCell(r.courseName)} '
       '| ${_T.mdCell(r.courseCode)} '
       '| ${_T.mdCell(r.examName)} '
-      '| ${r.date ?? '时间待定'} '
+      '| $dateCell '
       '| ${_T.mdCell(time)} '
       '| ${_T.mdCell(r.location)} '
       '| ${_T.mdCell(r.campus)} '
@@ -273,6 +292,16 @@ void _exams(StringBuffer b, ExamsModuleData m) {
       '| ${_T.mdCell(r.academicYear)} '
       '| ${_T.mdCell(r.semester)} |',
     );
+  }
+  if (anyUnscheduled) {
+    b
+      ..writeln()
+      ..writeln('「时间待定」= 教务尚未给出考试时间（未安排）。');
+  }
+  if (anyUnparsed) {
+    b
+      ..writeln()
+      ..writeln('「未解析」「原文：…」= 教务给出了时间文案，但应用未能完整解析出日期 / 起止时间，已原样保留。');
   }
 }
 
@@ -309,7 +338,12 @@ void _secondClassroom(StringBuffer b, SecondClassroomModuleData m) {
 
 void _notices(StringBuffer b, NoticesModuleData m) {
   if (m.records.isEmpty) {
-    b.writeln('近 $kNoticeWindowDays 天内没有教务处通知。');
+    b.writeln(
+      m.isPartial
+          ? '在已获取的范围内未发现近 $kNoticeWindowDays 天的教务处通知；'
+                '覆盖范围不完整，不能据此判断没有通知。'
+          : '近 $kNoticeWindowDays 天内没有教务处通知。',
+    );
     return;
   }
   b

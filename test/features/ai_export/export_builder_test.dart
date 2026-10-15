@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:jxu_campus_hub/core/academic/exam_model.dart';
+import 'package:jxu_campus_hub/core/notice/notice_model.dart';
 import 'package:jxu_campus_hub/features/ai_export/export_background.dart';
 import 'package:jxu_campus_hub/features/ai_export/export_builder.dart';
 import 'package:jxu_campus_hub/features/ai_export/export_document.dart';
@@ -242,6 +244,52 @@ void main() {
       expect(m.records, hasLength(5));
     });
 
+    test('学期排序：数字 "1"/"2"/"3" 与中文名统一，第三学期在第二学期之后', () {
+      final g = gradesData(
+        records: [
+          gradeRecord(course: 'c', year: '2025-2026', semester: '3'),
+          gradeRecord(course: 'b', year: '2025-2026', semester: '2'),
+          gradeRecord(course: 'a', year: '2025-2026', semester: '1'),
+          gradeRecord(course: 'd', year: '2024-2025', semester: '第二学期'),
+          gradeRecord(course: 'e', year: '2024-2025', semester: '第一学期'),
+          gradeRecord(course: 'f', year: '2024-2025', semester: '第三学期'),
+        ],
+      );
+      expect(g.terms.map((t) => t.label).toList(), [
+        '2024-2025 第一学期',
+        '2024-2025 第二学期',
+        '2024-2025 第三学期',
+        '2025-2026 1',
+        '2025-2026 2',
+        '2025-2026 3',
+      ]);
+      expect(exportSemesterRank('1'), lessThan(exportSemesterRank('2')));
+      expect(exportSemesterRank('3'), greaterThan(exportSemesterRank('第二学期')));
+      expect(exportSemesterRank('未知'), greaterThan(exportSemesterRank('3')));
+    });
+
+    test('部分结果：说明原因，汇总标注只覆盖已取到的记录', () {
+      final g = GradesModuleData(
+        status: ExportModuleStatus.available,
+        lastUpdatedAt: DateTime(2026, 10, 13, 9),
+        dataSource: '刚获取',
+        partialNote: '仅前 1000 条，可能不全',
+        records: [gradeRecord()],
+      );
+      expect(g.isPartial, isTrue);
+      expect(g.scopeLabel, '已取到的学期');
+      final md = ExportBuilder.markdown(
+        fullDocument(
+          modules: {ExportModule.grades},
+          overrides: {ExportModule.grades: g},
+        ),
+      );
+      expect(md, contains('> 部分结果：仅前 1000 条，可能不全'));
+      expect(md, contains('以下汇总只覆盖已取到的 1 条记录，不是全部成绩'));
+      expect(md, contains('| 成绩 | 已获取（部分） |'));
+      expect(md, contains('以下模块只是部分结果，不要当作完整数据：成绩（仅前 1000 条，可能不全）'));
+    });
+
     test('没有可计入记录时绩点为 null 而不是 0', () {
       final g = gradesData(
         records: [gradeRecord(grade: '合格', gpa: 0, credits: 1)],
@@ -335,6 +383,47 @@ void main() {
       expect(m.scopeLabel, '当前学期');
       expect(m.records.single.date, '2027-01-10');
     });
+
+    ExamsModuleData examsFrom(Object? rawTime) => ExamsModuleData.fromEntries(
+      [
+        ExamEntry.fromJson({'kcmc': '线性代数', 'kssj': rawTime, 'ksmc': '期末考试'}),
+      ],
+      status: ExportModuleStatus.available,
+      lastUpdatedAt: DateTime(2026, 10, 13, 9, 5),
+      dataSource: '刚获取',
+    );
+
+    String examMd(ExamsModuleData data) => ExportBuilder.markdown(
+      fullDocument(
+        modules: {ExportModule.exams},
+        overrides: {ExportModule.exams: data},
+      ),
+    );
+
+    test('时间文案解析不出日期 / 起止时间：保留教务原文，不写成「时间待定」', () {
+      final md = examMd(examsFrom('2027年1月10日 上午第二场'));
+      expect(md, contains('| 未解析 | 原文：2027年1月10日 上午第二场 |'));
+      expect(md, isNot(contains('时间待定 |')));
+      expect(md, contains('已原样保留'));
+    });
+
+    test('只解析出日期、没有起止时间：日期照写，时间列保留原文', () {
+      final md = examMd(examsFrom('第20周 周六(2027-01-10) 上午'));
+      expect(md, contains('| 2027-01-10 | 原文：第20周 周六(2027-01-10) 上午 |'));
+    });
+
+    test('教务没有给出任何时间文案：才是「时间待定」（未安排）', () {
+      final md = examMd(examsFrom(''));
+      expect(md, contains('| 时间待定 |'));
+      expect(md, contains('教务尚未给出考试时间（未安排）'));
+      expect(md, isNot(contains('未解析')));
+    });
+
+    test('完整可解析时不重复输出原文', () {
+      final md = examMd(examsFrom('第20周 周六(2027-01-10) 09:00-11:00'));
+      expect(md, contains('| 2027-01-10 | 09:00-11:00 |'));
+      expect(md, isNot(contains('原文：')));
+    });
   });
 
   group('第二课堂：已报名 ≠ 已签到 ≠ 已认定学时', () {
@@ -357,6 +446,31 @@ void main() {
     test('近 30 天窗口：窗口外与无日期的不导出，新 → 旧', () {
       final data = noticesData();
       expect(data.records.map((r) => r.title), ['关于期末考试安排的通知', '选课通知']);
+    });
+
+    test('部分结果：说明覆盖范围；窗口内为空时不断言「没有通知」', () {
+      NoticesModuleData build({String? partial}) =>
+          NoticesModuleData.fromNotices(
+            const <Notice>[],
+            exportedAt: kExportNow,
+            status: ExportModuleStatus.available,
+            lastUpdatedAt: kExportNow,
+            dataSource: '刚获取',
+            partialNote: partial,
+          );
+      String md(NoticesModuleData d) => ExportBuilder.markdown(
+        fullDocument(
+          modules: {ExportModule.notices},
+          overrides: {ExportModule.notices: d},
+        ),
+      );
+
+      expect(md(build()), contains('近 30 天内没有教务处通知。'));
+
+      final partial = md(build(partial: '第 2 页获取失败，仅含前 1 页'));
+      expect(partial, contains('> 部分结果：第 2 页获取失败，仅含前 1 页'));
+      expect(partial, contains('不能据此判断没有通知'));
+      expect(partial, isNot(contains('近 30 天内没有教务处通知。')));
     });
 
     test('只有标题 / 日期 / 栏目 / 链接，不含正文', () {

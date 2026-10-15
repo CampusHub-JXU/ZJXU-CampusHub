@@ -14,14 +14,28 @@ class _FakeIdentity extends ChangeNotifier {
 
   String? academic;
   String? unified;
+  int academicRevision = 0;
+  int unifiedRevision = 0;
 
-  ExportIdentity read() => ExportIdentity(academic: academic, unified: unified);
+  ExportIdentity read() => ExportIdentity(
+    academic: academic,
+    unified: unified,
+    academicRevision: academicRevision,
+    unifiedRevision: unifiedRevision,
+  );
 
   void set({String? academic, String? unified, bool keep = false}) {
     if (!keep) {
       this.academic = academic;
       this.unified = unified;
     }
+    notifyListeners();
+  }
+
+  /// 同账号重登：账号不变，会话修订号推进。
+  void reLogin({bool academicDomain = true, bool unifiedDomain = false}) {
+    if (academicDomain) academicRevision++;
+    if (unifiedDomain) unifiedRevision++;
     notifyListeners();
   }
 }
@@ -51,6 +65,12 @@ class _Fake {
     },
   );
 }
+
+ExamsModuleData _examsFrom(String source) => ExamsModuleData.fromEntries(
+  const [],
+  status: ExportModuleStatus.available,
+  dataSource: source,
+);
 
 Future<void> _settle() => Future<void>.delayed(Duration.zero);
 
@@ -283,6 +303,79 @@ void main() {
 
       expect(controller.slotOf(ExportModule.exams).data, isNull);
       expect(controller.rowKindOf(ExportModule.exams), ExportRowKind.missing);
+    });
+
+    test('同账号重登（会话修订号推进）：槽位清空并只重读本机缓存，不弹换号提示', () async {
+      build();
+      await controller.initialize();
+      expect(controller.slotOf(ExportModule.grades).data, isNotNull);
+
+      identity.reLogin();
+      expect(controller.slotOf(ExportModule.grades).data, isNull);
+      expect(controller.identityReset, isFalse, reason: '账号没变，不提示「账号已变化」');
+      await _settle();
+      expect(grades.reads, 2, reason: '重登后重读自带归属校验的本地缓存');
+      expect(controller.slotOf(ExportModule.grades).data, isNotNull);
+    });
+
+    test('同账号重登只影响对应登录域', () async {
+      notices.local = noticesData();
+      build();
+      await controller.initialize();
+
+      identity.reLogin(); // 仅教务域
+      expect(controller.slotOf(ExportModule.notices).data, isNotNull);
+
+      identity.reLogin(academicDomain: false, unifiedDomain: true);
+      expect(controller.slotOf(ExportModule.notices).data, isNull);
+    });
+
+    test('在途获取遇到同账号重登：迟到的旧结果被丢弃，用新会话重取一次', () async {
+      var call = 0;
+      final first = Completer<ExportFetchOutcome>();
+      exams.outcome = () {
+        call++;
+        if (call == 1) return first.future;
+        return Future.value(ExportFetched(_examsFrom('NEW')));
+      };
+      build();
+      await controller.initialize();
+      final pending = controller.fetch(ExportModule.exams);
+      await _settle();
+
+      identity.reLogin();
+      // 旧会话的结果迟到：必须被丢弃，而不是落进槽位。
+      first.complete(ExportFetched(_examsFrom('OLD')));
+      await pending;
+
+      expect(exams.fetches, 2, reason: '丢弃后用新会话重取一次');
+      expect(
+        controller.slotOf(ExportModule.exams).data?.dataSource,
+        'NEW',
+        reason: '槽位里是新会话的结果，不是迟到的旧结果',
+      );
+    });
+
+    test('在途获取遇到同账号重登：重取最多一次，仍被打断则放弃', () async {
+      final gates = [
+        Completer<ExportFetchOutcome>(),
+        Completer<ExportFetchOutcome>(),
+      ];
+      var call = 0;
+      exams.outcome = () => gates[call++].future;
+      build();
+      await controller.initialize();
+      final pending = controller.fetch(ExportModule.exams);
+      await _settle();
+      identity.reLogin();
+      gates[0].complete(ExportFetched(examsData()));
+      await _settle();
+      identity.reLogin();
+      gates[1].complete(ExportFetched(examsData()));
+      await pending;
+
+      expect(exams.fetches, 2);
+      expect(controller.slotOf(ExportModule.exams).data, isNull);
     });
 
     test('第二课堂（无账号标识）：任一登录域变化都会清空', () async {

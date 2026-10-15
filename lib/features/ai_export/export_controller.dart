@@ -62,17 +62,41 @@ class ExportModuleSource {
 
 /// 当前两个登录域的已验证身份；未登录为 `null`。
 class ExportIdentity {
-  const ExportIdentity({this.academic, this.unified});
+  const ExportIdentity({
+    this.academic,
+    this.unified,
+    this.academicRevision = 0,
+    this.unifiedRevision = 0,
+  });
 
   final String? academic;
   final String? unified;
 
+  /// 各登录域的会话修订号（`ZhengfangAuth.sessionRevision` /
+  /// `UnifiedAuthService.sessionRevision`）：同账号重登也会推进。
+  final int academicRevision;
+  final int unifiedRevision;
+
+  /// 域内的账号标识（用于「是否登录」与「是否换号」）。
   String? forDomain(ExportAuthDomain domain) => switch (domain) {
     ExportAuthDomain.academic => academic,
     ExportAuthDomain.unified => unified,
-    // 第二课堂没有应用侧账号：任一登录域变化都视为变化（见 _domainKey）。
+    // 第二课堂没有应用侧账号：任一登录域变化都视为变化。
     ExportAuthDomain.session => '${academic ?? ''}|${unified ?? ''}',
   };
+
+  /// 账号 + 会话修订号：任一变化（含同账号重登）都意味着此前的槽位与在途
+  /// 结果不再可信。未登录（无账号）时为 `null`，不随修订号抖动。
+  String? sessionKeyFor(ExportAuthDomain domain) {
+    switch (domain) {
+      case ExportAuthDomain.academic:
+        return academic == null ? null : '$academic#$academicRevision';
+      case ExportAuthDomain.unified:
+        return unified == null ? null : '$unified#$unifiedRevision';
+      case ExportAuthDomain.session:
+        return '${forDomain(domain)}#$academicRevision#$unifiedRevision';
+    }
+  }
 }
 
 typedef ExportIdentityReader = ExportIdentity Function();
@@ -86,6 +110,8 @@ ExportIdentity readCurrentExportIdentity() {
         ? studentId
         : null,
     unified: u.verifiedAccount,
+    academicRevision: z.sessionRevision,
+    unifiedRevision: u.sessionRevision,
   );
 }
 
@@ -127,9 +153,11 @@ enum ExportRowKind { loading, ready, missing, needsLogin, failed }
 /// 以及用途预设与模块选择。
 ///
 /// 隐私与归属：
-/// * 学业 / 统一认证域的数据绑定当时的已验证账号，账号切换或登出立即清空该域
-///   全部数据（先清后读，不会带出上一个账号的内容）；
-/// * 在途获取以「域代」校验，身份变化后迟到的结果直接丢弃；
+/// * 学业 / 统一认证域的数据绑定当时的已验证账号 + 会话修订号，账号切换、登出
+///   或同账号重登立即清空该域全部数据（先清后读，不会带出旧会话的内容）；
+/// * 在途获取以「域代」校验，身份变化后迟到的结果直接丢弃；若只是同账号会话
+///   续期 / 重登（例如本次获取经既有守卫静默续期所致），丢弃后自动用新会话
+///   重取一次；
 /// * 本控制器永不触发登录：未登录只给「需登录」状态。
 class AiExportController extends ChangeNotifier {
   AiExportController({
@@ -146,7 +174,9 @@ class AiExportController extends ChangeNotifier {
        _environment = environment ?? ExportEnvironment.capture,
        _selected = {...initialPreset.modules} {
     for (final domain in ExportAuthDomain.values) {
-      _bound[domain] = _identity().forDomain(domain);
+      final id = _identity();
+      _bound[domain] = id.sessionKeyFor(domain);
+      _boundAccount[domain] = id.forDomain(domain);
     }
     _selected.removeWhere((m) => !_sources.containsKey(m));
     if (_selected.isEmpty && _sources.isNotEmpty) {
@@ -162,7 +192,12 @@ class AiExportController extends ChangeNotifier {
   final ExportEnvironment Function(DateTime now) _environment;
 
   final Map<ExportModule, ExportSlot> _slots = {};
+
+  /// 各域当前绑定的「账号 + 会话修订号」键（同账号重登也会变）。
   final Map<ExportAuthDomain, String?> _bound = {};
+
+  /// 各域当前绑定的账号（不含修订号）：区分「换号 / 登出」与「同账号重登」。
+  final Map<ExportAuthDomain, String?> _boundAccount = {};
   final Map<ExportAuthDomain, int> _generation = {
     for (final d in ExportAuthDomain.values) d: 0,
   };
@@ -253,7 +288,9 @@ class AiExportController extends ChangeNotifier {
   // ── 获取 ─────────────────────────────────────────────────────────────────
 
   /// 经既有服务联网获取。未登录直接进入「需登录」，不发请求、不触发登录。
-  Future<void> fetch(ExportModule module) async {
+  Future<void> fetch(ExportModule module) => _fetch(module, canRetry: true);
+
+  Future<void> _fetch(ExportModule module, {required bool canRetry}) async {
     final source = _sources[module];
     if (source == null) return;
     final current = slotOf(module);
@@ -268,7 +305,11 @@ class AiExportController extends ChangeNotifier {
       return;
     }
     final gen = _generation[domain]!;
-    final force = current.data?.status == ExportModuleStatus.stale;
+    final accountAtStart = _identity().forDomain(domain);
+    // 过期数据与部分结果的重新获取都要绕过缓存有效期。
+    final force =
+        current.data?.status == ExportModuleStatus.stale ||
+        (current.data?.isPartial ?? false);
     _slots[module] = current.copyWith(
       phase: ExportSlotPhase.loading,
       clearMessage: true,
@@ -281,8 +322,18 @@ class AiExportController extends ChangeNotifier {
       AppLogger.instance.warn('ai export fetch failed: ${e.runtimeType}');
       outcome = const ExportFetchFailed('获取失败，请稍后重试');
     }
-    // 身份在途中变化：旧结果一律丢弃（槽位已被清空并重置）。
-    if (_disposed || gen != _generation[domain]) return;
+    if (_disposed) return;
+    // 身份 / 会话在途中变化：旧结果一律丢弃（槽位已被清空并重置）。
+    if (gen != _generation[domain]) {
+      // 仅同账号续期 / 重登（获取自身经守卫静默续期也会推进修订号）：
+      // 丢弃旧结果后用新会话重取一次；换号 / 登出不自动重取。
+      if (canRetry &&
+          !_loggedOut(module) &&
+          _identity().forDomain(domain) == accountAtStart) {
+        await _fetch(module, canRetry: false);
+      }
+      return;
+    }
     final slot = slotOf(module);
     _slots[module] = switch (outcome) {
       ExportFetched(:final data) => ExportSlot(data: data),
@@ -305,9 +356,11 @@ class AiExportController extends ChangeNotifier {
     final now = _identity();
     var changed = false;
     for (final domain in ExportAuthDomain.values) {
-      final key = now.forDomain(domain);
+      final key = now.sessionKeyFor(domain);
       if (key == _bound[domain]) continue;
       _bound[domain] = key;
+      final accountChanged = now.forDomain(domain) != _boundAccount[domain];
+      _boundAccount[domain] = now.forDomain(domain);
       _generation[domain] = _generation[domain]! + 1;
       changed = true;
       final affected = _sources.keys.where((m) => m.domain == domain).toList();
@@ -315,7 +368,8 @@ class AiExportController extends ChangeNotifier {
       for (final m in affected) {
         _slots.remove(m);
       }
-      if (hadData) _identityReset = true;
+      // 同账号重登只清槽重读，不弹「账号已变化」提示。
+      if (hadData && accountChanged) _identityReset = true;
       if (key != null) {
         for (final m in affected) {
           // 登录 / 换号后只重读新账号自己的缓存（读取器自带归属校验）。

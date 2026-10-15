@@ -285,6 +285,36 @@ void main() {
       expect(previewText(tester), contains('线性代数'));
     });
 
+    testWidgets('部分结果：显示「可能不全」并保留「重新获取」，预览写明原因', (tester) async {
+      fakes[ExportModule.notices]!.outcome = () async => ExportFetched(
+        NoticesModuleData.fromNotices(
+          const [],
+          exportedAt: kExportNow,
+          status: ExportModuleStatus.available,
+          lastUpdatedAt: kExportNow,
+          dataSource: '刚获取',
+          partialNote: '第 2 页获取失败，仅含前 1 页',
+        ),
+      );
+      await pumpPage(tester);
+      await tester.tap(preset('近期安排'));
+      await tester.pump();
+      await tester.tap(action(ExportModule.notices));
+      await tester.pump();
+      await tester.pump();
+
+      expect(status(tester, ExportModule.notices), '已获取 · 0 条 · 可能不全');
+      expect(
+        find.descendant(
+          of: action(ExportModule.notices),
+          matching: find.text('重新获取'),
+        ),
+        findsOneWidget,
+      );
+      expect(previewText(tester), contains('部分结果：第 2 页获取失败'));
+      expect(previewText(tester), contains('不能据此判断没有通知'));
+    });
+
     testWidgets('获取失败只影响本模块，其它模块数据保留，可重试', (tester) async {
       fakes[ExportModule.exams]!.outcome = () async =>
           const ExportFetchFailed('考试获取失败');
@@ -525,6 +555,56 @@ void main() {
       await ZhengfangAuth.instance.markLoggedOut();
       await tester.pump();
       expect(status(tester, ExportModule.grades), '需登录');
+    });
+
+    testWidgets('同账号重登（会话修订号推进）：清空旧会话数据后重读本机缓存', (tester) async {
+      ZhengfangAuth.instance.debugSetSession(
+        active: true,
+        studentId: '20250001',
+      );
+      UnifiedAuthService.instance.debugSetSession(
+        active: true,
+        account: 'cas-1',
+      );
+      var reads = 0;
+      final sources = [
+        ExportModuleSource(
+          module: ExportModule.grades,
+          readLocal: () async {
+            reads++;
+            return gradesData();
+          },
+          fetch: ({required force}) async => const ExportNeedsLogin(),
+        ),
+      ];
+      tester.view.physicalSize = const Size(900, 3000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(home: AiExportPage(sources: sources)),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(reads, 1);
+
+      final before = ZhengfangAuth.instance.sessionRevision;
+      ZhengfangAuth.instance.debugSetSession(
+        active: true,
+        studentId: '20250001',
+        forceRevision: true,
+      );
+      expect(ZhengfangAuth.instance.sessionRevision, before + 1);
+      await ZhengfangAuth.instance.markLoggedIn();
+      await tester.pump();
+      await tester.pump();
+
+      expect(reads, 2, reason: '同账号重登也会作废旧槽位并重读');
+      expect(
+        find.textContaining('账号已变化或已登出'),
+        findsNothing,
+        reason: '账号没变，不提示换号',
+      );
+      expect(previewText(tester), contains('高等数学A'));
     });
   });
 }

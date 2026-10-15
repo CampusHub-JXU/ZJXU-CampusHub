@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 
 import '../../core/academic/academic_exceptions.dart';
@@ -16,6 +18,18 @@ class GradesService {
 
   /// 成绩缓存有效期：15 分钟（与考试一致，供 resume 协调）。
   static const refreshWindow = Duration(minutes: 15);
+
+  /// 成绩接口每页条数（`queryModel.showCount`）。
+  static const int pageSize = 100;
+
+  /// 最多翻几页；达到上限（[maxEntries] 条）仍未取尽时结果可能不全。
+  static const int maxPages = 10;
+
+  static const int maxEntries = pageSize * maxPages;
+
+  /// 条数已触及抓取上限，说明教务端可能还有更多成绩未取到。
+  /// 按条数判定，对缓存读取与联网结果一视同仁。
+  static bool mayBeTruncated(int entryCount) => entryCount >= maxEntries;
 
   /// 单条原子 JSON envelope（owner + updatedAt + durable epoch + payload）。
   static const cacheKey = 'grades_private_cache_v1';
@@ -84,30 +98,47 @@ class GradesService {
     await DioClient.instance.ensureInitialized();
     final ts = DateTime.now().millisecondsSinceEpoch;
     try {
-      run.ensureCurrent();
-      final query = await postZhengfangQuery(
-        path: '/cjcx/cjcx_cxDgXscj.html',
-        gnmkdm: 'N305005',
-        owner: owner,
-        formBody:
-            'xnm=&xqm=&_search=false&nd=$ts'
-            '&queryModel.showCount=100&queryModel.currentPage=1'
-            '&queryModel.sortName=&queryModel.sortOrder=asc&time=1',
-        authExpiredException: const GradesAuthExpiredException(),
-        unexpectedResponseException: const GradesRequestException(
-          '成绩响应异常，保留上次成功数据',
-        ),
-      );
-      final guarded = query.guarded;
+      final items = <Map<String, dynamic>>[];
+      AcademicGuardedResponse<Object?>? first;
+      AcademicGuardedResponse<Object?> last;
+      String? previousPage;
+      for (var page = 1; ; page++) {
+        run.ensureCurrent();
+        final query = await postZhengfangQuery(
+          path: '/cjcx/cjcx_cxDgXscj.html',
+          gnmkdm: 'N305005',
+          owner: owner,
+          formBody:
+              'xnm=&xqm=&_search=false&nd=$ts'
+              '&queryModel.showCount=$pageSize&queryModel.currentPage=$page'
+              '&queryModel.sortName=&queryModel.sortOrder=asc&time=1',
+          authExpiredException: const GradesAuthExpiredException(),
+          unexpectedResponseException: const GradesRequestException(
+            '成绩响应异常，保留上次成功数据',
+          ),
+        );
+        final guarded = query.guarded;
+        first ??= guarded;
+        last = guarded;
+        // 多页必须出自同一会话：中途重登 / 换号则整次作废，不拼接新旧会话的页。
+        if (guarded.revision != first.revision ||
+            guarded.epoch != first.epoch) {
+          throw const GradesRequestException('登录状态已变化，请重新查询');
+        }
+        final pageItems = query.items.cast<Map<String, dynamic>>();
+        // 服务端不认 currentPage 而重复返回同一页时，不重复累计。
+        final fingerprint = jsonEncode(pageItems);
+        if (page > 1 && fingerprint == previousPage) break;
+        previousPage = fingerprint;
+        items.addAll(pageItems);
+        if (pageItems.length < pageSize || page >= maxPages) break;
+      }
 
-      final grades = query.items
-          .cast<Map<String, dynamic>>()
-          .map(GradeEntry.fromJson)
-          .toList();
+      final grades = items.map(GradeEntry.fromJson).toList();
       return PrivateCacheFetched(
         value: grades,
-        revision: guarded.revision,
-        durableEpoch: guarded.epoch!,
+        revision: last.revision,
+        durableEpoch: last.epoch!,
       );
     } on GradesAuthExpiredException {
       rethrow;

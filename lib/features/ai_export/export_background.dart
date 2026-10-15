@@ -41,12 +41,16 @@ class ModuleFreshness {
     required this.status,
     this.lastUpdatedAt,
     this.dataSource,
+    this.partialNote,
   });
 
   final ExportModule module;
   final ExportModuleStatus status;
   final DateTime? lastUpdatedAt;
   final String? dataSource;
+
+  /// 非 `null` = 部分结果（见 [ExportModuleData.partialNote]）。
+  final String? partialNote;
 }
 
 /// 「给 AI 的背景说明」：每份导出开头的紧凑事实清单，目的是让大模型
@@ -106,6 +110,7 @@ class ExportBackground {
             status: m.status,
             lastUpdatedAt: m.lastUpdatedAt,
             dataSource: m.dataSource,
+            partialNote: m.partialNote,
           ),
       ],
       missing: [
@@ -291,10 +296,20 @@ class ExportBackground {
     for (final f in freshness) {
       final has = f.status.hasData;
       b.writeln(
-        '| ${f.module.label} | ${f.status.label} '
+        '| ${f.module.label} '
+        '| ${f.status.label}${f.partialNote == null ? '' : '（部分）'} '
         '| ${has ? ExportText.formatDateTime(f.lastUpdatedAt) : '—'} '
         '| ${has ? ExportText.mdCell(f.dataSource ?? '未知') : '—'} |',
       );
+    }
+    final partial = freshness.where((f) => f.partialNote != null).toList();
+    if (partial.isNotEmpty) {
+      b
+        ..writeln()
+        ..writeln(
+          '> 以下模块只是部分结果，不要当作完整数据：'
+          '${partial.map((f) => '${f.module.label}（${f.partialNote}）').join('；')}。',
+        );
     }
     if (missing.isNotEmpty) {
       b

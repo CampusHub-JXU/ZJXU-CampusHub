@@ -90,6 +90,17 @@ String? exportOptional(String? raw) {
   return (t == null || t.isEmpty) ? null : t;
 }
 
+/// 学期在学年内的先后：秋（1）< 春（2）< 夏（3）；无法识别排最后。
+///
+/// 正方成绩接口的学期名实际常是 `"1"` / `"2"` / `"3"`，也可能是「第一学期」
+/// 等中文名，两种写法统一识别。
+int exportSemesterRank(String semester) => switch (semester.trim()) {
+  '第一学期' || '1' => 1,
+  '第二学期' || '2' => 2,
+  '第三学期' || '3' => 3,
+  _ => 4,
+};
+
 String exportDate(DateTime d) {
   String two(int n) => n.toString().padLeft(2, '0');
   return '${d.year}-${two(d.month)}-${two(d.day)}';
@@ -110,6 +121,7 @@ sealed class ExportModuleData {
     required this.status,
     this.lastUpdatedAt,
     this.dataSource,
+    this.partialNote,
   });
 
   /// 选中却没有数据的模块占位。
@@ -122,6 +134,13 @@ sealed class ExportModuleData {
 
   /// 数据来源（本地缓存 / 刚获取）；无法确证为 `null`。
   final String? dataSource;
+
+  /// 非 `null` 表示这是**部分结果**（分页中途失败 / 触及抓取上限 / 覆盖范围
+  /// 无法确认），内容为给读者的原因说明。部分结果不得被当成完整数据解读，
+  /// 页面保留「重新获取」入口。
+  final String? partialNote;
+
+  bool get isPartial => partialNote != null;
 
   /// 条目数；未获取为 `null`（区别于「已获取但 0 条」）。
   int? get itemCount;
@@ -249,6 +268,7 @@ final class GradesModuleData extends ExportModuleData {
     required super.status,
     super.lastUpdatedAt,
     super.dataSource,
+    super.partialNote,
     required this.records,
   }) : super(module: ExportModule.grades);
 
@@ -265,11 +285,6 @@ final class GradesModuleData extends ExportModuleData {
       final key = '${r.academicYear}\u0000${r.semester}';
       groups.putIfAbsent(key, () => []).add(r);
     }
-    int rank(String semester) => switch (semester) {
-      '第一学期' => 1,
-      '第二学期' => 2,
-      _ => 0,
-    };
     final out = [
       for (final g in groups.values)
         GradesTermSummary(
@@ -282,7 +297,10 @@ final class GradesModuleData extends ExportModuleData {
     ];
     out.sort((a, b) {
       final y = a.academicYear.compareTo(b.academicYear);
-      return y != 0 ? y : rank(a.semester).compareTo(rank(b.semester));
+      return y != 0
+          ? y
+          : exportSemesterRank(a.semester)
+                .compareTo(exportSemesterRank(b.semester));
     });
     return out;
   }
@@ -291,7 +309,7 @@ final class GradesModuleData extends ExportModuleData {
   int? get itemCount => status.hasData ? records.length : null;
 
   @override
-  String get scopeLabel => '全部学期';
+  String get scopeLabel => isPartial ? '已取到的学期' : '全部学期';
 }
 
 // ── 学业进度 ────────────────────────────────────────────────────────────────
@@ -785,6 +803,7 @@ final class NoticesModuleData extends ExportModuleData {
     required super.status,
     super.lastUpdatedAt,
     super.dataSource,
+    super.partialNote,
     required this.records,
   }) : super(module: ExportModule.notices);
 
@@ -796,6 +815,7 @@ final class NoticesModuleData extends ExportModuleData {
     required ExportModuleStatus status,
     DateTime? lastUpdatedAt,
     String? dataSource,
+    String? partialNote,
   }) {
     final today = DateTime(exportedAt.year, exportedAt.month, exportedAt.day);
     final cutoff = today.subtract(const Duration(days: kNoticeWindowDays));
@@ -809,6 +829,7 @@ final class NoticesModuleData extends ExportModuleData {
       status: status,
       lastUpdatedAt: lastUpdatedAt,
       dataSource: dataSource,
+      partialNote: partialNote,
       records: [for (final n in windowed) NoticeExportRecord.fromNotice(n)],
     );
   }

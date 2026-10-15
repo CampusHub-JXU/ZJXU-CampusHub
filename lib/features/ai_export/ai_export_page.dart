@@ -309,7 +309,9 @@ class _AiExportPageState extends State<AiExportPage> {
       ExportRowKind.needsLogin => '需登录$held',
       ExportRowKind.failed => '${slot.message ?? '获取失败'}$held',
       ExportRowKind.missing => ExportModuleStatus.missing.label,
-      ExportRowKind.ready => '${data!.status.label} · ${count ?? 0} 条',
+      ExportRowKind.ready =>
+        '${data!.status.label} · ${count ?? 0} 条'
+            '${data.isPartial ? ' · 可能不全' : ''}',
     };
     final (String? label, VoidCallback? onPressed) = switch (kind) {
       ExportRowKind.loading => (null, null),
@@ -319,6 +321,8 @@ class _AiExportPageState extends State<AiExportPage> {
       ExportRowKind.ready =>
         data!.status == ExportModuleStatus.stale
             ? ('刷新', () => _controller.fetch(module))
+            : data.isPartial
+            ? ('重新获取', () => _controller.fetch(module))
             : (null, null),
     };
     return PlainListRow(
