@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../core/auth/zhengfang_auth.dart';
 import '../core/calendar/calendar_event_ledger_store.dart';
+import '../core/calendar/calendar_reminder_settings.dart';
 import '../core/calendar/calendar_sync_channel.dart';
 import '../core/calendar/calendar_sync_control.dart';
 import '../core/calendar/calendar_sync_models.dart';
@@ -59,12 +60,15 @@ typedef CalendarSyncTermReader = ScheduleTermContext? Function();
 
 typedef CalendarSyncClock = DateTime Function();
 
+typedef CalendarSyncReminderReader = int Function();
+
 typedef CalendarSyncProjector = List<ProjectedCourseOccurrence> Function({
   required ScheduleCacheSnapshot snapshot,
   required String verifiedOwner,
   required ScheduleTermContext confirmedCurrentTerm,
   required DateTime semesterStartDate,
   required DateTime now,
+  required int reminderMinutes,
 });
 
 /// projector 的 businessKey 字段分隔符（unit separator）。
@@ -102,6 +106,10 @@ ScheduleCacheSnapshot? _loadProductionSnapshot({
   studentId: ownerKey,
 );
 
+/// 生产提醒提前量读取：读持久化设置单例（内存态，默认 20；不触网络/磁盘）。
+int _readProductionReminderMinutes() =>
+    CalendarReminderSettings.instance.reminderMinutes;
+
 /// 课表 → 系统日历同步的前台协调器（仅主引擎前台，零后台注册）。
 ///
 /// 触发源（由 [start] 安装，测试可调用同名公开方法）：
@@ -109,6 +117,7 @@ ScheduleCacheSnapshot? _loadProductionSnapshot({
 /// - [CampusDataChangeBus.revision] → [onCampusDataChanged]；
 /// - 学期开学日变化 → [onSemesterStartChanged]；
 /// - [CalendarSyncControl] 状态变化 → [onControlStateChanged]；
+/// - `CalendarReminderSettings` 提前量变化 → 前台触发一轮（按新提前量 upsert）；
 /// - 生命周期 → [onAppResumed] / [onAppInactive]。
 ///
 /// 安全边界：
@@ -128,6 +137,7 @@ ScheduleCacheSnapshot? _loadProductionSnapshot({
 class CalendarSyncCoordinator {
   CalendarSyncCoordinator._(
     this._channel,
+    this._discovery,
     this._control,
     this._ledger,
     this._readIdentity,
@@ -136,6 +146,7 @@ class CalendarSyncCoordinator {
     this._clock,
     this._readSemesterStartDate,
     this._projector,
+    this._readReminderMinutes,
   );
 
   /// 测试/注入构造：替换通道、控制、账本与所有环境读取回调。
@@ -150,8 +161,12 @@ class CalendarSyncCoordinator {
     required CalendarSyncClock clock,
     required CalendarSyncClock readSemesterStartDate,
     CalendarSyncProjector projector = projectCurrentTermCalendarEvents,
+    CalendarSyncReminderReader reminderMinutesReader =
+        _readProductionReminderMinutes,
+    CalendarOwnedEventDiscovery? discovery,
   }) => CalendarSyncCoordinator._(
     channel,
+    discovery ?? defaultCalendarOwnedEventDiscovery,
     control,
     ledger,
     readIdentity,
@@ -160,11 +175,13 @@ class CalendarSyncCoordinator {
     clock,
     readSemesterStartDate,
     projector,
+    reminderMinutesReader,
   );
 
-  /// 生产单例：默认通道 + 共享控制/账本 + 直接读正方身份 / 课表 / 学期。
+  /// 生产单例：默认通道 + 共享控制/账本 + 直接读正方身份 / 课表 / 学期 / 设置。
   static final CalendarSyncCoordinator instance = CalendarSyncCoordinator._(
     defaultCalendarSyncChannel,
+    defaultCalendarOwnedEventDiscovery,
     CalendarSyncControl.instance,
     CalendarEventLedgerStore.instance,
     _readProductionIdentity,
@@ -173,9 +190,11 @@ class CalendarSyncCoordinator {
     DateTime.now,
     () => SemesterCalendar.instance.semesterStartDate.value,
     projectCurrentTermCalendarEvents,
+    _readProductionReminderMinutes,
   );
 
   final CalendarSyncChannel _channel;
+  final CalendarOwnedEventDiscovery _discovery;
   final CalendarSyncControl _control;
   final CalendarEventLedgerStore _ledger;
   final CalendarSyncIdentityReader _readIdentity;
@@ -184,6 +203,7 @@ class CalendarSyncCoordinator {
   final CalendarSyncClock _clock;
   final CalendarSyncClock _readSemesterStartDate;
   final CalendarSyncProjector _projector;
+  final CalendarSyncReminderReader _readReminderMinutes;
 
   /// 最近一次运行去向；UI 可监听（不含业务数据）。
   final ValueNotifier<CalendarSyncRunOutcome> outcome =
@@ -203,8 +223,30 @@ class CalendarSyncCoordinator {
     CampusDataChangeBus.instance.revision.addListener(_onDataChanged);
     SemesterCalendar.instance.semesterStartDate.addListener(_onDataChanged);
     _control.addListener(_onControlChanged);
+    // 提醒提前量变化：前台触发一轮 diff，让已归属事件按新提前量 upsert。
+    // 关闭 / 未登录 / 非前台时仍走既有零写入门禁，不产生任何系统日历写入。
+    CalendarReminderSettings.instance.addListener(_onReminderChanged);
+    // 安装清理 drain 钩子：控制层在清理临界区之外调用它，让在途写入先落地。
+    _control.setBeforeCleanupDrain(stopAndDrainForCleanup);
     _foreground = true;
     _requestSync();
+  }
+
+  /// 清理前排空（Issue #48）：失效在途轮次、抑制补跑、等待当前轮结束。
+  ///
+  /// 由 [CalendarSyncControl] 在清理临界区**之外**调用（避免与内部串行队列死锁）。
+  /// 返回后本轮 `_run` 已结束：其写入要么已完成、要么已在下一个 await 边界失效，
+  /// 控制层因此可安全地只读扫描 / 精确删除。
+  Future<void> stopAndDrainForCleanup() async {
+    _runToken++;
+    _rerunRequested = false;
+    final active = _activeRun;
+    if (active == null) return;
+    try {
+      await active;
+    } catch (_) {
+      // 本轮异常已由 _run 内部兜底；这里只需确保它已结束。
+    }
   }
 
   /// 前台恢复：允许启动新写并主动触发一轮。
@@ -245,6 +287,7 @@ class CalendarSyncCoordinator {
   void _onAuthChanged() => unawaited(onAuthIdentityChanged());
   void _onDataChanged() => _requestSync();
   void _onControlChanged() => onControlStateChanged();
+  void _onReminderChanged() => _requestSync();
 
   /// 当前已验证 owner：未登录 / 空白一律为 null（= 无身份，控制层据此进入
   /// 「等待身份」而不是暂停；只有非空且不同于绑定 owner 才算换号）。
@@ -364,6 +407,7 @@ class CalendarSyncCoordinator {
           confirmedCurrentTerm: term,
           semesterStartDate: _readSemesterStartDate(),
           now: _clock(),
+          reminderMinutes: _readReminderMinutes(),
         );
       } on CalendarProjectionException catch (error) {
         // 只记结构性原因，绝不记课程/学号。
@@ -499,6 +543,23 @@ class CalendarSyncCoordinator {
       }
     }
 
+    // C1：本轮要新建键时，先只读扫描当前日历，确认没有「账本未记录的自有事件」。
+    // 有未记账自有事件（或扫描不完整）即 fail closed，绝不新建 opaque，避免叠加重复。
+    if (newPairs.isNotEmpty) {
+      final accounted = await _guardAgainstUnaccountedOwnEvents(
+        token: token,
+        run: run,
+        ledgerSnapshot: ledgerSnapshot,
+      );
+      if (!_stillValid(token, run)) return CalendarSyncRunOutcome.blocked;
+      if (!accounted) {
+        _logSafe(LogLevel.info, '日历同步：当前日历存在未记账的自有事件，本轮不新建（fail closed）');
+        return CalendarSyncRunOutcome.blocked;
+      }
+    }
+
+    var deletedCount = 0;
+
     // Phase A：新记录先落盘 → native upsert → 仅当前代 commit。
     for (final chunk in _chunk(newPairs, CalendarSyncProtocol.maxBatchEvents)) {
       if (!_stillValid(token, run)) return CalendarSyncRunOutcome.blocked;
@@ -617,7 +678,6 @@ class CalendarSyncCoordinator {
     // 全部可信写入完成且身份仍有效，才允许删除陈旧项。
     if (!_stillValid(token, run)) return CalendarSyncRunOutcome.blocked;
 
-    var deletedCount = 0;
     var notDeletedCount = 0;
     for (final chunk in _chunk(stale, CalendarSyncProtocol.maxBatchEvents)) {
       if (!_stillValid(token, run)) return CalendarSyncRunOutcome.blocked;
@@ -674,6 +734,28 @@ class CalendarSyncCoordinator {
       '日历同步完成：新增/更新 ${newPairs.length + updates.length}，删除 $deletedCount',
     );
     return CalendarSyncRunOutcome.synced;
+  }
+
+  /// C1 守卫：当前日历是否存在**账本未记录**的自有事件（或扫描不完整）。
+  ///
+  /// 返回 false 表示必须 fail closed（不新建键）。只读扫描，绝不写 provider。
+  Future<bool> _guardAgainstUnaccountedOwnEvents({
+    required int token,
+    required _RunIdentity run,
+    required CalendarEventLedgerSnapshot ledgerSnapshot,
+  }) async {
+    final scan = await _discovery.scanOwnedEvents(calendarId: run.calendarId);
+    if (!_stillValid(token, run)) return false;
+    if (!scan.complete) return false;
+    final accounted = <String>{
+      for (final batch in ledgerSnapshot.batchesFor(run.ownerKey))
+        if (batch.calendarId == run.calendarId)
+          for (final entry in batch.entries.values) entry.opaqueId,
+    };
+    for (final event in scan.events) {
+      if (!accounted.contains(event.opaqueId)) return false;
+    }
+    return true;
   }
 
   /// 二重校验：本轮 token + 前台 + 直接读到的正方身份 + 控制绑定。

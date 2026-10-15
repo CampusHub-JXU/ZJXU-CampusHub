@@ -409,6 +409,28 @@ void main() {
     );
   });
 
+  // ── Issue #51：SegmentedButton 统一外观（复刻各调用点配置）──────────────
+  // 成绩页 / 图书馆借阅因为是登录数据页，离线预览会遗留网络重试 Timer，不能整页
+  // 渲染；这里用同一份主题渲染它们的真实分段配置，供浅/深「调整前后」审阅。
+  previewTest('segmented_controls_light', (tester) async {
+    await pumpPreviewScene(
+      tester,
+      (_) => const _SegmentedControlsScene(),
+      logicalSize: const Size(412, 720),
+    );
+    await expectPreviewGolden(tester, 'segmented_controls_light');
+  });
+
+  previewTest('segmented_controls_dark', (tester) async {
+    await pumpPreviewScene(
+      tester,
+      (_) => const _SegmentedControlsScene(),
+      brightness: Brightness.dark,
+      logicalSize: const Size(412, 720),
+    );
+    await expectPreviewGolden(tester, 'segmented_controls_dark');
+  });
+
   // 说明：GradesPage / SchedulePage 在离线场景下会遗留网络重试 Timer，
   // 触发 flutter_test 的 pending-timer 断言，不适合放进无登录预览；
   // 它们的未登录态与 campus_card / AuthRequiredView 一致，画廊已覆盖。
@@ -1276,6 +1298,107 @@ class _HomeDockScene extends StatelessWidget {
             onDestinationSelected: (_) {},
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Issue #51：分段控件统一外观对比场景。
+///
+/// 复刻线上各调用点的 `SegmentedButton` 配置（仅交互形状，不含业务回调），
+/// 与成绩页 / 图书馆借阅 / 设置页使用同一份 `AppThemeBuilder` 主题，用于浅 /
+/// 深「调整前后」视觉审阅；整页数据页离线渲染会遗留网络 Timer，故用此场景。
+class _SegmentedControlsScene extends StatelessWidget {
+  const _SegmentedControlsScene();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppAppBar(title: const Text('分段控件')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+        children: [
+          _sectionLabel('成绩页 · 课程成绩 / 学业进度（2 段）'),
+          SegmentedButton<int>(
+            key: const Key('preview_grades_switch'),
+            showSelectedIcon: false,
+            segments: const <ButtonSegment<int>>[
+              ButtonSegment<int>(value: 0, label: Text('课程成绩')),
+              ButtonSegment<int>(value: 1, label: Text('学业进度')),
+            ],
+            selected: const <int>{0},
+            onSelectionChanged: (_) {},
+          ),
+          _sectionLabel('图书馆借阅（2 段）'),
+          SegmentedButton<int>(
+            segments: const <ButtonSegment<int>>[
+              ButtonSegment<int>(value: 0, label: Text('借阅中')),
+              ButtonSegment<int>(value: 1, label: Text('历史借阅')),
+            ],
+            selected: const <int>{0},
+            onSelectionChanged: (_) {},
+          ),
+          _sectionLabel('外观 · 主题模式（3 段 + icon）'),
+          SegmentedButton<int>(
+            showSelectedIcon: false,
+            segments: const <ButtonSegment<int>>[
+              ButtonSegment<int>(
+                value: 0,
+                icon: Icon(Icons.sync),
+                label: Text('自动'),
+              ),
+              ButtonSegment<int>(
+                value: 1,
+                icon: Icon(Icons.light_mode),
+                label: Text('浅色'),
+              ),
+              ButtonSegment<int>(
+                value: 2,
+                icon: Icon(Icons.dark_mode),
+                label: Text('深色'),
+              ),
+            ],
+            selected: const <int>{0},
+            onSelectionChanged: (_) {},
+          ),
+          _sectionLabel('外观 · 首页卡片文字（3 段）'),
+          SegmentedButton<int>(
+            showSelectedIcon: false,
+            segments: const <ButtonSegment<int>>[
+              ButtonSegment<int>(value: 0, label: Text('跟随系统')),
+              ButtonSegment<int>(value: 1, label: Text('深色文字')),
+              ButtonSegment<int>(value: 2, label: Text('浅色文字')),
+            ],
+            selected: const <int>{1},
+            onSelectionChanged: (_) {},
+          ),
+          _sectionLabel('填充方式（3 段，可空选 → 未选中态）'),
+          SegmentedButton<int>(
+            showSelectedIcon: false,
+            emptySelectionAllowed: true,
+            segments: const <ButtonSegment<int>>[
+              ButtonSegment<int>(value: 0, label: Text('铺满')),
+              ButtonSegment<int>(value: 1, label: Text('适应')),
+              ButtonSegment<int>(value: 2, label: Text('居中')),
+            ],
+            selected: const <int>{},
+            onSelectionChanged: (_) {},
+          ),
+          _sectionLabel('调课提醒（含 disabled 段）'),
+          SegmentedButton<int>(
+            showSelectedIcon: false,
+            segments: const <ButtonSegment<int>>[
+              ButtonSegment<int>(
+                value: 0,
+                label: Text('已显示 0'),
+                enabled: false,
+              ),
+              ButtonSegment<int>(value: 1, label: Text('待确认 3')),
+            ],
+            selected: const <int>{1},
+            onSelectionChanged: (_) {},
+          ),
+        ],
       ),
     );
   }

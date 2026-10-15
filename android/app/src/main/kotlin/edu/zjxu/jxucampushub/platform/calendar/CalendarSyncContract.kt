@@ -30,6 +30,40 @@ internal object CalendarSyncContract {
     const val MAX_TIMEZONE_LENGTH = 64
     const val MAX_REMINDER_MINUTES = 10080
 
+    /**
+     * 只读遗留扫描（`listOwnedEventCalendars`）的边界与去敏上限。
+     *
+     * 扫描行上限按「非法行同样消耗预算」计，避免大量垃圾行绕过上限；日历数上限
+     * 触发即令 `complete=false`（`scanLimit`），绝不把部分结果当「全清」。
+     */
+    const val MAX_SCAN_MARKER_ROWS = 10_000
+    const val MAX_OWNED_CALENDARS = 300
+    const val MAX_DISPLAY_NAME_LENGTH = 256
+
+    /**
+     * 日历 displayName 去敏：去掉控制字符并把换行 / 制表符折成空格，trim，按
+     * [MAX_DISPLAY_NAME_LENGTH] 截断（不切断代理对），空串归一为 null。
+     *
+     * 结果**只**用于 UI 预览，绝不写日志。
+     */
+    fun sanitizeDisplayName(raw: String?): String? {
+        if (raw == null) return null
+        val builder = StringBuilder()
+        for (ch in raw) {
+            when {
+                ch == '\n' || ch == '\r' || ch == '\t' -> builder.append(' ')
+                ch.code < 0x20 || ch.code == 0x7f -> Unit
+                else -> builder.append(ch)
+            }
+        }
+        val trimmed = builder.toString().trim()
+        if (trimmed.isEmpty()) return null
+        if (trimmed.length <= MAX_DISPLAY_NAME_LENGTH) return trimmed
+        var cut = MAX_DISPLAY_NAME_LENGTH
+        if (Character.isHighSurrogate(trimmed[cut - 1])) cut -= 1
+        return trimmed.substring(0, cut)
+    }
+
     // 只接受「规范 UUID」或「纯 hex 16–64 位」两种等价形态；其余一律拒绝，
     // 保证 provider 里不出现任意 URI / 学号 / 路径片段。
     private val UUID_REGEX = Regex(
@@ -74,6 +108,26 @@ internal class CalendarSyncException(
     val category: String,
     message: String,
 ) : Exception(message)
+
+/**
+ * `listOwnedEventCalendars` 的完整性原因（固定 wire code，Dart 侧按值解析）。
+ *
+ * 这是**只读扫描结果**的原因码，不是写入失败类别；语义与既有
+ * [CalendarSyncErrors] 对应处见各自注释。四值冻结，新增须同步 Dart 与文档。
+ */
+internal object CalendarOwnedScanReasons {
+    /** provider 不可用 / 扫描整体失败（映射既有 `provider_unavailable`）。 */
+    const val UNAVAILABLE = "unavailable"
+
+    /** 日历权限被拒 / 扫描中途撤销（映射既有 `permission_denied`）。 */
+    const val PERMISSION_DENIED = "permissionDenied"
+
+    /** 达到行数 / 日历数上限：结论不完整（无既有对应）。 */
+    const val SCAN_LIMIT = "scanLimit"
+
+    /** 命中的自有日历元数据缺失 / 查询失败：`writable` 未知（映射既有 `calendar_unavailable`）。 */
+    const val CALENDAR_UNAVAILABLE = "calendarUnavailable"
+}
 
 /** 经过校验的绝对非重复事件输入（native 内部使用）。 */
 internal data class CalendarEventInput(

@@ -21,6 +21,7 @@ import '../features/exam/exam_page.dart';
 import '../features/shuati/shuati_webview_page.dart';
 import '../features/settings/settings_page.dart';
 import '../features/settings/about_page.dart';
+import '../features/settings/performance_diagnostics_page.dart';
 import '../features/settings/appearance_page.dart';
 import '../features/settings/personalization_page.dart';
 import '../features/settings/background_editor_page.dart';
@@ -220,6 +221,12 @@ final GoRouter appRouter = GoRouter(
       path: '/about',
       name: 'about',
       builder: (context, state) => const AboutPage(),
+    ),
+    _appRoute(
+      path: '/performance-diagnostics',
+      name: 'performance-diagnostics',
+      // 内部诊断页：未启用时页面自身 fail closed（不提供开启采样的开关）。
+      builder: (context, state) => const PerformanceDiagnosticsPage(),
     ),
     _appRoute(
       path: '/notification-center',

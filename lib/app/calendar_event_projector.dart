@@ -83,7 +83,10 @@ class ProjectedCourseOccurrence {
   });
 
   /// 默认课前提醒提前量（分钟）；提醒由系统日历负责，不是 App 闹钟。
-  static const int defaultReminderMinutes = 10;
+  ///
+  /// 实际写入值由设置页持久化（`CalendarReminderSettings`，默认 20）经
+  /// [projectCurrentTermCalendarEvents] 的 `reminderMinutes` 参数传入。
+  static const int defaultReminderMinutes = 20;
 
   /// 写入系统日历的固定时区 ID（校历作息按北京时间墙钟）。
   static const String timeZoneId = 'Asia/Shanghai';
@@ -179,6 +182,9 @@ class ProjectedCourseOccurrence {
 ///   非周一开学时第 1 周周一的课程不会被丢弃；
 /// - 作息走 `ScheduleSlotTimes`，墙钟固定按 Asia/Shanghai（UTC+8）换算为 UTC
 ///   毫秒，不读取设备时区（旅行改时区不偏移）；
+/// - [reminderMinutes] 由调用方（前台协调器读持久化设置）传入，逐条写入事件
+///   的课前提醒提前量；默认取 [ProjectedCourseOccurrence.defaultReminderMinutes]
+///   （20），本函数不读取设置单例、不做范围裁剪（由设置层消毒）；
 /// - 任何无法证明「身份 / 学期 / 开学日 / 快照时效 / 调课规则可信度 / 课程
 ///   时间」的情况一律 **fail closed**：抛 [CalendarProjectionException]，
 ///   绝不返回部分结果或空列表——调用方据此不做差量删除，避免少同步后误删；
@@ -195,6 +201,7 @@ List<ProjectedCourseOccurrence> projectCurrentTermCalendarEvents({
   required DateTime now,
   Duration maxScheduleAge = const Duration(days: 7),
   Duration maxChangeRulesAge = const Duration(days: 1),
+  int reminderMinutes = ProjectedCourseOccurrence.defaultReminderMinutes,
 }) {
   _verifyIdentity(snapshot: snapshot, verifiedOwner: verifiedOwner);
   _verifyTerm(
@@ -239,6 +246,7 @@ List<ProjectedCourseOccurrence> projectCurrentTermCalendarEvents({
         week: week,
         weekOneStart: weekOneStart,
         termContext: confirmedCurrentTerm,
+        reminderMinutes: reminderMinutes,
       );
       // 重复课程按 businessKey 稳定去重：周次递增遍历 + 同周课表顺序固定，
       // 保留先出现的一条；两条同键记录在标题/教室/节次/周次上等价。
@@ -456,6 +464,7 @@ ProjectedCourseOccurrence _projectCourse({
   required int week,
   required DateTime weekOneStart,
   required ScheduleTermContext termContext,
+  required int reminderMinutes,
 }) {
   _validateCourse(course, requireWeekInTerm: false);
 
@@ -512,6 +521,7 @@ ProjectedCourseOccurrence _projectCourse({
     endLesson: course.endLesson,
     startTimeUtc: DateTime.fromMillisecondsSinceEpoch(startMillis, isUtc: true),
     endTimeUtc: DateTime.fromMillisecondsSinceEpoch(endMillis, isUtc: true),
+    reminderMinutes: reminderMinutes,
   );
 }
 

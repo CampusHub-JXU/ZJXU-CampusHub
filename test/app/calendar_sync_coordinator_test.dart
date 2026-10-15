@@ -15,7 +15,7 @@ import 'package:jxu_campus_hub/core/academic/schedule_cache_snapshot.dart';
 import 'package:jxu_campus_hub/core/academic/schedule_model.dart';
 
 /// 纯内存假通道：绝不触达真实系统日历，记录 native 调用与 payload。
-class _FakeChannel implements CalendarSyncChannel {
+class _FakeChannel implements CalendarSyncChannel, CalendarOwnedEventDiscovery {
   bool permissions = true;
   int _eventIdSeq = 1000;
   final List<String> calls = <String>[];
@@ -25,6 +25,9 @@ class _FakeChannel implements CalendarSyncChannel {
 
   /// opaqueId → provider eventId（用于 reconcile 查询与删除命中判定）。
   final Map<String, int> ownedByOpaqueId = <String, int>{};
+
+  /// 只读扫描是否完整（默认完整；可注入 false 模拟 provider 不可用）。
+  bool scanComplete = true;
 
   /// 置上后下一次 upsert 会等待该 Completer（确定性并发测试）。
   Completer<void>? upsertGate;
@@ -148,6 +151,31 @@ class _FakeChannel implements CalendarSyncChannel {
       notDeletedIds: notDeleted,
     );
   }
+
+  @override
+  Future<CalendarOwnedCalendarDiscovery> listOwnedEventCalendars() async {
+    calls.add('listOwnedEventCalendars');
+    return CalendarOwnedCalendarDiscovery(
+      calendars: const <CalendarOwnedCalendarInfo>[],
+      complete: scanComplete,
+      reason: scanComplete ? null : CalendarOwnedDiscoveryReason.unavailable,
+    );
+  }
+
+  @override
+  Future<CalendarOwnedEventScan> scanOwnedEvents({
+    required int calendarId,
+  }) async {
+    calls.add('scanOwnedEvents');
+    return CalendarOwnedEventScan(
+      events: <CalendarSyncOwnedEvent>[
+        for (final entry in ownedByOpaqueId.entries)
+          CalendarSyncOwnedEvent(opaqueId: entry.key, eventId: entry.value),
+      ],
+      complete: scanComplete,
+      reason: scanComplete ? null : CalendarOwnedDiscoveryReason.unavailable,
+    );
+  }
 }
 
 List<ProjectedCourseOccurrence> _defaultProjector({
@@ -156,12 +184,14 @@ List<ProjectedCourseOccurrence> _defaultProjector({
   required ScheduleTermContext confirmedCurrentTerm,
   required DateTime semesterStartDate,
   required DateTime now,
+  required int reminderMinutes,
 }) => projectCurrentTermCalendarEvents(
   snapshot: snapshot,
   verifiedOwner: verifiedOwner,
   confirmedCurrentTerm: confirmedCurrentTerm,
   semesterStartDate: semesterStartDate,
   now: now,
+  reminderMinutes: reminderMinutes,
 );
 
 class _Harness {
@@ -170,6 +200,7 @@ class _Harness {
       channel: channel,
       ledger: ledger,
       store: CalendarSyncControlStore.debugNew(),
+      discovery: channel,
     );
     coordinator = CalendarSyncCoordinator.debugNew(
       channel: channel,
@@ -181,6 +212,8 @@ class _Harness {
       clock: () => now,
       readSemesterStartDate: () => semesterStart,
       projector: projector ?? _defaultProjector,
+      reminderMinutesReader: () => reminderMinutes,
+      discovery: channel,
     );
   }
 
@@ -197,6 +230,9 @@ class _Harness {
   ScheduleTermContext? term;
   DateTime now = DateTime(2026, 9, 10, 12);
   DateTime semesterStart = DateTime(2026, 8, 31);
+
+  /// 当前生效的提醒提前量（模拟持久化设置，测试可改后重跑）。
+  int reminderMinutes = ProjectedCourseOccurrence.defaultReminderMinutes;
 
   Future<void> enable(
     String owner,
@@ -310,7 +346,7 @@ void main() {
   });
 
   group('可信投影', () {
-    test('展开 20 周且课前 10 分钟提醒', () async {
+    test('展开 20 周且按设置默认 20 分钟提醒', () async {
       final h = _Harness();
       await h.enable(_ownerA, _calendarId, revision: 1);
       h.term = _term2026;
@@ -321,7 +357,7 @@ void main() {
       expect(h.coordinator.outcome.value, CalendarSyncRunOutcome.synced);
       expect(h.channel.upsertedDrafts, hasLength(20));
       expect(
-        h.channel.upsertedDrafts.every((draft) => draft.reminderMinutes == 10),
+        h.channel.upsertedDrafts.every((draft) => draft.reminderMinutes == 20),
         isTrue,
       );
       expect(
@@ -336,6 +372,32 @@ void main() {
       expect(snapshot.pendingEntryCount, 0);
     });
 
+    test('仅改提醒提前量：既有归属事件按新值 upsert，不因 businessKey 相同被忽略', () async {
+      final h = _Harness();
+      await h.enable(_ownerA, _calendarId, revision: 1);
+      h.term = _term2026;
+      h.snapshot = h.snapshotWith();
+
+      // 首轮：按默认 20 分钟新建 20 条归属事件。
+      await h.run();
+      expect(h.coordinator.outcome.value, CalendarSyncRunOutcome.synced);
+      expect(h.channel.upsertedDrafts, hasLength(20));
+      final firstIds = Map<String, int>.of(h.channel.ownedByOpaqueId);
+      expect(firstIds, hasLength(20));
+
+      // 第二轮：只改提醒提前量为 30，businessKey / 时间全部不变。
+      h.reminderMinutes = 30;
+      await h.run();
+
+      expect(h.coordinator.outcome.value, CalendarSyncRunOutcome.synced);
+      // 既有 20 条被覆盖更新（同一 opaqueId → 同一 eventId），不新建、不删除。
+      final secondRun = h.channel.upsertedDrafts.sublist(20);
+      expect(secondRun, hasLength(20));
+      expect(secondRun.every((draft) => draft.reminderMinutes == 30), isTrue);
+      expect(h.channel.ownedByOpaqueId, firstIds);
+      expect(h.channel.deleteCalls, 0);
+    });
+
     test('businessKey 学期字段判定与 projector 输出一致', () {
       final h = _Harness();
       h.term = _term2026;
@@ -346,6 +408,7 @@ void main() {
         confirmedCurrentTerm: _term2026,
         semesterStartDate: h.semesterStart,
         now: h.now,
+        reminderMinutes: ProjectedCourseOccurrence.defaultReminderMinutes,
       );
       expect(occurrences, isNotEmpty);
       expect(
@@ -582,6 +645,7 @@ void main() {
         confirmedCurrentTerm: _term2026,
         semesterStartDate: h.semesterStart,
         now: h.now,
+        reminderMinutes: ProjectedCourseOccurrence.defaultReminderMinutes,
       );
       expect(occurrences, hasLength(20));
 
@@ -686,6 +750,7 @@ void main() {
         confirmedCurrentTerm: _term2026,
         semesterStartDate: h.semesterStart,
         now: h.now,
+        reminderMinutes: ProjectedCourseOccurrence.defaultReminderMinutes,
       );
       final desiredKey = occurrences.first.businessKey;
 
@@ -817,6 +882,7 @@ void main() {
               required confirmedCurrentTerm,
               required semesterStartDate,
               required now,
+              required reminderMinutes,
             }) => throw const CalendarProjectionException(
               CalendarProjectionFailure.scheduleStale,
               'test',
@@ -1064,6 +1130,7 @@ void main() {
         confirmedCurrentTerm: _term2026,
         semesterStartDate: h.semesterStart,
         now: h.now,
+        reminderMinutes: ProjectedCourseOccurrence.defaultReminderMinutes,
       );
       expect(occurrences, hasLength(1));
       final opaque = _opaqueId(924);
@@ -1124,6 +1191,59 @@ void main() {
           .join('\n');
       expect(AppLogger.instance.entries, isNotEmpty);
       expect(logged.contains(sentinel), isFalse);
+    });
+  });
+
+  group('Issue #48 根因守卫与 drain', () {
+    test('C1：当前日历有未记账自有事件时拒绝新建（fail closed）', () async {
+      final h = _Harness();
+      await h.enable(_ownerA, _calendarId, revision: 1);
+      h.term = _term2026;
+      h.snapshot = h.snapshotWith();
+      // provider 已存在本 App 标记事件，但账本为空（旧版本 / 归属失落）。
+      h.channel.ownedByOpaqueId[_opaqueId(999)] = 9999;
+
+      await h.run();
+
+      expect(h.coordinator.outcome.value, CalendarSyncRunOutcome.blocked);
+      expect(h.channel.upsertCalls, 0);
+      expect(h.channel.calls, isNot(contains('upsertEventBatch')));
+    });
+
+    test('C1：扫描不完整时拒绝新建（fail closed）', () async {
+      final h = _Harness();
+      await h.enable(_ownerA, _calendarId, revision: 1);
+      h.term = _term2026;
+      h.snapshot = h.snapshotWith();
+      h.channel.scanComplete = false;
+
+      await h.run();
+
+      expect(h.coordinator.outcome.value, CalendarSyncRunOutcome.blocked);
+      expect(h.channel.upsertCalls, 0);
+    });
+
+    test('stopAndDrainForCleanup 等待在途轮次结束', () async {
+      final h = _Harness();
+      await h.enable(_ownerA, _calendarId, revision: 1);
+      h.term = _term2026;
+      h.snapshot = h.snapshotWith();
+      final gate = Completer<void>();
+      h.channel.upsertGate = gate;
+
+      h.coordinator.requestSync();
+      await Future<void>.delayed(Duration.zero);
+      expect(h.coordinator.debugActiveRun, isNotNull);
+
+      var drained = false;
+      final drain = h.coordinator.stopAndDrainForCleanup();
+      unawaited(drain.then((_) => drained = true));
+      await Future<void>.delayed(Duration.zero);
+      expect(drained, isFalse);
+
+      gate.complete();
+      await drain;
+      expect(drained, isTrue);
     });
   });
 }
