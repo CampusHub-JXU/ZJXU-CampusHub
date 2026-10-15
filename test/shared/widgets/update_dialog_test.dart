@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:jxu_campus_hub/core/update/apk_download_route.dart';
 import 'package:jxu_campus_hub/core/update/apk_update_controller.dart';
 import 'package:jxu_campus_hub/core/update/update_model.dart';
 import 'package:jxu_campus_hub/shared/widgets/update_dialog.dart';
@@ -99,8 +100,69 @@ void main() {
       await tester.pump();
 
       expect(transport.startCalls, 1);
-      expect(transport.lastRequest?.assetUrl, kTestCanonicalAssetUrl);
+      // 默认「自动」且该版本无 R2 镜像标记：只有 EdgeOne 线路，URL 为镜像形态。
+      expect(
+        transport.lastRequest?.assetUrl,
+        '${ApkUpdateProtocol.trustedMirrorPrefix}$kTestCanonicalAssetUrl',
+      );
+      expect(transport.lastRequest?.source, ApkDownloadSource.edgeone);
       expect(find.text('正在加入下载队列…'), findsOneWidget);
+      await disposeDialog(tester);
+    });
+
+    testWidgets('有 R2 镜像时自动模式先入队 R2，并显示线路选择', (tester) async {
+      transport.startResult = const ApkUpdateState(
+        phase: ApkUpdatePhase.enqueued,
+        version: '0.3.0',
+        releaseTag: 'v0.3.0',
+        requestKey: 'k',
+      );
+      await open(tester, managedTestRelease(r2MirrorAvailable: true));
+
+      expect(find.text('自动'), findsOneWidget);
+      expect(find.text('R2'), findsOneWidget);
+      expect(find.text('EdgeOne'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(FilledButton, '更新'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(transport.lastRequest?.source, ApkDownloadSource.r2);
+      expect(
+        transport.lastRequest?.assetUrl,
+        startsWith('https://download.fhfanshu.xyz/'),
+      );
+      await disposeDialog(tester);
+    });
+
+    testWidgets('手动选 EdgeOne 后即使有 R2 也只走 EdgeOne', (tester) async {
+      transport.startResult = const ApkUpdateState(
+        phase: ApkUpdatePhase.enqueued,
+        version: '0.3.0',
+        releaseTag: 'v0.3.0',
+        requestKey: 'k',
+      );
+      await open(tester, managedTestRelease(r2MirrorAvailable: true));
+
+      await tester.tap(find.text('EdgeOne'));
+      await tester.pump();
+      await tester.tap(find.widgetWithText(FilledButton, '更新'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(transport.lastRequest?.source, ApkDownloadSource.edgeone);
+      await disposeDialog(tester);
+    });
+
+    testWidgets('无 R2 镜像时 R2 选项不可选', (tester) async {
+      await open(tester, managedTestRelease());
+
+      await tester.tap(find.text('R2'));
+      await tester.pump();
+      final segmented = tester.widget<SegmentedButton<ApkDownloadRoute>>(
+        find.byType(SegmentedButton<ApkDownloadRoute>),
+      );
+      expect(segmented.selected, {ApkDownloadRoute.auto});
       await disposeDialog(tester);
     });
 

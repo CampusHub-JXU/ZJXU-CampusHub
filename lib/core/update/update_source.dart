@@ -2,6 +2,7 @@ import 'dart:ffi' show Abi;
 
 import 'package:dio/dio.dart';
 
+import '../config/app_config.dart';
 import 'update_model.dart';
 
 abstract interface class UpdateSource {
@@ -131,7 +132,17 @@ class GitHubReleaseUpdateSource implements UpdateSource {
       assetFileName: _assetString(selectedApk, 'name'),
       assetSizeBytes: _assetPositiveInt(selectedApk, 'size'),
       assetSha256: AppRelease.normalizeSha256(selectedApk?['digest']),
+      r2MirrorAvailable: _hasR2MirrorMarker(assets),
     );
+  }
+
+  /// 发布流水线只有在 R2 对象上传并校验成功后才附加标记资产；仅检查资产名，
+  /// 不额外请求其内容。
+  bool _hasR2MirrorMarker(List<Map<String, dynamic>> assets) {
+    for (final asset in assets) {
+      if (asset['name'] == AppConfig.updateR2MirrorMarkerAssetName) return true;
+    }
+    return false;
   }
 
   String? _assetString(Map<String, dynamic>? asset, String key) {

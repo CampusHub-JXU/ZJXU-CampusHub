@@ -15,6 +15,15 @@ abstract final class AppConfig {
   static const updateGithubReleaseMirrorPrefix =
       'https://edgeone.gh-proxy.org/';
 
+  /// Cloudflare R2 自定义下载域名（须与 `ApkUpdateProtocol.trustedR2Host` 及原生
+  /// `AppUpdateContract.TRUSTED_R2_HOST` lockstep；一致性由测试断言）。
+  ///
+  /// 对象路径 `<base>/<tag>/<apk>`。**仅当**该 Release 带有发布流水线在 R2 上传
+  /// 并校验成功后才附加的标记资产 [updateR2MirrorMarkerAssetName] 时，应用才会
+  /// 使用 R2 线路；域名是否已在 Cloudflare 绑定由维护者负责，应用不探测。
+  static const updateR2DownloadBaseUrl = 'https://download.fhfanshu.xyz';
+  static const updateR2MirrorMarkerAssetName = 'r2-mirror.json';
+
   static Uri get xiaofubaoRechargeUri => Uri.parse(
     '$xiaofubaoRechargeBaseUrl?platform=WECHAT_H5&schoolCode=$xiaofubaoSchoolCode&thirdAppid=$xiaofubaoThirdAppId',
   );
