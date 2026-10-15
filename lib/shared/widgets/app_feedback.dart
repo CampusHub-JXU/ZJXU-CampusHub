@@ -94,6 +94,8 @@ abstract final class AppFeedback {
           backgroundColor: Colors.transparent,
           elevation: 0,
           surfaceTintColor: Colors.transparent,
+          // 超长说明在封顶高度内滚动，操作按钮固定在底部。
+          scrollable: true,
           title: Text(title),
           content: message == null ? null : Text(message),
           actions: [

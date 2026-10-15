@@ -19,6 +19,7 @@ import 'package:jxu_campus_hub/core/network/network_settings.dart';
 import 'package:jxu_campus_hub/core/theme/personalization_controller.dart';
 import 'package:jxu_campus_hub/features/my/my_page.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';
+import 'package:jxu_campus_hub/shared/widgets/glass_dialog_route.dart';
 
 import '../../helpers/mock_http_client_adapter.dart';
 import '../../helpers/fake_inappwebview.dart';
@@ -739,6 +740,17 @@ void main() {
     expect(find.byType(AlertDialog), findsOneWidget);
     expect(find.widgetWithText(TextButton, '退出登录'), findsOneWidget);
     expect(find.text('返回'), findsOneWidget);
+
+    // Issue #46：短确认框必须 shrink-wrap，玻璃表面不能撑到接近整屏。
+    final surface = tester.getRect(find.byType(GlassOverlaySurface));
+    final viewportHeight =
+        tester.view.physicalSize.height / tester.view.devicePixelRatio;
+    expect(tester.takeException(), isNull);
+    expect(
+      surface.height,
+      lessThan(viewportHeight * 0.5),
+      reason: '短登出确认框不应接近整屏（表面 ${surface.height}, 视口 $viewportHeight）',
+    );
 
     await tester.tap(find.text('返回'));
     await tester.pumpAndSettle();

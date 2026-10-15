@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../../core/theme/app_design_tokens.dart';
 import 'glass_container.dart';
@@ -88,9 +89,21 @@ Future<T?> showGlassDialog<T>({
             data: theme.copyWith(
               dialogTheme: theme.dialogTheme.copyWith(
                 insetPadding: EdgeInsets.zero,
+                // 内层 AlertDialog 自带一个 Dialog，其 `Align` 会撑满父级最大
+                // 高度。下面的 [_ShrinkToContentHeight] 先用无界高度量内容，
+                // 这里必须先把内层宽度锁成「撑满可用宽度」的紧约束：否则
+                // AlertDialog 的 `IntrinsicWidth` 会以无界高度求内在宽度，一路
+                // 深入内容的懒加载视图（如 `ListView(shrinkWrap: true)`）并抛
+                // 异常。玻璃的可见宽度本就由外层 `Align` 撑满，锁紧后视觉不变。
+                constraints: const BoxConstraints.tightFor(
+                  width: double.maxFinite,
+                ),
               ),
             ),
-            child: Builder(builder: builder),
+            // 关键：内容放得下时按内容高度收缩（内层 Dialog 不再整屏撑开），
+            // 放不下时退回有界高度，由 AlertDialog 自己的 Flexible 正文滚动，
+            // 标题与操作按钮始终固定可见（不随正文一起滚走）。
+            child: _ShrinkToContentHeight(child: Builder(builder: builder)),
           ),
         ),
       );
@@ -178,5 +191,45 @@ class _GlassSheetDragHandle extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// 竖直方向「放得下就收缩、放不下就封顶」的布局盒。
+///
+/// 先以无界高度测量子树：自然高度不超过可用高度时，按自然高度给出**紧**约束
+/// （内层 Dialog 的 `Align` 随之收缩到内容）；超过时以原有界约束重新布局，
+/// 交给 AlertDialog 的 Flexible 正文自行滚动，操作按钮不被挤出视口。
+class _ShrinkToContentHeight extends SingleChildRenderObjectWidget {
+  const _ShrinkToContentHeight({required super.child});
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderShrinkToContentHeight();
+}
+
+class _RenderShrinkToContentHeight extends RenderProxyBox {
+  @override
+  void performLayout() {
+    final child = this.child;
+    if (child == null) {
+      size = constraints.smallest;
+      return;
+    }
+    if (!constraints.hasBoundedHeight) {
+      child.layout(constraints, parentUsesSize: true);
+      size = constraints.constrain(child.size);
+      return;
+    }
+    // 不能用 getDryLayout：内容里的视口（ListView 等）不支持干布局。
+    // 同一次 performLayout 内对子节点布局两次是允许的。
+    child.layout(
+      constraints.copyWith(minHeight: 0, maxHeight: double.infinity),
+      parentUsesSize: true,
+    );
+    final naturalHeight = child.size.height;
+    if (naturalHeight > constraints.maxHeight) {
+      child.layout(constraints.copyWith(minHeight: 0), parentUsesSize: true);
+    }
+    size = constraints.constrain(child.size);
   }
 }
