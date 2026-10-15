@@ -16,6 +16,11 @@ on:
         required: false
         default: false
         type: boolean
+      with_coverage:
+        description: Collect test coverage (slower; off for push / PR)
+        required: false
+        default: false
+        type: boolean
       shuati_pwa_ref:
         description: Shuati PWA ref for optional APK build smoke test
         required: false
@@ -33,8 +38,8 @@ env:
   FLUTTER_VERSION: '3.47.2'
 
 jobs:
-  flutter-test:
-    name: Flutter Analyze And Test
+  checks:
+    name: Format, Analyze And Diagnostics
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
@@ -80,18 +85,6 @@ jobs:
           python tools/test_diagnostics.py --self-test
           python tools/test_diagnostics.py --output build/test_diagnostics --fail-on error
 
-      - name: Run focused regression tests
-        shell: bash
-        run: |
-          set -euo pipefail
-          flutter test test/core/update/update_service_test.dart
-
-      - name: Run full test suite
-        # Each test file runs in its own process (singletons are per-process);
-        # test/flutter_test_config.dart gives every process its own temp dir,
-        # so the suite is safe to run with the default concurrency.
-        run: flutter test --coverage
-
       - name: Summarize test diagnostics
         if: always()
         shell: bash
@@ -99,14 +92,6 @@ jobs:
           if [ -f build/test_diagnostics/test_diagnostics.md ]; then
             cat build/test_diagnostics/test_diagnostics.md >> "${GITHUB_STEP_SUMMARY}"
           fi
-
-      - name: Upload coverage artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-lcov
-          path: coverage/lcov.info
-          if-no-files-found: ignore
 
       - name: Upload test diagnostics artifact
         if: always()
@@ -167,6 +152,74 @@ jobs:
           done
           grep -q " assets/captcha_ocr/common_old_alnum.ort$" <<<"${listing}" || { echo "Missing .ort captcha model in ${apk}" >&2; exit 1; }
           grep -E " lib/[^/]+/libonnxruntime.*\.so$| assets/captcha_ocr/" <<<"${listing}"
+
+  test:
+    name: Flutter Test (shard ${{ matrix.shard }}/3)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+
+    steps:
+      - name: Checkout private repository
+        uses: actions/checkout@v5
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run test shard
+        # Shard by file rather than with `--total-shards`: test's own sharding
+        # splits individual tests, so every shard would still compile every
+        # file (about half of the suite's cost). Each test file runs in its own
+        # process (singletons are per-process); test/flutter_test_config.dart
+        # gives every process its own temp dir, so default concurrency is safe.
+        # Coverage adds ~75% and is only collected on manual dispatch.
+        shell: bash
+        env:
+          WITH_COVERAGE: ${{ github.event_name == 'workflow_dispatch' && inputs.with_coverage == true }}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find test -name '*_test.dart' | LC_ALL=C sort | awk -v n=3 -v i=${{ matrix.shard }} '(NR - 1) % n == i - 1')
+          echo "Shard ${{ matrix.shard }}/3: ${#files[@]} test files"
+          if [ "${WITH_COVERAGE}" = "true" ]; then
+            flutter test --coverage "${files[@]}"
+          else
+            flutter test "${files[@]}"
+          fi
+
+      - name: Upload coverage artifact
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.with_coverage == true
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov-shard-${{ matrix.shard }}
+          path: coverage/lcov.info
+          if-no-files-found: ignore
+
+  # Aggregate status under the historical job name so branch protection that
+  # requires "Flutter Analyze And Test" keeps covering analyze and every shard.
+  flutter-test:
+    name: Flutter Analyze And Test
+    if: always()
+    needs: [checks, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check required jobs
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "checks: ${{ needs.checks.result }}"
+          echo "test: ${{ needs.test.result }}"
+          [ "${{ needs.checks.result }}" = "success" ] && [ "${{ needs.test.result }}" = "success" ]
 
   workflow-smoke:
     name: Workflow Smoke Test
