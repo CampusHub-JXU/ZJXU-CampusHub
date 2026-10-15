@@ -482,6 +482,20 @@ class PhysicalTestService {
     return cached;
   }
 
+  /// 只读：当前统一认证会话下已缓存的体测快照（不论是否超过 [cacheTtl]），
+  /// 不联网。账号 / 会话变化会清缓存，且这里再校验一次身份纪元。
+  PhysicalTestSnapshot? peekCachedSnapshot() {
+    final cached = _cachedSnapshot;
+    final cachedGuard = _cachedGuard;
+    if (cached == null || cachedGuard == null) return null;
+    final current = _captureGuard();
+    if (cachedGuard.account != current.account ||
+        cachedGuard.epoch != current.epoch) {
+      return null;
+    }
+    return cached;
+  }
+
   @visibleForTesting
   void debugReset() {
     debugSnapshotFetcher = null;

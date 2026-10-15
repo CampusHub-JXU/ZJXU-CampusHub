@@ -534,6 +534,13 @@ class _MyPageState extends State<MyPage> {
                                 await _refreshAfterReturn();
                               },
                             ),
+                            const SizedBox(height: _tileGap),
+                            _MyTile(
+                              icon: Icons.auto_awesome_outlined,
+                              title: '导出给 AI',
+                              status: '整理学业数据，交给 AI 助手',
+                              onTap: () => context.pushNamed('ai-export'),
+                            ),
                             const Spacer(),
                             _buildFooter(context, cs),
                           ],

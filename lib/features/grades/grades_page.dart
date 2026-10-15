@@ -6,7 +6,6 @@ import '../../core/theme/app_design_tokens.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../shared/widgets/app_empty_view.dart';
-import '../../shared/widgets/app_feedback.dart';
 import '../../shared/widgets/app_error_view.dart';
 import '../../shared/widgets/app_filter_chips.dart';
 import '../../shared/widgets/app_search_field.dart';
@@ -19,9 +18,6 @@ import 'grades_model.dart';
 import 'grades_service.dart';
 import 'grades_summary.dart';
 import 'grades_term_resolver.dart';
-import 'export/academic_export_capture.dart';
-import 'export/academic_export_sheet.dart';
-import 'export/grades_export_serializer.dart';
 import 'progress/academic_progress_view.dart';
 import 'widgets/grades_course_row.dart';
 import 'widgets/grades_distribution_bar.dart';
@@ -41,8 +37,6 @@ class GradesPage extends StatefulWidget {
     this.fetchGrades,
     this.fetchReport,
     this.initialView = GradesPageView.grades,
-    this.readExams,
-    this.readProgress = readCachedProgress,
   });
 
   final GradesFetcher? fetchGrades;
@@ -52,13 +46,6 @@ class GradesPage extends StatefulWidget {
 
   /// 打开时所在分段；`/academic-progress` 路由直接进入学业进度。
   final GradesPageView initialView;
-
-  /// 导出用的考试缓存读取器，由组合层注入（成绩模块不依赖考试模块）。
-  /// 为空时导出里的考试安排标记为「未获取」。
-  final ExamExportReader? readExams;
-
-  /// 导出用的学业进度缓存读取器；默认读已验证账号的缓存，测试可替换。
-  final ProgressExportReader readProgress;
 
   @override
   State<GradesPage> createState() => _GradesPageState();
@@ -435,58 +422,6 @@ class _GradesPageState extends State<GradesPage>
     });
   }
 
-  // ── 导出 ────────────────────────────────────────────────────────────────────
-
-  /// 打开学业数据导出弹层：只导出**本机已有**的数据（成绩 / 考试 / 学业进度），
-  /// 不触发任何刷新、登录或抓取。
-  ///
-  /// 快照绑定发起时的已验证教务账号与身份修订号，弹层存活期间的账号切换 /
-  /// 登出会让它失效，避免把上一个账号的缓存导出出去。
-  Future<void> _openExportSheet() async {
-    final auth = ZhengfangAuth.instance;
-    final owner = auth.verifiedStudentId;
-    final inSync =
-        _loggedIn &&
-        owner != null &&
-        owner == _identityOwner &&
-        auth.sessionRevision == _identityRevision;
-    if (!inSync) {
-      AppFeedback.toast(context, '登录状态已变化，请先登录');
-      return;
-    }
-    final scope = _currentExportScope();
-    final snapshot = captureAcademicExportSnapshot(
-      allGrades: _grades,
-      termGrades: scope.academicYear == null ? null : _gradesForSelectedTerm,
-      termScope: scope.academicYear == null ? null : scope,
-      gradesUpdatedAt: _updatedAt,
-      readExams: widget.readExams,
-      readProgress: widget.readProgress,
-    );
-    if (snapshot == null) {
-      AppFeedback.toast(context, '登录状态已变化，请先登录');
-      return;
-    }
-    await showAcademicExportSheet(context, snapshot);
-  }
-
-  /// 导出范围标签：当前选中的学期，或「全部已加载学期」。
-  GradesExportScope _currentExportScope() {
-    final key = _selectedTermKey;
-    if (key != null && key != GradesTermResolver.allTermKey) {
-      for (final t in _availableTerms) {
-        if ('${t.academicYear}|${t.semester}' == key) {
-          return GradesExportScope(
-            label: GradesTermResolver.shortLabelOf(t.academicYear, t.semester),
-            academicYear: t.academicYear,
-            semester: t.semester,
-          );
-        }
-      }
-    }
-    return const GradesExportScope(label: '全部已加载学期');
-  }
-
   // ── Build ────────────────────────────────────────────────────────────────────
 
   @override
@@ -510,11 +445,7 @@ class _GradesPageState extends State<GradesPage>
             : const Text('成绩'),
         actions: onGrades
             ? _gradesActions()
-            : [
-                if (_loggedIn) _exportAction(),
-                ...(_progressKey.currentState?.buildAppBarActions() ??
-                    const <Widget>[]),
-              ],
+            : (_progressKey.currentState?.buildAppBarActions() ?? const []),
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -568,16 +499,9 @@ class _GradesPageState extends State<GradesPage>
     );
   }
 
-  Widget _exportAction() => IconButton(
-    icon: const Icon(Icons.ios_share_rounded),
-    onPressed: () => unawaited(_openExportSheet()),
-    tooltip: '导出学业数据',
-  );
-
   List<Widget>? _gradesActions() {
     if (!_loggedIn) return null;
     return [
-      _exportAction(),
       IconButton(
         icon: Icon(_searchOpen ? Icons.close_rounded : Icons.search_rounded),
         onPressed: _grades.isEmpty ? null : _toggleSearch,

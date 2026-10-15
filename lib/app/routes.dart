@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import 'ai_export_sources.dart';
 import 'app_route_observer.dart';
 import 'app_shell_page.dart';
 import '../features/home/home_page.dart';
@@ -18,8 +19,7 @@ import '../features/sjjx_notice/sjjx_notice_list_page.dart';
 import '../features/service_hall/service_hall_page.dart';
 import '../features/notification_center/notification_center_page.dart';
 import '../features/exam/exam_page.dart';
-import '../features/exam/exam_service.dart';
-import '../features/grades/export/academic_export_builder.dart';
+import '../features/ai_export/ai_export_page.dart';
 import '../features/shuati/shuati_webview_page.dart';
 import '../features/settings/settings_page.dart';
 import '../features/settings/about_page.dart';
@@ -117,8 +117,14 @@ final GoRouter appRouter = GoRouter(
     _appRoute(
       path: '/grades',
       name: 'grades',
+      builder: (context, state) => const GradesPage(),
+    ),
+    _appRoute(
+      path: '/ai-export',
+      name: 'ai-export',
+      // 各模块的取数来源在组合层注入，导出功能本身不依赖业务 feature。
       builder: (context, state) =>
-          const GradesPage(readExams: _readExamsForExport),
+          AiExportPage(sources: buildAiExportSources()),
     ),
     _appRoute(
       path: '/exam',
@@ -129,10 +135,8 @@ final GoRouter appRouter = GoRouter(
       path: '/academic-progress',
       name: 'academic-progress',
       // 学业情况已并入成绩页，旧路由（快捷方式 / 动作）直接打开「学业进度」分段。
-      builder: (context, state) => const GradesPage(
-        initialView: GradesPageView.progress,
-        readExams: _readExamsForExport,
-      ),
+      builder: (context, state) =>
+          const GradesPage(initialView: GradesPageView.progress),
     ),
     _appRoute(
       path: '/shuati-practice',
@@ -346,19 +350,5 @@ Widget buildExternalWebViewPage(BuildContext context, GoRouterState state) {
     emulateDingTalkEnvironment: extra['emulateDingTalkEnvironment'] == true,
     showWebViewBottomBackButton: extra['showWebViewBottomBackButton'] == true,
     onHomePressed: () => context.goNamed('home'),
-  );
-}
-
-/// 成绩页「导出学业数据」用的考试取数：只读 [ExamService] 里归属当前已验证
-/// 账号的缓存（`cachedExams` 自带 owner / epoch 校验），不触发任何请求。
-/// 由组合层注入，避免成绩模块直接依赖考试模块。
-ExamExportData? _readExamsForExport() {
-  final service = ExamService.instance;
-  final exams = service.cachedExams;
-  if (exams == null) return null;
-  return ExamExportData(
-    exams: exams,
-    updatedAt: service.updatedAt,
-    isStale: service.updatedAt != null && !service.isCacheFresh,
   );
 }
