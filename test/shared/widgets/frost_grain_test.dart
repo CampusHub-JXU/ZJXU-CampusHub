@@ -123,7 +123,8 @@ void main() {
       expect(
         seam,
         greaterThan(interior * 0.5),
-        reason: '环绕连续时接缝重叠率应与内部同量级（seam=$seam interior=$interior）；'
+        reason:
+            '环绕连续时接缝重叠率应与内部同量级（seam=$seam interior=$interior）；'
             '两列独立时只有约 0.04',
       );
     });
