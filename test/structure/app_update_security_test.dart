@@ -188,7 +188,7 @@ void main() {
             })
             .join('\n');
         expect(code, isNot(contains('*.')));
-          expect(code, isNot(contains('host.endsWith')));
+        expect(code, isNot(contains('host.endsWith')));
         expect(code, isNot(contains('host?.endsWith')));
         expect(code, isNot(contains('host.contains')));
         expect(code, isNot(contains('host?.contains')));

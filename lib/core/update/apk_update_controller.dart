@@ -313,8 +313,9 @@ abstract final class ApkUpdateUrlPolicy {
   /// EdgeOne 镜像资产 URL（形态 2）：精确前缀 + 形态 1，整串无 query / fragment。
   static bool isMirrorAssetUrl(String url) {
     final trimmed = url.trim();
-    if (!trimmed.startsWith(ApkUpdateProtocol.trustedMirrorPrefix))
+    if (!trimmed.startsWith(ApkUpdateProtocol.trustedMirrorPrefix)) {
       return false;
+    }
     final inner = trimmed.substring(
       ApkUpdateProtocol.trustedMirrorPrefix.length,
     );
