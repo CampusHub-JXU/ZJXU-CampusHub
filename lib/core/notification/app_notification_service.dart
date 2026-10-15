@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 class AppNotificationService {
@@ -10,7 +11,12 @@ class AppNotificationService {
   static const _channelId = 'dorm_electricity_alert';
   static const _channelName = '寝室电费提醒';
   static const _channelDescription = '当寝室剩余电量低于设定阈值时发送提醒';
-  static const _secondClassroomChannelId = 'second_classroom_activity_reminder';
+
+  /// 「第二课堂活动提醒」通知渠道 ID。
+  ///
+  /// 系统设置按渠道跳转（`SystemSettingsTarget.notificationChannel`）需要它；
+  /// **一旦创建不可随意更改**，否则已安装用户的渠道设置会重置。
+  static const secondClassroomChannelId = 'second_classroom_activity_reminder';
   static const _secondClassroomChannelName = '第二课堂活动提醒';
   static const _secondClassroomChannelDescription = '订阅活动名后，同名活动开始招募时提醒';
   static const _noticeUpdateChannelId = 'jwc_notice';
@@ -47,6 +53,11 @@ class AppNotificationService {
 
   Future<void> _initializeOnce() async {
     if (_initialized) return;
+    // 只保护初始化期间的启动详情重放：callback 已交付的点击不再补发。
+    // 不按 payload 永久去重，同一通知后续的真实点击仍逐次交付。
+    final deliveredResponses =
+        <(int?, String?, String?, NotificationResponseType, String?)>{};
+    var capturingLaunch = true;
     const androidSettings = AndroidInitializationSettings(
       '@mipmap/ic_launcher',
     );
@@ -55,19 +66,64 @@ class AppNotificationService {
     await _plugin.initialize(
       initSettings,
       onDidReceiveNotificationResponse: (response) {
-        final payload = response.payload;
-        if (payload == null || payload.isEmpty) return;
-        if (onTap != null) {
-          onTap!(payload);
-        } else {
-          _pendingPayload = payload;
-        }
+        if (capturingLaunch) deliveredResponses.add(_responseKey(response));
+        _dispatchPayload(response.payload);
       },
     );
 
     await _createAndroidChannels();
+    // 冷启动：App 被通知点击拉起时 flutter_local_notifications 不会触发
+    // onDidReceiveNotificationResponse，payload 只能从 launch details 取回；
+    // 不补这一步 `second-classroom?id=` 等点击直达会丢失。
+    try {
+      final response = await _readLaunchResponse();
+      if (response != null &&
+          !deliveredResponses.contains(_responseKey(response))) {
+        _dispatchPayload(response.payload);
+      }
+    } finally {
+      capturingLaunch = false;
+      deliveredResponses.clear();
+    }
 
     _initialized = true;
+  }
+
+  Future<NotificationResponse?> _readLaunchResponse() async {
+    final NotificationAppLaunchDetails? details;
+    try {
+      details = await _plugin.getNotificationAppLaunchDetails();
+    } catch (_) {
+      return null;
+    }
+    if (details == null || !details.didNotificationLaunchApp) return null;
+    return details.notificationResponse;
+  }
+
+  static (int?, String?, String?, NotificationResponseType, String?)
+  _responseKey(NotificationResponse response) => (
+    response.id,
+    response.actionId,
+    response.input,
+    response.notificationResponseType,
+    response.payload,
+  );
+
+  @visibleForTesting
+  void debugReset() {
+    _initialized = false;
+    _initializing = null;
+    onTap = null;
+    clearPendingPayload();
+  }
+
+  void _dispatchPayload(String? payload) {
+    if (payload == null || payload.isEmpty) return;
+    if (onTap != null) {
+      onTap!(payload);
+    } else {
+      _pendingPayload = payload;
+    }
   }
 
   Future<bool> requestPermission() async {
@@ -81,13 +137,17 @@ class AppNotificationService {
 
   /// 系统通知权限是否开启（播报前置条件；被拒时同步仍更新数据与未读，
   /// 只跳过弹窗，恢复后由待播报队列补发）。
-  Future<bool> areNotificationsEnabled() async {
+  Future<bool> areNotificationsEnabled() async =>
+      await notificationPermissionStatus() == true;
+
+  /// 仅 false 表示明确未授权；平台不支持 / 无返回值时为 null（未知）。
+  Future<bool?> notificationPermissionStatus() async {
     final android = _plugin
         .resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin
         >();
-    if (android == null) return false;
-    return await android.areNotificationsEnabled() ?? false;
+    if (android == null) return null;
+    return await android.areNotificationsEnabled();
   }
 
   /// 教务处通知聚合提醒。同一 [id] 覆盖旧聚合，不在通知栏堆积。
@@ -159,7 +219,7 @@ class AppNotificationService {
       body,
       const NotificationDetails(
         android: AndroidNotificationDetails(
-          _secondClassroomChannelId,
+          secondClassroomChannelId,
           _secondClassroomChannelName,
           channelDescription: _secondClassroomChannelDescription,
           importance: Importance.high,
@@ -188,7 +248,7 @@ class AppNotificationService {
     );
     await android.createNotificationChannel(
       const AndroidNotificationChannel(
-        _secondClassroomChannelId,
+        secondClassroomChannelId,
         _secondClassroomChannelName,
         description: _secondClassroomChannelDescription,
         importance: Importance.high,

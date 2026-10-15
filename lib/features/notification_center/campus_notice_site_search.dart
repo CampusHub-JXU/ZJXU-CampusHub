@@ -8,7 +8,6 @@ import '../../core/notice/notice_model.dart';
 import '../../core/notice/notice_search_service.dart';
 import '../../core/theme/app_design_tokens.dart';
 import '../../shared/widgets/login_shell.dart';
-import '../../shared/widgets/plain_list.dart';
 import 'notice_group_section.dart';
 
 /// 校园公告搜索的「教务处全站」分区：本地收件箱只有最近同步的一批，
@@ -133,37 +132,31 @@ class _CampusNoticeSiteSearchState extends State<CampusNoticeSiteSearch> {
         .where((n) => !widget.excludeIds.contains(n.id))
         .toList(growable: false);
 
-    Widget hint(String text, {Widget? action}) => PlainListGroup(
-      children: [
-        Padding(
-          padding: EdgeInsets.fromLTRB(
-            kPlainListRowInset,
-            action == null ? 12 : 4,
-            action == null ? kPlainListRowInset : 4,
-            action == null ? 12 : 4,
+    Widget hint(String text, {Widget? action}) => Padding(
+      padding: EdgeInsets.fromLTRB(
+        NoticeListMetrics.markerWidth,
+        action == null ? 12 : 4,
+        0,
+        action == null ? 12 : 4,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              text,
+              style: textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+            ),
           ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  text,
-                  style: textTheme.bodyMedium?.copyWith(
-                    color: cs.onSurfaceVariant,
-                  ),
-                ),
-              ),
-              ?action,
-            ],
-          ),
-        ),
-      ],
+          ?action,
+        ],
+      ),
     );
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(
-        AppSpacing.listGutter,
+        NoticeListMetrics.pageMargin,
         AppSpacing.listGroupGap / 2,
-        AppSpacing.listGutter,
+        NoticeListMetrics.pageMargin,
         AppSpacing.listGroupGap / 2,
       ),
       child: Column(
@@ -171,6 +164,7 @@ class _CampusNoticeSiteSearchState extends State<CampusNoticeSiteSearch> {
         children: [
           NoticeGroupHeader(
             '教务处全站',
+            leadingGap: NoticeListMetrics.markerWidth,
             trailing: _status == _Status.loaded && _total > 0
                 ? '共 $_total 条'
                 : null,
@@ -200,9 +194,7 @@ class _CampusNoticeSiteSearchState extends State<CampusNoticeSiteSearch> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 if (visible.isNotEmpty)
-                  PlainListGroup(
-                    children: [for (final n in visible) widget.tileBuilder(n)],
-                  ),
+                  for (final n in visible) widget.tileBuilder(n),
                 if (_hasMore)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),

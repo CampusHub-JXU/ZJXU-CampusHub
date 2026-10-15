@@ -13,10 +13,10 @@ import '../../core/calendar/calendar_sync_control.dart';
 import '../../core/calendar/calendar_sync_models.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/notification/app_notification_service.dart';
-import '../../core/profile/user_profile_controller.dart';
 import '../../core/semester/current_term_resolver.dart';
 import '../../core/semester/semester_calendar.dart';
 import '../../core/semester/schedule_term_context.dart';
+import '../../core/theme/app_typography.dart';
 import '../../core/update/update_checker.dart';
 import '../../core/update/update_model.dart';
 import '../../shared/widgets/app_app_bar.dart';
@@ -25,6 +25,7 @@ import '../../shared/widgets/app_feedback.dart';
 import '../../shared/widgets/glass_dialog_route.dart';
 import '../../shared/widgets/plain_list.dart';
 import '../../shared/widgets/update_dialog.dart';
+import 'calendar_legacy_cleanup_dialog.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -134,7 +135,6 @@ class SettingsPage extends StatelessWidget {
               PlainListGroup(
                 children: [
                   const _CurrentTermTile(),
-                  const _EnrollmentYearRow(),
                   ValueListenableBuilder<DateTime>(
                     valueListenable:
                         SemesterCalendar.instance.semesterStartDate,
@@ -355,60 +355,6 @@ class SettingsPage extends StatelessWidget {
   }
 }
 
-/// 「我的年级」行：跟随学号自动识别（取学号开头 20XX），可手动覆盖；
-/// 仅用于过滤教务处公告，不参与登录/身份逻辑。行尾紧凑下拉的哨兵值与
-/// 选项构造沿用原「我的」页实现。
-class _EnrollmentYearRow extends StatefulWidget {
-  const _EnrollmentYearRow();
-
-  @override
-  State<_EnrollmentYearRow> createState() => _EnrollmentYearRowState();
-}
-
-class _EnrollmentYearRowState extends State<_EnrollmentYearRow> {
-  /// 「自动（跟随学号）」选项的哨兵值：null 的手动设置与「恢复自动」
-  /// 语义相同，但菜单里需要一个可点选的选项值。
-  static const _autoSentinel = -1;
-
-  /// 「自动」置顶并标注当前识别结果，其后可选年份从明年倒排到 2016 级。
-  List<AppDropdownItem<int>> _items() {
-    final auto = UserProfileController.instance.autoEnrollmentYear.value;
-    final thisYear = DateTime.now().year;
-    return [
-      AppDropdownItem(
-        value: _autoSentinel,
-        label: auto == null ? '自动' : '自动（$auto级）',
-      ),
-      for (var year = thisYear + 1; year >= 2016; year--)
-        AppDropdownItem(value: year, label: '$year级'),
-    ];
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return PlainListRow(
-      title: '年级',
-      trailing: AppDropdown<int>(
-        key: const Key('enrollment_year_dropdown'),
-        value:
-            UserProfileController.instance.manualEnrollmentYear.value ??
-            _autoSentinel,
-        items: _items(),
-        onChanged: (value) {
-          if (value == null) return;
-          unawaited(
-            UserProfileController.instance
-                .setManualEnrollmentYear(value == _autoSentinel ? null : value)
-                .then((_) {
-                  if (mounted) setState(() {});
-                }),
-          );
-        },
-      ),
-    );
-  }
-}
-
 /// 设置页展示自动识别出的当前学年学期。
 ///
 /// 复用 [CurrentTermResolver] 的 TTL 缓存：未过期时零请求，
@@ -467,10 +413,10 @@ class _CurrentTermTileState extends State<_CurrentTermTile> {
 
 /// 「课表日历」分组的开关卡片（仅 Android，由调用方按平台隐藏）。
 ///
-/// 机械复用小节样式：开关行 + 课前提醒行 + 关闭确认 AlertDialog + SnackBar 反馈。
-/// 状态机、权限、日历解析与清理全部由 core 的 [CalendarSyncControl] /
-/// [CalendarSyncChannel] 承担；提醒提前量由 [CalendarReminderSettings] 持久化。
-/// 本组件不读取课表、不生成事件、不展示学号。
+/// 开关 / 课前提醒 / 目标日历选择 / 遗留扫描预览与确认全部由 core 的
+/// [CalendarSyncControl] / [CalendarSyncChannel] 承担；提醒提前量由
+/// [CalendarReminderSettings] 持久化。本组件不读取课表、不生成事件、
+/// 不展示学号，只呈现 core 聚合好的数量与结果。
 class _CalendarSyncCard extends StatefulWidget {
   const _CalendarSyncCard();
 
@@ -492,14 +438,14 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
 
   CalendarReminderSettings get _reminder => CalendarReminderSettings.instance;
 
-  /// 有开启/清理请求在途：期间忽略重复点击，避免重复原生调用。
+  /// 有开启 / 扫描 / 清理请求在途：期间忽略重复点击，避免重复原生调用。
   bool _busy = false;
 
-  int? _residualCount;
-  bool _residualLoading = false;
-  bool _residualFailed = false;
-  Set<CalendarSyncCleanupResidualReason> _residualReasons =
-      const <CalendarSyncCleanupResidualReason>{};
+  /// 在途 Future 的真实进度文案；仅请求进行中非 null，空闲时**不**显示任何指示器。
+  String? _progress;
+
+  /// 最近一次清理结果摘要（仅本会话持有，用于 cleanupPending 时说明残留）。
+  String? _cleanupNote;
 
   @override
   void initState() {
@@ -512,9 +458,6 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
       _control.load().then((_) {
         if (!mounted) return;
         setState(() {});
-        if (_control.state == CalendarSyncControlState.cleanupPending) {
-          unawaited(_refreshResidualCount());
-        }
       }),
     );
     // 持久化提前量在启动时已 load；此处兜底确保设置页拿到磁盘值。
@@ -538,27 +481,6 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
     setState(() {});
   }
 
-  Future<void> _refreshResidualCount() async {
-    setState(() {
-      _residualLoading = true;
-      _residualFailed = false;
-    });
-    try {
-      final count = await _control.residualCount();
-      if (!mounted) return;
-      setState(() {
-        _residualCount = count;
-        _residualLoading = false;
-      });
-    } on CalendarSyncException {
-      if (!mounted) return;
-      setState(() {
-        _residualLoading = false;
-        _residualFailed = true;
-      });
-    }
-  }
-
   String? get _subtitle => switch (_control.state) {
     CalendarSyncControlState.off => null,
     // 教务未登录 / 会话过期 / 冷启动尚未恢复：开关保持开启，绑定与事件都保留，
@@ -574,18 +496,8 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
     CalendarSyncControlState.cleanupPending => '清理未完成，完成清理后才能重新开启',
   };
 
-  String _residualSubtitle() {
-    final String countLabel;
-    if (_residualFailed) {
-      countLabel = '残留数量统计失败';
-    } else if (_residualCount == null) {
-      countLabel = _residualLoading ? '正在统计残留…' : '残留数量未知';
-    } else {
-      countLabel = '仍有 $_residualCount 条事件残留';
-    }
-    final reasons = _describeResidualReasons(_residualReasons);
-    return reasons.isEmpty ? '$countLabel，可重试删除' : '$countLabel（$reasons）';
-  }
+  /// 非 enabled 状态才显示「扫描遗留日程」入口；enabled 时由关闭开关的确认触发。
+  bool get _showScanEntry => _control.state != CalendarSyncControlState.enabled;
 
   /// 0 不是「不提醒」：原生 `CalendarProviderStore` 对每个归属事件固定插入
   /// 一条 `MINUTES = reminderMinutes` 的 `METHOD_ALERT` 提醒，0 表示**课程
@@ -596,6 +508,7 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
   @override
   Widget build(BuildContext context) {
     final state = _control.state;
+    final progress = _progress;
     // 外层已在「课表与后台」分组卡片里，这里只排行，不再套卡片。
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -604,11 +517,11 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
           title: '同步到系统日历',
           subtitle: _subtitle,
           value: state == CalendarSyncControlState.enabled,
-          // 开启/清理请求在途：整行置灰，避免重复触发原生调用。
+          // 开启 / 扫描 / 清理请求在途：整行置灰，避免重复触发原生调用。
           enabled: !_busy,
           onChanged: (value) {
             if (_busy) return;
-            unawaited(value ? _requestEnable() : _requestDisable());
+            unawaited(value ? _requestEnable() : _startScan());
           },
         ),
         PlainListRow(
@@ -637,20 +550,41 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
             },
           ),
         ),
-        if (state == CalendarSyncControlState.cleanupPending) ...[
+        if (progress != null)
+          _busyRow(progress)
+        else if (_showScanEntry)
           PlainListRow(
-            title: '清理未完成',
-            subtitle: _residualSubtitle(),
-            trailing: TextButton(
-              onPressed: _busy ? null : () => unawaited(_runCleanup()),
-              child: const Text('重试清理'),
-            ),
-            onTap: _busy ? null : () => unawaited(_runCleanup()),
+            title: '扫描遗留日程',
+            subtitle: '只读扫描带当前应用标记的遗留日程，不会删除任何日程',
+            onTap: () => unawaited(_startScan()),
           ),
-        ],
+        if (state == CalendarSyncControlState.cleanupPending &&
+            _cleanupNote != null)
+          PlainListRow(title: '上次清理结果', subtitle: _cleanupNote),
       ],
     );
   }
+
+  /// 在途提示行：真实 Future 进行中才构建，空闲时不占位、不显示动画。
+  Widget _busyRow(String label) => Padding(
+    padding: const EdgeInsets.fromLTRB(
+      kPlainListRowInset,
+      8,
+      kPlainListRowInset,
+      8,
+    ),
+    child: Row(
+      children: [
+        const SizedBox(
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+        const SizedBox(width: 12),
+        Expanded(child: Text(label, style: context.appText.secondary)),
+      ],
+    ),
+  );
 
   /// 开关打开：先用**当前**已验证身份校验，再让用户选择目标日历。
   Future<void> _requestEnable() async {
@@ -661,7 +595,7 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
       return;
     }
     if (_control.state == CalendarSyncControlState.cleanupPending) {
-      _showSnack('存在未完成的清理，请先点击「重试清理」');
+      _showSnack('存在未完成的清理，请先点击「扫描遗留日程」');
       return;
     }
 
@@ -679,38 +613,167 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
     }
   }
 
-  /// 开关关闭：先确认，再尝试删除全部历史账号/学期由本应用创建的事件。
-  Future<void> _requestDisable() async {
-    final confirmed = await AppFeedback.confirm(
-      context,
-      title: '关闭课表日历同步',
-      message:
-          '将尝试删除本应用在全部历史账号与学期写入系统日历的事件，不会影响其他应用或系统日历中的其他事件。\n\n'
-          '部分事件可能已被移动或删除失败，届时会显示残留数量与原因，可稍后重试。',
-      confirmLabel: '关闭并清理',
-      destructive: true,
-    );
-    if (!confirmed || !mounted) return;
-    await _runCleanup();
+  /// 扫描遗留日程（只读第一步）：enabled 时先关闭同步但**不删除**，再展示预览。
+  ///
+  /// 关闭确认只说明「扫描会先关闭同步，不会删除日程」，是否删除留给预览确认；
+  /// 关闭后控制态进入 `cleanupPending`，不自动重新开启、不自动登录、不新建日历。
+  Future<void> _startScan() async {
+    if (_busy) return;
+    if (_control.state == CalendarSyncControlState.enabled) {
+      setState(() => _busy = true);
+      final confirmed = await AppFeedback.confirm(
+        context,
+        title: '关闭课表日历同步',
+        message:
+            '扫描会先关闭同步，不会删除任何日程。\n\n'
+            '将只读扫描本应用在全部历史账号与学期写入系统日历的遗留日程，'
+            '再由你确认是否清理；不会影响其他应用或系统日历中的其他事件。',
+        confirmLabel: '关闭并扫描',
+        destructive: true,
+      );
+      if (!mounted) return;
+      setState(() => _busy = false);
+      if (!confirmed) return;
+    }
+    await _runScan();
   }
 
-  /// 关闭 / 重试清理共用：调用 core 的 [CalendarSyncControl.disableAndCleanup]，
-  /// 无登录也能执行；有残留时如实显示数量与原因，绝不假称已关闭。
-  Future<void> _runCleanup() async {
-    if (_busy) return;
-    setState(() => _busy = true);
+  /// 真正发起只读扫描：展示真实进度，成功后进入预览；失败如实提示、不假称完成。
+  Future<void> _runScan() async {
+    setState(() {
+      _busy = true;
+      _progress = '正在扫描遗留日程…';
+    });
+    CalendarLegacyCleanupScan? scan;
     try {
-      final result = await _control.disableAndCleanup();
-      if (!mounted) return;
-      setState(() {
-        _residualCount = result.residualCount;
-        _residualReasons = result.residualReasons;
-        _residualFailed = false;
-      });
-      _showSnack(_cleanupMessage(result));
-    } finally {
-      if (mounted) setState(() => _busy = false);
+      scan = await _control.scanLegacyOwnedEvents();
+    } on CalendarSyncException {
+      scan = null;
+    } catch (_) {
+      scan = null;
     }
+    if (!mounted) return;
+    setState(() => _progress = null);
+    if (scan == null) {
+      setState(() => _busy = false);
+      _showSnack('扫描遗留日程失败，请稍后重试');
+      return;
+    }
+    await _presentPreview(scan);
+    if (mounted) setState(() => _busy = false);
+  }
+
+  /// 展示扫描预览并按用户选择处理；**非确认分支一律放弃同一预览对象**。
+  Future<void> _presentPreview(CalendarLegacyCleanupScan scan) async {
+    // 完整扫描、无残留且本地已无记录：确实没有可处理对象，如实提示并放弃预览
+    //（不伪造「系统日历干净」）；仅在可 dismiss 时才回到关闭态。
+    if (scan.dismissible) {
+      await _control.dismissLegacyCleanupPreview(scan);
+      if (mounted) _showSnack('未发现带当前应用标记的遗留日程');
+      return;
+    }
+
+    final decision = await AppFeedback.sheet<CalendarLegacyCleanupDecision>(
+      context,
+      builder: (_) => CalendarLegacyCleanupPreviewSheet(scan: scan),
+      scrollControlled: true,
+    );
+
+    // 用户确认删除：即使页面已离开也照常交给 core 完成（绝不中断在途删除）。
+    if (decision == CalendarLegacyCleanupDecision.cleanup) {
+      await _runCleanup(scan);
+      return;
+    }
+
+    // 取消 / 关闭 / 重新扫描 / 授予权限都放弃同一预览对象；不删除任何事件。
+    await _control.dismissLegacyCleanupPreview(scan);
+    if (!mounted) return;
+    switch (decision) {
+      case CalendarLegacyCleanupDecision.requestPermission:
+        await _requestCalendarPermission();
+      case CalendarLegacyCleanupDecision.rescan:
+        await _runScan();
+      case CalendarLegacyCleanupDecision.cleanup:
+      case CalendarLegacyCleanupDecision.dismiss:
+      case null:
+        break;
+    }
+  }
+
+  /// 用户明确要求后才申请日历权限（绝不在 build / 进入页面时自动申请）。
+  Future<void> _requestCalendarPermission() async {
+    final channel = defaultCalendarSyncChannel;
+    bool granted;
+    try {
+      granted =
+          await channel.checkPermissions() ||
+          await channel.requestPermissions();
+    } catch (_) {
+      granted = false;
+    }
+    if (!mounted) return;
+    if (!granted) {
+      _showSnack('未获得日历读写权限，无法扫描遗留日程');
+      return;
+    }
+    await _runScan();
+  }
+
+  /// 删除**用户已确认**的预览候选：只调 core 的精确三元组删除，失败如实报告。
+  Future<void> _runCleanup(CalendarLegacyCleanupScan scan) async {
+    if (mounted) setState(() => _progress = '正在清理遗留日程…');
+    CalendarLegacyCleanupResult? result;
+    try {
+      result = await _control.cleanupLegacyOwnedEvents(scan);
+    } on CalendarSyncException {
+      result = null;
+    } catch (_) {
+      result = null;
+    }
+    final message = result == null
+        ? '清理失败，请重新扫描后重试'
+        : _cleanupResultMessage(result);
+    if (!mounted) return;
+    setState(() {
+      _progress = null;
+      _cleanupNote = message;
+    });
+    _showSnack(message);
+  }
+
+  String _cleanupResultMessage(CalendarLegacyCleanupResult result) {
+    // 只有 core 权威判定 complete 才说「已清理」。
+    if (result.complete) return '已清理遗留日程';
+    if (result.failures.contains(CalendarLegacyCleanupFailure.invalidPreview)) {
+      return '扫描已过期，请重新扫描';
+    }
+    final reasons = _describeCleanupFailures(result.failures);
+    if (result.aborted) {
+      return reasons.isEmpty ? '操作已中断，请重新扫描后重试' : '操作已中断（$reasons），请重新扫描后重试';
+    }
+    if (result.residualCount > 0) {
+      final base =
+          '已删除 ${result.deletedCount} 条，仍有 ${result.residualCount} 条未能确认';
+      return reasons.isEmpty ? base : '$base（$reasons）';
+    }
+    // 残留未知为 0 但未完成：绝不显示「0 残留 / 全部清理」。
+    final base = '清理未完成；仍有未能确认的范围';
+    return reasons.isEmpty ? base : '$base（$reasons）';
+  }
+
+  static String _describeCleanupFailures(
+    Set<CalendarLegacyCleanupFailure> failures,
+  ) {
+    final labels = <String>[];
+    for (final failure in failures) {
+      if (failure == CalendarLegacyCleanupFailure.invalidPreview ||
+          failure == CalendarLegacyCleanupFailure.aborted) {
+        continue;
+      }
+      final label = legacyCleanupFailureLabel(failure);
+      if (!labels.contains(label)) labels.add(label);
+    }
+    return labels.join('、');
   }
 
   Future<_CalendarSyncTarget?> _askCalendarTarget() {
@@ -831,7 +894,7 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
       return;
     }
     if (result.blockedByCleanup) {
-      _showSnack('存在未完成的清理，请先点击「重试清理」');
+      _showSnack('存在未完成的清理，请先点击「扫描遗留日程」');
       return;
     }
     _showSnack(
@@ -839,35 +902,6 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
           ? '未获得日历读写权限，同步未开启'
           : '开启失败，请稍后重试',
     );
-  }
-
-  String _cleanupMessage(CalendarSyncCleanupResult result) {
-    if (result.isComplete) return '已关闭课表日历同步并清理全部事件';
-    final reasons = _describeResidualReasons(result.residualReasons);
-    if (result.residualCount > 0) {
-      return reasons.isEmpty
-          ? '仍有 ${result.residualCount} 条事件未清理，可重试'
-          : '仍有 ${result.residualCount} 条事件未清理（$reasons），可重试';
-    }
-    return reasons.isEmpty ? '清理未完成，请重试' : '清理未完成（$reasons），请重试';
-  }
-
-  static String _describeResidualReasons(
-    Set<CalendarSyncCleanupResidualReason> reasons,
-  ) {
-    if (reasons.isEmpty) return '';
-    return reasons
-        .map(
-          (reason) => switch (reason) {
-            CalendarSyncCleanupResidualReason.notDeleted => '部分事件未删除或已被移动',
-            CalendarSyncCleanupResidualReason.permissionDenied => '日历权限被拒绝',
-            CalendarSyncCleanupResidualReason.calendarUnavailable => '目标日历不可用',
-            CalendarSyncCleanupResidualReason.platformFailure => '系统日历调用失败',
-            CalendarSyncCleanupResidualReason.pendingUnreconciled =>
-              '部分写入结果未确认',
-          },
-        )
-        .join('、');
   }
 
   void _showSnack(String message) => AppFeedback.toast(context, message);

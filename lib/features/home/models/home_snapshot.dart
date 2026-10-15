@@ -1,6 +1,7 @@
 import '../../../core/academic/exam_model.dart';
 import '../../../core/academic/schedule_change_rule.dart';
 import '../../../core/academic/schedule_model.dart';
+import 'home_asset_state.dart';
 
 /// 首页展示层快照。
 ///
@@ -20,6 +21,8 @@ class HomeSnapshot {
     required this.semesterStartDate,
     required this.campusCardBalance,
     required this.dormElectricity,
+    this.campusCardAsset,
+    this.electricityAsset,
     this.nextExam,
   });
 
@@ -43,5 +46,13 @@ class HomeSnapshot {
 
   /// 格式化后的宿舍电费文本（'--' 表示未获取）。
   final String dormElectricity;
+
+  /// 校园卡余额的独立获取状态模型（首页资产行使用）。静态投影 / 示例等
+  /// 旧调用方可省略，由 resolver 按 [campusCardBalance] 字符串回退。
+  final HomeAssetState? campusCardAsset;
+
+  /// 宿舍电费的独立获取状态模型。
+  final HomeAssetState? electricityAsset;
+
   final ExamEntry? nextExam;
 }

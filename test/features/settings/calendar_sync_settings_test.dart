@@ -12,6 +12,7 @@ import 'package:jxu_campus_hub/core/calendar/calendar_sync_control.dart';
 import 'package:jxu_campus_hub/core/calendar/calendar_sync_models.dart';
 import 'package:jxu_campus_hub/features/settings/settings_page.dart';
 
+import '../../helpers/fake_calendar_sync_native.dart';
 import '../../helpers/test_setup.dart';
 
 /// 课表日历设置（Android）的 widget 单测：只 mock 原生 MethodChannel 与
@@ -26,7 +27,7 @@ void main() {
   /// TimeoutException 显式失败，而不是拖满 flutter_test 默认的 10 分钟。
   const perTestTimeout = Timeout(Duration(seconds: 30));
 
-  late _FakeCalendarNative native;
+  late FakeCalendarSyncNative native;
 
   /// 见 [armCoreQueuesInTestZone]：每个用例只需武装一次。
   late bool coreQueuesArmed;
@@ -39,7 +40,7 @@ void main() {
     await resetTestEnvironment();
     coreQueuesArmed = false;
     pendingCreateGate = null;
-    native = _FakeCalendarNative();
+    native = FakeCalendarSyncNative();
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(calendarChannel, native.handle);
   });
@@ -404,7 +405,7 @@ void main() {
     expect(find.textContaining('等待登录教务系统'), findsNothing);
   }, timeout: perTestTimeout);
 
-  testWidgets('关闭确认对话框取消时不删除任何事件', (tester) async {
+  testWidgets('关闭确认对话框取消时不扫描也不删除任何事件', (tester) async {
     await seedEnabled();
     await seedLedgerEntry();
     await pumpSettingsPage(tester);
@@ -415,11 +416,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('关闭课表日历同步'), findsOneWidget);
-    expect(find.textContaining('全部历史账号与学期'), findsOneWidget);
+    expect(find.textContaining('扫描会先关闭同步，不会删除任何日程'), findsOneWidget);
 
     await tester.tap(find.text('取消'));
     await tester.pumpAndSettle();
 
+    // 取消后既不扫描也不删除，状态保持 enabled、账本不动。
+    expect(native.listOwnedCalls, 0);
     expect(native.deleteCalls, 0);
     expect(
       CalendarSyncControl.instance.state,
@@ -428,12 +431,29 @@ void main() {
     expect(await CalendarSyncControl.instance.residualCount(), 1);
   }, timeout: perTestTimeout);
 
-  testWidgets('清理部分失败时显示残留数量与原因，并可重试清理', (tester) async {
+  testWidgets('扫描预览后确认清理：残留如实报告，可重新扫描清理干净', (tester) async {
+    const ledgerOpaque = '00000001-0000-4000-8000-000000000000';
+    const orphanOpaque = '00000002-0000-4000-8000-000000000000';
     await seedEnabled();
     await seedLedgerEntry();
+    native.ownedCalendars = const <CalendarOwnedCalendarInfo>[
+      CalendarOwnedCalendarInfo(
+        calendarId: 42,
+        displayName: '课程日历',
+        writable: true,
+      ),
+    ];
+    // provider 中：一条与账本同 opaqueId（已记账），一条孤儿（未记账）。
+    native.ownedEvents = <int, List<CalendarSyncOwnedEvent>>{
+      42: const <CalendarSyncOwnedEvent>[
+        CalendarSyncOwnedEvent(opaqueId: ledgerOpaque, eventId: 7),
+        CalendarSyncOwnedEvent(opaqueId: orphanOpaque, eventId: 8),
+      ],
+    };
+    // 只删掉已记账那条，孤儿删除失败 → 有残留。
     native.onDelete = (events) => CalendarSyncDeleteResult(
-      deletedIds: const <int>[],
-      notDeletedIds: <int>[for (final event in events) event.eventId],
+      deletedIds: const <int>[7],
+      notDeletedIds: const <int>[8],
     );
 
     await pumpSettingsPage(tester);
@@ -442,20 +462,26 @@ void main() {
 
     await tester.tap(find.text('同步到系统日历'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('关闭并清理'));
+    await tester.tap(find.text('关闭并扫描'));
+    await tester.pumpAndSettle();
+
+    // 预览如实分列：总 2 条、未确认 1 条。
+    expect(find.textContaining('发现 2 条带当前应用标记的遗留日程'), findsOneWidget);
+    expect(find.textContaining('其中 1 条未被本地记录确认'), findsOneWidget);
+    expect(find.text('清理已确认的日程'), findsOneWidget);
+
+    await tester.tap(find.text('清理已确认的日程'));
     await tester.pumpAndSettle();
 
     // 残留时如实报告数量与原因，绝不假称关闭成功。
-    expect(find.textContaining('仍有 1 条事件未清理'), findsOneWidget);
-    expect(find.textContaining('已关闭'), findsNothing);
+    expect(find.textContaining('仍有 1 条未能确认'), findsWidgets);
+    expect(find.textContaining('已清理遗留日程'), findsNothing);
     expect(
       CalendarSyncControl.instance.state,
       CalendarSyncControlState.cleanupPending,
     );
     expect(syncSwitchValue(tester), isFalse);
-    expect(find.text('清理未完成'), findsOneWidget);
-    expect(find.text('重试清理'), findsOneWidget);
-    expect(find.textContaining('仍有 1 条事件残留'), findsOneWidget);
+    expect(find.text('上次清理结果'), findsOneWidget);
 
     await waitForSnackBar(tester);
 
@@ -463,23 +489,25 @@ void main() {
     await tester.ensureVisible(find.text('同步到系统日历'));
     await tester.tap(find.text('同步到系统日历'));
     await tester.pump();
-    expect(find.text('存在未完成的清理，请先点击「重试清理」'), findsOneWidget);
+    expect(find.text('存在未完成的清理，请先点击「扫描遗留日程」'), findsOneWidget);
     expect(
       CalendarSyncControl.instance.state,
       CalendarSyncControlState.cleanupPending,
     );
     await waitForSnackBar(tester);
 
-    // 删除行为恢复后重试：残留清空，回到 off。
+    // 删除行为恢复后重新扫描：残留清空，回到 off。
     native.onDelete = null;
-    await tester.ensureVisible(find.text('重试清理'));
-    await tester.tap(find.text('重试清理'));
+    await tester.ensureVisible(find.text('扫描遗留日程'));
+    await tester.tap(find.text('扫描遗留日程'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('清理已确认的日程'));
     await tester.pumpAndSettle();
 
     expect(CalendarSyncControl.instance.state, CalendarSyncControlState.off);
-    expect(find.text('已关闭课表日历同步并清理全部事件'), findsOneWidget);
+    expect(find.text('已清理遗留日程'), findsOneWidget);
     expect(await CalendarSyncControl.instance.residualCount(), 0);
-    expect(find.text('清理未完成'), findsNothing);
+    expect(find.text('上次清理结果'), findsNothing);
   }, timeout: perTestTimeout);
 
   testWidgets('课前提醒下拉可改并持久化，关闭状态下不产生任何原生写入', (tester) async {
@@ -585,95 +613,4 @@ void main() {
       CalendarSyncControlState.enabled,
     );
   }, timeout: perTestTimeout);
-}
-
-/// 纯内存假原生实现：记录调用，并允许逐方法注入行为；绝不触达真实系统日历。
-class _FakeCalendarNative {
-  bool permissions = true;
-  bool grantOnRequest = true;
-
-  final List<String> calls = <String>[];
-  int checkCalls = 0;
-  int requestCalls = 0;
-  int createCalendarCalls = 0;
-  int listCalls = 0;
-  int deleteCalls = 0;
-
-  List<CalendarSyncWritableCalendar> calendars =
-      const <CalendarSyncWritableCalendar>[];
-
-  /// 置上后 [createOrGetLocalCalendar] 会等待该 Future（在途重复点击测试）。
-  Future<void>? createGate;
-
-  CalendarSyncDeleteResult Function(List<CalendarSyncOwnedEvent> events)?
-  onDelete;
-
-  Future<Object?> handle(MethodCall call) async {
-    calls.add(call.method);
-    switch (call.method) {
-      case 'checkPermissions':
-        checkCalls++;
-        return permissions;
-      case 'requestPermissions':
-        requestCalls++;
-        if (grantOnRequest) permissions = true;
-        return permissions;
-      case 'createOrGetLocalCalendar':
-        createCalendarCalls++;
-        final gate = createGate;
-        if (gate != null) {
-          createGate = null;
-          await gate;
-        }
-        return <String, Object?>{'id': 42, 'displayName': '嘉兴大学课程'};
-      case 'listWritableCalendars':
-        listCalls++;
-        return <Object?>[
-          for (final calendar in calendars)
-            <String, Object?>{
-              'id': calendar.id,
-              'displayName': calendar.displayName,
-              if (calendar.accountName != null)
-                'accountName': calendar.accountName,
-            },
-        ];
-      case 'queryOwnedEvents':
-        return <Object?>[];
-      case 'deleteOwnedEventsByIds':
-        deleteCalls++;
-        final events = _parseEvents(call.arguments);
-        final result =
-            onDelete?.call(events) ??
-            CalendarSyncDeleteResult(
-              deletedIds: <int>[for (final event in events) event.eventId],
-              notDeletedIds: const <int>[],
-            );
-        return <String, Object?>{
-          'deletedIds': result.deletedIds,
-          'notDeletedIds': result.notDeletedIds,
-        };
-      case 'upsertEventBatch':
-        final rawEvents =
-            (call.arguments as Map<Object?, Object?>)['events']
-                as List<Object?>;
-        return <String, Object?>{
-          'insertedCount': rawEvents.length,
-          'updatedCount': 0,
-          'eventIds': <String, int>{
-            for (var index = 0; index < rawEvents.length; index++)
-              (rawEvents[index] as Map<Object?, Object?>)['opaqueId'] as String:
-                  index + 1,
-          },
-        };
-      default:
-        return null;
-    }
-  }
-
-  static List<CalendarSyncOwnedEvent> _parseEvents(Object? arguments) {
-    final raw = (arguments as Map<Object?, Object?>)['events'] as List<Object?>;
-    return <CalendarSyncOwnedEvent>[
-      for (final item in raw) CalendarSyncOwnedEvent.tryParse(item)!,
-    ];
-  }
 }

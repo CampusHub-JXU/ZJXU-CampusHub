@@ -98,4 +98,47 @@ void main() {
 
     expect(result, SystemSettingsOpenResult.unavailable);
   });
+
+  test('通知渠道目标把 channelId 透传给原生', () async {
+    final calls = <MethodCall>[];
+    mockChannel((call) async {
+      calls.add(call);
+      return 'target';
+    });
+
+    final result = await SystemSettingsLauncher.instance.open(
+      SystemSettingsTarget.notificationChannel,
+      channelId: 'second_classroom_activity_reminder',
+    );
+
+    expect(result, SystemSettingsOpenResult.target);
+    expect(calls.single.method, 'open');
+    expect(calls.single.arguments, <String, Object?>{
+      'target': 'notificationChannel',
+      'channelId': 'second_classroom_activity_reminder',
+    });
+  });
+
+  test('channelId 缺失 / 空白时不带 channelId 参数', () async {
+    final calls = <MethodCall>[];
+    mockChannel((call) async {
+      calls.add(call);
+      return 'appDetails';
+    });
+
+    await SystemSettingsLauncher.instance.open(
+      SystemSettingsTarget.notificationChannel,
+    );
+    await SystemSettingsLauncher.instance.open(
+      SystemSettingsTarget.notificationChannel,
+      channelId: '   ',
+    );
+
+    expect(calls, hasLength(2));
+    for (final call in calls) {
+      expect(call.arguments, <String, Object?>{
+        'target': 'notificationChannel',
+      });
+    }
+  });
 }

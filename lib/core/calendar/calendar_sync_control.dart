@@ -1,180 +1,15 @@
-import 'dart:convert';
-
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../async/serial_queue.dart';
 import '../logging/app_logger.dart';
 import 'calendar_event_ledger_store.dart';
+import 'calendar_legacy_cleanup.dart';
 import 'calendar_sync_channel.dart';
+import 'calendar_sync_control_store.dart';
 import 'calendar_sync_models.dart';
 
-/// 系统日历同步的控制状态。
-///
-/// - [off]：默认；未绑定任何 owner，不允许写入。
-/// - [enabled]：已由用户显式开启，绑定一个已验证正方 owner + 目标日历。
-///   当前没有已验证身份（教务未登录 / 会话过期 / 冷启动尚未恢复）时仍保持
-///   [enabled]，只是处于 [CalendarSyncControl.isWaitingForIdentity]（不写日历）。
-/// - [paused]：原 owner 的账本保留，但当前**已验证身份是另一个账号**（真正换号），
-///   停止一切写入；同账号重登或重新显式 [CalendarSyncControl.enable] 才恢复。
-///   登出 / 会话缺失**不会**进入 [paused]。
-/// - [cleanupPending]：用户已要求关闭并清理，未来写入被阻断；仍有删不掉/权限
-///   拒绝/日历被移的事件残留，等待用户再次触发清理。绝不以清空账本假装完成。
-enum CalendarSyncControlState { off, enabled, paused, cleanupPending }
-
-/// 持久化的控制绑定：状态 + 已验证 owner + 目标日历。
-///
-/// 只存 owner 标识与日历 id，**不存任何凭据**（密码 / cookie / token 都不在此）。
-@immutable
-class CalendarSyncControlBinding {
-  const CalendarSyncControlBinding({
-    required this.state,
-    this.ownerKey,
-    this.calendarId,
-  });
-
-  static const CalendarSyncControlBinding off = CalendarSyncControlBinding(
-    state: CalendarSyncControlState.off,
-  );
-
-  final CalendarSyncControlState state;
-
-  /// 绑定 owner（私有的已验证正方学号标识）；[off] 时为 null。
-  final String? ownerKey;
-
-  /// 绑定目标日历 id；[off] 时为 null。
-  final int? calendarId;
-
-  bool get isValid {
-    if (state == CalendarSyncControlState.off) {
-      return ownerKey == null && calendarId == null;
-    }
-    return ownerKey != null &&
-        ownerKey!.trim().isNotEmpty &&
-        calendarId != null &&
-        calendarId! > 0;
-  }
-
-  Map<String, Object?> toJson() => <String, Object?>{
-    'v': CalendarSyncControlStore.schemaVersion,
-    'state': state.name,
-    'ownerKey': ownerKey,
-    'calendarId': calendarId,
-  };
-
-  /// 严格解析；版本/结构不符返回 null（由 store 失败关闭为 off）。
-  static CalendarSyncControlBinding? tryParse(Object? raw) {
-    if (raw is! Map) return null;
-    if (raw['v'] != CalendarSyncControlStore.schemaVersion) return null;
-
-    final rawState = raw['state'];
-    if (rawState is! String) return null;
-    CalendarSyncControlState? state;
-    for (final value in CalendarSyncControlState.values) {
-      if (value.name == rawState) {
-        state = value;
-        break;
-      }
-    }
-    if (state == null) return null;
-
-    final rawOwner = raw['ownerKey'];
-    if (rawOwner != null && rawOwner is! String) return null;
-    final ownerKey = rawOwner is String && rawOwner.trim().isNotEmpty
-        ? rawOwner.trim()
-        : null;
-
-    final rawCalendarId = raw['calendarId'];
-    if (rawCalendarId != null && rawCalendarId is! int) return null;
-    final calendarId = rawCalendarId is int && rawCalendarId > 0
-        ? rawCalendarId
-        : null;
-
-    final binding = CalendarSyncControlBinding(
-      state: state,
-      ownerKey: ownerKey,
-      calendarId: calendarId,
-    );
-    return binding.isValid ? binding : null;
-  }
-
-  @override
-  String toString() =>
-      'CalendarSyncControlBinding(state: ${state.name}, '
-      'calendarId: $calendarId)';
-}
-
-/// 控制态持久化抽象，便于测试注入可控 store（内存/可阻塞）。
-///
-/// 生产实现为 [CalendarSyncControlStore]（单 JSON key）。
-abstract interface class CalendarSyncStateStore {
-  Future<CalendarSyncControlBinding> read();
-  Future<void> write(CalendarSyncControlBinding binding);
-  Future<void> clear();
-}
-
-/// 控制状态的单 JSON key 持久化（同 isolate 串行；仅前台主 isolate 使用）。
-///
-/// 损坏时**失败关闭为 [CalendarSyncControlBinding.off]**（不写入、不删原值），
-/// 因为控制态不是事件归属数据；真正的归属账本由
-/// [CalendarEventLedgerStore] 独立持久化且绝不静默丢弃。
-class CalendarSyncControlStore implements CalendarSyncStateStore {
-  CalendarSyncControlStore._();
-
-  static final CalendarSyncControlStore instance = CalendarSyncControlStore._();
-
-  static const String storageKey = 'calendar_sync_control_v1';
-  static const int schemaVersion = 1;
-
-  @visibleForTesting
-  static CalendarSyncControlStore debugNew() => CalendarSyncControlStore._();
-
-  /// 读盘；空值 / 损坏一律返回 [CalendarSyncControlBinding.off]（失败关闭）。
-  @override
-  Future<CalendarSyncControlBinding> read() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(storageKey);
-    if (raw == null || raw.isEmpty) return CalendarSyncControlBinding.off;
-
-    final Object? decoded;
-    try {
-      decoded = jsonDecode(raw);
-    } on FormatException {
-      AppLogger.instance.warn('日历同步控制状态 JSON 损坏，失败关闭为 off（原值保留）');
-      return CalendarSyncControlBinding.off;
-    }
-    final binding = CalendarSyncControlBinding.tryParse(decoded);
-    if (binding == null) {
-      AppLogger.instance.warn('日历同步控制状态结构不符合协议，失败关闭为 off（原值保留）');
-      return CalendarSyncControlBinding.off;
-    }
-    return binding;
-  }
-
-  @override
-  Future<void> write(CalendarSyncControlBinding binding) async {
-    assert(binding.isValid);
-    final prefs = await SharedPreferences.getInstance();
-    final written = await prefs.setString(
-      storageKey,
-      jsonEncode(binding.toJson()),
-    );
-    if (!written) {
-      throw CalendarSyncException.ledgerUnavailable('日历同步控制状态写入未确认');
-    }
-  }
-
-  /// 显式清除控制态（仅 [CalendarSyncControl] 在清理完成或重置时调用）。
-  @override
-  Future<void> clear() async {
-    final prefs = await SharedPreferences.getInstance();
-    final existed = prefs.containsKey(storageKey);
-    final removed = await prefs.remove(storageKey);
-    if (existed && !removed) {
-      throw CalendarSyncException.ledgerUnavailable('日历同步控制状态清除失败');
-    }
-  }
-}
+export 'calendar_legacy_cleanup.dart';
+export 'calendar_sync_control_store.dart';
 
 /// [CalendarSyncControl.enable] 的结果。
 @immutable
@@ -303,24 +138,52 @@ class CalendarSyncControl extends ChangeNotifier {
   /// 生产单例：默认 MethodChannel 门面 + 共享账本 + 共享控制态。
   CalendarSyncControl._production()
     : _channel = defaultCalendarSyncChannel,
+      _discovery = defaultCalendarOwnedEventDiscovery,
       _ledger = CalendarEventLedgerStore.instance,
       _store = CalendarSyncControlStore.instance;
 
   /// 测试/注入构造：可替换 channel、账本与控制态存储。
-  CalendarSyncControl._(this._channel, this._ledger, this._store);
+  CalendarSyncControl._(
+    this._channel,
+    this._discovery,
+    this._ledger,
+    this._store,
+  );
 
   @visibleForTesting
   static CalendarSyncControl debugNew({
     required CalendarSyncChannel channel,
     required CalendarEventLedgerStore ledger,
     required CalendarSyncStateStore store,
-  }) => CalendarSyncControl._(channel, ledger, store);
+    CalendarOwnedEventDiscovery? discovery,
+  }) => CalendarSyncControl._(
+    channel,
+    discovery ?? defaultCalendarOwnedEventDiscovery,
+    ledger,
+    store,
+  );
 
   static final CalendarSyncControl instance = CalendarSyncControl._production();
 
   final CalendarSyncChannel _channel;
+  final CalendarOwnedEventDiscovery _discovery;
   final CalendarEventLedgerStore _ledger;
   final CalendarSyncStateStore _store;
+
+  /// 清理前的 drain 钩子（由协调器安装；core 不 import app，避免层间依赖）。
+  Future<void> Function()? _beforeCleanupDrain;
+
+  /// 最近一次只读遗留扫描预览（用户确认时校验身份 / 代际）。
+  CalendarLegacyCleanupScan? _latestScan;
+
+  /// 安装 / 清除清理前的 drain 钩子（协调器在 `start` 时安装，退出时只移除自己的）。
+  ///
+  /// 钩子在 `scanLegacyOwnedEvents` / `cleanupLegacyOwnedEvents` / `disableAndCleanup`
+  /// 的**临界区之外**调用（否则会与内部串行队列互相等待死锁）。未安装钩子时表示
+  /// 没有在途写入者（如未启动的协调器 / 测试），跳过即可。
+  void setBeforeCleanupDrain(Future<void> Function()? hook) {
+    _beforeCleanupDrain = hook;
+  }
 
   CalendarSyncControlState _state = CalendarSyncControlState.off;
   String? _ownerKey;
@@ -458,6 +321,11 @@ class CalendarSyncControl extends ChangeNotifier {
         );
       }
       if (_state == CalendarSyncControlState.cleanupPending) {
+        return _blockedByCleanupResult();
+      }
+      // C2：同一 owner 在**其他**日历仍有账本归属时拒绝换日历开启，
+      // 避免跨日历复制出重复副本（必须先清理旧日历残留）。
+      if (await _hasOtherCalendarBindings(trimmedOwner, resolvedCalendarId)) {
         return _blockedByCleanupResult();
       }
       try {
@@ -639,6 +507,35 @@ class CalendarSyncControl extends ChangeNotifier {
     }
     final generation = block.generation;
     if (block.changed) notifyListeners();
+
+    // 关闭前的 drain：让协调器在途 upsert 先落地再复核 / 删除（临界区外，避免死锁）。
+    if (!await _drainBeforeCleanup()) {
+      final remaining = await _tryResidualCount();
+      return CalendarSyncCleanupResult(
+        deletedCount: 0,
+        residualCount: remaining ?? 0,
+        failedBatchCount: 0,
+        residualReasons: <CalendarSyncCleanupResidualReason>{
+          CalendarSyncCleanupResidualReason.pendingUnreconciled,
+        },
+        failureKind: remaining == null
+            ? CalendarSyncFailureKind.ledgerUnavailable
+            : null,
+      );
+    }
+    if (!_isCurrent(generation)) {
+      final remaining = await _tryResidualCount();
+      return CalendarSyncCleanupResult(
+        deletedCount: 0,
+        residualCount: remaining ?? 0,
+        failedBatchCount: 0,
+        residualReasons: const <CalendarSyncCleanupResidualReason>{},
+        failureKind: remaining == null
+            ? CalendarSyncFailureKind.ledgerUnavailable
+            : null,
+        aborted: true,
+      );
+    }
 
     // 关闭前先复核 pending，能安全删除的尽量删除（临界区外，逐点 generation 校验）。
     final reconcile = await _reconcileAll(generation);
@@ -868,6 +765,472 @@ class CalendarSyncControl extends ChangeNotifier {
     );
   });
 
+  /// 只读扫描本 App 遗留事件（Issue #48）：先阻断写入 + drain，再只读扫描候选
+  /// 日历（账本批次日历 ∪ 当前绑定日历）。**绝不删除任何东西**。
+  Future<CalendarLegacyCleanupScan> scanLegacyOwnedEvents() async {
+    await _queue.run(_ensureLoadedLocked);
+
+    final block = await _queue.run(() async {
+      await _ensureLoadedLocked();
+      final wasPending = _state == CalendarSyncControlState.cleanupPending;
+      if (!wasPending) {
+        await _persistStateLocked(CalendarSyncControlState.cleanupPending);
+      }
+      _generation++;
+      return (changed: !wasPending, generation: _generation);
+    });
+    if (block.changed) notifyListeners();
+    final generation = block.generation;
+
+    if (!await _drainBeforeCleanup()) {
+      return _failedScan(CalendarLegacyCleanupFailure.pendingUnreconciled);
+    }
+    if (!_isCurrent(generation)) {
+      return _failedScan(CalendarLegacyCleanupFailure.aborted);
+    }
+
+    CalendarEventLedgerSnapshot ledger;
+    try {
+      ledger = await _ledger.reload();
+    } on CalendarSyncException catch (error) {
+      return _failedScan(_scanFailureFor(error.kind));
+    }
+    if (!_isCurrent(generation)) {
+      return _failedScan(CalendarLegacyCleanupFailure.aborted);
+    }
+
+    final discovery = await _discovery.listOwnedEventCalendars();
+    if (!_isCurrent(generation)) {
+      return _failedScan(CalendarLegacyCleanupFailure.aborted);
+    }
+
+    // 候选日历 = discovery 证实的自有日历 ∪ 账本批次日历 ∪ 当前绑定日历。
+    final candidateIds = <int>{
+      for (final calendar in discovery.calendars) calendar.calendarId,
+      for (final batch in ledger.allBatches) batch.calendarId,
+      ?_calendarId,
+    };
+
+    var complete = discovery.complete;
+    CalendarLegacyCleanupFailure? reason = _scanFailureForDiscovery(
+      discovery.reason,
+    );
+    if (candidateIds.length > CalendarSyncProtocol.maxOwnedCalendars) {
+      complete = false;
+      reason ??= CalendarLegacyCleanupFailure.scanLimit;
+    }
+
+    final recordedTuples = <(int, String, int)>{};
+    for (final batch in ledger.allBatches) {
+      for (final entry in batch.entries.values) {
+        // pending 尚无已确认 eventId，预览中仍归为未确认，不在只读扫描时补记。
+        final eventId = entry.eventId;
+        if (eventId == null) continue;
+        recordedTuples.add((batch.calendarId, entry.opaqueId, eventId));
+      }
+    }
+    final metaById = <int, CalendarOwnedCalendarInfo>{
+      for (final calendar in discovery.calendars) calendar.calendarId: calendar,
+    };
+
+    final previews = <CalendarLegacyCleanupCalendarPreview>[];
+    final candidates = <LegacyCleanupCandidate>[];
+    var totalKnown = 0;
+    var totalOrphan = 0;
+    for (final calendarId in candidateIds) {
+      if (!_isCurrent(generation)) {
+        return _failedScan(CalendarLegacyCleanupFailure.aborted);
+      }
+      if (totalKnown >= CalendarSyncProtocol.maxScanRows) {
+        complete = false;
+        reason ??= CalendarLegacyCleanupFailure.scanLimit;
+        break;
+      }
+      final scan = await _discovery.scanOwnedEvents(calendarId: calendarId);
+      if (!scan.complete) {
+        complete = false;
+        reason ??= _scanFailureForDiscovery(scan.reason);
+      }
+      final meta = metaById[calendarId];
+      var orphan = 0;
+      var recordedCount = 0;
+      for (final event in scan.events) {
+        final recorded = recordedTuples.contains((
+          calendarId,
+          event.opaqueId,
+          event.eventId,
+        ));
+        if (recorded) {
+          recordedCount++;
+        } else {
+          orphan++;
+        }
+        candidates.add(
+          LegacyCleanupCandidate(
+            calendarId: calendarId,
+            opaqueId: event.opaqueId,
+            eventId: event.eventId,
+            recorded: recorded,
+          ),
+        );
+      }
+      totalKnown += scan.events.length;
+      totalOrphan += orphan;
+      previews.add(
+        CalendarLegacyCleanupCalendarPreview(
+          calendarId: calendarId,
+          displayName: meta?.displayName,
+          writable: meta?.writable,
+          recordedCount: recordedCount,
+          orphanCount: orphan,
+          ownedCount: scan.events.length,
+        ),
+      );
+    }
+
+    final result = CalendarLegacyCleanupScan(
+      token: CalendarSyncOpaqueId.generate(),
+      calendars: List<CalendarLegacyCleanupCalendarPreview>.unmodifiable(
+        previews,
+      ),
+      complete: complete,
+      reason: reason,
+      totalKnownOwnedCount: totalKnown,
+      recordedOrphanCount: totalOrphan,
+      dismissible: complete && totalKnown == 0 && ledger.allEntries.isEmpty,
+      candidates: List<LegacyCleanupCandidate>.unmodifiable(candidates),
+    );
+    _latestScan = result;
+    return result;
+  }
+
+  /// 删除**用户已确认**的遗留预览候选（Issue #48）：只删重新核验仍在 provider 中的
+  /// 精确 `(calendarId, opaqueId, eventId)` 三元组，绝不按标题模糊删、绝不 `clearAll`。
+  Future<CalendarLegacyCleanupResult> cleanupLegacyOwnedEvents(
+    CalendarLegacyCleanupScan preview,
+  ) async {
+    await _queue.run(_ensureLoadedLocked);
+
+    final block = await _queue.run(() async {
+      await _ensureLoadedLocked();
+      if (!identical(_latestScan, preview) ||
+          _latestScan?.token != preview.token) {
+        return (valid: false, changed: false, generation: _generation);
+      }
+      final wasPending = _state == CalendarSyncControlState.cleanupPending;
+      if (!wasPending) {
+        await _persistStateLocked(CalendarSyncControlState.cleanupPending);
+      }
+      _generation++;
+      return (valid: true, changed: !wasPending, generation: _generation);
+    });
+    if (!block.valid) {
+      return _cleanupAbort(CalendarLegacyCleanupFailure.invalidPreview);
+    }
+    if (block.changed) notifyListeners();
+    final generation = block.generation;
+
+    if (!await _drainBeforeCleanup()) {
+      return _cleanupAbort(CalendarLegacyCleanupFailure.pendingUnreconciled);
+    }
+    if (!_isCurrent(generation)) {
+      return _cleanupAbort(CalendarLegacyCleanupFailure.aborted, aborted: true);
+    }
+
+    CalendarEventLedgerSnapshot ledger;
+    try {
+      ledger = await _ledger.reload();
+    } on CalendarSyncException catch (error) {
+      return _cleanupAbort(_scanFailureFor(error.kind));
+    }
+
+    final byCalendar = <int, List<LegacyCleanupCandidate>>{};
+    for (final candidate in preview.candidates) {
+      byCalendar.putIfAbsent(candidate.calendarId, () => []).add(candidate);
+    }
+    // 处理范围 = 预览候选日历 ∪ 账本批次日历（含无 marker 的陈旧账本日历）。
+    final calendarIds = <int>{
+      ...byCalendar.keys,
+      for (final batch in ledger.allBatches) batch.calendarId,
+    };
+
+    // 预览本身不完整（权限 / 上限 / 日历元数据未知）时如实计入失败，绝不谎称干净。
+    final failures = <CalendarLegacyCleanupFailure>{
+      if (!preview.complete)
+        preview.reason ?? CalendarLegacyCleanupFailure.providerUnavailable,
+    };
+    var deletedCount = 0;
+    var aborted = false;
+
+    // 1) 删除前重新核验 + 精确删除（每个 opaqueId 每次至多一个 eventId，避免
+    //    通道「批次内 opaqueId 重复」拒绝）。
+    for (final calendarId in calendarIds) {
+      if (!_isCurrent(generation)) {
+        aborted = true;
+        break;
+      }
+      final previewCandidates = byCalendar[calendarId] ?? const [];
+      if (previewCandidates.isEmpty) continue;
+      // 只删冻结预览**明确证实可写**的日历；未知 / 只读一律不删并计为不完整。
+      if (!preview.calendars.any(
+        (c) => c.calendarId == calendarId && c.writable == true,
+      )) {
+        failures.add(CalendarLegacyCleanupFailure.calendarUnavailable);
+        continue;
+      }
+
+      final scan = await _discovery.scanOwnedEvents(calendarId: calendarId);
+      if (!_isCurrent(generation)) {
+        aborted = true;
+        break;
+      }
+      if (!scan.complete) {
+        failures.add(
+          _scanFailureForDiscovery(scan.reason) ??
+              CalendarLegacyCleanupFailure.providerUnavailable,
+        );
+        continue;
+      }
+      final certified = <String>{
+        for (final event in scan.events) '${event.opaqueId}#${event.eventId}',
+      };
+      final verified = <LegacyCleanupCandidate>[
+        for (final candidate in previewCandidates)
+          if (certified.contains('${candidate.opaqueId}#${candidate.eventId}'))
+            candidate,
+      ];
+      if (verified.isEmpty) continue;
+
+      for (final round in partitionUniqueOpaqueCandidates(verified)) {
+        for (final chunk in _chunk(
+          round,
+          CalendarSyncProtocol.maxBatchEvents,
+        )) {
+          if (!_isCurrent(generation)) {
+            aborted = true;
+            break;
+          }
+          final CalendarSyncDeleteResult deleteResult;
+          try {
+            deleteResult = await _channel.deleteOwnedEventsByIds(
+              calendarId: calendarId,
+              events: <CalendarSyncOwnedEvent>[
+                for (final candidate in chunk)
+                  CalendarSyncOwnedEvent(
+                    opaqueId: candidate.opaqueId,
+                    eventId: candidate.eventId,
+                  ),
+              ],
+            );
+          } on CalendarSyncException catch (error) {
+            failures.add(_scanFailureFor(error.kind));
+            continue;
+          }
+          deletedCount += deleteResult.deletedIds.length;
+          if (deleteResult.notDeletedIds.isNotEmpty) {
+            failures.add(CalendarLegacyCleanupFailure.calendarUnavailable);
+          }
+        }
+        if (aborted) break;
+      }
+      if (aborted) break;
+    }
+
+    // 2) 复扫全部候选日历：计算残留下界 + 用完整扫描的「证实缺失」清理陈旧账本。
+    var residual = 0;
+    var postComplete = !aborted;
+    for (final calendarId in calendarIds) {
+      if (!_isCurrent(generation)) {
+        aborted = true;
+        break;
+      }
+      final scan = await _discovery.scanOwnedEvents(calendarId: calendarId);
+      if (!_isCurrent(generation)) {
+        aborted = true;
+        break;
+      }
+      if (!scan.complete) {
+        postComplete = false;
+        failures.add(
+          _scanFailureForDiscovery(scan.reason) ??
+              CalendarLegacyCleanupFailure.providerUnavailable,
+        );
+        continue;
+      }
+      residual += scan.events.length;
+      final certified = <String>{
+        for (final event in scan.events) event.opaqueId,
+      };
+      final resolved = <String, List<String>>{};
+      for (final batch in ledger.allBatches) {
+        if (batch.calendarId != calendarId) continue;
+        for (final entry in batch.entries.values) {
+          if (certified.contains(entry.opaqueId)) continue;
+          resolved
+              .putIfAbsent(
+                '${batch.ownerKey}\u001F${batch.generation}',
+                () => [],
+              )
+              .add(entry.opaqueId);
+        }
+      }
+      for (final group in resolved.entries) {
+        final parts = group.key.split('\u001F');
+        try {
+          await _ledger.removeEntries(
+            ownerKey: parts[0],
+            generation: parts[1],
+            opaqueIds: group.value,
+          );
+        } on CalendarSyncException catch (error) {
+          failures.add(_scanFailureFor(error.kind));
+        }
+      }
+    }
+
+    final remainingLedger = await _tryResidualCount();
+    // 完成以「冻结预览完整」+ 同一 generation 临界区原子提交为准：generation 变化 /
+    // store.clear 失败都绝不报 complete、清绑定或置 off（保留 pending 与预览供重试）。
+    var complete =
+        !aborted &&
+        postComplete &&
+        preview.complete &&
+        preview.reason == null &&
+        residual == 0 &&
+        failures.isEmpty &&
+        remainingLedger == 0;
+    if (complete) {
+      final commit = await _queue.run(() async {
+        await _ensureLoadedLocked();
+        if (!_isCurrent(generation)) {
+          return (ok: false, stale: true, fail: null);
+        }
+        try {
+          await _store.clear();
+        } on CalendarSyncException catch (error) {
+          return (ok: false, stale: false, fail: _scanFailureFor(error.kind));
+        }
+        _state = CalendarSyncControlState.off;
+        _ownerKey = null;
+        _calendarId = null;
+        _generation++;
+        _latestScan = null;
+        notifyListeners();
+        return (ok: true, stale: false, fail: null);
+      });
+      complete = commit.ok;
+      aborted = aborted || commit.stale;
+      if (commit.fail != null) failures.add(commit.fail!);
+    }
+
+    return CalendarLegacyCleanupResult(
+      deletedCount: deletedCount,
+      residualCount: residual,
+      complete: complete,
+      failures: Set<CalendarLegacyCleanupFailure>.unmodifiable(failures),
+      aborted: aborted,
+    );
+  }
+
+  /// 放弃当前预览（Issue #48）：仅当可 dismiss（0 残留 + 账本空）才回 [off]，
+  /// 否则保持 [cleanupPending]，**绝不**虚假清账本。
+  Future<void> dismissLegacyCleanupPreview(
+    CalendarLegacyCleanupScan preview,
+  ) async {
+    await _queue.run(_ensureLoadedLocked);
+    await _queue.run(() async {
+      await _ensureLoadedLocked();
+      if (!identical(_latestScan, preview) ||
+          _latestScan?.token != preview.token) {
+        return;
+      }
+      _latestScan = null;
+      final remaining = await _tryResidualCount();
+      if (preview.dismissible && remaining == 0) {
+        try {
+          await _store.clear();
+        } on CalendarSyncException {
+          return;
+        }
+        _state = CalendarSyncControlState.off;
+        _ownerKey = null;
+        _calendarId = null;
+        _generation++;
+        notifyListeners();
+      }
+    });
+  }
+
+  Future<bool> _drainBeforeCleanup() async {
+    final hook = _beforeCleanupDrain;
+    if (hook == null) return true;
+    try {
+      await hook();
+      return true;
+    } catch (error) {
+      AppLogger.instance.warn(
+        '日历清理：drain 钩子异常（${error.runtimeType}），按未知残留保守处理',
+      );
+      return false;
+    }
+  }
+
+  CalendarLegacyCleanupResult _cleanupAbort(
+    CalendarLegacyCleanupFailure failure, {
+    bool aborted = false,
+  }) => CalendarLegacyCleanupResult(
+    deletedCount: 0,
+    residualCount: 0,
+    complete: false,
+    failures: <CalendarLegacyCleanupFailure>{failure},
+    aborted: aborted,
+  );
+
+  CalendarLegacyCleanupScan _failedScan(CalendarLegacyCleanupFailure reason) {
+    final scan = CalendarLegacyCleanupScan(
+      token: CalendarSyncOpaqueId.generate(),
+      calendars: const <CalendarLegacyCleanupCalendarPreview>[],
+      complete: false,
+      reason: reason,
+      totalKnownOwnedCount: 0,
+      recordedOrphanCount: 0,
+      dismissible: false,
+      candidates: const <LegacyCleanupCandidate>[],
+    );
+    _latestScan = scan;
+    return scan;
+  }
+
+  static CalendarLegacyCleanupFailure _scanFailureFor(
+    CalendarSyncFailureKind kind,
+  ) => switch (kind) {
+    CalendarSyncFailureKind.permissionDenied =>
+      CalendarLegacyCleanupFailure.permissionDenied,
+    CalendarSyncFailureKind.providerUnavailable =>
+      CalendarLegacyCleanupFailure.providerUnavailable,
+    CalendarSyncFailureKind.calendarUnavailable =>
+      CalendarLegacyCleanupFailure.calendarUnavailable,
+    CalendarSyncFailureKind.ledgerUnavailable =>
+      CalendarLegacyCleanupFailure.ledgerUnavailable,
+    CalendarSyncFailureKind.ledgerCorrupted =>
+      CalendarLegacyCleanupFailure.ledgerCorrupted,
+    _ => CalendarLegacyCleanupFailure.providerUnavailable,
+  };
+
+  static CalendarLegacyCleanupFailure? _scanFailureForDiscovery(
+    CalendarOwnedDiscoveryReason? reason,
+  ) => switch (reason) {
+    null => null,
+    CalendarOwnedDiscoveryReason.permissionDenied =>
+      CalendarLegacyCleanupFailure.permissionDenied,
+    CalendarOwnedDiscoveryReason.scanLimit =>
+      CalendarLegacyCleanupFailure.scanLimit,
+    CalendarOwnedDiscoveryReason.calendarUnavailable =>
+      CalendarLegacyCleanupFailure.calendarUnavailable,
+    CalendarOwnedDiscoveryReason.unavailable =>
+      CalendarLegacyCleanupFailure.providerUnavailable,
+  };
+
   // ── 内部 ────────────────────────────────────────────────────────────
 
   /// 同 isolate 串行队列：临界区内 read/modify/write 不被其他转移交错。
@@ -906,6 +1269,25 @@ class CalendarSyncControl extends ChangeNotifier {
 
   CalendarSyncEnableResult _enableFailure(CalendarSyncException error) =>
       CalendarSyncEnableResult(enabled: false, state: _state, failure: error);
+
+  /// 该 owner 是否在**其他**日历仍有账本归属（C2：换日历开启前的安全闸）。
+  Future<bool> _hasOtherCalendarBindings(
+    String ownerKey,
+    int calendarId,
+  ) async {
+    try {
+      final ledger = await _ledger.reload();
+      for (final batch in ledger.batchesFor(ownerKey)) {
+        if (batch.calendarId != calendarId && batch.entries.isNotEmpty) {
+          return true;
+        }
+      }
+    } on CalendarSyncException {
+      // 账本不可读：保守拒绝（未知归属下不换日历写入）。
+      return true;
+    }
+    return false;
+  }
 
   CalendarSyncEnableResult _blockedByCleanupResult() =>
       CalendarSyncEnableResult(

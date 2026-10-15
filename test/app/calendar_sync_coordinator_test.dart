@@ -15,7 +15,7 @@ import 'package:jxu_campus_hub/core/academic/schedule_cache_snapshot.dart';
 import 'package:jxu_campus_hub/core/academic/schedule_model.dart';
 
 /// 纯内存假通道：绝不触达真实系统日历，记录 native 调用与 payload。
-class _FakeChannel implements CalendarSyncChannel {
+class _FakeChannel implements CalendarSyncChannel, CalendarOwnedEventDiscovery {
   bool permissions = true;
   int _eventIdSeq = 1000;
   final List<String> calls = <String>[];
@@ -25,6 +25,9 @@ class _FakeChannel implements CalendarSyncChannel {
 
   /// opaqueId → provider eventId（用于 reconcile 查询与删除命中判定）。
   final Map<String, int> ownedByOpaqueId = <String, int>{};
+
+  /// 只读扫描是否完整（默认完整；可注入 false 模拟 provider 不可用）。
+  bool scanComplete = true;
 
   /// 置上后下一次 upsert 会等待该 Completer（确定性并发测试）。
   Completer<void>? upsertGate;
@@ -148,6 +151,31 @@ class _FakeChannel implements CalendarSyncChannel {
       notDeletedIds: notDeleted,
     );
   }
+
+  @override
+  Future<CalendarOwnedCalendarDiscovery> listOwnedEventCalendars() async {
+    calls.add('listOwnedEventCalendars');
+    return CalendarOwnedCalendarDiscovery(
+      calendars: const <CalendarOwnedCalendarInfo>[],
+      complete: scanComplete,
+      reason: scanComplete ? null : CalendarOwnedDiscoveryReason.unavailable,
+    );
+  }
+
+  @override
+  Future<CalendarOwnedEventScan> scanOwnedEvents({
+    required int calendarId,
+  }) async {
+    calls.add('scanOwnedEvents');
+    return CalendarOwnedEventScan(
+      events: <CalendarSyncOwnedEvent>[
+        for (final entry in ownedByOpaqueId.entries)
+          CalendarSyncOwnedEvent(opaqueId: entry.key, eventId: entry.value),
+      ],
+      complete: scanComplete,
+      reason: scanComplete ? null : CalendarOwnedDiscoveryReason.unavailable,
+    );
+  }
 }
 
 List<ProjectedCourseOccurrence> _defaultProjector({
@@ -172,6 +200,7 @@ class _Harness {
       channel: channel,
       ledger: ledger,
       store: CalendarSyncControlStore.debugNew(),
+      discovery: channel,
     );
     coordinator = CalendarSyncCoordinator.debugNew(
       channel: channel,
@@ -184,6 +213,7 @@ class _Harness {
       readSemesterStartDate: () => semesterStart,
       projector: projector ?? _defaultProjector,
       reminderMinutesReader: () => reminderMinutes,
+      discovery: channel,
     );
   }
 
@@ -1161,6 +1191,59 @@ void main() {
           .join('\n');
       expect(AppLogger.instance.entries, isNotEmpty);
       expect(logged.contains(sentinel), isFalse);
+    });
+  });
+
+  group('Issue #48 根因守卫与 drain', () {
+    test('C1：当前日历有未记账自有事件时拒绝新建（fail closed）', () async {
+      final h = _Harness();
+      await h.enable(_ownerA, _calendarId, revision: 1);
+      h.term = _term2026;
+      h.snapshot = h.snapshotWith();
+      // provider 已存在本 App 标记事件，但账本为空（旧版本 / 归属失落）。
+      h.channel.ownedByOpaqueId[_opaqueId(999)] = 9999;
+
+      await h.run();
+
+      expect(h.coordinator.outcome.value, CalendarSyncRunOutcome.blocked);
+      expect(h.channel.upsertCalls, 0);
+      expect(h.channel.calls, isNot(contains('upsertEventBatch')));
+    });
+
+    test('C1：扫描不完整时拒绝新建（fail closed）', () async {
+      final h = _Harness();
+      await h.enable(_ownerA, _calendarId, revision: 1);
+      h.term = _term2026;
+      h.snapshot = h.snapshotWith();
+      h.channel.scanComplete = false;
+
+      await h.run();
+
+      expect(h.coordinator.outcome.value, CalendarSyncRunOutcome.blocked);
+      expect(h.channel.upsertCalls, 0);
+    });
+
+    test('stopAndDrainForCleanup 等待在途轮次结束', () async {
+      final h = _Harness();
+      await h.enable(_ownerA, _calendarId, revision: 1);
+      h.term = _term2026;
+      h.snapshot = h.snapshotWith();
+      final gate = Completer<void>();
+      h.channel.upsertGate = gate;
+
+      h.coordinator.requestSync();
+      await Future<void>.delayed(Duration.zero);
+      expect(h.coordinator.debugActiveRun, isNotNull);
+
+      var drained = false;
+      final drain = h.coordinator.stopAndDrainForCleanup();
+      unawaited(drain.then((_) => drained = true));
+      await Future<void>.delayed(Duration.zero);
+      expect(drained, isFalse);
+
+      gate.complete();
+      await drain;
+      expect(drained, isTrue);
     });
   });
 }
