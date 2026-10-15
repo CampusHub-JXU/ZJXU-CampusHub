@@ -285,4 +285,12 @@ void main() {
       expect((m['enrolled'] as List).single['nominalCreditHours'], 2);
     });
   });
+
+  test('体测中长跑「分.秒」改写为明确的分秒，其余原样', () {
+    expect(normalizePhysicalTestResult('3.56 分钟'), '3分56秒（原文 3.56 分钟）');
+    expect(normalizePhysicalTestResult('4.11 分钟'), '4分11秒（原文 4.11 分钟）');
+    expect(normalizePhysicalTestResult('3.75 分钟'), '3.75 分钟');
+    expect(normalizePhysicalTestResult('8.3 秒'), '8.3 秒');
+    expect(normalizePhysicalTestResult('218.0 厘米'), '218.0 厘米');
+  });
 }

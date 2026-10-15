@@ -469,7 +469,7 @@ PhysicalTestModuleData physicalTestModuleDataFromSnapshot(
           for (final i in r.items)
             PhysicalTestItemRecord(
               name: i.name.trim(),
-              result: exportOptional(i.result),
+              result: exportOptional(normalizePhysicalTestResult(i.result)),
               score: exportOptional(i.score),
               level: exportOptional(i.level),
             ),
@@ -506,4 +506,15 @@ ExportModuleSource _physicalTestSource() {
       );
     }),
   );
+}
+
+/// 体测平台把中长跑成绩写成「分.秒」（如 `3.56 分钟` = 3 分 56 秒），
+/// 直接交给 AI 会被当成小数分钟。秒位 < 60 时改写为「3分56秒（原文 3.56 分钟）」，
+/// 其它形态保持原文。
+String normalizePhysicalTestResult(String raw) {
+  final m = RegExp(r'^(\d+)\.(\d{2})\s*分钟?$').firstMatch(raw.trim());
+  if (m == null) return raw;
+  final seconds = int.parse(m.group(2)!);
+  if (seconds >= 60) return raw;
+  return '${m.group(1)}分${m.group(2)}秒（原文 ${raw.trim()}）';
 }
