@@ -19,6 +19,18 @@ Widget _host(Widget child, {ThemeData? theme, double textScale = 1}) {
   );
 }
 
+/// 「减弱动效」宿主：系统要求移除动画时 [DetailLevelBar] 必须直接到位。
+Widget _reduceHost(double fraction) {
+  return MaterialApp(
+    home: MediaQuery(
+      data: const MediaQueryData(disableAnimations: true),
+      child: Scaffold(
+        body: SizedBox(width: 200, child: DetailLevelBar(fraction: fraction)),
+      ),
+    ),
+  );
+}
+
 double? _barFactor(WidgetTester tester) {
   return tester
       .widget<FractionallySizedBox>(
@@ -110,16 +122,92 @@ void main() {
   testWidgets('level bar jumps straight to the value when motion is reduced', (
     tester,
   ) async {
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: MediaQuery(
-          data: MediaQueryData(disableAnimations: true),
-          child: Scaffold(body: DetailLevelBar(fraction: 0.6)),
-        ),
-      ),
-    );
+    await tester.pumpWidget(_reduceHost(0.6));
     await tester.pump();
     expect(_barFactor(tester), closeTo(0.6, 1e-9));
+  });
+
+  // ── Issue #62：进详情不再重播 0→缓存值 ──────────────────────────────────
+
+  testWidgets('level bar draws the target on the first frame, never 0', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _host(const SizedBox(width: 200, child: DetailLevelBar(fraction: 0.7))),
+    );
+    // 未经过任何动画帧：首帧宽度即为目标，而不是从 0 起手。
+    expect(_barFactor(tester), closeTo(0.7, 1e-9));
+    await tester.pumpAndSettle();
+    expect(_barFactor(tester), closeTo(0.7, 1e-9));
+    expect(tester.binding.transientCallbackCount, 0);
+  });
+
+  testWidgets('remounting the same value never replays 0→target', (
+    tester,
+  ) async {
+    // 模拟详情页反复 push / pop（重挂载）、旋转、主题切换：每次都必须是目标宽度。
+    for (var i = 0; i < 3; i++) {
+      await tester.pumpWidget(
+        _host(
+          const SizedBox(width: 200, child: DetailLevelBar(fraction: 0.42)),
+        ),
+      );
+      expect(_barFactor(tester), closeTo(0.42, 1e-9));
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+  });
+
+  testWidgets('a real value change transitions from the current width, not 0', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _host(const SizedBox(width: 200, child: DetailLevelBar(fraction: 0.3))),
+    );
+    expect(_barFactor(tester), closeTo(0.3, 1e-9));
+
+    await tester.pumpWidget(
+      _host(const SizedBox(width: 200, child: DetailLevelBar(fraction: 0.8))),
+    );
+    // 起手仍是旧宽度（从当前长度出发），不是 0。
+    expect(_barFactor(tester), closeTo(0.3, 1e-9));
+
+    await tester.pump(const Duration(milliseconds: 150));
+    final mid = _barFactor(tester)!;
+    expect(mid, greaterThan(0.3));
+    expect(mid, lessThan(0.8));
+
+    await tester.pumpAndSettle();
+    expect(_barFactor(tester), closeTo(0.8, 1e-9));
+    expect(tester.binding.transientCallbackCount, 0);
+  });
+
+  testWidgets('refreshing with the same value starts no animation', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _host(const SizedBox(width: 200, child: DetailLevelBar(fraction: 0.5))),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.pumpWidget(
+      _host(const SizedBox(width: 200, child: DetailLevelBar(fraction: 0.5))),
+    );
+    expect(_barFactor(tester), closeTo(0.5, 1e-9));
+    // 同值刷新不建动画：没有活动的 ticker，也没有待调度帧。
+    expect(tester.binding.transientCallbackCount, 0);
+    expect(tester.binding.hasScheduledFrame, isFalse);
+  });
+
+  testWidgets('reduced motion jumps straight on a real value change too', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_reduceHost(0.2));
+    expect(_barFactor(tester), closeTo(0.2, 1e-9));
+
+    await tester.pumpWidget(_reduceHost(0.9));
+    // 变化瞬时到位，且完全不建动画控制器。
+    expect(_barFactor(tester), closeTo(0.9, 1e-9));
+    expect(tester.binding.transientCallbackCount, 0);
   });
 
   testWidgets('action grid: equal tiles, primary follows theme, taps fire', (

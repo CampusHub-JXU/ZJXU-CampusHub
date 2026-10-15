@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/app_design_tokens.dart';
 import '../../../core/theme/app_theme_controller.dart';
 import '../models/home_presentation.dart';
 import '../../../core/theme/app_typography.dart';
@@ -10,9 +11,9 @@ import '../../../core/theme/app_typography.dart';
 ///（[HomeTodayPresentation.isFullDay]）：列出今天一整天的课程，
 /// 已结束的课不显示、进行中带胶囊，行数上限放宽到 6。
 ///
-/// 标题 + 约 44 行高的单行条目（时间 / 课程名 / 地点），行间发丝分隔线，
-/// 无卡片容器；无内容时整块不渲染。总行数超限时截断并在
-/// 尾部展示「查看全部」（跳课表）。
+/// 标题 + 约 44 行高的单行条目（时间 / 课程名 / 地点），行间以留白节奏
+/// 分组、不画分隔线，无卡片容器；无内容时整块不渲染。总行数超限时截断
+/// 并在尾部展示「查看全部」（跳课表）。
 ///
 /// 折叠形态（[HomeTodayPresentation.isCollapsed]）：Hero 已用课程大字
 /// 展示命中日首课时，整段只剩单行「之后还有 N 门课 · 下一门 …」摘要，
@@ -165,11 +166,11 @@ class HomeTodaySection extends StatelessWidget {
           ),
         ),
         for (final (index, row) in rows.indexed) ...[
-          if (index > 0) _buildDivider(context),
+          if (index > 0) const SizedBox(height: AppSpacing.xs),
           row,
         ],
         if (hiddenCount > 0 && onOpenSchedule != null) ...[
-          _buildDivider(context),
+          const SizedBox(height: AppSpacing.sm),
           _buildMoreRow(context, hiddenCount),
         ],
       ],
@@ -193,16 +194,6 @@ class HomeTodaySection extends StatelessWidget {
           Text('还有 $hiddenCount 条 · 见课表', style: context.appText.meta),
         ],
       ),
-    );
-  }
-
-  /// 行间发丝分隔线，左缩进对齐文本起始列。
-  Widget _buildDivider(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      height: 1,
-      margin: const EdgeInsets.only(left: _timeColumnWidth + _rowGap),
-      color: cs.outlineVariant.withValues(alpha: 0.35),
     );
   }
 

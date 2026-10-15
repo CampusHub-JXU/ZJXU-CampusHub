@@ -13,7 +13,9 @@ import 'package:jxu_campus_hub/core/auth/connect_mode_resolver.dart';
 import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/core/network/dio_client.dart';
+import 'package:jxu_campus_hub/features/library/library_login_help.dart';
 import 'package:jxu_campus_hub/features/library/library_page.dart';
+import 'package:jxu_campus_hub/features/library/library_session.dart';
 import 'package:jxu_campus_hub/shared/widgets/unified_auth_protected_webview_page.dart';
 import 'package:jxu_campus_hub/shared/widgets/webview_page.dart';
 
@@ -120,7 +122,9 @@ void main() {
       page.serviceUrl,
       'https://libapp.zjxu.edu.cn/Info/Thirdparty/ssoFromDingDing',
     );
-    expect(page.loginDescription, '图书馆经 WebVPN 访问，请先完成统一认证登录');
+    // 文案在「已登录 / 未登录」两态都对：只说统一认证是网关前提，不声称已通过。
+    expect(page.loginDescription, LibraryPage.authLoginDescription);
+    expect(page.loginDescription, contains('单独登录'));
     expect(page.prepareAuthenticatedUrl, isNotNull);
     // prepare 已确认过主会话，业务 bounce 不得再清全局统一认证会话。
     expect(page.preserveSessionOnAuthBounce, isTrue);
@@ -230,6 +234,9 @@ void main() {
     await tester.pump();
 
     expect(find.text('需要统一认证后继续'), findsOneWidget);
+    // 文案条件化：不写「已通过统一认证」，只讲统一认证是网关前提。
+    expect(find.text(LibraryPage.authLoginDescription), findsOneWidget);
+    expect(find.textContaining('已通过'), findsNothing);
     expect(find.byType(InAppWebView), findsNothing);
     expect(find.byType(WebViewPage), findsNothing);
     expect(find.text('一键填充'), findsNothing);
@@ -314,6 +321,131 @@ void main() {
     expect(find.byType(InAppWebView), findsNothing);
     expect(find.text('需要统一认证后继续'), findsOneWidget);
     expect(UnifiedAuthService.instance.isLoggedIn, isTrue);
+  });
+
+  test('图书馆登录文案条件化：讲清网关前提与独立登录，不声称已通过统一认证', () {
+    final description = LibraryPage.authLoginDescription;
+    // 同一段文案既出现在已登录时的说明，也出现在未登录的原生 AuthRequired 兜底，
+    // 因此只能讲「统一认证是打开网关的前提」，不能写「已通过统一认证」这类只在
+    // 一种状态成立的话。
+    expect(description, contains('统一认证'));
+    expect(description, contains('WebVPN'));
+    expect(description, contains('单独登录'));
+    expect(description, isNot(contains('已通过')));
+    // 说明弹层与页面文案同一口径：图书馆网页可能仍需它自己的卡证凭据。
+    expect(LibraryLoginHelp.summary, contains('一卡通号和图书馆卡证密码'));
+    expect(LibraryLoginHelp.summary, contains('密码问题请咨询图书馆'));
+  });
+
+  testWidgets('已认证图书馆页提供非阻塞「图书馆登录说明」并保留我的借阅入口', (tester) async {
+    tester.view.devicePixelRatio = 1.0;
+    tester.view.physicalSize = const Size(500, 1200);
+    addTearDown(tester.view.reset);
+
+    UnifiedAuthService.instance.debugSetSession(
+      active: true,
+      account: '2024001',
+    );
+    UnifiedAuthService.instance.debugSyncCookiesToWebViewForUrlOverride = (
+      _,
+    ) async {};
+    var prepareCalls = 0;
+    LibraryPage.debugPrepareEntryOverride = () async {
+      prepareCalls++;
+      return _proxiedSiteRoot;
+    };
+
+    await tester.pumpWidget(const MaterialApp(home: LibraryPage()));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // 真实受保护页（fake WebView）已进入业务 WebView，两个既/新增入口都在。
+    expect(find.byType(WebViewPage), findsOneWidget);
+    expect(find.byTooltip('图书馆登录说明'), findsOneWidget);
+    expect(find.byTooltip('我的借阅'), findsOneWidget);
+    // 非首次强制：说明默认收起，用户主动点开才出现。
+    expect(find.text(LibraryLoginHelp.summary), findsNothing);
+    expect(find.text('知道了'), findsNothing);
+
+    final tokenBefore = LibrarySession.instance.accessToken;
+
+    await tester.tap(find.byTooltip('图书馆登录说明'));
+    await tester.pumpAndSettle();
+
+    expect(find.text(LibraryLoginHelp.title), findsOneWidget);
+    expect(find.text(LibraryLoginHelp.summary), findsOneWidget);
+    expect(find.text(LibraryLoginHelp.notFailureHint), findsOneWidget);
+    // 「知道了」按钮满足 48 最小点按高度。
+    expect(
+      tester.getSize(find.widgetWithText(FilledButton, '知道了')).height,
+      greaterThanOrEqualTo(48),
+    );
+
+    // 点遮罩关闭。
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
+    expect(find.text(LibraryLoginHelp.summary), findsNothing);
+
+    // 打开 / 关闭说明不重跑网络准备、不改全局会话、不动令牌、不弹快速填充。
+    expect(prepareCalls, 1);
+    expect(UnifiedAuthService.instance.isLoggedIn, isTrue);
+    expect(LibrarySession.instance.accessToken, tokenBefore);
+    expect(find.byType(WebViewPage), findsOneWidget);
+    expect(find.text('一键填充'), findsNothing);
+  });
+
+  testWidgets('说明弹层可用返回键关闭，且不触发认证准备', (tester) async {
+    tester.view.devicePixelRatio = 1.0;
+    tester.view.physicalSize = const Size(500, 1200);
+    addTearDown(tester.view.reset);
+
+    UnifiedAuthService.instance.debugSetSession(
+      active: true,
+      account: '2024001',
+    );
+    UnifiedAuthService.instance.debugSyncCookiesToWebViewForUrlOverride = (
+      _,
+    ) async {};
+    var prepareCalls = 0;
+    LibraryPage.debugPrepareEntryOverride = () async {
+      prepareCalls++;
+      return _proxiedSiteRoot;
+    };
+
+    await tester.pumpWidget(const MaterialApp(home: LibraryPage()));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    await tester.tap(find.byTooltip('图书馆登录说明'));
+    await tester.pumpAndSettle();
+    expect(find.text(LibraryLoginHelp.title), findsOneWidget);
+
+    // 返回键关闭弹层（系统返回）。
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text(LibraryLoginHelp.summary), findsNothing);
+    expect(prepareCalls, 1);
+    expect(UnifiedAuthService.instance.isLoggedIn, isTrue);
+  });
+
+  testWidgets('未登录图书馆页停在原生认证视图并用条件化文案', (tester) async {
+    LibraryPage.debugPrepareEntryOverride = () async =>
+        throw const CasAuthExpiredException();
+
+    await tester.pumpWidget(const MaterialApp(home: LibraryPage()));
+    await tester.pump();
+
+    // 原生认证视图（真实 LibraryPage 通过 fake 平台渲染），不挂 CAS H5。
+    // 只泵两帧：认证兜底态已就绪，自动登录弹窗尚未构建（避免测试里发起
+    // 真实验证码网络请求）。
+    expect(find.byType(WebViewPage), findsNothing);
+    expect(find.byType(InAppWebView), findsNothing);
+    expect(find.text('需要统一认证后继续'), findsOneWidget);
+    expect(find.text(LibraryPage.authLoginDescription), findsOneWidget);
+    expect(find.textContaining('已通过'), findsNothing);
+    // 说明入口在原生兜底态也可用（appBarActions 同样渲染在认证视图上）。
+    expect(find.byTooltip('图书馆登录说明'), findsOneWidget);
+    expect(find.byTooltip('我的借阅'), findsOneWidget);
   });
 
   group('prepareEntry 认证链路', () {
