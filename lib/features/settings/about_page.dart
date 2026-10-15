@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../core/logging/app_logger.dart';
+import '../../core/perf/frame_timing_collector.dart';
 import '../../core/theme/app_typography.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_feedback.dart';
@@ -161,6 +163,14 @@ class AboutPage extends StatelessWidget {
                 showChevron: false,
                 onTap: () => _copyAuthTrail(context),
               ),
+              // 性能诊断是内部工具：未以 --dart-define 启用时整行不出现。
+              if (kPerfDiagnosticsEnabled)
+                PlainListRow(
+                  title: '性能诊断',
+                  subtitle: '内部工具，离线采集帧时',
+                  titleBadge: '内部',
+                  onTap: () => context.pushNamed('performance-diagnostics'),
+                ),
             ],
           ),
         ],
