@@ -8,6 +8,10 @@ enum SystemSettingsTarget {
   /// 应用通知设置（Android 8.0+）。
   notifications,
 
+  /// 单个通知渠道设置页（Android 8.0+，需在 [SystemSettingsLauncher.open] 里传
+  /// [SystemSettingsLauncher.channelId]）。渠道不存在 / 系统不支持时按降级链处理。
+  notificationChannel,
+
   /// 应用详情页（权限总入口）。
   appDetails,
 
@@ -46,11 +50,23 @@ class SystemSettingsLauncher {
   );
 
   /// 打开 [target] 对应的系统设置页。
-  Future<SystemSettingsOpenResult> open(SystemSettingsTarget target) async {
+  ///
+  /// [channelId] 仅在 [SystemSettingsTarget.notificationChannel] 时有意义，为要打开
+  /// 的通知渠道 ID（如 `AppNotificationService.secondClassroomChannelId`）；漏传时
+  /// 原生按降级链退回应用详情页，不伪造渠道页。
+  Future<SystemSettingsOpenResult> open(
+    SystemSettingsTarget target, {
+    String? channelId,
+  }) async {
+    final normalizedChannelId = channelId?.trim();
     return safeInvoke<String, SystemSettingsOpenResult>(
       _channel,
       'open',
-      arguments: <String, Object?>{'target': target.name},
+      arguments: <String, Object?>{
+        'target': target.name,
+        if (normalizedChannelId != null && normalizedChannelId.isNotEmpty)
+          'channelId': normalizedChannelId,
+      },
       map: _fromPlatformValue,
       missing: SystemSettingsOpenResult.unavailable,
       failed: SystemSettingsOpenResult.unavailable,

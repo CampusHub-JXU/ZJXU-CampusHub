@@ -56,4 +56,29 @@ void main() {
     expect(style.fontSize, expected.fontSize);
     expect(style.fontFeatures, expected.fontFeatures);
   });
+
+  testWidgets('次级统计走轻量档（titleMedium，等宽数字）', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: ChangxingMetric(value: 5, label: '未读消息', emphasized: false),
+        ),
+      ),
+    );
+    final style = tester.widget<Text>(find.text('5')).style!;
+    final theme = Theme.of(tester.element(find.text('5')));
+    expect(style.fontSize, theme.textTheme.titleMedium?.fontSize);
+    expect(style.fontFeatures, const [FontFeature.tabularFigures()]);
+  });
+
+  testWidgets('零值转 onSurfaceVariant：占位数字不抢眼', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(body: ChangxingMetric(value: 0, label: '办理中')),
+      ),
+    );
+    final style = tester.widget<Text>(find.text('0')).style!;
+    final cs = Theme.of(tester.element(find.text('0'))).colorScheme;
+    expect(style.color, cs.onSurfaceVariant);
+  });
 }

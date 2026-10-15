@@ -447,6 +447,9 @@ void main() {
       'cancels timed out transport instead of leaving the request alive',
       () async {
         await NetworkSettings.instance.setIgnoreSystemProxy(false);
+        UnifiedAuthService.instance.debugRequestTimeout = const Duration(
+          milliseconds: 200,
+        );
         final pending = Completer<ResponseBody>();
         final started = Completer<CancelToken>();
         final adapter = MockHttpClientAdapter()

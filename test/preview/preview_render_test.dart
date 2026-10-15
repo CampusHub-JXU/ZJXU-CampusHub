@@ -17,6 +17,8 @@ import 'package:jxu_campus_hub/core/theme/glass_style_controller.dart';
 import 'package:jxu_campus_hub/core/theme/personalization_controller.dart';
 import 'package:jxu_campus_hub/features/campus_card/campus_card_page.dart';
 import 'package:jxu_campus_hub/features/campus_card/campus_card_service.dart';
+import 'package:jxu_campus_hub/features/changxing_jiada/changxing_jiada_model.dart';
+import 'package:jxu_campus_hub/features/changxing_jiada/changxing_jiada_page.dart';
 import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_page.dart';
 import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_service.dart';
 import 'package:jxu_campus_hub/features/exam/exam_service.dart';
@@ -263,6 +265,60 @@ void main() {
     await renderPage(tester, 'page_my_light', const MyPage());
   });
 
+  // ── 畅行嘉大仪表盘（#57 / #58）：合成数据离线渲染 ─────────────────────────
+  // 验收点：身份 / 概览（三项统计 + 最近申请）/ 快速办理 / 我的申请 层级清楚，
+  // 全程无装饰性横竖分割线；含空态与 360dp + 2x 字号边缘态。
+  previewTest('page_changxing_dashboard_light', (tester) async {
+    await _seedChangxingDashboard();
+    await pumpPreviewScene(
+      tester,
+      (_) => _changxingDashboardPage(_previewChangxingSnapshot()),
+      logicalSize: const Size(412, 1100),
+    );
+    await tester.pumpAndSettle();
+    await expectPreviewGolden(tester, 'page_changxing_dashboard_light');
+  });
+
+  previewTest('page_changxing_dashboard_dark', (tester) async {
+    await _seedChangxingDashboard();
+    await pumpPreviewScene(
+      tester,
+      (_) => _changxingDashboardPage(_previewChangxingSnapshot()),
+      brightness: Brightness.dark,
+      logicalSize: const Size(412, 1100),
+    );
+    await tester.pumpAndSettle();
+    await expectPreviewGolden(tester, 'page_changxing_dashboard_dark');
+  });
+
+  previewTest('page_changxing_dashboard_empty_light', (tester) async {
+    await _seedChangxingDashboard();
+    await pumpPreviewScene(
+      tester,
+      (_) => _changxingDashboardPage(_previewChangxingSnapshot(empty: true)),
+      logicalSize: const Size(412, 1100),
+    );
+    await tester.pumpAndSettle();
+    await expectPreviewGolden(tester, 'page_changxing_dashboard_empty_light');
+  });
+
+  previewTest('page_changxing_dashboard_edge_light', (tester) async {
+    await _seedChangxingDashboard();
+    await pumpPreviewScene(
+      tester,
+      (context) => MediaQuery(
+        data: MediaQuery.of(context)
+            .copyWith(textScaler: const TextScaler.linear(2)),
+        child: _changxingDashboardPage(
+          _previewChangxingSnapshot(name: '欧阳娜娜娜娜娜娜娜娜娜娜娜娜'),
+        ),
+      ),
+      logicalSize: const Size(360, 1500),
+    );
+    await tester.pumpAndSettle();
+    await expectPreviewGolden(tester, 'page_changxing_dashboard_edge_light');
+  });
+
   // ── 通知中心：搜索框 + 双 Tab（收件箱经磁盘状态文件离线 seed）───────────
   previewTest('page_notification_center_light', (tester) async {
     await _seedNotificationCenterInbox();
@@ -442,6 +498,68 @@ NoticeInboxHead _previewNoticeHead() => NoticeInboxHead(
   unreadIds: const {'n1', 'n2'},
   unreadCount: 2,
 );
+
+// ── 畅行嘉大仪表盘合成数据（严禁真实学号 / 手机号进仓库 / PR）──────────────
+
+ChangxingUserProfile _previewChangxingProfile({String name = '李明'}) =>
+    ChangxingUserProfile(
+      name: name,
+      jobNo: '20260001',
+      phone: '13800000000',
+      emergencyContact: '家长',
+      emergencyPhone: '13900000000',
+    );
+
+ChangxingApplication _previewChangxingApplication({
+  required int id,
+  required int type,
+  required int status,
+}) => ChangxingApplication(
+  id: id,
+  type: type,
+  status: status,
+  userName: '王小明',
+  departmentName: '计算机261',
+  userJobNo: '20260001',
+  userPhone: '13800000000',
+  descr: '临时请假',
+  remark: '',
+  trafficTool: '火车',
+  backStatus: 0,
+  notBackReason: '',
+  emergencyContact: '家长',
+  emergencyPhone: '13900000000',
+  startTime: DateTime(2026, 9, 1, 8),
+  endTime: DateTime(2026, 9, 2, 18),
+  upTime: DateTime(2026, 9, 6, 10, 30),
+);
+
+/// 3 项统计：未读 2 / 办理中 1（待出校）/ 申请总数 2；最近申请为「返校 · 已返校」。
+ChangxingDashboardSnapshot _previewChangxingSnapshot({
+  String name = '李明',
+  bool empty = false,
+}) => (
+  profile: _previewChangxingProfile(name: name),
+  unreadCount: empty ? 0 : 2,
+  applications: empty
+      ? const <ChangxingApplication>[]
+      : [
+          _previewChangxingApplication(id: 1, type: 1, status: 1),
+          _previewChangxingApplication(id: 2, type: 3, status: 4),
+        ],
+);
+
+Widget _changxingDashboardPage(ChangxingDashboardSnapshot snapshot) =>
+    ChangxingJiadaPage(
+      sessionRestorer: () async => true,
+      casLogin: () async {},
+      signOut: () async {},
+      dashboardFetcher: () async => snapshot,
+    );
+
+Future<void> _seedChangxingDashboard() async {
+  UnifiedAuthService.instance.debugSetSession(active: true, account: 'casuser');
+}
 
 /// 通知中心收件箱种子：直接注入内存态并短路 reload（真实文件锁与磁盘
 /// I/O 在测试的假异步区永远不会完成，页面 initState 的 reload 会挂到

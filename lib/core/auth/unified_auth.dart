@@ -403,7 +403,7 @@ class UnifiedAuthService extends ChangeNotifier {
     label: label,
     request: request,
     cancelToken: cancelToken,
-    timeout: _requestTimeout,
+    timeout: debugRequestTimeout ?? _requestTimeout,
   );
 
   Future<Uint8List> fetchCaptcha({
@@ -861,6 +861,10 @@ class UnifiedAuthService extends ChangeNotifier {
   @visibleForTesting
   HttpClientAdapter? debugProxyFallbackAdapter;
 
+  /// 测试用：缩短单次请求超时，避免超时用例真实等待 12 秒。
+  @visibleForTesting
+  Duration? debugRequestTimeout;
+
   @visibleForTesting
   Future<bool?> Function(String serviceUrl)? debugSessionValidator;
 
@@ -894,6 +898,7 @@ class UnifiedAuthService extends ChangeNotifier {
     debugSessionValidator = null;
     debugSessionMetadataLoader = null;
     debugProxyFallbackAdapter = null;
+    debugRequestTimeout = null;
     debugSyncCookiesToWebViewForUrlOverride = null;
     debugWebViewCookieSyncCalls = 0;
   }

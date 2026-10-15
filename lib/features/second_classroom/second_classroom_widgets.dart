@@ -44,7 +44,7 @@ class _ActivityDetailSheet extends StatelessWidget {
               child: ListView(
                 shrinkWrap: true,
                 children: [
-                  _ActivityCoverBanner(
+                  _ActivityDetailImage(
                     imageUrl: imageUrl,
                     statusLabel: activity.recruitmentLabel,
                     statusTone: _recruitmentTone(activity),
@@ -224,6 +224,7 @@ class _SubscriptionSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.pageMargin,
@@ -231,26 +232,30 @@ class _SubscriptionSheet extends StatelessWidget {
         AppSpacing.pageMargin,
         AppSpacing.lg,
       ),
-      child: SizedBox(
-        height: MediaQuery.sizeOf(context).height * 0.72,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            PlainSectionHeader(
-              activities.isEmpty ? '已订阅活动名' : '已订阅活动名 · ${activities.length}',
-            ),
-            if (activities.isEmpty)
-              const Expanded(
-                child: AppEmptyView(
+      // 内容（订阅列表 + 通知说明）整体滚动，短屏 / 大字号下不溢出；高度仍受
+      // 底部弹层自身的可用空间约束。
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.78,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              PlainSectionHeader(
+                activities.isEmpty ? '已订阅活动名' : '已订阅活动名 · ${activities.length}',
+              ),
+              if (activities.isEmpty)
+                const AppEmptyView(
                   title: '暂无订阅活动',
                   message: '在活动卡片上点击铃铛，即可订阅同名活动的开招提醒',
                   icon: Icons.notifications_off_outlined,
-                ),
-              )
-            else
-              Expanded(
-                child: ListView.separated(
+                )
+              else
+                ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
                   itemCount: activities.length,
                   separatorBuilder: (context, index) =>
                       const SizedBox(height: AppSpacing.sm),
@@ -268,11 +273,112 @@ class _SubscriptionSheet extends StatelessWidget {
                     );
                   },
                 ),
+              const SizedBox(height: AppSpacing.md),
+              const PlainSectionHeader('开招提醒'),
+              const PlainListGroup(
+                children: [_NotificationChannelSettingsRow()],
               ),
-          ],
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                '订阅按同名活动匹配，后台大约每 1 小时联网检测一次，系统调度可能延后，'
+                '不保证在活动刚开招的瞬间提醒。顶部横幅是否出现，还取决于系统通知权限、'
+                '本渠道的重要程度与厂商（如 HyperOS）设置，App 无法代为开启。',
+                style: context.appText.meta.copyWith(
+                  color: cs.onSurfaceVariant,
+                  height: 1.5,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
+  }
+}
+
+/// 第二课堂订阅弹层底部的系统通知入口：如实展示权限 / 渠道状态，并直达本应用
+/// 「第二课堂活动提醒」渠道设置。跳转成功不代表已授权，也不保证出现横幅
+/// （见 design-guidelines「系统设置快捷入口只表示打开设置页」）。
+class _NotificationChannelSettingsRow extends StatefulWidget {
+  const _NotificationChannelSettingsRow();
+
+  @override
+  State<_NotificationChannelSettingsRow> createState() =>
+      _NotificationChannelSettingsRowState();
+}
+
+class _NotificationChannelSettingsRowState
+    extends State<_NotificationChannelSettingsRow>
+    with WidgetsBindingObserver {
+  bool _checking = true;
+
+  /// 真实权限查询结果；null 表示不支持或查询失败，状态未知。
+  bool? _enabled;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(_refreshStatus());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 从系统设置返回后重新查询真实状态，不沿用旧值。
+    if (state == AppLifecycleState.resumed) unawaited(_refreshStatus());
+  }
+
+  Future<void> _refreshStatus() async {
+    bool? enabled;
+    try {
+      enabled = await AppNotificationService.instance
+          .notificationPermissionStatus();
+    } catch (_) {
+      enabled = null;
+    }
+    if (!mounted) return;
+    setState(() {
+      _enabled = enabled;
+      _checking = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final subtitle = _checking
+        ? '检查通知状态…'
+        : switch (_enabled) {
+            true => '点按打开「第二课堂活动提醒」通知渠道，可自行开启横幅 / 悬浮通知',
+            false => '系统通知权限未开启，开招提醒不会显示；点按前往系统设置开启',
+            null => '通知状态未知，点按前往系统设置查看',
+          };
+    return PlainListRow(
+      title: '通知横幅设置',
+      subtitle: subtitle,
+      onTap: _openChannelSettings,
+    );
+  }
+
+  Future<void> _openChannelSettings() async {
+    final result = await SystemSettingsLauncher.instance.open(
+      SystemSettingsTarget.notificationChannel,
+      channelId: AppNotificationService.secondClassroomChannelId,
+    );
+    if (!mounted) return;
+    // 命中渠道页不提示；降级 / 失败时说明真实打开的页面。
+    final message = switch (result) {
+      SystemSettingsOpenResult.target => null,
+      SystemSettingsOpenResult.appDetails => '未能直达该通知渠道，已打开应用详情页，请在「通知」中手动查找',
+      SystemSettingsOpenResult.settings => '未能直达该通知渠道，已打开系统设置首页，请手动查找',
+      SystemSettingsOpenResult.unavailable => '未能打开系统设置，请手动前往系统「应用管理」调整',
+    };
+    if (message != null) AppFeedback.toast(context, message);
   }
 }
 
@@ -418,57 +524,6 @@ class _ActivityCover extends StatelessWidget {
         Icons.workspace_premium_outlined,
         color: cs.primary,
         size: iconSize,
-      ),
-    );
-  }
-}
-
-class _ActivityCoverBanner extends StatelessWidget {
-  const _ActivityCoverBanner({
-    required this.imageUrl,
-    this.statusLabel,
-    this.statusTone = AppStatusTone.neutral,
-  });
-
-  final String imageUrl;
-  final String? statusLabel;
-  final AppStatusTone statusTone;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return AspectRatio(
-      aspectRatio: 16 / 9,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(AppRadius.card),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Container(color: cs.surfaceContainerHighest),
-            if (imageUrl.isEmpty)
-              Icon(
-                Icons.workspace_premium_outlined,
-                color: cs.primary,
-                size: 44,
-              )
-            else
-              Image.network(
-                imageUrl,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => Icon(
-                  Icons.workspace_premium_outlined,
-                  color: cs.primary,
-                  size: 44,
-                ),
-              ),
-            if (statusLabel != null && statusLabel!.isNotEmpty)
-              Positioned(
-                left: 12,
-                top: 12,
-                child: AppStatusTag(statusLabel!, tone: statusTone),
-              ),
-          ],
-        ),
       ),
     );
   }
