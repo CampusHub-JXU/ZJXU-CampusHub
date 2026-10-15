@@ -437,6 +437,63 @@ void main() {
       expect(controller.state.value.phase, ApkUpdatePhase.idle);
     });
 
+    group('stale managed update (already installed)', () {
+      ApkUpdateController withInstalled(String? installed) =>
+          ApkUpdateController(
+            transport: transport,
+            deviceAbiProvider: () => 'arm64-v8a',
+            platformProvider: () => TargetPlatform.android,
+            installedVersionProvider: () async => installed,
+          );
+
+      test(
+        'same version as installed is cancelled and projects idle',
+        () async {
+          final c = withInstalled('0.11.1');
+          transport.queryResult = const ApkUpdateState(
+            phase: ApkUpdatePhase.readyToInstall,
+            version: '0.11.1',
+          );
+          await c.refreshActiveUpdate();
+          expect(transport.cancelCalls, 1);
+          expect(c.state.value.phase.isActive, isFalse);
+        },
+      );
+
+      test('older than installed is cancelled', () async {
+        final c = withInstalled('0.11.2');
+        transport.queryResult = const ApkUpdateState(
+          phase: ApkUpdatePhase.readyToInstall,
+          version: 'v0.11.1',
+        );
+        await c.refreshActiveUpdate();
+        expect(transport.cancelCalls, 1);
+        expect(c.state.value.phase.isActive, isFalse);
+      });
+
+      test('newer than installed is kept', () async {
+        final c = withInstalled('0.11.0');
+        transport.queryResult = const ApkUpdateState(
+          phase: ApkUpdatePhase.readyToInstall,
+          version: '0.11.1',
+        );
+        await c.refreshActiveUpdate();
+        expect(transport.cancelCalls, 0);
+        expect(c.state.value.phase, ApkUpdatePhase.readyToInstall);
+      });
+
+      test('unknown installed version keeps the managed update', () async {
+        final c = withInstalled(null);
+        transport.queryResult = const ApkUpdateState(
+          phase: ApkUpdatePhase.readyToInstall,
+          version: '0.11.1',
+        );
+        await c.refreshActiveUpdate();
+        expect(transport.cancelCalls, 0);
+        expect(c.state.value.phase, ApkUpdatePhase.readyToInstall);
+      });
+    });
+
     test('late query result is discarded by epoch', () async {
       final gate = Completer<void>();
       transport.queryHandler = () async {

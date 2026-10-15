@@ -82,11 +82,17 @@ class FakeApkUpdateTransport implements ApkUpdateTransport {
 
 /// 用注入的替身构造控制器：固定为 Android + arm64-v8a，避免测试依赖宿主
 /// 平台探测。
-ApkUpdateController fakeApkUpdateController(FakeApkUpdateTransport transport) {
+/// [installedVersion] 默认取一个低于所有测试 Release 的版本，避免受管更新被
+/// 视为「已安装、过期」而自动取消。
+ApkUpdateController fakeApkUpdateController(
+  FakeApkUpdateTransport transport, {
+  String? installedVersion = '0.0.1',
+}) {
   return ApkUpdateController(
     transport: transport,
     deviceAbiProvider: () => 'arm64-v8a',
     platformProvider: () => TargetPlatform.android,
+    installedVersionProvider: () async => installedVersion,
   );
 }
 

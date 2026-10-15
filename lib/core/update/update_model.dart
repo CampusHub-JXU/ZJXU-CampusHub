@@ -78,13 +78,19 @@ class AppRelease {
     );
   }
 
-  bool isNewerThan(String currentVersion) {
-    final latestSegments = tryParseVersionSegments(version);
+  bool isNewerThan(String currentVersion) =>
+      isVersionNewer(version, currentVersion);
+
+  /// [candidate] 是否严格新于 [currentVersion]（均按 [normalizeVersion] 规范化，
+  /// 数字段逐段比较；任一侧无法解析时退回字符串比较）。
+  static bool isVersionNewer(String candidate, String currentVersion) {
+    final latest = normalizeVersion(candidate);
+    final latestSegments = tryParseVersionSegments(latest);
     final currentSegments = tryParseVersionSegments(
       normalizeVersion(currentVersion),
     );
     if (latestSegments == null || currentSegments == null) {
-      return version.compareTo(normalizeVersion(currentVersion)) > 0;
+      return latest.compareTo(normalizeVersion(currentVersion)) > 0;
     }
 
     final maxLength = latestSegments.length > currentSegments.length

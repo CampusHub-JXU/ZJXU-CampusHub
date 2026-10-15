@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../logging/app_logger.dart';
 import '../platform/safe_invoke.dart';
@@ -573,18 +574,32 @@ class ApkUpdateController {
     ApkUpdateTransport? transport,
     String? Function()? deviceAbiProvider,
     TargetPlatform Function()? platformProvider,
+    Future<String?> Function()? installedVersionProvider,
   }) : _transport = transport ?? defaultApkUpdateTransport,
        _deviceAbiProvider = deviceAbiProvider ?? deviceAbiSuffix,
-       _platformProvider = platformProvider ?? _defaultPlatform;
+       _platformProvider = platformProvider ?? _defaultPlatform,
+       _installedVersionProvider =
+           installedVersionProvider ?? _defaultInstalledVersion;
 
   /// 应用级单例；测试用构造注入独立实例。
   static final ApkUpdateController instance = ApkUpdateController();
 
   static TargetPlatform _defaultPlatform() => defaultTargetPlatform;
 
+  static Future<String?> _defaultInstalledVersion() async {
+    try {
+      return (await PackageInfo.fromPlatform().timeout(
+        const Duration(seconds: 3),
+      )).version;
+    } catch (_) {
+      return null;
+    }
+  }
+
   final ApkUpdateTransport _transport;
   final String? Function() _deviceAbiProvider;
   final TargetPlatform Function() _platformProvider;
+  final Future<String?> Function() _installedVersionProvider;
 
   final ValueNotifier<ApkUpdateState> state = ValueNotifier<ApkUpdateState>(
     const ApkUpdateState.idle(),
@@ -639,11 +654,33 @@ class ApkUpdateController {
 
   /// 查询原生当前受管状态（冷启动 / 回前台恢复）。迟到的查询结果被 epoch
   /// 作废，绝不覆盖更新的状态。
+  ///
+  /// 已不新于当前安装版本的受管更新（例如用户已经从文件管理器装上了同一个
+  /// 包，或经其它渠道升级）会被视为过期：取消原生请求并删除其文件，回到
+  /// idle，让「检查更新」重新查询线上版本，而不是一直提示安装当前版本。
+  /// 版本无法读取时保守保留原状态。
   Future<void> refreshActiveUpdate() async {
     final epoch = ++_refreshEpoch;
     final next = await _transport.queryActiveUpdate();
     if (epoch != _refreshEpoch) return;
+    if (next != null && await _isSuperseded(next)) {
+      if (epoch != _refreshEpoch) return;
+      final cleared = await _transport.cancelActiveUpdate();
+      if (epoch != _refreshEpoch) return;
+      _apply(cleared.phase.isActive ? cleared : const ApkUpdateState.idle());
+      return;
+    }
+    if (epoch != _refreshEpoch) return;
     _apply(next ?? const ApkUpdateState.idle());
+  }
+
+  Future<bool> _isSuperseded(ApkUpdateState managed) async {
+    if (!managed.phase.isActive) return false;
+    final managedVersion = managed.version?.trim();
+    if (managedVersion == null || managedVersion.isEmpty) return false;
+    final installed = await _installedVersionProvider();
+    if (installed == null || installed.trim().isEmpty) return false;
+    return !AppRelease.isVersionNewer(managedVersion, installed);
   }
 
   /// 取消当前受管下载并清理其文件（只影响原生受管的那一条）。

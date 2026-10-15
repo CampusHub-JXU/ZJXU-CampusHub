@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import 'package:jxu_campus_hub/core/update/apk_update_controller.dart';
 import 'package:jxu_campus_hub/core/update/update_checker.dart';
@@ -22,6 +23,15 @@ void main() {
 
   setUp(() async {
     await resetTestEnvironment();
+    // 受管更新只有新于已安装版本才保留；本文件的样例更新为 0.2.x / 0.3.x，
+    // 已安装版本需低于它们。
+    PackageInfo.setMockInitialValues(
+      appName: '嘉兴大学',
+      packageName: 'test.package',
+      version: '0.1.0',
+      buildNumber: '1',
+      buildSignature: 'test',
+    );
     ApkUpdateController.instance.debugReset();
     nativeState = null;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
