@@ -193,6 +193,38 @@ void main() {
       await disposeDialog(tester);
     });
 
+    testWidgets('原生返回 false 但状态已推进为需要授权时，不叠加「无法打开」提示', (tester) async {
+      // 相位守卫的否定分支：原生确实没发起安装器，但它同时把受管状态推进为
+      // permissionRequired（状态区已有授权引导）。此时再弹「无法打开系统安装
+      // 程序」既是错误归因，也会与权限横幅重复。
+      transport.installResult = false;
+      transport.active = const ApkUpdateState(
+        phase: ApkUpdatePhase.readyToInstall,
+        version: '0.3.0',
+        releaseTag: 'v0.3.0',
+        requestKey: 'k',
+      );
+      transport.onInstall = () {
+        transport.active = const ApkUpdateState(
+          phase: ApkUpdatePhase.permissionRequired,
+          version: '0.3.0',
+          releaseTag: 'v0.3.0',
+          requestKey: 'k',
+        );
+      };
+      await open(tester, managedTestRelease());
+
+      await tester.tap(find.widgetWithText(FilledButton, '安装更新'));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      expect(transport.installCalls, 1);
+      expect(find.text('需要允许安装应用'), findsOneWidget);
+      expect(find.text('无法打开系统安装程序'), findsNothing);
+      await disposeDialog(tester);
+    });
+
     testWidgets('旧受管版本与新 Release 不同则禁止安装并可重新下载', (tester) async {
       transport.active = const ApkUpdateState(
         phase: ApkUpdatePhase.readyToInstall,

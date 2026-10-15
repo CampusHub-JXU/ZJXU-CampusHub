@@ -31,6 +31,10 @@ class FakeApkUpdateTransport implements ApkUpdateTransport {
   ApkUpdateRequest? lastRequest;
   String? lastExpectedReleaseTag;
 
+  /// `requestInstall` 期间的副作用钩子：用来模拟「原生返回 false 的同时把受管
+  /// 状态推进为 permissionRequired / failed」这类真实并发顺序。
+  void Function()? onInstall;
+
   /// 主动推进原生「当前受管状态」（模拟下载在后台推进）。
   set active(ApkUpdateState value) => _active = value;
 
@@ -65,6 +69,7 @@ class FakeApkUpdateTransport implements ApkUpdateTransport {
   Future<bool> requestInstall({String? expectedReleaseTag}) async {
     installCalls++;
     lastExpectedReleaseTag = expectedReleaseTag;
+    onInstall?.call();
     return installResult;
   }
 
