@@ -44,6 +44,7 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.4
+  vm_service: 15.3.0
 
 # 应用图标生成：母版与自适应前景由 tools/brand/make_icons.py 产出，
 # 修改设计后先跑该脚本，再执行 `dart run flutter_launcher_icons`。
