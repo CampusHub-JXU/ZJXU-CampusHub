@@ -73,11 +73,12 @@ try {
     Invoke-Native $FlutterExe analyze
   }
 
-  Invoke-CiStep "Focused regression tests" {
-    Invoke-Native $FlutterExe test test/core/update/update_service_test.dart
-  }
-
-  if (-not $SkipFullTest) {
+  if ($SkipFullTest) {
+    # 全量测试已包含该文件；只在跳过全量时单独跑，作为快速回归。
+    Invoke-CiStep "Focused regression tests" {
+      Invoke-Native $FlutterExe test test/core/update/update_service_test.dart
+    }
+  } else {
     Invoke-CiStep "Full Flutter test suite" {
       if ($WithCoverage) {
         Invoke-Native $FlutterExe test --coverage

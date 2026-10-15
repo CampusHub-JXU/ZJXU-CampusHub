@@ -3,11 +3,9 @@ import 'dart:ui' show Tristate;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:jxu_campus_hub/features/settings/settings_page.dart';
 import 'package:jxu_campus_hub/shared/widgets/plain_list.dart';
-import 'package:jxu_campus_hub/shared/widgets/app_dropdown.dart';
 
 import '../../helpers/pump_app.dart';
 import '../../helpers/test_setup.dart';
@@ -60,39 +58,14 @@ void main() {
     expect(find.textContaining('学年'), findsWidgets);
   });
 
-  testWidgets('年级下拉在自动跟随与手动年级间切换', (tester) async {
+  testWidgets('学期分组不再提供手动年级，保留当前学期与开学日', (tester) async {
     await pumpPage(tester, const SettingsPage());
 
-    await tester.scrollUntilVisible(find.text('年级'), 300);
-    expect(find.text('年级'), findsOneWidget);
-
-    // 默认「自动」，不再附带说明副标题。
-    expect(find.text('自动'), findsOneWidget);
-
-    // 选择手动年级：写入持久化，按钮文案随选中项切换。
-    await tester.tap(find.byType(AppDropdown<int>));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('2024级'));
-    await tester.pumpAndSettle();
-
-    final prefs = await SharedPreferences.getInstance();
-    expect(prefs.getInt('profile_enrollment_year'), 2024);
-
-    // 恢复「自动」：手动值清除。菜单项用弹出层 key 定位，与按钮上的
-    // 同名回显文案区分开。
-    await tester.tap(find.byType(AppDropdown<int>));
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.descendant(
-        of: find.byKey(const ValueKey('app-dropdown-menu')),
-        matching: find.text('自动'),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    final prefsAfter = await SharedPreferences.getInstance();
-    expect(prefsAfter.getInt('profile_enrollment_year'), isNull);
-    expect(find.text('自动'), findsOneWidget);
+    // 手动「年级」下拉已移除，学期分组只剩自动识别与日期相关条目。
+    await tester.scrollUntilVisible(find.text('当前学期'), 300);
+    expect(find.text('年级'), findsNothing);
+    expect(find.text('当前学期'), findsOneWidget);
+    expect(find.text('开学日'), findsOneWidget);
   });
 
   /// 文案节点可能不带动作/标记，向上找到承载该语义的行节点。
@@ -170,6 +143,10 @@ void main() {
     await pumpPage(tester, const SettingsPage());
 
     await tester.scrollUntilVisible(find.text('清除离线缓存'), 300);
+    // 学期分组移除「年级」行后内容变短，滚动停位更靠近视口边缘；
+    // 显式 ensureVisible + settle 保证行完全可点击（内容与语义不变）。
+    await tester.ensureVisible(find.text('清除离线缓存'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('清除离线缓存'));
     await tester.pumpAndSettle();
 

@@ -20,7 +20,7 @@ class NoticeRelevance {
   );
 
   /// 从学号推断入学年份：取开头的 20XX（2000–2035 视为合理）。
-  /// 学号不含年份前缀时返回 null（用户可在「我的」手动设置）。
+  /// 学号不含年份前缀时返回 null（此时年级未知，通知相关性 fail-open）。
   static int? inferEnrollmentYearFromId(String id) {
     final match = RegExp(r'^(20\d{2})').firstMatch(id.trim());
     if (match == null) return null;

@@ -39,7 +39,8 @@ class SystemSettingsChannelHandler(private val activity: Activity) {
                 "open" -> {
                     val target = call.requireStringArg("target", result)
                         ?: return@setMethodCallHandler
-                    result.success(open(target))
+                    val channelId = call.argument<String>("channelId")?.trim()
+                    result.success(open(target, channelId))
                 }
 
                 else -> result.notImplemented()
@@ -48,8 +49,8 @@ class SystemSettingsChannelHandler(private val activity: Activity) {
     }
 
     /** 打开目标设置页；逐级降级，全部失败返回 `unavailable`。 */
-    private fun open(target: String): String {
-        if (tryOpenTarget(target)) {
+    private fun open(target: String, channelId: String?): String {
+        if (tryOpenTarget(target, channelId)) {
             return RESULT_TARGET
         }
         if (tryOpenAppDetails()) {
@@ -61,9 +62,12 @@ class SystemSettingsChannelHandler(private val activity: Activity) {
         return RESULT_UNAVAILABLE
     }
 
-    private fun tryOpenTarget(target: String): Boolean {
+    private fun tryOpenTarget(target: String, channelId: String?): Boolean {
         return when (target) {
             "notifications" -> openNotificationSettings()
+            // 渠道页（Android 8.0+）；channelId 缺失 / 渠道不存在时返回 false，
+            // 由降级链退回应用详情页，绝不伪造渠道页。
+            "notificationChannel" -> openNotificationChannelSettings(channelId)
             // 目标本身就是应用详情页，交给统一降级链处理即可。
             "appDetails" -> false
             "exactAlarms" -> openExactAlarmSettings()
@@ -82,6 +86,26 @@ class SystemSettingsChannelHandler(private val activity: Activity) {
         }
         val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
             putExtra(Settings.EXTRA_APP_PACKAGE, activity.packageName)
+        }
+        return tryOpen(intent)
+    }
+
+    /**
+     * Android 8.0+ 单个通知渠道设置页（如「第二课堂活动提醒」）。
+     *
+     * 需要非空 [channelId]；低版本、缺失参数或渠道页不存在时返回 false，降级到
+     * 应用详情页。**打开渠道页不代表用户已开启横幅 / 悬浮通知**，只负责指路。
+     */
+    private fun openNotificationChannelSettings(channelId: String?): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return false
+        }
+        if (channelId.isNullOrBlank()) {
+            return false
+        }
+        val intent = Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).apply {
+            putExtra(Settings.EXTRA_APP_PACKAGE, activity.packageName)
+            putExtra(Settings.EXTRA_CHANNEL_ID, channelId)
         }
         return tryOpen(intent)
     }
