@@ -19,6 +19,7 @@ typedef SecondClassroomRecruitingNotifier = Future<void> Function({
 const _subscriptionsKey = 'second_classroom_subscriptions_v2';
 const _legacySubscriptionsKey = 'second_classroom_subscriptions_v1';
 const _recruitingNotificationBaseId = 500000;
+const _automaticCheckMinInterval = Duration(minutes: 5);
 
 class SecondClassroomMonitorResult {
   const SecondClassroomMonitorResult({
@@ -48,6 +49,9 @@ class SecondClassroomSubscriptionService {
   final SecondClassroomRecruitingNotifier _notifyRecruitingActivity;
   final SecondClassroomService _activityService;
   final DateTime Function() _nowProvider;
+  DateTime? _lastAutomaticCheckSucceededAt;
+  Future<SecondClassroomMonitorResult>? _automaticCheckInFlight;
+  int _subscriptionGeneration = 0;
 
   Future<List<SecondClassroomActivity>> loadSubscriptions() async {
     final activities = (await _loadSubscriptionRecords()).values
@@ -85,6 +89,7 @@ class SecondClassroomSubscriptionService {
       lastMatchedAt: existing?.lastMatchedAt,
     );
     await _saveSubscriptionRecords(records);
+    _invalidateAutomaticCheck();
     return 1;
   }
 
@@ -92,15 +97,59 @@ class SecondClassroomSubscriptionService {
     final records = await _loadSubscriptionRecords();
     records.removeWhere((_, record) => record.activity.id == activityId);
     await _saveSubscriptionRecords(records);
+    _invalidateAutomaticCheck();
   }
 
   Future<void> unsubscribeActivity(SecondClassroomActivity activity) async {
     final records = await _loadSubscriptionRecords();
     records.remove(secondClassroomSubscriptionKey(activity.title));
     await _saveSubscriptionRecords(records);
+    _invalidateAutomaticCheck();
   }
 
-  Future<SecondClassroomMonitorResult> checkRecruitingMatches() async {
+  Future<SecondClassroomMonitorResult> checkRecruitingMatches({
+    bool automatic = false,
+  }) {
+    if (!automatic) return _checkRecruitingMatches();
+
+    final inFlight = _automaticCheckInFlight;
+    if (inFlight != null) return inFlight;
+
+    final now = _nowProvider();
+    final lastSuccess = _lastAutomaticCheckSucceededAt;
+    if (lastSuccess != null) {
+      final age = now.difference(lastSuccess);
+      if (!age.isNegative && age < _automaticCheckMinInterval) {
+        return _loadSubscriptionRecords().then(
+          (records) => SecondClassroomMonitorResult(
+            subscriptionCount: records.length,
+            checkedActivityCount: 0,
+            notificationCount: 0,
+          ),
+        );
+      }
+    }
+
+    final generation = _subscriptionGeneration;
+    late final Future<SecondClassroomMonitorResult> request;
+    request = _checkRecruitingMatches()
+        .then((result) {
+          if (generation == _subscriptionGeneration &&
+              result.subscriptionCount > 0) {
+            _lastAutomaticCheckSucceededAt = _nowProvider();
+          }
+          return result;
+        })
+        .whenComplete(() {
+          if (identical(_automaticCheckInFlight, request)) {
+            _automaticCheckInFlight = null;
+          }
+        });
+    _automaticCheckInFlight = request;
+    return request;
+  }
+
+  Future<SecondClassroomMonitorResult> _checkRecruitingMatches() async {
     final records = await _loadSubscriptionRecords();
     if (records.isEmpty) {
       return const SecondClassroomMonitorResult(
@@ -325,6 +374,13 @@ class SecondClassroomSubscriptionService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_subscriptionsKey);
     await prefs.remove(_legacySubscriptionsKey);
+    _invalidateAutomaticCheck();
+  }
+
+  void _invalidateAutomaticCheck() {
+    _subscriptionGeneration++;
+    _lastAutomaticCheckSucceededAt = null;
+    _automaticCheckInFlight = null;
   }
 }
 

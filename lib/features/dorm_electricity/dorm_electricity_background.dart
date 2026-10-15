@@ -221,6 +221,7 @@ class _PlatformDormBackgroundScheduler implements DormBackgroundScheduler {
       BackgroundTaskService.instance.registerPeriodicTask(
         uniqueName: dormElectricityCheck,
         frequency: const Duration(hours: 8),
+        initialDelay: const Duration(minutes: 15),
       );
 
   @override
@@ -715,9 +716,9 @@ class DormElectricityBackground {
       final lastNotified = prefs.getString(_keyLastNotifiedDate);
       final today = DormElectricityService.todayString();
 
-      final value = await DormElectricityService.instance.fetchElectricity(
-        forceRefresh: true,
-      );
+      // Resume checks should reuse the service's owner-scoped fresh cache. A
+      // manual refresh remains the explicit path that bypasses this gate.
+      final value = await DormElectricityService.instance.fetchElectricity();
       if (!_ownerStillCurrent(owner: owner, revision: revision, prefs: prefs)) {
         return;
       }

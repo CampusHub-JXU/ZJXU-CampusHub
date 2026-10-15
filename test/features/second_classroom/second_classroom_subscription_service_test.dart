@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:jxu_campus_hub/features/second_classroom/second_classroom_model.dart';
+import 'package:jxu_campus_hub/features/second_classroom/second_classroom_service.dart';
 import 'package:jxu_campus_hub/features/second_classroom/second_classroom_subscription_service.dart';
 
 void main() {
@@ -131,6 +134,131 @@ void main() {
     expect(await service.loadSubscribedIds(), isEmpty);
     expect(await service.loadSubscribedKeys(), isEmpty);
   });
+
+  test(
+    'automatic check throttles success but manual checks always run',
+    () async {
+      var now = DateTime(2026, 6, 9, 12);
+      final source = _CountingActivityService();
+      final service = SecondClassroomSubscriptionService(
+        activityService: source,
+        nowProvider: () => now,
+        notifyRecruitingActivity: _ignoreNotification,
+      );
+      await service.subscribe(_activity);
+
+      await service.checkRecruitingMatches(automatic: true);
+      await service.checkRecruitingMatches(automatic: true);
+      expect(source.calls, 1);
+
+      await service.checkRecruitingMatches();
+      expect(source.calls, 2);
+
+      now = now.add(const Duration(minutes: 5));
+      await service.checkRecruitingMatches(automatic: true);
+      expect(source.calls, 3);
+    },
+  );
+
+  test('automatic check singleflights and retries after failure', () async {
+    final source = _CountingActivityService();
+    var now = DateTime(2026, 6, 9, 12);
+    final service = SecondClassroomSubscriptionService(
+      activityService: source,
+      nowProvider: () => now,
+      notifyRecruitingActivity: _ignoreNotification,
+    );
+    await service.subscribe(_activity);
+    final gate = Completer<void>();
+    source.gate = gate;
+
+    final first = service.checkRecruitingMatches(automatic: true);
+    final second = service.checkRecruitingMatches(automatic: true);
+    for (var i = 0; i < 20 && source.calls == 0; i++) {
+      await Future<void>.delayed(Duration.zero);
+    }
+    expect(source.calls, 1);
+    gate.complete();
+    await Future.wait([first, second]);
+
+    now = now.add(const Duration(minutes: 5));
+    source.failureCount = 1;
+    await expectLater(
+      service.checkRecruitingMatches(automatic: true),
+      throwsStateError,
+    );
+    await service.checkRecruitingMatches(automatic: true);
+    expect(source.calls, 3);
+  });
+
+  test(
+    'subscription mutation invalidates automatic success throttle',
+    () async {
+      var now = DateTime(2026, 6, 9, 12);
+      final source = _CountingActivityService();
+      final service = SecondClassroomSubscriptionService(
+        activityService: source,
+        nowProvider: () => now,
+        notifyRecruitingActivity: _ignoreNotification,
+      );
+      await service.subscribe(_activity);
+      await service.checkRecruitingMatches(automatic: true);
+      now = now.add(const Duration(minutes: 1));
+
+      await service.subscribe(_activity.copyWith(title: '新活动'));
+      await service.checkRecruitingMatches(automatic: true);
+
+      expect(source.calls, 2);
+    },
+  );
+
+  test('clock rollback does not suppress automatic checks', () async {
+    var now = DateTime(2026, 6, 9, 12);
+    final source = _CountingActivityService();
+    final service = SecondClassroomSubscriptionService(
+      activityService: source,
+      nowProvider: () => now,
+      notifyRecruitingActivity: _ignoreNotification,
+    );
+    await service.subscribe(_activity);
+    await service.checkRecruitingMatches(automatic: true);
+    now = now.subtract(const Duration(minutes: 1));
+    await service.checkRecruitingMatches(automatic: true);
+    expect(source.calls, 2);
+  });
+}
+
+Future<void> _ignoreNotification({
+  required int id,
+  required String title,
+  required String body,
+  required String payload,
+}) async {}
+
+class _CountingActivityService extends SecondClassroomService {
+  int calls = 0;
+  int failureCount = 0;
+  Completer<void>? gate;
+
+  @override
+  Future<SecondClassroomActivityPage> fetchAllActivities(
+    SecondClassroomActivityQuery query,
+  ) async {
+    calls++;
+    final activeGate = gate;
+    if (activeGate != null) await activeGate.future;
+    if (failureCount > 0) {
+      failureCount--;
+      throw StateError('network failed');
+    }
+    return const SecondClassroomActivityPage(
+      items: [],
+      pageIndex: 1,
+      pageSize: 30,
+      totalPages: 1,
+      count: 0,
+    );
+  }
 }
 
 final _activity = SecondClassroomActivity(

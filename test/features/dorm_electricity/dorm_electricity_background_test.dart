@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:workmanager/workmanager.dart';
 
 import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_background.dart';
@@ -98,9 +99,11 @@ class _BalanceGateway implements Epay100Gateway {
   _BalanceGateway(this.balance);
 
   final double balance;
+  int calls = 0;
 
   @override
   Future<String> call(String method, Map<String, String> data) async {
+    calls++;
     expect(method, 'app.electric.getRoomBalance');
     return '{"code":"200","msg":"SUC0000","data":{"balance_list":['
         '{"id":"${data['L4_room_id']}","name":"HX4-111","balance":"$balance"}]}}';
@@ -111,6 +114,34 @@ class _BalanceGateway implements Epay100Gateway {
 
   @override
   Future<void> invalidate() async {}
+}
+
+class _RecordingWorkmanagerPlatform extends WorkmanagerPlatform {
+  String? uniqueName;
+  String? taskName;
+  Duration? frequency;
+  Duration? initialDelay;
+
+  @override
+  Future<void> registerPeriodicTask(
+    String uniqueName,
+    String taskName, {
+    Duration? frequency,
+    Duration? flexInterval,
+    Map<String, dynamic>? inputData,
+    Duration? initialDelay,
+    Constraints? constraints,
+    ExistingPeriodicWorkPolicy? existingWorkPolicy,
+    BackoffPolicy? backoffPolicy,
+    Duration? backoffPolicyDelay,
+    String? tag,
+    ForegroundServiceConfig? foregroundServiceConfig,
+  }) async {
+    this.uniqueName = uniqueName;
+    this.taskName = taskName;
+    this.frequency = frequency;
+    this.initialDelay = initialDelay;
+  }
 }
 
 String _today() {
@@ -465,6 +496,46 @@ void main() {
     expect(prefs.getString('dorm_alert_last_notified_date'), _today());
   });
 
+  test('foregroundCheck reuses fresh owner cache without epay RPC', () async {
+    await _seedPrefs(
+      owner: 'A',
+      alertEnabled: true,
+      cachedValue: 5,
+      threshold: 20,
+    );
+    loginAs('A');
+    final gateway = _BalanceGateway(25);
+    DormElectricityService.instance.debugSetGateway(gateway);
+
+    await DormElectricityBackground.instance.foregroundCheck();
+
+    expect(gateway.calls, 0);
+    expect(scheduler.notifications, hasLength(1));
+    expect(scheduler.notifications.single.value, 5);
+  });
+
+  test(
+    'electricity worker is delayed while preserving its 8h cadence',
+    () async {
+      DormElectricityBackground.instance.debugReset();
+      addTearDown(DormElectricityBackground.instance.debugReset);
+      // Initialize Workmanager's platform selection before replacing its
+      // platform singleton so this exercises the production scheduler call.
+      Workmanager();
+      final originalPlatform = WorkmanagerPlatform.instance;
+      final platform = _RecordingWorkmanagerPlatform();
+      WorkmanagerPlatform.instance = platform;
+      addTearDown(() => WorkmanagerPlatform.instance = originalPlatform);
+
+      await DormElectricityBackground.instance.scheduler.registerPeriodicTask();
+
+      expect(platform.uniqueName, dormElectricityCheck);
+      expect(platform.taskName, dormElectricityCheck);
+      expect(platform.frequency, const Duration(hours: 8));
+      expect(platform.initialDelay, const Duration(minutes: 15));
+    },
+  );
+
   group('主引擎前台身份对账（登出 / 换号 / 同号重登）', () {
     test(
       'logout reconciliation cancels the scheduled alarm and periodic task',
@@ -717,7 +788,12 @@ void main() {
     });
 
     test('foreground reschedule cancels its in-flight stale alarm without a notification', () async {
-      await _seedPrefs(owner: 'A', alertEnabled: true, cachedValue: 5);
+      await _seedPrefs(
+        owner: 'A',
+        alertEnabled: true,
+        cachedValue: 5,
+        cacheAge: const Duration(minutes: 31),
+      );
       loginAs('A');
       DormElectricityService.instance.debugSetGateway(_BalanceGateway(25));
 

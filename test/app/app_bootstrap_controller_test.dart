@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:jxu_campus_hub/app/app_bootstrap_controller.dart';
@@ -96,6 +98,7 @@ void main() {
       AppBootstrapController.warmUpStepUnifiedAuth,
       AppBootstrapController.warmUpStepChangxingJiada,
       AppBootstrapController.warmUpStepDormElectricity,
+      AppBootstrapController.warmUpStepDormAlert,
       AppBootstrapController.warmUpStepSchedule,
       AppBootstrapController.warmUpStepCampusCard,
       AppBootstrapController.warmUpStepExam,
@@ -166,6 +169,57 @@ void main() {
       expect(controller.navigationReady.value, isTrue);
       // 同批 / 后批步骤不被失败步骤阻断。
       expect(campusCardRan, isTrue);
+    });
+
+    test('cold foreground electricity alert waits for local cache restore and does not block', () async {
+      final binding = TestWidgetsFlutterBinding.ensureInitialized();
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      final controller = AppBootstrapController.instance;
+      var privateCachesRestored = false;
+      final alertStarted = Completer<void>();
+      final releaseAlert = Completer<void>();
+
+      for (final label in allSteps.where(
+        (label) => label != AppBootstrapController.warmUpStepDormAlert,
+      )) {
+        controller.debugWarmUpStepOverrides[label] = () async {
+          if (label == AppBootstrapController.warmUpStepGrades) {
+            privateCachesRestored = true;
+          }
+        };
+      }
+      controller.debugWarmUpStepOverrides[AppBootstrapController
+          .warmUpStepDormAlert] = () async {
+        expect(privateCachesRestored, isTrue);
+        alertStarted.complete();
+        await releaseAlert.future;
+      };
+
+      final warmUp = controller.warmUpAfterFirstFrame();
+      await alertStarted.future;
+      await warmUp;
+
+      expect(controller.phase.value, AppBootstrapPhase.completed);
+      releaseAlert.complete();
+    });
+
+    test('inactive startup skips foreground electricity alert', () async {
+      final binding = TestWidgetsFlutterBinding.ensureInitialized();
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      final controller = AppBootstrapController.instance;
+      var alertChecks = 0;
+      for (final label in allSteps) {
+        controller.debugWarmUpStepOverrides[label] = () async {
+          if (label == AppBootstrapController.warmUpStepDormAlert) {
+            alertChecks++;
+          }
+        };
+      }
+
+      await controller.warmUpAfterFirstFrame();
+
+      expect(alertChecks, 0);
+      expect(controller.phase.value, AppBootstrapPhase.completed);
     });
 
     test('先恢复身份再恢复 owner 缓存（真实服务）', () async {

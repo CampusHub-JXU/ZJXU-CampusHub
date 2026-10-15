@@ -19,6 +19,7 @@ import '../core/update/update_checker.dart';
 import '../features/campus_card/campus_card_service.dart';
 import '../features/changxing_jiada/changxing_jiada_service.dart';
 import '../features/dorm_electricity/dorm_electricity_service.dart';
+import '../features/dorm_electricity/dorm_electricity_background.dart';
 import '../features/exam/exam_service.dart';
 import '../features/grades/grades_service.dart';
 import '../features/schedule/schedule_service.dart';
@@ -35,6 +36,7 @@ class AppBootstrapController {
   static const warmUpStepUnifiedAuth = '统一认证身份恢复';
   static const warmUpStepChangxingJiada = '长兴佳达会话恢复';
   static const warmUpStepDormElectricity = '电费缓存恢复';
+  static const warmUpStepDormAlert = '电费前台提醒检查';
   static const warmUpStepSchedule = '课表缓存恢复';
   static const warmUpStepCampusCard = '校园卡余额缓存恢复';
   static const warmUpStepExam = '考试缓存恢复';
@@ -171,6 +173,18 @@ class AppBootstrapController {
     ]);
 
     _setPhase(AppBootstrapPhase.localStateReady);
+    if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+      // The newly registered periodic worker has a 15-minute initial delay;
+      // perform the user-visible low-balance check in the foreground after
+      // owner-scoped caches and identity have been restored. This path never
+      // restores credentials or initiates automatic login.
+      unawaited(
+        _runWarmUpStep(
+          warmUpStepDormAlert,
+          DormElectricityBackground.instance.foregroundCheck,
+        ),
+      );
+    }
     await Future<void>.delayed(Duration.zero);
     _setPhase(AppBootstrapPhase.completed);
     if (UpdateChecker.instance.isUpdateEnabled) {

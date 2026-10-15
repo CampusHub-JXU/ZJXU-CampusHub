@@ -29,12 +29,14 @@ class BackgroundTaskService {
   Future<void> registerPeriodicTask({
     required String uniqueName,
     required Duration frequency,
+    Duration? initialDelay,
     Constraints? constraints,
   }) async {
     await Workmanager().registerPeriodicTask(
       uniqueName,
       uniqueName,
       frequency: frequency,
+      initialDelay: initialDelay,
       constraints: constraints,
       existingWorkPolicy: ExistingPeriodicWorkPolicy.keep,
     );

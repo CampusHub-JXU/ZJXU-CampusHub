@@ -21,7 +21,7 @@ class SecondClassroomBackground {
   Future<bool> runMonitor() async {
     try {
       final result = await SecondClassroomSubscriptionService.instance
-          .checkRecruitingMatches();
+          .checkRecruitingMatches(automatic: true);
       if (result.notificationCount > 0) {
         AppLogger.instance.storage(
           LogLevel.info,

@@ -183,7 +183,9 @@ Future<void> main() async {
       unawaited(CampusWidgetSync.instance.syncNow());
       unawaited(AppNotificationService.instance.initialize());
       unawaited(
-        SecondClassroomSubscriptionService.instance.checkRecruitingMatches(),
+        SecondClassroomSubscriptionService.instance.checkRecruitingMatches(
+          automatic: true,
+        ),
       );
       // 教务处通知：冷启动无条件重载磁盘状态（后台 isolate 写盘后的红点
       // 正确性不依赖后续 resumed 事件），并发起一次自动补查（claim 防抖）。
