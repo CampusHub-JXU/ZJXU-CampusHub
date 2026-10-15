@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import 'ai_export_sources.dart';
 import 'app_route_observer.dart';
 import 'app_shell_page.dart';
 import '../features/home/home_page.dart';
@@ -18,6 +19,7 @@ import '../features/sjjx_notice/sjjx_notice_list_page.dart';
 import '../features/service_hall/service_hall_page.dart';
 import '../features/notification_center/notification_center_page.dart';
 import '../features/exam/exam_page.dart';
+import '../features/ai_export/ai_export_page.dart';
 import '../features/shuati/shuati_webview_page.dart';
 import '../features/settings/settings_page.dart';
 import '../features/settings/about_page.dart';
@@ -116,6 +118,13 @@ final GoRouter appRouter = GoRouter(
       path: '/grades',
       name: 'grades',
       builder: (context, state) => const GradesPage(),
+    ),
+    _appRoute(
+      path: '/ai-export',
+      name: 'ai-export',
+      // 各模块的取数来源在组合层注入，导出功能本身不依赖业务 feature。
+      builder: (context, state) =>
+          AiExportPage(sources: buildAiExportSources()),
     ),
     _appRoute(
       path: '/exam',

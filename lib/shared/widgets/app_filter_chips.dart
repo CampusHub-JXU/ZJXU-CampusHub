@@ -21,16 +21,30 @@ class AppFilterChips<T> extends StatelessWidget {
   const AppFilterChips({
     super.key,
     required this.options,
-    required this.selected,
+    required T this.selected,
     required this.onSelected,
     this.padding = const EdgeInsets.symmetric(
       horizontal: AppSpacing.pageMargin,
     ),
     this.wrap = false,
-  });
+  }) : selectedValues = null;
+
+  /// 多选：[selectedValues] 里的选项都显示为选中，点按回调 [onSelected]
+  /// （由调用方决定切换逻辑，如至少保留一项）。
+  const AppFilterChips.multi({
+    super.key,
+    required this.options,
+    required Set<T> this.selectedValues,
+    required this.onSelected,
+    this.padding = const EdgeInsets.symmetric(
+      horizontal: AppSpacing.pageMargin,
+    ),
+    this.wrap = false,
+  }) : selected = null;
 
   final List<AppFilterOption<T>> options;
-  final T selected;
+  final T? selected;
+  final Set<T>? selectedValues;
   final ValueChanged<T> onSelected;
   final EdgeInsetsGeometry padding;
 
@@ -41,20 +55,22 @@ class AppFilterChips<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final labelStyle = context.appText.secondary;
+    bool isSelected(T value) =>
+        selectedValues?.contains(value) ?? value == selected;
     final chips = [
       for (final option in options)
         ChoiceChip(
           label: Text(option.label),
-          selected: option.value == selected,
+          selected: isSelected(option.value),
           onSelected: (_) => onSelected(option.value),
           showCheckmark: false,
           selectedColor: cs.secondaryContainer,
           labelStyle: labelStyle.copyWith(
-            color: option.value == selected
+            color: isSelected(option.value)
                 ? cs.onSecondaryContainer
                 : cs.onSurfaceVariant,
           ),
-          side: option.value == selected
+          side: isSelected(option.value)
               ? BorderSide.none
               : BorderSide(color: cs.outlineVariant),
           shape: const StadiumBorder(),

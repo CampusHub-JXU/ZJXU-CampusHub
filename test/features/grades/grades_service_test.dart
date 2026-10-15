@@ -141,6 +141,121 @@ void main() {
       expect(result.single.gpaPoints, 3.8);
     });
 
+    group('pagination (showCount=100 per page)', () {
+      List<Map<String, Object?>> page(int n, {String prefix = 'c'}) => [
+        for (var i = 0; i < n; i++) gradeItem(name: '$prefix$i'),
+      ];
+
+      int requestedPage(RequestOptions options) {
+        final m = RegExp(r'queryModel\.currentPage=(\d+)')
+            .firstMatch('${options.data}');
+        return int.parse(m!.group(1)!);
+      }
+
+      test(
+        'more than 100 rows: follows currentPage until a short page',
+        () async {
+          await loginAcademic('20250001');
+          final requested = <int>[];
+          final adapter = MockHttpClientAdapter();
+          adapter.register('POST', endpoint, (options) async {
+            final p = requestedPage(options);
+            requested.add(p);
+            return jsonBody({
+              'items': p == 1 ? page(100, prefix: 'a') : page(30, prefix: 'b'),
+            });
+          });
+          DioClient.instance.dio.httpClientAdapter = adapter;
+
+          final result = await GradesService.instance.fetchGrades('20250001');
+
+          expect(requested, [1, 2]);
+          expect(result, hasLength(130));
+          expect(result.first.courseName, 'a0');
+          expect(result.last.courseName, 'b29');
+          expect(GradesService.mayBeTruncated(result.length), isFalse);
+        },
+      );
+
+      test(
+        'exactly one full page: one extra empty page confirms the end',
+        () async {
+          await loginAcademic('20250001');
+          final requested = <int>[];
+          final adapter = MockHttpClientAdapter();
+          adapter.register('POST', endpoint, (options) async {
+            final p = requestedPage(options);
+            requested.add(p);
+            return jsonBody({'items': p == 1 ? page(100) : <Object?>[]});
+          });
+          DioClient.instance.dio.httpClientAdapter = adapter;
+
+          final result = await GradesService.instance.fetchGrades('20250001');
+
+          expect(requested, [1, 2]);
+          expect(result, hasLength(100));
+        },
+      );
+
+      test(
+        'server ignoring currentPage (same page again) is not double counted',
+        () async {
+          await loginAcademic('20250001');
+          final requested = <int>[];
+          final adapter = MockHttpClientAdapter();
+          adapter.register('POST', endpoint, (options) async {
+            requested.add(requestedPage(options));
+            return jsonBody({'items': page(100)});
+          });
+          DioClient.instance.dio.httpClientAdapter = adapter;
+
+          final result = await GradesService.instance.fetchGrades('20250001');
+
+          expect(requested, [1, 2]);
+          expect(result, hasLength(100));
+        },
+      );
+
+      test('page cap: stops at maxPages and the result reads as possibly truncated', () async {
+        await loginAcademic('20250001');
+        final requested = <int>[];
+        final adapter = MockHttpClientAdapter();
+        adapter.register('POST', endpoint, (options) async {
+          final p = requestedPage(options);
+          requested.add(p);
+          return jsonBody({'items': page(100, prefix: 'p$p-')});
+        });
+        DioClient.instance.dio.httpClientAdapter = adapter;
+
+        final result = await GradesService.instance.fetchGrades('20250001');
+
+        expect(requested, hasLength(GradesService.maxPages));
+        expect(result, hasLength(GradesService.maxEntries));
+        expect(GradesService.mayBeTruncated(result.length), isTrue);
+      });
+
+      test(
+        'a later page failing rejects the whole fetch (no half result cached)',
+        () async {
+          await loginAcademic('20250001');
+          final adapter = MockHttpClientAdapter();
+          adapter.register('POST', endpoint, (options) async {
+            final p = requestedPage(options);
+            return p == 1
+                ? jsonBody({'items': page(100)})
+                : jsonBody({'rows': <Object?>[]});
+          });
+          DioClient.instance.dio.httpClientAdapter = adapter;
+
+          await expectLater(
+            GradesService.instance.fetchGrades('20250001'),
+            throwsA(isA<GradesRequestException>()),
+          );
+          expect(GradesService.instance.cachedGrades, isNull);
+        },
+      );
+    });
+
     test(
       'unrecognized grades response cannot overwrite the last successful data',
       () async {
