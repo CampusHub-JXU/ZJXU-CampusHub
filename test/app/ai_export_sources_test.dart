@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/app/ai_export_sources.dart';
@@ -116,7 +114,7 @@ void main() {
   });
 
   group('白名单映射', () {
-    test('成绩：逐字段映射，空串归一为 null，JSON 不含教务原始键', () {
+    test('成绩：逐字段映射，空串归一为 null，Markdown 不含教务原始键', () {
       final data = gradesModuleDataFromEntries(
         const [
           GradeEntry(
@@ -141,9 +139,15 @@ void main() {
       expect(r.percentageScore, isNull);
       expect(r.assessmentMethod, isNull);
       expect(r.examType, '补考');
-      final keys = r.toJson().keys.toList();
-      expect(keys, isNot(contains('kcmc')));
-      expect(keys, isNot(contains('cj')));
+      final md = ExportBuilder.markdown(
+        AiExportDocument(
+          exportedAt: DateTime(2026, 10, 13, 10),
+          environment: kExportEnvironment,
+          modules: [data],
+        ),
+      );
+      expect(md, isNot(contains('kcmc')));
+      expect(md, isNot(contains('"cj"')));
     });
 
     test('学业进度：节点树、补考 / 重修成绩与学分缺口', () {
@@ -277,12 +281,9 @@ void main() {
         environment: kExportEnvironment,
         modules: [data],
       );
-      final m =
-          (jsonDecode(ExportBuilder.jsonString(doc))['modules']
-                  as Map)['secondClassroom']
-              as Map;
-      expect(m['creditsVerified'], false);
-      expect((m['enrolled'] as List).single['nominalCreditHours'], 2);
+      final md = ExportBuilder.markdown(doc);
+      expect(md, contains('| 活动 | 类别 | 主办 | 开始 | 结束 | 地点 | 标称学时 | 已签到 |'));
+      expect(md, contains('不是学校认定学时'));
     });
   });
 

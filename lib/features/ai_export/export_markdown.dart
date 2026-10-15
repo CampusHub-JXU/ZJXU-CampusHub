@@ -87,7 +87,7 @@ void _grades(StringBuffer b, GradesModuleData m) {
       '（计入 ${s.countedCourses} 条 / ${_T.formatCredits(s.countedCredits)} 学分）',
     )
     ..writeln(
-      '- 未计入绩点（gpaPoints 为 0）：${s.excludedCourses} 条 / '
+      '- 未计入绩点（绩点为 0）：${s.excludedCourses} 条 / '
       '${_T.formatCredits(s.excludedCredits)} 学分',
     )
     ..writeln()

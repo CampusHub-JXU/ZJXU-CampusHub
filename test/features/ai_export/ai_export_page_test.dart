@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -402,29 +400,13 @@ void main() {
       expect(find.text('已复制Markdown'), findsOneWidget);
     });
 
-    testWidgets('JSON 带 schemaVersion 与 context；CSV 每次一个模块并可选模块', (
-      tester,
-    ) async {
+    testWidgets('页面没有格式选择与 CSV 模块选择，预览就是 Markdown', (tester) async {
       await pumpPage(tester);
-
-      await tester.tap(find.text('JSON'));
-      await tester.pump();
-      final json = jsonDecode(previewText(tester)) as Map<String, dynamic>;
-      expect(json['schemaVersion'], kAiExportSchemaVersion);
-      expect(json['context'], isA<Map>());
-      expect((json['modules'] as Map).keys, ['progress', 'grades']);
-
-      await tester.tap(find.text('CSV'));
-      await tester.pump();
-      expect(find.textContaining('CSV 每次导出一个模块'), findsOneWidget);
-      final csv = previewText(tester);
-      expect(csv.startsWith('﻿'), isTrue);
-      expect(csv, contains('所属节点,课程号'), reason: '默认第一个有数据的模块：学业进度');
-
-      final picker = find.byKey(const Key('ai_export_csv_module'));
-      await tester.tap(find.descendant(of: picker, matching: find.text('成绩')));
-      await tester.pump();
-      expect(previewText(tester), contains('课程,成绩,百分制'));
+      expect(find.byKey(const Key('ai_export_format')), findsNothing);
+      expect(find.byKey(const Key('ai_export_csv_module')), findsNothing);
+      expect(find.text('JSON'), findsNothing);
+      expect(find.text('CSV'), findsNothing);
+      expect(previewText(tester), startsWith('# 学业数据导出'));
     });
 
     testWidgets('保存调用文件保存器；用户取消不提示成功', (tester) async {
@@ -460,7 +442,8 @@ void main() {
 
       await tester.tap(find.text('分享'));
       await tester.pump();
-      expect(payload!.asText, isTrue);
+      expect(payload!.mimeType, 'text/markdown');
+      expect(payload!.fileName, endsWith('.md'));
       expect(payload!.text, contains('## 给 AI 的背景说明'));
       expect(find.textContaining('已交给所选应用'), findsNothing);
 
@@ -470,20 +453,8 @@ void main() {
       expect(find.textContaining('已交给所选应用'), findsOneWidget);
     });
 
-    testWidgets('分享 JSON 以文件载荷交给系统；失败给出可理解提示', (tester) async {
-      ExportSharePayload? payload;
-      exportSharer = (p) async {
-        payload = p;
-        return ExportShareOutcome.dismissed;
-      };
+    testWidgets('分享失败给出可理解提示', (tester) async {
       await pumpPage(tester);
-      await tester.tap(find.text('JSON'));
-      await tester.pump();
-      await tester.tap(find.text('分享'));
-      await tester.pump();
-      expect(payload!.asText, isFalse);
-      expect(payload!.mimeType, 'application/json');
-      expect(payload!.fileName, endsWith('.json'));
 
       exportSharer = (p) async => throw PlatformException(code: 'x');
       await tester.tap(find.text('分享'));

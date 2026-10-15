@@ -5,12 +5,6 @@ import '../../core/academic/schedule_constants.dart';
 import '../../core/academic/schedule_model.dart';
 import '../../core/notice/notice_model.dart';
 
-/// 导出 JSON schema 版本；结构变化时递增。
-///
-/// v1 = 仅成绩的单模块文档（PR #90）；v2 = 多模块信封；
-/// v3 = 顶层 `context`（给 AI 的背景说明）+ 七个模块。
-const int kAiExportSchemaVersion = 3;
-
 /// 模块依赖的登录域：决定「需登录」判定与账号切换时清空哪些数据。
 enum ExportAuthDomain {
   /// 教务系统（正方）：成绩 / 学业进度 / 课表 / 考试。
@@ -78,13 +72,12 @@ enum ExportPreset {
 
 /// 模块数据状态。缺失 / 过期必须明确标出，绝不用空表伪装完整结果。
 enum ExportModuleStatus {
-  available('available', '已获取'),
-  stale('stale', '已过期'),
-  missing('missing', '未获取');
+  available('已获取'),
+  stale('已过期'),
+  missing('未获取');
 
-  const ExportModuleStatus(this.key, this.label);
+  const ExportModuleStatus(this.label);
 
-  final String key;
   final String label;
 
   bool get hasData => this != missing;
@@ -184,19 +177,6 @@ class GradesExportRecord {
     final g = grade;
     return g != null && double.tryParse(g) == null;
   }
-
-  Map<String, dynamic> toJson() => {
-    'courseName': courseName,
-    'grade': grade,
-    'percentageScore': percentageScore,
-    'gpaPoints': gpaPoints,
-    'credits': credits,
-    'academicYear': academicYear,
-    'semester': semester,
-    'examType': examType,
-    'assessmentMethod': assessmentMethod,
-    'courseRequirement': courseRequirement,
-  };
 }
 
 /// 本应用口径的绩点汇总（与成绩页「概览」同一算法）：
@@ -243,14 +223,6 @@ class GpaSummary {
   /// `gpaPoints == 0` 而未计入分母的记录（等级制「合格」类、挂科等）。
   final int excludedCourses;
   final double excludedCredits;
-
-  Map<String, dynamic> toJson() => {
-    'gpa': gpa == null ? null : double.parse(gpa!.toStringAsFixed(4)),
-    'countedCourses': countedCourses,
-    'countedCredits': countedCredits,
-    'excludedCourses': excludedCourses,
-    'excludedCredits': excludedCredits,
-  };
 }
 
 /// 单学期汇总。
@@ -347,18 +319,6 @@ class ProgressSummaryRecord {
   final int? studying;
   final int? outsidePassed;
   final int? outsideFailed;
-
-  Map<String, dynamic> toJson() => {
-    'statTime': statTime,
-    'gpa': gpa,
-    'planTotal': planTotal,
-    'planPassed': planPassed,
-    'planFailed': planFailed,
-    'planNotTaken': planNotTaken,
-    'studying': studying,
-    'outsidePassed': outsidePassed,
-    'outsideFailed': outsideFailed,
-  };
 }
 
 /// 学分要求树中的一门课程。
@@ -396,22 +356,6 @@ class ProgressCourseRecord {
   final String? makeupScore;
   final String? retakeScore;
   final String? suggestedTerm;
-
-  Map<String, dynamic> toJson() => {
-    'courseCode': courseCode,
-    'courseName': courseName,
-    'status': status,
-    'credits': credits,
-    'nature': nature,
-    'category': category,
-    'inPlan': inPlan,
-    'scoreTerm': scoreTerm,
-    'score': score,
-    'gradePoint': gradePoint,
-    'makeupScore': makeupScore,
-    'retakeScore': retakeScore,
-    'suggestedTerm': suggestedTerm,
-  };
 }
 
 /// 学分要求树节点。
@@ -447,20 +391,6 @@ class ProgressNodeRecord {
   final String creditStatus;
   final List<ProgressNodeRecord> children;
   final List<ProgressCourseRecord> courses;
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'name': name,
-    'requiredCredits': requiredCredits,
-    'earnedCredits': earnedCredits,
-    'missingCredits': missingCredits,
-    'requiredCount': requiredCount,
-    'metCount': metCount,
-    'relation': relation,
-    'creditStatus': creditStatus,
-    'children': [for (final c in children) c.toJson()],
-    'courses': [for (final c in courses) c.toJson()],
-  };
 }
 
 const String _pathSep = ' / ';
@@ -573,21 +503,6 @@ class ScheduleCourseRecord {
 
   /// 教务标记该教学班有调课记录。
   final bool hasScheduleChange;
-
-  Map<String, dynamic> toJson() => {
-    'courseName': courseName,
-    'teacher': teacher,
-    'weekday': weekday,
-    'startLesson': startLesson,
-    'endLesson': endLesson,
-    'startTime': startTime,
-    'endTime': endTime,
-    'weekRange': weekRange,
-    'location': location,
-    'campus': campus,
-    'courseType': courseType,
-    'hasScheduleChange': hasScheduleChange,
-  };
 }
 
 /// 某教学周「已应用调课」后的有效课表。
@@ -596,11 +511,6 @@ class ScheduleWeekRecord {
 
   final int week;
   final List<ScheduleCourseRecord> courses;
-
-  Map<String, dynamic> toJson() => {
-    'week': week,
-    'courses': [for (final c in courses) c.toJson()],
-  };
 }
 
 final class ScheduleModuleData extends ExportModuleData {
@@ -755,25 +665,6 @@ class ExamExportRecord {
   final bool isRetake;
   final String? academicYear;
   final String? semester;
-
-  Map<String, dynamic> toJson() => {
-    'courseName': courseName,
-    'courseCode': courseCode,
-    'examName': examName,
-    'date': date,
-    'startTime': startTime,
-    'endTime': endTime,
-    'timeText': timeText,
-    'weekNumber': weekNumber,
-    'weekday': weekday,
-    'location': location,
-    'campus': campus,
-    'seatNumber': seatNumber,
-    'department': department,
-    'isRetake': isRetake,
-    'academicYear': academicYear,
-    'semester': semester,
-  };
 }
 
 final class ExamsModuleData extends ExportModuleData {
@@ -835,17 +726,6 @@ class SecondClassroomExportRecord {
   /// 活动标称学时（不是已认定学时）。
   final double creditHours;
   final bool checkedIn;
-
-  Map<String, dynamic> toJson() => {
-    'title': title,
-    'category': category,
-    'organizer': organizer,
-    'activityStart': activityStart?.toIso8601String(),
-    'activityEnd': activityEnd?.toIso8601String(),
-    'location': location,
-    'nominalCreditHours': creditHours,
-    'checkedIn': checkedIn,
-  };
 }
 
 final class SecondClassroomModuleData extends ExportModuleData {
@@ -895,13 +775,6 @@ class NoticeExportRecord {
   final String? date;
   final String? category;
   final String url;
-
-  Map<String, dynamic> toJson() => {
-    'title': title,
-    'date': date,
-    'category': category,
-    'url': url,
-  };
 }
 
 /// 通知窗口：导出时间前 30 天。
@@ -963,13 +836,6 @@ class PhysicalTestItemRecord {
   final String? result;
   final String? score;
   final String? level;
-
-  Map<String, dynamic> toJson() => {
-    'name': name,
-    'result': result,
-    'score': score,
-    'level': level,
-  };
 }
 
 class PhysicalTestYearRecord {
@@ -984,13 +850,6 @@ class PhysicalTestYearRecord {
   final String? totalScore;
   final String? grade;
   final List<PhysicalTestItemRecord> items;
-
-  Map<String, dynamic> toJson() => {
-    'academicYear': academicYear,
-    'totalScore': totalScore,
-    'grade': grade,
-    'items': [for (final i in items) i.toJson()],
-  };
 }
 
 final class PhysicalTestModuleData extends ExportModuleData {

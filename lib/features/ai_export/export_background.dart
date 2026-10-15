@@ -17,12 +17,6 @@ class ExportValueCount {
   final String value;
   final int courses;
   final double credits;
-
-  Map<String, dynamic> toJson() => {
-    'value': value,
-    'courses': courses,
-    'credits': credits,
-  };
 }
 
 /// 等级制成绩在**本次数据里观测到**的绩点对应（不是学校的官方换算表）。
@@ -38,12 +32,6 @@ class ObservedLetterGrade {
   /// 该等级在数据里出现过的全部绩点取值（升序，通常只有一个）。
   final List<double> gpaPoints;
   final int courses;
-
-  Map<String, dynamic> toJson() => {
-    'grade': grade,
-    'gpaPoints': gpaPoints,
-    'courses': courses,
-  };
 }
 
 /// 单个所选模块的新鲜度。
@@ -59,14 +47,6 @@ class ModuleFreshness {
   final ExportModuleStatus status;
   final DateTime? lastUpdatedAt;
   final String? dataSource;
-
-  Map<String, dynamic> toJson() => {
-    'module': module.key,
-    'label': module.label,
-    'status': status.key,
-    'lastUpdatedAt': lastUpdatedAt?.toUtc().toIso8601String(),
-    'dataSource': dataSource,
-  };
 }
 
 /// 「给 AI 的背景说明」：每份导出开头的紧凑事实清单，目的是让大模型
@@ -169,11 +149,11 @@ class ExportBackground {
     required bool hasGrades,
     required bool hasProgress,
   }) => [
-    '绩点（gpaPoints）逐门由教务系统给出。本应用没有、也不使用百分制 / 等级制到绩点的换算表，'
-        '请直接使用 gpaPoints，不要自行用分数或等级换算。',
+    '各门课的绩点（「绩点」列）逐门由教务系统给出。本应用没有、也不使用百分制 / 等级制到绩点的换算表，'
+        '请直接使用「绩点」列，不要自行用分数或等级换算。',
     if (hasGrades)
-      '应用内汇总绩点 = Σ(绩点×学分) ÷ Σ学分，只统计 gpaPoints > 0 的记录；'
-          'gpaPoints 为 0 的记录既不进分子也不进分母。',
+      '应用内汇总绩点 = Σ(绩点×学分) ÷ Σ学分，只统计绩点 > 0 的记录；'
+          '绩点为 0 的记录既不进分子也不进分母。',
     if (hasGrades)
       '成绩表包含全部记录（含补考、重修产生的记录），汇总时没有对同一课程取最高分或去重；'
           '教务的官方绩点口径可能不同，以教务为准。',
@@ -232,13 +212,13 @@ class ExportBackground {
 
   static List<String> _notes(Set<ExportModule> included) => [
     if (included.contains(ExportModule.progress))
-      '学业进度：relation 表示同一节点下子节点的关系（并且 = 全部须满足，或者 = 满足其一）；'
-          'missingCredits = 要求学分 − 已获学分，最低为 0。',
+      '学业进度：「子节点关系」列表示同一节点下子节点的关系（并且 = 全部须满足，或者 = 满足其一）；'
+          '「缺口」列 = 要求学分 − 已获学分，最低为 0。',
     if (included.contains(ExportModule.schedule))
-      '课表：courses 是整学期的周课表底稿（按 weekRange 在对应周出现，未应用调课通知）；'
-          'weeks 是当前周与下一周已应用调课通知后的有效课表，排期以 weeks 为准。',
+      '课表：「整学期课表底稿」是整学期的周课表（按「周次」列在对应周出现，未应用调课通知）；'
+          '「第 N 周有效课表」是当前周与下一周已应用调课通知后的有效课表，排期以有效课表为准。',
     if (included.contains(ExportModule.secondClassroom))
-      '第二课堂：「已报名」「已签到」「已认定学时」是三件事。nominalCreditHours 只是活动标称学时，'
+      '第二课堂：「已报名」「已签到」「已认定学时」是三件事。「标称学时」列只是活动标称学时，'
           '应用无法得知学校是否已认定或计入；只含未结束的活动，不含历史活动。',
     if (included.contains(ExportModule.notices))
       '教务处通知：仅标题、日期、栏目与链接，不含正文；日期缺失的通知无法判断是否在近 '
@@ -248,39 +228,6 @@ class ExportBackground {
   ];
 
   // ── 输出 ────────────────────────────────────────────────────────────────
-
-  Map<String, dynamic> toJson() => {
-    'purpose': '学生本人整理的学业数据，供 AI 助手做学业规划 / 近期安排参考',
-    'school': kExportSchool,
-    'exportedAt': exportDate(exportedAt),
-    'weekday': weekdayLabel,
-    'currentTerm': {
-      'label': environment.termLabel,
-      'academicYear': environment.academicYear,
-      'termCode': environment.termCode,
-      'source': environment.termSource,
-    },
-    'currentWeek': environment.week,
-    'currentWeekNote': environment.weekNote,
-    'gpa': gpaRules.isEmpty
-        ? null
-        : {
-            'rules': gpaRules,
-            'observedLetterGrades': [for (final l in letterGrades) l.toJson()],
-            'letterGradeMappingNote': letterGrades.isEmpty
-                ? '本次数据中没有等级制成绩'
-                : '以上是本次数据中观测到的等级与绩点对应；未出现的等级无法得知其绩点',
-          },
-    'courseNature': {
-      'note': '课程性质原文取自教务，含义以学校培养方案为准，本应用不做归类或解释',
-      'grades': [for (final c in gradeNatures) c.toJson()],
-      'progress': [for (final c in progressNatures) c.toJson()],
-    },
-    'examTypes': [for (final c in examTypes) c.toJson()],
-    'dataFreshness': [for (final f in freshness) f.toJson()],
-    'missingModules': [for (final m in missing) m.key],
-    'notes': notes,
-  };
 
   /// Markdown 形态：紧凑的要点清单，供放在文档最前面。
   String toMarkdown() {

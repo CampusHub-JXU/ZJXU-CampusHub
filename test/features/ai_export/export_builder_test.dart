@@ -1,21 +1,11 @@
-import 'dart:convert';
-
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/features/ai_export/export_background.dart';
 import 'package:jxu_campus_hub/features/ai_export/export_builder.dart';
 import 'package:jxu_campus_hub/features/ai_export/export_document.dart';
 import 'package:jxu_campus_hub/features/ai_export/export_model.dart';
-import 'package:jxu_campus_hub/features/ai_export/export_text.dart';
 
 import '../../helpers/ai_export_fixtures.dart';
-
-Map<String, dynamic> _json(AiExportDocument doc) =>
-    jsonDecode(ExportBuilder.jsonString(doc)) as Map<String, dynamic>;
-
-Map<String, dynamic> _module(AiExportDocument doc, ExportModule m) =>
-    ((_json(doc)['modules'] as Map<String, dynamic>)[m.key]
-        as Map<String, dynamic>);
 
 void main() {
   group('用途预设', () {
@@ -78,7 +68,7 @@ void main() {
       );
       expect(md, contains('没有、也不使用百分制 / 等级制到绩点的换算表'));
       expect(md, contains('Σ(绩点×学分) ÷ Σ学分'));
-      expect(md, contains('只统计 gpaPoints > 0'));
+      expect(md, contains('只统计绩点 > 0'));
       expect(md, contains('没有对同一课程取最高分或去重'));
       // 等级制观测值（来自本次数据，而不是内置换算表）。
       expect(md, contains('优秀 → 4.50（1 门）'));
@@ -116,27 +106,22 @@ void main() {
     });
 
     test('课程性质 / 考试性质按原文统计，不做解释', () {
-      final json = _json(
-        fullDocument(modules: {ExportModule.grades, ExportModule.progress}),
+      final doc = fullDocument(
+        modules: {ExportModule.grades, ExportModule.progress},
       );
-      final ctx = json['context'] as Map<String, dynamic>;
-      final nature = ctx['courseNature'] as Map<String, dynamic>;
-      final gradeNature = {
-        for (final c in nature['grades'] as List)
-          (c as Map)['value']: c['courses'],
-      };
+      final bg = ExportBackground.from(doc);
+      final gradeNature = {for (final c in bg.gradeNatures) c.value: c.courses};
       expect(gradeNature['必修'], 3);
       expect(gradeNature['专业必修'], 1);
       expect(gradeNature['公共选修'], 1);
-      final progressNature = nature['progress'] as List;
-      expect(progressNature.single['value'], '必修');
-      expect(nature['note'], contains('本应用不做归类或解释'));
-      final examTypes = {
-        for (final c in ctx['examTypes'] as List)
-          (c as Map)['value']: c['courses'],
-      };
+      expect(bg.progressNatures.single.value, '必修');
+      final examTypes = {for (final c in bg.examTypes) c.value: c.courses};
       expect(examTypes['补考'], 1);
       expect(examTypes['正常考试'], 4);
+      expect(
+        ExportBuilder.markdown(doc),
+        contains('课程性质原文取自教务，含义以学校培养方案为准，本应用不做归类或解释'),
+      );
     });
 
     test('数据时效与缺失模块：缺失的明确列出，不含其数据', () {
@@ -153,17 +138,16 @@ void main() {
           ExportModule.grades: gradesData(status: ExportModuleStatus.stale),
         },
       );
-      final ctx = _json(doc)['context'] as Map<String, dynamic>;
-      expect(ctx['missingModules'], ['notices']);
-      final fresh = {
-        for (final f in ctx['dataFreshness'] as List)
-          (f as Map)['module']: f['status'],
-      };
-      expect(fresh, {
-        'grades': 'stale',
-        'schedule': 'available',
-        'notices': 'missing',
-      });
+      final bg = ExportBackground.from(doc);
+      expect(bg.missing, [ExportModule.notices]);
+      expect(
+        {for (final f in bg.freshness) f.module: f.status},
+        {
+          ExportModule.grades: ExportModuleStatus.stale,
+          ExportModule.schedule: ExportModuleStatus.available,
+          ExportModule.notices: ExportModuleStatus.missing,
+        },
+      );
 
       final md = ExportBuilder.markdown(doc);
       expect(md, contains('| 教务处通知 | 未获取 | — | — |'));
@@ -186,44 +170,37 @@ void main() {
       expect(md, contains('尚未开学'));
     });
 
-    test('JSON 顶层 context 键稳定', () {
-      final json = _json(fullDocument(modules: ExportPreset.planning.modules));
-      expect(json.keys.toList(), [
-        'schemaVersion',
-        'exportedAt',
-        'disclaimer',
-        'privacy',
-        'context',
-        'modules',
-      ]);
-      expect(json['schemaVersion'], kAiExportSchemaVersion);
-      final ctx = json['context'] as Map<String, dynamic>;
-      expect(ctx.keys.toList(), [
-        'purpose',
-        'school',
-        'exportedAt',
-        'weekday',
-        'currentTerm',
-        'currentWeek',
-        'currentWeekNote',
-        'gpa',
-        'courseNature',
-        'examTypes',
-        'dataFreshness',
-        'missingModules',
-        'notes',
-      ]);
-      expect(ctx['school'], '嘉兴大学');
-      expect(ctx['currentWeek'], 7);
-      expect((ctx['currentTerm'] as Map)['termCode'], 3);
-      final gpa = ctx['gpa'] as Map<String, dynamic>;
-      expect((gpa['rules'] as List).first, contains('没有、也不使用'));
-      final letters = {
-        for (final l in gpa['observedLetterGrades'] as List)
-          (l as Map)['grade']: l['gpaPoints'],
-      };
+    test('背景数据：学期 / 周次 / 观测到的等级对应', () {
+      final bg = ExportBackground.from(
+        fullDocument(modules: ExportPreset.planning.modules),
+      );
+      expect(bg.environment.week, 7);
+      expect(bg.environment.termCode, 3);
+      expect(bg.weekdayLabel, '周二');
+      expect(bg.gpaRules.first, contains('没有、也不使用'));
+      final letters = {for (final l in bg.letterGrades) l.grade: l.gpaPoints};
       expect(letters['优秀'], [4.5]);
       expect(letters['合格'], [0.0]);
+    });
+
+    test('背景说明不出现 JSON 字段名，改用 Markdown 里读者能看到的列名', () {
+      final md = ExportBuilder.markdown(fullDocument());
+      for (final raw in [
+        'gpaPoints',
+        'missingCredits',
+        'relation',
+        'creditsVerified',
+        'nominalCreditHours',
+        'weekRange',
+        'schemaVersion',
+      ]) {
+        expect(md, isNot(contains(raw)), reason: raw);
+      }
+      expect(md, contains('「缺口」列 = 要求学分 − 已获学分'));
+      expect(md, contains('「子节点关系」列表示同一节点下子节点的关系'));
+      expect(md, contains('「整学期课表底稿」是整学期的周课表'));
+      expect(md, contains('「第 N 周有效课表」是当前周与下一周'));
+      expect(md, contains('「标称学时」列只是活动标称学时'));
     });
   });
 
@@ -248,24 +225,21 @@ void main() {
         fullDocument(modules: {ExportModule.grades}),
       );
       expect(md, contains('加权绩点：3.51（计入 4 条 / 15.0 学分）'));
-      expect(md, contains('未计入绩点（gpaPoints 为 0）：1 条 / 2.0 学分'));
+      expect(md, contains('未计入绩点（绩点为 0）：1 条 / 2.0 学分'));
       expect(
         md,
         contains('| 线性代数 | 65 | 65 | 1.50 | 3.0 | 2024-2025 | 第二学期 | 补考 |'),
       );
     });
 
-    test('JSON：汇总 / 分学期 / 明细', () {
-      final m = _module(
-        fullDocument(modules: {ExportModule.grades}),
-        ExportModule.grades,
-      );
-      expect(m['itemCount'], 5);
-      expect(m['scope'], '全部学期');
-      expect(m['totalCredits'], 17);
-      expect((m['summary'] as Map)['countedCourses'], 4);
-      expect((m['terms'] as List), hasLength(4));
-      expect((m['records'] as List), hasLength(5));
+    test('汇总 / 分学期 / 明细条数', () {
+      final m = gradesData();
+      expect(m.itemCount, 5);
+      expect(m.scopeLabel, '全部学期');
+      expect(m.totalCredits, 17);
+      expect(m.summary.countedCourses, 4);
+      expect(m.terms, hasLength(4));
+      expect(m.records, hasLength(5));
     });
 
     test('没有可计入记录时绩点为 null 而不是 0', () {
@@ -297,15 +271,12 @@ void main() {
       );
       expect(md, contains('| 培养方案 | 160.0 | 90.0 | 70.0 | — | 未满足 | 并且 |'));
       expect(md, contains('操作系统'));
-      final m = _module(
-        fullDocument(modules: {ExportModule.progress}),
-        ExportModule.progress,
-      );
-      final root = (m['requirements'] as List).single as Map;
-      final leaf = (root['children'] as List).single as Map;
-      final course = (leaf['courses'] as List).first as Map;
-      expect(course['makeupScore'], '60');
-      expect(course['retakeScore'], isNull);
+      final m = fullDocument(modules: {ExportModule.progress})
+          .moduleOf<ProgressModuleData>()!;
+      final leaf = m.nodes.single.children.single;
+      final course = leaf.courses.first;
+      expect(course.makeupScore, '60');
+      expect(course.retakeScore, isNull);
     });
   });
 
@@ -321,7 +292,7 @@ void main() {
       expect(data.termLabel, '2026-2027 学年第一学期');
     });
 
-    test('Markdown / JSON 含节次时间、教室、教务调课标记；学号不外泄', () {
+    test('Markdown 含节次时间、教室、教务调课标记；学号不外泄', () {
       final doc = fullDocument(modules: {ExportModule.schedule});
       final md = ExportBuilder.markdown(doc);
       expect(md, contains('### 第 7 周有效课表（已应用调课）'));
@@ -331,14 +302,7 @@ void main() {
           '| 周三 | 3-4 | 09:45-11:10 | 大学英语 | 李老师 | 教学楼B202 | 南湖校区 | 理论 | 1-16周 | 是 |',
         ),
       );
-      final raw = ExportBuilder.jsonString(doc);
-      expect(raw, isNot(contains('SHOULD-NOT-LEAK')));
-      final m = _module(doc, ExportModule.schedule);
-      expect(
-        m.keys,
-        containsAll(['term', 'changeRuleCount', 'effectiveWeeks', 'courses']),
-      );
-      expect((m['effectiveWeeks'] as List).first['week'], 7);
+      expect(md, isNot(contains('SHOULD-NOT-LEAK')));
     });
 
     test('未开学只给第 1 周，超出教学周不给有效周课表', () {
@@ -362,14 +326,14 @@ void main() {
   });
 
   group('考试', () {
-    test('Markdown / JSON 字段', () {
+    test('Markdown 字段', () {
       final doc = fullDocument(modules: {ExportModule.exams});
       final md = ExportBuilder.markdown(doc);
       expect(md, contains('2027-01-10'));
       expect(md, contains('09:00-11:00'));
-      final m = _module(doc, ExportModule.exams);
-      expect(m['scope'], '当前学期');
-      expect(((m['records'] as List).single as Map)['date'], '2027-01-10');
+      final m = doc.moduleOf<ExamsModuleData>()!;
+      expect(m.scopeLabel, '当前学期');
+      expect(m.records.single.date, '2027-01-10');
     });
   });
 
@@ -381,18 +345,11 @@ void main() {
       expect(data.checkedInNominalHours, 1.5);
 
       final doc = fullDocument(modules: {ExportModule.secondClassroom});
-      final m = _module(doc, ExportModule.secondClassroom);
-      expect(m['creditsVerified'], false);
-      expect(m['checkedInCount'], 1);
-      expect(m['checkedInNominalHours'], 1.5);
-      final first = (m['enrolled'] as List).first as Map;
-      expect(first.containsKey('nominalCreditHours'), isTrue);
-      expect(first.containsKey('creditHours'), isFalse);
-
       final md = ExportBuilder.markdown(doc);
       expect(md, contains('已报名 2 项，其中已签到 1 项'));
       expect(md, contains('不是学校认定学时'));
       expect(md, contains('「已报名」「已签到」「已认定学时」是三件事'));
+      expect(md, contains('| 活动 | 类别 | 主办 | 开始 | 结束 | 地点 | 标称学时 | 已签到 |'));
     });
   });
 
@@ -402,14 +359,11 @@ void main() {
       expect(data.records.map((r) => r.title), ['关于期末考试安排的通知', '选课通知']);
     });
 
-    test('字段仅 title / date / category / url', () {
+    test('只有标题 / 日期 / 栏目 / 链接，不含正文', () {
       final doc = fullDocument(modules: {ExportModule.notices});
-      final m = _module(doc, ExportModule.notices);
-      expect(m['includesBody'], false);
-      expect(m['windowDays'], 30);
-      final rec = (m['records'] as List).first as Map;
-      expect(rec.keys.toList(), ['title', 'date', 'category', 'url']);
       final md = ExportBuilder.markdown(doc);
+      expect(md, contains('| 日期 | 栏目 | 标题 | 链接 |'));
+      expect(md, contains('仅标题、日期、栏目与链接，不含正文'));
       expect(md, contains('关于期末考试安排的通知'));
       expect(md, isNot(contains('去年的旧通知')));
     });
@@ -421,13 +375,13 @@ void main() {
       final md = ExportBuilder.markdown(doc);
       expect(md, contains('### 2025-2026（总分 82.5，等级 良好）'));
       expect(md, contains('| 50 米跑 | 7.2 秒 | 85 | 良好 |'));
-      final m = _module(doc, ExportModule.physicalTest);
-      expect(((m['records'] as List).single as Map)['items'], hasLength(1));
+      final m = doc.moduleOf<PhysicalTestModuleData>()!;
+      expect(m.records.single.items, hasLength(1));
     });
   });
 
   group('未获取的模块', () {
-    test('占位模块：Markdown 标注、JSON 数据键为 null，绝不用空表伪装', () {
+    test('占位模块：Markdown 明确标注未获取，绝不用空表伪装', () {
       final doc = fullDocument(
         modules: {ExportModule.exams, ExportModule.grades},
         overrides: {
@@ -439,9 +393,10 @@ void main() {
       expect(doc.hasAnyData, isTrue);
       final md = ExportBuilder.markdown(doc);
       expect(md, contains('未获取：本机暂无该模块数据，未导出，也未推测。'));
-      final m = _module(doc, ExportModule.exams);
-      expect(m['status'], 'missing');
-      expect(m['itemCount'], isNull);
+      final m = doc.modules.whereType<MissingModuleData>().single;
+      expect(m.module, ExportModule.exams);
+      expect(m.status, ExportModuleStatus.missing);
+      expect(m.itemCount, isNull);
 
       final none = fullDocument(
         modules: {ExportModule.exams},
@@ -456,112 +411,22 @@ void main() {
   });
 
   group('隐私', () {
-    const forbiddenKeys = {
-      'xh',
-      'xm',
-      'studentId',
-      'student_id',
-      'idCard',
-      'realName',
-      'studentName',
-      'fullName',
-      'username',
-      'phone',
-      'password',
-      'token',
-      'cookie',
-      'account',
-    };
-
-    void scan(Object? node, List<String> hits) {
-      if (node is Map) {
-        for (final e in node.entries) {
-          if (forbiddenKeys.contains(e.key)) hits.add('${e.key}');
-          scan(e.value, hits);
-        }
-      } else if (node is List) {
-        for (final v in node) {
-          scan(v, hits);
-        }
-      }
-    }
-
-    test('全部模块的 JSON 不含任何身份 / 凭据键，也不含账号字符串', () {
-      final doc = fullDocument();
-      final raw = ExportBuilder.jsonString(doc);
-      final hits = <String>[];
-      scan(jsonDecode(raw), hits);
-      expect(hits, isEmpty);
-      expect((jsonDecode(raw) as Map)['privacy'], {'includesIdentity': false});
-      for (final text in [
-        raw,
-        ExportBuilder.markdown(doc),
-        for (final m in ExportModule.values)
-          ExportBuilder.csvFor(doc.modules.firstWhere((x) => x.module == m)),
-      ]) {
-        expect(text, isNot(contains('SHOULD-NOT-LEAK')));
-        expect(text, isNot(contains('20250001')));
-      }
-      expect(ExportBuilder.markdown(doc), contains('默认不含学号、姓名'));
+    test('全部模块的 Markdown 不含学号 / 姓名 / 账号字符串', () {
+      final md = ExportBuilder.markdown(fullDocument());
+      expect(md, isNot(contains('SHOULD-NOT-LEAK')));
+      expect(md, isNot(contains('20250001')));
+      expect(md, contains('默认不含学号、姓名'));
     });
   });
 
-  group('CSV', () {
-    test('逐模块表头与行，BOM 开头', () {
-      final doc = fullDocument();
-      for (final m in doc.modules) {
-        final csv = ExportBuilder.csvFor(m);
-        expect(csv.startsWith(ExportText.csvBom), isTrue, reason: m.module.key);
-        expect(
-          csv.trim().split('\n').length,
-          greaterThan(1),
-          reason: m.module.key,
-        );
-      }
-      final grades = ExportBuilder.csv(doc, module: ExportModule.grades);
-      expect(grades, contains('课程,成绩,百分制,绩点,学分'));
-      expect(grades, contains('线性代数,65,65,1.50,3.0,2024-2025,第二学期,补考'));
-      final notices = ExportBuilder.csv(doc, module: ExportModule.notices);
-      expect(notices, contains('日期,栏目,标题,链接'));
-      expect(notices, isNot(contains('去年的旧通知')));
-    });
-
-    test('指定模块不在文档内时取第一个有数据的模块；文件名带模块名', () {
+  group('文件名与格式', () {
+    test('固定 Markdown：.md 扩展名、text/markdown', () {
       final doc = fullDocument(
         modules: {ExportModule.exams, ExportModule.grades},
       );
-      expect(
-        ExportBuilder.csvTarget(doc, ExportModule.notices)!.module,
-        ExportModule.grades,
-      );
-      expect(
-        ExportBuilder.fileName(
-          ExportFormat.csv,
-          doc,
-          csvModule: ExportModule.exams,
-        ),
-        '学业数据导出_考试安排_20261013_1030.csv',
-      );
-      expect(
-        ExportBuilder.fileName(ExportFormat.markdown, doc),
-        '学业数据导出_20261013_1030.md',
-      );
-      expect(
-        ExportBuilder.fileName(ExportFormat.json, doc),
-        '学业数据导出_20261013_1030.json',
-      );
-    });
-
-    test('公式注入被中和', () {
-      final doc = fullDocument(
-        modules: {ExportModule.grades},
-        overrides: {
-          ExportModule.grades: gradesData(
-            records: [gradeRecord(course: '=HYPERLINK("x")')],
-          ),
-        },
-      );
-      expect(ExportBuilder.csv(doc), contains("'=HYPERLINK"));
+      expect(ExportBuilder.fileName(doc), '学业数据导出_20261013_1030.md');
+      expect(kExportExtension, 'md');
+      expect(kExportMimeType, 'text/markdown');
     });
   });
 

@@ -19,7 +19,6 @@ import 'export_controller.dart';
 import 'export_document.dart';
 import 'export_model.dart';
 import 'export_output.dart';
-import 'export_text.dart';
 
 /// 「去登录」的执行者：返回登录是否成功。生产默认见 [defaultExportLoginHandler]；
 /// 导出页本身**从不**自动登录，只在用户点按「去登录」时才走这里。
@@ -74,8 +73,6 @@ class _AiExportPageState extends State<AiExportPage> {
   late final AiExportController _controller;
   late final bool _ownsController;
 
-  ExportFormat _format = ExportFormat.markdown;
-  ExportModule? _csvModule;
   bool _expanded = false;
 
   late AiExportDocument _document;
@@ -106,16 +103,10 @@ class _AiExportPageState extends State<AiExportPage> {
 
   void _recompute() {
     _document = _controller.buildDocument();
-    // CSV 目标模块必须在所选模块内。
-    final inDoc = _document.modules.map((m) => m.module).toSet();
-    if (_csvModule == null || !inDoc.contains(_csvModule)) {
-      _csvModule = ExportBuilder.csvTarget(_document, null)?.module;
-    }
-    _content = ExportBuilder.encode(_format, _document, csvModule: _csvModule);
+    _content = ExportBuilder.markdown(_document);
   }
 
-  String get _fileName =>
-      ExportBuilder.fileName(_format, _document, csvModule: _csvModule);
+  String get _fileName => ExportBuilder.fileName(_document);
 
   bool get _actionable => _document.hasAnyData;
 
@@ -125,7 +116,6 @@ class _AiExportPageState extends State<AiExportPage> {
     setState(_recompute);
     if (!_actionable) return;
     final messenger = ScaffoldMessenger.maybeOf(context);
-    final label = _format.label;
     var copied = false;
     try {
       await Clipboard.setData(ClipboardData(text: _content));
@@ -134,7 +124,7 @@ class _AiExportPageState extends State<AiExportPage> {
       copied = false;
     }
     if (messenger == null) return;
-    AppFeedback.toastOn(messenger, copied ? '已复制$label' : '复制失败');
+    AppFeedback.toastOn(messenger, copied ? '已复制Markdown' : '复制失败');
   }
 
   Future<void> _save() async {
@@ -144,7 +134,7 @@ class _AiExportPageState extends State<AiExportPage> {
     try {
       final path = await exportFileSaver(
         _fileName,
-        _format.extension,
+        kExportExtension,
         Uint8List.fromList(utf8.encode(_content)),
       );
       if (messenger == null) return;
@@ -163,19 +153,12 @@ class _AiExportPageState extends State<AiExportPage> {
     setState(_recompute);
     if (!_actionable) return;
     final messenger = ScaffoldMessenger.maybeOf(context);
-    final asText = _format == ExportFormat.markdown;
-    final mime = switch (_format) {
-      ExportFormat.markdown => 'text/markdown',
-      ExportFormat.json => 'application/json',
-      ExportFormat.csv => 'text/csv',
-    };
     try {
       final outcome = await exportSharer(
         ExportSharePayload(
           fileName: _fileName,
-          mimeType: mime,
+          mimeType: kExportMimeType,
           text: _content,
-          asText: asText,
         ),
       );
       if (messenger == null) return;
@@ -200,13 +183,6 @@ class _AiExportPageState extends State<AiExportPage> {
     final ok = await handler(context, module.domain);
     if (!mounted || !ok) return;
     unawaited(_controller.fetch(module));
-  }
-
-  void _selectFormat(ExportFormat format) {
-    setState(() {
-      _format = format;
-      _recompute();
-    });
   }
 
   // ── 构建 ────────────────────────────────────────────────────────────────
@@ -254,9 +230,6 @@ class _AiExportPageState extends State<AiExportPage> {
                 ),
                 const SizedBox(height: AppSpacing.md),
                 _buildAdjust(),
-                const SizedBox(height: kPlainListGroupGap),
-                _buildFormatSelector(),
-                if (_format == ExportFormat.csv) ..._buildCsvPicker(),
                 const SizedBox(height: AppSpacing.md),
                 _buildPreview(cs),
               ],
@@ -371,41 +344,6 @@ class _AiExportPageState extends State<AiExportPage> {
                     child: Text(label),
                   )),
     );
-  }
-
-  Widget _buildFormatSelector() {
-    return SegmentedButton<ExportFormat>(
-      key: const Key('ai_export_format'),
-      showSelectedIcon: false,
-      segments: [
-        for (final f in ExportFormat.values)
-          ButtonSegment(value: f, label: Text(f.label)),
-      ],
-      selected: {_format},
-      onSelectionChanged: (s) => _selectFormat(s.first),
-    );
-  }
-
-  List<Widget> _buildCsvPicker() {
-    final modules = _document.modules.map((m) => m.module).toList();
-    return [
-      const SizedBox(height: AppSpacing.sm),
-      Text('CSV 每次导出一个模块，仅含数据表。', style: context.appText.meta),
-      if (modules.length > 1) ...[
-        const SizedBox(height: AppSpacing.sm),
-        AppFilterChips<ExportModule>(
-          key: const Key('ai_export_csv_module'),
-          wrap: true,
-          padding: EdgeInsets.zero,
-          options: [for (final m in modules) AppFilterOption(m, m.label)],
-          selected: _csvModule ?? modules.first,
-          onSelected: (m) => setState(() {
-            _csvModule = m;
-            _recompute();
-          }),
-        ),
-      ],
-    ];
   }
 
   Widget _buildPreview(ColorScheme cs) {
