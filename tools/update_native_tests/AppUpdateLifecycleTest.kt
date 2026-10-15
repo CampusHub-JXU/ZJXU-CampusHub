@@ -46,5 +46,6 @@ fun main(args: Array<String>) {
     check(!AppUpdateOwnership.canLaunchInstaller(true, true, false))
     check(!AppUpdateOwnership.canLaunchInstaller(true, false, true))
     println("AppUpdate native lifecycle: 17 scenarios passed")
+    runContractTests()
     runManagerTests(java.io.File(args.single()))
 }

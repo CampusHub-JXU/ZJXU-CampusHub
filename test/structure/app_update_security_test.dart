@@ -140,20 +140,67 @@ void main() {
       }
     });
 
-    test('only the trusted public distribution repo is accepted', () {
+    test('only the three trusted URL shapes are accepted', () {
       final contract = read('$updateDir/AppUpdateContract.kt');
+      // 形态 1：GitHub 规范 Release 资产。
       expect(contract, contains('"github.com"'));
       expect(contract, contains('"FHfanshu"'));
       expect(contract, contains('"ZJXU-CampusHub"'));
       expect(contract, contains('"releases"'));
       expect(contract, contains('"download"'));
       expect(contract, contains('"https"'));
+      // 形态 2：EdgeOne gh-proxy 精确前缀；形态 3：R2 自有域名。
+      expect(
+        contract,
+        contains(
+          'const val TRUSTED_MIRROR_PREFIX = "https://edgeone.gh-proxy.org/"',
+        ),
+      );
+      expect(
+        contract,
+        contains('const val TRUSTED_R2_HOST = "download.fhfanshu.xyz"'),
+      );
+      // 镜像前缀按原样（区分大小写）匹配，不 lowercase / ignoreCase。
+      expect(contract, contains('value.startsWith(TRUSTED_MIRROR_PREFIX)'));
+      expect(contract, isNot(contains('startsWith(TRUSTED_MIRROR_PREFIX, ')));
+      expect(contract, isNot(contains('ignoreCase')));
+      // R2 恰好两段路径。
+      expect(contract, contains('segments.size != 2'));
       // 拒绝 userinfo / 端口 / query / fragment / 路径穿越。
       expect(contract, contains('userInfo'));
       expect(contract, contains('fragment'));
       expect(contract, contains('query'));
       expect(contract, contains('".."'));
     });
+
+    test(
+      'hosts are compared exactly: no wildcard / suffix / substring match',
+      () {
+        final contract = read('$updateDir/AppUpdateContract.kt');
+        // 剥离注释后只检查可执行代码。
+        final code = contract
+            .split('\n')
+            .where((line) {
+              final t = line.trimLeft();
+              return !t.startsWith('*') &&
+                  !t.startsWith('/*') &&
+                  !t.startsWith('//');
+            })
+            .join('\n');
+        expect(code, isNot(contains('*.')));
+        expect(code, isNot(contains('host.endsWith')));
+        expect(code, isNot(contains('host?.endsWith')));
+        expect(code, isNot(contains('host.contains')));
+        expect(code, isNot(contains('host?.contains')));
+        expect(code, isNot(contains('Regex(')));
+        expect(code, isNot(contains('.toRegex')));
+        // 主机经 `when (uri.host?.lowercase())` 与常量整串相等比较。
+        expect(code, contains('when (uri.host?.lowercase())'));
+        expect(code, contains('TRUSTED_HOST ->'));
+        expect(code, contains('TRUSTED_R2_HOST ->'));
+        expect(code, contains('uri.host?.lowercase() != TRUSTED_HOST'));
+      },
+    );
 
     test(
       'managed download injects no credentials and uses app-private dir',

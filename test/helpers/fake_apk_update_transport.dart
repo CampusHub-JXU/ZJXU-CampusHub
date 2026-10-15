@@ -108,6 +108,7 @@ AppRelease managedTestRelease({
   String changelog = '· 修复若干问题',
   String downloadUrl = 'https://example.com/app.apk',
   String? canonicalAssetUrl = kTestCanonicalAssetUrl,
+  bool r2MirrorAvailable = false,
 }) {
   return AppRelease(
     version: version,
@@ -120,5 +121,6 @@ AppRelease managedTestRelease({
     assetFileName: 'JXU-CampusHub-v0.3.0-arm64-v8a.apk',
     assetSizeBytes: 45 * 1024 * 1024,
     assetSha256: 'a' * 64,
+    r2MirrorAvailable: r2MirrorAvailable,
   );
 }

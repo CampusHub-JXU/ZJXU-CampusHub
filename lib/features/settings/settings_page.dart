@@ -18,6 +18,7 @@ import '../../core/semester/semester_calendar.dart';
 import '../../core/semester/schedule_term_context.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/theme/page_transition_activity.dart';
+import '../../core/update/apk_download_route.dart';
 import '../../core/update/apk_update_controller.dart';
 import '../../core/update/update_checker.dart';
 import '../../core/update/update_model.dart';
@@ -255,6 +256,7 @@ class SettingsPage extends StatelessWidget {
                       );
                     },
                   ),
+                  const _UpdateRouteRow(),
                   PlainListRow(
                     title: '清除离线缓存',
                     onTap: () => _clearOfflineCache(context),
@@ -929,4 +931,64 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
   }
 
   void _showSnack(String message) => AppFeedback.toast(context, message);
+}
+
+/// 「更新下载线路」：自动（默认，先 R2、卡住 / 失败 / 低速时回退 EdgeOne）/
+/// Cloudflare R2 / EdgeOne。只读写 [ApkDownloadRoutePreference] 的单个枚举名，
+/// 更新弹窗在点「更新」时读取，自身不再展示选线。
+class _UpdateRouteRow extends StatefulWidget {
+  const _UpdateRouteRow();
+
+  @override
+  State<_UpdateRouteRow> createState() => _UpdateRouteRowState();
+}
+
+class _UpdateRouteRowState extends State<_UpdateRouteRow> {
+  ApkDownloadRoute _route = ApkDownloadRoute.auto;
+
+  static String _label(ApkDownloadRoute route) => switch (route) {
+    ApkDownloadRoute.auto => '自动',
+    ApkDownloadRoute.r2 => 'Cloudflare R2',
+    ApkDownloadRoute.edgeone => 'EdgeOne',
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    final route = await ApkDownloadRoutePreference.load();
+    if (!mounted || route == _route) return;
+    setState(() => _route = route);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PlainListRow(
+      title: '更新下载线路',
+      subtitle: _route == ApkDownloadRoute.auto
+          ? '先走 Cloudflare R2，连接超时 / 卡住 / 低速时自动换 EdgeOne'
+          : '只使用所选线路，失败时不会自动切换',
+      trailing: AppDropdown<ApkDownloadRoute>(
+        key: const Key('update_route_dropdown'),
+        inline: true,
+        hint: _label(_route),
+        value: _route,
+        items: <AppDropdownItem<ApkDownloadRoute>>[
+          for (final route in ApkDownloadRoute.values)
+            AppDropdownItem<ApkDownloadRoute>(
+              value: route,
+              label: _label(route),
+            ),
+        ],
+        onChanged: (value) {
+          if (value == null || value == _route) return;
+          setState(() => _route = value);
+          unawaited(ApkDownloadRoutePreference.save(value));
+        },
+      ),
+    );
+  }
 }

@@ -10,6 +10,7 @@ class AppRelease {
     this.assetFileName,
     this.assetSizeBytes,
     this.assetSha256,
+    this.r2MirrorAvailable = false,
   });
 
   final String version;
@@ -40,6 +41,11 @@ class AppRelease {
   ///
   /// 接受 `sha256:<hex>` 前缀形态；格式不合法一律忽略（不因此让整条清单失败）。
   final String? assetSha256;
+
+  /// 该 Release 是否带有 R2 镜像标记资产（发布流水线在 R2 对象上传并校验成功
+  /// 后才附加）。为 false 时应用**不**尝试 R2 线路，只剩 EdgeOne；元数据不
+  /// 指向未确认存在的对象。
+  final bool r2MirrorAvailable;
 
   bool get hasDownloadUrl => downloadUrl.isNotEmpty;
 
@@ -75,6 +81,7 @@ class AppRelease {
           ? assetSizeRaw
           : null,
       assetSha256: normalizeSha256(json['assetSha256']),
+      r2MirrorAvailable: json['r2MirrorAvailable'] == true,
     );
   }
 

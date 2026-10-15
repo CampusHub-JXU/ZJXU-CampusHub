@@ -36,6 +36,12 @@ abstract final class ApkUpdateProtocol {
   static const String trustedRepoOwner = 'FHfanshu';
   static const String trustedRepoName = 'ZJXU-CampusHub';
 
+  /// EdgeOne gh-proxy 镜像前缀：`<前缀><规范 GitHub 资产 URL>`（精确、区分大小写）。
+  static const String trustedMirrorPrefix = 'https://edgeone.gh-proxy.org/';
+
+  /// Cloudflare R2 自定义下载域名：`https://<host>/<tag>/<apk>`。
+  static const String trustedR2Host = 'download.fhfanshu.xyz';
+
   static const int maxVersionLength = 64;
   static const int maxAssetFileNameLength = 256;
   static const int maxRequestKeyLength = 320;
@@ -273,11 +279,26 @@ abstract final class ApkUpdateStateCodec {
   }
 }
 
-/// 可信资产 URL 校验：调用原生前必须通过。
+/// 应用内受管下载的线路。
 ///
-/// 只接受 `https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/`
-/// 之后接 `tag` / `apk` 两段路径的形态；拒绝 userinfo、fragment、query、非
-/// https、非可信主机 / 仓库、编码路径穿越、非 `.apk` 文件名。
+/// - [github]：规范 GitHub Release 资产 URL（既有行为；国内常很慢，UI 不再作为
+///   可选线路，仅保留给既有受管记录与无线路参数的调用）。
+/// - [edgeone]：EdgeOne gh-proxy 对同一 GitHub 资产的代理。
+/// - [r2]：Cloudflare R2 自定义域名上的同一份 APK（仅当 Release 带 R2 标记资产）。
+enum ApkDownloadSource { github, edgeone, r2 }
+
+/// 可信下载 URL 校验：调用原生前必须通过（与原生
+/// `AppUpdateContract.parseCanonicalAssetUrl` 等价）。
+///
+/// 接受三种固定形态（其余一律拒绝）：
+/// 1. GitHub 规范资产：`https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/<tag>/<apk>`
+///    （[isCanonicalAssetUrl]，Release 元数据只提供这一种）；
+/// 2. EdgeOne 镜像：`https://edgeone.gh-proxy.org/` + 形态 1（[isMirrorAssetUrl]）；
+/// 3. R2：`https://download.fhfanshu.xyz/<tag>/<apk>`，恰好两段路径
+///    （[isR2AssetUrl]）。
+///
+/// 拒绝 userinfo、fragment、query、非 https、非可信主机 / 仓库、编码路径穿越、
+/// 非 `.apk` 文件名。
 ///
 /// 校验先对**原始字符串**做 fail-closed 检查，再做 `Uri` 解析后的结构校验
 /// （纵深防御）：`Uri` 会把 `\` 归一为 `/`、解析 dot-segments、把显式默认端口
@@ -285,56 +306,126 @@ abstract final class ApkUpdateStateCodec {
 /// （`android.net.Uri` + `isSafeApkFileName` / `isSafePathSegment` 拒绝字面
 /// `\`、`..` 与非默认端口），因此 Dart 必须先行拒绝，保持两侧一致。
 abstract final class ApkUpdateUrlPolicy {
-  static bool isCanonicalAssetUrl(String url) {
+  /// GitHub 规范资产 URL（形态 1）。
+  static bool isCanonicalAssetUrl(String url) =>
+      _githubAssetTag(url.trim()) != null;
+
+  /// EdgeOne 镜像资产 URL（形态 2）：精确前缀 + 形态 1，整串无 query / fragment。
+  static bool isMirrorAssetUrl(String url) {
     final trimmed = url.trim();
-    if (trimmed.isEmpty) return false;
+    if (!trimmed.startsWith(ApkUpdateProtocol.trustedMirrorPrefix)) {
+      return false;
+    }
+    final inner = trimmed.substring(
+      ApkUpdateProtocol.trustedMirrorPrefix.length,
+    );
+    // 与原生一致：内层必须是小写字面 `https://github.com/` 开头（原生比镜像外的
+    // GitHub 规范 URL 更严，不接受大写主机写法）。
+    if (!inner.startsWith('https://github.com/')) return false;
+    return _githubAssetTag(inner) != null;
+  }
+
+  /// R2 资产 URL（形态 3）。
+  static bool isR2AssetUrl(String url) {
+    final trimmed = url.trim();
+    final uri = _structurallySafeUri(trimmed);
+    if (uri == null) return false;
+    if (uri.host.toLowerCase() != ApkUpdateProtocol.trustedR2Host) return false;
+    final segments = uri.pathSegments;
+    if (segments.length != 2) return false;
+    if (_isUnsafeSegment(segments[0]) || _isUnsafeSegment(segments[1])) {
+      return false;
+    }
+    return segments[1].toLowerCase().endsWith('.apk');
+  }
+
+  /// 三种形态之一（原生入队前的同一白名单）。
+  static bool isTrustedDownloadUrl(String url) =>
+      isCanonicalAssetUrl(url) || isMirrorAssetUrl(url) || isR2AssetUrl(url);
+
+  /// 由规范 GitHub 资产 URL 派生 [source] 线路的 URL；不可信 / 不可用返回 null。
+  ///
+  /// R2 额外要求 [r2Available]（Release 带 R2 标记资产），否则不构造 URL。
+  static String? urlFor(
+    ApkDownloadSource source, {
+    required String canonicalUrl,
+    required bool r2Available,
+  }) {
+    final canonical = canonicalUrl.trim();
+    final tag = _githubAssetTag(canonical);
+    if (tag == null) return null;
+    switch (source) {
+      case ApkDownloadSource.github:
+        return canonical;
+      case ApkDownloadSource.edgeone:
+        final url = '${ApkUpdateProtocol.trustedMirrorPrefix}$canonical';
+        return isMirrorAssetUrl(url) ? url : null;
+      case ApkDownloadSource.r2:
+        if (!r2Available) return null;
+        final fileName = Uri.parse(canonical).pathSegments.last;
+        final url = 'https://${ApkUpdateProtocol.trustedR2Host}/$tag/$fileName';
+        return isR2AssetUrl(url) ? url : null;
+    }
+  }
+
+  /// 通过原始字符串检查与 `Uri` 结构校验（scheme / userinfo / fragment / query /
+  /// port），返回 Uri；host 与路径形态由调用方继续校验。
+  static Uri? _structurallySafeUri(String trimmed) {
+    if (trimmed.isEmpty) return null;
 
     // 1) 原始字符串检查（绝不依赖 Uri 规范化）。
     final lower = trimmed.toLowerCase();
-    if (!lower.startsWith('https://')) return false;
+    if (!lower.startsWith('https://')) return null;
     for (final code in trimmed.codeUnits) {
       // 控制字符 / DEL：绝不接受（原生同样拒绝）。
-      if (code < 0x20 || code == 0x7f) return false;
+      if (code < 0x20 || code == 0x7f) return null;
       // 字面反斜杠：Uri 会归一为路径分隔符，原生拒绝 `\`。
-      if (code == 0x5c) return false;
+      if (code == 0x5c) return null;
     }
     // 编码的 `.` / `/` / `\`（`%2e` / `%2f` / `%5c`，大小写不敏感）：
     // 拒绝任何「解码后才暴露」的路径穿越 / 分隔符向量。
     if (lower.contains('%2e') ||
         lower.contains('%2f') ||
         lower.contains('%5c')) {
-      return false;
+      return null;
     }
     // authority 段（`https://` 之后到首个 `/`、`?`、`#`）：拒绝 userinfo `@`
     // 与字面端口 `:`（含显式 `:443`——Uri 会把它视为 hasPort=false）。
     final authority = _rawAuthority(trimmed);
-    if (authority == null) return false;
-    if (authority.contains('@') || authority.contains(':')) return false;
+    if (authority == null) return null;
+    if (authority.contains('@') || authority.contains(':')) return null;
 
     // 2) Uri 解析后的结构校验（纵深防御）。
     final uri = Uri.tryParse(trimmed);
-    if (uri == null) return false;
-    if (uri.scheme != 'https') return false;
-    if (uri.userInfo.isNotEmpty) return false;
-    if (uri.fragment.isNotEmpty) return false;
-    if (uri.hasQuery) return false;
-    if (uri.hasPort) return false;
+    if (uri == null) return null;
+    if (uri.scheme != 'https') return null;
+    if (uri.userInfo.isNotEmpty) return null;
+    if (uri.fragment.isNotEmpty) return null;
+    if (uri.hasQuery) return null;
+    if (uri.hasPort) return null;
+    return uri;
+  }
+
+  /// 形态 1 校验；通过返回 tag，否则 null。
+  static String? _githubAssetTag(String trimmed) {
+    final uri = _structurallySafeUri(trimmed);
+    if (uri == null) return null;
     if (uri.host.toLowerCase() != ApkUpdateProtocol.trustedRepoHost) {
-      return false;
+      return null;
     }
 
     // pathSegments 已解码：`%2e%2e` → `..`、`%2f` → `/` 会被下面拒绝。
     final segments = uri.pathSegments;
-    if (segments.length != 6) return false;
-    if (segments[0] != ApkUpdateProtocol.trustedRepoOwner) return false;
-    if (segments[1] != ApkUpdateProtocol.trustedRepoName) return false;
-    if (segments[2] != 'releases' || segments[3] != 'download') return false;
+    if (segments.length != 6) return null;
+    if (segments[0] != ApkUpdateProtocol.trustedRepoOwner) return null;
+    if (segments[1] != ApkUpdateProtocol.trustedRepoName) return null;
+    if (segments[2] != 'releases' || segments[3] != 'download') return null;
 
     final tag = segments[4];
     final file = segments[5];
-    if (_isUnsafeSegment(tag) || _isUnsafeSegment(file)) return false;
-    if (!file.toLowerCase().endsWith('.apk')) return false;
-    return true;
+    if (_isUnsafeSegment(tag) || _isUnsafeSegment(file)) return null;
+    if (!file.toLowerCase().endsWith('.apk')) return null;
+    return tag;
   }
 
   /// 取 `https://` 之后的 authority 原文（到首个 `/`、`?`、`#` 为止）；
@@ -375,6 +466,7 @@ class ApkUpdateRequest {
     this.assetSizeBytes,
     this.sha256,
     this.abi,
+    this.source = ApkDownloadSource.github,
   });
 
   final String version;
@@ -385,11 +477,19 @@ class ApkUpdateRequest {
   final String? sha256;
   final String? abi;
 
+  /// 下载线路（只影响 [assetUrl] 与 [requestKey]，不影响校验契约）。
+  final ApkDownloadSource source;
+
   /// 稳定 idempotency key：`摘要 + assetId/version + ABI + 文件名`，
   /// **不含**任何账号身份。原生持久化的受管 id 应与此一致。
+  ///
+  /// 非默认线路追加 `:<线路>` 后缀，使「换线重试」被原生视为新请求并走既有的
+  /// 权威退役路径；默认 [ApkDownloadSource.github] 的 key 与既有记录一致。
   String get requestKey {
     final idPart = assetId?.toString() ?? version;
-    return 'v1:$idPart:${abi ?? 'unknown'}:$assetFileName:${sha256 ?? 'nosha'}';
+    final base =
+        'v1:$idPart:${abi ?? 'unknown'}:$assetFileName:${sha256 ?? 'nosha'}';
+    return source == ApkDownloadSource.github ? base : '$base:${source.name}';
   }
 
   Map<String, Object?> toPlatformMap() => <String, Object?>{
@@ -403,14 +503,26 @@ class ApkUpdateRequest {
     if (abi != null) 'abi': abi,
   };
 
-  /// 从 release 构造受管请求；规范资产 URL / 文件名 / 版本任一不合法即返回
-  /// null（调用方据此降级为不可用，绝不猜测 URL）。
-  static ApkUpdateRequest? tryCreate(AppRelease release, {String? abi}) {
-    final url = release.canonicalAssetUrl;
-    if (url == null || !ApkUpdateUrlPolicy.isCanonicalAssetUrl(url)) {
+  /// 从 release 构造受管请求；规范资产 URL / 文件名 / 版本任一不合法、或所选
+  /// [source] 线路不可用（例如 R2 标记缺失）即返回 null（调用方据此降级为
+  /// 不可用，绝不猜测 URL）。
+  static ApkUpdateRequest? tryCreate(
+    AppRelease release, {
+    String? abi,
+    ApkDownloadSource source = ApkDownloadSource.github,
+  }) {
+    final canonical = release.canonicalAssetUrl;
+    if (canonical == null ||
+        !ApkUpdateUrlPolicy.isCanonicalAssetUrl(canonical)) {
       return null;
     }
-    final fileName = release.assetFileName ?? _fileNameFromUrl(url);
+    final url = ApkUpdateUrlPolicy.urlFor(
+      source,
+      canonicalUrl: canonical,
+      r2Available: release.r2MirrorAvailable,
+    );
+    if (url == null) return null;
+    final fileName = release.assetFileName ?? _fileNameFromUrl(canonical);
     if (fileName == null ||
         fileName.isEmpty ||
         fileName.length > ApkUpdateProtocol.maxAssetFileNameLength ||
@@ -431,6 +543,7 @@ class ApkUpdateRequest {
       assetSizeBytes: (size != null && size > 0) ? size : null,
       sha256: AppRelease.normalizeSha256(release.assetSha256),
       abi: (abi != null && abi.trim().isNotEmpty) ? abi.trim() : null,
+      source: source,
     );
   }
 
@@ -619,12 +732,19 @@ class ApkUpdateController {
   /// - 规范资产 URL 不可信 / 缺失 → [ApkUpdatePhase.unavailable]
   ///   （`untrustedAsset`），**不**调用通道，UI 应回退浏览器路径。
   /// - 同一请求已在活动状态或上一次 start 未返回 → 幂等 no-op。
-  Future<void> startDownload(AppRelease release) async {
+  ///
+  /// [source] 选择下载线路（默认 [ApkDownloadSource.github] 保持既有行为）；
+  /// 所选线路不可用同样降级为 `untrustedAsset`。
+  Future<void> startDownload(
+    AppRelease release, {
+    ApkDownloadSource source = ApkDownloadSource.github,
+  }) async {
     if (_startInFlight) return;
 
     final request = ApkUpdateRequest.tryCreate(
       release,
       abi: _deviceAbiProvider(),
+      source: source,
     );
     if (request == null) {
       _apply(
