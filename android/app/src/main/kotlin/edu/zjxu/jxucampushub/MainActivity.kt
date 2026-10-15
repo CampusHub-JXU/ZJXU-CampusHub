@@ -7,6 +7,8 @@ import edu.zjxu.jxucampushub.platform.deeplink.DeepLinkChannelHandler
 import edu.zjxu.jxucampushub.platform.download.DownloadChannelHandler
 import edu.zjxu.jxucampushub.platform.shortcut.ShortcutChannelHandler
 import edu.zjxu.jxucampushub.platform.system_settings.SystemSettingsChannelHandler
+import edu.zjxu.jxucampushub.platform.update.AppUpdateChannelHandler
+import edu.zjxu.jxucampushub.platform.update.AppUpdateManager
 import edu.zjxu.jxucampushub.platform.wechat.WeChatChannelHandler
 import edu.zjxu.jxucampushub.platform.widget.WidgetChannelHandler
 import io.flutter.embedding.android.FlutterActivity
@@ -19,8 +21,11 @@ class MainActivity : FlutterActivity() {
     private val shortcutHandler = ShortcutChannelHandler(this)
     private val deepLinkHandler = DeepLinkChannelHandler()
     private val calendarHandler = CalendarSyncChannelHandler(this)
+    private lateinit var appUpdateManager: AppUpdateManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // FlutterActivity.onCreate calls configureFlutterEngine before returning.
+        appUpdateManager = AppUpdateManager.get(applicationContext)
         super.onCreate(savedInstanceState)
         shortcutHandler.captureInitialIntent(intent)
         deepLinkHandler.captureInitialIntent(intent)
@@ -38,6 +43,18 @@ class MainActivity : FlutterActivity() {
         DownloadChannelHandler(this).register(messenger)
         SystemSettingsChannelHandler(this).register(messenger)
         calendarHandler.register(messenger)
+        AppUpdateChannelHandler(this, appUpdateManager).register(messenger)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // 前台恢复：若受管更新已就绪且用户此前点过「更新」，补一次自动安装。
+        appUpdateManager.onActivityResumed(this)
+    }
+
+    override fun onPause() {
+        appUpdateManager.detachActivity(this)
+        super.onPause()
     }
 
     override fun onRequestPermissionsResult(

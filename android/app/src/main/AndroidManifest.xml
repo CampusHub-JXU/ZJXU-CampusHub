@@ -9,6 +9,9 @@
     <uses-permission android:name="android.permission.READ_CALENDAR"/>
     <uses-permission android:name="android.permission.WRITE_CALENDAR"/>
     <uses-permission android:name="com.android.launcher.permission.INSTALL_SHORTCUT"/>
+    <!-- 应用内一键更新：调起系统安装器需要该权限；是否真正允许安装仍由系统
+         「未知来源」设置与用户确认决定，绝不静默安装。 -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
 
     <application
         android:label="嘉兴大学"
@@ -112,6 +115,34 @@
         <receiver
             android:name=".widget.CampusWidgetPinReceiver"
             android:exported="false" />
+        <!-- 应用内一键更新：受管 APK 的 FileProvider（非导出、只授权读取、路径仅限
+             应用外部私有目录 Downloads/updates/，绝不放行根路径）。 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.app_update_files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/update_file_paths" />
+        </provider>
+        <!-- 应用内一键更新：受管下载完成广播（签名权限限制发送者、只处理 DOWNLOAD_COMPLETE）。
+             仅 MainActivity 动态注册在进程死亡后收不到，必须 manifest 注册。 -->
+        <receiver
+            android:name=".platform.update.AppUpdateDownloadReceiver"
+            android:exported="true"
+            android:permission="android.permission.SEND_DOWNLOAD_COMPLETED_INTENTS">
+            <intent-filter>
+                <action android:name="android.intent.action.DOWNLOAD_COMPLETE" />
+            </intent-filter>
+        </receiver>
+        <!-- 应用内一键更新：非导出安装中转页；只从完成通知 / 前台自动打开进入，
+             校验受管文件后调起系统安装器。 -->
+        <activity
+            android:name=".platform.update.AppUpdateInstallActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

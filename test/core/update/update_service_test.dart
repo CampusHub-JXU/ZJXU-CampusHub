@@ -262,4 +262,104 @@ void main() {
       );
     },
   );
+
+  test('extracts canonical asset metadata without altering mirrored urls', () async {
+    final dio = Dio();
+    final adapter = MockHttpClientAdapter();
+    dio.httpClientAdapter = adapter;
+    final hex = 'b' * 64;
+    adapter.registerJson(
+      'GET',
+      '/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
+      {
+        'tag_name': 'v0.2.8',
+        'html_url':
+            'https://github.com/FHfanshu/ZJXU-CampusHub/releases/tag/v0.2.8',
+        'published_at': '2026-05-14T13:00:00Z',
+        'assets': [
+          {
+            'id': 777,
+            'name': 'JXU-CampusHub-v0.2.8-arm64-v8a.apk',
+            'size': 123456,
+            'digest': 'sha256:$hex',
+            'browser_download_url':
+                'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/'
+                'v0.2.8/JXU-CampusHub-v0.2.8-arm64-v8a.apk',
+          },
+          {
+            'id': 778,
+            'name': 'JXU-CampusHub-v0.2.8-armeabi-v7a.apk',
+            'browser_download_url':
+                'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/'
+                'v0.2.8/JXU-CampusHub-v0.2.8-armeabi-v7a.apk',
+          },
+        ],
+      },
+    );
+    final source = GitHubReleaseUpdateSource(
+      dio: dio,
+      latestReleaseApiUrl: 'https://api.github.com/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
+      releaseMirrorPrefix: 'https://edgeone.gh-proxy.org/',
+      deviceAbiProvider: () => 'arm64-v8a',
+    );
+
+    final release = await source.fetchLatestRelease();
+
+    // 既有镜像行为不变。
+    expect(
+      release.downloadUrl,
+      'https://edgeone.gh-proxy.org/https://github.com/FHfanshu/'
+      'ZJXU-CampusHub/releases/download/v0.2.8/'
+      'JXU-CampusHub-v0.2.8-arm64-v8a.apk',
+    );
+    // 规范官方 URL 不被镜像改写。
+    expect(
+      release.canonicalAssetUrl,
+      'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/'
+      'v0.2.8/JXU-CampusHub-v0.2.8-arm64-v8a.apk',
+    );
+    expect(release.assetId, 777);
+    expect(release.assetFileName, 'JXU-CampusHub-v0.2.8-arm64-v8a.apk');
+    expect(release.assetSizeBytes, 123456);
+    expect(release.assetSha256, hex);
+  });
+
+  test('ignores malformed asset digest and size, keeps release parseable', () async {
+    final dio = Dio();
+    final adapter = MockHttpClientAdapter();
+    dio.httpClientAdapter = adapter;
+    adapter.registerJson(
+      'GET',
+      '/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
+      {
+        'tag_name': 'v0.2.9',
+        'html_url':
+            'https://github.com/FHfanshu/ZJXU-CampusHub/releases/tag/v0.2.9',
+        'published_at': '2026-05-14T14:00:00Z',
+        'assets': [
+          {
+            'id': 779,
+            'name': 'JXU-CampusHub-v0.2.9-arm64-v8a.apk',
+            'size': 0,
+            'digest': 'sha256:nothex',
+            'browser_download_url':
+                'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/'
+                'v0.2.9/JXU-CampusHub-v0.2.9-arm64-v8a.apk',
+          },
+        ],
+      },
+    );
+    final source = GitHubReleaseUpdateSource(
+      dio: dio,
+      latestReleaseApiUrl: 'https://api.github.com/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
+      releaseMirrorPrefix: '',
+      deviceAbiProvider: () => 'arm64-v8a',
+    );
+
+    final release = await source.fetchLatestRelease();
+
+    expect(release.assetSha256, isNull);
+    expect(release.assetSizeBytes, isNull);
+    expect(release.downloadUrl, isNotEmpty);
+  });
 }

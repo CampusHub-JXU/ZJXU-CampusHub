@@ -1,4 +1,4 @@
-﻿import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/core/update/update_model.dart';
 
@@ -64,5 +64,64 @@ void main() {
 
     expect(release.isNewerThan('1.2.3+9'), isTrue);
     expect(AppRelease.normalizeVersion('v1.2.3+9'), '1.2.3');
+  });
+
+  test('parses optional asset metadata and normalizes sha256', () {
+    const canonical =
+        'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/'
+        'v0.2.7/JXU-CampusHub-v0.2.7-arm64-v8a.apk';
+    final release = AppRelease.fromJson({
+      'version': 'v0.2.7',
+      'releaseUrl': 'https://example.com/releases/v0.2.7',
+      'downloadUrl': 'https://example.com/downloads/app-v0.2.7.apk',
+      'canonicalAssetUrl': canonical,
+      'assetId': 123,
+      'assetFileName': 'JXU-CampusHub-v0.2.7-arm64-v8a.apk',
+      'assetSizeBytes': 52428800,
+      'assetSha256': 'SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+    });
+
+    expect(release.canonicalAssetUrl, canonical);
+    expect(release.assetId, 123);
+    expect(release.assetFileName, 'JXU-CampusHub-v0.2.7-arm64-v8a.apk');
+    expect(release.assetSizeBytes, 52428800);
+    expect(
+      release.assetSha256,
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    );
+  });
+
+  test('optional asset metadata is null when absent (backward compatible)', () {
+    final release = AppRelease.fromJson({
+      'version': 'v0.2.7',
+      'releaseUrl': 'https://example.com/releases/v0.2.7',
+    });
+
+    expect(release.canonicalAssetUrl, isNull);
+    expect(release.assetId, isNull);
+    expect(release.assetFileName, isNull);
+    expect(release.assetSizeBytes, isNull);
+    expect(release.assetSha256, isNull);
+  });
+
+  test('ignores non-positive asset size', () {
+    final release = AppRelease.fromJson({
+      'version': 'v0.2.7',
+      'releaseUrl': 'https://example.com/releases/v0.2.7',
+      'assetSizeBytes': -5,
+    });
+    expect(release.assetSizeBytes, isNull);
+  });
+
+  test('normalizeSha256 accepts prefix form and rejects malformed digests', () {
+    final hex = 'b' * 64;
+    expect(AppRelease.normalizeSha256('sha256:$hex'), hex);
+    expect(AppRelease.normalizeSha256('SHA256:$hex'), hex);
+    expect(AppRelease.normalizeSha256(hex), hex);
+    expect(AppRelease.normalizeSha256('a' * 63), isNull);
+    expect(AppRelease.normalizeSha256('z' * 64), isNull);
+    expect(AppRelease.normalizeSha256('sha256:nothex'), isNull);
+    expect(AppRelease.normalizeSha256(null), isNull);
+    expect(AppRelease.normalizeSha256(123), isNull);
   });
 }

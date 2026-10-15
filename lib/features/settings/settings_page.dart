@@ -17,6 +17,7 @@ import '../../core/semester/current_term_resolver.dart';
 import '../../core/semester/semester_calendar.dart';
 import '../../core/semester/schedule_term_context.dart';
 import '../../core/theme/app_typography.dart';
+import '../../core/update/apk_update_controller.dart';
 import '../../core/update/update_checker.dart';
 import '../../core/update/update_model.dart';
 import '../../shared/widgets/app_app_bar.dart';
@@ -62,6 +63,23 @@ class SettingsPage extends StatelessWidget {
   }
 
   Future<void> _checkForUpdate(BuildContext context) async {
+    // 先查询持久化的原生请求，冷启动离线也能取消下载或继续安装。
+    final controller = ApkUpdateController.instance;
+    if (await controller.isSupported()) {
+      await controller.refreshActiveUpdate();
+      if (!context.mounted) return;
+      if (controller.state.value.phase.isActive) {
+        final release = UpdateChecker.instance.availableRelease.value;
+        if (release != null) {
+          await showUpdateDialog(context, release);
+        } else {
+          await showManagedUpdateDialog(context);
+        }
+        return;
+      }
+    }
+    if (!context.mounted) return;
+
     final result = await UpdateChecker.instance.check();
     if (!context.mounted) return;
 

@@ -52,7 +52,7 @@ class GitHubReleaseUpdateSource implements UpdateSource {
     required this.latestReleaseApiUrl,
     this.latestReleaseFallbackApiUrls = const <String>[],
     required this.releaseMirrorPrefix,
-    this.deviceAbiProvider = _deviceAbiSuffix,
+    this.deviceAbiProvider = deviceAbiSuffix,
   });
 
   final Dio dio;
@@ -102,7 +102,8 @@ class GitHubReleaseUpdateSource implements UpdateSource {
     final assets = data['assets'] is List
         ? (data['assets'] as List).whereType<Map<String, dynamic>>().toList()
         : const <Map<String, dynamic>>[];
-    final apkAsset = _bestApkAssetForDevice(assets) ?? _firstOrNull(assets);
+    final selectedApk = _bestApkAssetForDevice(assets);
+    final apkAsset = selectedApk ?? _firstOrNull(assets);
     final fallbackAsset = _firstOrNull(assets);
     final downloadUrl = _mirrorUrl(
       ((apkAsset ?? fallbackAsset)?['browser_download_url'] as String? ?? '')
@@ -123,7 +124,27 @@ class GitHubReleaseUpdateSource implements UpdateSource {
       publishedAt:
           DateTime.tryParse((data['published_at'] as String? ?? '').trim()) ??
           DateTime.fromMillisecondsSinceEpoch(0),
+      // 应用内受管下载只信任**选中 APK 资产**的规范官方 URL（未镜像改写）；
+      // 其余可选元数据缺失 / 非法时静默为 null，不影响整条清单。
+      canonicalAssetUrl: _assetString(selectedApk, 'browser_download_url'),
+      assetId: selectedApk?['id'] is int ? selectedApk!['id'] as int : null,
+      assetFileName: _assetString(selectedApk, 'name'),
+      assetSizeBytes: _assetPositiveInt(selectedApk, 'size'),
+      assetSha256: AppRelease.normalizeSha256(selectedApk?['digest']),
     );
+  }
+
+  String? _assetString(Map<String, dynamic>? asset, String key) {
+    final value = asset?[key];
+    if (value is! String) return null;
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
+  int? _assetPositiveInt(Map<String, dynamic>? asset, String key) {
+    final value = asset?[key];
+    if (value is! int || value <= 0) return null;
+    return value;
   }
 
   bool _isApkAsset(Map<String, dynamic> asset) {
@@ -168,7 +189,11 @@ class GitHubReleaseUpdateSource implements UpdateSource {
   }
 }
 
-String? _deviceAbiSuffix() {
+/// 当前设备 ABI 对应的 APK 文件名后缀（`arm64-v8a` / `armeabi-v7a`），
+/// 未知 ABI（含非 Android / 桌面测试环境）返回 null。
+///
+/// 供 GitHub Release 资产选择与应用内受管下载复用，保持同一套 ABI 逻辑。
+String? deviceAbiSuffix() {
   final abi = Abi.current();
   if (abi == Abi.androidArm64) return 'arm64-v8a';
   if (abi == Abi.androidArm) return 'armeabi-v7a';
