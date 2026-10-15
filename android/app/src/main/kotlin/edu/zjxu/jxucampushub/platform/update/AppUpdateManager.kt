@@ -21,8 +21,12 @@ import java.util.concurrent.Executors
  *
  * 职责：
  * - 原生**再次**校验 Dart 传入的规范资产 URL / 文件名 / 字段上限（绝不信任 Dart）；
- * - 经系统 DownloadManager 下载到应用外部私有目录 `Downloads/updates/`（无 Cookie /
- *   认证头），受管 id 持久化为唯一权威；
+ * - 经系统 DownloadManager 下载到应用外部私有目录
+ *   `getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)/updates/`（即
+ *   `.../files/Download/updates/`，无 Cookie / 认证头），受管 id 持久化为唯一权威；
+ *   该路径与 `res/xml/update_file_paths.xml` 的 FileProvider 白名单逐字一致——
+ *   FileProvider 按前缀匹配，白名单漂移会让 `getUriForFile` 抛
+ *   `IllegalArgumentException` 并静默废掉应用内安装（v0.11.1 及更早的故障）；
  * - 单活动请求 + 稳定 `requestKey` 幂等去重（双击 / 弹窗重入 / 进程重启）；
  * - 崩溃恢复：入队前写 pending 日志，`queryActiveUpdate` 时对账。归属判定必须
  *   **URL 精确 + 本地目标文件精确**（见 [AppUpdateOwnership]）：绝不按 URL 单独
@@ -1005,7 +1009,13 @@ internal class AppUpdateManager private constructor(private val appContext: Cont
             activity.startActivity(intent)
             true
         } catch (error: Exception) {
-            Log.e(TAG, "launchInstaller failed: ${error.javaClass.simpleName}")
+            // 只记类名会丢掉具体原因（FileProvider 白名单漂移时就是
+            // IllegalArgumentException），而这个 catch 是安装器拉不起来的
+            // 唯一线索：必须带上 message。
+            Log.e(
+                TAG,
+                "launchInstaller failed: ${error.javaClass.simpleName}: ${error.message}",
+            )
             false
         }
     }

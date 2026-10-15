@@ -2,9 +2,19 @@
 <!--
   应用内一键更新的 FileProvider 路径白名单。
 
-  只暴露应用外部私有目录下的受管子目录 `Downloads/updates/`；**不得**放行
+  只暴露应用外部私有目录下的受管子目录 `Download/updates/`；**不得**放行
   根路径或公共目录，避免通过 content URI 暴露任意文件。
+
+  该路径必须与 `AppUpdateManager.managedDir()` 逐字一致：
+  `getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)` + `MANAGED_SUBDIR`。
+  `<external-files-path>` 的根是 `getExternalFilesDir(null)`（即 `.../files`），
+  而 `Environment.DIRECTORY_DOWNLOADS` 是 **`Download`（单数）**——不是公共目录
+  的 `Downloads`。写成 `Downloads/updates/` 时 FileProvider 的前缀匹配落空，
+  `getUriForFile` 抛 `IllegalArgumentException: Failed to find configured root...`，
+  应用内安装自功能引入起 100% 静默失效（v0.11.1 及更早版本的实际故障）。
+
+  不变量由 `test/structure/update_file_provider_paths_test.dart` 断言，勿手改基线。
 -->
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <external-files-path name="app_update_files" path="Downloads/updates/" />
+    <external-files-path name="app_update_files" path="Download/updates/" />
 </paths>

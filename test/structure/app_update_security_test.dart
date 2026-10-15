@@ -85,7 +85,11 @@ void main() {
     test('FileProvider paths stay inside the app-private updates dir', () {
       final paths = read(pathsPath);
       expect(paths, contains('<external-files-path'));
-      expect(paths, contains('path="Downloads/updates/"'));
+      // 单数 Download：`Environment.DIRECTORY_DOWNLOADS`（受管 APK 实际所在目录）。
+      // 这里曾断言 `Downloads/updates/`，与原生下载目录不一致，等于把 v0.11.1 的
+      // 「应用内安装 100% 静默失败」写进了基线；单数/复数漂移由
+      // `update_file_provider_paths_test.dart` 继续锁死。
+      expect(paths, contains('path="Download/updates/"'));
       // 绝不放行根路径 / 公共目录（注释里也不出现这些字面量）。
       expect(paths, isNot(contains('<root-path')));
       expect(paths, isNot(contains('path="."')));

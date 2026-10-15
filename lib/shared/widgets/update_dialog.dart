@@ -182,11 +182,28 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
   Future<void> _cancelDownload() =>
       _run(() => _controller.cancelActiveUpdate());
 
-  Future<void> _requestInstall() => _run(() async {
-    if (_releaseMatchesManaged) {
-      await _controller.requestInstall(expectedReleaseTag: _state.releaseTag);
+  Future<void> _requestInstall() async {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    var launched = false;
+    var called = false;
+    await _run(() async {
+      if (!_releaseMatchesManaged) return;
+      called = true;
+      launched = await _controller.requestInstall(
+        expectedReleaseTag: _state.releaseTag,
+      );
+    });
+    if (!called || launched || !mounted) return;
+    // 原生未发起安装器、且状态仍停在「可安装」时（例如 FileProvider 路径不匹配
+    // 这类原生侧静默失败），必须如实提示——绝不能让「安装更新」看起来点了没反应。
+    // 若原生已把状态改成「需要允许安装应用」，状态区已有引导，不叠加提示。
+    if (_state.phase == ApkUpdatePhase.readyToInstall && messenger != null) {
+      AppFeedback.toastOn(
+        messenger,
+        _failureText(ApkUpdateFailureReason.installerUnavailable),
+      );
     }
-  });
+  }
 
   Future<void> _openInstallPermissionSettings() => _run(() async {
     await _controller.openInstallPermissionSettings();

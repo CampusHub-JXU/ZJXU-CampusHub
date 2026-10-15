@@ -116,7 +116,8 @@
             android:name=".widget.CampusWidgetPinReceiver"
             android:exported="false" />
         <!-- 应用内一键更新：受管 APK 的 FileProvider（非导出、只授权读取、路径仅限
-             应用外部私有目录 Downloads/updates/，绝不放行根路径）。 -->
+             应用外部私有目录 Download/updates/ —— Environment.DIRECTORY_DOWNLOADS
+             是单数 Download，写成公共目录 Downloads 会让安装器永远拉不起来）。 -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.app_update_files"

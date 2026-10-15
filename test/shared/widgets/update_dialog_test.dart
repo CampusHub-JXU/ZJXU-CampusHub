@@ -166,6 +166,33 @@ void main() {
       await disposeDialog(tester);
     });
 
+    testWidgets('原生未发起安装器时如实提示，不让按钮看起来点了没反应', (tester) async {
+      // v0.11.1 的真实故障：FileProvider 白名单与受管目录不匹配，原生
+      // requestInstall 永远返回 false 且状态仍停在 readyToInstall，用户连点
+      // 「安装更新」毫无反馈。Dart 不得伪造 failed，但必须给出可见原因。
+      transport.installResult = false;
+      transport.active = const ApkUpdateState(
+        phase: ApkUpdatePhase.readyToInstall,
+        version: '0.3.0',
+        releaseTag: 'v0.3.0',
+        requestKey: 'k',
+      );
+      await open(tester, managedTestRelease());
+
+      await tester.tap(find.widgetWithText(FilledButton, '安装更新'));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      expect(transport.installCalls, 1);
+      expect(find.text('下载完成，可安装更新'), findsOneWidget);
+      expect(find.text('无法打开系统安装程序'), findsOneWidget);
+      expect(find.textContaining('已安装'), findsNothing);
+
+      await tester.pump(const Duration(seconds: 5)); // 让提示计时器走完
+      await disposeDialog(tester);
+    });
+
     testWidgets('旧受管版本与新 Release 不同则禁止安装并可重新下载', (tester) async {
       transport.active = const ApkUpdateState(
         phase: ApkUpdatePhase.readyToInstall,
