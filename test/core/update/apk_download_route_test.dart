@@ -297,10 +297,12 @@ void main() {
       expect(transport.cancelCalls, 0);
     });
 
-    test('手动 R2 但 Release 无 R2 标记：不调用通道，置 exhausted', () async {
+    test('手动 R2 但 Release 无 R2 标记：改用 EdgeOne 并如实标注', () async {
       await router.start(_release(r2: false), ApkDownloadRoute.r2);
-      expect(transport.startCalls, 0);
-      expect(router.status.value.exhausted, isTrue);
+      expect(transport.requests.single.source, ApkDownloadSource.edgeone);
+      expect(router.status.value.fellBackFrom, ApkDownloadSource.r2);
+      expect(router.status.value.exhausted, isFalse);
+      expect(router.isWatching, isFalse);
     });
 
     test('自动模式无 R2 标记：直接 EdgeOne，无备用线路', () async {

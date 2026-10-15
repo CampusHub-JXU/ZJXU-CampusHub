@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jxu_campus_hub/app/theme.dart';
 import 'package:jxu_campus_hub/core/calendar/calendar_reminder_settings.dart';
 import 'package:jxu_campus_hub/core/theme/app_colors.dart';
+import 'package:jxu_campus_hub/core/update/apk_download_route.dart';
 import 'package:jxu_campus_hub/core/theme/page_transition_activity.dart';
 import 'package:jxu_campus_hub/features/settings/settings_page.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_dropdown.dart';
@@ -32,6 +33,21 @@ void main() {
 
     await tester.scrollUntilVisible(find.text('检查更新'), 300);
     expect(find.text('检查更新'), findsOneWidget);
+  });
+
+  testWidgets('「更新下载线路」默认自动，选择后持久化', (tester) async {
+    await pumpPage(tester, const SettingsPage());
+    await tester.scrollUntilVisible(find.text('更新下载线路'), 300);
+
+    expect(find.text('更新下载线路'), findsOneWidget);
+    expect(await ApkDownloadRoutePreference.load(), ApkDownloadRoute.auto);
+
+    await tester.tap(find.byKey(const Key('update_route_dropdown')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('EdgeOne').last);
+    await tester.pumpAndSettle();
+
+    expect(await ApkDownloadRoutePreference.load(), ApkDownloadRoute.edgeone);
   });
 
   testWidgets('按 外观/学期/课表与后台/其他 分组', (tester) async {

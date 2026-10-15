@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/core/update/apk_download_route.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:jxu_campus_hub/core/update/apk_update_controller.dart';
 import 'package:jxu_campus_hub/core/update/update_model.dart';
 import 'package:jxu_campus_hub/shared/widgets/update_dialog.dart';
@@ -45,6 +46,7 @@ void main() {
     late ApkUpdateController controller;
 
     setUp(() {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
       transport = FakeApkUpdateTransport();
       controller = fakeApkUpdateController(transport);
     });
@@ -110,7 +112,8 @@ void main() {
       await disposeDialog(tester);
     });
 
-    testWidgets('有 R2 镜像时自动模式先入队 R2，并显示线路选择', (tester) async {
+    testWidgets('有 R2 镜像时默认自动先入队 R2，弹窗本身不提供选线', (tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
       transport.startResult = const ApkUpdateState(
         phase: ApkUpdatePhase.enqueued,
         version: '0.3.0',
@@ -119,9 +122,7 @@ void main() {
       );
       await open(tester, managedTestRelease(r2MirrorAvailable: true));
 
-      expect(find.text('自动'), findsOneWidget);
-      expect(find.text('R2'), findsOneWidget);
-      expect(find.text('EdgeOne'), findsOneWidget);
+      expect(find.byType(SegmentedButton<ApkDownloadRoute>), findsNothing);
 
       await tester.tap(find.widgetWithText(FilledButton, '更新'));
       await tester.pump();
@@ -135,7 +136,10 @@ void main() {
       await disposeDialog(tester);
     });
 
-    testWidgets('手动选 EdgeOne 后即使有 R2 也只走 EdgeOne', (tester) async {
+    testWidgets('设置里选了 EdgeOne：即使有 R2 也只走 EdgeOne', (tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        ApkDownloadRoutePreference.storageKey: 'edgeone',
+      });
       transport.startResult = const ApkUpdateState(
         phase: ApkUpdatePhase.enqueued,
         version: '0.3.0',
@@ -144,8 +148,6 @@ void main() {
       );
       await open(tester, managedTestRelease(r2MirrorAvailable: true));
 
-      await tester.tap(find.text('EdgeOne'));
-      await tester.pump();
       await tester.tap(find.widgetWithText(FilledButton, '更新'));
       await tester.pump();
       await tester.pump();
@@ -154,15 +156,23 @@ void main() {
       await disposeDialog(tester);
     });
 
-    testWidgets('无 R2 镜像时 R2 选项不可选', (tester) async {
-      await open(tester, managedTestRelease());
-
-      await tester.tap(find.text('R2'));
-      await tester.pump();
-      final segmented = tester.widget<SegmentedButton<ApkDownloadRoute>>(
-        find.byType(SegmentedButton<ApkDownloadRoute>),
+    testWidgets('设置里选了 R2 但该版本无 R2 镜像：改用 EdgeOne 并提示', (tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        ApkDownloadRoutePreference.storageKey: 'r2',
+      });
+      transport.startResult = const ApkUpdateState(
+        phase: ApkUpdatePhase.enqueued,
+        version: '0.3.0',
+        releaseTag: 'v0.3.0',
+        requestKey: 'k',
       );
-      expect(segmented.selected, {ApkDownloadRoute.auto});
+      await open(tester, managedTestRelease());
+      await tester.tap(find.widgetWithText(FilledButton, '更新'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(transport.lastRequest?.source, ApkDownloadSource.edgeone);
+      expect(find.textContaining('暂无 Cloudflare R2 线路'), findsOneWidget);
       await disposeDialog(tester);
     });
 
