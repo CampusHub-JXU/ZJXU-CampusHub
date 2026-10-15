@@ -7,6 +7,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/cache/json_cache_store.dart';
+import '../../core/calendar/calendar_reminder_settings.dart';
 import '../../core/calendar/calendar_sync_channel.dart';
 import '../../core/calendar/calendar_sync_control.dart';
 import '../../core/calendar/calendar_sync_models.dart';
@@ -412,9 +413,10 @@ class _CurrentTermTileState extends State<_CurrentTermTile> {
 
 /// 「课表日历」分组的开关卡片（仅 Android，由调用方按平台隐藏）。
 ///
-/// 开关 / 目标日历选择 / 遗留扫描预览与确认全部由 core 的
-/// [CalendarSyncControl] / [CalendarSyncChannel] 承担；本组件不读取课表、
-/// 不生成事件、不展示学号，只呈现 core 聚合好的数量与结果。
+/// 开关 / 课前提醒 / 目标日历选择 / 遗留扫描预览与确认全部由 core 的
+/// [CalendarSyncControl] / [CalendarSyncChannel] 承担；提醒提前量由
+/// [CalendarReminderSettings] 持久化。本组件不读取课表、不生成事件、
+/// 不展示学号，只呈现 core 聚合好的数量与结果。
 class _CalendarSyncCard extends StatefulWidget {
   const _CalendarSyncCard();
 
@@ -434,6 +436,8 @@ enum _CalendarSyncTarget {
 class _CalendarSyncCardState extends State<_CalendarSyncCard> {
   CalendarSyncControl get _control => CalendarSyncControl.instance;
 
+  CalendarReminderSettings get _reminder => CalendarReminderSettings.instance;
+
   /// 有开启 / 扫描 / 清理请求在途：期间忽略重复点击，避免重复原生调用。
   bool _busy = false;
 
@@ -447,6 +451,7 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
   void initState() {
     super.initState();
     _control.addListener(_handleControlChanged);
+    _reminder.addListener(_handleControlChanged);
     // paused 的副标题取决于当前是否有已验证教务身份，登录 / 登出时需要重绘。
     ZhengfangAuth.instance.addListener(_handleControlChanged);
     unawaited(
@@ -455,11 +460,18 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
         setState(() {});
       }),
     );
+    // 持久化提前量在启动时已 load；此处兜底确保设置页拿到磁盘值。
+    unawaited(
+      _reminder.load().then((_) {
+        if (mounted) setState(() {});
+      }),
+    );
   }
 
   @override
   void dispose() {
     _control.removeListener(_handleControlChanged);
+    _reminder.removeListener(_handleControlChanged);
     ZhengfangAuth.instance.removeListener(_handleControlChanged);
     super.dispose();
   }
@@ -487,6 +499,12 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
   /// 非 enabled 状态才显示「扫描遗留日程」入口；enabled 时由关闭开关的确认触发。
   bool get _showScanEntry => _control.state != CalendarSyncControlState.enabled;
 
+  /// 0 不是「不提醒」：原生 `CalendarProviderStore` 对每个归属事件固定插入
+  /// 一条 `MINUTES = reminderMinutes` 的 `METHOD_ALERT` 提醒，0 表示**课程
+  /// 开始时**提醒，因此如实标注，不谎称可关闭提醒。
+  static String _reminderLabel(int minutes) =>
+      minutes <= 0 ? '课程开始时提醒' : '提前 $minutes 分钟';
+
   @override
   Widget build(BuildContext context) {
     final state = _control.state;
@@ -505,6 +523,32 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
             if (_busy) return;
             unawaited(value ? _requestEnable() : _startScan());
           },
+        ),
+        PlainListRow(
+          title: '课前提醒',
+          trailing: AppDropdown<int>(
+            key: const Key('calendar_reminder_dropdown'),
+            inline: true,
+            // 历史遗留的非预设值不在列表里：按钮回落显示当前值。
+            hint: _reminderLabel(_reminder.reminderMinutes),
+            value:
+                CalendarReminderSettings.presetMinutes.contains(
+                  _reminder.reminderMinutes,
+                )
+                ? _reminder.reminderMinutes
+                : null,
+            items: <AppDropdownItem<int>>[
+              for (final minutes in CalendarReminderSettings.presetMinutes)
+                AppDropdownItem<int>(
+                  value: minutes,
+                  label: _reminderLabel(minutes),
+                ),
+            ],
+            onChanged: (value) {
+              if (value == null) return;
+              unawaited(_reminder.setReminderMinutes(value));
+            },
+          ),
         ),
         if (progress != null)
           _busyRow(progress)
@@ -733,6 +777,9 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
   }
 
   Future<_CalendarSyncTarget?> _askCalendarTarget() {
+    final reminderLeadTime = _reminder.reminderMinutes <= 0
+        ? '开始时'
+        : '课前 ${_reminder.reminderMinutes} 分钟';
     return showGlassDialog<_CalendarSyncTarget>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -740,8 +787,8 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
         elevation: 0,
         surfaceTintColor: Colors.transparent,
         title: const Text('开启课表日历同步'),
-        content: const Text(
-          '将把课表写入系统日历，仅在应用前台同步；课前 10 分钟由系统日历提醒（非精确闹钟）。\n\n'
+        content: Text(
+          '将把课表写入系统日历，仅在应用前台同步；$reminderLeadTime由系统日历提醒（非精确闹钟）。\n\n'
           '推荐使用本应用的专属本地日历；部分系统日历应用可能不显示它，也可以改选其他可写日历。\n\n'
           '手动编辑已写入的事件后，下一次课表同步会覆盖这些修改。',
         ),

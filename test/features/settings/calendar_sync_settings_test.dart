@@ -3,9 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/core/calendar/calendar_event_ledger_store.dart';
+import 'package:jxu_campus_hub/core/calendar/calendar_reminder_settings.dart';
 import 'package:jxu_campus_hub/core/calendar/calendar_sync_control.dart';
 import 'package:jxu_campus_hub/core/calendar/calendar_sync_models.dart';
 import 'package:jxu_campus_hub/features/settings/settings_page.dart';
@@ -226,6 +228,7 @@ void main() {
     expect(find.text('开启课表日历同步'), findsOneWidget);
     // 对话框如实说明：专属本地日历可能不被系统日历应用显示、手动编辑会被覆盖。
     expect(find.textContaining('系统日历应用可能不显示'), findsOneWidget);
+    expect(find.textContaining('课前 20 分钟由系统日历提醒'), findsOneWidget);
     expect(find.textContaining('下一次课表同步会覆盖'), findsOneWidget);
 
     await tester.tap(find.text('使用专属本地日历'));
@@ -505,6 +508,76 @@ void main() {
     expect(find.text('已清理遗留日程'), findsOneWidget);
     expect(await CalendarSyncControl.instance.residualCount(), 0);
     expect(find.text('上次清理结果'), findsNothing);
+  }, timeout: perTestTimeout);
+
+  testWidgets('课前提醒下拉可改并持久化，关闭状态下不产生任何原生写入', (tester) async {
+    await pumpSettingsPage(tester);
+    await revealSyncRow(tester);
+
+    expect(find.text('课前提醒'), findsOneWidget);
+    expect(find.text('提前 20 分钟'), findsOneWidget);
+    expect(CalendarReminderSettings.instance.reminderMinutes, 20);
+
+    await tester.tap(find.byKey(const Key('calendar_reminder_dropdown')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('提前 30 分钟'));
+    await tester.pumpAndSettle();
+
+    expect(CalendarReminderSettings.instance.reminderMinutes, 30);
+    expect(find.text('提前 30 分钟'), findsOneWidget);
+
+    logIn('20230001');
+    await tester.ensureVisible(find.text('同步到系统日历'));
+    await tester.tap(find.text('同步到系统日历'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('课前 30 分钟由系统日历提醒'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('calendar_reminder_dropdown')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('提前 60 分钟'));
+    await tester.pumpAndSettle();
+    expect(CalendarReminderSettings.instance.reminderMinutes, 60);
+
+    await tester.tap(find.text('同步到系统日历'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('课前 60 分钟由系统日历提醒'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getInt(CalendarReminderSettings.storageKey), 60);
+
+    // 同步仍关闭：改提醒不触发任何系统日历写入。
+    expect(
+      native.calls.where(
+        (method) =>
+            method == 'upsertEventBatch' || method == 'deleteOwnedEventsByIds',
+      ),
+      isEmpty,
+    );
+  }, timeout: perTestTimeout);
+
+  testWidgets('课前提醒预设 0 标注为课程开始时提醒，不谎称可关闭提醒', (tester) async {
+    await pumpSettingsPage(tester);
+    await revealSyncRow(tester);
+
+    await tester.tap(find.byKey(const Key('calendar_reminder_dropdown')));
+    await tester.pumpAndSettle();
+
+    // 0 分钟 = 课程开始时提醒（原生固定插入 MINUTES=0 的提醒），不是「不提醒」。
+    expect(find.text('课程开始时提醒'), findsOneWidget);
+    expect(find.text('不提醒'), findsNothing);
+    expect(find.text('提前 20 分钟'), findsWidgets);
+
+    await tester.tap(find.text('课程开始时提醒'));
+    await tester.pumpAndSettle();
+    logIn('20230001');
+    await tester.ensureVisible(find.text('同步到系统日历'));
+    await tester.tap(find.text('同步到系统日历'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('开始时由系统日历提醒'), findsOneWidget);
   }, timeout: perTestTimeout);
 
   testWidgets('开启请求在途时重复点击不会发起第二次调用', (tester) async {
