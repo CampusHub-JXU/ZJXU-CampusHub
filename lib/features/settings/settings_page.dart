@@ -12,7 +12,6 @@ import '../../core/calendar/calendar_sync_control.dart';
 import '../../core/calendar/calendar_sync_models.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/notification/app_notification_service.dart';
-import '../../core/profile/user_profile_controller.dart';
 import '../../core/semester/current_term_resolver.dart';
 import '../../core/semester/semester_calendar.dart';
 import '../../core/semester/schedule_term_context.dart';
@@ -151,7 +150,6 @@ class SettingsPage extends StatelessWidget {
               PlainListGroup(
                 children: [
                   const _CurrentTermTile(),
-                  const _EnrollmentYearRow(),
                   ValueListenableBuilder<DateTime>(
                     valueListenable:
                         SemesterCalendar.instance.semesterStartDate,
@@ -367,59 +365,6 @@ class SettingsPage extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// 「我的年级」行：跟随学号自动识别（取学号开头 20XX），可手动覆盖；
-/// 仅用于过滤教务处公告，不参与登录/身份逻辑。行尾紧凑下拉的哨兵值与
-/// 选项构造沿用原「我的」页实现。
-class _EnrollmentYearRow extends StatefulWidget {
-  const _EnrollmentYearRow();
-
-  @override
-  State<_EnrollmentYearRow> createState() => _EnrollmentYearRowState();
-}
-
-class _EnrollmentYearRowState extends State<_EnrollmentYearRow> {
-  /// 「自动（跟随学号）」选项的哨兵值：null 的手动设置与「恢复自动」
-  /// 语义相同，但菜单里需要一个可点选的选项值。
-  static const _autoSentinel = -1;
-
-  /// 「自动」置顶并标注当前识别结果，其后可选年份从明年倒排到 2016 级。
-  List<AppDropdownItem<int>> _items() {
-    final auto = UserProfileController.instance.autoEnrollmentYear.value;
-    final thisYear = DateTime.now().year;
-    return [
-      AppDropdownItem(
-        value: _autoSentinel,
-        label: auto == null ? '自动' : '自动（$auto级）',
-      ),
-      for (var year = thisYear + 1; year >= 2016; year--)
-        AppDropdownItem(value: year, label: '$year级'),
-    ];
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return PlainListRow(
-      title: '年级',
-      trailing: AppDropdown<int>(
-        value:
-            UserProfileController.instance.manualEnrollmentYear.value ??
-            _autoSentinel,
-        items: _items(),
-        onChanged: (value) {
-          if (value == null) return;
-          unawaited(
-            UserProfileController.instance
-                .setManualEnrollmentYear(value == _autoSentinel ? null : value)
-                .then((_) {
-                  if (mounted) setState(() {});
-                }),
-          );
-        },
       ),
     );
   }
