@@ -23,6 +23,8 @@ dependencies:
   connectivity_plus: ^6.0.0
   package_info_plus: ^8.0.0
   file_picker: ^10.1.9
+  # 系统分享（Android Sharesheet）；仅在用户点「分享」时调用，固定精确版本。
+  share_plus: 12.0.2
   qr_flutter: ^4.1.0
   mobile_scanner: ^6.0.5
   charset: ^2.0.1

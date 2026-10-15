@@ -19,8 +19,9 @@ import 'grades_model.dart';
 import 'grades_service.dart';
 import 'grades_summary.dart';
 import 'grades_term_resolver.dart';
+import 'export/academic_export_capture.dart';
+import 'export/academic_export_sheet.dart';
 import 'export/grades_export_serializer.dart';
-import 'export/grades_export_sheet.dart';
 import 'progress/academic_progress_view.dart';
 import 'widgets/grades_course_row.dart';
 import 'widgets/grades_distribution_bar.dart';
@@ -40,6 +41,8 @@ class GradesPage extends StatefulWidget {
     this.fetchGrades,
     this.fetchReport,
     this.initialView = GradesPageView.grades,
+    this.readExams,
+    this.readProgress = readCachedProgress,
   });
 
   final GradesFetcher? fetchGrades;
@@ -49,6 +52,13 @@ class GradesPage extends StatefulWidget {
 
   /// 打开时所在分段；`/academic-progress` 路由直接进入学业进度。
   final GradesPageView initialView;
+
+  /// 导出用的考试缓存读取器，由组合层注入（成绩模块不依赖考试模块）。
+  /// 为空时导出里的考试安排标记为「未获取」。
+  final ExamExportReader? readExams;
+
+  /// 导出用的学业进度缓存读取器；默认读已验证账号的缓存，测试可替换。
+  final ProgressExportReader readProgress;
 
   @override
   State<GradesPage> createState() => _GradesPageState();
@@ -427,7 +437,8 @@ class _GradesPageState extends State<GradesPage>
 
   // ── 导出 ────────────────────────────────────────────────────────────────────
 
-  /// 打开导出预览弹层：只导出**当前已加载**的成绩，不触发任何刷新或抓取。
+  /// 打开学业数据导出弹层：只导出**本机已有**的数据（成绩 / 考试 / 学业进度），
+  /// 不触发任何刷新、登录或抓取。
   ///
   /// 快照绑定发起时的已验证教务账号与身份修订号，弹层存活期间的账号切换 /
   /// 登出会让它失效，避免把上一个账号的缓存导出出去。
@@ -440,27 +451,23 @@ class _GradesPageState extends State<GradesPage>
         owner == _identityOwner &&
         auth.sessionRevision == _identityRevision;
     if (!inSync) {
-      AppFeedback.toast(context, '登录状态已变化，请先登录并查询成绩');
+      AppFeedback.toast(context, '登录状态已变化，请先登录');
       return;
     }
-    final grades = _gradesForSelectedTerm;
-    if (grades.isEmpty) {
-      AppFeedback.toast(context, '暂无可导出的成绩');
-      return;
-    }
-    await showGradesExportSheet(
-      context,
-      GradesExportSnapshot(
-        owner: owner,
-        revision: auth.sessionRevision,
-        grades: grades,
-        scope: _currentExportScope(),
-        exportedAt: DateTime.now(),
-        lastUpdatedAt: _updatedAt,
-        // 页面无法确证当前数据究竟来自缓存还是本次读取，如实留空不猜测。
-        dataSource: null,
-      ),
+    final scope = _currentExportScope();
+    final snapshot = captureAcademicExportSnapshot(
+      allGrades: _grades,
+      termGrades: scope.academicYear == null ? null : _gradesForSelectedTerm,
+      termScope: scope.academicYear == null ? null : scope,
+      gradesUpdatedAt: _updatedAt,
+      readExams: widget.readExams,
+      readProgress: widget.readProgress,
     );
+    if (snapshot == null) {
+      AppFeedback.toast(context, '登录状态已变化，请先登录');
+      return;
+    }
+    await showAcademicExportSheet(context, snapshot);
   }
 
   /// 导出范围标签：当前选中的学期，或「全部已加载学期」。
@@ -503,7 +510,11 @@ class _GradesPageState extends State<GradesPage>
             : const Text('成绩'),
         actions: onGrades
             ? _gradesActions()
-            : (_progressKey.currentState?.buildAppBarActions() ?? const []),
+            : [
+                if (_loggedIn) _exportAction(),
+                ...(_progressKey.currentState?.buildAppBarActions() ??
+                    const <Widget>[]),
+              ],
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -557,14 +568,16 @@ class _GradesPageState extends State<GradesPage>
     );
   }
 
+  Widget _exportAction() => IconButton(
+    icon: const Icon(Icons.ios_share_rounded),
+    onPressed: () => unawaited(_openExportSheet()),
+    tooltip: '导出学业数据',
+  );
+
   List<Widget>? _gradesActions() {
     if (!_loggedIn) return null;
     return [
-      IconButton(
-        icon: const Icon(Icons.ios_share_rounded),
-        onPressed: _grades.isEmpty ? null : () => unawaited(_openExportSheet()),
-        tooltip: '导出成绩',
-      ),
+      _exportAction(),
       IconButton(
         icon: Icon(_searchOpen ? Icons.close_rounded : Icons.search_rounded),
         onPressed: _grades.isEmpty ? null : _toggleSearch,
