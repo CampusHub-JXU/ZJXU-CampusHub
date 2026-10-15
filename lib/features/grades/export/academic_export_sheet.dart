@@ -305,12 +305,7 @@ class _AcademicExportSheetState extends State<AcademicExportSheet> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const AppBanner(
-                    message:
-                        '仅导出本机已加载的数据，不会联网获取；默认不含学号、姓名等身份信息。'
-                        '分享到外部 AI 后，数据将受目标平台的数据处理政策约束。',
-                    icon: Icons.inventory_2_outlined,
-                  ),
+                  Text('仅含本机已加载的数据，不含学号、姓名等身份信息。', style: context.appText.meta),
                   if (!_valid) ...[
                     const SizedBox(height: AppSpacing.sm),
                     const AppBanner(

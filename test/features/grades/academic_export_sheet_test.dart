@@ -89,7 +89,7 @@ void main() {
     await pumpSheet(tester, snapshot());
 
     expect(find.text('导出学业数据'), findsOneWidget);
-    expect(find.textContaining('仅导出本机已加载的数据'), findsOneWidget);
+    expect(find.textContaining('仅含本机已加载的数据'), findsOneWidget);
     final md = previewText(tester);
     expect(md, contains('# 学业数据导出'));
     expect(md, contains('## 成绩'));
