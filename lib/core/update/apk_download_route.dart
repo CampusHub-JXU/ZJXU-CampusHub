@@ -329,12 +329,16 @@ class ApkDownloadRouter {
     if (_starting || _switching) return;
     _starting = true;
     try {
-      final candidates = route.candidates(
-        r2Available: release.r2MirrorAvailable,
-      );
+      var candidates = route.candidates(r2Available: release.r2MirrorAvailable);
       _detector.reset();
       _autoActive = false;
       _activeRequestKey = null;
+      // 手动选了 R2 但该版本没有 R2 镜像：不让「更新」按钮点了没反应，
+      // 改用唯一存在的 EdgeOne，并通过 fellBackFrom 如实告知。
+      final unavailableR2 = candidates.isEmpty && route == ApkDownloadRoute.r2;
+      if (unavailableR2) {
+        candidates = const <ApkDownloadSource>[ApkDownloadSource.edgeone];
+      }
       if (candidates.isEmpty) {
         _remaining = const <ApkDownloadSource>[];
         _publish(ApkDownloadRouteStatus(route: route, exhausted: true));
@@ -342,7 +346,13 @@ class ApkDownloadRouter {
       }
       _remaining = candidates.sublist(1);
       final first = candidates.first;
-      _publish(ApkDownloadRouteStatus(route: route, active: first));
+      _publish(
+        ApkDownloadRouteStatus(
+          route: route,
+          active: first,
+          fellBackFrom: unavailableR2 ? ApkDownloadSource.r2 : null,
+        ),
+      );
       await _controller.startDownload(release, source: first);
       _activeRequestKey = _controller.state.value.requestKey;
       // 仅自动模式（有备用线路）才观察卡顿；手动线路不改线。

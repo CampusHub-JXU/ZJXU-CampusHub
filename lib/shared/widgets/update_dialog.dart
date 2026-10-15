@@ -87,9 +87,6 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
     controller: widget.controller,
   );
 
-  /// 用户的线路偏好（默认自动：先 R2，卡住 / 失败 / 低速时回退 EdgeOne）。
-  ApkDownloadRoute _route = ApkDownloadRoute.auto;
-
   ApkUpdateState get _state => _controller.state.value;
 
   /// 版本是否提供了**可信的**规范安装包资产（可走应用内受管下载）。
@@ -121,14 +118,7 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
     WidgetsBinding.instance.addObserver(this);
     _controller.state.addListener(_onStateChanged);
     _router.status.addListener(_onStateChanged);
-    unawaited(_loadRoutePreference());
     unawaited(_bootstrap());
-  }
-
-  Future<void> _loadRoutePreference() async {
-    final route = await ApkDownloadRoutePreference.load();
-    if (!mounted || route == _route) return;
-    setState(() => _route = route);
   }
 
   @override
@@ -201,25 +191,14 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
 
   // ── 原生调用 ──────────────────────────────────────────────────────────────
 
+  /// 下载线路由「设置 → 更新下载线路」决定（默认自动），弹窗只在点击时读取，
+  /// 自己不提供选线入口。
   Future<void> _startDownload() => _run(() async {
     final release = widget.release;
-    if (release != null) await _router.start(release, _route);
-  });
-
-  /// 失败后用户明确选择另一条线路重试（不静默改线）。
-  Future<void> _retryOnRoute(ApkDownloadRoute route) => _run(() async {
-    final release = widget.release;
     if (release == null) return;
-    setState(() => _route = route);
-    unawaited(ApkDownloadRoutePreference.save(route));
-    await _router.restartWith(release, route);
+    final route = await ApkDownloadRoutePreference.load();
+    await _router.start(release, route);
   });
-
-  void _selectRoute(ApkDownloadRoute route) {
-    if (route == _route) return;
-    setState(() => _route = route);
-    unawaited(ApkDownloadRoutePreference.save(route));
-  }
 
   Future<void> _cancelDownload() => _run(() async {
     _router.stopWatching();
@@ -384,10 +363,6 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (_showRouteSelector(phase)) ...[
-          _buildRouteSelector(context),
-          const SizedBox(height: AppSpacing.sm),
-        ],
         if (status != null)
           Text(
             status,
@@ -420,45 +395,7 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
     );
   }
 
-  // ── 线路选择 ──────────────────────────────────────────────────────────────
-
-  bool get _r2Available => widget.release?.r2MirrorAvailable ?? false;
-
-  /// 只在尚未开始下载 / 失败 / 已取消时给出线路选择，下载进行中不让用户误以为
-  /// 能无缝切线。
-  bool _showRouteSelector(ApkUpdatePhase phase) {
-    if (widget.release == null || !_hasCanonicalAsset) return false;
-    return phase == ApkUpdatePhase.idle ||
-        phase == ApkUpdatePhase.failed ||
-        phase == ApkUpdatePhase.canceled;
-  }
-
-  Widget _buildRouteSelector(BuildContext context) {
-    // 手动选了 R2 而该版本没有 R2 镜像时，回显为自动，避免选中一个不可用的项。
-    final selected = (_route == ApkDownloadRoute.r2 && !_r2Available)
-        ? ApkDownloadRoute.auto
-        : _route;
-    return SizedBox(
-      width: double.infinity,
-      child: SegmentedButton<ApkDownloadRoute>(
-        showSelectedIcon: false,
-        segments: <ButtonSegment<ApkDownloadRoute>>[
-          const ButtonSegment(value: ApkDownloadRoute.auto, label: Text('自动')),
-          ButtonSegment(
-            value: ApkDownloadRoute.r2,
-            label: const Text('R2'),
-            enabled: _r2Available,
-          ),
-          const ButtonSegment(
-            value: ApkDownloadRoute.edgeone,
-            label: Text('EdgeOne'),
-          ),
-        ],
-        selected: <ApkDownloadRoute>{selected},
-        onSelectionChanged: _busy ? null : (value) => _selectRoute(value.first),
-      ),
-    );
-  }
+  // ── 线路说明（只读；线路在「设置 → 更新下载线路」调整）──
 
   String _sourceLabel(ApkDownloadSource? source) => switch (source) {
     ApkDownloadSource.r2 => 'Cloudflare R2',
@@ -477,6 +414,10 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
     if (status.exhausted && phase == ApkUpdatePhase.failed) {
       return '所有线路均未成功下载，可稍后重试或改用浏览器下载。';
     }
+    if (phase == ApkUpdatePhase.failed &&
+        status.route != ApkDownloadRoute.auto) {
+      return '可在「设置 → 更新下载线路」更换线路后重试。';
+    }
     if (status.lastFallback != null && phase.isActive) {
       final why = switch (status.lastFallback!) {
         ApkFallbackReason.connectTimeout => '连接超时',
@@ -487,6 +428,10 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
       };
       return '${_sourceLabel(status.fellBackFrom)} $why，已切换到 '
           '${_sourceLabel(status.active)}。';
+    }
+    if (status.fellBackFrom != null && phase.isActive) {
+      return '该版本暂无 ${_sourceLabel(status.fellBackFrom)} 线路，'
+          '已改用 ${_sourceLabel(status.active)}。';
     }
     if (status.active != null && phase.isActive) {
       return '下载线路：${_sourceLabel(status.active)}';
@@ -666,36 +611,15 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
         return [_dismissButton(context)];
       case ApkUpdatePhase.canceled:
       case ApkUpdatePhase.failed:
-        final other = _manualOtherRoute();
         return [
           _legacyButton(context, filled: false),
           _dismissButton(context),
-          if (other != null)
-            TextButton(
-              onPressed: _busy ? null : () => unawaited(_retryOnRoute(other)),
-              child: Text('改用${_routeLabel(other)}重试'),
-            ),
           _primaryButton(context, '重试', _startDownload),
         ];
       case ApkUpdatePhase.unavailable:
         return [_dismissButton(context), _legacyButton(context, filled: true)];
     }
   }
-
-  /// 手动线路失败后可换到的另一条线路；自动模式（已含回退）或另一条不可用
-  /// （R2 无镜像）时返回 null。
-  ApkDownloadRoute? _manualOtherRoute() {
-    final other = _route.other;
-    if (other == null) return null;
-    if (other == ApkDownloadRoute.r2 && !_r2Available) return null;
-    return other;
-  }
-
-  String _routeLabel(ApkDownloadRoute route) => switch (route) {
-    ApkDownloadRoute.auto => '自动线路',
-    ApkDownloadRoute.r2 => 'R2',
-    ApkDownloadRoute.edgeone => 'EdgeOne',
-  };
 
   /// 关闭按钮：只关闭弹窗，**不**取消下载。
   Widget _dismissButton(BuildContext context) {
