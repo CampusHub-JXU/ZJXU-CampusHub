@@ -526,7 +526,15 @@ internal class AppUpdateManager private constructor(private val appContext: Cont
             ?: throw AppUpdateException(AppUpdateErrors.STORAGE, "download manager unavailable")
 
         val managedDir = managedDir()
-        if (!managedDir.exists() && !managedDir.mkdirs()) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // Q+ 由 DownloadProvider 通过 setDestinationInExternalFilesDir 自行创建
+            // 目录：应用进程自己 mkdirs 出来的 `updates` 目录对 DownloadProvider 不可写
+            // （API 35 模拟器实测 `Failed to generate filename: Permission denied`，
+            // 下载永远停在暂停 / 0 B）。仅清掉旧版本遗留的**空**目录，绝不动非空目录。
+            if (managedDir.isDirectory && managedDir.list()?.isEmpty() == true) {
+                managedDir.delete()
+            }
+        } else if (!managedDir.exists() && !managedDir.mkdirs()) {
             throw AppUpdateException(AppUpdateErrors.STORAGE, "cannot create managed dir")
         }
 
