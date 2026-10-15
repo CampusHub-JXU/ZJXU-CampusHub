@@ -11,8 +11,15 @@ import android.net.Uri
  * （即 Dart 枚举名）必须同步修改。
  *
  * 安全不变量：
- * - 只接受可信公开分发仓库（`github.com/FHfanshu/ZJXU-CampusHub`）的
- *   Release 资产路径，绝不接受任意下载镜像 / 主机 / 仓库；
+ * - 只接受三种固定形态的可信资产 URL，绝不接受任意下载镜像 / 主机 / 仓库：
+ *   1. GitHub 规范形态
+ *      `https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/<tag>/<apk>`；
+ *   2. EdgeOne gh-proxy：**精确、区分大小写**的前缀
+ *      `https://edgeone.gh-proxy.org/` 后紧跟 1 的完整 URL；
+ *   3. Cloudflare R2 自有域名 `https://download.fhfanshu.xyz/<tag>/<apk>`
+ *      （主机整串精确比较，恰好两段路径）。
+ *   主机一律精确相等比较：无通配符、无 `endsWith` / `contains` 主机匹配；
+ *   下载完成后的 SHA-256 / 包名 / 签名 / versionCode 校验与来源无关，仍是安装闸门；
  * - 拒绝 userinfo / 端口 / query / fragment / 编码路径穿越 / 嵌套解码分隔符；
  * - 文件名必须与 URL 解码后的最后一段完全一致，且为安全 `.apk` 名。
  */
@@ -32,6 +39,17 @@ internal object AppUpdateContract {
     const val TRUSTED_REPO = "ZJXU-CampusHub"
     const val SEGMENT_RELEASES = "releases"
     const val SEGMENT_DOWNLOAD = "download"
+
+    /** EdgeOne gh-proxy 镜像前缀（精确、区分大小写；其后必须紧跟 GitHub 规范 URL）。 */
+    const val TRUSTED_MIRROR_PREFIX = "https://edgeone.gh-proxy.org/"
+
+    /** Cloudflare R2 自有下载域名（主机整串精确比较）。 */
+    const val TRUSTED_R2_HOST = "download.fhfanshu.xyz"
+
+    /** [CanonicalAsset.source] 取值。 */
+    const val SOURCE_GITHUB = "github"
+    const val SOURCE_EDGEONE = "edgeone"
+    const val SOURCE_R2 = "r2"
 
     const val MAX_URL_LENGTH = 2048
     const val MAX_VERSION_LENGTH = 64
@@ -65,10 +83,13 @@ internal object AppUpdateContract {
         val url: String,
         val tag: String,
         val fileName: String,
+        /** `github` | `edgeone` | `r2`；仅供诊断，归属 / 精确 URL 匹配仍只看 [url]。 */
+        val source: String = SOURCE_GITHUB,
     )
 
     /**
-     * 严格解析可信仓库的规范资产 URL；任何不符合固定形态的输入返回 null。
+     * 严格解析可信资产 URL（GitHub / EdgeOne gh-proxy / R2 自有域名三种固定形态）；
+     * 任何不符合的输入返回 null。`url` 字段始终是（trim 后的）完整原始字符串。
      *
      * 与 Dart `ApkUpdateUrlPolicy` 等价（原生侧再次校验，绝不信任 Dart 输入）。
      */
@@ -76,11 +97,64 @@ internal object AppUpdateContract {
         val value = raw?.trim().orEmpty()
         if (value.isEmpty() || value.length > MAX_URL_LENGTH) return null
 
-        val uri = try {
-            Uri.parse(value)
-        } catch (_: Exception) {
-            return null
+        // 镜像：精确区分大小写前缀；其后必须紧跟 **小写** GitHub 规范 URL
+        //（比单独形态 1 更严：内层 scheme / host 也不接受大小写变体）。
+        if (value.startsWith(TRUSTED_MIRROR_PREFIX)) {
+            val inner = value.substring(TRUSTED_MIRROR_PREFIX.length)
+            if (!inner.startsWith("$TRUSTED_SCHEME://$TRUSTED_HOST/")) return null
+            // 整串也必须无 query / fragment / userinfo / 端口（前缀已固定主机）。
+            val outer = parseUri(value) ?: return null
+            if (!outer.userInfo.isNullOrEmpty() || outer.port != -1) return null
+            if (!outer.fragment.isNullOrEmpty() || !outer.query.isNullOrEmpty()) return null
+            val github = parseGithubAsset(inner) ?: return null
+            return CanonicalAsset(
+                url = value,
+                tag = github.first,
+                fileName = github.second,
+                source = SOURCE_EDGEONE,
+            )
         }
+
+        val uri = parseUri(value) ?: return null
+        if (uri.scheme?.lowercase() != TRUSTED_SCHEME) return null
+        if (!uri.userInfo.isNullOrEmpty()) return null
+        if (uri.port != -1) return null
+        if (!uri.fragment.isNullOrEmpty()) return null
+        if (!uri.query.isNullOrEmpty()) return null
+
+        return when (uri.host?.lowercase()) {
+            TRUSTED_HOST -> {
+                val github = parseGithubAsset(value) ?: return null
+                CanonicalAsset(
+                    url = value,
+                    tag = github.first,
+                    fileName = github.second,
+                    source = SOURCE_GITHUB,
+                )
+            }
+            TRUSTED_R2_HOST -> {
+                // 恰好 `/<tag>/<apk>` 两段，绝不接受多余段。
+                val segments = uri.pathSegments
+                if (segments.size != 2) return null
+                val tag = segments[0]
+                val fileName = segments[1]
+                if (!isSafePathSegment(tag) || !isSafeApkFileName(fileName)) return null
+                CanonicalAsset(url = value, tag = tag, fileName = fileName, source = SOURCE_R2)
+            }
+            else -> null
+        }
+    }
+
+    private fun parseUri(value: String): Uri? = try {
+        Uri.parse(value)
+    } catch (_: Exception) {
+        null
+    }
+
+    /** 形态 1（GitHub 规范 URL）解析，返回 (tag, fileName)；任何偏差返回 null。 */
+    private fun parseGithubAsset(value: String): Pair<String, String>? {
+        if (value.isEmpty() || value.length > MAX_URL_LENGTH) return null
+        val uri = parseUri(value) ?: return null
 
         if (uri.scheme?.lowercase() != TRUSTED_SCHEME) return null
         if (!uri.userInfo.isNullOrEmpty()) return null
@@ -99,8 +173,7 @@ internal object AppUpdateContract {
         val tag = segments[4]
         val fileName = segments[5]
         if (!isSafePathSegment(tag) || !isSafeApkFileName(fileName)) return null
-
-        return CanonicalAsset(url = value, tag = tag, fileName = fileName)
+        return tag to fileName
     }
 
     /** 路径段不得为空 / `.` / `..`，不得含分隔符或控制字符。 */

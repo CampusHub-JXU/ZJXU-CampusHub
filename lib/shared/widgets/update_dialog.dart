@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/theme/app_design_tokens.dart';
 import '../../core/theme/app_typography.dart';
+import '../../core/update/apk_download_route.dart';
 import '../../core/update/apk_update_controller.dart';
 import '../../core/update/update_model.dart';
 import 'app_feedback.dart';
@@ -81,6 +82,14 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
 
   Timer? _pollTimer;
 
+  /// 线路选择与自动回退（只在轮询回调里观察进度，不持有后台定时器）。
+  late final ApkDownloadRouter _router = ApkDownloadRouter(
+    controller: widget.controller,
+  );
+
+  /// 用户的线路偏好（默认自动：先 R2，卡住 / 失败 / 低速时回退 EdgeOne）。
+  ApkDownloadRoute _route = ApkDownloadRoute.auto;
+
   ApkUpdateState get _state => _controller.state.value;
 
   /// 版本是否提供了**可信的**规范安装包资产（可走应用内受管下载）。
@@ -111,7 +120,15 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _controller.state.addListener(_onStateChanged);
+    _router.status.addListener(_onStateChanged);
+    unawaited(_loadRoutePreference());
     unawaited(_bootstrap());
+  }
+
+  Future<void> _loadRoutePreference() async {
+    final route = await ApkDownloadRoutePreference.load();
+    if (!mounted || route == _route) return;
+    setState(() => _route = route);
   }
 
   @override
@@ -120,6 +137,8 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
     // 原生 DownloadManager 继续，重开弹窗再查询即可。
     _pollTimer?.cancel();
     _pollTimer = null;
+    _router.stopWatching();
+    _router.status.removeListener(_onStateChanged);
     _controller.state.removeListener(_onStateChanged);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -164,7 +183,7 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
         mounted && _supported && _foreground && _state.phase.isActive;
     if (shouldPoll) {
       _pollTimer ??= Timer.periodic(_pollInterval, (_) {
-        unawaited(_controller.refreshActiveUpdate());
+        unawaited(_pollOnce());
       });
       return;
     }
@@ -172,15 +191,40 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
     _pollTimer = null;
   }
 
+  /// 一次轮询：先刷新原生真实状态，再让线路协调器据此判断是否需要自动回退。
+  Future<void> _pollOnce() async {
+    await _controller.refreshActiveUpdate();
+    final release = widget.release;
+    if (!mounted || release == null) return;
+    await _router.onPolled(release);
+  }
+
   // ── 原生调用 ──────────────────────────────────────────────────────────────
 
   Future<void> _startDownload() => _run(() async {
     final release = widget.release;
-    if (release != null) await _controller.startDownload(release);
+    if (release != null) await _router.start(release, _route);
   });
 
-  Future<void> _cancelDownload() =>
-      _run(() => _controller.cancelActiveUpdate());
+  /// 失败后用户明确选择另一条线路重试（不静默改线）。
+  Future<void> _retryOnRoute(ApkDownloadRoute route) => _run(() async {
+    final release = widget.release;
+    if (release == null) return;
+    setState(() => _route = route);
+    unawaited(ApkDownloadRoutePreference.save(route));
+    await _router.restartWith(release, route);
+  });
+
+  void _selectRoute(ApkDownloadRoute route) {
+    if (route == _route) return;
+    setState(() => _route = route);
+    unawaited(ApkDownloadRoutePreference.save(route));
+  }
+
+  Future<void> _cancelDownload() => _run(() async {
+    _router.stopWatching();
+    await _controller.cancelActiveUpdate();
+  });
 
   Future<void> _requestInstall() async {
     final messenger = ScaffoldMessenger.maybeOf(context);
@@ -281,10 +325,7 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
                 const SizedBox(height: AppSpacing.md),
                 Text('更新内容', style: context.appText.label),
                 const SizedBox(height: AppSpacing.sm),
-                SelectableText(
-                  release.changelog.isEmpty ? '暂无更新说明' : release.changelog,
-                  style: context.appText.secondary,
-                ),
+                _buildChangelog(context, release.changelog),
               ],
               if (!_releaseMatchesManaged) ...[
                 const SizedBox(height: AppSpacing.md),
@@ -319,18 +360,50 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
     final status = _statusText(phase);
     final hint = _hintText(phase);
     final progress = _progressInfo(phase);
+    final routeNotice = _routeNotice(phase);
+    final isError =
+        phase == ApkUpdatePhase.failed || phase == ApkUpdatePhase.unavailable;
+    final showBar = switch (phase) {
+      ApkUpdatePhase.enqueued ||
+      ApkUpdatePhase.downloading ||
+      ApkUpdatePhase.verifying ||
+      ApkUpdatePhase.paused ||
+      ApkUpdatePhase.readyToInstall ||
+      ApkUpdatePhase.permissionRequired ||
+      ApkUpdatePhase.installerOpened => true,
+      _ => false,
+    };
+    // 只有真正在等待结果的阶段才允许不确定进度动画；暂停 / 失败 / 取消不再动。
+    final animate = switch (phase) {
+      ApkUpdatePhase.enqueued ||
+      ApkUpdatePhase.downloading ||
+      ApkUpdatePhase.verifying => true,
+      _ => false,
+    };
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (status != null) Text(status, style: text.secondary),
-        if (status != null) const SizedBox(height: AppSpacing.sm),
-        // 预留稳定高度：确定 / 不确定进度切换时不跳动。
-        SizedBox(
-          height: 4,
-          width: double.infinity,
-          child: _buildProgressBar(context, progress.value),
-        ),
+        if (_showRouteSelector(phase)) ...[
+          _buildRouteSelector(context),
+          const SizedBox(height: AppSpacing.sm),
+        ],
+        if (status != null)
+          Text(
+            status,
+            style: isError
+                ? text.secondary.copyWith(
+                    color: Theme.of(context).colorScheme.error,
+                  )
+                : text.secondary,
+          ),
+        if (status != null && showBar) const SizedBox(height: AppSpacing.sm),
+        if (showBar)
+          SizedBox(
+            height: 4,
+            width: double.infinity,
+            child: _buildProgressBar(context, progress.value, animate: animate),
+          ),
         if (progress.label != null) ...[
           const SizedBox(height: AppSpacing.xs),
           Text(progress.label!, style: text.meta),
@@ -339,14 +412,126 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
           const SizedBox(height: AppSpacing.xs),
           Text(hint, style: text.meta),
         ],
+        if (routeNotice != null) ...[
+          const SizedBox(height: AppSpacing.xs),
+          Text(routeNotice, style: text.meta),
+        ],
       ],
     );
   }
 
-  Widget _buildProgressBar(BuildContext context, double? value) {
+  // ── 线路选择 ──────────────────────────────────────────────────────────────
+
+  bool get _r2Available => widget.release?.r2MirrorAvailable ?? false;
+
+  /// 只在尚未开始下载 / 失败 / 已取消时给出线路选择，下载进行中不让用户误以为
+  /// 能无缝切线。
+  bool _showRouteSelector(ApkUpdatePhase phase) {
+    if (widget.release == null || !_hasCanonicalAsset) return false;
+    return phase == ApkUpdatePhase.idle ||
+        phase == ApkUpdatePhase.failed ||
+        phase == ApkUpdatePhase.canceled;
+  }
+
+  Widget _buildRouteSelector(BuildContext context) {
+    // 手动选了 R2 而该版本没有 R2 镜像时，回显为自动，避免选中一个不可用的项。
+    final selected = (_route == ApkDownloadRoute.r2 && !_r2Available)
+        ? ApkDownloadRoute.auto
+        : _route;
+    return SizedBox(
+      width: double.infinity,
+      child: SegmentedButton<ApkDownloadRoute>(
+        showSelectedIcon: false,
+        segments: <ButtonSegment<ApkDownloadRoute>>[
+          const ButtonSegment(value: ApkDownloadRoute.auto, label: Text('自动')),
+          ButtonSegment(
+            value: ApkDownloadRoute.r2,
+            label: const Text('R2'),
+            enabled: _r2Available,
+          ),
+          const ButtonSegment(
+            value: ApkDownloadRoute.edgeone,
+            label: Text('EdgeOne'),
+          ),
+        ],
+        selected: <ApkDownloadRoute>{selected},
+        onSelectionChanged: _busy ? null : (value) => _selectRoute(value.first),
+      ),
+    );
+  }
+
+  String _sourceLabel(ApkDownloadSource? source) => switch (source) {
+    ApkDownloadSource.r2 => 'Cloudflare R2',
+    ApkDownloadSource.edgeone => 'EdgeOne',
+    ApkDownloadSource.github => 'GitHub',
+    null => '当前线路',
+  };
+
+  /// 当前线路 / 最近一次自动回退说明（只描述真实发生过的事，不预告）。
+  String? _routeNotice(ApkUpdatePhase phase) {
+    final status = _router.status.value;
+    if (status.switching) {
+      return '${_sourceLabel(status.fellBackFrom)} 不稳定，正在切换到 '
+          '${_sourceLabel(status.active)}…';
+    }
+    if (status.exhausted && phase == ApkUpdatePhase.failed) {
+      return '所有线路均未成功下载，可稍后重试或改用浏览器下载。';
+    }
+    if (status.lastFallback != null && phase.isActive) {
+      final why = switch (status.lastFallback!) {
+        ApkFallbackReason.connectTimeout => '连接超时',
+        ApkFallbackReason.stalled => '长时间无数据',
+        ApkFallbackReason.slow => '下载速度过低',
+        ApkFallbackReason.paused => '下载被暂停',
+        ApkFallbackReason.failed => '下载失败',
+      };
+      return '${_sourceLabel(status.fellBackFrom)} $why，已切换到 '
+          '${_sourceLabel(status.active)}。';
+    }
+    if (status.active != null && phase.isActive) {
+      return '下载线路：${_sourceLabel(status.active)}';
+    }
+    return null;
+  }
+
+  /// 更新说明：去掉 Markdown 标记与提交类型前缀，限高可滚动，避免弹窗被
+  /// 长日志撑满、把按钮挤出屏幕。
+  Widget _buildChangelog(BuildContext context, String raw) {
+    final text = context.appText;
+    final lines = _changelogLines(raw);
+    if (lines.isEmpty) {
+      return Text('暂无更新说明', style: text.secondary);
+    }
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxHeight: 220),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final line in lines)
+              Padding(
+                padding: EdgeInsets.only(
+                  top: line.heading ? AppSpacing.sm : 2,
+                  bottom: 2,
+                ),
+                child: line.heading
+                    ? Text(line.text, style: text.label)
+                    : Text(line.text, style: text.secondary),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProgressBar(
+    BuildContext context,
+    double? value, {
+    required bool animate,
+  }) {
     final cs = Theme.of(context).colorScheme;
-    // 尊重系统「移除动画」：不确定进度不做无限循环动画，改用静态轨道。
-    if (value == null && AppMotion.reduced(context)) {
+    // 尊重系统「移除动画」；非等待阶段（暂停等）也不做无限循环，改用静态轨道。
+    if (value == null && (!animate || AppMotion.reduced(context))) {
       return DecoratedBox(
         decoration: BoxDecoration(
           color: cs.surfaceContainerHighest,
@@ -481,15 +666,36 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
         return [_dismissButton(context)];
       case ApkUpdatePhase.canceled:
       case ApkUpdatePhase.failed:
+        final other = _manualOtherRoute();
         return [
           _legacyButton(context, filled: false),
           _dismissButton(context),
+          if (other != null)
+            TextButton(
+              onPressed: _busy ? null : () => unawaited(_retryOnRoute(other)),
+              child: Text('改用${_routeLabel(other)}重试'),
+            ),
           _primaryButton(context, '重试', _startDownload),
         ];
       case ApkUpdatePhase.unavailable:
         return [_dismissButton(context), _legacyButton(context, filled: true)];
     }
   }
+
+  /// 手动线路失败后可换到的另一条线路；自动模式（已含回退）或另一条不可用
+  /// （R2 无镜像）时返回 null。
+  ApkDownloadRoute? _manualOtherRoute() {
+    final other = _route.other;
+    if (other == null) return null;
+    if (other == ApkDownloadRoute.r2 && !_r2Available) return null;
+    return other;
+  }
+
+  String _routeLabel(ApkDownloadRoute route) => switch (route) {
+    ApkDownloadRoute.auto => '自动线路',
+    ApkDownloadRoute.r2 => 'R2',
+    ApkDownloadRoute.edgeone => 'EdgeOne',
+  };
 
   /// 关闭按钮：只关闭弹窗，**不**取消下载。
   Widget _dismissButton(BuildContext context) {
@@ -550,4 +756,37 @@ String _formatBytes(int bytes) {
   if (bytes >= mb) return '${(bytes / mb).toStringAsFixed(1)} MB';
   if (bytes >= kb) return '${(bytes / kb).toStringAsFixed(0)} KB';
   return '$bytes B';
+}
+
+class _ChangelogLine {
+  const _ChangelogLine(this.text, {this.heading = false});
+
+  final String text;
+  final bool heading;
+}
+
+final RegExp _commitPrefix = RegExp(r'^[a-zA-Z]+(\([^)]*\))?!?:\s*');
+
+/// Release 正文 → 可读行：标题去 `#`，`- ` 变为 `· `，去掉 `type(scope):` 提交前缀
+/// 与文首「更新日志」标题；空行折叠。纯展示，不改变发布内容本身。
+List<_ChangelogLine> _changelogLines(String raw) {
+  final result = <_ChangelogLine>[];
+  for (final original in raw.split(RegExp(r'\r?\n'))) {
+    var line = original.trim();
+    if (line.isEmpty) continue;
+    if (line.startsWith('#')) {
+      final title = line.replaceFirst(RegExp(r'^#+\s*'), '').trim();
+      if (title.isEmpty || (result.isEmpty && title == '更新日志')) continue;
+      result.add(_ChangelogLine(title, heading: true));
+      continue;
+    }
+    if (line.startsWith('- ') || line.startsWith('* ')) {
+      line = line.substring(2).trim().replaceFirst(_commitPrefix, '');
+      if (line.isEmpty) continue;
+      result.add(_ChangelogLine('· $line'));
+      continue;
+    }
+    result.add(_ChangelogLine(line.replaceAll('`', '')));
+  }
+  return result;
 }
