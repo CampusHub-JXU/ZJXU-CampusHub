@@ -45,12 +45,36 @@ abstract interface class CalendarSyncChannel {
   });
 }
 
+/// 只读「本 App 遗留事件日历」发现门面（Issue #48 第一阶段契约，**只读**）。
+///
+/// 与写入 / 控制 facade [CalendarSyncChannel] 分离：本阶段只冻结**只读发现**能力，
+/// 从而**不**扩大既有 provider 接口、不强迫既有 FakeProvider 更新（core 阶段再决定
+/// 是否并入 [CalendarSyncChannel]）。
+///
+/// 契约要点：
+/// - 绝不创建 / 删除 / 修改任何事件或日历；只返回候选与完整性标记；
+/// - 绝不抛异常：平台缺失 / 异常 / 结构非法一律降级为 `complete=false` 的保守结果，
+///   调用方**不得**把空列表当作「已清干净」；
+/// - 结果只含 `calendarId / displayName / writable`，不含账号 / owner 等身份信息。
+abstract interface class CalendarOwnedEventDiscovery {
+  /// 只读列出「当前包名 + 合法 marker」证实的本 App 遗留事件日历。
+  Future<CalendarOwnedCalendarDiscovery> listOwnedEventCalendars();
+
+  /// 只读扫描**单个**日历内本 App 拥有的全部事件（**允许**同 opaqueId 多 eventId）。
+  Future<CalendarOwnedEventScan> scanOwnedEvents({required int calendarId});
+}
+
 /// 默认门面实例；阶段 2 的 coordinator 直接复用它（测试注入 mock channel）。
 final CalendarSyncChannel defaultCalendarSyncChannel =
     MethodChannelCalendarSyncChannel();
 
+/// 只读遗留扫描门面实例（与写入门面分离，能力更窄，供 core 阶段注入 / 测试）。
+final CalendarOwnedEventDiscovery defaultCalendarOwnedEventDiscovery =
+    MethodChannelCalendarSyncChannel();
+
 /// 基于 `MethodChannel` 的实现。
-class MethodChannelCalendarSyncChannel implements CalendarSyncChannel {
+class MethodChannelCalendarSyncChannel
+    implements CalendarSyncChannel, CalendarOwnedEventDiscovery {
   MethodChannelCalendarSyncChannel({MethodChannel? channel})
     : _channel =
           channel ?? const MethodChannel(CalendarSyncProtocol.channelName);
@@ -315,6 +339,62 @@ class MethodChannelCalendarSyncChannel implements CalendarSyncChannel {
       );
     }
     return result;
+  }
+
+  @override
+  Future<CalendarOwnedCalendarDiscovery> listOwnedEventCalendars() async {
+    const operation = CalendarSyncProtocol.methodListOwnedEventCalendars;
+    // 只读、无参数：绝不传 opaqueIds / 路径 / owner 包名等任何输入。
+    assert(_assertArgumentsAreOpaque(operation, const <String, Object?>{}));
+    try {
+      final raw = await _channel.invokeMethod<Object?>(
+        operation,
+        const <String, Object?>{},
+      );
+      return CalendarOwnedCalendarDiscovery.tryParse(raw) ??
+          CalendarOwnedCalendarDiscovery.unavailable();
+    } on MissingPluginException {
+      return CalendarOwnedCalendarDiscovery.unavailable();
+    } on PlatformException catch (error) {
+      // 只按固定 code 分类，绝不记录原始 payload / 课程信息。
+      AppLogger.instance.warn('日历遗留扫描降级：$operation (${error.code})');
+      return error.code == 'permission_denied'
+          ? CalendarOwnedCalendarDiscovery.permissionDenied()
+          : CalendarOwnedCalendarDiscovery.unavailable();
+    } on Exception {
+      AppLogger.instance.warn('日历遗留扫描降级：$operation');
+      return CalendarOwnedCalendarDiscovery.unavailable();
+    }
+  }
+
+  @override
+  Future<CalendarOwnedEventScan> scanOwnedEvents({
+    required int calendarId,
+  }) async {
+    const operation = CalendarSyncProtocol.methodScanOwnedEvents;
+    if (calendarId <= 0) return CalendarOwnedEventScan.unavailable();
+    assert(
+      _assertArgumentsAreOpaque(operation, <String, Object?>{
+        'calendarId': calendarId,
+      }),
+    );
+    try {
+      final raw = await _channel.invokeMethod<Object?>(
+        operation,
+        <String, Object?>{'calendarId': calendarId},
+      );
+      return CalendarOwnedEventScan.tryParse(raw) ??
+          CalendarOwnedEventScan.unavailable();
+    } on MissingPluginException {
+      return CalendarOwnedEventScan.unavailable();
+    } on PlatformException catch (error) {
+      // 只按固定 code 分类，绝不记录原始 payload / 课程信息。
+      AppLogger.instance.warn('日历遗留事件扫描降级：$operation (${error.code})');
+      return CalendarOwnedEventScan.unavailable();
+    } on Exception {
+      AppLogger.instance.warn('日历遗留事件扫描降级：$operation');
+      return CalendarOwnedEventScan.unavailable();
+    }
   }
 
   /// 权限查询/申请按固定协议降级为 `bool`。
