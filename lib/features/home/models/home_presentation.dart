@@ -1,3 +1,5 @@
+import 'home_asset_state.dart';
+
 /// Hero 状态类型，决定 Primary Status Hero 的信息形态与视觉重点。
 enum HomeHeroKind {
   /// 正在上课：显示下课时间。
@@ -99,6 +101,8 @@ class HomeStatusPresentation {
     required this.hasElectricityData,
     required this.lowBalance,
     required this.lowElectricity,
+    this.campusCardAsset,
+    this.electricityAsset,
   });
 
   /// 格式化后的余额文本（'--' 表示未获取）。
@@ -109,6 +113,28 @@ class HomeStatusPresentation {
 
   final bool hasCampusCardData;
   final bool hasElectricityData;
+
+  /// 校园卡余额的独立获取状态（首页资产行使用）。为 null 的静态构造
+  /// （示例数据 / 预览）由 [campusCardState] 按旧字符串回退。
+  final HomeAssetState? campusCardAsset;
+
+  /// 宿舍电费的独立获取状态。
+  final HomeAssetState? electricityAsset;
+
+  /// 校园卡展示状态：优先用独立状态模型，否则按 `hasCampusCardData` /
+  /// 文本回退，保持既有静态构造路径的行为不变。
+  HomeAssetState get campusCardState =>
+      campusCardAsset ??
+      (hasCampusCardData
+          ? HomeAssetState.ready(campusCardBalance)
+          : const HomeAssetState.waiting());
+
+  /// 宿舍电费展示状态（回退规则同 [campusCardState]）。
+  HomeAssetState get electricityState =>
+      electricityAsset ??
+      (hasElectricityData
+          ? HomeAssetState.ready(dormElectricity)
+          : const HomeAssetState.waiting());
 
   /// 保留兼容字段，恒为 false：校园卡低余额不再触发首页强调
   /// （资产行红字与事件横幅均已停用）。

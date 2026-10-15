@@ -80,10 +80,13 @@ class DetailReadout extends StatelessWidget {
   }
 }
 
-/// 有上限的量（电量）用的 6dp 细实心电平条。
+/// 有上限的量（电量 / 学分进度）用的 6dp 细实心电平条。
 ///
-/// 只做一次 600ms ease-out 入场 / 变化过渡，没有任何循环动画（`pumpAndSettle`
-/// 能结束）；系统开启「减弱动效」时直接到位。
+/// **首帧直接落在目标长度**：详情页 push / pop 回来后的重挂载、旋转、主题
+/// 切换、同值刷新都不会重播 `0 → 目标` 的入场动画——缓存读数必须一次到位，
+/// 不能每次进页都从零走满。只有挂载之后 [fraction] 真实变化时，才从**当前
+/// 长度**做一次 600ms ease-out 过渡到新长度（不会先回到 0）；系统开启
+/// 「减弱动效」时任何变化都直接到位。没有任何循环动画（`pumpAndSettle` 能结束）。
 class DetailLevelBar extends StatelessWidget {
   const DetailLevelBar({super.key, required this.fraction, this.color});
 
@@ -93,11 +96,14 @@ class DetailLevelBar extends StatelessWidget {
   /// 填充色；为空取 `colorScheme.primary`。
   final Color? color;
 
+  /// 真实值变化时的过渡时长；挂载首帧不经过它。
+  static const Duration _changeDuration = Duration(milliseconds: 600);
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final target = fraction.clamp(0.0, 1.0).toDouble();
-    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    final fillColor = color ?? cs.primary;
     return ExcludeSemantics(
       child: ClipRRect(
         borderRadius: BorderRadius.circular(3),
@@ -105,24 +111,32 @@ class DetailLevelBar extends StatelessWidget {
           height: 6,
           child: ColoredBox(
             color: cs.surfaceContainerHighest,
-            child: TweenAnimationBuilder<double>(
-              tween: Tween<double>(begin: 0, end: target),
-              duration: reduceMotion
-                  ? Duration.zero
-                  : const Duration(milliseconds: 600),
-              curve: Curves.easeOutCubic,
-              builder: (context, value, _) => FractionallySizedBox(
-                alignment: Alignment.centerLeft,
-                widthFactor: value,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: color ?? cs.primary,
-                    borderRadius: BorderRadius.circular(3),
+            // 系统「移除动画」：直接渲染目标，连控制器都不建，变化也瞬时到位。
+            child: MediaQuery.disableAnimationsOf(context)
+                ? _fill(fillColor, target)
+                : TweenAnimationBuilder<double>(
+                    // begin == end：挂载首帧即为目标长度，不重播 0→目标。
+                    // begin 只在首次挂载生效，之后被忽略；end 变化时
+                    // TweenAnimationBuilder 会从「当前长度」过渡到新值。
+                    tween: Tween<double>(begin: target, end: target),
+                    duration: _changeDuration,
+                    curve: Curves.easeOutCubic,
+                    builder: (context, value, _) => _fill(fillColor, value),
                   ),
-                ),
-              ),
-            ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _fill(Color fillColor, double value) {
+    return FractionallySizedBox(
+      alignment: Alignment.centerLeft,
+      widthFactor: value,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: fillColor,
+          borderRadius: BorderRadius.circular(3),
         ),
       ),
     );

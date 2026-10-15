@@ -17,20 +17,33 @@ import '../sjjx_notice/sjjx_notice_model.dart';
 import '../sjjx_notice/sjjx_notice_service.dart';
 import 'campus_notice_site_search.dart';
 import 'notice_group_section.dart';
+import 'practice_notice_list_view.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_banner.dart';
 import '../../shared/widgets/app_empty_view.dart';
 import '../../shared/widgets/app_error_view.dart';
 import '../../shared/widgets/app_filter_chips.dart';
 import '../../shared/widgets/app_search_field.dart';
-import '../../shared/widgets/app_status_tag.dart';
 import '../../shared/widgets/copy_text_feedback.dart';
 import '../../shared/widgets/auth_required_view.dart';
 import '../../shared/widgets/login_shell.dart';
-import '../../shared/widgets/plain_list.dart';
 
 class NotificationCenterPage extends StatefulWidget {
-  const NotificationCenterPage({super.key});
+  const NotificationCenterPage({
+    super.key,
+    this.practiceNoticeLoader,
+    this.debugOnPracticeTabReady,
+  });
+
+  /// 实践通知数据源。为 null 时用
+  /// [SjjxNoticeService.instance.fetchAllNotices]（真实抓取，走 CAS/WebVPN）。
+  /// 测试可注入合成数据，避免请求真实校园环境。
+  final Future<List<SjjxNotice>> Function()? practiceNoticeLoader;
+
+  /// 测试钩子：实践通知 Tab 挂载后回传它的重新加载入口，用于确定性地驱动
+  /// 同一次挂载内的多次 `_load`（验证迟到结果不覆盖新结果）。生产传 null。
+  @visibleForTesting
+  final void Function(Future<void> Function() reload)? debugOnPracticeTabReady;
 
   @override
   State<NotificationCenterPage> createState() => _NotificationCenterPageState();
@@ -134,7 +147,11 @@ class _NotificationCenterPageState extends State<NotificationCenterPage>
               controller: _tabController,
               children: [
                 _CampusNoticeTab(query: _query),
-                _PracticeNoticeTab(query: _query),
+                _PracticeNoticeTab(
+                  query: _query,
+                  loader: widget.practiceNoticeLoader,
+                  onReady: widget.debugOnPracticeTabReady,
+                ),
               ],
             ),
           ),
@@ -451,9 +468,9 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
           if (_authRequired)
             Padding(
               padding: const EdgeInsets.fromLTRB(
-                AppSpacing.listGutter,
+                AppSpacing.pageMargin,
                 4,
-                AppSpacing.listGutter,
+                AppSpacing.pageMargin,
                 4,
               ),
               child: AppBanner(
@@ -520,9 +537,13 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
 // --- Practice notices tab ---
 
 class _PracticeNoticeTab extends StatefulWidget {
-  const _PracticeNoticeTab({this.query = ''});
+  const _PracticeNoticeTab({this.query = '', this.loader, this.onReady});
 
   final String query;
+  final Future<List<SjjxNotice>> Function()? loader;
+
+  /// 测试钩子：State 挂载后回传 `_load` 入口（生产为 null）。
+  final void Function(Future<void> Function() reload)? onReady;
 
   @override
   State<_PracticeNoticeTab> createState() => _PracticeNoticeTabState();
@@ -535,6 +556,14 @@ class _PracticeNoticeTabState extends State<_PracticeNoticeTab>
   bool _authRequired = false;
   String? _error;
 
+  /// 加载纪元：同一 Tab 内每次 `_load` 自增的调用序计数器。它只保证
+  /// **同一次挂载内、后发起的请求胜出**（迟到旧结果直接丢弃），
+  /// **不是账号身份隔离**：不读取任何账号 / 会话 revision。
+  /// 跨账号（A 账号在途响应落到 B 登录态）的安全性本轮**未验证**；
+  /// `SjjxNoticeService._cachedNotices` 全局兜底缓存仍非按账号作用域
+  /// （既有行为，本 PR 未改）。
+  int _loadEpoch = 0;
+
   @override
   bool get wantKeepAlive => true;
 
@@ -542,29 +571,32 @@ class _PracticeNoticeTabState extends State<_PracticeNoticeTab>
   void initState() {
     super.initState();
     _load();
+    widget.onReady?.call(_load);
   }
 
   Future<void> _load() async {
+    final epoch = ++_loadEpoch;
     setState(() {
       _loading = true;
       _error = null;
       _authRequired = false;
     });
     try {
-      final notices = await SjjxNoticeService.instance.fetchAllNotices();
-      if (!mounted) return;
+      final notices =
+          await (widget.loader ?? SjjxNoticeService.instance.fetchAllNotices)();
+      if (!mounted || epoch != _loadEpoch) return;
       setState(() {
         _notices = notices;
         _loading = false;
       });
     } on CasAuthExpiredException {
-      if (!mounted) return;
+      if (!mounted || epoch != _loadEpoch) return;
       setState(() {
         _authRequired = true;
         _loading = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || epoch != _loadEpoch) return;
       setState(() {
         _error = '加载失败';
         _loading = false;
@@ -603,7 +635,7 @@ class _PracticeNoticeTabState extends State<_PracticeNoticeTab>
       return const AppEmptyView(title: '暂无实践通知', icon: Icons.article_outlined);
     }
     final query = widget.query.trim().toLowerCase();
-    final visibleNotices = query.isEmpty
+    final matchedNotices = query.isEmpty
         ? _notices
         : _notices
               .where(
@@ -613,49 +645,53 @@ class _PracticeNoticeTabState extends State<_PracticeNoticeTab>
                     _noticeMatchesQuery(notice.date, query),
               )
               .toList();
-    if (visibleNotices.isEmpty) {
+    if (matchedNotices.isEmpty) {
       return const AppEmptyView(
         title: '没有匹配的通知',
         icon: Icons.search_off_rounded,
       );
     }
-    return RefreshIndicator(
+    // 完整匹配数据留在内存，列表只惰性构建可见窗口：顶部显示总匹配数，行本身
+    // 无框、无卡片、无分隔线。查询变化经 resetKey 重置窗口与滚动位置。
+    return PracticeNoticeListView(
+      resetKey: query,
+      headerTitle: query.isEmpty ? '全部' : '匹配结果',
+      headerTrailing: '${matchedNotices.length} 条',
+      itemCount: matchedNotices.length,
       onRefresh: _load,
-      child: ListView(
-        padding: const EdgeInsets.only(top: 4, bottom: 24),
-        children: [
-          NoticeGroupSection(
-            title: query.isEmpty ? '全部' : '匹配结果',
-            trailing: '${visibleNotices.length} 条',
-            children: [
-              for (final notice in visibleNotices)
-                _NoticeTile(
-                  title: notice.title,
-                  date: notice.date,
-                  tag: notice.category,
-                  onTap: () => context.pushNamed(
-                    'external-webview',
-                    extra: {
-                      'title': notice.title,
-                      'url': notice.url,
-                      'emulateDingTalkEnvironment': false,
-                    },
-                  ),
-                  onLongPress: () => copyTextWithFeedback(context, notice.url),
-                ),
-            ],
-          ),
-        ],
-      ),
+      itemBuilder: (context, index) {
+        final notice = matchedNotices[index];
+        return PracticeNoticeRow(
+          title: notice.title,
+          date: notice.date,
+          tag: notice.category,
+          onTap: () => _openPracticeNotice(notice),
+          onLongPress: () => copyTextWithFeedback(context, notice.url),
+        );
+      },
+    );
+  }
+
+  /// 与实践通知原有语义一致：点开外部 WebView（同旧实现，不带统一认证保护 /
+  /// 预热），长按复制链接。
+  void _openPracticeNotice(SjjxNotice notice) {
+    context.pushNamed(
+      'external-webview',
+      extra: {
+        'title': notice.title,
+        'url': notice.url,
+        'emulateDingTalkEnvironment': false,
+      },
     );
   }
 }
 
 // --- Shared tile ---
 
-/// 分组卡片里的通知行：未读圆点 + 标题 + 日期，例外标签（如分类差异明显
-/// 的实践通知）才追加小色块；「每条都一样」的标签（如校园公告固定的
-/// 「通知公告」）不再展示。行之间不画分隔线，靠卡片收拢、左缘对齐。
+/// 无框通知行：未读圆点 + 标题 + 日期，例外标签（如分类差异明显的实践
+/// 通知）才追加小色块；「每条都一样」的标签不再展示。行本身没有卡片 / 轮廓 /
+/// 分隔线，水平边距由外层分组（[NoticeGroupSection]）保留一层
+/// [NoticeListMetrics.pageMargin]，未读圆点占最小固定列、读 / 未读标题首字对齐。
 class _NoticeTile extends StatelessWidget {
   const _NoticeTile({
     required this.title,
@@ -663,7 +699,6 @@ class _NoticeTile extends StatelessWidget {
     required this.onTap,
     this.onLongPress,
     this.unread = false,
-    this.tag,
   });
 
   final String title;
@@ -671,83 +706,75 @@ class _NoticeTile extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
   final bool unread;
-  final String? tag;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final text = context.appText;
     final publishDate = (date ?? '').trim();
-    final showTag = (tag ?? '').trim().isNotEmpty;
     return InkWell(
       onTap: onTap,
       onLongPress: onLongPress,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          kPlainListRowInset - 4,
-          12,
-          kPlainListRowInset,
-          12,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(
+          minHeight: NoticeListMetrics.minRowHeight,
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 圆点列固定宽度：已读 / 未读行的标题保持同一条左缘。
-            SizedBox(
-              width: 12,
-              child: unread
-                  ? Padding(
-                      padding: const EdgeInsets.only(top: 7),
-                      child: Container(
-                        width: 7,
-                        height: 7,
-                        decoration: BoxDecoration(
-                          color: cs.primary,
-                          shape: BoxShape.circle,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            vertical: NoticeListMetrics.rowVerticalPadding,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 圆点列固定宽度：已读 / 未读行的标题保持同一条左缘。
+              SizedBox(
+                width: NoticeListMetrics.markerWidth,
+                child: unread
+                    ? Padding(
+                        padding: const EdgeInsets.only(top: 7),
+                        child: Container(
+                          width: 7,
+                          height: 7,
+                          decoration: BoxDecoration(
+                            color: cs.primary,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      )
+                    : null,
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 高密度未读列表：行标题字号，已读常规字重、未读 w500；
+                    // 长标题给到 3 行后省略，日期始终可见。
+                    Text(
+                      title,
+                      style: text.rowTitle.copyWith(
+                        height: 1.4,
+                        fontWeight: unread ? FontWeight.w500 : FontWeight.w400,
+                        color: unread ? cs.onSurface : cs.onSurfaceVariant,
+                      ),
+                      maxLines: NoticeListMetrics.titleMaxLines,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (publishDate.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        publishDate,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: text.secondary.copyWith(
+                          fontFeatures: const [FontFeature.tabularFigures()],
                         ),
                       ),
-                    )
-                  : null,
-            ),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // 高密度未读列表：行标题字号，已读常规字重、未读 w500。
-                  Text(
-                    title,
-                    style: text.rowTitle.copyWith(
-                      height: 1.4,
-                      fontWeight: unread ? FontWeight.w500 : FontWeight.w400,
-                      color: unread ? cs.onSurface : cs.onSurfaceVariant,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  if (publishDate.isNotEmpty || showTag) ...[
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        if (publishDate.isNotEmpty)
-                          Text(
-                            publishDate,
-                            style: text.secondary.copyWith(
-                              fontFeatures: const [
-                                FontFeature.tabularFigures(),
-                              ],
-                            ),
-                          ),
-                        if (showTag) ...[
-                          if (publishDate.isNotEmpty) const SizedBox(width: 8),
-                          AppStatusTag(tag!),
-                        ],
-                      ],
-                    ),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

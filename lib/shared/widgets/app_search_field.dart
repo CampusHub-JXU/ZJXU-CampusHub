@@ -13,6 +13,7 @@ class AppSearchField extends StatelessWidget {
     required this.hintText,
     required this.onChanged,
     required this.onClear,
+    this.focusNode,
     this.fillAlpha = 0.5,
     this.compact = false,
     this.borderless = false,
@@ -24,6 +25,15 @@ class AppSearchField extends StatelessWidget {
   final String hintText;
   final ValueChanged<String> onChanged;
   final VoidCallback onClear;
+
+  /// 由调用方持有的输入焦点节点。调用方需要根据「输入框本身是否聚焦」改变
+  /// 外层容器样式时传入（在 `borderless` 形态下，外层卡面用它决定聚焦描边）。
+  /// 为 null 时由内部 `TextField` 自建节点，行为不变。
+  ///
+  /// 注意：调用方必须用这个 [FocusNode]，不要再用包一层的 `Focus` 去读焦点——
+  /// 祖先 `Focus.hasFocus` 会把卡片内其它可聚焦后代（如清除按钮）也算作聚焦，
+  /// 输入框本身已失焦时它仍可能为真。
+  final FocusNode? focusNode;
   final double fillAlpha;
 
   /// 紧凑胶囊形态：嵌入 AppBar 等窄高度位置，无描边、实色底。
@@ -48,6 +58,7 @@ class AppSearchField extends StatelessWidget {
         final showClear = value.text.isNotEmpty;
         return TextField(
           controller: controller,
+          focusNode: focusNode,
           textInputAction: TextInputAction.search,
           onChanged: onChanged,
           onSubmitted: onSubmitted,
@@ -132,6 +143,7 @@ class AppSearchField extends StatelessWidget {
           final showClear = value.text.isNotEmpty;
           return TextField(
             controller: controller,
+            focusNode: focusNode,
             autofocus: autofocus,
             // 填满 40dp 胶囊：避免清除按钮出现/消失时高度跳变。
             expands: true,
