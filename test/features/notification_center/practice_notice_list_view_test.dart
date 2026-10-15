@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:jxu_campus_hub/features/notification_center/notice_group_section.dart';
 import 'package:jxu_campus_hub/features/notification_center/practice_notice_list_view.dart';
 
 /// 实践通知惰性列表的单元 / Widget 回归基线。
@@ -197,7 +198,7 @@ void main() {
       expect(longPressed, 1);
     });
 
-    testWidgets('超长标题限两行并省略', (tester) async {
+    testWidgets('超长标题限三行并省略', (tester) async {
       final longTitle = '实践通知标题' * 40;
       await tester.pumpWidget(
         MaterialApp(
@@ -207,7 +208,7 @@ void main() {
         ),
       );
       final title = tester.widget<Text>(find.text(longTitle));
-      expect(title.maxLines, 2);
+      expect(title.maxLines, NoticeListMetrics.titleMaxLines);
       expect(title.overflow, TextOverflow.ellipsis);
     });
   });

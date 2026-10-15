@@ -27,7 +27,6 @@ import '../../shared/widgets/app_search_field.dart';
 import '../../shared/widgets/copy_text_feedback.dart';
 import '../../shared/widgets/auth_required_view.dart';
 import '../../shared/widgets/login_shell.dart';
-import '../../shared/widgets/plain_list.dart';
 
 class NotificationCenterPage extends StatefulWidget {
   const NotificationCenterPage({
@@ -469,9 +468,9 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
           if (_authRequired)
             Padding(
               padding: const EdgeInsets.fromLTRB(
-                AppSpacing.listGutter,
+                AppSpacing.pageMargin,
                 4,
-                AppSpacing.listGutter,
+                AppSpacing.pageMargin,
                 4,
               ),
               child: AppBanner(
@@ -689,9 +688,10 @@ class _PracticeNoticeTabState extends State<_PracticeNoticeTab>
 
 // --- Shared tile ---
 
-/// 分组卡片里的通知行：未读圆点 + 标题 + 日期，例外标签（如分类差异明显
-/// 的实践通知）才追加小色块；「每条都一样」的标签（如校园公告固定的
-/// 「通知公告」）不再展示。行之间不画分隔线，靠卡片收拢、左缘对齐。
+/// 无框通知行：未读圆点 + 标题 + 日期，例外标签（如分类差异明显的实践
+/// 通知）才追加小色块；「每条都一样」的标签不再展示。行本身没有卡片 / 轮廓 /
+/// 分隔线，水平边距由外层分组（[NoticeGroupSection]）保留一层
+/// [NoticeListMetrics.pageMargin]，未读圆点占最小固定列、读 / 未读标题首字对齐。
 class _NoticeTile extends StatelessWidget {
   const _NoticeTile({
     required this.title,
@@ -715,65 +715,66 @@ class _NoticeTile extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       onLongPress: onLongPress,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          kPlainListRowInset - 4,
-          12,
-          kPlainListRowInset,
-          12,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(
+          minHeight: NoticeListMetrics.minRowHeight,
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 圆点列固定宽度：已读 / 未读行的标题保持同一条左缘。
-            SizedBox(
-              width: 12,
-              child: unread
-                  ? Padding(
-                      padding: const EdgeInsets.only(top: 7),
-                      child: Container(
-                        width: 7,
-                        height: 7,
-                        decoration: BoxDecoration(
-                          color: cs.primary,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    )
-                  : null,
-            ),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // 高密度未读列表：行标题字号，已读常规字重、未读 w500。
-                  Text(
-                    title,
-                    style: text.rowTitle.copyWith(
-                      height: 1.4,
-                      fontWeight: unread ? FontWeight.w500 : FontWeight.w400,
-                      color: unread ? cs.onSurface : cs.onSurfaceVariant,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  if (publishDate.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Text(
-                          publishDate,
-                          style: text.secondary.copyWith(
-                            fontFeatures: const [FontFeature.tabularFigures()],
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            vertical: NoticeListMetrics.rowVerticalPadding,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 圆点列固定宽度：已读 / 未读行的标题保持同一条左缘。
+              SizedBox(
+                width: NoticeListMetrics.markerWidth,
+                child: unread
+                    ? Padding(
+                        padding: const EdgeInsets.only(top: 7),
+                        child: Container(
+                          width: 7,
+                          height: 7,
+                          decoration: BoxDecoration(
+                            color: cs.primary,
+                            shape: BoxShape.circle,
                           ),
                         ),
-                      ],
-                    ),
-                  ],
-                ],
+                      )
+                    : null,
               ),
-            ),
-          ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 高密度未读列表：行标题字号，已读常规字重、未读 w500；
+                    // 长标题给到 3 行后省略，日期始终可见。
+                    Text(
+                      title,
+                      style: text.rowTitle.copyWith(
+                        height: 1.4,
+                        fontWeight: unread ? FontWeight.w500 : FontWeight.w400,
+                        color: unread ? cs.onSurface : cs.onSurfaceVariant,
+                      ),
+                      maxLines: NoticeListMetrics.titleMaxLines,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (publishDate.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        publishDate,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: text.secondary.copyWith(
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

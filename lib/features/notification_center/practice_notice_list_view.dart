@@ -160,9 +160,9 @@ class PracticeNoticeListViewState extends State<PracticeNoticeListView> {
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(
-              AppSpacing.listGutter,
+              NoticeListMetrics.pageMargin,
               AppSpacing.listGroupGap / 2,
-              AppSpacing.listGutter,
+              NoticeListMetrics.pageMargin,
               AppSpacing.sm,
             ),
             child: NoticeGroupHeader(
@@ -190,7 +190,9 @@ class PracticeNoticeListViewState extends State<PracticeNoticeListView> {
 
 /// 实践通知的惰性行：无框、无分隔线、无卡片，只有标题与日期 / 分类。
 ///
-/// 点击打开详情（`external-webview`）、长按复制链接的语义由调用方通过
+/// 水平边距只保留一层 [NoticeListMetrics.pageMargin]（不再叠加外层 gutter），
+/// 标题给到 [NoticeListMetrics.titleMaxLines] 行后省略；点击打开详情
+/// （`external-webview`）、长按复制链接的语义由调用方通过
 /// [onTap] / [onLongPress] 注入；行本身不依赖通知模型。
 class PracticeNoticeRow extends StatelessWidget {
   const PracticeNoticeRow({
@@ -217,43 +219,48 @@ class PracticeNoticeRow extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       onLongPress: onLongPress,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.listGutter,
-          vertical: 12,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(
+          minHeight: NoticeListMetrics.minRowHeight,
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: text.rowTitle.copyWith(height: 1.4, color: cs.onSurface),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            if (publishDate.isNotEmpty || showTag) ...[
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  if (publishDate.isNotEmpty)
-                    Flexible(
-                      child: Text(
-                        publishDate,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: text.secondary.copyWith(
-                          fontFeatures: const [FontFeature.tabularFigures()],
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: NoticeListMetrics.pageMargin,
+            vertical: NoticeListMetrics.rowVerticalPadding,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: text.rowTitle.copyWith(height: 1.4, color: cs.onSurface),
+                maxLines: NoticeListMetrics.titleMaxLines,
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (publishDate.isNotEmpty || showTag) ...[
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    if (publishDate.isNotEmpty)
+                      Flexible(
+                        child: Text(
+                          publishDate,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: text.secondary.copyWith(
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
                         ),
                       ),
-                    ),
-                  if (showTag) ...[
-                    if (publishDate.isNotEmpty) const SizedBox(width: 8),
-                    AppStatusTag(tag!),
+                    if (showTag) ...[
+                      if (publishDate.isNotEmpty) const SizedBox(width: 8),
+                      AppStatusTag(tag!),
+                    ],
                   ],
-                ],
-              ),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
