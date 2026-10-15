@@ -46,6 +46,9 @@ DecorationImage frostGrainImage({required bool isDark}) {
     return _darkGrain ??= DecorationImage(
       image: _grainAsset!,
       repeat: ImageRepeat.repeat,
+      // 必须显式 none：fit 缺省时 Flutter 用 BoxFit.scaleDown，组件短边 < 256dp 就把
+      // 整张贴图等比缩小再平铺，闪点随组件高度变小变密（顶栏 / 小磁贴尤甚）。
+      fit: BoxFit.none,
       scale: kFrostGrainScale,
       opacity: kFrostGrainOpacityDark,
       // low：贴图在 DPR 3 上被放大 1.5×，双线性让峰值柔和；none 会画出方块像素。
@@ -55,6 +58,7 @@ DecorationImage frostGrainImage({required bool isDark}) {
   return _lightGrain ??= DecorationImage(
     image: _grainAsset!,
     repeat: ImageRepeat.repeat,
+    fit: BoxFit.none,
     scale: kFrostGrainScale,
     opacity: kFrostGrainOpacityLight,
     filterQuality: FilterQuality.low,

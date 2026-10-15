@@ -66,6 +66,19 @@ void main() {
       expect(identical(light.image, dark.image), isTrue);
     });
 
+    test('fit 显式为 none：小组件上贴图不被等比缩小（闪点 dp 尺寸处处一致）', () {
+      // 回归：fit 缺省 = BoxFit.scaleDown，短边 < 256dp 的组件会把整张贴图压缩。
+      const tile = Size(256, 256);
+      for (final isDark in [false, true]) {
+        final image = frostGrainImage(isDark: isDark);
+        expect(image.fit, BoxFit.none);
+        for (final box in const [Size(240, 96), Size(390, 100), Size(80, 40)]) {
+          final fitted = applyBoxFit(image.fit!, tile, box);
+          expect(fitted.source, fitted.destination, reason: '$box 上不得缩放');
+        }
+      }
+    });
+
     test('平铺周期 = 贴图边长 / scale = 256 逻辑 dp（与 DPR 无关）', () {
       expect(texture.width, texture.height);
       expect(texture.width / kFrostGrainScale, 256.0);
