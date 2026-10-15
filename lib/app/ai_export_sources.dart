@@ -433,6 +433,9 @@ Future<ExportFetchOutcome> fetchNoticesForExport({
     final total = totalPages;
     // 站点最后一页 / 空页：覆盖完整。
     if (result.notices.isEmpty || (total != null && page >= total)) break;
+    // 置顶只出现在第 1 页；之后某页全部早于窗口（且都有日期）时，更后面的页
+    // 只会更旧，视为窗口已覆盖完整。
+    if (page >= 2 && _pageEntirelyBeforeWindow(result.notices, now)) break;
     if (page == maxPages) {
       partialNote = total == null
           ? '仅获取了最新 $fetchedPages 页，更早的通知未获取'
@@ -451,6 +454,18 @@ Future<ExportFetchOutcome> fetchNoticesForExport({
           : '$partialNote，近 $kNoticeWindowDays 天内的通知可能不全',
     ),
   );
+}
+
+bool _pageEntirelyBeforeWindow(List<Notice> notices, DateTime now) {
+  final cutoff = DateTime(
+    now.year,
+    now.month,
+    now.day,
+  ).subtract(const Duration(days: kNoticeWindowDays));
+  return notices.every((n) {
+    final d = n.parsedDate;
+    return d != null && d.isBefore(cutoff);
+  });
 }
 
 ExportModuleSource _noticesSource(DateTime Function() clock) {

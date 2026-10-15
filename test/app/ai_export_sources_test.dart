@@ -381,6 +381,28 @@ void main() {
       expect(d.isPartial, isFalse, reason: '翻到了站点最后一页');
     });
 
+    test('第 2 页起某页全部早于窗口：视为覆盖完整，不再翻页', () async {
+      final requested = <int>[];
+      final outcome = await fetchNoticesForExport(
+        now: now,
+        maxPages: 6,
+        fetchPage: pager({
+          1: NoticeFetchResult.ok([
+            notice('pinned-old', '2025-01-01'),
+            notice('p1-new', '2026-10-12'),
+          ], totalPages: 20),
+          2: NoticeFetchResult.ok([
+            notice('p2-old', '2026-08-01'),
+            notice('p2-older', '2026-07-20'),
+          ], totalPages: 20),
+        }, requested),
+      );
+      expect(requested, [1, 2]);
+      final d = data(outcome);
+      expect(d.isPartial, isFalse);
+      expect(d.records.map((r) => r.title), ['p1-new']);
+    });
+
     test('翻到最后一页：覆盖完整，没有部分结果标记', () async {
       final outcome = await fetchNoticesForExport(
         now: now,
