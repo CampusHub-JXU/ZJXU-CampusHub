@@ -6,6 +6,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pointycastle/digests/sha256.dart';
 
+import 'package:jxu_campus_hub/core/theme/glass_style_controller.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_tile_surface.dart';
 import 'package:jxu_campus_hub/shared/widgets/frost_grain.dart';
 
@@ -131,6 +132,49 @@ void main() {
 
     test('字节可复现：sha256 与记录值一致', () {
       expect(_sha256Hex(assetBytes), _expectedSha256);
+    });
+  });
+
+  group('用户开关', () {
+    Future<void> pumpTile(WidgetTester tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: 240,
+                height: 96,
+                child: AppTileSurface(child: SizedBox.expand()),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+    }
+
+    DecorationImage? tileGrain(WidgetTester tester) {
+      final decoration = tester.widget<Ink>(find.byType(Ink)).decoration;
+      return (decoration as ShapeDecoration).image;
+    }
+
+    testWidgets('默认不带闪粉；开启后磁贴带贴图，再关闭恢复', (tester) async {
+      final glass = GlassStyleController.instance;
+      addTearDown(() => glass.frostGrainEnabled.value = false);
+
+      await pumpTile(tester);
+      expect(tileGrain(tester), isNull);
+      expect(find.byType(BackdropFilter), findsOneWidget);
+
+      glass.frostGrainEnabled.value = true;
+      await tester.pump();
+      expect(tileGrain(tester), isNotNull);
+      // 开关只管贴图层：模糊始终在。
+      expect(find.byType(BackdropFilter), findsOneWidget);
+
+      glass.frostGrainEnabled.value = false;
+      await tester.pump();
+      expect(tileGrain(tester), isNull);
     });
   });
 

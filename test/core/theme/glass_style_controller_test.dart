@@ -39,4 +39,50 @@ void main() {
       expect(c.materialStyle, SurfaceMaterialStyle.acrylic);
     });
   });
+
+  group('磨砂闪粉开关', () {
+    test('默认关闭', () {
+      expect(GlassStyleController.instance.frostGrainEnabled.value, isFalse);
+    });
+
+    test('开启后持久化，重启恢复后仍为开启，且不影响亚克力开关', () async {
+      final c = GlassStyleController.instance;
+      await c.setFrostGrainEnabled(true);
+      expect(c.frostGrainEnabled.value, isTrue);
+      expect(c.enabled.value, isTrue);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool('frost_grain_enabled_v1'), isTrue);
+
+      // 模拟冷启动：内存回到默认，再从磁盘恢复。
+      c.frostGrainEnabled.value = false;
+      c.debugMarkUnrestored();
+      await c.restore();
+      expect(c.frostGrainEnabled.value, isTrue);
+      expect(c.enabled.value, isTrue);
+    });
+
+    test('从未设置过时恢复为默认关闭', () async {
+      final c = GlassStyleController.instance;
+      c.frostGrainEnabled.value = true;
+      c.debugMarkUnrestored();
+      await c.restore();
+      expect(c.frostGrainEnabled.value, isFalse);
+    });
+
+    test('值未变化不通知也不写盘', () async {
+      final c = GlassStyleController.instance;
+      var notified = 0;
+      void listener() => notified++;
+      c.surfaceChanged.addListener(listener);
+      addTearDown(() => c.surfaceChanged.removeListener(listener));
+
+      await c.setFrostGrainEnabled(false);
+      expect(notified, 0);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.containsKey('frost_grain_enabled_v1'), isFalse);
+
+      await c.setFrostGrainEnabled(true);
+      expect(notified, 1);
+    });
+  });
 }

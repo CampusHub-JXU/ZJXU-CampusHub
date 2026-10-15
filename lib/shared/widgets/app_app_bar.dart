@@ -103,9 +103,9 @@ class GlassAppBarSpace extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final style = GlassStyleController.instance;
 
-    return ValueListenableBuilder<bool>(
-      valueListenable: style.enabled,
-      builder: (context, _, _) {
+    return ListenableBuilder(
+      listenable: style.surfaceChanged,
+      builder: (context, _) {
         final recipe = MaterialRecipe.resolve(style.materialStyle);
         final baseTint = isDark
             ? cs.surfaceContainerLow
@@ -129,7 +129,7 @@ class GlassAppBarSpace extends StatelessWidget {
           // 顶栏 tint 策略：低到能看清模糊，高到标题仍满足 WCAG AA。
           tintAlpha: useGlass ? (isDark ? 0.42 : 0.50) : 1.0,
           borderColor: borderColor,
-          grain: useGlass,
+          grain: useGlass && style.frostGrainEnabled.value,
         );
         return ClipRect(
           child: useGlass

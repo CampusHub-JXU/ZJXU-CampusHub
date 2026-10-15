@@ -57,9 +57,9 @@ class GlassContainer extends StatelessWidget {
     final radius = borderRadius ?? AppRadius.cardBorder;
     final style = GlassStyleController.instance;
 
-    return ValueListenableBuilder<bool>(
-      valueListenable: style.enabled,
-      builder: (context, _, _) {
+    return ListenableBuilder(
+      listenable: style.surfaceChanged,
+      builder: (context, _) {
         final recipe = MaterialRecipe.resolve(style.materialStyle);
         return _buildSurface(
           context,
@@ -67,6 +67,7 @@ class GlassContainer extends StatelessWidget {
           isDark: isDark,
           cs: cs,
           radius: radius,
+          grain: style.frostGrainEnabled.value,
         );
       },
     );
@@ -78,6 +79,7 @@ class GlassContainer extends StatelessWidget {
     required bool isDark,
     required ColorScheme cs,
     required BorderRadius radius,
+    required bool grain,
   }) {
     final useBlur = (blurred ?? true) && recipe.usesBackdropBlur;
     final baseSurface = isDark
@@ -105,7 +107,7 @@ class GlassContainer extends StatelessWidget {
       padding: padding,
       decoration: ShapeDecoration(
         color: fillColor,
-        image: useBlur && recipe.style == SurfaceMaterialStyle.acrylic
+        image: grain && useBlur && recipe.style == SurfaceMaterialStyle.acrylic
             ? frostGrainImage(isDark: isDark)
             : null,
         shadows: useBlur ? _shadows(isDark, recipe) : null,

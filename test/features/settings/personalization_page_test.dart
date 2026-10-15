@@ -85,6 +85,13 @@ void main() {
     expect(find.byKey(const Key('personalization_acrylic')), findsNothing);
     expect(find.byKey(const Key('personalization_header_glass')), findsNothing);
 
+    // 磨砂闪粉：默认关闭，用户可开启，写回材质总控。
+    expect(glass.frostGrainEnabled.value, isFalse);
+    await tapKey(tester, 'personalization_frost_grain');
+    expect(glass.frostGrainEnabled.value, isTrue);
+    await tapKey(tester, 'personalization_frost_grain');
+    expect(glass.frostGrainEnabled.value, isFalse);
+
     expect(personalization.emblemWatermarkEnabled.value, isTrue);
     await tapKey(tester, 'personalization_emblem');
     expect(personalization.emblemWatermarkEnabled.value, isFalse);
@@ -118,6 +125,9 @@ void main() {
     final slider = find.byKey(const Key('personalization_shader_fps'));
     expect(slider, findsOneWidget);
     expect(personalization.shaderFps.value, 60);
+    // 效果分组新增了「磨砂闪粉」一行，滑条可能被挤出首屏。
+    await tester.ensureVisible(slider);
+    await tester.pump();
 
     // 档位 30 / 45 / 60 / 90 / 120 对应 0..4；拖到最左 = 30，最右 = 120。
     await tester.drag(slider, const Offset(-600, 0));

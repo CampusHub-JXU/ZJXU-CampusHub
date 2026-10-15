@@ -13,6 +13,7 @@ import '../core/network/network_settings.dart';
 import '../core/profile/user_profile_controller.dart';
 import '../core/semester/semester_calendar.dart';
 import '../core/theme/app_preferences_controller.dart';
+import '../core/theme/glass_style_controller.dart';
 import '../core/theme/personalization_controller.dart';
 import '../core/update/update_checker.dart';
 import '../features/campus_card/campus_card_service.dart';
@@ -84,6 +85,8 @@ class AppBootstrapController {
     await AppPreferencesController.instance.restore();
 
     await Future.wait<void>([
+      // 磨砂闪粉开关须在首帧前就位，避免开启闪粉的用户冷启动首帧缺贴图再补上。
+      GlassStyleController.instance.restore(),
       SemesterCalendar.instance.init(),
       PersonalizationController.instance.init(),
       UserProfileController.instance.init(),

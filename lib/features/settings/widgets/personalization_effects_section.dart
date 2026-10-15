@@ -22,6 +22,16 @@ class PersonalizationEffectsSection extends StatelessWidget {
         PlainListGroup(
           children: [
             ValueListenableBuilder<bool>(
+              valueListenable: GlassStyleController.instance.frostGrainEnabled,
+              builder: (context, grainEnabled, _) => PlainSwitchRow(
+                switchKey: const Key('personalization_frost_grain'),
+                title: '磨砂闪粉',
+                subtitle: '在磁贴、顶栏等磨砂表面叠加一层稀疏的细小闪点；默认关闭，只保留模糊与雾面',
+                value: grainEnabled,
+                onChanged: GlassStyleController.instance.setFrostGrainEnabled,
+              ),
+            ),
+            ValueListenableBuilder<bool>(
               valueListenable: controller.shaderEnabled,
               builder: (context, shaderEnabled, _) => Column(
                 mainAxisSize: MainAxisSize.min,

@@ -39,9 +39,9 @@ class AppTileSurface extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final style = GlassStyleController.instance;
-    return ValueListenableBuilder<bool>(
-      valueListenable: style.enabled,
-      builder: (context, _, _) => _buildSurface(context, style),
+    return ListenableBuilder(
+      listenable: style.surfaceChanged,
+      builder: (context, _) => _buildSurface(context, style),
     );
   }
 
@@ -66,7 +66,9 @@ class AppTileSurface extends StatelessWidget {
               isDark: isDark,
               alpha: recipe.surfaceOpacity,
             ),
-            image: frostGrainImage(isDark: isDark),
+            image: style.frostGrainEnabled.value
+                ? frostGrainImage(isDark: isDark)
+                : null,
             shape: RoundedSuperellipseBorder(
               borderRadius: radius,
               side: BorderSide(
