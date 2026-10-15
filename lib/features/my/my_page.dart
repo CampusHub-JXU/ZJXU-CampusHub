@@ -125,10 +125,10 @@ class _MyPageState extends State<MyPage> {
     final campusLoggedIn = UnifiedAuthService.instance.isLoggedIn;
     final academicLoggedIn = ZhengfangAuth.instance.isLoggedIn;
 
-    setState(() {
-      _campusLoggedIn = campusLoggedIn;
-      _academicLoggedIn = academicLoggedIn;
-    });
+    _applyStatusIfChanged(
+      campusLoggedIn: campusLoggedIn,
+      academicLoggedIn: academicLoggedIn,
+    );
 
     final campusValidationFuture = _validateSafely(
       campusLoggedIn
@@ -146,12 +146,14 @@ class _MyPageState extends State<MyPage> {
 
     if (!mounted || refreshVersion != _statusRefreshVersion) return;
 
-    setState(() {
-      _campusLoggedIn =
-          campusValidation ?? UnifiedAuthService.instance.isLoggedIn;
-      _academicLoggedIn =
-          academicValidation ?? ZhengfangAuth.instance.isLoggedIn;
-    });
+    await PageTransitionActivity.instance.whenIdle();
+    if (!mounted || refreshVersion != _statusRefreshVersion) return;
+
+    _applyStatusIfChanged(
+      campusLoggedIn:
+          campusValidation ?? UnifiedAuthService.instance.isLoggedIn,
+      academicLoggedIn: academicValidation ?? ZhengfangAuth.instance.isLoggedIn,
+    );
 
     final unknown = campusValidation == null || academicValidation == null;
     if (unknown && !silentRetry) {
@@ -159,6 +161,20 @@ class _MyPageState extends State<MyPage> {
         if (mounted) unawaited(_refreshStatus(silentRetry: true));
       });
     }
+  }
+
+  void _applyStatusIfChanged({
+    required bool campusLoggedIn,
+    required bool academicLoggedIn,
+  }) {
+    if (_campusLoggedIn == campusLoggedIn &&
+        _academicLoggedIn == academicLoggedIn) {
+      return;
+    }
+    setState(() {
+      _campusLoggedIn = campusLoggedIn;
+      _academicLoggedIn = academicLoggedIn;
+    });
   }
 
   /// 测活兜底：validateSession 理论上内部吞网络异常返回 null，但部分路径

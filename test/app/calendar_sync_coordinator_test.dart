@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:jxu_campus_hub/app/calendar_event_projector.dart';
 import 'package:jxu_campus_hub/app/calendar_sync_coordinator.dart';
 import 'package:jxu_campus_hub/core/calendar/calendar_event_ledger_store.dart';
+import 'package:jxu_campus_hub/core/calendar/calendar_reminder_settings.dart';
 import 'package:jxu_campus_hub/core/calendar/calendar_sync_channel.dart';
 import 'package:jxu_campus_hub/core/calendar/calendar_sync_control.dart';
 import 'package:jxu_campus_hub/core/calendar/calendar_sync_models.dart';
@@ -395,6 +396,47 @@ void main() {
       expect(secondRun, hasLength(20));
       expect(secondRun.every((draft) => draft.reminderMinutes == 30), isTrue);
       expect(h.channel.ownedByOpaqueId, firstIds);
+      expect(h.channel.deleteCalls, 0);
+    });
+
+    test('重复恢复相同提醒值不触发日历查询或写入，变化时仍更新事件', () async {
+      final settings = CalendarReminderSettings.instance;
+      settings.debugReset();
+      await settings.load();
+
+      final h = _Harness();
+      await h.enable(_ownerA, _calendarId, revision: 1);
+      h.term = _term2026;
+      h.snapshot = h.snapshotWith();
+      await h.run();
+      final firstRunUpserts = h.channel.upsertedDrafts.length;
+      final callsAfterInitialSync = List<String>.of(h.channel.calls);
+
+      void onReminderChanged() {
+        h.reminderMinutes = settings.reminderMinutes;
+        h.coordinator.requestSync();
+      }
+
+      settings.addListener(onReminderChanged);
+      addTearDown(() => settings.removeListener(onReminderChanged));
+      final prefs = await SharedPreferences.getInstance();
+
+      await prefs.setInt(CalendarReminderSettings.storageKey, 20);
+      await settings.load();
+      await h.coordinator.waitForIdle();
+      expect(h.channel.calls, callsAfterInitialSync);
+      expect(h.channel.upsertedDrafts, hasLength(firstRunUpserts));
+
+      await prefs.setInt(CalendarReminderSettings.storageKey, 30);
+      await settings.load();
+      await h.coordinator.waitForIdle();
+
+      final updatedDrafts = h.channel.upsertedDrafts.skip(firstRunUpserts);
+      expect(updatedDrafts, isNotEmpty);
+      expect(
+        updatedDrafts.every((draft) => draft.reminderMinutes == 30),
+        isTrue,
+      );
       expect(h.channel.deleteCalls, 0);
     });
 

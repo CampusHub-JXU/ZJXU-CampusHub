@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:jxu_campus_hub/app/theme.dart';
 import 'package:jxu_campus_hub/core/auth/auth_recovery_state_store.dart';
 import 'package:jxu_campus_hub/core/auth/auth_session_persistence.dart';
 import 'package:jxu_campus_hub/core/auth/credential_store.dart';
@@ -16,6 +17,9 @@ import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/core/network/dio_client.dart';
 import 'package:jxu_campus_hub/core/network/network_settings.dart';
+import 'package:jxu_campus_hub/core/theme/app_colors.dart';
+import 'package:jxu_campus_hub/core/theme/page_transition_activity.dart';
+import 'package:jxu_campus_hub/features/settings/settings_page.dart';
 import 'package:jxu_campus_hub/core/theme/personalization_controller.dart';
 import 'package:jxu_campus_hub/features/my/my_page.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';
@@ -68,6 +72,7 @@ void main() {
   });
 
   setUp(() async {
+    PageTransitionActivity.instance.debugReset();
     SharedPreferences.setMockInitialValues({});
     // 流体 Shader 默认开且不依赖壁纸：持续动画会让 pumpAndSettle 永不收敛。
     PersonalizationController.instance.shaderEnabled.value = false;
@@ -179,6 +184,130 @@ void main() {
       tester.widget<Text>(find.byKey(const Key('my_campus_status'))).data,
       '已登录',
     );
+  });
+
+  testWidgets(
+    'liveness result waits for the real settings push transition before applying',
+    (tester) async {
+      PageTransitionActivity.instance.debugMaxHold = const Duration(minutes: 1);
+      final validation = Completer<bool?>();
+      UnifiedAuthService.instance.debugSetSession(
+        active: true,
+        account: '2025001',
+      );
+      UnifiedAuthService.instance.debugSessionValidator = (_) =>
+          validation.future;
+
+      final router = GoRouter(
+        routes: [
+          GoRoute(
+            path: '/',
+            name: 'my',
+            builder: (context, state) => const MyPage(),
+          ),
+          GoRoute(
+            path: '/settings',
+            name: 'settings',
+            pageBuilder: (context, state) => MaterialPage<void>(
+              key: state.pageKey,
+              child: const SettingsPage(),
+            ),
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        MaterialApp.router(
+          theme: AppTheme.darkThemeFor(AppColors.primary)
+              .copyWith(platform: TargetPlatform.android),
+          routerConfig: router,
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(
+        tester.widget<Text>(find.byKey(const Key('my_campus_status'))).data,
+        '已登录',
+      );
+
+      await tester.tap(find.byIcon(Icons.settings_outlined));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(SettingsPage), findsOneWidget);
+      expect(PageTransitionActivity.instance.isBusy, isTrue);
+
+      validation.complete(false);
+      await tester.pump();
+      expect(
+        tester
+            .widget<Text>(
+              find.byKey(const Key('my_campus_status'), skipOffstage: false),
+            )
+            .data,
+        '去登录',
+        reason: 'a failed liveness probe revokes local identity immediately',
+      );
+
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<Text>(
+              find.byKey(const Key('my_campus_status'), skipOffstage: false),
+            )
+            .data,
+        '去登录',
+      );
+      expect(tester.takeException(), isNull);
+      router.dispose();
+    },
+  );
+
+  testWidgets('pending liveness result is safe after MyPage is disposed', (
+    tester,
+  ) async {
+    final validation = Completer<bool?>();
+    UnifiedAuthService.instance.debugSetSession(
+      active: true,
+      account: '2025001',
+    );
+    UnifiedAuthService.instance.debugSessionValidator = (_) =>
+        validation.future;
+
+    final router = GoRouter(
+      routes: [
+        GoRoute(
+          path: '/',
+          name: 'my',
+          builder: (context, state) => const MyPage(),
+        ),
+        GoRoute(
+          path: '/settings',
+          name: 'settings',
+          pageBuilder: (context, state) => MaterialPage<void>(
+            key: state.pageKey,
+            child: const SettingsPage(),
+          ),
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      MaterialApp.router(
+        theme: AppTheme.darkThemeFor(AppColors.primary)
+            .copyWith(platform: TargetPlatform.android),
+        routerConfig: router,
+      ),
+    );
+    await tester.pump();
+
+    router.go('/settings');
+    await tester.pumpAndSettle();
+    expect(find.byType(MyPage), findsNothing);
+    expect(find.byType(SettingsPage), findsOneWidget);
+
+    validation.complete(true);
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    router.dispose();
   });
 
   group('identity display', () {

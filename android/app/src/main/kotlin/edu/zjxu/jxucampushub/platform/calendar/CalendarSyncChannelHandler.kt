@@ -6,6 +6,8 @@ import android.content.pm.PackageManager
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import io.flutter.plugin.common.StandardMethodCodec
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * 课表日历同步通道（仅前台，主 Activity 注册）。
@@ -40,7 +42,16 @@ class CalendarSyncChannelHandler(private val activity: Activity) {
     private var pendingPermissionResult: MethodChannel.Result? = null
 
     fun register(messenger: BinaryMessenger) {
-        MethodChannel(messenger, CalendarSyncContract.CHANNEL).setMethodCallHandler { call, result ->
+        val taskQueue = messenger.makeBackgroundTaskQueue(
+            BinaryMessenger.TaskQueueOptions().setIsSerial(true),
+        )
+        MethodChannel(
+            messenger,
+            CalendarSyncContract.CHANNEL,
+            StandardMethodCodec.INSTANCE,
+            taskQueue,
+        ).setMethodCallHandler { call, rawResult ->
+            val result = OnceResult(rawResult)
             when (call.method) {
                 "checkPermissions" -> result.success(hasCalendarPermissions())
                 "requestPermissions" -> requestPermissions(result)
@@ -55,9 +66,13 @@ class CalendarSyncChannelHandler(private val activity: Activity) {
      */
     fun onRequestPermissionsResult(requestCode: Int, grantResults: IntArray) {
         if (requestCode != REQUEST_CODE) return
-        val pending = pendingPermissionResult ?: return
-        pendingPermissionResult = null
-        pending.success(hasCalendarPermissions())
+        // MainActivity calls this from the Android callback. Keep the state confined to the
+        // main thread even if a host or future caller forwards the callback from elsewhere.
+        activity.runOnUiThread {
+            val pending = pendingPermissionResult ?: return@runOnUiThread
+            pendingPermissionResult = null
+            pending.success(hasCalendarPermissions())
+        }
     }
 
     private fun handleAuthorizedCall(call: MethodCall, result: MethodChannel.Result) {
@@ -177,29 +192,31 @@ class CalendarSyncChannelHandler(private val activity: Activity) {
     }
 
     private fun requestPermissions(result: MethodChannel.Result) {
-        if (hasCalendarPermissions()) {
-            result.success(true)
-            return
-        }
-        if (pendingPermissionResult != null) {
-            result.error(
-                CalendarSyncErrors.REQUESTS_IN_FLIGHT,
-                "a permission request is already in progress",
-                null,
-            )
-            return
-        }
+        activity.runOnUiThread {
+            if (hasCalendarPermissions()) {
+                result.success(true)
+                return@runOnUiThread
+            }
+            if (pendingPermissionResult != null) {
+                result.error(
+                    CalendarSyncErrors.REQUESTS_IN_FLIGHT,
+                    "a permission request is already in progress",
+                    null,
+                )
+                return@runOnUiThread
+            }
 
-        pendingPermissionResult = result
-        try {
-            activity.requestPermissions(CALENDAR_PERMISSIONS, REQUEST_CODE)
-        } catch (_: Exception) {
-            pendingPermissionResult = null
-            result.error(
-                CalendarSyncErrors.PROVIDER_UNAVAILABLE,
-                "permission request failed",
-                null,
-            )
+            pendingPermissionResult = result
+            try {
+                activity.requestPermissions(CALENDAR_PERMISSIONS, REQUEST_CODE)
+            } catch (_: Exception) {
+                pendingPermissionResult = null
+                result.error(
+                    CalendarSyncErrors.PROVIDER_UNAVAILABLE,
+                    "permission request failed",
+                    null,
+                )
+            }
         }
     }
 
@@ -209,4 +226,21 @@ class CalendarSyncChannelHandler(private val activity: Activity) {
 
     private fun hasPermission(permission: String): Boolean =
         activity.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
+
+    /** Flutter permits a single reply per incoming method call; enforce it across reentrant paths. */
+    private class OnceResult(private val delegate: MethodChannel.Result) : MethodChannel.Result {
+        private val completed = AtomicBoolean(false)
+
+        override fun success(result: Any?) {
+            if (completed.compareAndSet(false, true)) delegate.success(result)
+        }
+
+        override fun error(code: String, message: String?, details: Any?) {
+            if (completed.compareAndSet(false, true)) delegate.error(code, message, details)
+        }
+
+        override fun notImplemented() {
+            if (completed.compareAndSet(false, true)) delegate.notImplemented()
+        }
+    }
 }

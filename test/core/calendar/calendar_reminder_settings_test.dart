@@ -36,6 +36,34 @@ void main() {
     expect(settings.reminderMinutes, 45);
   });
 
+  test('load 只在首次加载或有效提前量改变时通知监听者', () async {
+    final settings = CalendarReminderSettings.instance;
+    var notified = 0;
+    void listener() => notified++;
+    settings.addListener(listener);
+    addTearDown(() => settings.removeListener(listener));
+
+    await settings.load();
+    expect(notified, 1);
+
+    await settings.load();
+    expect(notified, 1);
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(CalendarReminderSettings.storageKey, 30);
+    await settings.load();
+    expect(settings.reminderMinutes, 30);
+    expect(notified, 2);
+
+    await prefs.setString(CalendarReminderSettings.storageKey, 'damaged');
+    await settings.load();
+    expect(settings.reminderMinutes, 20);
+    expect(notified, 3);
+
+    await settings.load();
+    expect(notified, 3);
+  });
+
   test('设置后落盘并可被重新读回', () async {
     final settings = CalendarReminderSettings.instance;
     await settings.load();

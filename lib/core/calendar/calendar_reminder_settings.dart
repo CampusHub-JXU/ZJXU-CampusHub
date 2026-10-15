@@ -47,9 +47,11 @@ class CalendarReminderSettings extends ChangeNotifier {
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.get(storageKey);
-    _reminderMinutes = _sanitize(raw is int ? raw : null);
+    final reminderMinutes = _sanitize(raw is int ? raw : null);
+    final shouldNotify = !_loaded || _reminderMinutes != reminderMinutes;
+    _reminderMinutes = reminderMinutes;
     _loaded = true;
-    notifyListeners();
+    if (shouldNotify) notifyListeners();
   }
 
   /// 设置提前量：先按协议范围消毒，再落盘；写盘未确认时**不**改内存态。

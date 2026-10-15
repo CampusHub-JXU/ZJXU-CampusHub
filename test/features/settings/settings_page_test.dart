@@ -4,7 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:jxu_campus_hub/app/theme.dart';
+import 'package:jxu_campus_hub/core/calendar/calendar_reminder_settings.dart';
+import 'package:jxu_campus_hub/core/theme/app_colors.dart';
+import 'package:jxu_campus_hub/core/theme/page_transition_activity.dart';
 import 'package:jxu_campus_hub/features/settings/settings_page.dart';
+import 'package:jxu_campus_hub/shared/widgets/app_dropdown.dart';
 import 'package:jxu_campus_hub/shared/widgets/plain_list.dart';
 
 import '../../helpers/pump_app.dart';
@@ -14,6 +19,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() async {
+    PageTransitionActivity.instance.debugReset();
     await resetTestEnvironment();
   });
 
@@ -56,6 +62,146 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('按日期推算'), findsOneWidget);
     expect(find.textContaining('学年'), findsWidgets);
+  });
+
+  testWidgets('真实 push 转场期间学期异步结果延后到转场结束', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.darkThemeFor(AppColors.primary)
+            .copyWith(platform: TargetPlatform.android),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => Center(
+              child: TextButton(
+                onPressed: () {
+                  Navigator.of(context).push<void>(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const SettingsPage(),
+                    ),
+                  );
+                },
+                child: const Text('打开设置'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final transitions = PageTransitionActivity.instance;
+    transitions.debugMaxHold = const Duration(minutes: 1);
+    transitions.acquire();
+    await tester.tap(find.text('打开设置'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('当前学期'), findsOneWidget);
+
+    final route = ModalRoute.of(tester.element(find.text('当前学期')))!;
+    expect(route.animation!.isAnimating, isTrue);
+    expect(transitions.isBusy, isTrue);
+
+    try {
+      // Finish the actual route animation without advancing fake time through
+      // the transition activity watchdog.
+      for (var frame = 0; frame < 12; frame++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(route.animation!.isAnimating, isFalse);
+      expect(transitions.isBusy, isTrue);
+      expect(find.text('按日期推算'), findsNothing);
+
+      transitions.release();
+      await tester.pumpAndSettle();
+      expect(find.text('按日期推算'), findsOneWidget);
+    } finally {
+      if (transitions.isBusy) transitions.release();
+    }
+  });
+
+  testWidgets('设置页在 push 转场中被 pop 后异步回调安全结束', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.darkThemeFor(AppColors.primary)
+            .copyWith(platform: TargetPlatform.android),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => Center(
+              child: TextButton(
+                onPressed: () {
+                  Navigator.of(context).push<void>(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const SettingsPage(),
+                    ),
+                  );
+                },
+                child: const Text('打开设置'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final transitions = PageTransitionActivity.instance;
+    transitions.debugMaxHold = const Duration(minutes: 1);
+    transitions.acquire();
+    try {
+      await tester.tap(find.text('打开设置'));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('当前学期'), findsOneWidget);
+      expect(transitions.isBusy, isTrue);
+
+      await tester.pumpAndSettle();
+      tester.state<NavigatorState>(find.byType(Navigator)).pop();
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      transitions.release();
+      await tester.pump();
+      expect(find.text('打开设置'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    } finally {
+      if (transitions.isBusy) transitions.release();
+    }
+  });
+
+  testWidgets('课前提醒连续变更在转场中合并，空闲后显示最新值', (tester) async {
+    await pumpPage(tester, const SettingsPage());
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('课前提醒'), 300);
+
+    final transitions = PageTransitionActivity.instance;
+    transitions.debugMaxHold = const Duration(minutes: 1);
+    transitions.acquire();
+    try {
+      await CalendarReminderSettings.instance.setReminderMinutes(5);
+      await CalendarReminderSettings.instance.setReminderMinutes(30);
+      await tester.pump();
+
+      expect(CalendarReminderSettings.instance.reminderMinutes, 30);
+      expect(
+        tester
+            .widget<AppDropdown<int>>(
+              find.byKey(const Key('calendar_reminder_dropdown')),
+            )
+            .value,
+        20,
+      );
+
+      transitions.release();
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<AppDropdown<int>>(
+              find.byKey(const Key('calendar_reminder_dropdown')),
+            )
+            .value,
+        30,
+      );
+    } finally {
+      if (transitions.isBusy) transitions.release();
+    }
   });
 
   testWidgets('学期分组不再提供手动年级，保留当前学期与开学日', (tester) async {

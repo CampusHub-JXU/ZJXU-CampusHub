@@ -17,6 +17,7 @@ import '../../core/semester/current_term_resolver.dart';
 import '../../core/semester/semester_calendar.dart';
 import '../../core/semester/schedule_term_context.dart';
 import '../../core/theme/app_typography.dart';
+import '../../core/theme/page_transition_activity.dart';
 import '../../core/update/apk_update_controller.dart';
 import '../../core/update/update_checker.dart';
 import '../../core/update/update_model.dart';
@@ -396,6 +397,9 @@ class _CurrentTermTileState extends State<_CurrentTermTile> {
 
   Future<void> _resolveTerm() async {
     final resolved = await CurrentTermResolver.instance.resolve();
+    // The settings route is snapshot during its push/pop transition. Keep the
+    // async read out of that interval so it cannot invalidate the snapshot.
+    await PageTransitionActivity.instance.whenIdle();
     if (!mounted) return;
     setState(() {
       _resolved = resolved;
@@ -459,6 +463,9 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
   /// 有开启 / 扫描 / 清理请求在途：期间忽略重复点击，避免重复原生调用。
   bool _busy = false;
 
+  /// Coalesces async store/auth notifications until a route transition is idle.
+  bool _transitionRefreshScheduled = false;
+
   /// 在途 Future 的真实进度文案；仅请求进行中非 null，空闲时**不**显示任何指示器。
   String? _progress;
 
@@ -472,18 +479,9 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
     _reminder.addListener(_handleControlChanged);
     // paused 的副标题取决于当前是否有已验证教务身份，登录 / 登出时需要重绘。
     ZhengfangAuth.instance.addListener(_handleControlChanged);
-    unawaited(
-      _control.load().then((_) {
-        if (!mounted) return;
-        setState(() {});
-      }),
-    );
+    unawaited(_control.load().then((_) => _handleControlChanged()));
     // 持久化提前量在启动时已 load；此处兜底确保设置页拿到磁盘值。
-    unawaited(
-      _reminder.load().then((_) {
-        if (mounted) setState(() {});
-      }),
-    );
+    unawaited(_reminder.load().then((_) => _handleControlChanged()));
   }
 
   @override
@@ -495,7 +493,15 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
   }
 
   void _handleControlChanged() {
+    if (!mounted || _transitionRefreshScheduled) return;
+    _transitionRefreshScheduled = true;
+    unawaited(_refreshAfterTransition());
+  }
+
+  Future<void> _refreshAfterTransition() async {
+    await PageTransitionActivity.instance.whenIdle();
     if (!mounted) return;
+    _transitionRefreshScheduled = false;
     setState(() {});
   }
 
