@@ -643,8 +643,10 @@ void main() {
       await tester.pump();
       expect(reportCalls, 1);
       expect(find.text('3.456'), findsOneWidget);
-      // 学业分段的 AppBar 换成树状图 / 刷新，没有成绩搜索。
-      expect(find.byTooltip('树状图'), findsOneWidget);
+      // 学业分段的 AppBar 只剩刷新，没有列表 / 树状图切换，也没有成绩搜索。
+      expect(find.byTooltip('刷新'), findsOneWidget);
+      expect(find.byTooltip('树状图'), findsNothing);
+      expect(find.byTooltip('列表'), findsNothing);
       expect(find.byTooltip('搜索'), findsNothing);
 
       await tester.tap(find.text('课程成绩'));

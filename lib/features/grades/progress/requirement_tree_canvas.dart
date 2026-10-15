@@ -41,9 +41,12 @@ class RequirementTreeEdge {
   final bool alternative;
 }
 
-RequirementTreeLayout layoutRequirementTree(List<RequirementNode> roots) {
+RequirementTreeLayout layoutRequirementTree(
+  List<RequirementNode> roots, {
+  double nodeHeightScale = 1,
+}) {
   const w = RequirementTreeLayout.nodeWidth;
-  const h = RequirementTreeLayout.nodeHeight;
+  final h = RequirementTreeLayout.nodeHeight * nodeHeightScale;
   const pad = RequirementTreeLayout.padding;
   final nodes = <String, Rect>{};
   final edges = <RequirementTreeEdge>[];
@@ -120,10 +123,24 @@ class _RequirementTreeCanvasState extends State<RequirementTreeCanvas> {
   late List<RequirementNode> _flat;
   final _controller = TransformationController();
 
+  /// 系统文字缩放倍率（以 14 号字为参考）；节点高度随之放大，避免固定
+  /// 72dp 卡片在大字号下文字溢出。
+  double _textScale = 1;
+
   @override
   void initState() {
     super.initState();
     _relayout();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final scale = MediaQuery.textScalerOf(context).scale(14) / 14;
+    if (scale != _textScale) {
+      _textScale = scale;
+      _relayout();
+    }
   }
 
   @override
@@ -139,7 +156,7 @@ class _RequirementTreeCanvasState extends State<RequirementTreeCanvas> {
   }
 
   void _relayout() {
-    _layout = layoutRequirementTree(widget.roots);
+    _layout = layoutRequirementTree(widget.roots, nodeHeightScale: _textScale);
     _flat = [for (final root in widget.roots) ..._descendants(root)];
   }
 
