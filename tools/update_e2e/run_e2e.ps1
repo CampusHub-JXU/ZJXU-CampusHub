@@ -107,7 +107,9 @@ function Get-InstalledVersionCode {
 function Invoke-FlutterBuild([string]$Label, [string[]]$ExtraArgs, [string]$Destination) {
     Write-Step "Building APK $Label (debug; several minutes, sequential) ..."
     if (Test-Path -LiteralPath $BuiltApk) { Remove-Item -LiteralPath $BuiltApk -Force }
+    # 只打设备 ABI 的原生库：debug 全 ABI 包 200+ MB，经模拟器 NAT 下载极慢。
     $buildArgs = @('build', 'apk', '--debug', '--target', 'lib/main.dart',
+        '--target-platform', $script:TargetPlatform,
         "--dart-define=JXU_UPDATE_TEST_ORIGIN=$Origin") + $ExtraArgs
     & $FlutterExe @buildArgs
     if ($LASTEXITCODE -ne 0) { throw "flutter build apk ($Label) failed with exit $LASTEXITCODE" }
@@ -149,6 +151,12 @@ try {
     if ($baseCode -ge $TargetVersionCode) { throw "pubspec build number $baseCode must be below $TargetVersionCode" }
     $abi = ((& $script:Adb -s $Serial shell getprop ro.product.cpu.abi) -join '').Trim()
     if (-not $abi) { throw "Cannot read ro.product.cpu.abi from $Serial" }
+    $script:TargetPlatform = switch ($abi) {
+        'x86_64' { 'android-x64' }
+        'arm64-v8a' { 'android-arm64' }
+        'armeabi-v7a' { 'android-arm' }
+        default { throw "Unsupported device ABI $abi" }
+    }
     $tag = "v$nameB"
     $assetName = "JXU-CampusHub-$tag-$abi.apk"
 
@@ -217,7 +225,7 @@ try {
     if (Test-PortInUse $Port) { throw "Port $Port is already in use on 127.0.0.1; pass another -Port (APKs bake it in)." }
     Write-Step "Starting static server on ${BindAddress}:$Port (log: $ServerLogPath)"
     $serverProc = Start-Process -FilePath $python.Source -PassThru -NoNewWindow `
-        -ArgumentList @('-u', '-m', 'http.server', "$Port", '--bind', $BindAddress, '--directory', $WwwDir) `
+        -ArgumentList @('-u', (Join-Path $PSScriptRoot 'serve.py'), "$Port", $BindAddress, $WwwDir) `
         -RedirectStandardError $ServerLogPath -RedirectStandardOutput (Join-Path $OutDir 'server.out.log')
     $ready = $false
     for ($i = 0; $i -lt 20 -and -not $ready; $i++) {

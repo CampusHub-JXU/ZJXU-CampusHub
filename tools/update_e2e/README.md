@@ -27,7 +27,7 @@ pwsh -File .\tools\update_e2e\run_e2e.ps1          # 默认 -Serial emulator-555
    - B：`--build-number 9999 --build-name X.Y.(Z+1)` → `output/update_e2e/app-B.apk`
    两者同一把本地 debug 签名，B 可覆盖 A。
 2. 生成 `output/update_e2e/www/latest.json`（GitHub Release API 同形：`tag_name`、`assets[]` 含 `name` / `size` / `digest=sha256:` / 规范 GitHub `browser_download_url`），B 放在 `www/<tag>/JXU-CampusHub-<tag>-<abi>.apk`。随后用 `check_latest_json.py` 按 `update_source.dart` / `update_model.dart` / `AppUpdateContract.kt` 的规则再核一遍，不通过直接失败。
-3. `python -m http.server` 服务 `www/`（日志 `server.log`），退出时清理。
+3. `serve.py`（多线程、1 MiB 分块发送、支持单段 `Range`）服务 `www/`（日志 `server.log`），退出时清理。A / B 只打设备 ABI（`--target-platform`，按 `ro.product.cpu.abi` 选），不再是 200+ MB 的全 ABI debug 包。
 4. `adb install -r -t -d` 安装 A（保留数据，`-d` 只为重跑时允许从 B 降回 A；**绝不卸载、不 `pm clear`**），`monkey` 启动 `edu.zjxu.jxucampushub.dev`。
 5. 打印手动步骤：**我的 → 设置 → 检查更新 → 更新 → 系统安装确认**；每 3 秒读 `dumpsys package` 的 versionCode，到 9999 即成功。期间 `adb logcat -s AppUpdate:V` 写入 `output/update_e2e/logcat.txt`（启动时会 `logcat -c` 清空该设备日志缓冲）。
 
@@ -35,5 +35,5 @@ pwsh -File .\tools\update_e2e\run_e2e.ps1          # 默认 -Serial emulator-555
 
 - 测试源只在 debug 构建且 `JXU_UPDATE_TEST_ORIGIN` 合法（`http://10.0.2.2:<1024–65535>`）时生效；release / profile 不可达。
 - 构建覆盖 `build/app/outputs/flutter-apk/app-debug.apk`（最后留下的是 B）。验收结束后若要回到正常包：`flutter build apk --debug --target lib/main.dart`，再 `adb -s <serial> install -r -t <apk>`。
-- Python 的 `http.server` 不支持 `Range`，DownloadManager 断点续传会退化为整包重下，不影响本验收。
+- 改用 `serve.py` 前，`python -m http.server` 小块发送且不支持 `Range`，加上全 ABI debug 包，经模拟器 NAT（`10.0.2.2`）下载可低至 200 kbps 以下。模拟器 NAT 本身仍有吞吐上限，速度只反映测试环境，不代表真实线路。
 - 只验证 x86_64 模拟器；arm64 真机、OEM 安装拦截、真实 R2 / EdgeOne 线路不在此覆盖。
