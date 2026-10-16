@@ -1,0 +1,39 @@
+# 应用内更新模拟器端到端（tools/update_e2e）
+
+用本机模拟器验证「检查更新 → 下载 → 校验 → 系统安装确认 → 覆盖安装」整条链路，不碰真实 GitHub / R2 / EdgeOne。契约见 `docs/in-app-update-state-machine.md` §8。
+
+## 运行
+
+```powershell
+pwsh -File .\tools\emulator_zh.ps1                 # 先起 jxu_test 模拟器
+pwsh -File .\tools\update_e2e\run_e2e.ps1          # 默认 -Serial emulator-5554 -Port 8765
+```
+
+| 参数 | 说明 |
+|---|---|
+| `-Serial` | adb 序列号，默认 `emulator-5554`；脚本只操作它 |
+| `-Port` | 本地静态服务端口（1024–65535，默认 8765），**已烘焙进 APK**，`-SkipBuild` 时须与上次一致 |
+| `-SkipBuild` | 复用 `output/update_e2e/app-{A,B}.apk` 与 `meta.json`，仍会重新生成 `www/` 并安装 A |
+| `-ServeOnly` | 不构建、不安装、不启动，只起服务并轮询（重跑 / 手动已装 A 时用） |
+| `-TimeoutSec` | 等待 versionCode 变为 9999 的最长秒数，默认 600 |
+| `-BindAddress` | 服务监听地址，默认 `127.0.0.1`（模拟器的 `10.0.2.2` 就是宿主 loopback） |
+
+退出码：`0` 成功；`2` 超时（versionCode 没到 9999）；`1` 其它错误（设备不在线、构建 / 安装失败、JSON 校验失败等）。
+
+## 脚本做了什么
+
+1. 读 `pubspec.yaml` 的 `version: X.Y.Z+N`。顺序构建两个 debug APK（各需数分钟），都带 `--dart-define=JXU_UPDATE_TEST_ORIGIN=http://10.0.2.2:<Port>`：
+   - A：当前版本（`X.Y.Z+N`）→ `output/update_e2e/app-A.apk`
+   - B：`--build-number 9999 --build-name X.Y.(Z+1)` → `output/update_e2e/app-B.apk`
+   两者同一把本地 debug 签名，B 可覆盖 A。
+2. 生成 `output/update_e2e/www/latest.json`（GitHub Release API 同形：`tag_name`、`assets[]` 含 `name` / `size` / `digest=sha256:` / 规范 GitHub `browser_download_url`），B 放在 `www/<tag>/JXU-CampusHub-<tag>-<abi>.apk`。随后用 `check_latest_json.py` 按 `update_source.dart` / `update_model.dart` / `AppUpdateContract.kt` 的规则再核一遍，不通过直接失败。
+3. `python -m http.server` 服务 `www/`（日志 `server.log`），退出时清理。
+4. `adb install -r -t -d` 安装 A（保留数据，`-d` 只为重跑时允许从 B 降回 A；**绝不卸载、不 `pm clear`**），`monkey` 启动 `edu.zjxu.jxucampushub.dev`。
+5. 打印手动步骤：**我的 → 设置 → 检查更新 → 更新 → 系统安装确认**；每 3 秒读 `dumpsys package` 的 versionCode，到 9999 即成功。期间 `adb logcat -s AppUpdate:V` 写入 `output/update_e2e/logcat.txt`（启动时会 `logcat -c` 清空该设备日志缓冲）。
+
+## 注意
+
+- 测试源只在 debug 构建且 `JXU_UPDATE_TEST_ORIGIN` 合法（`http://10.0.2.2:<1024–65535>`）时生效；release / profile 不可达。
+- 构建覆盖 `build/app/outputs/flutter-apk/app-debug.apk`（最后留下的是 B）。验收结束后若要回到正常包：`flutter build apk --debug --target lib/main.dart`，再 `adb -s <serial> install -r -t <apk>`。
+- Python 的 `http.server` 不支持 `Range`，DownloadManager 断点续传会退化为整包重下，不影响本验收。
+- 只验证 x86_64 模拟器；arm64 真机、OEM 安装拦截、真实 R2 / EdgeOne 线路不在此覆盖。

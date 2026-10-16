@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:jxu_campus_hub/core/update/apk_download_route.dart';
 import 'package:jxu_campus_hub/core/update/apk_update_controller.dart';
 import 'package:jxu_campus_hub/core/update/update_model.dart';
 import 'package:jxu_campus_hub/shared/widgets/update_dialog.dart';
@@ -18,7 +19,7 @@ import '../helpers/preview_support.dart';
 ///   $env:JXU_PREVIEW_RENDER = "1"
 ///   flutter test test/preview/update_dialog_preview_test.dart --update-goldens
 ///
-/// 覆盖：可更新 / 下载中（已知 / 未知总量）/ 待安装 / 需授权 / 失败 / 降级，
+/// 覆盖：可更新 / 下载中（已知 / 未知总量）/ 待安装 / 需授权 / 失败 / 换源中 / 确认归属中 / 降级，
 /// 以及深色、360 宽、2 倍字号与超长更新说明的可滚动形态。
 void main() {
   final bool renderEnabled = Platform.environment['JXU_PREVIEW_RENDER'] == '1';
@@ -148,6 +149,37 @@ void main() {
         active: const ApkUpdateState(
           phase: ApkUpdatePhase.failed,
           reason: ApkUpdateFailureReason.network,
+          requestKey: 'k',
+        ),
+      ),
+    );
+  });
+
+  previewTest('update_dialog_switching_light', (tester) async {
+    await renderDialog(
+      tester,
+      'update_dialog_switching_light',
+      transport: FakeApkUpdateTransport(
+        active: const ApkUpdateState(
+          phase: ApkUpdatePhase.cleanupPending,
+          requestKey: 'k',
+          source: ApkDownloadSource.r2,
+          triedSources: [ApkDownloadSource.r2],
+          switching: true,
+          switchReason: ApkFallbackReason.connectTimeout,
+          fellBackFrom: ApkDownloadSource.r2,
+        ),
+      ),
+    );
+  });
+
+  previewTest('update_dialog_reconcile_light', (tester) async {
+    await renderDialog(
+      tester,
+      'update_dialog_reconcile_light',
+      transport: FakeApkUpdateTransport(
+        active: const ApkUpdateState(
+          phase: ApkUpdatePhase.reconcileRequired,
           requestKey: 'k',
         ),
       ),

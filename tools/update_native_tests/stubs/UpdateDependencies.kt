@@ -13,5 +13,6 @@ internal object AppUpdateVerifier {
         expectedVersion: String?) = verifyAction(file)
 }
 internal object AppUpdateNotifications {
-    fun postCompletion(context: Context, requestKey: String) {}
+    var posts = 0
+    fun postCompletion(context: Context, requestKey: String) { posts++ }
 }

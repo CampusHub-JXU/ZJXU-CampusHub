@@ -132,6 +132,7 @@ void main() {
         'startDownload',
         'queryActiveUpdate',
         'cancelActiveUpdate',
+        'switchSource',
         'requestInstall',
         'openInstallPermissionSettings',
       ]) {
@@ -292,62 +293,196 @@ void main() {
 
     test('replacing a managed request retires the old owned row first', () {
       final manager = read('$updateDir/AppUpdateManager.kt');
+      final machine = read('$updateDir/AppUpdateMachine.kt');
       expect(manager, contains('mutationLock'));
-      expect(manager, contains('retireOwned(existing)'));
       expect(manager, contains('trackedRowOwnership'));
       expect(manager, contains('confirmRemoved'));
-      // 无法权威退役时绝不丢弃旧记录 / 盲目入队新请求。
+      // 不同 requestKey 的 Start 先把旧任务转入 CLEANUP_PENDING 并退役；
+      // 只有退役确认、旧任务已清空后才执行挂起的新 Start。
+      expect(machine, contains('return cleanup(CleanupIntent.CANCEL, event)'));
       expect(
         manager,
-        contains('if (existing != null && !retireOwned(existing))'),
+        contains(
+          'if (confirmed && effect.restart != null && store.read() == null)',
+        ),
       );
     });
 
     test('reconcile never re-enqueues when the scan is not authoritative', () {
+      final machine = read('$updateDir/AppUpdateMachine.kt');
       final manager = read('$updateDir/AppUpdateManager.kt');
-      expect(manager, contains('markReconcileUnresolved'));
-      expect(manager, contains('reconcileNotFound'));
-      // 只有目标文件也不存在时才允许重新入队。
-      expect(manager, contains('if (file.exists())'));
+      // 只有完整扫描无匹配且自有目标文件也不存在时才重新入队；其余一律保留身份。
+      expect(
+        machine,
+        contains('AppUpdateOwnership.Scan.NotFound -> if (!event.fileExists)'),
+      );
+      expect(
+        machine,
+        contains('else -> out(task.copy(stage = Stage.RECONCILE_REQUIRED))'),
+      );
+      expect(manager, contains('managedFile(t).exists() || !canReenqueue(t)'));
+      // 旧实现把对账失败写成可重试失败并丢掉 pending 标记（会遗留孤儿下载）。
+      expect(manager, isNot(contains('markReconcileUnresolved')));
+    });
+
+    test('a failed DM query is never persisted as a download failure', () {
+      final manager = read('$updateDir/AppUpdateManager.kt');
+      final machine = read('$updateDir/AppUpdateMachine.kt');
+      // 查询不可用与「行不存在」分开；Unavailable 只投影，不改任务。
+      expect(manager, contains('if (c == null) return DmObs.Unavailable'));
+      expect(manager, contains('if (!c.moveToFirst()) return DmObs.Absent'));
+      expect(machine, contains('else -> out(dm = dm)'));
+    });
+
+    test('superseded-by-installed is decided natively at every entry', () {
+      final manager = read('$updateDir/AppUpdateManager.kt');
+      final machine = read('$updateDir/AppUpdateMachine.kt');
+      expect(
+        manager,
+        contains('Event.Installed(versionCode(info), info.versionName)'),
+      );
+      expect(machine, contains('cleanup(CleanupIntent.SUPERSEDED)'));
+      // Dart 不再按 semver 删除原生任务。
+      final controller = read(controllerPath);
+      expect(controller, isNot(contains('_isSuperseded')));
+    });
+
+    test('debug test origin is gated only by FLAG_DEBUGGABLE', () {
+      final manager = read('$updateDir/AppUpdateManager.kt');
+      final contract = read('$updateDir/AppUpdateContract.kt');
+      expect(
+        manager,
+        contains(
+          'private val allowTestOrigin = (appContext.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0',
+        ),
+      );
+      expect(
+        RegExp(r'allowTestOrigin\s*=').allMatches(manager).length,
+        1,
+        reason: 'allowTestOrigin 只能在一处由 FLAG_DEBUGGABLE 计算',
+      );
+      expect(
+        contract,
+        contains(
+          'fun parseCanonicalAssetUrl(raw: String?, allowTestOrigin: Boolean = false)',
+        ),
+      );
+      expect('10.0.2.2'.allMatches(contract).length, 1);
+      expect(contract, contains('if (allowTestOrigin) {'));
+      // debug 网络安全配置只在 debug 源集；main 不允许 10.0.2.2 明文。
+      final mainNsc = read(
+        'android/app/src/main/res/xml/network_security_config.xml',
+      );
+      expect(mainNsc, isNot(contains('10.0.2.2')));
+      final debugNsc = read(
+        'android/app/src/debug/res/xml/network_security_config.xml',
+      );
+      expect(debugNsc, contains('10.0.2.2'));
     });
   });
 
   group('cancel + install-callback generation guards (N1/N2)', () {
     test('cancel reuses authoritative retire and never silently clears', () {
       final manager = read('$updateDir/AppUpdateManager.kt');
-      // 取消复用与替换请求相同的权威退役，失败时保留 exact 记录（不 clear / 不谎报）。
-      expect(manager, contains('cancelDisposition('));
-      expect(manager, contains('retireOwned(record)'));
-      expect(manager, contains('CancelDisposition.CLEARED_CANCELED'));
-      expect(manager, contains('CancelDisposition.RETAIN_FAILED'));
-      // 用户明确取消：失败时消费自动安装意图，但仍保留 id / generation 以便重试。
-      expect(manager, contains('userWantsInstall = false'));
+      final machine = read('$updateDir/AppUpdateMachine.kt');
+      // 取消进入 CLEANUP_PENDING 并退役；同时消费自动安装意图。
+      expect(machine, contains('return cleanup(CleanupIntent.CANCEL)'));
+      expect(machine, contains('failureReason = null, wantsInstall = false)'));
+      // 未确认退役：保留完整身份并如实返回 retired=false（不 clear / 不谎报 canceled）。
       expect(
-        manager,
-        contains('isStale(current, record.requestKey, record.generation)'),
+        machine,
+        contains('else if (!event.confirmed) out(retired = false)'),
       );
-
-      // 纯逻辑与可执行用例同源。
+      expect(manager, contains('val confirmed = retireOwned(record)'));
+      expect(manager, contains('retired = view.task == null'));
       final ownership = read('$updateDir/AppUpdateOwnership.kt');
-      expect(ownership, contains('fun cancelDisposition('));
       expect(ownership, contains('fun isStale('));
     });
 
     test('install callback is (requestKey, generation) guarded end to end', () {
       final manager = read('$updateDir/AppUpdateManager.kt');
-      // 回调必须携带被校验记录的代际，而不是拷贝「当前」记录。
+      final machine = read('$updateDir/AppUpdateMachine.kt');
+      // 所有迟到结果（入队 / 校验 / 安装 / 退役）先核对 generation。
+      expect(
+        machine,
+        contains('if (gen != null && gen != task?.generation) return out()'),
+      );
+      // 校验回填与拉起安装器都用同一 (requestKey, generation) 守卫，并用最新记录发起。
+      expect(
+        manager,
+        contains('!isStale(current, record.requestKey, record.generation)'),
+      );
       expect(
         manager,
         contains(
-          'finishInstallAttempt(activity, record.requestKey, record.generation, outcome, callback)',
+          'if (isStale(current, record.requestKey, record.generation) || current?.stage != Stage.READY || !current.wantsInstall)',
         ),
       );
-      // 成功 / 失败 / 权限三条回填路径都用同一守卫。
-      expect(manager, contains('isStale(verified, requestKey, generation)'));
-      expect(manager, contains('isStale(matched, requestKey, generation)'));
-      expect(manager, contains('isStale(after, requestKey, generation)'));
-      // 用最新匹配记录发起安装，而非旧结果记录。
-      expect(manager, contains('launchInstaller(activity, matched!!)'));
+      expect(manager, contains('launchInstaller(target, current)'));
+    });
+  });
+
+  group('dart debug test-origin gate', () {
+    const configPath = 'lib/core/config/app_config.dart';
+
+    test('the compile-time define is read in exactly one place', () {
+      final offenders = <String>[];
+      for (final entity in Directory('lib').listSync(recursive: true)) {
+        if (entity is! File || !entity.path.endsWith('.dart')) continue;
+        final normalized = entity.path.replaceAll('\\', '/');
+        if (normalized.endsWith(configPath)) continue;
+        if (entity.readAsStringSync().contains('JXU_UPDATE_TEST_ORIGIN')) {
+          offenders.add(normalized);
+        }
+      }
+      expect(
+        offenders,
+        isEmpty,
+        reason: '测试源开关只能由 AppConfig.updateTestOrigin 统一把关',
+      );
+    });
+
+    test('AppConfig only yields an origin when kDebugMode is true', () {
+      final config = read(configPath);
+      expect(config, contains("'JXU_UPDATE_TEST_ORIGIN'"));
+      // 门控 getter 把编译期 kDebugMode 传给纯逻辑；纯逻辑先判断它。
+      expect(
+        config,
+        contains(
+          'resolveUpdateTestOrigin(_updateTestOriginDefine, debugMode: kDebugMode)',
+        ),
+      );
+      expect(config, contains('if (!debugMode) return null;'));
+      // 只接受 http://10.0.2.2:<端口>，不是任意主机。
+      expect(config, contains(r'10\.0\.2\.2'));
+    });
+
+    test(
+      'update check and request building consume the gate, not the define',
+      () {
+        final service = read('lib/core/update/update_service.dart');
+        final controller = read(controllerPath);
+        expect(service, contains('AppConfig.updateTestOrigin'));
+        expect(controller, contains('AppConfig.updateTestOrigin'));
+      },
+    );
+
+    test(
+      'the debug-only test url shape is not in the production allow-list',
+      () {
+        final controller = read(controllerPath);
+        final trusted = RegExp(
+          r'static bool isTrustedDownloadUrl\(String url\) =>([^;]*);',
+        ).firstMatch(controller);
+        expect(trusted, isNotNull, reason: 'isTrustedDownloadUrl 形态变了，请同步本断言');
+        expect(trusted!.group(1), isNot(contains('isTestAssetUrl')));
+        expect(trusted.group(1), isNot(contains('ApkDownloadSource.test')));
+      },
+    );
+
+    test('switchSource is part of the Dart protocol', () {
+      final controller = read(controllerPath);
+      expect(controller, contains("methodSwitchSource = 'switchSource'"));
     });
   });
 

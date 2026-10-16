@@ -30,6 +30,7 @@ internal object AppUpdateContract {
     const val METHOD_START_DOWNLOAD = "startDownload"
     const val METHOD_QUERY_ACTIVE_UPDATE = "queryActiveUpdate"
     const val METHOD_CANCEL_ACTIVE_UPDATE = "cancelActiveUpdate"
+    const val METHOD_SWITCH_SOURCE = "switchSource"
     const val METHOD_REQUEST_INSTALL = "requestInstall"
     const val METHOD_OPEN_INSTALL_PERMISSION_SETTINGS = "openInstallPermissionSettings"
 
@@ -50,6 +51,10 @@ internal object AppUpdateContract {
     const val SOURCE_GITHUB = "github"
     const val SOURCE_EDGEONE = "edgeone"
     const val SOURCE_R2 = "r2"
+    const val SOURCE_TEST = "test"
+    val SOURCES = setOf(SOURCE_GITHUB, SOURCE_EDGEONE, SOURCE_R2, SOURCE_TEST)
+    val SWITCH_REQUEST_REASONS = setOf("connectTimeout", "stalled", "slow", "paused")
+    val SWITCH_REASONS = SWITCH_REQUEST_REASONS + "failed"
 
     const val MAX_URL_LENGTH = 2048
     const val MAX_VERSION_LENGTH = 64
@@ -93,9 +98,22 @@ internal object AppUpdateContract {
      *
      * 与 Dart `ApkUpdateUrlPolicy` 等价（原生侧再次校验，绝不信任 Dart 输入）。
      */
-    fun parseCanonicalAssetUrl(raw: String?): CanonicalAsset? {
+    fun parseCanonicalAssetUrl(raw: String?, allowTestOrigin: Boolean = false): CanonicalAsset? {
         val value = raw?.trim().orEmpty()
         if (value.isEmpty() || value.length > MAX_URL_LENGTH) return null
+
+        // 唯一明文例外：只由 manager 的 FLAG_DEBUGGABLE 门控，不影响生产白名单。
+        if (allowTestOrigin) {
+            val test = parseUri(value) ?: return null
+            if (test.scheme == "http" && test.host == "10.0.2.2" && test.port in 1024..65535 &&
+                test.userInfo == null && test.query == null && test.fragment == null) {
+                val segments = test.pathSegments
+                if (segments.size != 2 || !isSafePathSegment(segments[0]) || !isSafeApkFileName(segments[1])) return null
+                // Android Uri 会忽略空路径段；拒绝重复 / 尾部斜杠，确保恰好两段。
+                if (value.substringAfter("://").substringAfter('/').split('/').size != 2) return null
+                return CanonicalAsset(value, segments[0], segments[1], SOURCE_TEST)
+            }
+        }
 
         // 镜像：精确区分大小写前缀；其后必须紧跟 **小写** GitHub 规范 URL
         //（比单独形态 1 更严：内层 scheme / host 也不接受大小写变体）。
@@ -192,7 +210,7 @@ internal object AppUpdateContract {
     }
 
     private fun isUnsafeChar(ch: Char): Boolean =
-        ch == '/' || ch == '\\' || ch.code < 0x20 || ch.code == 0x7f
+        ch == '/' || ch == '\\' || ch == '%' || ch.code < 0x20 || ch.code == 0x7f
 
     /** 规范化 releaseVersion：去 `v` 前缀与 `+build` 后缀；空串返回空。 */
     fun normalizeVersion(value: String?): String {
@@ -229,6 +247,8 @@ internal object AppUpdatePhase {
     const val PERMISSION_REQUIRED = "permissionRequired"
     const val INSTALLER_OPENED = "installerOpened"
     const val FAILED = "failed"
+    const val RECONCILE_REQUIRED = "reconcileRequired"
+    const val CLEANUP_PENDING = "cleanupPending"
     const val CANCELED = "canceled"
     const val UNAVAILABLE = "unavailable"
 }

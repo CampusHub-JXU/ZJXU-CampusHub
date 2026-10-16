@@ -103,11 +103,16 @@ void main() {
 
       expect(transport.startCalls, 1);
       // 默认「自动」且该版本无 R2 镜像标记：只有 EdgeOne 线路，URL 为镜像形态。
+      expect(transport.lastRequest?.sources, hasLength(1));
       expect(
-        transport.lastRequest?.assetUrl,
+        transport.lastRequest?.sources.single.url,
         '${ApkUpdateProtocol.trustedMirrorPrefix}$kTestCanonicalAssetUrl',
       );
-      expect(transport.lastRequest?.source, ApkDownloadSource.edgeone);
+      expect(
+        transport.lastRequest?.sources.single.source,
+        ApkDownloadSource.edgeone,
+      );
+      expect(transport.lastRequest?.mode, ApkDownloadMode.auto);
       expect(find.text('正在加入下载队列…'), findsOneWidget);
       await disposeDialog(tester);
     });
@@ -128,9 +133,12 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      expect(transport.lastRequest?.source, ApkDownloadSource.r2);
       expect(
-        transport.lastRequest?.assetUrl,
+        [for (final c in transport.lastRequest!.sources) c.source],
+        [ApkDownloadSource.r2, ApkDownloadSource.edgeone],
+      );
+      expect(
+        transport.lastRequest?.sources.first.url,
         startsWith('https://download.fhfanshu.xyz/'),
       );
       await disposeDialog(tester);
@@ -152,7 +160,11 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      expect(transport.lastRequest?.source, ApkDownloadSource.edgeone);
+      expect(
+        [for (final c in transport.lastRequest!.sources) c.source],
+        [ApkDownloadSource.edgeone],
+      );
+      expect(transport.lastRequest?.mode, ApkDownloadMode.manual);
       await disposeDialog(tester);
     });
 
@@ -160,19 +172,28 @@ void main() {
       SharedPreferences.setMockInitialValues(<String, Object>{
         ApkDownloadRoutePreference.storageKey: 'r2',
       });
+      // 原生按 unavailablePreferred 把首选线路记入 fellBackFrom。
       transport.startResult = const ApkUpdateState(
         phase: ApkUpdatePhase.enqueued,
         version: '0.3.0',
         releaseTag: 'v0.3.0',
         requestKey: 'k',
+        source: ApkDownloadSource.edgeone,
+        mode: ApkDownloadMode.manual,
+        fellBackFrom: ApkDownloadSource.r2,
       );
       await open(tester, managedTestRelease());
       await tester.tap(find.widgetWithText(FilledButton, '更新'));
       await tester.pump();
       await tester.pump();
 
-      expect(transport.lastRequest?.source, ApkDownloadSource.edgeone);
+      expect(
+        [for (final c in transport.lastRequest!.sources) c.source],
+        [ApkDownloadSource.edgeone],
+      );
+      expect(transport.lastRequest?.unavailablePreferred, ApkDownloadSource.r2);
       expect(find.textContaining('暂无 Cloudflare R2 线路'), findsOneWidget);
+      expect(find.textContaining('已改用 EdgeOne'), findsOneWidget);
       await disposeDialog(tester);
     });
 
@@ -189,6 +210,165 @@ void main() {
       expect(find.text('该版本不新于当前版本'), findsNothing);
       expect(find.widgetWithText(FilledButton, '更新'), findsOneWidget);
       expect(find.byType(LinearProgressIndicator), findsNothing);
+      await disposeDialog(tester);
+    });
+
+    testWidgets('别的版本遗留的已取消记录同样按 idle 展示', (tester) async {
+      transport.active = const ApkUpdateState(
+        phase: ApkUpdatePhase.canceled,
+        version: '0.2.9',
+        releaseTag: 'v0.2.9',
+        requestKey: 'old',
+      );
+      await open(tester, managedTestRelease());
+
+      expect(find.text('已取消下载'), findsNothing);
+      expect(find.widgetWithText(FilledButton, '更新'), findsOneWidget);
+      await disposeDialog(tester);
+    });
+
+    testWidgets('清理中（非换源）显示清理文案，按钮为取消下载 + 关闭', (tester) async {
+      transport.active = const ApkUpdateState(
+        phase: ApkUpdatePhase.cleanupPending,
+        version: '0.3.0',
+        releaseTag: 'v0.3.0',
+        requestKey: 'k',
+        source: ApkDownloadSource.edgeone,
+        attempt: 1,
+      );
+      await open(tester, managedTestRelease());
+
+      expect(find.text('正在清理上一次下载…'), findsOneWidget);
+      expect(find.widgetWithText(TextButton, '取消下载'), findsOneWidget);
+      expect(find.widgetWithText(TextButton, '关闭'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, '更新'), findsNothing);
+      expect(find.widgetWithText(FilledButton, '重试'), findsNothing);
+      await disposeDialog(tester);
+    });
+
+    testWidgets('换源中显示正在切换到下一条线路，并说明原因', (tester) async {
+      transport.active = const ApkUpdateState(
+        phase: ApkUpdatePhase.cleanupPending,
+        version: '0.3.0',
+        releaseTag: 'v0.3.0',
+        requestKey: 'k',
+        source: ApkDownloadSource.r2,
+        mode: ApkDownloadMode.auto,
+        attempt: 1,
+        triedSources: [ApkDownloadSource.r2],
+        switching: true,
+        switchReason: ApkFallbackReason.connectTimeout,
+        fellBackFrom: ApkDownloadSource.r2,
+      );
+      await open(tester, managedTestRelease(r2MirrorAvailable: true));
+
+      expect(find.text('正在切换到 EdgeOne…'), findsOneWidget);
+      expect(find.text('Cloudflare R2 连接超时。'), findsOneWidget);
+      expect(find.text('正在清理上一次下载…'), findsNothing);
+      expect(find.widgetWithText(TextButton, '取消下载'), findsOneWidget);
+      expect(find.widgetWithText(TextButton, '关闭'), findsOneWidget);
+      await disposeDialog(tester);
+    });
+
+    testWidgets('归属待确认显示确认文案，按钮为取消下载 + 关闭', (tester) async {
+      transport.active = const ApkUpdateState(
+        phase: ApkUpdatePhase.reconcileRequired,
+        version: '0.3.0',
+        releaseTag: 'v0.3.0',
+        requestKey: 'k',
+      );
+      await open(tester, managedTestRelease());
+
+      expect(find.text('正在确认上一次下载的状态…'), findsOneWidget);
+      expect(find.widgetWithText(TextButton, '取消下载'), findsOneWidget);
+      expect(find.widgetWithText(TextButton, '关闭'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, '更新'), findsNothing);
+      await disposeDialog(tester);
+    });
+
+    testWidgets('取消时退役未确认：弹窗留在清理中，不显示成已取消', (tester) async {
+      transport.active = const ApkUpdateState(
+        phase: ApkUpdatePhase.downloading,
+        bytesDownloaded: 1024,
+        totalBytes: 2048,
+        version: '0.3.0',
+        releaseTag: 'v0.3.0',
+        requestKey: 'k',
+      );
+      await open(tester, managedTestRelease());
+      // 原生 remove 未确认：取消返回 cleanupPending，retired=false。
+      transport.cancelOverride = const ApkUpdateState(
+        phase: ApkUpdatePhase.cleanupPending,
+        version: '0.3.0',
+        releaseTag: 'v0.3.0',
+        requestKey: 'k',
+      );
+
+      await tester.tap(find.widgetWithText(TextButton, '取消下载'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(transport.cancelCalls, 1);
+      expect(find.text('已取消下载'), findsNothing);
+      expect(find.text('正在清理上一次下载…'), findsOneWidget);
+      await disposeDialog(tester);
+    });
+
+    testWidgets('线路说明只取自原生状态：当前线路 / 已切换 / 全部失败 / 手动提示', (tester) async {
+      transport.active = const ApkUpdateState(
+        phase: ApkUpdatePhase.downloading,
+        bytesDownloaded: 1024,
+        totalBytes: 2048,
+        version: '0.3.0',
+        releaseTag: 'v0.3.0',
+        requestKey: 'k',
+        source: ApkDownloadSource.r2,
+      );
+      await open(tester, managedTestRelease(r2MirrorAvailable: true));
+      expect(find.text('下载线路：Cloudflare R2'), findsOneWidget);
+
+      // 原生换源后：说明离开的线路、原因与当前线路。
+      transport.active = const ApkUpdateState(
+        phase: ApkUpdatePhase.downloading,
+        bytesDownloaded: 0,
+        totalBytes: 2048,
+        version: '0.3.0',
+        releaseTag: 'v0.3.0',
+        requestKey: 'k',
+        source: ApkDownloadSource.edgeone,
+        attempt: 2,
+        triedSources: [ApkDownloadSource.r2, ApkDownloadSource.edgeone],
+        switchReason: ApkFallbackReason.stalled,
+        fellBackFrom: ApkDownloadSource.r2,
+      );
+      await controller.refreshActiveUpdate();
+      await tester.pump();
+      expect(find.text('Cloudflare R2 长时间无数据，已切换到 EdgeOne。'), findsOneWidget);
+
+      transport.active = const ApkUpdateState(
+        phase: ApkUpdatePhase.failed,
+        reason: ApkUpdateFailureReason.network,
+        version: '0.3.0',
+        releaseTag: 'v0.3.0',
+        requestKey: 'k',
+        mode: ApkDownloadMode.auto,
+        exhausted: true,
+      );
+      await controller.refreshActiveUpdate();
+      await tester.pump();
+      expect(find.text('所有线路均未成功下载，可稍后重试或改用浏览器下载。'), findsOneWidget);
+
+      transport.active = const ApkUpdateState(
+        phase: ApkUpdatePhase.failed,
+        reason: ApkUpdateFailureReason.network,
+        version: '0.3.0',
+        releaseTag: 'v0.3.0',
+        requestKey: 'k',
+        mode: ApkDownloadMode.manual,
+      );
+      await controller.refreshActiveUpdate();
+      await tester.pump();
+      expect(find.textContaining('更新下载线路'), findsOneWidget);
       await disposeDialog(tester);
     });
 

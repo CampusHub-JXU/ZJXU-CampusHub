@@ -52,7 +52,7 @@ def main():
     source_dir = repo / "android/app/src/main/kotlin/edu/zjxu/jxucampushub/platform/update"
     production = [source_dir / f"{name}.kt" for name in (
         "AppUpdateOwnership", "AppUpdateContract", "AppUpdateStore", "AppUpdateManager",
-        "AppUpdateDownloadReceiver",
+        "AppUpdateDownloadReceiver", "AppUpdateMachine", "AppUpdateVersions",
     )]
     tests = Path(__file__).parent
     sources = production + sorted(tests.glob("*.kt")) + sorted((tests / "stubs").glob("*.kt"))
@@ -68,7 +68,7 @@ def main():
         ], check=True)
         subprocess.run([
             args.java, "-cp", os.pathsep.join(map(str, (output, stdlib))),
-            "edu.zjxu.jxucampushub.platform.update.AppUpdateLifecycleTestKt", temp,
+            "edu.zjxu.jxucampushub.platform.update.AppUpdateLifecycleTestKt", temp, str(tests / "version_cases.tsv"),
         ], check=True)
 
 

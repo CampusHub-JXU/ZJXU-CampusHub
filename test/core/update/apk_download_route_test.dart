@@ -1,48 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jxu_campus_hub/core/update/apk_download_route.dart';
 import 'package:jxu_campus_hub/core/update/apk_update_controller.dart';
-import 'package:jxu_campus_hub/core/update/update_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../helpers/fake_apk_update_transport.dart';
-
-const String _github =
-    'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/'
-    'v1.2.3/JXU-CampusHub-v1.2.3-arm64-v8a.apk';
-
-AppRelease _release({bool r2 = true}) => AppRelease(
-  version: '1.2.3',
-  changelog: '',
-  downloadUrl: '',
-  releaseUrl: 'https://github.com/FHfanshu/ZJXU-CampusHub/releases/tag/v1.2.3',
-  publishedAt: DateTime(2026, 10, 16),
-  canonicalAssetUrl: _github,
-  assetId: 7,
-  assetFileName: 'JXU-CampusHub-v1.2.3-arm64-v8a.apk',
-  assetSizeBytes: 40 * 1024 * 1024,
-  assetSha256: 'a' * 64,
-  r2MirrorAvailable: r2,
-);
-
-/// 按请求回显 requestKey / 线路的传输替身，便于核对「入队了哪条线路」。
-class _RecordingTransport extends FakeApkUpdateTransport {
-  final List<ApkUpdateRequest> requests = <ApkUpdateRequest>[];
-
-  @override
-  Future<ApkUpdateState> startDownload(ApkUpdateRequest request) async {
-    startCalls++;
-    lastRequest = request;
-    requests.add(request);
-    final state = ApkUpdateState(
-      phase: ApkUpdatePhase.downloading,
-      version: request.version,
-      requestKey: request.requestKey,
-      bytesDownloaded: 0,
-    );
-    active = state;
-    return state;
-  }
-}
 
 void main() {
   group('DownloadStallDetector', () {
@@ -166,6 +127,16 @@ void main() {
       ]);
     });
 
+    test('ApkFallbackReason wire 名与原生白名单一致', () {
+      expect(ApkFallbackReason.values.map((r) => r.name), [
+        'connectTimeout',
+        'stalled',
+        'slow',
+        'paused',
+        'failed',
+      ]);
+    });
+
     test('偏好持久化：损坏值回退自动', () async {
       SharedPreferences.setMockInitialValues(<String, Object>{
         ApkDownloadRoutePreference.storageKey: 'bogus',
@@ -176,153 +147,179 @@ void main() {
     });
   });
 
-  group('ApkDownloadRouter', () {
-    late _RecordingTransport transport;
+  group('ApkDownloadStallWatcher', () {
+    late FakeApkUpdateTransport transport;
     late ApkUpdateController controller;
     late DateTime now;
-    late ApkDownloadRouter router;
+    late ApkDownloadStallWatcher watcher;
 
     setUp(() {
-      transport = _RecordingTransport();
+      transport = FakeApkUpdateTransport();
       controller = fakeApkUpdateController(transport);
       now = DateTime(2026, 10, 16, 12);
-      router = ApkDownloadRouter(controller: controller, clock: () => now);
+      watcher = ApkDownloadStallWatcher(
+        controller: controller,
+        clock: () => now,
+      );
     });
 
-    Future<void> tick(int seconds, {int? bytes, ApkUpdatePhase? phase}) async {
+    /// 推进 [seconds] 秒并模拟一次弹窗轮询：原生状态 → 控制器 → 观察器。
+    Future<void> tick(
+      int seconds, {
+      int? bytes = 0,
+      ApkUpdatePhase phase = ApkUpdatePhase.downloading,
+      int attempt = 1,
+      bool canSwitch = true,
+    }) async {
       now = now.add(Duration(seconds: seconds));
-      final current = controller.state.value;
       transport.active = ApkUpdateState(
-        phase: phase ?? current.phase,
-        version: current.version,
-        requestKey: current.requestKey,
-        bytesDownloaded: bytes ?? current.bytesDownloaded,
+        phase: phase,
+        version: '1.2.3',
+        releaseTag: 'v1.2.3',
+        requestKey: 'k',
+        bytesDownloaded: bytes,
         totalBytes: 40 * 1024 * 1024,
+        source: ApkDownloadSource.r2,
+        mode: ApkDownloadMode.auto,
+        attempt: attempt,
+        triedSources: const [ApkDownloadSource.r2],
+        canSwitch: canSwitch,
       );
       await controller.refreshActiveUpdate();
-      await router.onPolled(_release());
+      await watcher.onPolled();
     }
 
-    test('自动模式先入队 R2；8 秒无字节后换 EdgeOne，且只换一次', () async {
-      await router.start(_release(), ApkDownloadRoute.auto);
-      expect(transport.requests.single.source, ApkDownloadSource.r2);
-      expect(
-        transport.requests.single.assetUrl,
-        'https://download.fhfanshu.xyz/v1.2.3/'
-        'JXU-CampusHub-v1.2.3-arm64-v8a.apk',
-      );
-
-      await tick(0, bytes: 0);
-      for (var i = 0; i < 8; i++) {
-        await tick(1, bytes: 0);
+    test('8 秒无字节：只调用 switchSource(connectTimeout)', () async {
+      await tick(0);
+      for (var i = 0; i < 7; i++) {
+        await tick(1);
       }
-      expect(transport.cancelCalls, 1);
-      expect(transport.requests, hasLength(2));
-      final second = transport.requests.last;
-      expect(second.source, ApkDownloadSource.edgeone);
-      expect(second.assetUrl, 'https://edgeone.gh-proxy.org/$_github');
-      expect(second.requestKey, isNot(transport.requests.first.requestKey));
-      expect(
-        router.status.value.lastFallback,
-        ApkFallbackReason.connectTimeout,
-      );
-      expect(router.status.value.fellBackFrom, ApkDownloadSource.r2);
-      expect(router.status.value.active, ApkDownloadSource.edgeone);
+      expect(transport.switchCalls, 0);
+      await tick(1);
+      expect(transport.switchCalls, 1);
+      expect(transport.switchReasons, [ApkFallbackReason.connectTimeout]);
+      // 带上判定时的 attempt，原生据此丢弃换源后迟到的建议。
+      expect(transport.switchAttempts, [1]);
+      // 观察器不入队、不取消、不选线：这些全是原生的事。
+      expect(transport.startCalls, 0);
+      expect(transport.cancelCalls, 0);
+    });
 
-      // EdgeOne 也卡住：没有第三条线路，不再循环切换，状态置 exhausted。
-      await tick(0, bytes: 0);
+    test('已有数据后 10 秒无新增字节：stalled', () async {
+      await tick(0);
+      await tick(1, bytes: 500000);
       for (var i = 0; i < 9; i++) {
-        await tick(1, bytes: 0);
+        await tick(1, bytes: 500000);
       }
-      expect(transport.requests, hasLength(2));
-      expect(transport.cancelCalls, 1);
+      expect(transport.switchCalls, 0);
+      await tick(1, bytes: 500000);
+      expect(transport.switchReasons, [ApkFallbackReason.stalled]);
     });
 
-    test('R2 回退失败后原生报告失败：exhausted，不再入队', () async {
-      await router.start(_release(), ApkDownloadRoute.auto);
-      await tick(1, bytes: 0);
+    test('持续低速：slow', () async {
+      var bytes = 0;
+      for (var s = 0; s <= 30 && transport.switchCalls == 0; s++) {
+        await tick(s == 0 ? 0 : 1, bytes: bytes);
+        bytes += 50 * 1024;
+      }
+      expect(transport.switchReasons, [ApkFallbackReason.slow]);
+    });
+
+    test('暂停超过 12 秒：paused', () async {
+      await tick(0, bytes: 1000, phase: ApkUpdatePhase.paused);
+      for (var i = 0; i < 11; i++) {
+        await tick(1, bytes: 1000, phase: ApkUpdatePhase.paused);
+      }
+      expect(transport.switchCalls, 0);
+      await tick(1, bytes: 1000, phase: ApkUpdatePhase.paused);
+      expect(transport.switchReasons, [ApkFallbackReason.paused]);
+    });
+
+    test('原生 DM 查询不可用（downloading 不带字节数）不算停滞', () async {
+      await tick(0, bytes: 500000);
+      for (var i = 0; i < 30; i++) {
+        await tick(1, bytes: null);
+      }
+      expect(transport.switchCalls, 0);
+    });
+
+    test('canSwitch 为 false 时无论卡多久都不调用', () async {
+      await tick(0, canSwitch: false);
+      for (var i = 0; i < 60; i++) {
+        await tick(1, canSwitch: false);
+      }
+      expect(transport.switchCalls, 0);
+    });
+
+    test('不在 enqueued / downloading / paused 的阶段不观察', () async {
+      for (final phase in <ApkUpdatePhase>[
+        ApkUpdatePhase.verifying,
+        ApkUpdatePhase.readyToInstall,
+        ApkUpdatePhase.cleanupPending,
+        ApkUpdatePhase.reconcileRequired,
+        ApkUpdatePhase.failed,
+      ]) {
+        await tick(0, phase: phase);
+        for (var i = 0; i < 30; i++) {
+          await tick(1, phase: phase);
+        }
+      }
+      expect(transport.switchCalls, 0);
+    });
+
+    test('enqueued 同样按下载中观察', () async {
+      await tick(0, phase: ApkUpdatePhase.enqueued);
       for (var i = 0; i < 8; i++) {
-        await tick(1, bytes: 0);
+        await tick(1, phase: ApkUpdatePhase.enqueued);
       }
-      expect(transport.requests, hasLength(2));
-      transport.active = ApkUpdateState(
-        phase: ApkUpdatePhase.failed,
-        reason: ApkUpdateFailureReason.network,
-        version: '1.2.3',
-        requestKey: controller.state.value.requestKey,
-      );
-      await controller.refreshActiveUpdate();
-      await router.onPolled(_release());
-      expect(transport.requests, hasLength(2));
-      expect(router.status.value.exhausted, isTrue);
+      expect(transport.switchReasons, [ApkFallbackReason.connectTimeout]);
     });
 
-    test('DownloadManager 直接失败（network）立即回退', () async {
-      await router.start(_release(), ApkDownloadRoute.auto);
-      transport.active = ApkUpdateState(
-        phase: ApkUpdatePhase.failed,
-        reason: ApkUpdateFailureReason.network,
-        version: '1.2.3',
-        requestKey: controller.state.value.requestKey,
-      );
-      await controller.refreshActiveUpdate();
-      await router.onPolled(_release());
-      expect(transport.requests, hasLength(2));
-      expect(transport.requests.last.source, ApkDownloadSource.edgeone);
-      expect(router.status.value.lastFallback, ApkFallbackReason.failed);
-    });
-
-    test('与线路无关的失败（存储不足）不触发回退', () async {
-      await router.start(_release(), ApkDownloadRoute.auto);
-      transport.active = ApkUpdateState(
-        phase: ApkUpdatePhase.failed,
-        reason: ApkUpdateFailureReason.storageInsufficient,
-        version: '1.2.3',
-        requestKey: controller.state.value.requestKey,
-      );
-      await controller.refreshActiveUpdate();
-      await router.onPolled(_release());
-      expect(transport.requests, hasLength(1));
-      expect(transport.cancelCalls, 0);
-    });
-
-    test('手动 R2：卡住也不静默改线', () async {
-      await router.start(_release(), ApkDownloadRoute.r2);
-      expect(transport.requests.single.source, ApkDownloadSource.r2);
-      await tick(0, bytes: 0);
-      for (var i = 0; i < 20; i++) {
-        await tick(1, bytes: 0);
+    test('attempt 变化即重置：新尝试重新计满 8 秒', () async {
+      await tick(0);
+      for (var i = 0; i < 7; i++) {
+        await tick(1); // 第 1 次尝试已卡 7 秒，尚未触发。
       }
-      expect(transport.requests, hasLength(1));
-      expect(transport.cancelCalls, 0);
+      // 原生换源后进入第 2 次尝试：计时从头开始。
+      for (var i = 0; i < 8; i++) {
+        await tick(1, attempt: 2);
+      }
+      expect(transport.switchCalls, 0, reason: '新尝试只过了 7 秒');
+      await tick(1, attempt: 2);
+      expect(transport.switchReasons, [ApkFallbackReason.connectTimeout]);
     });
 
-    test('手动 R2 但 Release 无 R2 标记：改用 EdgeOne 并如实标注', () async {
-      await router.start(_release(r2: false), ApkDownloadRoute.r2);
-      expect(transport.requests.single.source, ApkDownloadSource.edgeone);
-      expect(router.status.value.fellBackFrom, ApkDownloadSource.r2);
-      expect(router.status.value.exhausted, isFalse);
-      expect(router.isWatching, isFalse);
+    test('只发一次建议：原生拒绝后要再满一个完整窗口才会重试', () async {
+      await tick(0);
+      for (var i = 0; i < 8; i++) {
+        await tick(1);
+      }
+      expect(transport.switchCalls, 1);
+      // 原生没换（状态原样返回，canSwitch 仍为 true）：不得逐秒重复发送。
+      for (var i = 0; i < 5; i++) {
+        await tick(1);
+      }
+      expect(transport.switchCalls, 1);
     });
 
-    test('自动模式无 R2 标记：直接 EdgeOne，无备用线路', () async {
-      await router.start(_release(r2: false), ApkDownloadRoute.auto);
-      expect(transport.requests.single.source, ApkDownloadSource.edgeone);
-      expect(router.isWatching, isFalse);
+    test('只会发送停滞类原因，永不发送 failed', () async {
+      await tick(0);
+      for (var i = 0; i < 40; i++) {
+        await tick(1);
+      }
+      expect(transport.switchReasons, isNotEmpty);
+      for (final reason in transport.switchReasons) {
+        expect(reason, isNot(ApkFallbackReason.failed));
+      }
     });
 
-    test('用户换线重试：先取消旧请求再入队新线路', () async {
-      await router.start(_release(), ApkDownloadRoute.r2);
-      await router.restartWith(_release(), ApkDownloadRoute.edgeone);
-      expect(transport.cancelCalls, 1);
-      expect(transport.requests.last.source, ApkDownloadSource.edgeone);
-    });
-
-    test('下载完成后停止观察', () async {
-      await router.start(_release(), ApkDownloadRoute.auto);
-      expect(router.isWatching, isTrue);
-      await tick(1, bytes: 40 * 1024 * 1024, phase: ApkUpdatePhase.verifying);
-      expect(router.isWatching, isFalse);
+    test('正常速度不触发', () async {
+      var bytes = 0;
+      for (var s = 0; s <= 60; s++) {
+        await tick(s == 0 ? 0 : 1, bytes: bytes);
+        bytes += 400 * 1024;
+      }
+      expect(transport.switchCalls, 0);
     });
   });
 }

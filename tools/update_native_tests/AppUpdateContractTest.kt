@@ -12,7 +12,7 @@ internal fun runContractTests() {
     val gh = "https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/v1.2.3/app-release.apk"
     val mirror = "https://edgeone.gh-proxy.org/$gh"
     val r2 = "https://download.fhfanshu.xyz/v1.2.3/app-release.apk"
-    val parse = AppUpdateContract::parseCanonicalAssetUrl
+    val parse: (String?) -> AppUpdateContract.CanonicalAsset? = { AppUpdateContract.parseCanonicalAssetUrl(it) }
 
     // Accepted shapes: url is the full original string, tag / fileName come from the path.
     parse(gh)!!.let {
@@ -100,6 +100,22 @@ internal fun runContractTests() {
     for ((name, url) in rejects) {
         check(parse(url) == null) { "should reject ($name): $url" }
     }
+    val local = "http://10.0.2.2:8000/v1/app.apk"
+    for (port in listOf(1024, 8000, 65535)) {
+        val url = local.replace(":8000", ":" + port)
+        check(AppUpdateContract.parseCanonicalAssetUrl(url, true)?.source == "test")
+        check(AppUpdateContract.parseCanonicalAssetUrl(url, false) == null)
+    }
+    val localRejects = listOf(
+        local.replace(":8000", ""), local.replace(":8000", ":1023"), local.replace(":8000", ":65536"),
+        local.replace("10.0.2.2", "localhost"), local.replace("10.0.2.2", "10.0.2.2.evil"),
+        local.replace("10.0.2.2", "user@10.0.2.2"), local.replace("http:", "https:"),
+        local + "?x=1", local + "#fragment", local + "/", local.replace("/v1/", "//v1/"),
+        local.replace("/v1/", "/a/v1/"), local.replace("/v1/", "/%2e%2e/"),
+        local.replace("app.apk", "app%2f.apk"), local.replace("app.apk", "app%252f.apk"),
+        local.replace("app.apk", "app.txt"), local.replace("v1", "v%09x"),
+    )
+    for (url in localRejects) check(AppUpdateContract.parseCanonicalAssetUrl(url, true) == null) { url }
     check(parse(null) == null)
     check(parse("https://download.fhfanshu.xyz/" + "a".repeat(AppUpdateContract.MAX_URL_LENGTH)) == null)
     println("AppUpdate contract URL allow-list: 3 accepted shapes, ${rejects.size} rejects passed")

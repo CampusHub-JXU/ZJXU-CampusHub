@@ -208,7 +208,7 @@ jobs:
   flutter-test:
     name: Flutter Analyze And Test
     if: always()
-    needs: [checks, test]
+    needs: [checks, test, update-native-tests]
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -219,7 +219,59 @@ jobs:
           set -euo pipefail
           echo "checks: ${{ needs.checks.result }}"
           echo "test: ${{ needs.test.result }}"
-          [ "${{ needs.checks.result }}" = "success" ] && [ "${{ needs.test.result }}" = "success" ]
+          echo "update-native-tests: ${{ needs.update-native-tests.result }}"
+          [ "${{ needs.checks.result }}" = "success" ] && [ "${{ needs.test.result }}" = "success" ] && [ "${{ needs.update-native-tests.result }}" = "success" ]
+
+  # Production update-lifecycle Kotlin (state machine / store / manager) compiled
+  # and run on the JVM against Android stubs; no Android SDK, emulator or Flutter.
+  # run.py never downloads, so a throwaway Gradle project first fills the Gradle
+  # module cache with the Kotlin compiler jars it needs (the Kotlin version is
+  # read from android/settings.gradle.kts, no second pin).
+  update-native-tests:
+    name: Update Native Host Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout private repository
+        uses: actions/checkout@v5
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Cache Kotlin compiler jars
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/caches/modules-2
+          key: update-native-tests-${{ runner.os }}-${{ hashFiles('android/settings.gradle.kts', 'tools/update_native_tests/ci/build.gradle.kts') }}
+
+      - name: Resolve Kotlin compiler jars into the Gradle cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The runner image ships Gradle; fall back to a pinned download if not.
+          if ! command -v gradle >/dev/null 2>&1; then
+            curl -fsSL -o "${RUNNER_TEMP}/gradle.zip" https://services.gradle.org/distributions/gradle-9.3.1-bin.zip
+            unzip -q "${RUNNER_TEMP}/gradle.zip" -d "${RUNNER_TEMP}"
+            export PATH="${RUNNER_TEMP}/gradle-9.3.1/bin:${PATH}"
+          fi
+          gradle --version
+          for attempt in 1 2 3; do
+            if gradle -p tools/update_native_tests/ci --no-daemon --console=plain -q resolveUpdateNativeTestDeps; then
+              exit 0
+            fi
+            echo "Resolve attempt ${attempt} failed; retrying" >&2
+            sleep 10
+          done
+          echo "Could not resolve the Kotlin compiler jars" >&2
+          exit 1
+
+      - name: Run update native host tests
+        shell: bash
+        run: python3 tools/update_native_tests/run.py
 
   workflow-smoke:
     name: Workflow Smoke Test

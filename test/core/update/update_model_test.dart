@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/core/update/update_model.dart';
@@ -123,5 +125,31 @@ void main() {
     expect(AppRelease.normalizeSha256('sha256:nothex'), isNull);
     expect(AppRelease.normalizeSha256(null), isNull);
     expect(AppRelease.normalizeSha256(123), isNull);
+  });
+
+  test('isVersionNewer 与原生共用用例表（version_cases.tsv）逐行一致', () {
+    // `tools/update_native_tests/version_cases.tsv`：candidate\tcurrent\texpected，
+    // Kotlin 的 AppUpdateVersions 测试读同一张表；任一侧改判定必须两边同时通过。
+    final file = File('tools/update_native_tests/version_cases.tsv');
+    expect(file.existsSync(), isTrue, reason: '缺少共享用例表');
+    var rows = 0;
+    for (final raw in file.readAsLinesSync()) {
+      final line = raw.trimRight();
+      if (line.isEmpty || line.startsWith('#')) continue;
+      final cells = line.split('\t');
+      expect(cells, hasLength(3), reason: '用例表行格式错误: $line');
+      final expected = switch (cells[2].trim()) {
+        'true' => true,
+        'false' => false,
+        final other => fail('非法期望值 "$other"（行: $line）'),
+      };
+      expect(
+        AppRelease.isVersionNewer(cells[0], cells[1]),
+        expected,
+        reason: 'isVersionNewer("${cells[0]}", "${cells[1]}")',
+      );
+      rows++;
+    }
+    expect(rows, greaterThan(5), reason: '用例表不应为空');
   });
 }

@@ -1,7 +1,9 @@
 package android.app
 
 open class Activity : android.content.Context() {
-    val isFinishing = false
-    val isDestroyed = false
-    fun startActivity(intent: android.content.Intent) {}
+    var isFinishing = false
+    var isDestroyed = false
+    var launches = 0
+    var launchAction: (() -> Unit)? = null
+    fun startActivity(intent: android.content.Intent) { launchAction?.invoke(); launches++ }
 }

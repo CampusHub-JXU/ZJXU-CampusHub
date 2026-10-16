@@ -122,48 +122,6 @@ internal object AppUpdateOwnership {
             currentRequestKey != expectedRequestKey ||
             currentGeneration != expectedGeneration
 
-    /** 取消决策（用户取消语义，纯逻辑）。 */
-    enum class CancelDisposition {
-        /** 无记录：无活动请求，幂等返回 canceled。 */
-        IDEMPOTENT_CANCELED,
-
-        /** 权威退役确认：可清除记录并返回 canceled。 */
-        CLEARED_CANCELED,
-
-        /** 无法确认退役：保留 exact 记录、不删文件、不谎报 canceled，返回类型化失败。 */
-        RETAIN_FAILED,
-    }
-
-    /**
-     * 取消决策：只有「权威退役已确认」才允许清除；无法确认时**保留**记录以便重试，
-     * 绝不静默清除（否则可能丢弃仍在进行的受管请求 / 误伤后续状态）。
-     */
-    fun cancelDisposition(hasRecord: Boolean, retireConfirmed: Boolean): CancelDisposition =
-        when {
-            !hasRecord -> CancelDisposition.IDEMPOTENT_CANCELED
-            retireConfirmed -> CancelDisposition.CLEARED_CANCELED
-            else -> CancelDisposition.RETAIN_FAILED
-        }
-
-    data class InstallResumeState(
-        val permissionRequired: Boolean,
-        val userWantsInstall: Boolean,
-    )
-
-    /**
-     * 返回前台时重读系统权限；打开安装器不等于安装成功。
-     * 已打开过安装器的请求只恢复手动重试，避免取消后自动反复弹出。
-     */
-    fun installStateAfterResume(
-        verified: Boolean,
-        permissionGranted: Boolean,
-        installerOpened: Boolean,
-        userWantsInstall: Boolean,
-    ): InstallResumeState = InstallResumeState(
-        permissionRequired = verified && !permissionGranted,
-        userWantsInstall = userWantsInstall && !installerOpened,
-    )
-
     /** 安装校验跨线程返回后，原 Activity 可能已退后台或被替换。 */
     fun canLaunchInstaller(
         isAttached: Boolean,

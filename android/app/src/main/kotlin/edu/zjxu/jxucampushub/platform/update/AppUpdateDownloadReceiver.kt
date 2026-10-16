@@ -14,7 +14,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  * - 只处理 `ACTION_DOWNLOAD_COMPLETE`，且只接受与原生持久化受管 id 匹配的下载
  *   （`AppUpdateManager.onDownloadComplete` 内部比对，忽略其它下载 id）；
  * - 绝不在此启动 UI / 后台拉起 Activity；只调度受管校验（有界 goAsync + 单线程
- *   executor），完成后的通知 / 自动安装由 manager 在前台时决定；
+ *   executor），同步转移结束立即 finish，校验无需占用广播生命周期；
+ *   完成后的通知 / 自动安装由 manager 在前台时决定；
  * - 仅靠 MainActivity 动态注册不够（进程死亡后收不到），故必须 manifest 注册。
  */
 class AppUpdateDownloadReceiver : BroadcastReceiver() {

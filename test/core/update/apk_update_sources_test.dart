@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jxu_campus_hub/core/config/app_config.dart';
+import 'package:jxu_campus_hub/core/update/apk_download_route.dart';
 import 'package:jxu_campus_hub/core/update/apk_update_controller.dart';
 import 'package:jxu_campus_hub/core/update/update_model.dart';
 import 'package:jxu_campus_hub/core/update/update_source.dart';
@@ -106,41 +107,59 @@ void main() {
       );
     });
 
-    test('同一 APK 的三线路共享文件名 / 大小 / SHA-256，requestKey 因线路而异', () {
-      final release = _release();
-      final github = ApkUpdateRequest.tryCreate(release, abi: 'arm64-v8a')!;
-      final edge = ApkUpdateRequest.tryCreate(
-        release,
+    test('同一任务的候选源共享文件名 / 大小 / SHA-256 / tag，requestKey 不含线路', () {
+      final auto = ApkUpdateRequest.tryCreate(
+        _release(),
         abi: 'arm64-v8a',
-        source: ApkDownloadSource.edgeone,
+        route: ApkDownloadRoute.auto,
+      )!;
+      final edge = ApkUpdateRequest.tryCreate(
+        _release(),
+        abi: 'arm64-v8a',
+        route: ApkDownloadRoute.edgeone,
       )!;
       final r2 = ApkUpdateRequest.tryCreate(
-        release,
+        _release(),
         abi: 'arm64-v8a',
-        source: ApkDownloadSource.r2,
+        route: ApkDownloadRoute.r2,
       )!;
-      expect(github.assetUrl, _github);
-      expect(edge.assetUrl, _edgeone);
-      expect(r2.assetUrl, _r2);
-      for (final r in [github, edge, r2]) {
+      expect([for (final s in auto.sources) s.url], [_r2, _edgeone]);
+      expect(edge.sources.single.url, _edgeone);
+      expect(r2.sources.single.url, _r2);
+      for (final r in [auto, edge, r2]) {
         expect(r.assetFileName, _name);
+        expect(r.releaseTag, _tag);
         expect(r.assetSizeBytes, 1000);
         expect(r.sha256, 'c' * 64);
         expect(r.toPlatformMap()['fileName'], _name);
+        // 每个候选 URL 都通过可信白名单（原生入队前会逐个复核同一白名单）。
+        for (final candidate in r.sources) {
+          expect(
+            ApkUpdateUrlPolicy.isTrustedDownloadUrl(candidate.url),
+            isTrue,
+            reason: candidate.url,
+          );
+        }
       }
-      expect(github.requestKey, endsWith(':${'c' * 64}'));
-      expect(edge.requestKey, '${github.requestKey}:edgeone');
-      expect(r2.requestKey, '${github.requestKey}:r2');
+      expect(auto.requestKey, endsWith(':${'c' * 64}'));
+      expect(auto.requestKey, startsWith('v2:'));
+      expect(edge.requestKey, auto.requestKey);
+      expect(r2.requestKey, auto.requestKey);
     });
 
     test('无 R2 标记时 R2 请求不可构造（绝不猜测对象）', () {
-      expect(
-        ApkUpdateRequest.tryCreate(
+      // 自动 / 手动 EdgeOne 都不会带上 R2 候选；手动 R2 退到 EdgeOne 并如实标注。
+      for (final route in ApkDownloadRoute.values) {
+        final r = ApkUpdateRequest.tryCreate(
           _release(r2: false),
-          source: ApkDownloadSource.r2,
-        ),
-        isNull,
-      );
+          route: route,
+        )!;
+        expect(
+          r.sources.map((c) => c.source),
+          isNot(contains(ApkDownloadSource.r2)),
+          reason: route.name,
+        );
+      }
     });
   });
 

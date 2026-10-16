@@ -4,6 +4,8 @@ import android.app.Activity
 import android.app.DownloadManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageInfo
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -17,509 +19,364 @@ import java.lang.ref.WeakReference
 import java.util.concurrent.Executors
 
 /**
- * 应用内受管 APK 更新的原生权威实现。
- *
- * 职责：
- * - 原生**再次**校验 Dart 传入的规范资产 URL / 文件名 / 字段上限（绝不信任 Dart）；
- * - 经系统 DownloadManager 下载到应用外部私有目录
- *   `getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)/updates/`（即
- *   `.../files/Download/updates/`，无 Cookie / 认证头），受管 id 持久化为唯一权威；
- *   该路径与 `res/xml/update_file_paths.xml` 的 FileProvider 白名单逐字一致——
- *   FileProvider 按前缀匹配，白名单漂移会让 `getUriForFile` 抛
- *   `IllegalArgumentException` 并静默废掉应用内安装（v0.11.1 及更早的故障）；
- * - 单活动请求 + 稳定 `requestKey` 幂等去重（双击 / 弹窗重入 / 进程重启）；
- * - 崩溃恢复：入队前写 pending 日志，`queryActiveUpdate` 时对账。归属判定必须
- *   **URL 精确 + 本地目标文件精确**（见 [AppUpdateOwnership]）：绝不按 URL 单独
- *   认领（会误伤通用 WebView 附件下载），无法权威对账时**绝不**盲目重开；
- * - 校验（sha256 / 包名 / 签名 / versionCode / ABI / minSdk）在后台线程执行，
- *   绝不阻塞通道 / UI；迟到结果按 generation + requestKey 作废；
- * - 取消 / 清理只作用于自己持久化的 downloadId 与受管文件，绝不接受任意 id / path。
+ * 状态机的 IO 执行器。所有入口、同步 effect 及结果回灌由 mutationLock 串行化；
+ * 先持久化再执行副作用。大文件校验只在单线程 executor，安装器只在主线程。
+ * 下载仍写私有 Download/updates，不注入凭据；不接受外部路径或 downloadId。
  */
 internal class AppUpdateManager private constructor(private val appContext: Context) {
-
     companion object {
         private const val TAG = "AppUpdate"
-
-        /** 归属扫描的行数上限；达到上限仍未扫完 → 结论不权威（不重新入队）。 */
         private const val MAX_SCAN_ROWS = 500
-
-        @Volatile
-        private var instance: AppUpdateManager? = null
-
-        fun get(context: Context): AppUpdateManager {
-            instance?.let { return it }
-            return synchronized(this) {
-                instance ?: AppUpdateManager(context.applicationContext).also { instance = it }
-            }
+        @Volatile private var instance: AppUpdateManager? = null
+        fun get(context: Context): AppUpdateManager = instance ?: synchronized(this) {
+            instance ?: AppUpdateManager(context.applicationContext).also { instance = it }
         }
     }
-
-    private val store = AppUpdateStore(appContext)
-    private val executor = Executors.newSingleThreadExecutor { runnable ->
-        Thread(runnable, "app-update-verify").apply { isDaemon = true }
-    }
-    private val mainHandler = Handler(Looper.getMainLooper())
-
-    /**
-     * 串行化 start / reconcile / cancel 的读-检查-入队（含 DM 行退役），避免
-     * 跨 Store / DownloadManager 的检查-动作竞态。校验回调仍靠 generation +
-     * requestKey 比对作废，不在此锁内做长任务。
-     */
+    private val allowTestOrigin = (appContext.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+    private val store = AppUpdateStore(appContext, allowTestOrigin)
     private val mutationLock = Any()
-
-    @Volatile
-    private var activityRef: WeakReference<Activity>? = null
-
-    private val verificationLock = Any()
-    private var verifying = false
-    private var activeVerification: Pair<String, Int>? = null
-    private var pendingVerification: Pair<String, Int>? = null
-    private val verificationCompletions = mutableListOf<() -> Unit>()
-
-    // ---- 生命周期接线（MainActivity） ----
-
-    fun attachActivity(activity: Activity) {
-        activityRef = WeakReference(activity)
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val executor = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "app-update-verify").apply { isDaemon = true }
     }
+    @Volatile private var activityRef: WeakReference<Activity>? = null
+    private val verificationJobs = mutableSetOf<Pair<String, Int>>()
+    private val installTargets = mutableMapOf<Pair<String, Int>, WeakReference<Activity>?>()
+    private val installCallbacks = mutableMapOf<Pair<String, Int>, MutableList<(Boolean) -> Unit>>()
 
-    fun detachActivity(activity: Activity) {
-        if (activityRef?.get() === activity) activityRef = null
-    }
+    fun attachActivity(activity: Activity) { activityRef = WeakReference(activity) }
+    fun detachActivity(activity: Activity) { if (activityRef?.get() === activity) activityRef = null }
+    fun isSupported(): Boolean = appContext.getSystemService(DownloadManager::class.java) != null
 
-    /** 前台恢复：若受管更新已就绪且用户此前点过「更新」，补一次自动安装。 */
-    fun onActivityResumed(activity: Activity) = withStoreFailureFallback {
-        synchronized(mutationLock) {
-            attachActivity(activity)
-            val record = store.read()
-            if (record != null) {
-                val resumed = AppUpdateOwnership.installStateAfterResume(
-                    verified = record.verified,
-                    permissionGranted = canRequestPackageInstalls(),
-                    installerOpened = record.installerOpened,
-                    userWantsInstall = record.userWantsInstall,
-                )
-                store.update { current ->
-                    if (isStale(current, record.requestKey, record.generation)) {
-                        current
-                    } else {
-                        current!!.copy(
-                            permissionRequired = resumed.permissionRequired,
-                            installerOpened = false,
-                            userWantsInstall = resumed.userWantsInstall,
-                        )
-                    }
-                }
-            }
+    /** 所有入口先恢复 pending 身份并检查已安装版本，永不凭一次查询故障丢身份。 */
+    private fun enter(): View {
+        // 先判定是否已被安装：已过期的待对账任务直接退役，不能先重新入队一次下载。
+        val installed = try {
+            val info = appContext.packageManager.getPackageInfo(appContext.packageName, 0)
+            Event.Installed(versionCode(info), info.versionName)
+        } catch (_: Exception) { Event.Installed(null, null) }
+        var view = dispatch(installed)
+        val t = store.read()
+        if (t != null && t.stage in listOf(Stage.ENQUEUING, Stage.RECONCILE_REQUIRED)) {
+            view = dispatch(Event.ReconcileScan(scanOwnedDownloads(t),
+                managedFile(t).exists() || !canReenqueue(t)))
         }
-        maybeAutoOpenOrNotify()
+        return view
     }
 
-    // ---- 通道方法 ----
+    private fun canReenqueue(t: Task): Boolean = t.sources.any { it.source == t.source && it.url == t.url } &&
+        AppUpdateContract.parseCanonicalAssetUrl(t.url, allowTestOrigin)?.let {
+            it.tag == t.releaseTag && it.fileName == t.fileName && it.source == t.source
+        } == true && AppUpdateOwnership.isManagedFileName(t.managedFileName)
 
-    fun isSupported(): Boolean =
-        appContext.getSystemService(DownloadManager::class.java) != null
-
-    /**
-     * 入队一次受管下载；幂等复用同一 `requestKey` 的活动请求。
-     *
-     * 单活动请求不变量：替换旧记录前，必须先**权威退役**旧的自己行
-     * （确认归属 → `DownloadManager.remove` → 确认已移除）。退役失败 / 归属
-     * 不明时**绝不**丢弃旧记录或盲目入队新请求，而是返回当前原生权威状态。
-     *
-     * 持久化（尝试序号 / pending 日志）任一步失败都抛出 [AppUpdateException] 且不入队；
-     * 入队后回写 downloadId 失败时尽力移除刚入队的行，避免留下无法恢复的孤儿下载。
-     *
-     * @throws AppUpdateException 输入不合法 / 资产 URL 不可信（原生再次校验）/ 持久化失败。
-     */
     fun startDownload(params: StartParams): Map<String, Any?> {
-        val asset = AppUpdateContract.parseCanonicalAssetUrl(params.url)
-            ?: throw AppUpdateException(
-                AppUpdateErrors.UNTRUSTED_ASSET,
-                "untrusted asset url",
-            )
-        if (params.fileName.isNullOrEmpty() || params.fileName != asset.fileName) {
-            throw AppUpdateException(AppUpdateErrors.INVALID_ARGS, "fileName mismatch")
-        }
-        val version = params.version?.trim().orEmpty()
-        if (version.isEmpty() || version.length > AppUpdateContract.MAX_VERSION_LENGTH) {
-            throw AppUpdateException(AppUpdateErrors.INVALID_ARGS, "invalid version")
-        }
-        val requestKey = params.requestKey?.trim().orEmpty()
-        if (requestKey.isEmpty() ||
-            requestKey.length > AppUpdateContract.MAX_REQUEST_KEY_LENGTH
-        ) {
-            throw AppUpdateException(AppUpdateErrors.INVALID_ARGS, "invalid requestKey")
-        }
-        val sizeBytes = params.sizeBytes ?: 0L
-        if (sizeBytes < 0L || sizeBytes > AppUpdateContract.MAX_APK_BYTES) {
-            throw AppUpdateException(AppUpdateErrors.INVALID_ARGS, "invalid sizeBytes")
-        }
-        val abi = params.abi?.trim()?.takeIf {
-            it.isNotEmpty() && it.length <= AppUpdateContract.MAX_ABI_LENGTH
-        }
-
+        val checked = validate(params)
         return synchronized(mutationLock) {
-            val existing = store.read()
-            if (existing != null &&
-                existing.requestKey == requestKey &&
-                existing.failureReason == null
-            ) {
-                // 同一活动请求：复用，不重复入队（双击 / 弹窗重入 / 进程重启）。
-                queryActive()?.let { return@synchronized it }
-            }
-
-            if (existing != null && !retireOwned(existing)) {
-                // 旧的自己行无法被权威退役（归属不明 / 移除未确认）：不动旧记录、
-                // 不新建入队，返回当前原生权威状态（UI 需先取消当前请求）。
-                return@synchronized computePhase(existing)
-            }
-
-            val generation = store.nextGeneration()
-            val managedFileName =
-                "${AppUpdateContract.MANAGED_FILE_PREFIX}${generation}_${asset.fileName}"
-
-            // retireOwned 已删除上一代自有受管文件（若有），此处不再重复删除。
-
-            // 先写 pending 日志再入队：崩溃在两步之间时留下可对账的痕迹。
-            val journal = AppUpdateStore.Record(
-                requestKey = requestKey,
-                version = version,
-                url = asset.url,
-                fileName = asset.fileName,
-                managedFileName = managedFileName,
-                sizeBytes = sizeBytes,
-                sha256 = AppUpdateContract.normalizeSha256(params.sha256),
-                abi = abi,
-                downloadId = 0L,
-                generation = generation,
-                pendingEnqueue = true,
-                userWantsInstall = true,
-                verified = false,
-                installerOpened = false,
-                permissionRequired = false,
-                failureReason = null,
-            )
-            store.update { journal }
-
-            val downloadId = try {
-                enqueue(asset, managedFileName)
-            } catch (error: Exception) {
-                Log.e(TAG, "enqueue failed: ${error.javaClass.simpleName}")
-                store.update {
-                    it?.copy(pendingEnqueue = false, failureReason = AppUpdateReason.NATIVE_ERROR)
-                }
-                return@synchronized stateMap(
-                    phase = AppUpdatePhase.FAILED,
-                    reason = AppUpdateReason.NATIVE_ERROR,
-                    version = version,
-                    requestKey = requestKey,
-                    assetFileName = asset.fileName,
-                )
-            }
-
-            try {
-                store.update {
-                    it?.copy(downloadId = downloadId, pendingEnqueue = false)
-                }
-            } catch (error: AppUpdateException) {
-                // 回写失败后进程重启将无法恢复该行：尽力移除，避免孤儿下载。
-                removeQuietly(downloadId)
-                throw error
-            }
-            queryActive() ?: stateMap(
-                phase = AppUpdatePhase.ENQUEUED,
-                version = version,
-                requestKey = requestKey,
-                assetFileName = asset.fileName,
-            )
+            enter()
+            val old = store.read()
+            val generation = if (old != null && old.requestKey == checked.requestKey && old.stage != Stage.FAILED)
+                old.generation else store.nextGeneration()
+            stateMap(dispatch(Event.Start(checked, generation)))!!
         }
     }
 
     fun queryActive(): Map<String, Any?>? = synchronized(mutationLock) {
-        var record = store.read() ?: return@synchronized null
-        if (record.pendingEnqueue && record.downloadId == 0L) {
-            record = reconcilePending(record) ?: return@synchronized null
+        enter()
+        var t = store.read() ?: return@synchronized null
+        if (t.stage == Stage.CLEANUP_PENDING) {
+            // 每次轮询只重试一次清理，不在同一调用内忙循环。
+            executeRetire(Effect.Retire(t.generation), t)
+            t = store.read() ?: return@synchronized null
         }
-        computePhase(record)
+        stateMap(dispatch(Event.Observe(dmStatus(t.downloadId))))
     }
-
-    /**
-     * 用户取消：**只有权威退役确认后**才清除记录并返回 canceled。
-     *
-     * 复用与替换请求完全相同的 [retireOwned]（确认归属 → remove → 确认已移除 → 删自有文件）；
-     * 若归属不明 / 查询不可用 / remove 失败 / 确认仍有行，则**保留 exact 记录**（含 id /
-     * generation，可重试取消）、不删文件、不谎报 canceled。用户已明确要求取消，故消费自动
-     * 安装意图（`userWantsInstall=false`，避免随后自动拉起安装器），并返回既有
-     * `failed` / `nativeError` 类型化失败——绝不静默清除（否则可能丢弃仍在进行的受管请求）。
-     * 无记录时无活动请求，幂等返回 canceled。
-     */
     fun cancelActive(): Map<String, Any?> = synchronized(mutationLock) {
-        val record = store.read()
-        val disposition = AppUpdateOwnership.cancelDisposition(
-            hasRecord = record != null,
-            retireConfirmed = record != null && retireOwned(record),
-        )
-        when (disposition) {
-            AppUpdateOwnership.CancelDisposition.IDEMPOTENT_CANCELED ->
-                stateMap(AppUpdatePhase.CANCELED)
+        enter()
+        val old = store.read()
+        val view = dispatch(Event.Cancel)
+        stateMap(view.copy(retired = view.task == null, releaseTag = old?.releaseTag.orEmpty()))!!
+    }
+    fun switchSource(reason: String, attempt: Int): Map<String, Any?>? {
+        if (reason !in AppUpdateContract.SWITCH_REQUEST_REASONS)
+            throw AppUpdateException(AppUpdateErrors.INVALID_ARGS, "invalid switch reason")
+        return synchronized(mutationLock) {
+            enter()
+            // 先观察 DM：建议发出后下载可能已完成 / 已失败（已自动换源），不能把它当停滞再换一次。
+            store.read()?.takeIf { it.stage == Stage.DOWNLOADING }?.let { dispatch(Event.Observe(dmStatus(it.downloadId))) }
+            stateMap(dispatch(Event.SwitchRequested(reason, attempt)))
+        }
+    }
+    fun onActivityResumed(activity: Activity) = safely {
+        synchronized(mutationLock) {
+            attachActivity(activity)
+            enter()
+            dispatch(Event.Resumed(canRequestPackageInstalls(), isForegroundInstallTarget(activity)))
+        }
+    }
 
-            AppUpdateOwnership.CancelDisposition.CLEARED_CANCELED -> {
-                store.clear()
-                stateMap(AppUpdatePhase.CANCELED)
-            }
-
-            AppUpdateOwnership.CancelDisposition.RETAIN_FAILED -> {
-                // 保留 exact 记录（含 id / generation），只消费自动安装意图。
-                store.update { current ->
-                    if (record == null || isStale(current, record.requestKey, record.generation)) {
-                        current
-                    } else {
-                        current!!.copy(userWantsInstall = false)
-                    }
+    fun requestInstall(activity: Activity?, expectedReleaseTag: String? = null, callback: (Boolean) -> Unit) {
+        requestInstallMatching(activity, null, expectedReleaseTag, callback)
+    }
+    fun verifyAndInstall(activity: Activity, requestKey: String?, callback: (Boolean) -> Unit) {
+        if (requestKey.isNullOrEmpty()) { mainHandler.post { callback(false) }; return }
+        requestInstallMatching(activity, requestKey, null, callback)
+    }
+    private fun requestInstallMatching(activity: Activity?, key: String?, tag: String?, callback: (Boolean) -> Unit) {
+        // 存储失败、取消和主线程回调可能交错；公共 callback 也只完成一次。
+        val completed = java.util.concurrent.atomic.AtomicBoolean(false)
+        val reply: (Boolean) -> Unit = { value -> if (completed.compareAndSet(false, true)) callback(value) }
+        try {
+            synchronized(mutationLock) {
+                enter()
+                val t = store.read()
+                if (t == null || (key != null && t.requestKey != key) || (tag != null && t.releaseTag != tag) ||
+                    t.stage !in listOf(Stage.READY, Stage.INSTALLER_LAUNCHED)) {
+                    mainHandler.post { reply(false) }
+                    return
                 }
-                stateMap(
-                    phase = AppUpdatePhase.FAILED,
-                    reason = AppUpdateReason.NATIVE_ERROR,
-                    version = record?.version,
-                    requestKey = record?.requestKey,
-                    assetFileName = record?.fileName,
-                )
+                val identity = t.requestKey to t.generation
+                installCallbacks.getOrPut(identity) { mutableListOf() }.add(reply)
+                installTargets[identity] = activity?.let { WeakReference(it) }
+                dispatch(Event.InstallRequested(manual = true))
             }
-        }
+        } catch (_: AppUpdateException) { mainHandler.post { reply(false) } }
     }
 
-    /** 调起安装：校验后若缺「未知来源」权限则进入 permissionRequired，否则发起安装器。 */
-    fun requestInstall(
-        activity: Activity?,
-        expectedReleaseTag: String? = null,
-        callback: (Boolean) -> Unit,
-    ) = withStoreFailureFallback({ callback(false) }) {
-        val record = store.read()
-        if (record == null || (expectedReleaseTag != null &&
-                AppUpdateContract.parseCanonicalAssetUrl(record.url)?.tag != expectedReleaseTag)) {
-            callback(false)
-            return@withStoreFailureFallback
-        }
-        executor.execute {
-            val outcome = verifyRecord(record)
-            mainHandler.post {
-                if (outcome == null) {
-                    callback(false)
-                } else {
-                    finishInstallAttempt(activity, record.requestKey, record.generation, outcome, callback)
-                }
-            }
-        }
-    }
-
-    fun openInstallPermissionSettings(activity: Activity?): Boolean {
-        if (activity == null) return false
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true
-        return try {
-            activity.startActivity(
-                Intent(
-                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                    Uri.parse("package:${appContext.packageName}"),
-                ),
-            )
-            true
-        } catch (error: Exception) {
-            Log.e(TAG, "openInstallSettings failed: ${error.javaClass.simpleName}")
-            false
-        }
-    }
-
-    // ---- 下载完成 / 安装 Activity 回调 ----
-
-    /** 广播完成回调：只接受自己持久化的受管 id，忽略其它下载。 */
+    /** goAsync 只覆盖同步观察/转移；耗时校验另交 executor，广播无需等待。 */
     fun onDownloadComplete(downloadId: Long, onFinished: () -> Unit = {}) {
-        synchronized(mutationLock) {
-            val record = store.read()
-            if (record == null || record.downloadId != downloadId ||
-                trackedRowOwnership(record) != RowOwnership.OWNED
-            ) {
-                onFinished()
-                return
+        try {
+            synchronized(mutationLock) {
+                enter()
+                val record = store.read() ?: return
+                if (record.downloadId != downloadId || trackedRowOwnership(record) != RowOwnership.OWNED) return
+                dispatch(Event.Observe(dmStatus(downloadId)))
             }
-            if (dmStatus(downloadId)?.status == DownloadManager.STATUS_SUCCESSFUL) {
-                scheduleVerification(record.requestKey, record.generation, onFinished)
-            } else {
-                // 失败广播也会到达；先保留 DM 的具体原因，不拿残缺文件当 APK 校验。
-                computePhase(record)
-                onFinished()
-            }
-        }
+        } finally { onFinished() }
     }
 
-    /** 安装 Activity 校验后发起安装；[requestKey] 必须与持久化记录一致。 */
-    fun verifyAndInstall(activity: Activity, requestKey: String?, callback: (Boolean) -> Unit) =
-        withStoreFailureFallback({ callback(false) }) {
-        val record = store.read()
-        if (record == null || requestKey.isNullOrEmpty() || requestKey != record.requestKey) {
-            callback(false)
-            return@withStoreFailureFallback
+    /** 必须在 mutationLock 内调用；每个 effect 的同步结果继续交回纯 reducer。 */
+    private fun dispatch(event: Event): View {
+        val before = store.read()
+        val transition = AppUpdateMachine.reduce(before, event)
+        if (before != transition.task) store.update { transition.task }
+        var view = transition.view
+        for (effect in transition.effects) {
+            val t = store.read() ?: continue
+            view = when (effect) {
+                is Effect.Enqueue -> {
+                    val asset = AppUpdateContract.parseCanonicalAssetUrl(effect.url, allowTestOrigin)
+                    val id = try {
+                        check(canReenqueue(t) && asset != null)
+                        enqueue(asset!!, effect.managedFileName)
+                    } catch (error: Exception) {
+                        Log.e(TAG, "enqueue failed: " + error.message)
+                        null
+                    }
+                    if (id == null) dispatch(Event.EnqueueFailed(effect.gen)) else try {
+                        dispatch(Event.Enqueued(effect.gen, id))
+                    } catch (error: AppUpdateException) {
+                        // pending 日志仍可恢复；尽力移除刚创建的精确 id，绝不继续入队。
+                        try { appContext.getSystemService(DownloadManager::class.java)?.remove(id) } catch (_: Exception) { }
+                        throw error
+                    }
+                }
+                is Effect.Retire -> executeRetire(effect, t)
+                Effect.Scan -> dispatch(Event.ReconcileScan(scanOwnedDownloads(t), managedFile(t).exists() || !canReenqueue(t)))
+                is Effect.Verify -> { scheduleVerification(t); AppUpdateMachine.view(store.read()) }
+                is Effect.LaunchInstaller -> { scheduleInstaller(t); AppUpdateMachine.view(store.read()) }
+                is Effect.Notify -> {
+                    try { AppUpdateNotifications.postCompletion(appContext, t.requestKey) } catch (e: Exception) {
+                        Log.e(TAG, "notify failed: " + e.message)
+                    }
+                    AppUpdateMachine.view(store.read())
+                }
+            }
         }
+        // 被取消/换源的挂起手动调用也必须恰好回复一次。
+        val current = store.read()
+        installCallbacks.keys.toList().filter { it != current?.let { c -> c.requestKey to c.generation } }
+            .forEach { completeInstall(it, false) }
+        return view
+    }
+
+    private fun executeRetire(effect: Effect.Retire, record: Task): View {
+        val confirmed = retireOwned(record)
+        val generation = if (confirmed && record.cleanupIntent == CleanupIntent.SWITCH) store.nextGeneration() else record.generation
+        var view = dispatch(Event.RetireResult(effect.gen, confirmed, generation))
+        if (confirmed && effect.restart != null && store.read() == null) view = dispatch(effect.restart)
+        return view
+    }
+
+    /** 同代轮询合并，异代排队；校验前后都核对身份，取消后永不回填/拉起安装器。 */
+    private fun scheduleVerification(record: Task) {
+        val identity = record.requestKey to record.generation
+        if (!verificationJobs.add(identity)) return
+        if (!installTargets.containsKey(identity)) installTargets[identity] = activityRef?.get()?.let { WeakReference(it) }
         executor.execute {
-            val outcome = verifyRecord(record)
-            mainHandler.post {
-                if (outcome == null) {
-                    callback(false)
-                } else {
-                    finishInstallAttempt(activity, record.requestKey, record.generation, outcome, callback)
+            var result: Verification? = null
+            try {
+                val eligible = synchronized(mutationLock) {
+                    val current = store.read()
+                    !isStale(current, record.requestKey, record.generation) &&
+                        current!!.stage in listOf(Stage.AWAITING_VERIFY, Stage.READY, Stage.INSTALLER_LAUNCHED)
                 }
+                if (eligible) {
+                    val dm = dmStatus(record.downloadId)
+                    if (dm == DmObs.Successful || dm == DmObs.Absent || record.downloadId == 0L) {
+                        val outcome = AppUpdateVerifier.verify(appContext, managedFile(record), record.sizeBytes, record.sha256, record.version)
+                        result = when (outcome) {
+                            is AppUpdateVerifier.Outcome.Failed -> Verification.Failed(outcome.reason)
+                            is AppUpdateVerifier.Outcome.Verified -> {
+                                val info = appContext.packageManager.getPackageArchiveInfo(managedFile(record).absolutePath, 0)
+                                if (info == null) Verification.Failed(AppUpdateReason.VERIFICATION_FAILED)
+                                else Verification.Verified(versionCode(info))
+                            }
+                        }
+                    } else if (dm is DmObs.Failed) result = Verification.Failed(dm.reason)
+                }
+            } catch (error: Exception) {
+                Log.e(TAG, "verification failed: " + error.message)
+                // IO/包信息异常不能绕过安装闸门。
+                result = Verification.Failed(AppUpdateReason.VERIFICATION_FAILED)
             }
-        }
-    }
-
-    // ---- 内部实现 ----
-
-    /**
-     * 安装校验结果回填 + 发起安装。
-     *
-     * 全程以 (requestKey, generation) 守卫：任何在途取消 / 新请求都会让迟到结果作废，
-     * 绝不在**更新后的记录**上回填 verified / failureReason / permissionRequired /
-     * installerOpened，也绝不在记录已变时返回「已发起安装」（`callback(true)`）。
-     * 与 [mutationLock] 同锁，保证检查与写入相对 start / cancel 原子。
-     */
-    private fun finishInstallAttempt(
-        activity: Activity?,
-        requestKey: String,
-        generation: Int,
-        outcome: AppUpdateVerifier.Outcome,
-        callback: (Boolean) -> Unit,
-    ) = withStoreFailureFallback({ callback(false) }) {
-        synchronized(mutationLock) {
-            when (outcome) {
-                is AppUpdateVerifier.Outcome.Failed -> {
-                    store.update { current ->
-                        if (isStale(current, requestKey, generation)) {
-                            current
-                        } else {
-                            current!!.copy(verified = false, failureReason = outcome.reason)
-                        }
+            synchronized(mutationLock) {
+                verificationJobs.remove(identity)
+                try {
+                    val current = store.read()
+                    if (result != null && !isStale(current, record.requestKey, record.generation)) {
+                        dispatch(Event.VerifyResult(record.generation, result!!))
                     }
-                    callback(false)
-                }
-
-                is AppUpdateVerifier.Outcome.Verified -> {
-                    val verified = store.update { current ->
-                        if (isStale(current, requestKey, generation)) {
-                            current
-                        } else {
-                            current!!.copy(verified = true, failureReason = null)
-                        }
-                    }
-                    if (isStale(verified, requestKey, generation)) {
-                        // 记录已被取消 / 替换：迟到校验结果作废，绝不回填、绝不发起安装。
-                        callback(false)
-                        return@synchronized
-                    }
-                    if (!canRequestPackageInstalls()) {
-                        store.update { current ->
-                            if (isStale(current, requestKey, generation)) {
-                                current
-                            } else {
-                                current!!.copy(permissionRequired = true)
-                            }
-                        }
-                        callback(false)
-                        return@synchronized
-                    }
-                    // 用**最新匹配记录**发起安装（状态可能已变），而非旧结果记录。
-                    val matched = store.read()
-                    if (isStale(matched, requestKey, generation)) {
-                        callback(false)
-                        return@synchronized
-                    }
-                    if (!isForegroundInstallTarget(activity)) {
-                        // 校验期间退到后台 / Activity 已替换：保留 APK，回前台只手动重试。
-                        store.update { current ->
-                            if (isStale(current, requestKey, generation)) {
-                                current
-                            } else {
-                                current!!.copy(userWantsInstall = false)
-                            }
-                        }
-                        callback(false)
-                        return@synchronized
-                    }
-                    val launched = activity != null && launchInstaller(activity, matched!!)
-                    if (launched) {
-                        store.update { current ->
-                            if (isStale(current, requestKey, generation)) {
-                                current
-                            } else {
-                                current!!.copy(
-                                    installerOpened = true,
-                                    permissionRequired = false,
-                                    userWantsInstall = false,
-                                )
-                            }
-                        }
-                    }
-                    // 发起后再确认记录仍属本次请求；若期间被替换，绝不把结果回填 / 返回成功。
                     val after = store.read()
-                    if (isStale(after, requestKey, generation)) {
-                        callback(false)
+                    if (result !is Verification.Verified || isStale(after, record.requestKey, record.generation) || after?.wantsInstall != true) {
+                        completeInstall(identity, false)
+                        installTargets.remove(identity)
+                    }
+                } catch (_: AppUpdateException) { completeInstall(identity, false) }
+            }
+        }
+    }
+
+    private fun scheduleInstaller(record: Task) {
+        val identity = record.requestKey to record.generation
+        val target = if (installTargets.containsKey(identity)) installTargets[identity]?.get() else activityRef?.get()
+        mainHandler.post {
+            synchronized(mutationLock) {
+                try {
+                    // READY 安装前复核在途时，Resumed 不可抢先绕过 Verify。
+                    if (identity in verificationJobs) return@synchronized
+                    val current = store.read()
+                    if (isStale(current, record.requestKey, record.generation) || current?.stage != Stage.READY || !current.wantsInstall) {
+                        completeInstall(identity, false)
                         return@synchronized
                     }
-                    callback(launched)
+                    val foreground = isForegroundInstallTarget(target)
+                    val permissionMissing = !canRequestPackageInstalls()
+                    val launched = foreground && !permissionMissing && target != null && launchInstaller(target, current)
+                    dispatch(Event.InstallLaunch(record.generation, launched, permissionMissing, foreground))
+                    completeInstall(identity, launched && !isStale(store.read(), record.requestKey, record.generation))
+                } catch (_: AppUpdateException) { completeInstall(identity, false) }
+                finally { installTargets.remove(identity) }
+            }
+        }
+    }
+    private fun completeInstall(identity: Pair<String, Int>, launched: Boolean) {
+        val callbacks = installCallbacks.remove(identity).orEmpty()
+        if (callbacks.isNotEmpty()) mainHandler.post { callbacks.forEach { it(launched) } }
+    }
+    private fun safely(action: () -> Unit) {
+        try { action() } catch (error: AppUpdateException) { Log.e(TAG, "update store unavailable: " + error.message) }
+    }
+    private fun isStale(current: Task?, key: String, generation: Int) = AppUpdateOwnership.isStale(
+        current?.requestKey, current?.generation ?: 0, key, generation)
+    private fun versionCode(info: PackageInfo): Long = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) info.longVersionCode
+        else @Suppress("DEPRECATION") info.versionCode.toLong()
+
+    /** 无行与查询不可用分开：Unavailable 保留 DOWNLOADING，绝不制造永久 FAILED。 */
+    private fun dmStatus(id: Long): DmObs {
+        val dm = appContext.getSystemService(DownloadManager::class.java) ?: return DmObs.Unavailable
+        return try {
+            dm.query(DownloadManager.Query().setFilterById(id)).use { c ->
+                if (c == null) return DmObs.Unavailable
+                if (!c.moveToFirst()) return DmObs.Absent
+                val b = c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
+                val t = c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
+                when (c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))) {
+                    DownloadManager.STATUS_PENDING -> DmObs.Pending(b, t)
+                    DownloadManager.STATUS_RUNNING -> DmObs.Running(b, t)
+                    DownloadManager.STATUS_PAUSED -> DmObs.Paused(b, t)
+                    DownloadManager.STATUS_SUCCESSFUL -> DmObs.Successful
+                    DownloadManager.STATUS_FAILED -> DmObs.Failed(dmFailureReason(id))
+                    else -> DmObs.Unavailable
                 }
             }
-        }
+        } catch (error: Exception) { Log.e(TAG, "dmStatus failed: " + error.message); DmObs.Unavailable }
     }
 
-    private inline fun withStoreFailureFallback(
-        onFailure: () -> Unit = {},
-        action: () -> Unit,
-    ) {
-        try { action() } catch (error: AppUpdateException) {
-            Log.e(TAG, "update store unavailable: ${error.javaClass.simpleName}")
-            onFailure()
+    private fun validate(p: StartParams): StartParams {
+        if (p.version.isBlank() || p.version.length > AppUpdateContract.MAX_VERSION_LENGTH ||
+            p.requestKey.isBlank() || p.requestKey.length > AppUpdateContract.MAX_REQUEST_KEY_LENGTH ||
+            !p.requestKey.startsWith("v2:") || p.mode !in listOf("manual", "auto") ||
+            p.sources.size !in 1..3 || p.sources.map { it.source }.distinct().size != p.sources.size ||
+            p.sizeBytes !in 0..AppUpdateContract.MAX_APK_BYTES ||
+            (p.abi != null && (p.abi.isBlank() || p.abi.length > AppUpdateContract.MAX_ABI_LENGTH)) ||
+            (p.unavailablePreferred != null && p.unavailablePreferred != AppUpdateContract.SOURCE_R2)) {
+            throw AppUpdateException(AppUpdateErrors.INVALID_ARGS, "invalid update request")
         }
+        val sources = p.sources.map { s ->
+            val asset = AppUpdateContract.parseCanonicalAssetUrl(s.url, allowTestOrigin)
+            if (asset == null || asset.tag != p.releaseTag || asset.fileName != p.fileName || asset.source != s.source)
+                throw AppUpdateException(AppUpdateErrors.UNTRUSTED_ASSET, "untrusted asset")
+            SourceUrl(asset.source, asset.url)
+        }
+        val sha = AppUpdateContract.normalizeSha256(p.sha256)
+        if (p.sha256 != null && sha == null) throw AppUpdateException(AppUpdateErrors.INVALID_ARGS, "invalid sha256")
+        return p.copy(version = p.version.trim(), requestKey = p.requestKey.trim(), sources = sources, sha256 = sha)
     }
 
-    /**
-     * 先看 DownloadManager 状态再校验文件：下载失败映射为具体原因（如空间不足），
-     * 不拿残缺文件当 APK 校验；下载尚未完成返回 null（调用方不得记录失败）。
-     * 行已不存在（状态未知）时仍交给文件校验兜底。
-     */
-    private fun verifyRecord(record: AppUpdateStore.Record): AppUpdateVerifier.Outcome? {
-        if (record.downloadId != 0L) {
-            val status = dmStatus(record.downloadId)
-            when (status?.status) {
-                null, DownloadManager.STATUS_SUCCESSFUL -> Unit
-                DownloadManager.STATUS_FAILED -> return AppUpdateVerifier.Outcome.Failed(
-                    dmFailureReason(record.downloadId),
-                    "download failed",
-                )
-                else -> return null
+    /** 投影不读写任务；每个 map（包含 canceled）均带 releaseTag。 */
+    private fun stateMap(view: View): Map<String, Any?>? {
+        val t = view.task
+        if (t == null) return if (view.canceled) mapOf("phase" to AppUpdatePhase.CANCELED,
+            "releaseTag" to view.releaseTag, "retired" to true) else null
+        val dm = view.dm
+        val phase = when (t.stage) {
+            Stage.ENQUEUING -> AppUpdatePhase.ENQUEUED
+            Stage.DOWNLOADING -> when (dm) {
+                is DmObs.Pending -> AppUpdatePhase.ENQUEUED
+                is DmObs.Paused -> AppUpdatePhase.PAUSED
+                else -> AppUpdatePhase.DOWNLOADING
+            }
+            Stage.AWAITING_VERIFY -> AppUpdatePhase.VERIFYING
+            Stage.READY -> if (canRequestPackageInstalls()) AppUpdatePhase.READY_TO_INSTALL else AppUpdatePhase.PERMISSION_REQUIRED
+            Stage.INSTALLER_LAUNCHED -> AppUpdatePhase.INSTALLER_OPENED
+            Stage.FAILED -> AppUpdatePhase.FAILED
+            Stage.RECONCILE_REQUIRED -> AppUpdatePhase.RECONCILE_REQUIRED
+            Stage.CLEANUP_PENDING -> AppUpdatePhase.CLEANUP_PENDING
+        }
+        val switching = t.stage == Stage.CLEANUP_PENDING && t.cleanupIntent == CleanupIntent.SWITCH
+        val map = linkedMapOf<String, Any?>("phase" to phase, "version" to t.version, "releaseTag" to t.releaseTag,
+            "requestKey" to t.requestKey, "assetFileName" to t.fileName, "source" to t.source, "mode" to t.mode,
+            "attempt" to t.generation, "triedSources" to t.tried,
+            "canSwitch" to (t.stage == Stage.DOWNLOADING && t.mode == "auto" && AppUpdateMachine.nextSource(t) != null),
+            "switchReason" to t.switchReason, "fellBackFrom" to t.fellBackFrom, "switching" to switching,
+            "exhausted" to (t.mode == "auto" && t.tried.size > 1 && t.stage == Stage.FAILED))
+        if (switching) map["switchingTo"] = AppUpdateMachine.nextSource(t)?.source
+        if (t.stage == Stage.FAILED) map["reason"] = t.failureReason
+        if (view.retired != null) map["retired"] = view.retired
+        if (t.stage == Stage.DOWNLOADING) {
+            val progress = when (dm) {
+                is DmObs.Pending -> dm.bytes to dm.total
+                is DmObs.Running -> dm.bytes to dm.total
+                is DmObs.Paused -> dm.bytes to dm.total
+                else -> null
+            }
+            if (progress != null) {
+                if (progress.first >= 0) map["bytesDownloaded"] = progress.first
+                if (progress.second > 0) map["totalBytes"] = progress.second
             }
         }
-        return AppUpdateVerifier.verify(
-            context = appContext,
-            file = managedFile(record),
-            expectedSizeBytes = record.sizeBytes,
-            expectedSha256 = record.sha256,
-            expectedVersion = record.version,
-        )
+        return map
     }
-
-    /**
-     * 记录已被替换 / 清除（requestKey 或 generation 不匹配）时为 true。
-     * 委托 [AppUpdateOwnership.isStale] 的纯逻辑，保证守卫与可执行用例同源。
-     */
-    private fun isStale(
-        current: AppUpdateStore.Record?,
-        requestKey: String,
-        generation: Int,
-    ): Boolean =
-        AppUpdateOwnership.isStale(
-            currentRequestKey = current?.requestKey,
-            currentGeneration = current?.generation ?: 0,
-            expectedRequestKey = requestKey,
-            expectedGeneration = generation,
-        )
 
     private fun enqueue(asset: AppUpdateContract.CanonicalAsset, managedFileName: String): Long {
         val dm = appContext.getSystemService(DownloadManager::class.java)
@@ -560,118 +417,6 @@ internal class AppUpdateManager private constructor(private val appContext: Cont
         return dm.enqueue(request)
     }
 
-    // ---- 崩溃对账 / 归属判定 ----
-
-    /**
-     * 入队与持久化之间进程被杀后的对账。
-     *
-     * - 唯一匹配 → 认领该行；
-     * - 多行匹配 / 扫描不完整 / 查询不可用 → **绝不**重新入队，保守标记失败（可重试）；
-     * - 有界扫描完整且无匹配 → 仅当自有目标文件也不存在时，才可断定「从未入队」并
-     *   重新入队；若残留自有目标文件（崩溃在 DM 写文件之后）→ 保守失败，不覆盖 / 不新建。
-     */
-    private fun reconcilePending(record: AppUpdateStore.Record): AppUpdateStore.Record? =
-        when (val scan = scanOwnedDownloads(record)) {
-            is AppUpdateOwnership.Scan.Unique ->
-                store.update { it?.copy(downloadId = scan.downloadId, pendingEnqueue = false) }
-            is AppUpdateOwnership.Scan.Ambiguous,
-            AppUpdateOwnership.Scan.Incomplete,
-            AppUpdateOwnership.Scan.Unavailable,
-            -> markReconcileUnresolved(record)
-            AppUpdateOwnership.Scan.NotFound -> reconcileNotFound(record)
-        }
-
-    private fun markReconcileUnresolved(record: AppUpdateStore.Record): AppUpdateStore.Record? =
-        store.update { current ->
-            if (current == null || current.generation != record.generation) {
-                current
-            } else {
-                // 保守失败（nativeError 是既有 UI 字段，不新造字段）：用户可在 UI 重试 /
-                // 取消，重试走 startDownload 的替换路径。
-                current.copy(pendingEnqueue = false, failureReason = AppUpdateReason.NATIVE_ERROR)
-            }
-        }
-
-    private fun reconcileNotFound(record: AppUpdateStore.Record): AppUpdateStore.Record? {
-        val file = managedFile(record)
-        if (file.exists()) {
-            // 崩溃在 DM 写文件之后但 DM 行已不在：目标已存在，绝不覆盖 / 盲目新建。
-            return markReconcileUnresolved(record)
-        }
-        return try {
-            val id = enqueue(canonicalAssetOf(record), record.managedFileName)
-            store.update { it?.copy(downloadId = id, pendingEnqueue = false) }
-        } catch (error: Exception) {
-            Log.e(TAG, "reconcile failed: ${error.javaClass.simpleName}")
-            store.update {
-                it?.copy(pendingEnqueue = false, failureReason = AppUpdateReason.NATIVE_ERROR)
-            }
-        }
-    }
-
-    private fun removeQuietly(downloadId: Long) {
-        try {
-            appContext.getSystemService(DownloadManager::class.java)?.remove(downloadId)
-        } catch (error: Exception) {
-            Log.e(TAG, "remove orphan failed: ${error.javaClass.simpleName}")
-        }
-    }
-
-    private fun canonicalAssetOf(record: AppUpdateStore.Record): AppUpdateContract.CanonicalAsset =
-        AppUpdateContract.CanonicalAsset(
-            url = record.url,
-            tag = "",
-            fileName = record.fileName,
-        )
-
-    /**
-     * 权威退役旧的自己行：确认归属 → `DownloadManager.remove` → 确认已移除，之后
-     * 才删除自有受管文件。任何一步无法确认（归属不明 / 移除失败 / 无法确认移除）
-     * 都返回 false，调用方必须保留旧记录、绝不入队新请求。
-     */
-    private fun retireOwned(record: AppUpdateStore.Record): Boolean {
-        val dm = appContext.getSystemService(DownloadManager::class.java)
-        val targetId: Long? = when {
-            record.downloadId != 0L -> when (trackedRowOwnership(record)) {
-                RowOwnership.OWNED -> record.downloadId
-                RowOwnership.ABSENT -> null
-                RowOwnership.FOREIGN, RowOwnership.UNKNOWN -> return false
-            }
-            record.pendingEnqueue -> when (val scan = scanOwnedDownloads(record)) {
-                is AppUpdateOwnership.Scan.Unique -> scan.downloadId
-                AppUpdateOwnership.Scan.NotFound -> null
-                is AppUpdateOwnership.Scan.Ambiguous,
-                AppUpdateOwnership.Scan.Incomplete,
-                AppUpdateOwnership.Scan.Unavailable,
-                -> return false
-            }
-            else -> null
-        }
-
-        if (targetId != null) {
-            if (dm == null) return false
-            try {
-                dm.remove(targetId)
-            } catch (error: Exception) {
-                Log.e(TAG, "retire remove failed: ${error.javaClass.simpleName}")
-                return false
-            }
-            if (!confirmRemoved(dm, targetId)) return false
-        }
-
-        // DM 行已确认退役（或确认不存在）→ 只删自己前缀、自己目录内的受管文件。
-        deleteManagedFile(record)
-        return true
-    }
-
-    private fun confirmRemoved(dm: DownloadManager, id: Long): Boolean = try {
-        dm.query(DownloadManager.Query().setFilterById(id)).use { cursor ->
-            cursor == null || !cursor.moveToFirst()
-        }
-    } catch (error: Exception) {
-        Log.e(TAG, "confirmRemoved failed: ${error.javaClass.simpleName}")
-        false
-    }
 
     private enum class RowOwnership { OWNED, ABSENT, FOREIGN, UNKNOWN }
 
@@ -682,7 +427,7 @@ internal class AppUpdateManager private constructor(private val appContext: Cont
      * - FOREIGN：行存在但不属于自己（绝不操作）；
      * - UNKNOWN：查询失败（绝不操作）。
      */
-    private fun trackedRowOwnership(record: AppUpdateStore.Record): RowOwnership {
+    private fun trackedRowOwnership(record: Task): RowOwnership {
         val dm = appContext.getSystemService(DownloadManager::class.java)
             ?: return RowOwnership.UNKNOWN
         return try {
@@ -716,7 +461,7 @@ internal class AppUpdateManager private constructor(private val appContext: Cont
      * 有界扫描本 App 的 DM 行（上限 [MAX_SCAN_ROWS]），交给纯逻辑
      * [AppUpdateOwnership.classify] 做 URL + 本地目标精确归属判定。
      */
-    private fun scanOwnedDownloads(record: AppUpdateStore.Record): AppUpdateOwnership.Scan {
+    private fun scanOwnedDownloads(record: Task): AppUpdateOwnership.Scan {
         val dm = appContext.getSystemService(DownloadManager::class.java)
             ?: return AppUpdateOwnership.Scan.Unavailable
         val dirPath = managedDirPath()
@@ -760,237 +505,6 @@ internal class AppUpdateManager private constructor(private val appContext: Cont
         }
     }
 
-    private fun computePhase(record: AppUpdateStore.Record): Map<String, Any?> {
-        if (record.permissionRequired) {
-            return stateMap(
-                phase = AppUpdatePhase.PERMISSION_REQUIRED,
-                version = record.version,
-                requestKey = record.requestKey,
-                assetFileName = record.fileName,
-            )
-        }
-        if (record.installerOpened) {
-            return stateMap(
-                phase = AppUpdatePhase.INSTALLER_OPENED,
-                version = record.version,
-                requestKey = record.requestKey,
-                assetFileName = record.fileName,
-            )
-        }
-        if (record.failureReason != null && !record.verified) {
-            return stateMap(
-                phase = AppUpdatePhase.FAILED,
-                reason = record.failureReason,
-                version = record.version,
-                requestKey = record.requestKey,
-                assetFileName = record.fileName,
-            )
-        }
-        if (record.downloadId == 0L) {
-            return if (record.verified) {
-                readyState(record)
-            } else {
-                stateMap(
-                    phase = AppUpdatePhase.ENQUEUED,
-                    version = record.version,
-                    requestKey = record.requestKey,
-                    assetFileName = record.fileName,
-                )
-            }
-        }
-
-        val status = dmStatus(record.downloadId)
-        if (status == null) {
-            return if (record.verified) {
-                readyState(record)
-            } else {
-                markFailed(record, AppUpdateReason.VERIFICATION_FAILED)
-            }
-        }
-        return when (status.status) {
-            DownloadManager.STATUS_PENDING -> stateMap(
-                phase = AppUpdatePhase.ENQUEUED,
-                bytes = status.bytes,
-                total = status.total,
-                version = record.version,
-                requestKey = record.requestKey,
-                assetFileName = record.fileName,
-            )
-            DownloadManager.STATUS_RUNNING -> stateMap(
-                phase = AppUpdatePhase.DOWNLOADING,
-                bytes = status.bytes,
-                total = status.total,
-                version = record.version,
-                requestKey = record.requestKey,
-                assetFileName = record.fileName,
-            )
-            DownloadManager.STATUS_PAUSED -> stateMap(
-                phase = AppUpdatePhase.PAUSED,
-                bytes = status.bytes,
-                total = status.total,
-                version = record.version,
-                requestKey = record.requestKey,
-                assetFileName = record.fileName,
-            )
-            DownloadManager.STATUS_SUCCESSFUL -> {
-                if (record.verified) {
-                    readyState(record)
-                } else {
-                    scheduleVerification(record.requestKey, record.generation)
-                    stateMap(
-                        phase = AppUpdatePhase.VERIFYING,
-                        version = record.version,
-                        requestKey = record.requestKey,
-                        assetFileName = record.fileName,
-                    )
-                }
-            }
-            DownloadManager.STATUS_FAILED -> markFailed(record, dmFailureReason(record.downloadId))
-            else -> markFailed(record, AppUpdateReason.UNKNOWN)
-        }
-    }
-
-    private fun markFailed(record: AppUpdateStore.Record, reason: String): Map<String, Any?> {
-        store.update { current ->
-            if (current == null ||
-                current.requestKey != record.requestKey ||
-                current.generation != record.generation
-            ) {
-                current
-            } else {
-                current.copy(failureReason = reason)
-            }
-        }
-        return stateMap(
-            phase = AppUpdatePhase.FAILED,
-            reason = reason,
-            version = record.version,
-            requestKey = record.requestKey,
-            assetFileName = record.fileName,
-        )
-    }
-
-    private fun readyState(record: AppUpdateStore.Record): Map<String, Any?> = stateMap(
-        phase = AppUpdatePhase.READY_TO_INSTALL,
-        version = record.version,
-        requestKey = record.requestKey,
-        assetFileName = record.fileName,
-    )
-
-    private fun scheduleVerification(
-        requestKey: String,
-        generation: Int,
-        onFinished: (() -> Unit)? = null,
-    ) {
-        synchronized(verificationLock) {
-            onFinished?.let { verificationCompletions.add(it) }
-            val requested = requestKey to generation
-            // 正在校验同一代时合并轮询；不同代完成广播必须在本轮结束后补查。
-            if (activeVerification != requested) pendingVerification = requested
-            if (verifying) return
-            verifying = true
-        }
-        executor.execute {
-            while (true) {
-                val (requested, completions) = synchronized(verificationLock) {
-                    val next = pendingVerification
-                    pendingVerification = null
-                    activeVerification = next
-                    if (next == null) {
-                        verifying = false
-                        null to verificationCompletions.toList().also {
-                            verificationCompletions.clear()
-                        }
-                    } else {
-                        next to emptyList<() -> Unit>()
-                    }
-                }
-                if (requested == null) {
-                    mainHandler.post {
-                        try {
-                            maybeAutoOpenOrNotify()
-                        } finally {
-                            completions.forEach { it() }
-                        }
-                    }
-                    break
-                }
-                val (key, attempt) = requested
-                try {
-                    val record = store.read()
-                    if (isStale(record, key, attempt)) continue
-                    val outcome = verifyRecord(record!!) ?: continue
-                    store.update { current ->
-                        if (isStale(current, key, attempt)) {
-                            current
-                        } else {
-                            when (outcome) {
-                                is AppUpdateVerifier.Outcome.Verified ->
-                                    current!!.copy(verified = true, failureReason = null)
-                                is AppUpdateVerifier.Outcome.Failed ->
-                                    current!!.copy(verified = false, failureReason = outcome.reason)
-                            }
-                        }
-                    }
-                } catch (error: Exception) {
-                    Log.e(TAG, "verification failed: ${error.javaClass.simpleName}")
-                }
-            }
-        }
-    }
-
-    private fun maybeAutoOpenOrNotify() {
-        // 主线程调用：持久化不可用时静默放弃，绝不让异常击穿到主线程。
-        withStoreFailureFallback { maybeAutoOpenOrNotifyLocked() }
-    }
-
-    private fun maybeAutoOpenOrNotifyLocked() {
-        synchronized(mutationLock) {
-            val record = store.read() ?: return
-            if (!record.verified || record.installerOpened) return
-
-            val activity = activityRef?.get()
-            if (record.userWantsInstall && activity != null &&
-                isForegroundInstallTarget(activity)
-            ) {
-                // 自动与手动路径都必须在发起前检查权限，不能把系统授权页当成安装器已打开。
-                if (!canRequestPackageInstalls()) {
-                    store.update { current ->
-                        if (isStale(current, record.requestKey, record.generation)) {
-                            current
-                        } else {
-                            current!!.copy(permissionRequired = true)
-                        }
-                    }
-                    return
-                }
-                // 先消费一次性意图，防止 startActivity 引发的生命周期回调重复发起。
-                store.update { current ->
-                    if (isStale(current, record.requestKey, record.generation)) {
-                        current
-                    } else {
-                        current!!.copy(userWantsInstall = false, permissionRequired = false)
-                    }
-                }
-                if (launchInstaller(activity, record)) {
-                    store.update { current ->
-                        if (isStale(current, record.requestKey, record.generation)) {
-                            current
-                        } else {
-                            current!!.copy(
-                                installerOpened = true,
-                                userWantsInstall = false,
-                                permissionRequired = false,
-                            )
-                        }
-                    }
-                    return
-                }
-            }
-            // 后台 / 无法自动打开：只发完成通知，绝不后台拉起 Activity。
-            AppUpdateNotifications.postCompletion(appContext, record.requestKey)
-        }
-    }
 
     /** Activity 引用只在 onResume 附加，在 onPause 撤销。 */
     private fun isForegroundInstallTarget(activity: Activity?): Boolean =
@@ -1001,7 +515,7 @@ internal class AppUpdateManager private constructor(private val appContext: Cont
         )
 
     /** 用给定记录（调用方已校验代际）发起安装，避免状态在读取与拉起之间漂移。 */
-    private fun launchInstaller(activity: Activity, record: AppUpdateStore.Record): Boolean {
+    private fun launchInstaller(activity: Activity, record: Task): Boolean {
         val file = managedFile(record)
         if (!file.isFile) return false
         return try {
@@ -1035,32 +549,6 @@ internal class AppUpdateManager private constructor(private val appContext: Cont
             true
         }
 
-    private data class DmStatus(val status: Int, val bytes: Long, val total: Long)
-
-    private fun dmStatus(id: Long): DmStatus? {
-        val dm = appContext.getSystemService(DownloadManager::class.java) ?: return null
-        return try {
-            dm.query(DownloadManager.Query().setFilterById(id)).use { cursor ->
-                if (cursor == null || !cursor.moveToFirst()) return null
-                DmStatus(
-                    status = cursor.getInt(
-                        cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS),
-                    ),
-                    bytes = cursor.getLong(
-                        cursor.getColumnIndexOrThrow(
-                            DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR,
-                        ),
-                    ),
-                    total = cursor.getLong(
-                        cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES),
-                    ),
-                )
-            }
-        } catch (error: Exception) {
-            Log.e(TAG, "dmStatus failed: ${error.javaClass.simpleName}")
-            null
-        }
-    }
 
     private fun dmFailureReason(id: Long): String {
         val dm = appContext.getSystemService(DownloadManager::class.java)
@@ -1096,50 +584,80 @@ internal class AppUpdateManager private constructor(private val appContext: Cont
             managedDir().absolutePath
         }
 
-    private fun managedFile(record: AppUpdateStore.Record): File =
+    private fun managedFile(record: Task): File =
         File(managedDir(), record.managedFileName)
 
-    private fun deleteManagedFile(record: AppUpdateStore.Record) {
+    private fun deleteManagedFile(record: Task) {
         // 只删自己前缀、自己受管目录内的文件，绝不遍历其它下载。
         if (!record.managedFileName.startsWith(AppUpdateContract.MANAGED_FILE_PREFIX)) return
+        val safePath = AppUpdateOwnership.canonicalManagedPath(managedDirPath(), record.managedFileName) ?: return
         val file = managedFile(record)
+        // 防止损坏记录路径/符号链接越出私有目录；只有精确目标可删。
+        if (file.canonicalFile.parentFile != managedDir().canonicalFile || file.canonicalPath != safePath) return
         if (file.isFile) file.delete()
     }
 
-    private fun stateMap(
-        phase: String,
-        bytes: Long? = null,
-        total: Long? = null,
-        reason: String? = null,
-        version: String? = null,
-        requestKey: String? = null,
-        assetFileName: String? = null,
-    ): Map<String, Any?> {
-        val map = HashMap<String, Any?>()
-        map["phase"] = phase
-        if (bytes != null && bytes >= 0L) map["bytesDownloaded"] = bytes
-        if (total != null && total > 0L) map["totalBytes"] = total
-        if (reason != null) map["reason"] = reason
-        if (!version.isNullOrEmpty()) map["version"] = version
-        if (!requestKey.isNullOrEmpty()) {
-            map["requestKey"] = requestKey
-            store.read()?.takeIf { it.requestKey == requestKey }?.let { record ->
-                AppUpdateContract.parseCanonicalAssetUrl(record.url)?.let { asset ->
-                    map["releaseTag"] = asset.tag
-                }
-            }
+
+    fun openInstallPermissionSettings(activity: Activity?): Boolean {
+        if (activity == null) return false
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true
+        return try {
+            activity.startActivity(
+                Intent(
+                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:${appContext.packageName}"),
+                ),
+            )
+            true
+        } catch (error: Exception) {
+            Log.e(TAG, "openInstallSettings failed: ${error.javaClass.simpleName}")
+            false
         }
-        if (!assetFileName.isNullOrEmpty()) map["assetFileName"] = assetFileName
-        return map
     }
 
-    internal data class StartParams(
-        val version: String?,
-        val url: String?,
-        val fileName: String?,
-        val requestKey: String?,
-        val sizeBytes: Long?,
-        val sha256: String?,
-        val abi: String?,
-    )
+
+    private fun retireOwned(record: Task): Boolean {
+        val dm = appContext.getSystemService(DownloadManager::class.java)
+        val targetId: Long? = when {
+            record.downloadId != 0L -> when (trackedRowOwnership(record)) {
+                RowOwnership.OWNED -> record.downloadId
+                RowOwnership.ABSENT -> null
+                RowOwnership.FOREIGN, RowOwnership.UNKNOWN -> return false
+            }
+            else -> when (val scan = scanOwnedDownloads(record)) {
+                is AppUpdateOwnership.Scan.Unique -> scan.downloadId
+                AppUpdateOwnership.Scan.NotFound -> null
+                is AppUpdateOwnership.Scan.Ambiguous,
+                AppUpdateOwnership.Scan.Incomplete,
+                AppUpdateOwnership.Scan.Unavailable,
+                -> return false
+            }
+        }
+
+        if (targetId != null) {
+            if (dm == null) return false
+            try {
+                dm.remove(targetId)
+            } catch (error: Exception) {
+                Log.e(TAG, "retire remove failed: ${error.javaClass.simpleName}")
+                return false
+            }
+            if (!confirmRemoved(dm, targetId)) return false
+        }
+
+        // DM 行已确认退役（或确认不存在）→ 只删自己前缀、自己目录内的受管文件。
+        deleteManagedFile(record)
+        return true
+    }
+
+    private fun confirmRemoved(dm: DownloadManager, id: Long): Boolean = try {
+        dm.query(DownloadManager.Query().setFilterById(id)).use { cursor ->
+            cursor != null && !cursor.moveToFirst()
+        }
+    } catch (error: Exception) {
+        Log.e(TAG, "confirmRemoved failed: ${error.javaClass.simpleName}")
+        false
+    }
+
+
 }

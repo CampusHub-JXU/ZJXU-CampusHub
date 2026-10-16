@@ -97,7 +97,20 @@ class UpdateService {
     return client;
   }
 
-  UpdateSource _resolveSource() {
+  UpdateSource _resolveSource() => _sourceFor(AppConfig.updateTestOrigin);
+
+  /// [testOrigin] 非 null（仅调试构建且显式传入测试源定义，见
+  /// [AppConfig.updateTestOrigin]）时，更新检查改为请求 `<origin>/latest.json`
+  /// （GitHub Release API 同形 JSON）；release / profile 恒走正式配置。
+  UpdateSource _sourceFor(String? testOrigin) {
+    if (testOrigin != null) {
+      return GitHubReleaseUpdateSource(
+        dio: _dio ??= _createDio(),
+        latestReleaseApiUrl: '$testOrigin/latest.json',
+        // 测试源不走镜像改写，也没有备用 API 地址。
+        releaseMirrorPrefix: '',
+      );
+    }
     return switch (AppConfig.updateMode) {
       AppUpdateMode.disabled => const DisabledUpdateSource(),
       AppUpdateMode.remoteManifest => RemoteManifestUpdateSource(
@@ -113,6 +126,9 @@ class UpdateService {
       ),
     };
   }
+
+  @visibleForTesting
+  UpdateSource debugSourceFor(String? testOrigin) => _sourceFor(testOrigin);
 
   @visibleForTesting
   Future<AppRelease> Function()? debugReleaseProvider;

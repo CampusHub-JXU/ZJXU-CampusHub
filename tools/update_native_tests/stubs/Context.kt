@@ -7,20 +7,22 @@ open class Context {
     companion object { const val MODE_PRIVATE = 0 }
     open val applicationContext: Context get() = this
     open val packageName = "test.app"
-    val prefs = SharedPreferences()
+    private val files = mutableMapOf<String, SharedPreferences>()
+    val prefs get() = getSharedPreferences("app_update_managed_v2", MODE_PRIVATE)
+    val applicationInfo = android.content.pm.ApplicationInfo()
+    var dmAvailable = true
     val downloads = DownloadManager()
     var root = File(".")
-    val packageManager = PackageManager()
-    fun getSharedPreferences(name: String, mode: Int) = prefs
-    fun <T> getSystemService(type: Class<T>): T? = type.cast(downloads)
+    val packageManager = android.content.pm.PackageManager()
+    fun getSharedPreferences(name: String, mode: Int) = files.getOrPut(name) { SharedPreferences() }
+    fun <T> getSystemService(type: Class<T>): T? = if (dmAvailable) type.cast(downloads) else null
     fun getExternalFilesDir(type: String): File = root
 }
-class PackageManager {
-    var installsAllowed = false
-    fun canRequestPackageInstalls() = installsAllowed
-}
+
 class SharedPreferences {
-    val data = mutableMapOf<String, Any?>()
+    // Real SharedPreferences is thread-safe and applies an editor atomically; the manager
+    // writes from its verification executor while tests read from the main thread.
+    val data: MutableMap<String, Any?> = java.util.Collections.synchronizedMap(mutableMapOf())
     var failCommitAt = 0
     var commits = 0
     fun getString(key: String, default: String?) = data[key] as String? ?: default
@@ -36,12 +38,12 @@ class SharedPreferences {
         fun putLong(k: String, v: Long) = apply { changed[k] = v }
         fun putInt(k: String, v: Int) = apply { changed[k] = v }
         fun putBoolean(k: String, v: Boolean) = apply { changed[k] = v }
-        fun commit(): Boolean {
+        fun commit(): Boolean = synchronized(data) {
             // Android updates memory even when writing the preferences file fails.
             if (clear) data.clear()
             data.putAll(changed)
             commits++
-            return commits != failCommitAt
+            commits != failCommitAt
         }
     }
 }

@@ -1,9 +1,10 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 
+import '../config/app_config.dart';
 import '../logging/app_logger.dart';
 import '../platform/safe_invoke.dart';
+import 'apk_download_route.dart';
 import 'update_model.dart';
 import 'update_source.dart' show deviceAbiSuffix;
 
@@ -13,13 +14,16 @@ import 'update_source.dart' show deviceAbiSuffix;
 /// StandardMethodCodec 支持的基本类型（`Map` / `List` / `String` / `int` /
 /// `bool`）。
 ///
-/// 设计边界（本阶段为 Dart 契约，原生实现另起阶段）：
-/// - Dart 侧**不**负责下载 / 进度 / 定时器：受管下载由系统 DownloadManager
-///   在原生进程执行，原生持久化受管请求 id 为唯一权威；本控制器只做参数校验、
-///   状态解码与状态投影。
-/// - 通道参数**只**含协议字段（版本 / 规范资产 URL / 文件名 / 摘要 / ABI /
-///   请求 key），**绝不**传学号、账号、Cookie 或任意本地文件路径 / 下载 id。
-/// - 输入 URL 必须是可信仓库的规范资产 URL，否则在调用通道前即拒绝。
+/// 设计边界（原生显式状态机，契约见 `docs/in-app-update-state-machine.md`）：
+/// - 原生是**唯一权威**：入队、归属对账、换源、校验、安装、「是否已被安装」
+///   与清理全部在原生；Dart 只按设置页偏好生成有序候选源、发命令、解码状态，
+///   以及由停滞观察器在弹窗打开时建议换源（[ApkDownloadStallWatcher]）。
+/// - Dart 侧**不**负责下载 / 进度 / 定时器，也**不**判定受管记录是否过期。
+/// - 通道参数**只**含协议字段（版本 / tag / 文件名 / 摘要 / ABI / 请求 key /
+///   带校验的候选源 URL），**绝不**传学号、账号、Cookie 或任意本地文件路径 /
+///   下载 id。
+/// - 候选源 URL 必须是可信形态（规范 GitHub / EdgeOne / R2；调试构建另有
+///   本地测试源），否则在调用通道前即拒绝。
 abstract final class ApkUpdateProtocol {
   static const String channelName = 'edu.zjxu.jxucampushub/app_update';
 
@@ -27,6 +31,7 @@ abstract final class ApkUpdateProtocol {
   static const String methodStartDownload = 'startDownload';
   static const String methodQueryActiveUpdate = 'queryActiveUpdate';
   static const String methodCancelActiveUpdate = 'cancelActiveUpdate';
+  static const String methodSwitchSource = 'switchSource';
   static const String methodRequestInstall = 'requestInstall';
   static const String methodOpenInstallPermissionSettings =
       'openInstallPermissionSettings';
@@ -59,9 +64,15 @@ enum ApkUpdatePhase {
   installerOpened,
   failed,
   canceled,
-  unavailable;
+  unavailable,
 
-  /// 是否属于「有在途 / 可继续」的活动状态（用于幂等去重）。
+  /// 归属不明：原生保留任务身份，之后每次查询 / 取消前都重新对账（轮询驱动）。
+  reconcileRequired,
+
+  /// 原生已决定退役当前尝试（取消 / 被取代 / 换源），但系统下载移除尚未确认。
+  cleanupPending;
+
+  /// 是否属于「有在途 / 可继续」的活动状态（用于幂等去重与保持轮询）。
   bool get isActive => switch (this) {
     enqueued ||
     downloading ||
@@ -69,7 +80,9 @@ enum ApkUpdatePhase {
     verifying ||
     readyToInstall ||
     permissionRequired ||
-    installerOpened => true,
+    installerOpened ||
+    reconcileRequired ||
+    cleanupPending => true,
     _ => false,
   };
 
@@ -109,7 +122,16 @@ enum ApkUpdateFailureReason {
   }
 }
 
+/// 受管下载的换源模式（wire code 即枚举名）。
+///
+/// - [auto]：设置页「自动」：原生在明确失败时自动换下一条候选源，Dart 停滞
+///   观察器可建议换源；
+/// - [manual]：手动选线：原生**不**换源，失败后由用户在设置里改线重试。
+enum ApkDownloadMode { auto, manual }
+
 /// 控制器对外投影的受管更新状态（值相等，便于 ValueNotifier 去重）。
+///
+/// 线路相关字段（[source] … [retired]）全部来自原生权威状态，Dart 不推演。
 @immutable
 class ApkUpdateState {
   const ApkUpdateState({
@@ -121,6 +143,16 @@ class ApkUpdateState {
     this.releaseTag,
     this.requestKey,
     this.assetFileName,
+    this.source,
+    this.mode,
+    this.attempt = 0,
+    this.triedSources = const <ApkDownloadSource>[],
+    this.canSwitch = false,
+    this.switchReason,
+    this.fellBackFrom,
+    this.switching = false,
+    this.exhausted = false,
+    this.retired = false,
   });
 
   const ApkUpdateState.idle() : this();
@@ -142,11 +174,41 @@ class ApkUpdateState {
   /// 当前受管资产 URL 对应的 Release tag。
   final String? releaseTag;
 
-  /// 当前受管请求的稳定 idempotency key（原生持久化的同一 id）。
+  /// 当前受管请求的稳定 idempotency key（原生持久化的同一 id；不含线路）。
   final String? requestKey;
 
   /// 当前受管请求的 APK 文件名。
   final String? assetFileName;
+
+  /// 当前尝试的下载线路；未知 / 不在白名单为 null。
+  final ApkDownloadSource? source;
+
+  /// 换源模式；未知为 null。
+  final ApkDownloadMode? mode;
+
+  /// 当前尝试序号（原生 generation）；停滞观察器据此重置计时。
+  final int attempt;
+
+  /// 已尝试过的线路（含当前），按尝试顺序。
+  final List<ApkDownloadSource> triedSources;
+
+  /// 原生是否还能响应 `switchSource`（下载中、自动模式、还有未试的线路）。
+  final bool canSwitch;
+
+  /// 最近一次换源的原因（白名单）；从未换源为 null。
+  final ApkFallbackReason? switchReason;
+
+  /// 最近一次换源离开的线路，或首选线路不可用时的首选线路。
+  final ApkDownloadSource? fellBackFrom;
+
+  /// 正在退役旧尝试并换到下一条线路（`cleanupPending` 的换源子类）。
+  final bool switching;
+
+  /// 自动模式下所有候选线路都已失败。
+  final bool exhausted;
+
+  /// 仅 `cancelActiveUpdate` 返回：原生已确认退役。
+  final bool retired;
 
   ApkUpdateState copyWith({
     ApkUpdatePhase? phase,
@@ -158,6 +220,16 @@ class ApkUpdateState {
     String? releaseTag,
     String? requestKey,
     String? assetFileName,
+    ApkDownloadSource? source,
+    ApkDownloadMode? mode,
+    int? attempt,
+    List<ApkDownloadSource>? triedSources,
+    bool? canSwitch,
+    ApkFallbackReason? switchReason,
+    ApkDownloadSource? fellBackFrom,
+    bool? switching,
+    bool? exhausted,
+    bool? retired,
   }) {
     return ApkUpdateState(
       phase: phase ?? this.phase,
@@ -168,6 +240,16 @@ class ApkUpdateState {
       releaseTag: releaseTag ?? this.releaseTag,
       requestKey: requestKey ?? this.requestKey,
       assetFileName: assetFileName ?? this.assetFileName,
+      source: source ?? this.source,
+      mode: mode ?? this.mode,
+      attempt: attempt ?? this.attempt,
+      triedSources: triedSources ?? this.triedSources,
+      canSwitch: canSwitch ?? this.canSwitch,
+      switchReason: switchReason ?? this.switchReason,
+      fellBackFrom: fellBackFrom ?? this.fellBackFrom,
+      switching: switching ?? this.switching,
+      exhausted: exhausted ?? this.exhausted,
+      retired: retired ?? this.retired,
     );
   }
 
@@ -181,7 +263,17 @@ class ApkUpdateState {
       other.version == version &&
       other.releaseTag == releaseTag &&
       other.requestKey == requestKey &&
-      other.assetFileName == assetFileName;
+      other.assetFileName == assetFileName &&
+      other.source == source &&
+      other.mode == mode &&
+      other.attempt == attempt &&
+      listEquals(other.triedSources, triedSources) &&
+      other.canSwitch == canSwitch &&
+      other.switchReason == switchReason &&
+      other.fellBackFrom == fellBackFrom &&
+      other.switching == switching &&
+      other.exhausted == exhausted &&
+      other.retired == retired;
 
   @override
   int get hashCode => Object.hash(
@@ -193,19 +285,32 @@ class ApkUpdateState {
     releaseTag,
     requestKey,
     assetFileName,
+    source,
+    mode,
+    attempt,
+    Object.hashAll(triedSources),
+    canSwitch,
+    switchReason,
+    fellBackFrom,
+    switching,
+    exhausted,
+    retired,
   );
 
   @override
   String toString() =>
       'ApkUpdateState(phase: ${phase.name}, bytes: $bytesDownloaded/'
-      '$totalBytes, reason: ${reason?.name}, version: $version)';
+      '$totalBytes, reason: ${reason?.name}, version: $version, '
+      'source: ${source?.name}, attempt: $attempt)';
 }
 
 /// 原生 map → [ApkUpdateState] 的严格解码（白名单字段 + 类型校验）。
 ///
 /// 未知字段忽略；未知 phase / reason 分别 fail-closed 为
 /// [ApkUpdatePhase.unavailable] / [ApkUpdateFailureReason.unknown]；非 map、
-/// 越界 / 非法数值一律丢弃为 null，绝不合成进度。
+/// 越界 / 非法数值一律丢弃为 null，绝不合成进度。线路相关字段同样严格：
+/// 未知 source / mode / switchReason 为 null，类型不符的布尔为 false、
+/// attempt 为 0、triedSources 丢弃未知项；整个解码**绝不抛出**。
 abstract final class ApkUpdateStateCodec {
   /// 允许出现在原生 map 中的字段（其余忽略）。
   static const Set<String> allowedKeys = <String>{
@@ -217,7 +322,20 @@ abstract final class ApkUpdateStateCodec {
     'releaseTag',
     'requestKey',
     'assetFileName',
+    'source',
+    'mode',
+    'attempt',
+    'triedSources',
+    'canSwitch',
+    'switchReason',
+    'fellBackFrom',
+    'switching',
+    'exhausted',
+    'retired',
   };
+
+  /// `triedSources` 的上限（候选源最多 3 个，留余量防畸形输入）。
+  static const int maxTriedSources = 8;
 
   static ApkUpdateState fromNative(Object? raw) {
     if (raw is! Map) {
@@ -262,6 +380,16 @@ abstract final class ApkUpdateStateCodec {
         raw['assetFileName'],
         ApkUpdateProtocol.maxAssetFileNameLength,
       ),
+      source: _enumByName(ApkDownloadSource.values, raw['source']),
+      mode: _enumByName(ApkDownloadMode.values, raw['mode']),
+      attempt: _nonNegativeInt(raw['attempt']) ?? 0,
+      triedSources: _sources(raw['triedSources']),
+      canSwitch: raw['canSwitch'] == true,
+      switchReason: _enumByName(ApkFallbackReason.values, raw['switchReason']),
+      fellBackFrom: _enumByName(ApkDownloadSource.values, raw['fellBackFrom']),
+      switching: raw['switching'] == true,
+      exhausted: raw['exhausted'] == true,
+      retired: raw['retired'] == true,
     );
   }
 
@@ -277,6 +405,28 @@ abstract final class ApkUpdateStateCodec {
     if (trimmed.isEmpty || trimmed.length > maxLength) return null;
     return trimmed;
   }
+
+  /// 精确（区分大小写、不 trim）匹配枚举名；未知 / 非字符串为 null。
+  static T? _enumByName<T extends Enum>(List<T> values, Object? raw) {
+    if (raw is! String) return null;
+    for (final value in values) {
+      if (value.name == raw) return value;
+    }
+    return null;
+  }
+
+  /// 未知项与重复项丢弃，保序；非 list 为空。
+  static List<ApkDownloadSource> _sources(Object? raw) {
+    if (raw is! List) return const <ApkDownloadSource>[];
+    final result = <ApkDownloadSource>[];
+    for (final item in raw) {
+      final source = _enumByName(ApkDownloadSource.values, item);
+      if (source == null || result.contains(source)) continue;
+      result.add(source);
+      if (result.length >= maxTriedSources) break;
+    }
+    return List<ApkDownloadSource>.unmodifiable(result);
+  }
 }
 
 /// 应用内受管下载的线路。
@@ -285,7 +435,11 @@ abstract final class ApkUpdateStateCodec {
 ///   可选线路，仅保留给既有受管记录与无线路参数的调用）。
 /// - [edgeone]：EdgeOne gh-proxy 对同一 GitHub 资产的代理。
 /// - [r2]：Cloudflare R2 自定义域名上的同一份 APK（仅当 Release 带 R2 标记资产）。
-enum ApkDownloadSource { github, edgeone, r2 }
+/// - [test]：**仅调试构建**的本地端到端测试源（`http://10.0.2.2:<port>/...`），
+///   由 `AppConfig.updateTestOrigin` 门控，release / profile 永不出现。
+///
+/// wire 名即枚举名，与原生白名单 `github|edgeone|r2|test` 一致。
+enum ApkDownloadSource { github, edgeone, r2, test }
 
 /// 可信下载 URL 校验：调用原生前必须通过（与原生
 /// `AppUpdateContract.parseCanonicalAssetUrl` 等价）。
@@ -340,10 +494,64 @@ abstract final class ApkUpdateUrlPolicy {
   }
 
   /// 三种形态之一（原生入队前的同一白名单）。
+  ///
+  /// **不含**调试测试源（[isTestAssetUrl]）：测试源只在 `AppConfig.updateTestOrigin`
+  /// 非 null（仅 `kDebugMode`）时由 [testUrlFor] 构造，永远不进入生产白名单。
   static bool isTrustedDownloadUrl(String url) =>
       isCanonicalAssetUrl(url) || isMirrorAssetUrl(url) || isR2AssetUrl(url);
 
-  /// 由规范 GitHub 资产 URL 派生 [source] 线路的 URL；不可信 / 不可用返回 null。
+  /// 规范 GitHub 资产 URL 里的 Release tag；不是形态 1 时返回 null。
+  static String? canonicalAssetTag(String url) => _githubAssetTag(url.trim());
+
+  static final RegExp _testAssetPattern = RegExp(
+    r'^http://10\.0\.2\.2:([1-9]\d{3,4})/([^/?#]+)/([^/?#]+)$',
+  );
+
+  /// 调试测试源形态：`http://10.0.2.2:<1024–65535>/<tag>/<apk>`（恰好两段路径，
+  /// 无 userinfo / query / fragment / 穿越 / 控制字符）。与原生
+  /// `parseCanonicalAssetUrl(allowTestOrigin = true)` 等价。
+  ///
+  /// 这只是形态校验，**不**代表允许使用：是否启用由 `AppConfig.updateTestOrigin`
+  /// （`kDebugMode` 门控）决定。
+  static bool isTestAssetUrl(String url) {
+    final trimmed = url.trim();
+    final match = _testAssetPattern.firstMatch(trimmed);
+    if (match == null) return false;
+    final port = int.parse(match.group(1)!);
+    if (port < 1024 || port > 65535) return false;
+    for (final code in trimmed.codeUnits) {
+      if (code < 0x20 || code == 0x7f || code == 0x5c) return false;
+    }
+    final lower = trimmed.toLowerCase();
+    if (lower.contains('%2e') ||
+        lower.contains('%2f') ||
+        lower.contains('%5c')) {
+      return false;
+    }
+    final tag = match.group(2)!;
+    final file = match.group(3)!;
+    if (_isUnsafeSegment(tag) || _isUnsafeSegment(file)) return false;
+    return file.toLowerCase().endsWith('.apk');
+  }
+
+  /// 由规范 GitHub 资产 URL 与（已解析的）测试 origin 构造测试源 URL
+  /// `<origin>/<tag>/<apk>`；任一不合法返回 null。
+  static String? testUrlFor({
+    required String origin,
+    required String canonicalUrl,
+  }) {
+    final canonical = canonicalUrl.trim();
+    final tag = _githubAssetTag(canonical);
+    if (tag == null) return null;
+    final fileName = Uri.parse(canonical).pathSegments.last;
+    var base = origin.trim();
+    if (base.endsWith('/')) base = base.substring(0, base.length - 1);
+    final url = '$base/$tag/$fileName';
+    return isTestAssetUrl(url) ? url : null;
+  }
+
+  /// 由规范 GitHub 资产 URL 派生 [source] 线路的 URL；不可信 / 不可用返回 null
+  /// （[ApkDownloadSource.test] 恒为 null，见 [testUrlFor]）。
   ///
   /// R2 额外要求 [r2Available]（Release 带 R2 标记资产），否则不构造 URL。
   static String? urlFor(
@@ -365,6 +573,9 @@ abstract final class ApkUpdateUrlPolicy {
         final fileName = Uri.parse(canonical).pathSegments.last;
         final url = 'https://${ApkUpdateProtocol.trustedR2Host}/$tag/$fileName';
         return isR2AssetUrl(url) ? url : null;
+      case ApkDownloadSource.test:
+        // 测试源只能经 [testUrlFor] + AppConfig.updateTestOrigin 构造。
+        return null;
     }
   }
 
@@ -455,73 +666,113 @@ abstract final class ApkUpdateUrlPolicy {
   }
 }
 
+/// 候选源（`source` + 已校验 URL），按尝试顺序排列后随 `startDownload` 下发。
+@immutable
+class ApkUpdateSourceUrl {
+  const ApkUpdateSourceUrl({required this.source, required this.url});
+
+  final ApkDownloadSource source;
+  final String url;
+
+  Map<String, Object?> toPlatformMap() => <String, Object?>{
+    'source': source.name,
+    'url': url,
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      other is ApkUpdateSourceUrl && other.source == source && other.url == url;
+
+  @override
+  int get hashCode => Object.hash(source, url);
+
+  @override
+  String toString() => 'ApkUpdateSourceUrl(${source.name})';
+}
+
 /// 受管下载请求（通道参数白名单由本类构造，调用方无法注入任意字段）。
+///
+/// 任务身份 = 目标 APK 身份（[requestKey]，**不含线路**）；线路只出现在有序候选
+/// [sources] 里，换源不换 key，由原生按 [mode] 决定如何推进。
 @immutable
 class ApkUpdateRequest {
   const ApkUpdateRequest({
     required this.version,
-    required this.assetUrl,
+    required this.releaseTag,
     required this.assetFileName,
+    required this.mode,
+    required this.sources,
+    this.unavailablePreferred,
     this.assetId,
     this.assetSizeBytes,
     this.sha256,
     this.abi,
-    this.source = ApkDownloadSource.github,
   });
 
   final String version;
-  final String assetUrl;
+
+  /// 候选 URL 共同的 Release tag（原生会逐个 URL 复核）。
+  final String releaseTag;
   final String assetFileName;
+  final ApkDownloadMode mode;
+
+  /// 有序候选源（1–3 个、线路不重复）；首个即首选线路。
+  final List<ApkUpdateSourceUrl> sources;
+
+  /// 用户手动选了某线路但该版本没有它（目前只会是 R2）时，告知原生以便如实
+  /// 记录「已从首选线路改用备用线路」。
+  final ApkDownloadSource? unavailablePreferred;
   final int? assetId;
   final int? assetSizeBytes;
   final String? sha256;
   final String? abi;
 
-  /// 下载线路（只影响 [assetUrl] 与 [requestKey]，不影响校验契约）。
-  final ApkDownloadSource source;
-
   /// 稳定 idempotency key：`摘要 + assetId/version + ABI + 文件名`，
-  /// **不含**任何账号身份。原生持久化的受管 id 应与此一致。
-  ///
-  /// 非默认线路追加 `:<线路>` 后缀，使「换线重试」被原生视为新请求并走既有的
-  /// 权威退役路径；默认 [ApkDownloadSource.github] 的 key 与既有记录一致。
+  /// **不含**任何账号身份，也**不含**线路（换源不换 key）。
   String get requestKey {
     final idPart = assetId?.toString() ?? version;
-    final base =
-        'v1:$idPart:${abi ?? 'unknown'}:$assetFileName:${sha256 ?? 'nosha'}';
-    return source == ApkDownloadSource.github ? base : '$base:${source.name}';
+    return 'v2:$idPart:${abi ?? 'unknown'}:$assetFileName:${sha256 ?? 'nosha'}';
   }
 
   Map<String, Object?> toPlatformMap() => <String, Object?>{
     'version': version,
-    'url': assetUrl,
+    'releaseTag': releaseTag,
     'fileName': assetFileName,
     'requestKey': requestKey,
-    if (assetId != null) 'assetId': assetId,
+    'mode': mode.name,
+    'sources': <Map<String, Object?>>[
+      for (final source in sources) source.toPlatformMap(),
+    ],
     if (assetSizeBytes != null) 'sizeBytes': assetSizeBytes,
     if (sha256 != null) 'sha256': sha256,
     if (abi != null) 'abi': abi,
+    if (unavailablePreferred != null)
+      'unavailablePreferred': unavailablePreferred!.name,
   };
 
-  /// 从 release 构造受管请求；规范资产 URL / 文件名 / 版本任一不合法、或所选
-  /// [source] 线路不可用（例如 R2 标记缺失）即返回 null（调用方据此降级为
-  /// 不可用，绝不猜测 URL）。
+  /// 从 release + 线路偏好 [route] 构造受管请求；规范资产 URL / 文件名 / 版本
+  /// 任一不合法、或没有任何可用候选源即返回 null（调用方据此降级为不可用，
+  /// 绝不猜测 URL、不调用通道）。
+  ///
+  /// 候选生成：
+  /// - 自动：有 R2 标记为 `[r2, edgeone]`，否则 `[edgeone]`；
+  /// - 手动 R2：有标记为 `[r2]`，**没有标记**则 `[edgeone]` 且
+  ///   [unavailablePreferred] = r2（不让「更新」点了没反应，同时如实告知）；
+  /// - 手动 EdgeOne：`[edgeone]`；
+  /// - 调试测试源（[testOrigin]，缺省读 `AppConfig.updateTestOrigin`，release
+  ///   恒为 null）启用时候选只有 `[test]`。
   static ApkUpdateRequest? tryCreate(
     AppRelease release, {
     String? abi,
-    ApkDownloadSource source = ApkDownloadSource.github,
+    required ApkDownloadRoute route,
+    String? testOrigin,
   }) {
     final canonical = release.canonicalAssetUrl;
-    if (canonical == null ||
-        !ApkUpdateUrlPolicy.isCanonicalAssetUrl(canonical)) {
+    if (canonical == null) return null;
+    final tag = ApkUpdateUrlPolicy.canonicalAssetTag(canonical);
+    if (tag == null || tag.length > ApkUpdateProtocol.maxVersionLength) {
       return null;
     }
-    final url = ApkUpdateUrlPolicy.urlFor(
-      source,
-      canonicalUrl: canonical,
-      r2Available: release.r2MirrorAvailable,
-    );
-    if (url == null) return null;
     final fileName = release.assetFileName ?? _fileNameFromUrl(canonical);
     if (fileName == null ||
         fileName.isEmpty ||
@@ -534,16 +785,49 @@ class ApkUpdateRequest {
         version.length > ApkUpdateProtocol.maxVersionLength) {
       return null;
     }
+
+    final sources = <ApkUpdateSourceUrl>[];
+    ApkDownloadSource? unavailablePreferred;
+    final origin = testOrigin ?? AppConfig.updateTestOrigin;
+    if (origin != null) {
+      final url = ApkUpdateUrlPolicy.testUrlFor(
+        origin: origin,
+        canonicalUrl: canonical,
+      );
+      if (url == null) return null;
+      sources.add(ApkUpdateSourceUrl(source: ApkDownloadSource.test, url: url));
+    } else {
+      var candidates = route.candidates(r2Available: release.r2MirrorAvailable);
+      if (candidates.isEmpty && route == ApkDownloadRoute.r2) {
+        candidates = const <ApkDownloadSource>[ApkDownloadSource.edgeone];
+        unavailablePreferred = ApkDownloadSource.r2;
+      }
+      for (final source in candidates) {
+        final url = ApkUpdateUrlPolicy.urlFor(
+          source,
+          canonicalUrl: canonical,
+          r2Available: release.r2MirrorAvailable,
+        );
+        if (url == null) return null;
+        sources.add(ApkUpdateSourceUrl(source: source, url: url));
+      }
+    }
+    if (sources.isEmpty) return null;
+
     final size = release.assetSizeBytes;
     return ApkUpdateRequest(
       version: version,
-      assetUrl: url,
+      releaseTag: tag,
       assetFileName: fileName,
+      mode: route == ApkDownloadRoute.auto
+          ? ApkDownloadMode.auto
+          : ApkDownloadMode.manual,
+      sources: List<ApkUpdateSourceUrl>.unmodifiable(sources),
+      unavailablePreferred: unavailablePreferred,
       assetId: release.assetId,
       assetSizeBytes: (size != null && size > 0) ? size : null,
       sha256: AppRelease.normalizeSha256(release.assetSha256),
       abi: (abi != null && abi.trim().isNotEmpty) ? abi.trim() : null,
-      source: source,
     );
   }
 
@@ -560,14 +844,23 @@ abstract interface class ApkUpdateTransport {
   /// 当前平台是否支持应用内受管更新。
   Future<bool> isSupported();
 
-  /// 入队一次受管下载（原生持久化受管 id），返回原生当前状态。
+  /// 入队一次受管下载（原生持久化任务与候选源），返回原生当前状态。
   Future<ApkUpdateState> startDownload(ApkUpdateRequest request);
 
   /// 查询原生当前受管状态；无活动请求返回 null。
   Future<ApkUpdateState?> queryActiveUpdate();
 
-  /// 取消当前受管下载并清理其文件，返回原生当前状态。
+  /// 取消当前受管下载并清理其文件，返回原生当前状态（含 `retired`）。
   Future<ApkUpdateState> cancelActiveUpdate();
+
+  /// 建议原生换到下一条候选源（停滞观察器用）；原生不换时照常返回当前状态，
+  /// 无任务 / 通道不可用返回 null。
+  ///
+  /// [attempt] 为判定停滞时看到的尝试代际；原生据此丢弃换源后迟到的建议。
+  Future<ApkUpdateState?> switchSource(
+    ApkFallbackReason reason, {
+    required int attempt,
+  });
 
   /// 调起系统安装确认；返回是否已成功发起（**不代表**用户已安装）。
   Future<bool> requestInstall({String? expectedReleaseTag});
@@ -635,6 +928,25 @@ class MethodChannelApkUpdateTransport implements ApkUpdateTransport {
       _invokeState(ApkUpdateProtocol.methodCancelActiveUpdate);
 
   @override
+  Future<ApkUpdateState?> switchSource(
+    ApkFallbackReason reason, {
+    required int attempt,
+  }) => safeInvoke<Object, ApkUpdateState?>(
+    _channel,
+    ApkUpdateProtocol.methodSwitchSource,
+    arguments: <String, Object?>{'reason': reason.name, 'attempt': attempt},
+    map: (value) =>
+        value == null ? null : ApkUpdateStateCodec.fromNative(value),
+    // 换源只是建议：通道缺失 / 原生报错都不改变 Dart 侧状态，下一次轮询
+    // 会拿到原生真实状态。
+    missing: null,
+    failed: null,
+    label: '建议更新换源',
+    level: LogLevel.warn,
+    category: LogCategory.general,
+  );
+
+  @override
   Future<bool> requestInstall({String? expectedReleaseTag}) =>
       safeInvoke<bool, bool>(
         _channel,
@@ -678,41 +990,27 @@ class MethodChannelApkUpdateTransport implements ApkUpdateTransport {
 
 /// 应用内受管更新控制器（UI 的唯一 Dart 入口）。
 ///
-/// 只投影原生权威状态：不下载、不计时、不合成进度；`state` 为
-/// [ValueListenable] 供 UI 监听。原生推送事件可在后续原生阶段以同一
-/// [ApkUpdateStateCodec] 解析的 typed map 补充，本阶段用 [refreshActiveUpdate]
-/// 轮询（由 UI 生命周期决定频率，控制器不持有任何后台定时器）。
+/// 只投影原生权威状态：不下载、不计时、不合成进度、**不判定受管记录是否过期**
+/// （版本是否已被安装由原生在每个入口统一处理）；`state` 为 [ValueListenable]
+/// 供 UI 监听。本阶段用 [refreshActiveUpdate] 轮询（由 UI 生命周期决定频率，
+/// 控制器不持有任何后台定时器）。
 class ApkUpdateController {
   ApkUpdateController({
     ApkUpdateTransport? transport,
     String? Function()? deviceAbiProvider,
     TargetPlatform Function()? platformProvider,
-    Future<String?> Function()? installedVersionProvider,
   }) : _transport = transport ?? defaultApkUpdateTransport,
        _deviceAbiProvider = deviceAbiProvider ?? deviceAbiSuffix,
-       _platformProvider = platformProvider ?? _defaultPlatform,
-       _installedVersionProvider =
-           installedVersionProvider ?? _defaultInstalledVersion;
+       _platformProvider = platformProvider ?? _defaultPlatform;
 
   /// 应用级单例；测试用构造注入独立实例。
   static final ApkUpdateController instance = ApkUpdateController();
 
   static TargetPlatform _defaultPlatform() => defaultTargetPlatform;
 
-  static Future<String?> _defaultInstalledVersion() async {
-    try {
-      return (await PackageInfo.fromPlatform().timeout(
-        const Duration(seconds: 3),
-      )).version;
-    } catch (_) {
-      return null;
-    }
-  }
-
   final ApkUpdateTransport _transport;
   final String? Function() _deviceAbiProvider;
   final TargetPlatform Function() _platformProvider;
-  final Future<String?> Function() _installedVersionProvider;
 
   final ValueNotifier<ApkUpdateState> state = ValueNotifier<ApkUpdateState>(
     const ApkUpdateState.idle(),
@@ -729,22 +1027,23 @@ class ApkUpdateController {
 
   /// 入队一次受管下载。
   ///
-  /// - 规范资产 URL 不可信 / 缺失 → [ApkUpdatePhase.unavailable]
-  ///   （`untrustedAsset`），**不**调用通道，UI 应回退浏览器路径。
-  /// - 同一请求已在活动状态或上一次 start 未返回 → 幂等 no-op。
+  /// 按 [route]（设置页偏好）生成有序候选源并一次性交给原生，之后的换源由原生
+  /// 决定（见 [ApkUpdateRequest.tryCreate] 的候选规则）。
   ///
-  /// [source] 选择下载线路（默认 [ApkDownloadSource.github] 保持既有行为）；
-  /// 所选线路不可用同样降级为 `untrustedAsset`。
+  /// - 规范资产 URL 不可信 / 缺失、或没有任何可用候选源 →
+  ///   [ApkUpdatePhase.unavailable]（`untrustedAsset`），**不**调用通道，UI 应
+  ///   回退浏览器路径。
+  /// - 同一请求已在活动状态或上一次 start 未返回 → 幂等 no-op。
   Future<void> startDownload(
     AppRelease release, {
-    ApkDownloadSource source = ApkDownloadSource.github,
+    required ApkDownloadRoute route,
   }) async {
     if (_startInFlight) return;
 
     final request = ApkUpdateRequest.tryCreate(
       release,
       abi: _deviceAbiProvider(),
-      source: source,
+      route: route,
     );
     if (request == null) {
       _apply(
@@ -772,46 +1071,46 @@ class ApkUpdateController {
     }
   }
 
-  /// 查询原生当前受管状态（冷启动 / 回前台恢复）。迟到的查询结果被 epoch
-  /// 作废，绝不覆盖更新的状态。
-  ///
-  /// 已不新于当前安装版本的受管更新（例如用户已经从文件管理器装上了同一个
-  /// 包，或经其它渠道升级；含已转为失败的记录）会被视为过期：取消原生请求并
-  /// 删除其文件，回到 idle，让「检查更新」重新查询线上版本，而不是一直提示
-  /// 安装当前版本。
-  /// 版本无法读取时保守保留原状态。
+  /// 查询原生当前受管状态（冷启动 / 回前台恢复 / 弹窗轮询）并原样应用；无任务
+  /// 为 idle。迟到的查询结果被 epoch 作废，绝不覆盖更新的状态。
   Future<void> refreshActiveUpdate() async {
     final epoch = ++_refreshEpoch;
     final next = await _transport.queryActiveUpdate();
     if (epoch != _refreshEpoch) return;
-    if (next != null && await _isSuperseded(next)) {
-      if (epoch != _refreshEpoch) return;
-      final cleared = await _transport.cancelActiveUpdate();
-      if (epoch != _refreshEpoch) return;
-      _apply(cleared.phase.isActive ? cleared : const ApkUpdateState.idle());
+    // 通道调用本身失败（transport 合成的 failed，不带 requestKey；原生给出的
+    // 失败一定带 requestKey）不代表下载失败：活动中的任务保留上一状态，轮询
+    // 继续，不让一次通道抖动把弹窗打成「更新失败」并停掉进度与换线观察。
+    if (next != null &&
+        next.phase == ApkUpdatePhase.failed &&
+        next.requestKey == null &&
+        state.value.phase.isActive) {
       return;
     }
-    if (epoch != _refreshEpoch) return;
     _apply(next ?? const ApkUpdateState.idle());
   }
 
-  /// 受管记录的版本不新于当前已安装版本即视为过期——**包括**失败 / 已取消的记录：
-  /// 用户手动装上同一个包后，原生复核会把「已校验」记录翻成 `failed(versionNotNewer)`，
-  /// 该失败记录若不清理，会在之后每个新版本的弹窗里被当成「这次的下载失败」展示。
-  Future<bool> _isSuperseded(ApkUpdateState managed) async {
-    if (managed.phase == ApkUpdatePhase.idle) return false;
-    final managedVersion = managed.version?.trim();
-    if (managedVersion == null || managedVersion.isEmpty) return false;
-    final installed = await _installedVersionProvider();
-    if (installed == null || installed.trim().isEmpty) return false;
-    return !AppRelease.isVersionNewer(managedVersion, installed);
-  }
-
-  /// 取消当前受管下载并清理其文件（只影响原生受管的那一条）。
+  /// 取消当前受管下载并清理其文件（只影响原生受管的那一条），原样应用原生
+  /// 返回值：确认退役为 `canceled`，退役未确认则是 `cleanupPending`（仍为活动
+  /// 状态，轮询会驱动原生重试）。
   Future<void> cancelActiveUpdate() async {
     final epoch = ++_refreshEpoch;
     final next = await _transport.cancelActiveUpdate();
     if (epoch != _refreshEpoch) return;
+    _apply(next);
+  }
+
+  /// 建议原生换到下一条候选源（只由 [ApkDownloadStallWatcher] 调用）。
+  ///
+  /// `failed` 是原生专属原因（明确失败由原生自己换源），Dart 不会发送。
+  /// 原生可以拒绝（没有未试的源 / 不在下载中）：照常返回当前状态，Dart 不重试。
+  Future<void> switchSource(ApkFallbackReason reason) async {
+    if (reason == ApkFallbackReason.failed) return;
+    final epoch = ++_refreshEpoch;
+    final next = await _transport.switchSource(
+      reason,
+      attempt: state.value.attempt,
+    );
+    if (epoch != _refreshEpoch || next == null) return;
     _apply(next);
   }
 
@@ -837,6 +1136,8 @@ class ApkUpdateController {
       state.value.copyWith(
         phase: ApkUpdatePhase.installerOpened,
         clearReason: true,
+        canSwitch: false,
+        switching: false,
       ),
     );
     return true;

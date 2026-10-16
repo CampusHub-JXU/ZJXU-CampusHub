@@ -2,6 +2,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/core/config/app_config.dart';
+import 'package:jxu_campus_hub/core/update/apk_download_route.dart';
+import 'package:jxu_campus_hub/core/update/apk_update_controller.dart';
 import 'package:jxu_campus_hub/core/update/update_model.dart';
 import 'package:jxu_campus_hub/core/update/update_source.dart';
 import 'package:jxu_campus_hub/core/update/update_service.dart';
@@ -361,5 +363,73 @@ void main() {
     expect(release.assetSha256, isNull);
     expect(release.assetSizeBytes, isNull);
     expect(release.downloadUrl, isNotEmpty);
+  });
+
+  group('debug 本地测试源', () {
+    test('生产配置不受影响：无测试 origin 时仍是官方 GitHub 源', () {
+      final source = UpdateService.instance.debugSourceFor(null);
+      expect(source, isA<GitHubReleaseUpdateSource>());
+      final github = source as GitHubReleaseUpdateSource;
+      expect(
+        github.latestReleaseApiUrl,
+        AppConfig.updateGithubLatestReleaseApiUrl,
+      );
+      expect(
+        github.releaseMirrorPrefix,
+        AppConfig.updateGithubReleaseMirrorPrefix,
+      );
+    });
+
+    test('测试 origin：更新检查改为请求 <origin>/latest.json，不走镜像', () {
+      final source = UpdateService.instance.debugSourceFor(
+        'http://10.0.2.2:8080',
+      ) as GitHubReleaseUpdateSource;
+      expect(source.latestReleaseApiUrl, 'http://10.0.2.2:8080/latest.json');
+      expect(source.latestReleaseFallbackApiUrls, isEmpty);
+      expect(source.releaseMirrorPrefix, isEmpty);
+    });
+
+    test('latest.json 沿用 GitHub Release 形状，候选源只有 test', () async {
+      final dio = Dio();
+      final adapter = MockHttpClientAdapter();
+      dio.httpClientAdapter = adapter;
+      const tag = 'v9.9.9';
+      const name = 'JXU-CampusHub-v9.9.9-arm64-v8a.apk';
+      adapter.registerJson('GET', '/latest.json', {
+        'tag_name': tag,
+        'html_url':
+            'https://github.com/FHfanshu/ZJXU-CampusHub/releases/tag/$tag',
+        'published_at': '2026-10-16T00:00:00Z',
+        'assets': [
+          {
+            'id': 1,
+            'name': name,
+            'size': 1234,
+            'digest': 'sha256:${'d' * 64}',
+            // 规范 GitHub URL 只用于身份，不会被下载。
+            'browser_download_url':
+                'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/'
+                '$tag/$name',
+          },
+        ],
+      });
+      final release = await GitHubReleaseUpdateSource(
+        dio: dio,
+        latestReleaseApiUrl: 'http://10.0.2.2:8080/latest.json',
+        releaseMirrorPrefix: '',
+        deviceAbiProvider: () => 'arm64-v8a',
+      ).fetchLatestRelease();
+
+      final request = ApkUpdateRequest.tryCreate(
+        release,
+        abi: 'arm64-v8a',
+        route: ApkDownloadRoute.auto,
+        testOrigin: 'http://10.0.2.2:8080',
+      )!;
+      expect(request.sources, hasLength(1));
+      expect(request.sources.single.source, ApkDownloadSource.test);
+      expect(request.sources.single.url, 'http://10.0.2.2:8080/$tag/$name');
+      expect(request.releaseTag, tag);
+    });
   });
 }

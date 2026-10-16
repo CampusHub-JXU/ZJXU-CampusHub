@@ -23,8 +23,8 @@ void main() {
 
   setUp(() async {
     await resetTestEnvironment();
-    // 受管更新只有新于已安装版本才保留；本文件的样例更新为 0.2.x / 0.3.x，
-    // 已安装版本需低于它们。
+    // 版本检查（第三个用例）仍读已安装版本；受管记录是否过期由原生判定，
+    // Dart 不再按已安装版本取消受管更新。
     PackageInfo.setMockInitialValues(
       appName: '嘉兴大学',
       packageName: 'test.package',
@@ -137,6 +137,37 @@ void main() {
     expect(networkCalled, isFalse);
     expect(find.text('已有更新 v0.2.9'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, '安装更新'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
+
+  testWidgets('原生处于清理中（cleanupPending）时同样视为在途，重开弹窗而不发版本检查', (tester) async {
+    var networkCalled = false;
+    UpdateService.instance.debugReleaseProvider = () async {
+      networkCalled = true;
+      throw StateError('offline');
+    };
+    nativeState = <String, Object?>{
+      'phase': 'cleanupPending',
+      'version': '0.2.9',
+      'releaseTag': 'v0.2.9',
+      'requestKey': 'old',
+      'retired': false,
+    };
+
+    await pumpPage(tester, const SettingsPage());
+    await tester.scrollUntilVisible(find.text('检查更新'), 300);
+    await tester.ensureVisible(find.text('检查更新'));
+    await tester.pump();
+    await tester.tap(find.text('检查更新'));
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+
+    expect(networkCalled, isFalse);
+    expect(find.text('已有更新 v0.2.9'), findsOneWidget);
+    expect(find.text('正在清理上一次下载…'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
   });

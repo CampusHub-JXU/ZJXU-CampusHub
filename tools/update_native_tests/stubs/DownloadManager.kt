@@ -45,13 +45,24 @@ class DownloadManager {
         var status: Int = STATUS_PENDING, var reason: Int = 0)
     val rows = linkedMapOf<Long, Row>()
     var enqueues = 0
+    var throwQuery = false
+    var nullCursor = false
+    var removeFails = false
+    var throwEnqueue = false
+    var afterEnqueue: (() -> Unit)? = null
     fun enqueue(request: Request): Long {
+        check(!throwEnqueue)
         val id = (++enqueues).toLong()
         rows[id] = Row(id, request.uri.toString(), request.destination)
+        afterEnqueue?.invoke()
         return id
     }
-    fun remove(id: Long) { rows.remove(id) }
-    fun query(query: Query) = Cursor(rows.values.filter { query.id == null || query.id == it.id })
+    fun remove(id: Long) { if (removeFails) error("remove failed"); rows.remove(id) }
+    fun query(query: Query): Cursor? {
+        if (throwQuery) error("query unavailable")
+        if (nullCursor) return null
+        return Cursor(rows.values.filter { query.id == null || query.id == it.id })
+    }
     class Cursor(private val rows: List<Row>) : Closeable {
         private var index = -1
         private val columns = listOf(COLUMN_ID, COLUMN_URI, COLUMN_LOCAL_URI, COLUMN_STATUS,

@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:jxu_campus_hub/core/update/apk_download_route.dart';
 import 'package:jxu_campus_hub/core/update/apk_update_controller.dart';
 import 'package:jxu_campus_hub/core/update/update_model.dart';
 
@@ -25,11 +26,25 @@ class FakeApkUpdateTransport implements ApkUpdateTransport {
   int startCalls = 0;
   int queryCalls = 0;
   int cancelCalls = 0;
+  int switchCalls = 0;
   int installCalls = 0;
   int permissionSettingsCalls = 0;
 
   ApkUpdateRequest? lastRequest;
   String? lastExpectedReleaseTag;
+
+  /// 每次 `switchSource` 收到的原因（按调用顺序）。
+  final List<ApkFallbackReason> switchReasons = <ApkFallbackReason>[];
+
+  /// 每次 `switchSource` 携带的 attempt（按调用顺序）。
+  final List<int> switchAttempts = <int>[];
+
+  /// `cancelActiveUpdate` 的返回值；缺省为已确认退役的 `canceled`。设为
+  /// `cleanupPending` 可模拟原生 remove 未确认。
+  ApkUpdateState? cancelOverride;
+
+  /// `switchSource` 的返回值；缺省为 null 时回显当前原生状态（模拟原生拒绝换源）。
+  ApkUpdateState? switchResult;
 
   /// `requestInstall` 期间的副作用钩子：用来模拟「原生返回 false 的同时把受管
   /// 状态推进为 permissionRequired / failed」这类真实并发顺序。
@@ -61,7 +76,22 @@ class FakeApkUpdateTransport implements ApkUpdateTransport {
   @override
   Future<ApkUpdateState> cancelActiveUpdate() async {
     cancelCalls++;
-    _active = const ApkUpdateState(phase: ApkUpdatePhase.canceled);
+    _active =
+        cancelOverride ??
+        const ApkUpdateState(phase: ApkUpdatePhase.canceled, retired: true);
+    return _active;
+  }
+
+  @override
+  Future<ApkUpdateState?> switchSource(
+    ApkFallbackReason reason, {
+    required int attempt,
+  }) async {
+    switchCalls++;
+    switchReasons.add(reason);
+    switchAttempts.add(attempt);
+    final result = switchResult;
+    if (result != null) _active = result;
     return _active;
   }
 
@@ -81,18 +111,12 @@ class FakeApkUpdateTransport implements ApkUpdateTransport {
 }
 
 /// 用注入的替身构造控制器：固定为 Android + arm64-v8a，避免测试依赖宿主
-/// 平台探测。
-/// [installedVersion] 默认取一个低于所有测试 Release 的版本，避免受管更新被
-/// 视为「已安装、过期」而自动取消。
-ApkUpdateController fakeApkUpdateController(
-  FakeApkUpdateTransport transport, {
-  String? installedVersion = '0.0.1',
-}) {
+/// 平台探测。版本是否已被安装由原生判定，控制器不再读取已安装版本。
+ApkUpdateController fakeApkUpdateController(FakeApkUpdateTransport transport) {
   return ApkUpdateController(
     transport: transport,
     deviceAbiProvider: () => 'arm64-v8a',
     platformProvider: () => TargetPlatform.android,
-    installedVersionProvider: () async => installedVersion,
   );
 }
 

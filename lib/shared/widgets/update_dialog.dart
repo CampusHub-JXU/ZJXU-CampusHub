@@ -82,8 +82,9 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
 
   Timer? _pollTimer;
 
-  /// 线路选择与自动回退（只在轮询回调里观察进度，不持有后台定时器）。
-  late final ApkDownloadRouter _router = ApkDownloadRouter(
+  /// 停滞观察器（无计划状态；只在轮询回调里观察进度并建议原生换源，不持有
+  /// 后台定时器，也不自己选线路）。
+  late final ApkDownloadStallWatcher _watcher = ApkDownloadStallWatcher(
     controller: widget.controller,
   );
 
@@ -99,13 +100,16 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
   bool get _canManaged =>
       _supported && (_hasCanonicalAsset || _state.phase.isActive);
 
-  /// 非活动的旧记录（失败 / 已取消 / 不可用）若属于**另一个** Release tag，就不能
+  /// 唯一的投影：非活动的失败 / 已取消记录若属于**另一个** Release tag，就不能
   /// 当作当前版本的下载结果展示（否则新版本弹窗会直接显示上一个版本遗留的失败）。
+  /// 这只回答「这个弹窗展示的是哪个版本」；记录是否过期（例如版本已被安装）由
+  /// 原生统一判定并清理，Dart 不再判断。
   bool get _staleOtherRelease {
     final release = widget.release;
     if (release == null) return false;
     final state = _state;
-    if (state.phase == ApkUpdatePhase.idle || state.phase.isActive) {
+    if (state.phase != ApkUpdatePhase.failed &&
+        state.phase != ApkUpdatePhase.canceled) {
       return false;
     }
     final tag = state.releaseTag;
@@ -136,7 +140,6 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _controller.state.addListener(_onStateChanged);
-    _router.status.addListener(_onStateChanged);
     unawaited(_bootstrap());
   }
 
@@ -146,8 +149,6 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
     // 原生 DownloadManager 继续，重开弹窗再查询即可。
     _pollTimer?.cancel();
     _pollTimer = null;
-    _router.stopWatching();
-    _router.status.removeListener(_onStateChanged);
     _controller.state.removeListener(_onStateChanged);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -200,12 +201,11 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
     _pollTimer = null;
   }
 
-  /// 一次轮询：先刷新原生真实状态，再让线路协调器据此判断是否需要自动回退。
+  /// 一次轮询：先刷新原生真实状态，再让停滞观察器据此判断是否需要建议换源。
   Future<void> _pollOnce() async {
     await _controller.refreshActiveUpdate();
-    final release = widget.release;
-    if (!mounted || release == null) return;
-    await _router.onPolled(release);
+    if (!mounted) return;
+    await _watcher.onPolled();
   }
 
   // ── 原生调用 ──────────────────────────────────────────────────────────────
@@ -216,11 +216,10 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
     final release = widget.release;
     if (release == null) return;
     final route = await ApkDownloadRoutePreference.load();
-    await _router.start(release, route);
+    await _controller.startDownload(release, route: route);
   });
 
   Future<void> _cancelDownload() => _run(() async {
-    _router.stopWatching();
     await _controller.cancelActiveUpdate();
   });
 
@@ -312,7 +311,7 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
             children: [
               if (showRelease)
                 Text(
-                  '发布时间：${_formatDate(release.publishedAt)}',
+                  '发布时间：${_formatDate(release.publishedAt.toLocal())}',
                   style: context.appText.secondary,
                 ),
               if (_bootstrapped) ...[
@@ -368,14 +367,18 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
       ApkUpdatePhase.paused ||
       ApkUpdatePhase.readyToInstall ||
       ApkUpdatePhase.permissionRequired ||
-      ApkUpdatePhase.installerOpened => true,
+      ApkUpdatePhase.installerOpened ||
+      ApkUpdatePhase.reconcileRequired ||
+      ApkUpdatePhase.cleanupPending => true,
       _ => false,
     };
     // 只有真正在等待结果的阶段才允许不确定进度动画；暂停 / 失败 / 取消不再动。
     final animate = switch (phase) {
       ApkUpdatePhase.enqueued ||
       ApkUpdatePhase.downloading ||
-      ApkUpdatePhase.verifying => true,
+      ApkUpdatePhase.verifying ||
+      ApkUpdatePhase.reconcileRequired ||
+      ApkUpdatePhase.cleanupPending => true,
       _ => false,
     };
 
@@ -420,40 +423,61 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
     ApkDownloadSource.r2 => 'Cloudflare R2',
     ApkDownloadSource.edgeone => 'EdgeOne',
     ApkDownloadSource.github => 'GitHub',
+    ApkDownloadSource.test => '本地测试源',
     null => '当前线路',
   };
 
-  /// 当前线路 / 最近一次自动回退说明（只描述真实发生过的事，不预告）。
-  String? _routeNotice(ApkUpdatePhase phase) {
-    final status = _router.status.value;
-    if (status.switching) {
-      return '${_sourceLabel(status.fellBackFrom)} 不稳定，正在切换到 '
-          '${_sourceLabel(status.active)}…';
+  String _switchReasonText(ApkFallbackReason? reason) => switch (reason) {
+    ApkFallbackReason.connectTimeout => '连接超时',
+    ApkFallbackReason.stalled => '长时间无数据',
+    ApkFallbackReason.slow => '下载速度过低',
+    ApkFallbackReason.paused => '下载被暂停',
+    ApkFallbackReason.failed => '下载失败',
+    null => '不稳定',
+  };
+
+  /// 换源期间的「下一条线路」：状态里没有候选列表，按固定优先级取第一个
+  /// 既不是当前线路、也没试过的；推不出来就返回 null（文案退回泛称）。
+  ApkDownloadSource? _nextSourceAfter(ApkUpdateState state) {
+    for (final candidate in const <ApkDownloadSource>[
+      ApkDownloadSource.r2,
+      ApkDownloadSource.edgeone,
+      ApkDownloadSource.github,
+    ]) {
+      if (candidate != state.source &&
+          !state.triedSources.contains(candidate)) {
+        return candidate;
+      }
     }
-    if (status.exhausted && phase == ApkUpdatePhase.failed) {
+    return null;
+  }
+
+  /// 当前线路 / 最近一次换源说明（只描述原生状态里真实发生过的事，不预告）。
+  String? _routeNotice(ApkUpdatePhase phase) {
+    final state = _state;
+    if (state.switching) {
+      final from = state.fellBackFrom ?? state.source;
+      return '${_sourceLabel(from)} ${_switchReasonText(state.switchReason)}。';
+    }
+    if (phase == ApkUpdatePhase.failed && state.exhausted) {
       return '所有线路均未成功下载，可稍后重试或改用浏览器下载。';
     }
     if (phase == ApkUpdatePhase.failed &&
-        status.route != ApkDownloadRoute.auto) {
+        state.mode == ApkDownloadMode.manual) {
       return '可在「设置 → 更新下载线路」更换线路后重试。';
     }
-    if (status.lastFallback != null && phase.isActive) {
-      final why = switch (status.lastFallback!) {
-        ApkFallbackReason.connectTimeout => '连接超时',
-        ApkFallbackReason.stalled => '长时间无数据',
-        ApkFallbackReason.slow => '下载速度过低',
-        ApkFallbackReason.paused => '下载被暂停',
-        ApkFallbackReason.failed => '下载失败',
-      };
-      return '${_sourceLabel(status.fellBackFrom)} $why，已切换到 '
-          '${_sourceLabel(status.active)}。';
+    if (!phase.isActive) return null;
+    final from = state.fellBackFrom;
+    if (from != null && state.switchReason != null) {
+      return '${_sourceLabel(from)} ${_switchReasonText(state.switchReason)}，'
+          '已切换到 ${_sourceLabel(state.source)}。';
     }
-    if (status.fellBackFrom != null && phase.isActive) {
-      return '该版本暂无 ${_sourceLabel(status.fellBackFrom)} 线路，'
-          '已改用 ${_sourceLabel(status.active)}。';
+    if (from != null) {
+      return '该版本暂无 ${_sourceLabel(from)} 线路，'
+          '已改用 ${_sourceLabel(state.source)}。';
     }
-    if (status.active != null && phase.isActive) {
-      return '下载线路：${_sourceLabel(status.active)}';
+    if (state.source != null) {
+      return '下载线路：${_sourceLabel(state.source)}';
     }
     return null;
   }
@@ -524,7 +548,15 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
     ApkUpdatePhase.failed => _failureText(_state.reason),
     ApkUpdatePhase.canceled => '已取消下载',
     ApkUpdatePhase.unavailable => _failureText(_state.reason),
+    ApkUpdatePhase.reconcileRequired => '正在确认上一次下载的状态…',
+    ApkUpdatePhase.cleanupPending =>
+      _state.switching ? _switchingText() : '正在清理上一次下载…',
   };
+
+  String _switchingText() {
+    final next = _nextSourceAfter(_state);
+    return next == null ? '正在切换下载线路…' : '正在切换到 ${_sourceLabel(next)}…';
+  }
 
   String? _hintText(ApkUpdatePhase phase) => switch (phase) {
     ApkUpdatePhase.paused => '可取消后重新下载。',
@@ -615,6 +647,8 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
       case ApkUpdatePhase.downloading:
       case ApkUpdatePhase.verifying:
       case ApkUpdatePhase.paused:
+      case ApkUpdatePhase.reconcileRequired:
+      case ApkUpdatePhase.cleanupPending:
         return [_cancelButton(context), _dismissButton(context)];
       case ApkUpdatePhase.readyToInstall:
         return [
