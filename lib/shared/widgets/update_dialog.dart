@@ -99,6 +99,25 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
   bool get _canManaged =>
       _supported && (_hasCanonicalAsset || _state.phase.isActive);
 
+  /// 非活动的旧记录（失败 / 已取消 / 不可用）若属于**另一个** Release tag，就不能
+  /// 当作当前版本的下载结果展示（否则新版本弹窗会直接显示上一个版本遗留的失败）。
+  bool get _staleOtherRelease {
+    final release = widget.release;
+    if (release == null) return false;
+    final state = _state;
+    if (state.phase == ApkUpdatePhase.idle || state.phase.isActive) {
+      return false;
+    }
+    final tag = state.releaseTag;
+    final url = release.canonicalAssetUrl;
+    if (tag == null || url == null || !_hasCanonicalAsset) return false;
+    return Uri.parse(url).pathSegments[4] != tag;
+  }
+
+  /// 弹窗用于展示的阶段：别的版本遗留的非活动记录按 idle 处理，可直接点「更新」。
+  ApkUpdatePhase get _phase =>
+      _staleOtherRelease ? ApkUpdatePhase.idle : _state.phase;
+
   bool get _releaseMatchesManaged {
     final release = widget.release;
     if (release == null || !_state.phase.isActive) return true;
@@ -335,7 +354,7 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
       return Text('该版本未提供可校验的安装包，无法应用内下载；可通过下方按钮前往下载页。', style: text.meta);
     }
 
-    final phase = _state.phase;
+    final phase = _phase;
     final status = _statusText(phase);
     final hint = _hintText(phase);
     final progress = _progressInfo(phase);
@@ -586,7 +605,7 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
       return [_dismissButton(context)];
     }
 
-    switch (_state.phase) {
+    switch (_phase) {
       case ApkUpdatePhase.idle:
         return [
           _dismissButton(context),
@@ -623,7 +642,7 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
 
   /// 关闭按钮：只关闭弹窗，**不**取消下载。
   Widget _dismissButton(BuildContext context) {
-    final downloading = _canManaged && _state.phase != ApkUpdatePhase.idle;
+    final downloading = _canManaged && _phase != ApkUpdatePhase.idle;
     return TextButton(
       onPressed: _busy ? null : () => Navigator.of(context).pop(),
       child: Text(downloading ? '关闭' : '稍后再说'),

@@ -176,6 +176,37 @@ void main() {
       await disposeDialog(tester);
     });
 
+    testWidgets('别的版本遗留的失败记录不当作本版本的失败展示', (tester) async {
+      transport.active = const ApkUpdateState(
+        phase: ApkUpdatePhase.failed,
+        reason: ApkUpdateFailureReason.versionNotNewer,
+        version: '0.2.9',
+        releaseTag: 'v0.2.9',
+        requestKey: 'old',
+      );
+      await open(tester, managedTestRelease());
+
+      expect(find.text('该版本不新于当前版本'), findsNothing);
+      expect(find.widgetWithText(FilledButton, '更新'), findsOneWidget);
+      expect(find.byType(LinearProgressIndicator), findsNothing);
+      await disposeDialog(tester);
+    });
+
+    testWidgets('同版本的失败记录仍如实展示并可重试', (tester) async {
+      transport.active = const ApkUpdateState(
+        phase: ApkUpdatePhase.failed,
+        reason: ApkUpdateFailureReason.network,
+        version: '0.3.0',
+        releaseTag: 'v0.3.0',
+        requestKey: 'k',
+      );
+      await open(tester, managedTestRelease());
+
+      expect(find.text('网络连接失败，请检查网络后重试'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, '重试'), findsOneWidget);
+      await disposeDialog(tester);
+    });
+
     testWidgets('下载中显示真实进度（已知总量）', (tester) async {
       transport.active = const ApkUpdateState(
         phase: ApkUpdatePhase.downloading,

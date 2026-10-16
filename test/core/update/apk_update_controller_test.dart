@@ -471,6 +471,35 @@ void main() {
         expect(c.state.value.phase.isActive, isFalse);
       });
 
+      test(
+        'failed(versionNotNewer) left by a manual install is cleared',
+        () async {
+          // 用户手动装上同一个包后，原生复核把已校验记录翻成失败；
+          // 该失败不能一直挂在之后每个新版本的弹窗里。
+          final c = withInstalled('0.11.2');
+          transport.queryResult = const ApkUpdateState(
+            phase: ApkUpdatePhase.failed,
+            reason: ApkUpdateFailureReason.versionNotNewer,
+            version: '0.11.2',
+          );
+          await c.refreshActiveUpdate();
+          expect(transport.cancelCalls, 1);
+          expect(c.state.value.phase, ApkUpdatePhase.idle);
+        },
+      );
+
+      test('failed network record for a newer version is kept', () async {
+        final c = withInstalled('0.11.2');
+        transport.queryResult = const ApkUpdateState(
+          phase: ApkUpdatePhase.failed,
+          reason: ApkUpdateFailureReason.network,
+          version: '0.11.4',
+        );
+        await c.refreshActiveUpdate();
+        expect(transport.cancelCalls, 0);
+        expect(c.state.value.phase, ApkUpdatePhase.failed);
+      });
+
       test('newer than installed is kept', () async {
         final c = withInstalled('0.11.0');
         transport.queryResult = const ApkUpdateState(

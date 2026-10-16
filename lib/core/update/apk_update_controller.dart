@@ -776,8 +776,9 @@ class ApkUpdateController {
   /// 作废，绝不覆盖更新的状态。
   ///
   /// 已不新于当前安装版本的受管更新（例如用户已经从文件管理器装上了同一个
-  /// 包，或经其它渠道升级）会被视为过期：取消原生请求并删除其文件，回到
-  /// idle，让「检查更新」重新查询线上版本，而不是一直提示安装当前版本。
+  /// 包，或经其它渠道升级；含已转为失败的记录）会被视为过期：取消原生请求并
+  /// 删除其文件，回到 idle，让「检查更新」重新查询线上版本，而不是一直提示
+  /// 安装当前版本。
   /// 版本无法读取时保守保留原状态。
   Future<void> refreshActiveUpdate() async {
     final epoch = ++_refreshEpoch;
@@ -794,8 +795,11 @@ class ApkUpdateController {
     _apply(next ?? const ApkUpdateState.idle());
   }
 
+  /// 受管记录的版本不新于当前已安装版本即视为过期——**包括**失败 / 已取消的记录：
+  /// 用户手动装上同一个包后，原生复核会把「已校验」记录翻成 `failed(versionNotNewer)`，
+  /// 该失败记录若不清理，会在之后每个新版本的弹窗里被当成「这次的下载失败」展示。
   Future<bool> _isSuperseded(ApkUpdateState managed) async {
-    if (!managed.phase.isActive) return false;
+    if (managed.phase == ApkUpdatePhase.idle) return false;
     final managedVersion = managed.version?.trim();
     if (managedVersion == null || managedVersion.isEmpty) return false;
     final installed = await _installedVersionProvider();
