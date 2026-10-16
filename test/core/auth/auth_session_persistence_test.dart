@@ -5,7 +5,9 @@ import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:jxu_campus_hub/core/auth/auth_recovery_state_store.dart';
 import 'package:jxu_campus_hub/core/auth/auth_session_persistence.dart';
+import 'package:jxu_campus_hub/core/auth/background_auth_context.dart';
 import 'package:jxu_campus_hub/core/auth/credential_store.dart';
 import 'package:jxu_campus_hub/core/auth/isolated_auth_session.dart';
 
@@ -55,6 +57,65 @@ void main() {
 
   tearDown(() async {
     if (await dir.exists()) await dir.delete(recursive: true);
+  });
+
+  group('后台轮次内的撤销', () {
+    BackgroundAuthContext pinned(int epoch) =>
+        BackgroundAuthContext(mayContinue: () async => true)
+          ..expectedEpochs[AuthRecoveryDomain.cas.wireName] = epoch
+          ..expectedAccounts[AuthRecoveryDomain.cas.wireName] = 'A';
+
+    test('撤销本轮钉住的会话后钉住值跟进到新 epoch', () async {
+      backend.data[CredentialSessionDomain.unified] =
+          const CredentialSessionEnvelope(account: 'A', active: true, epoch: 3);
+      final context = pinned(3);
+      await context.run(
+        () => persistence.revoke(CredentialSessionDomain.unified),
+      );
+      final envelope = backend.data[CredentialSessionDomain.unified]!;
+      expect(envelope.active, isFalse);
+      expect(envelope.epoch, 4);
+      expect(context.pinnedEpoch(CredentialSessionDomain.unified), 4);
+    });
+
+    test('持久 epoch 已被别人推进时不撤销、不改钉住值', () async {
+      backend.data[CredentialSessionDomain.unified] =
+          const CredentialSessionEnvelope(account: 'B', active: true, epoch: 5);
+      final context = pinned(3);
+      final writesBefore = backend.writeCount;
+      await context.run(
+        () => persistence.revoke(CredentialSessionDomain.unified),
+      );
+      expect(backend.writeCount, writesBefore, reason: '前台新会话不得被误撤销');
+      expect(backend.data[CredentialSessionDomain.unified]!.active, isTrue);
+      expect(context.pinnedEpoch(CredentialSessionDomain.unified), 3);
+    });
+
+    test('条件撤销成功也推进钉住值', () async {
+      backend.data[CredentialSessionDomain.unified] =
+          const CredentialSessionEnvelope(account: 'A', active: true, epoch: 3);
+      final context = pinned(3);
+      final revoked = await context.run(
+        () => persistence.revokeIfCurrent(
+          CredentialSessionDomain.unified,
+          account: 'A',
+          epoch: 3,
+        ),
+      );
+      expect(revoked, isTrue);
+      expect(context.pinnedEpoch(CredentialSessionDomain.unified), 4);
+    });
+
+    test('未钉住的域照常无条件撤销', () async {
+      backend.data[CredentialSessionDomain.academic] =
+          const CredentialSessionEnvelope(account: 'A', active: true, epoch: 7);
+      final context = pinned(3);
+      await context.run(
+        () => persistence.revoke(CredentialSessionDomain.academic),
+      );
+      expect(backend.data[CredentialSessionDomain.academic]!.epoch, 8);
+      expect(context.pinnedEpoch(CredentialSessionDomain.academic), isNull);
+    });
   });
 
   test('commit with matching epoch writes the active session', () async {

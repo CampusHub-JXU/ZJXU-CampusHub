@@ -13,6 +13,7 @@ import 'package:jxu_campus_hub/core/auth/auth_operation_coordinator.dart';
 import 'package:jxu_campus_hub/core/auth/auth_recovery_state_store.dart';
 import 'package:jxu_campus_hub/core/auth/auth_session_persistence.dart';
 import 'package:jxu_campus_hub/core/auth/automatic_login.dart';
+import 'package:jxu_campus_hub/core/auth/background_auth_context.dart';
 import 'package:jxu_campus_hub/core/auth/connect_mode_resolver.dart';
 import 'package:jxu_campus_hub/core/auth/credential_store.dart';
 import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
@@ -207,6 +208,113 @@ void main() {
     account: '2025000001',
     credentialRevision: 0,
   );
+
+  test('后台失去申领时两域均不发起交换', () async {
+    final context = BackgroundAuthContext(mayContinue: () async => false);
+    for (final domain in AuthRecoveryDomain.values) {
+      final result = await context.run(
+        () => service.attemptWithReceipt(domain),
+      );
+      expect(result.outcome, AutomaticLoginOutcome.failed);
+      expect(result.receipt, isNull);
+    }
+    expect(recognizer.lengths, isEmpty);
+    expect(context.expectedEpochs, isEmpty);
+  });
+
+  test('后台起始 epoch 或账号变化时不接受新账号凭据', () async {
+    final adapter = _FakeCasAdapter();
+    DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
+    await CredentialStore.instance.saveUnifiedAuthCredentials('A', 'pw');
+    await enableCasOptIn();
+    final epoch = await AuthSessionPersistence.instance.readEpoch(
+      CredentialSessionDomain.unified,
+    );
+    final stale = BackgroundAuthContext(mayContinue: () async => true)
+      ..expectedEpochs[AuthRecoveryDomain.cas.wireName] = epoch - 1
+      ..expectedAccounts[AuthRecoveryDomain.cas.wireName] = 'A';
+    final result = await stale.run(
+      () => service.attemptWithReceipt(AuthRecoveryDomain.cas),
+    );
+    expect(result.outcome, AutomaticLoginOutcome.notEligible);
+    final changed = BackgroundAuthContext(mayContinue: () async => true)
+      ..expectedEpochs[AuthRecoveryDomain.cas.wireName] = epoch
+      ..expectedAccounts[AuthRecoveryDomain.cas.wireName] = 'B';
+    final other = await changed.run(
+      () => service.attemptWithReceipt(
+        AuthRecoveryDomain.cas,
+        expectedAccount: 'A',
+      ),
+    );
+    expect(other.outcome, AutomaticLoginOutcome.notEligible);
+    expect(adapter.loginPosts, 0);
+    expect(recognizer.lengths, isEmpty);
+  });
+
+  test('后台 CAS 真实提交才推进本轮期望 epoch', () async {
+    final adapter = _FakeCasAdapter();
+    DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
+    await CredentialStore.instance.saveUnifiedAuthCredentials('A', 'pw');
+    await enableCasOptIn();
+    final context = BackgroundAuthContext(mayContinue: () async => true);
+    final result = await context.run(
+      () => service.attemptWithReceipt(AuthRecoveryDomain.cas),
+    );
+    expect(result.outcome, AutomaticLoginOutcome.committed);
+    expect(
+      context.expectedEpochs[AuthRecoveryDomain.cas.wireName],
+      result.receipt!.epoch,
+    );
+    expect(
+      context.expectedEpochs[AuthRecoveryDomain.academic.wireName],
+      isNull,
+    );
+  });
+
+  test('后台本轮自己判失效撤销 CAS 后，同账号恢复仍可提交', () async {
+    final adapter = _FakeCasAdapter();
+    DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
+    await CredentialStore.instance.saveUnifiedAuthCredentials('A', 'pw');
+    await enableCasOptIn();
+    final epoch = await AuthSessionPersistence.instance.readEpoch(
+      CredentialSessionDomain.unified,
+    );
+    final context = BackgroundAuthContext(mayContinue: () async => true)
+      ..expectedEpochs[AuthRecoveryDomain.cas.wireName] = epoch
+      ..expectedAccounts[AuthRecoveryDomain.cas.wireName] = 'A';
+    final result = await context.run(() async {
+      // WebVPN 网关校验判失效 → markLoggedOut → revoke 推进 epoch。
+      await AuthSessionPersistence.instance.revoke(
+        CredentialSessionDomain.unified,
+      );
+      return service.attemptWithReceipt(AuthRecoveryDomain.cas);
+    });
+    expect(result.outcome, AutomaticLoginOutcome.committed);
+    expect(adapter.loginPosts, 1);
+    expect(result.receipt!.epoch, epoch + 2);
+    expect(context.expectedEpochs[AuthRecoveryDomain.cas.wireName], epoch + 2);
+  });
+
+  test('后台让位取消在途 OCR，迟到答案不得提交', () async {
+    final adapter = _FakeCasAdapter();
+    DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
+    await CredentialStore.instance.saveUnifiedAuthCredentials('A', 'pw');
+    await enableCasOptIn();
+    final held = Completer<void>();
+    recognizer = _FakeRecognizer(answer: '1234', gate: held);
+    service = AutomaticLoginService.debugNew(recognizer: recognizer);
+    final context = BackgroundAuthContext(mayContinue: () async => true);
+    final pending = context.run(
+      () => service.attemptWithReceipt(AuthRecoveryDomain.cas),
+    );
+    await recognizer.started.future;
+    context.cancelToken.cancel('foreground returned');
+    held.complete();
+    final result = await pending;
+    expect(result.receipt, isNull);
+    expect(adapter.loginPosts, 0);
+    expect(context.expectedEpochs, isEmpty);
+  });
 
   test('CAS 成功提交一次、只 merge 一次且不同步 WebView Cookie', () async {
     final adapter = _FakeCasAdapter();

@@ -52,6 +52,48 @@ enum CampusWidgetPinResult {
   }
 }
 
+/// 设置页展示用的桌面组件状态（契约见 `docs/desktop-widget-v2.md` §6）。
+class CampusWidgetStatus {
+  const CampusWidgetStatus({
+    required this.pinSupported,
+    required this.installed,
+    this.lastSnapshotAt,
+  });
+
+  static const unknown = CampusWidgetStatus(pinSupported: false, installed: {});
+
+  final bool pinSupported;
+
+  /// 每种尺寸已放置的实例数；缺失的尺寸按 0。
+  final Map<CampusWidgetSize, int> installed;
+
+  /// 原生最近一次收到快照的时间；从未收到为 null。
+  final DateTime? lastSnapshotAt;
+
+  int installedCount(CampusWidgetSize size) => installed[size] ?? 0;
+
+  /// 解析 widget 通道 `getStatus` 的返回；字段缺失 / 类型不符按 0 / null 兜底。
+  static CampusWidgetStatus fromPlatformValue(Object? value) {
+    if (value is! Map) return unknown;
+    final rawInstalled = value['installed'];
+    final installed = <CampusWidgetSize, int>{};
+    if (rawInstalled is Map) {
+      for (final size in CampusWidgetSize.values) {
+        final count = rawInstalled[size.code];
+        if (count is int && count > 0) installed[size] = count;
+      }
+    }
+    final lastMs = value['lastSnapshotAtMs'];
+    return CampusWidgetStatus(
+      pinSupported: value['pinSupported'] == true,
+      installed: installed,
+      lastSnapshotAt: lastMs is int && lastMs > 0
+          ? DateTime.fromMillisecondsSinceEpoch(lastMs)
+          : null,
+    );
+  }
+}
+
 /// 桌面组件原生桥（PRD §13）。
 ///
 /// 只接受「无凭据」的展示投影：`CampusSnapshot → WidgetProjection` 之后才进入
@@ -85,6 +127,29 @@ class CampusWidgetBridge {
     );
   }
 
+  /// 后台引擎可用的已放置组件实例数（三种尺寸合计）；插件缺失或查询失败返回
+  /// null（未知），调用方不得把未知当成「没放」。
+  Future<int?> backgroundInstalledCount() => safeInvoke<int?, int?>(
+    const MethodChannel('edu.zjxu.jxucampushub/widget_store'),
+    'installedCount',
+    map: (v) => v is int ? v : null,
+    missing: null,
+    failed: null,
+    label: '后台组件实例数查询',
+  );
+
+  /// 后台引擎使用自动注册插件，返回真实落盘结果；失败不得记成功。
+  Future<bool> pushBackgroundSnapshot(Map<String, Object?> projection) =>
+      safeInvoke<bool, bool>(
+        const MethodChannel('edu.zjxu.jxucampushub/widget_store'),
+        'push',
+        arguments: {'snapshot': projection},
+        map: (v) => v == true,
+        missing: false,
+        failed: false,
+        label: '后台组件快照推送',
+      );
+
   /// 请求把指定尺寸的组件固定到桌面。
   ///
   /// 通道缺失（非 Android / 单测）→ [CampusWidgetPinResult.unsupported]；
@@ -98,6 +163,19 @@ class CampusWidgetBridge {
         missing: CampusWidgetPinResult.unsupported,
         failed: CampusWidgetPinResult.error,
         label: '添加桌面组件',
+        level: LogLevel.warn,
+        category: LogCategory.general,
+      );
+
+  /// 读取已放置实例数与最近同步时间；通道缺失 / 失败返回 [CampusWidgetStatus.unknown]。
+  Future<CampusWidgetStatus> getStatus() =>
+      safeInvoke<Object, CampusWidgetStatus>(
+        _channel,
+        'getStatus',
+        map: CampusWidgetStatus.fromPlatformValue,
+        missing: CampusWidgetStatus.unknown,
+        failed: CampusWidgetStatus.unknown,
+        label: '读取桌面组件状态',
         level: LogLevel.warn,
         category: LogCategory.general,
       );

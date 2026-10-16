@@ -548,7 +548,10 @@ class UnifiedAuthService extends ChangeNotifier {
   }
 
   /// 冷恢复会话元数据。同账号不通知；revision 漂移则丢弃本次读取。
-  Future<void> restoreSession({bool syncWebViewCookies = true}) async {
+  Future<void> restoreSession({
+    bool syncWebViewCookies = true,
+    bool clearIfInactive = false,
+  }) async {
     final revisionAtRead = _sessionRevision;
     final loader = debugSessionMetadataLoader;
     final account = loader != null
@@ -559,7 +562,13 @@ class UnifiedAuthService extends ChangeNotifier {
       return;
     }
     final trustedAccount = account?.trim();
-    if (trustedAccount == null || trustedAccount.isEmpty) return;
+    if (trustedAccount == null || trustedAccount.isEmpty) {
+      if (clearIfInactive && isLoggedIn) {
+        _applySessionIdentity(active: false, account: null);
+        notifyListeners();
+      }
+      return;
+    }
     final identityChanged = currentAccount != trustedAccount || !isLoggedIn;
     _applySessionIdentity(active: true, account: trustedAccount);
     if (syncWebViewCookies) {

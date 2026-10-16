@@ -38,7 +38,7 @@ enum BackgroundRecoveryResult {
 /// WorkManager 后台 isolate 的统一认证静默恢复。
 ///
 /// 只在教务处通知后台检查遇到 `authRequired`（服务端会话明确过期）时调用。
-/// 它是对「自动登录仅前台」旧不变量的**有限放宽**：
+/// 桌面组件另由 BackgroundAuthContext 组合两域恢复，本类保留通知任务入口：
 ///
 /// 1. 必须先经 [BackgroundSessionGate.tryClaim] 申领——前台心跳新鲜则让位；
 /// 2. 申领期间每 [yieldPollInterval] 复查一次，前台回来即取消登录；

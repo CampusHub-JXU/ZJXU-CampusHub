@@ -116,4 +116,36 @@ void main() {
       CampusWidgetPinResult.error,
     );
   });
+
+  group('CampusWidgetStatus.fromPlatformValue', () {
+    test('解析数量与同步时间，非正数 / 非整数按未放置', () {
+      final at = DateTime(2026, 10, 16, 9, 55);
+      final status = CampusWidgetStatus.fromPlatformValue(<Object?, Object?>{
+        'pinSupported': true,
+        'installed': <Object?, Object?>{'small': 1, 'medium': 0, 'large': '2'},
+        'lastSnapshotAtMs': at.millisecondsSinceEpoch,
+      });
+      expect(status.pinSupported, isTrue);
+      expect(status.installedCount(CampusWidgetSize.small), 1);
+      expect(status.installedCount(CampusWidgetSize.medium), 0);
+      expect(status.installedCount(CampusWidgetSize.large), 0);
+      expect(status.lastSnapshotAt, at);
+    });
+
+    test('非 Map / 缺字段降级为未知或空', () {
+      expect(
+        identical(
+          CampusWidgetStatus.fromPlatformValue(null),
+          CampusWidgetStatus.unknown,
+        ),
+        isTrue,
+      );
+      final empty = CampusWidgetStatus.fromPlatformValue(<Object?, Object?>{
+        'lastSnapshotAtMs': 0,
+      });
+      expect(empty.pinSupported, isFalse);
+      expect(empty.installed, isEmpty);
+      expect(empty.lastSnapshotAt, isNull);
+    });
+  });
 }

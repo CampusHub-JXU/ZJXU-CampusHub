@@ -1,17 +1,21 @@
 package edu.zjxu.jxucampushub.platform.system_settings
 
 import android.app.Activity
+import android.app.AlarmManager
+import android.app.NotificationManager
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
 import android.provider.Settings
 import edu.zjxu.jxucampushub.platform.requireStringArg
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
 
 /**
- * 系统设置通道：把用户带到通知 / 应用详情 / 精确闹钟 / 电池优化 / 自启动设置页。
+ * 系统设置通道：把用户带到通知 / 应用详情 / 精确闹钟 / 电池优化 / 自启动设置页，
+ * 并只读查询这些项的真实状态（`getStatus`，供「桌面与后台」设置页展示）。
  *
  * 仅负责「打开设置页」，**不代表任何权限已授予**：本类不修改权限、不申请危险
  * 权限、不发起电池优化直接授权弹窗（只打开列表页）。
@@ -43,10 +47,41 @@ class SystemSettingsChannelHandler(private val activity: Activity) {
                     result.success(open(target, channelId))
                 }
 
+                "getStatus" -> result.success(readStatus())
+
                 else -> result.notImplemented()
             }
         }
     }
+
+    /**
+     * 只读状态快照。各项 null = 不适用或读不到（Dart 侧显示「无需设置」/「未知」）：
+     * - `exactAlarmsAllowed`：Android 12 以下没有精确闹钟授权，返回 null；
+     * - `ignoringBatteryOptimizations`：Android 6 以下没有电池优化，返回 null。
+     * 每项单独兜底，一项抛异常不影响其他项。
+     */
+    private fun readStatus(): Map<String, Any?> = mapOf(
+        "notificationsEnabled" to runCatching {
+            activity.getSystemService(NotificationManager::class.java)
+                ?.areNotificationsEnabled()
+        }.getOrNull(),
+        "exactAlarmsAllowed" to if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            runCatching {
+                activity.getSystemService(AlarmManager::class.java)?.canScheduleExactAlarms()
+            }.getOrNull()
+        } else {
+            null
+        },
+        "ignoringBatteryOptimizations" to if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            runCatching {
+                activity.getSystemService(PowerManager::class.java)
+                    ?.isIgnoringBatteryOptimizations(activity.packageName)
+            }.getOrNull()
+        } else {
+            null
+        },
+        "isXiaomiFamily" to isMiuiLikeDevice(),
+    )
 
     /** 打开目标设置页；逐级降级，全部失败返回 `unavailable`。 */
     private fun open(target: String, channelId: String?): String {

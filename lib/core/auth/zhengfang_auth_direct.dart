@@ -250,10 +250,17 @@ extension ZhengfangAuthDirectExtension on ZhengfangAuth {
     );
   }
 
-  Future<void> restoreSession() async {
+  Future<void> restoreSession({bool clearIfInactive = false}) async {
     final revision = _sessionRevision;
     final studentId = await CredentialStore.instance.loadZhengfangSession();
-    if (studentId == null || revision != _sessionRevision) return;
+    if (revision != _sessionRevision) return;
+    if (studentId == null) {
+      if (clearIfInactive && isLoggedIn) {
+        _applySessionIdentity(active: false, studentId: null);
+        _notifyAuthListeners();
+      }
+      return;
+    }
     final identityChanged = currentStudentId != studentId || !_sessionActive;
     _applySessionIdentity(active: true, studentId: studentId);
     if (identityChanged) _notifyAuthListeners();

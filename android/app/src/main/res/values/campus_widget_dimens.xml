@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 卡面圆角：API 31+ 取系统组件圆角（values-v31），以下 22dp。 -->
+    <dimen name="campus_widget_radius">22dp</dimen>
+    <!-- 卡内块（总览底部三格、进行中行强调底）圆角。 -->
+    <dimen name="campus_widget_inner_radius">12dp</dimen>
+</resources>

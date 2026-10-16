@@ -3,9 +3,9 @@
     <string name="campus_widget_small_label">下一节课</string>
     <string name="campus_widget_medium_label">今日课表</string>
     <string name="campus_widget_large_label">校园总览</string>
-    <string name="campus_widget_small_description">2×2 下一节课：课程名、时间与地点</string>
-    <string name="campus_widget_medium_description">4×2 今日课表：最多 3 节课</string>
-    <string name="campus_widget_large_description">4×4 校园总览：课表、考试、一卡通余额、宿舍电费与未读通知</string>
+    <string name="campus_widget_small_description">2×2 下一节课：进行中或即将开始的课，今天的课结束后显示明天第一节</string>
+    <string name="campus_widget_medium_description">4×2 今日课表：今天余下的课，全部结束后自动显示明天课表</string>
+    <string name="campus_widget_large_description">4×4 校园总览：当前课与进度、接下来的课、一卡通、电费、考试倒计时与未读通知</string>
     <string name="campus_widget_config_title">组件显示内容</string>
     <string name="campus_widget_config_show_balance">显示一卡通余额</string>
     <string name="campus_widget_config_show_electricity">显示宿舍电费</string>

@@ -1,43 +1,91 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 小组件 2x2「下一节课」：标签 → 课程名（最多 2 行）→ 时间 / 地点（各占一行）。
-     固定尺寸，不随尺寸切换内容；view ID 与 CampusWidgetRenderer 绑定一致。 -->
+<!-- 小组件 2x2「下一节课」（A · Swiss 排版）：左上标签 → 中部大字课程名 → 底部时间 / 地点。
+     无分割线；固定尺寸；view ID 与 CampusWidgetRenderer 绑定一致。
+     注意：RemoteViews 复用视图，渲染时每个可变属性都要显式写回。 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/widget_root"
+    android:id="@android:id/background"
+    android:clipToOutline="true"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/campus_widget_bg"
     android:orientation="vertical"
-    android:padding="12dp">
+    android:padding="16dp">
 
     <TextView
         android:id="@+id/widget_hero_label"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:ellipsize="end"
-        android:letterSpacing="0.04"
+        android:fontFamily="sans-serif-medium"
+        android:fontFeatureSettings="tnum"
+        android:includeFontPadding="false"
         android:maxLines="1"
-        android:textColor="@color/campus_widget_accent"
-        android:textSize="11sp"
-        android:textStyle="bold" />
+        android:textColor="@color/campus_widget_text_secondary"
+        android:textSize="12sp" />
 
     <TextView
         android:id="@+id/widget_hero_course"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="3dp"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:autoSizeMaxTextSize="22sp"
+        android:autoSizeMinTextSize="13sp"
+        android:autoSizeStepGranularity="1sp"
+        android:autoSizeTextType="uniform"
         android:ellipsize="end"
-        android:maxLines="2"
+        android:gravity="center_vertical"
+        android:includeFontPadding="false"
+        android:letterSpacing="-0.01"
+        android:maxLines="3"
         android:textColor="@color/campus_widget_text_primary"
-        android:textSize="15sp"
         android:textStyle="bold" />
 
     <TextView
-        android:id="@+id/widget_hero_meta"
+        android:id="@+id/widget_hero_time"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="3dp"
         android:ellipsize="end"
-        android:maxLines="2"
+        android:fontFeatureSettings="tnum"
+        android:includeFontPadding="false"
+        android:maxLines="1"
         android:textColor="@color/campus_widget_text_secondary"
-        android:textSize="12sp" />
+        android:textSize="13sp" />
+
+    <TextView
+        android:id="@+id/widget_hero_location"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:ellipsize="end"
+        android:fontFeatureSettings="tnum"
+        android:includeFontPadding="false"
+        android:maxLines="1"
+        android:textColor="@color/campus_widget_text_secondary"
+        android:textSize="13sp" />
+
+    <TextView
+        android:id="@+id/widget_hero_next_1"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:ellipsize="end"
+        android:fontFeatureSettings="tnum"
+        android:includeFontPadding="false"
+        android:maxLines="1"
+        android:textColor="@color/campus_widget_text_secondary"
+        android:textSize="13sp"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/widget_hero_next_2"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:ellipsize="end"
+        android:fontFeatureSettings="tnum"
+        android:includeFontPadding="false"
+        android:maxLines="1"
+        android:textColor="@color/campus_widget_text_secondary"
+        android:textSize="13sp"
+        android:visibility="gone" />
 </LinearLayout>

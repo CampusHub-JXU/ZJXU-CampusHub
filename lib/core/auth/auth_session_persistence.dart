@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../logging/app_logger.dart';
 import 'auth_file_lock.dart';
+import 'background_auth_context.dart';
 import 'credential_store.dart';
 import 'isolated_auth_session.dart';
 
@@ -173,6 +174,7 @@ class AuthSessionPersistence {
     required String account,
     required int epoch,
   }) {
+    final background = BackgroundAuthContext.current;
     return _serialize<bool>(domain, () async {
       return _withDomainFileLock<bool>(domain, () async {
         final current = await _backend.read(domain);
@@ -183,6 +185,9 @@ class AuthSessionPersistence {
           domain,
           CredentialSessionEnvelope(epoch: epoch + 1),
         );
+        if (background?.pinnedEpoch(domain) == epoch) {
+          background!.advancePinnedEpoch(domain, epoch + 1);
+        }
         return true;
       });
     });
@@ -190,14 +195,24 @@ class AuthSessionPersistence {
 
   /// 立即持久撤销：写 inactive 并推进 epoch，使任何携带旧 epoch 的迟到
   /// 提交被 [commit] 拒绝。
+  ///
+  /// 在后台轮次（[BackgroundAuthContext]）内只撤销本轮钉住的那个会话：持久
+  /// epoch 已不等于钉住值（前台或别的任务改过会话）则不动，绝不误伤新会话；
+  /// 撤销成功后钉住值跟进，供同一轮随后的同账号自动恢复使用。
   Future<void> revoke(CredentialSessionDomain domain) {
+    final background = BackgroundAuthContext.current;
     return _serialize(domain, () async {
       await _withDomainFileLock(domain, () async {
         final current = await _backend.read(domain);
+        final pinned = background?.pinnedEpoch(domain);
+        if (pinned != null && current.epoch != pinned) return;
         await _backend.write(
           domain,
           CredentialSessionEnvelope(epoch: current.epoch + 1),
         );
+        if (pinned != null) {
+          background!.advancePinnedEpoch(domain, current.epoch + 1);
+        }
       });
     });
   }

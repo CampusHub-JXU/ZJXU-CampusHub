@@ -1,64 +1,199 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 中组件选择器预览（API 31+ previewLayout），示例文案，不含真实数据。 -->
+<!-- 中组件选择器预览（API 31+ previewLayout）：示例文案，不含真实数据；强调色用资源兜底色。 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/campus_widget_bg"
     android:orientation="vertical"
-    android:padding="12dp">
+    android:paddingStart="18dp"
+    android:paddingTop="14dp"
+    android:paddingEnd="18dp"
+    android:paddingBottom="14dp">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal">
 
-        <TextView
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:letterSpacing="0.04"
-            android:maxLines="1"
-            android:text="今日课表"
-            android:textColor="@color/campus_widget_accent"
-            android:textSize="11sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:maxLines="1"
-            android:text="第 6 周"
-            android:textColor="@color/campus_widget_text_tertiary"
-            android:textSize="11sp" />
+    <TextView
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:ellipsize="end"
+        android:includeFontPadding="false"
+        android:maxLines="1"
+        android:text="今日课表"
+        android:textColor="@color/campus_widget_text_primary"
+        android:textSize="16sp"
+        android:textStyle="bold" />
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:ellipsize="end"
+        android:fontFeatureSettings="tnum"
+        android:includeFontPadding="false"
+        android:maxLines="1"
+        android:text="第 7 周"
+        android:textColor="@color/campus_widget_text_secondary"
+        android:textSize="12sp" />
     </LinearLayout>
 
-    <TextView
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
-        android:ellipsize="end"
-        android:maxLines="1"
-        android:text="● 08:00  高等数学 · 教学楼 A101"
-        android:textColor="@color/campus_widget_accent"
-        android:textSize="13sp" />
+        android:layout_marginTop="6dp">
+        <ImageView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:importantForAccessibility="no"
+            android:scaleType="fitXY"
+            android:src="@drawable/campus_widget_row_tint_preview" />
 
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="3dp"
-        android:ellipsize="end"
-        android:maxLines="1"
-        android:text="10:10  大学英语 · 教学楼 B203"
-        android:textColor="@color/campus_widget_text_secondary"
-        android:textSize="13sp" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="8dp"
+            android:paddingTop="3dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="3dp">
 
-    <TextView
+            <TextView
+                android:layout_width="92dp"
+                android:layout_height="wrap_content"
+                android:fontFeatureSettings="tnum"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="08:00-09:35"
+                android:textColor="@color/campus_widget_accent"
+                android:textSize="13sp" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:textStyle="bold"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="高等数学"
+                android:textColor="@color/campus_widget_accent"
+                android:textSize="15sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFeatureSettings="tnum"
+                android:gravity="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:minWidth="52dp"
+                android:text="7-201"
+                android:textColor="@color/campus_widget_accent"
+                android:textSize="13sp" />
+        </LinearLayout>
+    </FrameLayout>
+
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="3dp"
-        android:ellipsize="end"
-        android:maxLines="1"
-        android:text="14:00  程序设计 · 实验楼 305"
-        android:textColor="@color/campus_widget_text_secondary"
-        android:textSize="13sp" />
+        android:layout_marginTop="2dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="8dp"
+            android:paddingTop="3dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="3dp">
+
+            <TextView
+                android:layout_width="92dp"
+                android:layout_height="wrap_content"
+                android:fontFeatureSettings="tnum"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="10:10-11:45"
+                android:textColor="@color/campus_widget_text_secondary"
+                android:textSize="13sp" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="大学英语"
+                android:textColor="@color/campus_widget_text_primary"
+                android:textSize="15sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFeatureSettings="tnum"
+                android:gravity="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:minWidth="52dp"
+                android:text="3-105"
+                android:textColor="@color/campus_widget_text_secondary"
+                android:textSize="13sp" />
+        </LinearLayout>
+    </FrameLayout>
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="8dp"
+            android:paddingTop="3dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="3dp">
+
+            <TextView
+                android:layout_width="92dp"
+                android:layout_height="wrap_content"
+                android:fontFeatureSettings="tnum"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="14:00-15:35"
+                android:textColor="@color/campus_widget_text_secondary"
+                android:textSize="13sp" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="程序设计"
+                android:textColor="@color/campus_widget_text_primary"
+                android:textSize="15sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFeatureSettings="tnum"
+                android:gravity="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:minWidth="52dp"
+                android:text="2-110"
+                android:textColor="@color/campus_widget_text_secondary"
+                android:textSize="13sp" />
+        </LinearLayout>
+    </FrameLayout>
 </LinearLayout>

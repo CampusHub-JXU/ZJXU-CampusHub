@@ -17,6 +17,9 @@ class BackgroundLoginClaim {
 
 /// 后台会话变更类型（前台回到前台时据此对账内存）。
 enum BackgroundSessionChangeKind {
+  /// 后台两域会话可能更新（包括条件撤销），前台只重载持久状态。
+  refreshed,
+
   /// 后台自动登录已真实提交：磁盘 CookieJar 已更新，前台需重载。
   committed,
 

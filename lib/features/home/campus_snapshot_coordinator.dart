@@ -147,6 +147,10 @@ class CampusSnapshotCoordinator {
 
   ExamEntry? get cachedNextExam => ExamService.instance.nextExam;
 
+  /// 当前账号归属下的全部考试缓存（按日期升序）；无缓存 / 未登录为 null。
+  /// 桌面组件「近期考试」读取，不发网络。
+  List<ExamEntry>? get cachedExams => ExamService.instance.cachedExams;
+
   Future<ExamEntry?> fetchNextExam() async {
     await ExamService.instance.fetchExams();
     return ExamService.instance.nextExam;

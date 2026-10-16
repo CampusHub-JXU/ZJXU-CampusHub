@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 桌面校园卡片专用色（深色）：暖炭灰底，提亮文字与强调红保证对比 -->
+<!-- 桌面组件配色（深色）：强调色提亮一档，强调底 14%。 -->
 <resources>
-    <color name="campus_widget_bg">#292422</color>
-    <color name="campus_widget_stroke">#24FFFFFF</color>
-    <color name="campus_widget_divider">#1FFFFFFF</color>
-    <color name="campus_widget_text_primary">#F0EAE6</color>
-    <color name="campus_widget_text_secondary">#C0B6AF</color>
-    <color name="campus_widget_text_tertiary">#9A9089</color>
-    <color name="campus_widget_accent">#E08C95</color>
+    <color name="campus_widget_bg">#1C1D21</color>
+    <color name="campus_widget_block">#26272C</color>
+    <color name="campus_widget_track">#2E3036</color>
+    <color name="campus_widget_text_primary">#F2F2F4</color>
+    <color name="campus_widget_text_secondary">#A3A4AB</color>
+    <color name="campus_widget_accent">#E8A3AE</color>
+    <color name="campus_widget_accent_tint">#24E8A3AE</color>
+    <color name="campus_widget_warn">#FF9A5C</color>
 </resources>

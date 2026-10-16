@@ -111,6 +111,20 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/campus_widget_large_info" />
         </receiver>
+        <!-- 桌面组件自走时重渲（不导出）：AlarmManager 的课程边界 / 午夜 / 进度闹钟、
+             快照插件的 ACTION_REFRESH（均为显式组件），以及系统时间 / 时区 / 日期变化、
+             开机、升级后重排闹钟。系统广播对非导出 receiver 仍可送达。 -->
+        <receiver
+            android:name=".widget.CampusWidgetRefreshReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.DATE_CHANGED" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
         <!-- requestPinAppWidget 成功回调（launcher 经我方 PendingIntent 触发），仅内部使用。 -->
         <receiver
             android:name=".widget.CampusWidgetPinReceiver"

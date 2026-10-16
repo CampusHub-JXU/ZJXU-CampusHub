@@ -1,0 +1,43 @@
+group = "edu.zjxu.campus_widget_store"
+version = "0.1.0"
+
+buildscript {
+    repositories {
+        // Aliyun mirrors for China — FIRST so google()/mavenCentral() are only
+        // fallbacks; skipped in CI (set CI=true in workflow).
+        if (System.getenv("CI") != "true") {
+            maven { url "https://maven.aliyun.com/repository/google" }
+            maven { url "https://maven.aliyun.com/repository/public" }
+        }
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        // Keep in lockstep with android/settings.gradle.kts baseline
+        // (AGP 9.1.0 / Kotlin 2.4.0) to avoid pulling a newer toolchain.
+        classpath "com.android.tools.build:gradle:9.1.0"
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.0"
+    }
+}
+
+// AGP 9: the Kotlin Gradle plugin is applied by the host app's Flutter Gradle
+// plugin (android.builtInKotlin=false), not here.
+apply plugin: "com.android.library"
+
+android {
+    namespace = "edu.zjxu.campus_widget_store"
+    compileSdk = flutter.compileSdkVersion
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    defaultConfig {
+        minSdk = 24
+        // Ship the ONNX Runtime keep rules to every consumer app; R8 is enabled
+        // by the Flutter Gradle plugin for release builds and would otherwise
+        // strip classes that ORT's JNI resolves by literal name.
+    }
+}

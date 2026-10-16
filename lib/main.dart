@@ -9,12 +9,14 @@ import 'app/app_bootstrap_controller.dart';
 import 'app/background_task_dispatcher.dart';
 import 'app/calendar_sync_coordinator.dart';
 import 'app/campus_refresh_coordinator.dart';
+import 'app/campus_widget_background.dart';
 import 'app/routes.dart';
 import 'core/auth/auth_session_persistence.dart';
 import 'core/auth/background_session_gate.dart';
 import 'core/auth/connect_mode_resolver.dart';
 import 'core/auth/credential_store.dart';
 import 'core/auth/unified_auth.dart';
+import 'core/auth/zhengfang_auth.dart';
 import 'core/calendar/calendar_reminder_settings.dart';
 import 'core/deep_link/campus_deep_link_service.dart';
 import 'core/logging/app_logger.dart';
@@ -70,6 +72,11 @@ Future<void> _onAppResumed(int generation) async {
     if (change != null) {
       final auth = UnifiedAuthService.instance;
       switch (change.kind) {
+        case BackgroundSessionChangeKind.refreshed:
+          await DioClient.instance.reloadPersistedCookies();
+          await auth.restoreSession(clearIfInactive: true);
+          await ZhengfangAuth.instance.restoreSession(clearIfInactive: true);
+          await reloadBackgroundWidgetCaches();
         case BackgroundSessionChangeKind.committed:
           // 后台已重登并把 Cookie 写盘：丢弃前台过期的内存镜像，重读磁盘，
           // 再把新 Cookie 同步进 WebView。

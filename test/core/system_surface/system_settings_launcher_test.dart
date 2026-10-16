@@ -141,4 +141,36 @@ void main() {
       });
     }
   });
+
+  group('getStatus', () {
+    tearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null),
+    );
+
+    test('解析各项状态，类型不符的项按不可查询', () async {
+      mockChannel((call) async {
+        expect(call.method, 'getStatus');
+        return <String, Object?>{
+          'notificationsEnabled': true,
+          'exactAlarmsAllowed': null,
+          'ignoringBatteryOptimizations': 'yes',
+          'isXiaomiFamily': true,
+        };
+      });
+      final status = await SystemSettingsLauncher.instance.getStatus();
+      expect(status.available, isTrue);
+      expect(status.notificationsEnabled, isTrue);
+      expect(status.exactAlarmsAllowed, isNull);
+      expect(status.ignoringBatteryOptimizations, isNull);
+      expect(status.isXiaomiFamily, isTrue);
+    });
+
+    test('原生异常时整体未知，不抛出', () async {
+      mockChannel((_) async => throw PlatformException(code: 'boom'));
+      final status = await SystemSettingsLauncher.instance.getStatus();
+      expect(status.available, isFalse);
+      expect(status.isXiaomiFamily, isFalse);
+    });
+  });
 }

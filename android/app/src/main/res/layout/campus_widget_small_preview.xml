@@ -1,38 +1,55 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 小组件选择器预览（API 31+ previewLayout），示例文案，不含真实数据。 -->
+<!-- 小组件选择器预览（API 31+ previewLayout）：示例文案，不含真实数据；强调色用资源兜底色。 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/campus_widget_bg"
     android:orientation="vertical"
-    android:padding="12dp">
+    android:padding="16dp">
 
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:letterSpacing="0.04"
+        android:ellipsize="end"
+        android:fontFamily="sans-serif-medium"
+        android:fontFeatureSettings="tnum"
+        android:includeFontPadding="false"
         android:maxLines="1"
-        android:text="下一节课"
+        android:text="进行中"
         android:textColor="@color/campus_widget_accent"
-        android:textSize="11sp"
-        android:textStyle="bold" />
-
+        android:textSize="12sp" />
     <TextView
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="3dp"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:ellipsize="end"
+        android:gravity="center_vertical"
+        android:includeFontPadding="false"
+        android:letterSpacing="-0.01"
         android:maxLines="2"
         android:text="高等数学"
         android:textColor="@color/campus_widget_text_primary"
-        android:textSize="15sp"
+        android:textSize="22sp"
         android:textStyle="bold" />
-
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="3dp"
-        android:maxLines="2"
-        android:text="08:00\n教学楼 A101"
+        android:ellipsize="end"
+        android:fontFeatureSettings="tnum"
+        android:includeFontPadding="false"
+        android:maxLines="1"
+        android:text="08:00-09:35"
         android:textColor="@color/campus_widget_text_secondary"
-        android:textSize="12sp" />
+        android:textSize="13sp" />
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:ellipsize="end"
+        android:fontFeatureSettings="tnum"
+        android:includeFontPadding="false"
+        android:maxLines="1"
+        android:text="7-201"
+        android:textColor="@color/campus_widget_text_secondary"
+        android:textSize="13sp" />
 </LinearLayout>

@@ -59,9 +59,32 @@ class WidgetChannelHandler(private val activity: Activity) {
                     )
                 }
 
+                "getStatus" -> result.success(readStatus())
+
                 else -> result.notImplemented()
             }
         }
+    }
+
+    /**
+     * 设置页用的只读状态：是否支持一键固定、每种尺寸已放置的实例数、原生最近一次
+     * 收到快照的时间（毫秒；从未收到为 null）。读取失败的项按 0 / null 兜底。
+     */
+    private fun readStatus(): Map<String, Any?> {
+        val manager = AppWidgetManager.getInstance(activity)
+        val installed = CampusWidgetKind.values().associate { kind ->
+            kind.code to runCatching {
+                manager.getAppWidgetIds(ComponentName(activity, kind.providerClass)).size
+            }.getOrDefault(0)
+        }
+        val pinSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            runCatching { manager.isRequestPinAppWidgetSupported }.getOrDefault(false)
+        val lastSnapshotAt = CampusWidgetStore.lastSnapshotAtMs(activity)
+        return mapOf(
+            "pinSupported" to pinSupported,
+            "installed" to installed,
+            "lastSnapshotAtMs" to lastSnapshotAt,
+        )
     }
 
     private fun requestCampusWidgetPin(kind: CampusWidgetKind): PinRequestResult {

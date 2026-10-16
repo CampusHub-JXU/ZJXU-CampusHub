@@ -1,32 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 大组件 4x4「校园总览」：标题行 → Hero（下一节课）→ 今日课程（最多 4 行）→ 弹性留白
-     → 资产行（一卡通 / 电费）→ 考试 → 未读通知。
-     最小 4x4 为 250dp 高，纵向预算见 docs/agents/platform-channels.md；
-     所有 view ID 与 CampusWidgetRenderer 绑定一致。 -->
+<!-- 大组件 4x4「校园总览」（A · Swiss 排版）：标签行（进行中 · 11:35 下课 + 周次）→ 课程名 28sp
+     → 时间 · 地点 → 4dp 进度条 →「接下来」≤2 行 → 弹性留白 → 三个块底小格（一卡通 / 电费 / 考试，
+     可被开关隐藏、余下平分宽度）→「N 条未读通知」。无分割线。
+     固定尺寸；view ID 与 CampusWidgetRenderer 绑定一致。 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/widget_root"
+    android:id="@android:id/background"
+    android:clipToOutline="true"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/campus_widget_bg"
     android:orientation="vertical"
-    android:padding="12dp">
+    android:padding="18dp">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:gravity="center_vertical"
         android:orientation="horizontal">
 
         <TextView
-            android:id="@+id/widget_title"
+            android:id="@+id/widget_label"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:ellipsize="end"
-            android:letterSpacing="0.04"
+            android:fontFamily="sans-serif-medium"
+            android:fontFeatureSettings="tnum"
+            android:includeFontPadding="false"
             android:maxLines="1"
-            android:textColor="@color/campus_widget_accent"
-            android:textSize="11sp"
-            android:textStyle="bold" />
+            android:textColor="@color/campus_widget_text_secondary"
+            android:textSize="12sp" />
 
         <TextView
             android:id="@+id/widget_week"
@@ -34,9 +37,11 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
             android:ellipsize="end"
+            android:fontFeatureSettings="tnum"
+            android:includeFontPadding="false"
             android:maxLines="1"
-            android:textColor="@color/campus_widget_text_tertiary"
-            android:textSize="11sp" />
+            android:textColor="@color/campus_widget_text_secondary"
+            android:textSize="12sp" />
     </LinearLayout>
 
     <LinearLayout
@@ -50,133 +55,1208 @@
             android:id="@+id/widget_hero_course"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:autoSizeMaxTextSize="28sp"
+            android:autoSizeMinTextSize="16sp"
+            android:autoSizeStepGranularity="1sp"
+            android:autoSizeTextType="uniform"
             android:ellipsize="end"
+            android:includeFontPadding="false"
+            android:letterSpacing="-0.01"
             android:maxLines="1"
             android:textColor="@color/campus_widget_text_primary"
-            android:textSize="17sp"
             android:textStyle="bold" />
 
         <TextView
             android:id="@+id/widget_hero_meta"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="1dp"
+            android:layout_marginTop="3dp"
             android:ellipsize="end"
+            android:fontFeatureSettings="tnum"
+            android:includeFontPadding="false"
             android:maxLines="1"
             android:textColor="@color/campus_widget_text_secondary"
-            android:textSize="12sp" />
+            android:textSize="13sp" />
     </LinearLayout>
 
+    <ProgressBar
+        android:id="@+id/widget_progress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="4dp"
+        android:layout_marginTop="10dp"
+        android:indeterminate="false"
+        android:max="100"
+        android:maxHeight="4dp"
+        android:minHeight="4dp"
+        android:progress="0"
+        android:progressDrawable="@drawable/campus_widget_progress" />
+
     <LinearLayout
-        android:id="@+id/widget_today_container"
+        android:id="@+id/widget_next"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="12dp"
         android:orientation="vertical">
 
         <TextView
-            android:id="@+id/widget_today_1"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:ellipsize="end"
+            android:fontFamily="sans-serif-medium"
+            android:includeFontPadding="false"
             android:maxLines="1"
+            android:text="接下来"
             android:textColor="@color/campus_widget_text_secondary"
             android:textSize="12sp" />
 
-        <TextView
-            android:id="@+id/widget_today_2"
+        <FrameLayout
+            android:id="@+id/widget_next_1"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textColor="@color/campus_widget_text_secondary"
-            android:textSize="12sp" />
+            android:visibility="gone">
 
-        <TextView
-            android:id="@+id/widget_today_3"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textColor="@color/campus_widget_text_secondary"
-            android:textSize="12sp" />
+            <LinearLayout
+                android:id="@+id/widget_next_1_course"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="0dp"
+                android:paddingTop="3dp"
+                android:paddingEnd="0dp"
+                android:paddingBottom="3dp">
 
-        <TextView
-            android:id="@+id/widget_today_4"
+                <TextView
+                    android:id="@+id/widget_next_1_time"
+                    android:layout_width="92dp"
+                    android:layout_height="wrap_content"
+                    android:fontFeatureSettings="tnum"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:textColor="@color/campus_widget_text_secondary"
+                    android:textSize="13sp" />
+
+                <FrameLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1">
+
+                    <TextView
+                        android:id="@+id/widget_next_1_name"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:fontFamily="sans-serif-medium"
+                        android:includeFontPadding="false"
+                        android:maxLines="1"
+                        android:textColor="@color/campus_widget_text_primary"
+                        android:textSize="15sp" />
+
+                </FrameLayout>
+
+                <TextView
+                    android:id="@+id/widget_next_1_location"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:ellipsize="end"
+                    android:fontFeatureSettings="tnum"
+                    android:gravity="end"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:maxWidth="96dp"
+                    android:minWidth="52dp"
+                    android:textColor="@color/campus_widget_text_secondary"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/widget_next_1_label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:fontFeatureSettings="tnum"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:paddingStart="0dp"
+                android:paddingTop="8dp"
+                android:paddingEnd="0dp"
+                android:paddingBottom="2dp"
+                android:textColor="@color/campus_widget_text_secondary"
+                android:textSize="12sp"
+                android:visibility="gone" />
+        </FrameLayout>
+
+        <FrameLayout
+            android:id="@+id/widget_next_2"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textColor="@color/campus_widget_text_secondary"
-            android:textSize="12sp" />
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/widget_next_2_course"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="0dp"
+                android:paddingTop="3dp"
+                android:paddingEnd="0dp"
+                android:paddingBottom="3dp">
+
+                <TextView
+                    android:id="@+id/widget_next_2_time"
+                    android:layout_width="92dp"
+                    android:layout_height="wrap_content"
+                    android:fontFeatureSettings="tnum"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:textColor="@color/campus_widget_text_secondary"
+                    android:textSize="13sp" />
+
+                <FrameLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1">
+
+                    <TextView
+                        android:id="@+id/widget_next_2_name"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:fontFamily="sans-serif-medium"
+                        android:includeFontPadding="false"
+                        android:maxLines="1"
+                        android:textColor="@color/campus_widget_text_primary"
+                        android:textSize="15sp" />
+
+                </FrameLayout>
+
+                <TextView
+                    android:id="@+id/widget_next_2_location"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:ellipsize="end"
+                    android:fontFeatureSettings="tnum"
+                    android:gravity="end"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:maxWidth="96dp"
+                    android:minWidth="52dp"
+                    android:textColor="@color/campus_widget_text_secondary"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/widget_next_2_label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:fontFeatureSettings="tnum"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:paddingStart="0dp"
+                android:paddingTop="8dp"
+                android:paddingEnd="0dp"
+                android:paddingBottom="2dp"
+                android:textColor="@color/campus_widget_text_secondary"
+                android:textSize="12sp"
+                android:visibility="gone" />
+        </FrameLayout>
+
+        <FrameLayout
+            android:id="@+id/widget_next_3"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/widget_next_3_course"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="0dp"
+                android:paddingTop="3dp"
+                android:paddingEnd="0dp"
+                android:paddingBottom="3dp">
+
+                <TextView
+                    android:id="@+id/widget_next_3_time"
+                    android:layout_width="92dp"
+                    android:layout_height="wrap_content"
+                    android:fontFeatureSettings="tnum"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:textColor="@color/campus_widget_text_secondary"
+                    android:textSize="13sp" />
+
+                <FrameLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1">
+
+                    <TextView
+                        android:id="@+id/widget_next_3_name"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:fontFamily="sans-serif-medium"
+                        android:includeFontPadding="false"
+                        android:maxLines="1"
+                        android:textColor="@color/campus_widget_text_primary"
+                        android:textSize="15sp" />
+
+                </FrameLayout>
+
+                <TextView
+                    android:id="@+id/widget_next_3_location"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:ellipsize="end"
+                    android:fontFeatureSettings="tnum"
+                    android:gravity="end"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:maxWidth="96dp"
+                    android:minWidth="52dp"
+                    android:textColor="@color/campus_widget_text_secondary"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/widget_next_3_label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:fontFeatureSettings="tnum"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:paddingStart="0dp"
+                android:paddingTop="8dp"
+                android:paddingEnd="0dp"
+                android:paddingBottom="2dp"
+                android:textColor="@color/campus_widget_text_secondary"
+                android:textSize="12sp"
+                android:visibility="gone" />
+        </FrameLayout>
+
+        <FrameLayout
+            android:id="@+id/widget_next_4"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/widget_next_4_course"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="0dp"
+                android:paddingTop="3dp"
+                android:paddingEnd="0dp"
+                android:paddingBottom="3dp">
+
+                <TextView
+                    android:id="@+id/widget_next_4_time"
+                    android:layout_width="92dp"
+                    android:layout_height="wrap_content"
+                    android:fontFeatureSettings="tnum"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:textColor="@color/campus_widget_text_secondary"
+                    android:textSize="13sp" />
+
+                <FrameLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1">
+
+                    <TextView
+                        android:id="@+id/widget_next_4_name"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:fontFamily="sans-serif-medium"
+                        android:includeFontPadding="false"
+                        android:maxLines="1"
+                        android:textColor="@color/campus_widget_text_primary"
+                        android:textSize="15sp" />
+
+                </FrameLayout>
+
+                <TextView
+                    android:id="@+id/widget_next_4_location"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:ellipsize="end"
+                    android:fontFeatureSettings="tnum"
+                    android:gravity="end"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:maxWidth="96dp"
+                    android:minWidth="52dp"
+                    android:textColor="@color/campus_widget_text_secondary"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/widget_next_4_label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:fontFeatureSettings="tnum"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:paddingStart="0dp"
+                android:paddingTop="8dp"
+                android:paddingEnd="0dp"
+                android:paddingBottom="2dp"
+                android:textColor="@color/campus_widget_text_secondary"
+                android:textSize="12sp"
+                android:visibility="gone" />
+        </FrameLayout>
+
+        <FrameLayout
+            android:id="@+id/widget_next_5"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/widget_next_5_course"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="0dp"
+                android:paddingTop="3dp"
+                android:paddingEnd="0dp"
+                android:paddingBottom="3dp">
+
+                <TextView
+                    android:id="@+id/widget_next_5_time"
+                    android:layout_width="92dp"
+                    android:layout_height="wrap_content"
+                    android:fontFeatureSettings="tnum"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:textColor="@color/campus_widget_text_secondary"
+                    android:textSize="13sp" />
+
+                <FrameLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1">
+
+                    <TextView
+                        android:id="@+id/widget_next_5_name"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:fontFamily="sans-serif-medium"
+                        android:includeFontPadding="false"
+                        android:maxLines="1"
+                        android:textColor="@color/campus_widget_text_primary"
+                        android:textSize="15sp" />
+
+                </FrameLayout>
+
+                <TextView
+                    android:id="@+id/widget_next_5_location"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:ellipsize="end"
+                    android:fontFeatureSettings="tnum"
+                    android:gravity="end"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:maxWidth="96dp"
+                    android:minWidth="52dp"
+                    android:textColor="@color/campus_widget_text_secondary"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/widget_next_5_label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:fontFeatureSettings="tnum"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:paddingStart="0dp"
+                android:paddingTop="8dp"
+                android:paddingEnd="0dp"
+                android:paddingBottom="2dp"
+                android:textColor="@color/campus_widget_text_secondary"
+                android:textSize="12sp"
+                android:visibility="gone" />
+        </FrameLayout>
+
+        <FrameLayout
+            android:id="@+id/widget_next_6"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/widget_next_6_course"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="0dp"
+                android:paddingTop="3dp"
+                android:paddingEnd="0dp"
+                android:paddingBottom="3dp">
+
+                <TextView
+                    android:id="@+id/widget_next_6_time"
+                    android:layout_width="92dp"
+                    android:layout_height="wrap_content"
+                    android:fontFeatureSettings="tnum"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:textColor="@color/campus_widget_text_secondary"
+                    android:textSize="13sp" />
+
+                <FrameLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1">
+
+                    <TextView
+                        android:id="@+id/widget_next_6_name"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:fontFamily="sans-serif-medium"
+                        android:includeFontPadding="false"
+                        android:maxLines="1"
+                        android:textColor="@color/campus_widget_text_primary"
+                        android:textSize="15sp" />
+
+                </FrameLayout>
+
+                <TextView
+                    android:id="@+id/widget_next_6_location"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:ellipsize="end"
+                    android:fontFeatureSettings="tnum"
+                    android:gravity="end"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:maxWidth="96dp"
+                    android:minWidth="52dp"
+                    android:textColor="@color/campus_widget_text_secondary"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/widget_next_6_label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:fontFeatureSettings="tnum"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:paddingStart="0dp"
+                android:paddingTop="8dp"
+                android:paddingEnd="0dp"
+                android:paddingBottom="2dp"
+                android:textColor="@color/campus_widget_text_secondary"
+                android:textSize="12sp"
+                android:visibility="gone" />
+        </FrameLayout>
+
+        <FrameLayout
+            android:id="@+id/widget_next_7"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/widget_next_7_course"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="0dp"
+                android:paddingTop="3dp"
+                android:paddingEnd="0dp"
+                android:paddingBottom="3dp">
+
+                <TextView
+                    android:id="@+id/widget_next_7_time"
+                    android:layout_width="92dp"
+                    android:layout_height="wrap_content"
+                    android:fontFeatureSettings="tnum"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:textColor="@color/campus_widget_text_secondary"
+                    android:textSize="13sp" />
+
+                <FrameLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1">
+
+                    <TextView
+                        android:id="@+id/widget_next_7_name"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:fontFamily="sans-serif-medium"
+                        android:includeFontPadding="false"
+                        android:maxLines="1"
+                        android:textColor="@color/campus_widget_text_primary"
+                        android:textSize="15sp" />
+
+                </FrameLayout>
+
+                <TextView
+                    android:id="@+id/widget_next_7_location"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:ellipsize="end"
+                    android:fontFeatureSettings="tnum"
+                    android:gravity="end"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:maxWidth="96dp"
+                    android:minWidth="52dp"
+                    android:textColor="@color/campus_widget_text_secondary"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/widget_next_7_label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:fontFeatureSettings="tnum"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:paddingStart="0dp"
+                android:paddingTop="8dp"
+                android:paddingEnd="0dp"
+                android:paddingBottom="2dp"
+                android:textColor="@color/campus_widget_text_secondary"
+                android:textSize="12sp"
+                android:visibility="gone" />
+        </FrameLayout>
+
+        <FrameLayout
+            android:id="@+id/widget_next_8"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/widget_next_8_course"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="0dp"
+                android:paddingTop="3dp"
+                android:paddingEnd="0dp"
+                android:paddingBottom="3dp">
+
+                <TextView
+                    android:id="@+id/widget_next_8_time"
+                    android:layout_width="92dp"
+                    android:layout_height="wrap_content"
+                    android:fontFeatureSettings="tnum"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:textColor="@color/campus_widget_text_secondary"
+                    android:textSize="13sp" />
+
+                <FrameLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1">
+
+                    <TextView
+                        android:id="@+id/widget_next_8_name"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:fontFamily="sans-serif-medium"
+                        android:includeFontPadding="false"
+                        android:maxLines="1"
+                        android:textColor="@color/campus_widget_text_primary"
+                        android:textSize="15sp" />
+
+                </FrameLayout>
+
+                <TextView
+                    android:id="@+id/widget_next_8_location"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:ellipsize="end"
+                    android:fontFeatureSettings="tnum"
+                    android:gravity="end"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:maxWidth="96dp"
+                    android:minWidth="52dp"
+                    android:textColor="@color/campus_widget_text_secondary"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/widget_next_8_label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:fontFeatureSettings="tnum"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:paddingStart="0dp"
+                android:paddingTop="8dp"
+                android:paddingEnd="0dp"
+                android:paddingBottom="2dp"
+                android:textColor="@color/campus_widget_text_secondary"
+                android:textSize="12sp"
+                android:visibility="gone" />
+        </FrameLayout>
+
+        <FrameLayout
+            android:id="@+id/widget_next_9"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/widget_next_9_course"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="0dp"
+                android:paddingTop="3dp"
+                android:paddingEnd="0dp"
+                android:paddingBottom="3dp">
+
+                <TextView
+                    android:id="@+id/widget_next_9_time"
+                    android:layout_width="92dp"
+                    android:layout_height="wrap_content"
+                    android:fontFeatureSettings="tnum"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:textColor="@color/campus_widget_text_secondary"
+                    android:textSize="13sp" />
+
+                <FrameLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1">
+
+                    <TextView
+                        android:id="@+id/widget_next_9_name"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:fontFamily="sans-serif-medium"
+                        android:includeFontPadding="false"
+                        android:maxLines="1"
+                        android:textColor="@color/campus_widget_text_primary"
+                        android:textSize="15sp" />
+
+                </FrameLayout>
+
+                <TextView
+                    android:id="@+id/widget_next_9_location"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:ellipsize="end"
+                    android:fontFeatureSettings="tnum"
+                    android:gravity="end"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:maxWidth="96dp"
+                    android:minWidth="52dp"
+                    android:textColor="@color/campus_widget_text_secondary"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/widget_next_9_label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:fontFeatureSettings="tnum"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:paddingStart="0dp"
+                android:paddingTop="8dp"
+                android:paddingEnd="0dp"
+                android:paddingBottom="2dp"
+                android:textColor="@color/campus_widget_text_secondary"
+                android:textSize="12sp"
+                android:visibility="gone" />
+        </FrameLayout>
+
+        <FrameLayout
+            android:id="@+id/widget_next_10"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/widget_next_10_course"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="0dp"
+                android:paddingTop="3dp"
+                android:paddingEnd="0dp"
+                android:paddingBottom="3dp">
+
+                <TextView
+                    android:id="@+id/widget_next_10_time"
+                    android:layout_width="92dp"
+                    android:layout_height="wrap_content"
+                    android:fontFeatureSettings="tnum"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:textColor="@color/campus_widget_text_secondary"
+                    android:textSize="13sp" />
+
+                <FrameLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1">
+
+                    <TextView
+                        android:id="@+id/widget_next_10_name"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:fontFamily="sans-serif-medium"
+                        android:includeFontPadding="false"
+                        android:maxLines="1"
+                        android:textColor="@color/campus_widget_text_primary"
+                        android:textSize="15sp" />
+
+                </FrameLayout>
+
+                <TextView
+                    android:id="@+id/widget_next_10_location"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:ellipsize="end"
+                    android:fontFeatureSettings="tnum"
+                    android:gravity="end"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:maxWidth="96dp"
+                    android:minWidth="52dp"
+                    android:textColor="@color/campus_widget_text_secondary"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/widget_next_10_label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:fontFeatureSettings="tnum"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:paddingStart="0dp"
+                android:paddingTop="8dp"
+                android:paddingEnd="0dp"
+                android:paddingBottom="2dp"
+                android:textColor="@color/campus_widget_text_secondary"
+                android:textSize="12sp"
+                android:visibility="gone" />
+        </FrameLayout>
+
+        <FrameLayout
+            android:id="@+id/widget_next_11"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/widget_next_11_course"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="0dp"
+                android:paddingTop="3dp"
+                android:paddingEnd="0dp"
+                android:paddingBottom="3dp">
+
+                <TextView
+                    android:id="@+id/widget_next_11_time"
+                    android:layout_width="92dp"
+                    android:layout_height="wrap_content"
+                    android:fontFeatureSettings="tnum"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:textColor="@color/campus_widget_text_secondary"
+                    android:textSize="13sp" />
+
+                <FrameLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1">
+
+                    <TextView
+                        android:id="@+id/widget_next_11_name"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:fontFamily="sans-serif-medium"
+                        android:includeFontPadding="false"
+                        android:maxLines="1"
+                        android:textColor="@color/campus_widget_text_primary"
+                        android:textSize="15sp" />
+
+                </FrameLayout>
+
+                <TextView
+                    android:id="@+id/widget_next_11_location"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:ellipsize="end"
+                    android:fontFeatureSettings="tnum"
+                    android:gravity="end"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:maxWidth="96dp"
+                    android:minWidth="52dp"
+                    android:textColor="@color/campus_widget_text_secondary"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/widget_next_11_label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:fontFeatureSettings="tnum"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:paddingStart="0dp"
+                android:paddingTop="8dp"
+                android:paddingEnd="0dp"
+                android:paddingBottom="2dp"
+                android:textColor="@color/campus_widget_text_secondary"
+                android:textSize="12sp"
+                android:visibility="gone" />
+        </FrameLayout>
+
+        <FrameLayout
+            android:id="@+id/widget_next_12"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/widget_next_12_course"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="0dp"
+                android:paddingTop="3dp"
+                android:paddingEnd="0dp"
+                android:paddingBottom="3dp">
+
+                <TextView
+                    android:id="@+id/widget_next_12_time"
+                    android:layout_width="92dp"
+                    android:layout_height="wrap_content"
+                    android:fontFeatureSettings="tnum"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:textColor="@color/campus_widget_text_secondary"
+                    android:textSize="13sp" />
+
+                <FrameLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1">
+
+                    <TextView
+                        android:id="@+id/widget_next_12_name"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:fontFamily="sans-serif-medium"
+                        android:includeFontPadding="false"
+                        android:maxLines="1"
+                        android:textColor="@color/campus_widget_text_primary"
+                        android:textSize="15sp" />
+
+                </FrameLayout>
+
+                <TextView
+                    android:id="@+id/widget_next_12_location"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:ellipsize="end"
+                    android:fontFeatureSettings="tnum"
+                    android:gravity="end"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:maxWidth="96dp"
+                    android:minWidth="52dp"
+                    android:textColor="@color/campus_widget_text_secondary"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/widget_next_12_label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:fontFeatureSettings="tnum"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:paddingStart="0dp"
+                android:paddingTop="8dp"
+                android:paddingEnd="0dp"
+                android:paddingBottom="2dp"
+                android:textColor="@color/campus_widget_text_secondary"
+                android:textSize="12sp"
+                android:visibility="gone" />
+        </FrameLayout>
+
     </LinearLayout>
 
-    <!-- 弹性留白：把资产 / 考试 / 通知压到底部，空间不足时塌缩为 0 -->
+    <!-- 弹性留白：把总览三格 / 通知压到底部，空间不足时塌缩为 0 -->
     <TextView
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1" />
 
     <LinearLayout
-        android:id="@+id/widget_assets"
+        android:id="@+id/widget_tiles"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginStart="-4dp"
         android:layout_marginTop="8dp"
-        android:orientation="vertical">
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="@color/campus_widget_divider" />
+        android:layout_marginEnd="-4dp"
+        android:orientation="horizontal">
 
         <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:orientation="horizontal">
+            android:id="@+id/widget_tile_balance"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_marginStart="4dp"
+            android:layout_marginEnd="4dp"
+            android:layout_weight="1"
+            android:background="@drawable/campus_widget_tile_bg"
+            android:orientation="vertical"
+            android:paddingStart="10dp"
+            android:paddingTop="8dp"
+            android:paddingEnd="10dp"
+            android:paddingBottom="8dp">
 
             <TextView
-                android:id="@+id/widget_balance"
-                android:layout_width="0dp"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
                 android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:includeFontPadding="false"
                 android:maxLines="1"
+                android:text="一卡通"
                 android:textColor="@color/campus_widget_text_secondary"
                 android:textSize="12sp" />
 
             <TextView
-                android:id="@+id/widget_electricity"
-                android:layout_width="0dp"
+                android:id="@+id/widget_tile_balance_value"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
+                android:layout_marginTop="4dp"
+                android:autoSizeMaxTextSize="18sp"
+                android:autoSizeMinTextSize="11sp"
+                android:autoSizeStepGranularity="1sp"
+                android:autoSizeTextType="uniform"
+                android:fontFeatureSettings="tnum"
+                android:includeFontPadding="false"
+                android:letterSpacing="-0.02"
+                android:maxLines="1"
+                android:textColor="@color/campus_widget_text_primary"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/widget_tile_balance_sub"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
                 android:ellipsize="end"
+                android:includeFontPadding="false"
                 android:maxLines="1"
                 android:textColor="@color/campus_widget_text_secondary"
-                android:textSize="12sp" />
+                android:textSize="11sp" />
         </LinearLayout>
-    </LinearLayout>
 
-    <TextView
-        android:id="@+id/widget_exam"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:ellipsize="end"
-        android:maxLines="1"
-        android:textColor="@color/campus_widget_text_secondary"
-        android:textSize="12sp" />
+        <LinearLayout
+            android:id="@+id/widget_tile_electricity"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_marginStart="4dp"
+            android:layout_marginEnd="4dp"
+            android:layout_weight="1"
+            android:background="@drawable/campus_widget_tile_bg"
+            android:orientation="vertical"
+            android:paddingStart="10dp"
+            android:paddingTop="8dp"
+            android:paddingEnd="10dp"
+            android:paddingBottom="8dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="电费 · 度"
+                android:textColor="@color/campus_widget_text_secondary"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/widget_tile_electricity_value"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:autoSizeMaxTextSize="18sp"
+                android:autoSizeMinTextSize="11sp"
+                android:autoSizeStepGranularity="1sp"
+                android:autoSizeTextType="uniform"
+                android:fontFeatureSettings="tnum"
+                android:includeFontPadding="false"
+                android:letterSpacing="-0.02"
+                android:maxLines="1"
+                android:textColor="@color/campus_widget_text_primary"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/widget_tile_electricity_sub"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:textColor="@color/campus_widget_text_secondary"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/widget_tile_exam"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_marginStart="4dp"
+            android:layout_marginEnd="4dp"
+            android:layout_weight="1"
+            android:background="@drawable/campus_widget_tile_bg"
+            android:orientation="vertical"
+            android:paddingStart="10dp"
+            android:paddingTop="8dp"
+            android:paddingEnd="10dp"
+            android:paddingBottom="8dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="考试"
+                android:textColor="@color/campus_widget_text_secondary"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/widget_tile_exam_value"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:autoSizeMaxTextSize="18sp"
+                android:autoSizeMinTextSize="11sp"
+                android:autoSizeStepGranularity="1sp"
+                android:autoSizeTextType="uniform"
+                android:fontFeatureSettings="tnum"
+                android:includeFontPadding="false"
+                android:letterSpacing="-0.02"
+                android:maxLines="1"
+                android:textColor="@color/campus_widget_text_primary"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/widget_tile_exam_sub"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:textColor="@color/campus_widget_text_secondary"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+    </LinearLayout>
 
     <TextView
         android:id="@+id/widget_notice"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
+        android:layout_marginTop="8dp"
         android:ellipsize="end"
+        android:fontFamily="sans-serif-medium"
+        android:fontFeatureSettings="tnum"
+        android:includeFontPadding="false"
         android:maxLines="1"
         android:textColor="@color/campus_widget_accent"
-        android:textSize="12sp" />
+        android:textSize="13sp" />
 </LinearLayout>

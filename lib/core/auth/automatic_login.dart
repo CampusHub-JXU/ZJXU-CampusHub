@@ -7,6 +7,7 @@ import '../captcha/captcha_recognizer.dart';
 import '../logging/app_logger.dart';
 import '../network/cancel_token_x.dart';
 import 'auth_failure.dart';
+import 'background_auth_context.dart';
 import 'auth_operation_coordinator.dart';
 import 'auth_recovery_state_store.dart';
 import 'auth_session_persistence.dart';
@@ -82,7 +83,7 @@ class _AutomaticLoginFlight {
   bool settled = false;
 }
 
-/// 静默自动登录服务（前台单 isolate）。
+/// 静默自动登录服务（每引擎独立实例；后台入口须持有会话门申领）。
 ///
 /// 读已保存凭据 → prepare challenge → 本地 OCR → 把 ticket 交给真实 challenge
 /// 提交；互斥/资格/退避/条件提交全部由 [AuthOperationCoordinator.runAutomatic]
@@ -92,8 +93,7 @@ class _AutomaticLoginFlight {
 /// challenge 只调用一次 OCR；返回 null 即判瞬时失败退避，不做第二次长度尝试、
 /// 不发额外网络请求。
 ///
-/// 不变量：自动登录以前台为主；后台仅 CAS 教务处通知任务经 BackgroundSessionGate
-/// 申领做有限恢复（教务不在后台登录）；跨 isolate CookieJar 竞争只被收窄、未被消除。
+/// 后台由 BackgroundAuthContext 绑定申领与让位取消；跨 isolate CookieJar 竞争仍未消除。
 class AutomaticLoginService {
   AutomaticLoginService._({
     AuthOperationCoordinator? coordinator,
@@ -170,7 +170,41 @@ class AutomaticLoginService {
     AuthRecoveryDomain domain, {
     String? expectedAccount,
     CancelToken? cancelToken,
-  }) {
+  }) async {
+    final background = BackgroundAuthContext.current;
+    if (background != null && !await background.allowed()) {
+      return const AutomaticLoginAttemptResult(
+        outcome: AutomaticLoginOutcome.failed,
+      );
+    }
+    if (background != null &&
+        background.expectedEpochs.containsKey(domain.wireName)) {
+      final sessionDomain = domain == AuthRecoveryDomain.cas
+          ? CredentialSessionDomain.unified
+          : CredentialSessionDomain.academic;
+      int? epoch;
+      try {
+        epoch = await AuthSessionPersistence.instance.readEpoch(sessionDomain);
+      } catch (_) {
+        return const AutomaticLoginAttemptResult(
+          outcome: AutomaticLoginOutcome.failed,
+        );
+      }
+      final owner = background.expectedAccounts[domain.wireName];
+      if (epoch != background.expectedEpochs[domain.wireName] ||
+          owner == null ||
+          (expectedAccount != null && expectedAccount != owner)) {
+        return const AutomaticLoginAttemptResult(
+          outcome: AutomaticLoginOutcome.notEligible,
+        );
+      }
+      expectedAccount = owner;
+      if (!await background.allowed()) {
+        return const AutomaticLoginAttemptResult(
+          outcome: AutomaticLoginOutcome.failed,
+        );
+      }
+    }
     if (!_foreground || (cancelToken?.isCancelled ?? false)) {
       return Future.value(
         const AutomaticLoginAttemptResult(
@@ -190,6 +224,13 @@ class AutomaticLoginService {
     final flight = _pending.putIfAbsent(key, () {
       final flight = _AutomaticLoginFlight();
       _tokens.add(flight.token);
+      if (background != null) {
+        unawaited(
+          background.cancelToken.whenCancel.then((_) {
+            if (!flight.settled) flight.token.cancel('background yielded');
+          }),
+        );
+      }
       flight.result =
           _attempt(
             domain,
@@ -285,6 +326,11 @@ class AutomaticLoginService {
             : value.failureKind,
         callerCancelToken: cancelToken,
       );
+      if (outcome.decision == AuthRecoveryDecision.committed &&
+          outcome.receipt != null) {
+        BackgroundAuthContext.current?.expectedEpochs[domain.wireName] =
+            outcome.receipt!.epoch;
+      }
       return AutomaticLoginAttemptResult(
         outcome: _mapDecision(outcome.decision),
         receipt: outcome.decision == AuthRecoveryDecision.committed

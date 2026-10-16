@@ -7,15 +7,91 @@ import '../../core/notification/app_notification_service.dart';
 import '../../core/shortcut/app_shortcut_service.dart';
 import '../../core/system_surface/campus_widget_bridge.dart';
 import '../../core/system_surface/system_settings_launcher.dart';
+import '../../core/system_surface/widget_refresh_state.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_feedback.dart';
+import '../../shared/widgets/info_popover_button.dart';
 import '../../shared/widgets/plain_list.dart';
 
-/// 设置 → 桌面与后台（PRD §42）。
+/// 设置 → 桌面与后台（PRD §42，契约 `docs/desktop-widget-v2.md` §6）。
 ///
-/// 只提供真实可用的入口与真实说明，不提供误导性的「一键全部开启」。
-class DesktopBackgroundPage extends StatelessWidget {
-  const DesktopBackgroundPage({super.key});
+/// 状态驱动：每行只显示标题 + 真实状态（未满足的项用强调色），说明收进行尾 ⓘ。
+/// 状态全部只读查询，**打开设置页不代表已授权**；从系统设置返回（resumed）时重新查询。
+/// 不提供误导性的「一键全部开启」。
+class DesktopBackgroundPage extends StatefulWidget {
+  const DesktopBackgroundPage({super.key, this.now, this.refreshRecordLoader});
+
+  final Future<WidgetRefreshRecord?> Function()? refreshRecordLoader;
+
+  /// 测试用时钟；null 用 [DateTime.now]。
+  final DateTime Function()? now;
+
+  @override
+  State<DesktopBackgroundPage> createState() => _DesktopBackgroundPageState();
+}
+
+class _DesktopBackgroundPageState extends State<DesktopBackgroundPage>
+    with WidgetsBindingObserver {
+  bool _loading = true;
+  CampusWidgetStatus _widgets = CampusWidgetStatus.unknown;
+  SystemBackgroundStatus _system = SystemBackgroundStatus.unknown;
+  WidgetRefreshRecord? _refresh;
+
+  /// 通知权限真实查询结果；null = 查询失败，状态未知（不谎称已开启）。
+  bool? _notificationsEnabled;
+
+  /// 只采用最新一轮查询的结果，防止慢的旧查询覆盖新状态。
+  int _generation = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(_refreshStatus());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 从系统设置 / 桌面返回后重新查询真实状态，不沿用旧值。
+    if (state == AppLifecycleState.resumed) unawaited(_refreshStatus());
+  }
+
+  Future<void> _refreshStatus() async {
+    final generation = ++_generation;
+    final results = await Future.wait<Object?>([
+      CampusWidgetBridge.instance.getStatus(),
+      SystemSettingsLauncher.instance.getStatus(),
+      (widget.refreshRecordLoader ?? WidgetRefreshState.instance.load)()
+          .catchError((_) => null),
+      _queryNotifications(),
+    ]);
+    if (!mounted || generation != _generation) return;
+    final system = results[1]! as SystemBackgroundStatus;
+    setState(() {
+      _widgets = results[0]! as CampusWidgetStatus;
+      _system = system;
+      _refresh = results[2] as WidgetRefreshRecord?;
+      _notificationsEnabled =
+          results[3] as bool? ?? system.notificationsEnabled;
+      _loading = false;
+    });
+  }
+
+  Future<bool?> _queryNotifications() async {
+    try {
+      return await AppNotificationService.instance.areNotificationsEnabled();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  DateTime _now() => widget.now?.call() ?? DateTime.now();
 
   @override
   Widget build(BuildContext context) {
@@ -33,84 +109,175 @@ class DesktopBackgroundPage extends StatelessWidget {
         ),
         children: [
           const PlainSectionHeader('桌面组件'),
-          PlainListGroup(
-            children: [
-              for (final size in CampusWidgetSize.values)
-                PlainListRow(
-                  title: '${size.sizeLabel} ${size.contentLabel}',
-                  subtitle: _widgetSubtitle(size),
-                  onTap: () => _addWidget(context, size),
-                ),
-            ],
-          ),
+          PlainListGroup(children: _widgetRows(context)),
           const SizedBox(height: kPlainListGroupGap),
           const PlainSectionHeader('快捷方式'),
           PlainListGroup(
             children: [
-              PlainListRow(
-                title: '添加「今日课表」快捷方式',
-                subtitle: '固定到桌面后可直接打开今日课表',
+              _InfoRow(
+                title: '今日课表快捷方式',
+                info: '固定到桌面后，点一下直接打开今日课表。点按这一行发起添加，桌面会弹窗请你确认。',
                 onTap: () => _addShortcut(context),
               ),
-              PlainListRow(
-                title: '打开快捷方式权限设置',
-                subtitle: '部分系统（如 MIUI/HyperOS）需手动允许创建快捷方式',
+              _InfoRow(
+                title: '快捷方式权限',
+                info: '部分系统（如 MIUI / HyperOS）默认不允许应用创建桌面快捷方式或组件，需要在系统权限设置里手动打开「桌面快捷方式」。',
                 onTap: () => _openShortcutSettings(context),
               ),
             ],
           ),
           const SizedBox(height: kPlainListGroupGap),
-          const PlainSectionHeader('通知'),
-          PlainListGroup(children: [_NotificationPermissionRow()]),
-          const SizedBox(height: kPlainListGroupGap),
           const PlainSectionHeader('后台运行'),
-          PlainListGroup(
-            children: [
-              PlainListRow(
-                title: '后台运行状态',
-                subtitle: '通知与课表更新由系统后台任务调度，App 不会在后台自动弹出界面。点按打开应用详情页检查系统后台限制',
-                onTap: () => _openSystemSettings(
-                  context,
-                  SystemSettingsTarget.appDetails,
-                ),
-              ),
-              PlainListRow(
-                title: '精确闹钟',
-                subtitle: '若需准点提醒，请允许本应用使用「闹钟和提醒」。点按打开对应设置页',
-                onTap: () => _openSystemSettings(
-                  context,
-                  SystemSettingsTarget.exactAlarms,
-                ),
-              ),
-              PlainListRow(
-                title: '电池优化',
-                subtitle: '系统省电策略可能延后后台任务。点按仅打开电池优化列表页，需手动将本应用设为「无限制」（会更耗电）',
-                onTap: () => _openSystemSettings(
-                  context,
-                  SystemSettingsTarget.batteryOptimization,
-                ),
-              ),
-              PlainListRow(
-                title: 'HyperOS / MIUI 自启动',
-                subtitle:
-                    '小米系系统可能出现链式启动确认，属系统正常行为。点按尝试打开自启动管理，部分系统不保证直达，可能需手动查找',
-                onTap: () => _openSystemSettings(
-                  context,
-                  SystemSettingsTarget.autostart,
-                ),
-              ),
-            ],
-          ),
+          PlainListGroup(children: _backgroundRows(context)),
         ],
       ),
     );
   }
 
-  static String _widgetSubtitle(CampusWidgetSize size) => switch (size) {
-    CampusWidgetSize.small => '课程名、时间与地点；数据随 App 更新',
-    CampusWidgetSize.medium => '今天最多 3 节课；数据随 App 更新',
-    CampusWidgetSize.large => '课表、考试、一卡通、电费与未读通知；数据随 App 更新',
+  // ------------------------------------------------------------ 桌面组件
+
+  List<Widget> _widgetRows(BuildContext context) {
+    final refresh = _refresh;
+    return [
+      for (final size in CampusWidgetSize.values)
+        _InfoRow(
+          title: '${size.sizeLabel} ${size.contentLabel}',
+          value: _installedText(size),
+          info:
+              '${_widgetDescription(size)}\n\n点按这一行请求添加到桌面。放到哪一页、哪个位置由桌面决定，App 无法控制；也可以长按桌面 → 小组件 → 嘉兴大学 手动添加。',
+          onTap: () => _addWidget(context, size),
+        ),
+      _InfoRow(
+        title: '上次同步',
+        value: _loading
+            ? '检查中…'
+            : _relativeTime(_widgets.lastSnapshotAt) ?? '尚未同步',
+        info: '桌面组件显示的是 App 里已有的数据：课表、考试、一卡通、电费或通知在 App 内更新后会同步到组件。组件本身不联网，也不保存任何账号信息。',
+      ),
+      if (refresh != null)
+        _InfoRow(
+          title: '上次后台刷新',
+          value:
+              '${_relativeTime(refresh.lastAttemptAt)} · ${_outcomeText(refresh.lastOutcome)}',
+          emphasizeValue:
+              refresh.lastOutcome != WidgetRefreshOutcome.ok &&
+              refresh.lastOutcome != WidgetRefreshOutcome.skippedForeground,
+          info: 'App 不在前台时，系统会定期在后台刷新组件数据。系统省电策略可能推迟或跳过刷新，下方「后台运行」里的设置会影响它。',
+        ),
+    ];
+  }
+
+  String? _installedText(CampusWidgetSize size) {
+    if (_loading) return null;
+    final count = _widgets.installedCount(size);
+    if (count > 0) return '已放置 $count 个';
+    // 通道不可用时数量未知，不显示「未放置」以免误导。
+    return identical(_widgets, CampusWidgetStatus.unknown) ? null : '未放置';
+  }
+
+  static String _widgetDescription(CampusWidgetSize size) => switch (size) {
+    CampusWidgetSize.small => '显示下一节课的课程名、时间与地点。',
+    CampusWidgetSize.medium => '显示今天最多 3 节课。',
+    CampusWidgetSize.large => '显示课表、考试、一卡通、电费与未读通知。',
   };
+
+  static String _outcomeText(WidgetRefreshOutcome outcome) => switch (outcome) {
+    WidgetRefreshOutcome.ok => '成功',
+    WidgetRefreshOutcome.partial => '部分成功',
+    WidgetRefreshOutcome.authFailed => '登录失效',
+    WidgetRefreshOutcome.offline => '无网络',
+    WidgetRefreshOutcome.error => '失败',
+    WidgetRefreshOutcome.skippedForeground => '前台已在刷新',
+  };
+
+  /// 「刚刚」/「N 分钟前」/「N 小时前」/「M月d日 HH:mm」；null 返回 null。
+  String? _relativeTime(DateTime? at) {
+    if (at == null) return null;
+    final diff = _now().difference(at);
+    if (diff.inMinutes < 1) return '刚刚';
+    if (diff.inMinutes < 60) return '${diff.inMinutes} 分钟前';
+    if (diff.inHours < 24) return '${diff.inHours} 小时前';
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${at.month}月${at.day}日 ${two(at.hour)}:${two(at.minute)}';
+  }
+
+  // ------------------------------------------------------------ 后台运行
+
+  List<Widget> _backgroundRows(BuildContext context) {
+    final system = _system;
+    final exact = system.exactAlarmsAllowed;
+    final exactNotApplicable = system.available && exact == null;
+    final battery = system.ignoringBatteryOptimizations;
+    return [
+      _InfoRow(
+        title: '通知',
+        value: _loading
+            ? '检查中…'
+            : switch (_notificationsEnabled) {
+                true => '已开启',
+                false => '未开启',
+                null => '未知',
+              },
+        emphasizeValue: !_loading && _notificationsEnabled == false,
+        info: '关闭后，电费、教务处通知、第二课堂等提醒都不会弹出。点按这一行前往系统通知设置；打开设置页不等于已开启，返回后这里会重新检查。',
+        onTap: () => _openNotificationSettings(context),
+      ),
+      _InfoRow(
+        title: '精确闹钟',
+        value: _loading
+            ? '检查中…'
+            : !system.available
+            ? '未知'
+            : switch (exact) {
+                true => '已允许',
+                false => '未允许',
+                null => '无需设置',
+              },
+        emphasizeValue: !_loading && exact == false,
+        info: 'Android 12 起，准点提醒需要允许本应用使用「闹钟和提醒」。未允许时提醒仍会发出，但可能晚几分钟。Android 12 以下无需设置。',
+        onTap: exactNotApplicable
+            ? null
+            : () => _openSystemSettings(
+                context,
+                SystemSettingsTarget.exactAlarms,
+              ),
+      ),
+      _InfoRow(
+        title: '电池优化',
+        value: _loading
+            ? '检查中…'
+            : switch (battery) {
+                true => '无限制',
+                false => '受系统限制',
+                null => system.available ? '无需设置' : '未知',
+              },
+        emphasizeValue: !_loading && battery == false,
+        info:
+            '系统省电策略可能推迟后台任务，让提醒和组件数据更新变慢。点按只会打开电池优化列表页，需要你手动把本应用设为「无限制」（会更耗电）。',
+        onTap: () => _openSystemSettings(
+          context,
+          SystemSettingsTarget.batteryOptimization,
+        ),
+      ),
+      if (system.isXiaomiFamily)
+        _InfoRow(
+          title: '自启动',
+          value: '无法检测',
+          info: '小米系系统（MIUI / HyperOS）可能限制后台任务启动，也可能出现链式启动确认，属系统正常行为。App 无法读取这项设置；点按尝试打开自启动管理，部分系统不保证直达，可能需要手动查找。',
+          onTap: () =>
+              _openSystemSettings(context, SystemSettingsTarget.autostart),
+        ),
+      _InfoRow(
+        title: '系统应用信息',
+        info:
+            '通知与数据更新由系统后台任务调度，App 不会在后台自动弹出界面。如果后台表现异常，可以在应用详情页检查系统对本应用的后台限制。',
+        onTap: () =>
+            _openSystemSettings(context, SystemSettingsTarget.appDetails),
+      ),
+    ];
+  }
+
+  // ------------------------------------------------------------- 动作
 
   /// 请求把组件固定到桌面。放到哪一页 / 哪个空位由桌面决定，App 无法控制，
   /// 所以只如实反馈「请求已发出」，不承诺落点。
@@ -119,9 +286,9 @@ class DesktopBackgroundPage extends StatelessWidget {
     if (!context.mounted) return;
     switch (result) {
       case CampusWidgetPinResult.requested:
-        _showSnackBar(context, '已请求添加，请在桌面确认');
+        _toast(context, '已请求添加，请在桌面确认');
       case CampusWidgetPinResult.unsupported:
-        _showSnackBar(context, '当前桌面不支持一键添加，请长按桌面 → 小组件 → 嘉兴大学 手动添加');
+        _toast(context, '当前桌面不支持一键添加，请长按桌面 → 小组件 → 嘉兴大学 手动添加');
       case CampusWidgetPinResult.rejected:
         AppFeedback.toast(
           context,
@@ -130,7 +297,7 @@ class DesktopBackgroundPage extends StatelessWidget {
           onAction: () => unawaited(_openShortcutSettings(context)),
         );
       case CampusWidgetPinResult.error:
-        _showSnackBar(context, '添加失败，请长按桌面 → 小组件 → 嘉兴大学 手动添加');
+        _toast(context, '添加失败，请长按桌面 → 小组件 → 嘉兴大学 手动添加');
     }
   }
 
@@ -140,16 +307,29 @@ class DesktopBackgroundPage extends StatelessWidget {
       title: '今日课表',
     );
     if (!context.mounted) return;
-    _showSnackBar(context, result.message);
+    _toast(context, result.message);
   }
 
   Future<void> _openShortcutSettings(BuildContext context) async {
     final opened = await AppShortcutService.instance
         .openShortcutPermissionSettings();
     if (!context.mounted) return;
-    if (!opened) {
-      _showSnackBar(context, '未能打开系统设置，请手动前往系统应用管理');
-    }
+    if (!opened) _toast(context, '未能打开系统设置，请手动前往系统应用管理');
+  }
+
+  Future<void> _openNotificationSettings(BuildContext context) async {
+    final result = await SystemSettingsLauncher.instance.open(
+      SystemSettingsTarget.notifications,
+    );
+    if (!context.mounted) return;
+    // 命中目标页不提示，返回页面时由生命周期回调刷新真实状态。
+    final message = switch (result) {
+      SystemSettingsOpenResult.target => null,
+      SystemSettingsOpenResult.appDetails => '未能直达通知设置，已打开应用详情页，请在「通知」中手动开启',
+      SystemSettingsOpenResult.settings => '未能直达通知设置，已打开系统设置首页，请在「通知管理」中手动开启',
+      SystemSettingsOpenResult.unavailable => '未能打开系统设置，请手动前往系统「应用管理」调整',
+    };
+    if (message != null) _toast(context, message);
   }
 
   /// 跳转系统设置页；命中目标页不打扰，降级 / 失败时明确说明实际打开的页面。
@@ -160,7 +340,7 @@ class DesktopBackgroundPage extends StatelessWidget {
     final result = await SystemSettingsLauncher.instance.open(target);
     if (!context.mounted) return;
     final message = _systemSettingsFallbackMessage(target, result);
-    if (message != null) _showSnackBar(context, message);
+    if (message != null) _toast(context, message);
   }
 
   /// 打开设置页失败 / 降级时的提示；命中目标页返回 null。
@@ -170,7 +350,7 @@ class DesktopBackgroundPage extends StatelessWidget {
     SystemSettingsTarget target,
     SystemSettingsOpenResult result,
   ) {
-    // 应用详情页本身是「后台运行状态」行的目标页，请求它时按成功处理。
+    // 应用详情页本身是「系统应用信息」行的目标页，请求它时按成功处理。
     if (result == SystemSettingsOpenResult.appDetails &&
         target == SystemSettingsTarget.appDetails) {
       return null;
@@ -184,84 +364,47 @@ class DesktopBackgroundPage extends StatelessWidget {
   }
 }
 
-void _showSnackBar(BuildContext context, String message) =>
+void _toast(BuildContext context, String message) =>
     AppFeedback.toast(context, message);
 
-class _NotificationPermissionRow extends StatefulWidget {
-  @override
-  State<_NotificationPermissionRow> createState() =>
-      _NotificationPermissionRowState();
-}
+/// 设置行 + 行尾 ⓘ 说明。
+///
+/// ⓘ 放在 [PlainListRow] **外面**：行内部是 `MergeSemantics`，按钮放进 `trailing`
+/// 会和行的点按合并成一个读屏节点。分开后两块命中区互不重叠，读屏也是两个按钮。
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({
+    required this.title,
+    required this.info,
+    this.value,
+    this.emphasizeValue = false,
+    this.onTap,
+  });
 
-class _NotificationPermissionRowState extends State<_NotificationPermissionRow>
-    with WidgetsBindingObserver {
-  bool _checking = true;
-
-  /// 真实查询结果；null 表示查询失败，状态未知（不谎称已开启）。
-  bool? _enabled;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    unawaited(_refreshStatus());
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    // 从系统设置返回后重新查询真实权限状态，不沿用旧值。
-    if (state == AppLifecycleState.resumed) unawaited(_refreshStatus());
-  }
-
-  Future<void> _refreshStatus() async {
-    bool? enabled;
-    try {
-      enabled = await AppNotificationService.instance.areNotificationsEnabled();
-    } catch (_) {
-      enabled = null;
-    }
-    if (!mounted) return;
-    setState(() {
-      _enabled = enabled;
-      _checking = false;
-    });
-  }
+  final String title;
+  final String info;
+  final String? value;
+  final bool emphasizeValue;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    final status = _checking
-        ? '检查中…'
-        : switch (_enabled) {
-            true => '已开启，点按可前往系统通知设置',
-            false => '未开启，点按前往系统设置开启',
-            null => '状态未知，点按前往系统通知设置查看',
-          };
-    return PlainListRow(
-      title: '通知权限',
-      subtitle: status,
-      // 已开启也可点按：直达应用通知设置（打开成功不代表已授权）。
-      onTap: () => _openNotificationSettings(context),
+    return Row(
+      children: [
+        Expanded(
+          child: PlainListRow(
+            title: title,
+            value: value,
+            emphasizeValue: emphasizeValue,
+            onTap: onTap,
+            showChevron: false,
+          ),
+        ),
+        // 48dp 按钮里 20dp 图标两侧各留 14，右侧再补 2，图标右缘与行内边距对齐。
+        Padding(
+          padding: const EdgeInsets.only(right: kPlainListRowInset - 14),
+          child: InfoPopoverButton(subject: title, message: info),
+        ),
+      ],
     );
-  }
-
-  Future<void> _openNotificationSettings(BuildContext context) async {
-    final result = await SystemSettingsLauncher.instance.open(
-      SystemSettingsTarget.notifications,
-    );
-    if (!context.mounted) return;
-    // 命中目标页不提示，返回页面时由生命周期回调刷新真实权限状态。
-    final message = switch (result) {
-      SystemSettingsOpenResult.target => null,
-      SystemSettingsOpenResult.appDetails => '未能直达通知设置，已打开应用详情页，请在「通知」中手动开启',
-      SystemSettingsOpenResult.settings => '未能直达通知设置，已打开系统设置首页，请在「通知管理」中手动开启',
-      SystemSettingsOpenResult.unavailable => '未能打开系统设置，请手动前往系统「应用管理」调整',
-    };
-    if (message != null) _showSnackBar(context, message);
   }
 }

@@ -7,7 +7,7 @@ import 'package:jxu_campus_hub/app/background_task_dispatcher.dart';
 void main() {
   group('scheduleFeatureBackgroundTasks 逐项隔离', () {
     // 首项 / 中间项 / 末项分别失败，其余项都必须照常执行。
-    for (final failing in const <int>{0, 1, 2}) {
+    for (final failing in const <int>{0, 1, 2, 3}) {
       test('注册项 $failing 抛错后其余项仍执行', () async {
         final ran = <int>[];
 
@@ -22,9 +22,10 @@ void main() {
           scheduleDormElectricity: () => step(0),
           scheduleSecondClassroom: () => step(1),
           scheduleNotice: () => step(2),
+          scheduleWidget: () => step(3),
         );
 
-        expect(ran, [0, 1, 2], reason: 'failing index $failing');
+        expect(ran, [0, 1, 2, 3], reason: 'failing index $failing');
       });
     }
   });

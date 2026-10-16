@@ -5,6 +5,7 @@ import '../logging/app_logger.dart';
 import 'auth_recovery_state_store.dart';
 import 'auth_session_persistence.dart';
 import 'automatic_login.dart';
+import 'background_auth_context.dart';
 import 'connect_mode_resolver.dart';
 import 'credential_store.dart';
 import 'zhengfang_auth.dart';
@@ -499,7 +500,9 @@ class AcademicAuthGuard {
   static Future<bool> _attemptRecovery() async {
     try {
       final mode = await ConnectModeResolver.instance.resolve();
-      if (mode != null) ZhengfangAuth.instance.setMode(mode);
+      if (mode != null && BackgroundAuthContext.current == null) {
+        ZhengfangAuth.instance.setMode(mode);
+      }
       if (mode == ZhengfangMode.webVpn) {
         final ok = await ZhengfangAuth.instance.ensureWebVpnGatewaySession(
           syncWebViewCookies: false,

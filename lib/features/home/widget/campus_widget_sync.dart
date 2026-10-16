@@ -7,6 +7,7 @@ import '../../../core/notice/notice_sync_store.dart';
 import '../../../core/semester/semester_calendar.dart';
 import '../../../core/system_surface/campus_data_change_bus.dart';
 import '../../../core/system_surface/campus_widget_bridge.dart';
+import '../../../core/theme/app_theme_controller.dart';
 import '../../../core/theme/personalization_controller.dart';
 import 'campus_widget_projection.dart';
 
@@ -38,6 +39,8 @@ class CampusWidgetSync {
     PersonalizationController.instance.fullDayCoursesEnabled.addListener(
       requestSync,
     );
+    // 主题色是桌面组件强调色（快照 theme）的来源：改色后立即重推。
+    AppThemeController.instance.seedColor.addListener(requestSync);
     UnifiedAuthService.instance.addListener(requestSync);
     ZhengfangAuth.instance.addListener(requestSync);
   }

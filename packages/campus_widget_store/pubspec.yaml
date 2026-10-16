@@ -1,0 +1,15 @@
+name: campus_widget_store
+description: Activity independent widget snapshot storage for background engines.
+version: 0.1.0
+publish_to: none
+environment:
+  sdk: ^3.13.0
+dependencies:
+  flutter:
+    sdk: flutter
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: edu.zjxu.campus_widget_store
+        pluginClass: CampusWidgetStorePlugin

@@ -32,6 +32,46 @@ enum SystemSettingsTarget {
 /// 系统设置首页，[unavailable] 表示全部失败或通道缺失。
 enum SystemSettingsOpenResult { target, appDetails, settings, unavailable }
 
+/// 后台运行相关的真实系统状态（契约见 `docs/desktop-widget-v2.md` §6）。
+///
+/// [available] 为 false 表示整体查询失败（通道缺失 / 原生异常），此时各项都是未知；
+/// [available] 为 true 时单项 null 表示该项不适用（如 Android 12 以下的精确闹钟）
+/// 或单独读取失败。**只读**，不代表也不改变任何授权。
+class SystemBackgroundStatus {
+  const SystemBackgroundStatus({
+    this.available = true,
+    this.notificationsEnabled,
+    this.exactAlarmsAllowed,
+    this.ignoringBatteryOptimizations,
+    this.isXiaomiFamily = false,
+  });
+
+  static const unknown = SystemBackgroundStatus(available: false);
+
+  final bool available;
+
+  final bool? notificationsEnabled;
+  final bool? exactAlarmsAllowed;
+  final bool? ignoringBatteryOptimizations;
+  final bool isXiaomiFamily;
+
+  /// 解析 system_settings 通道 `getStatus` 的返回；非 Map 视为整体未知。
+  static SystemBackgroundStatus fromPlatformValue(Object? value) {
+    if (value is! Map) return unknown;
+    bool? flag(String key) {
+      final v = value[key];
+      return v is bool ? v : null;
+    }
+
+    return SystemBackgroundStatus(
+      notificationsEnabled: flag('notificationsEnabled'),
+      exactAlarmsAllowed: flag('exactAlarmsAllowed'),
+      ignoringBatteryOptimizations: flag('ignoringBatteryOptimizations'),
+      isXiaomiFamily: value['isXiaomiFamily'] == true,
+    );
+  }
+}
+
 /// 系统设置 launcher（方法通道 `edu.zjxu.jxucampushub/system_settings`）。
 ///
 /// 只负责把用户带到对应设置页：**打开成功不代表权限已授予**，调用方不得据此
@@ -75,6 +115,19 @@ class SystemSettingsLauncher {
       category: LogCategory.general,
     );
   }
+
+  /// 查询后台运行相关的真实状态；通道缺失 / 失败返回 [SystemBackgroundStatus.unknown]。
+  Future<SystemBackgroundStatus> getStatus() =>
+      safeInvoke<Object, SystemBackgroundStatus>(
+        _channel,
+        'getStatus',
+        map: SystemBackgroundStatus.fromPlatformValue,
+        missing: SystemBackgroundStatus.unknown,
+        failed: SystemBackgroundStatus.unknown,
+        label: '读取后台运行状态',
+        level: LogLevel.warn,
+        category: LogCategory.general,
+      );
 
   static SystemSettingsOpenResult _fromPlatformValue(String? value) {
     return switch (value) {

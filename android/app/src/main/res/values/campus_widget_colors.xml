@@ -1,11 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 桌面校园卡片专用色（浅色）：温润浅灰底 + 极淡品牌暖调，炭灰文字，酒红强调 -->
+<!-- 桌面组件配色（浅色）：A · Swiss 排版，见 docs/desktop-widget-v2.md §7.1。
+     实底卡面 + 主 / 次级两档文字 + 一个强调色（默认酒红；运行时跟随设置里的主题色，
+     见 CampusWidgetTheme）+ 一个固定警示色。次级文字对卡面与块底对比度均 >= 4.5:1。 -->
 <resources>
-    <color name="campus_widget_bg">#F5F1EE</color>
-    <color name="campus_widget_stroke">#1F000000</color>
-    <color name="campus_widget_divider">#1A000000</color>
-    <color name="campus_widget_text_primary">#2B2422</color>
-    <color name="campus_widget_text_secondary">#5F5651</color>
-    <color name="campus_widget_text_tertiary">#756B65</color>
+    <color name="campus_widget_bg">#FFFFFF</color>
+    <color name="campus_widget_block">#F2F3F5</color>
+    <color name="campus_widget_track">#E4E6EB</color>
+    <color name="campus_widget_text_primary">#141518</color>
+    <color name="campus_widget_text_secondary">#5E6068</color>
     <color name="campus_widget_accent">#8B1A2D</color>
+    <!-- 强调底 = 强调色 8%（仅预览布局 / 兜底；运行时按主题色动态着色） -->
+    <color name="campus_widget_accent_tint">#148B1A2D</color>
+    <color name="campus_widget_warn">#B8460E</color>
 </resources>

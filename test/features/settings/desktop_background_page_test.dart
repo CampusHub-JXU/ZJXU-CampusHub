@@ -5,6 +5,8 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/features/settings/desktop_background_page.dart';
+import 'package:jxu_campus_hub/shared/widgets/plain_list.dart';
+import 'package:jxu_campus_hub/core/system_surface/widget_refresh_state.dart';
 
 import '../../helpers/pump_app.dart';
 
@@ -30,6 +32,9 @@ void main() {
   late String systemSettingsResult;
   late bool notificationsEnabled;
   late bool notificationsQueryThrows;
+  late Object? widgetStatus;
+  late Object? systemStatus;
+  WidgetRefreshRecord? refreshRecord;
 
   setUpAll(() {
     // widget 测试默认平台为 android，但插件实现不经 GeneratedPluginRegistrant
@@ -38,6 +43,7 @@ void main() {
   });
 
   setUp(() {
+    refreshRecord = null;
     widgetCalls = <MethodCall>[];
     shortcutCalls = <MethodCall>[];
     widgetPinResult = 'requested';
@@ -45,15 +51,28 @@ void main() {
     systemSettingsResult = 'target';
     notificationsEnabled = true;
     notificationsQueryThrows = false;
+    widgetStatus = <String, Object?>{
+      'pinSupported': true,
+      'installed': <String, Object?>{'small': 0, 'medium': 2, 'large': 0},
+      'lastSnapshotAtMs': DateTime(2026, 10, 16, 9, 55).millisecondsSinceEpoch,
+    };
+    systemStatus = <String, Object?>{
+      'notificationsEnabled': true,
+      'exactAlarmsAllowed': true,
+      'ignoringBatteryOptimizations': false,
+      'isXiaomiFamily': true,
+    };
 
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     messenger.setMockMethodCallHandler(systemSettingsChannel, (call) async {
+      if (call.method == 'getStatus') return systemStatus;
       systemSettingsCalls.add(call);
       if (call.method != 'open') return null;
       return systemSettingsResult;
     });
     messenger.setMockMethodCallHandler(widgetChannel, (call) async {
+      if (call.method == 'getStatus') return widgetStatus;
       widgetCalls.add(call);
       return call.method == 'requestPin' ? widgetPinResult : null;
     });
@@ -82,7 +101,13 @@ void main() {
   });
 
   Future<void> pumpDesktopBackgroundPage(WidgetTester tester) async {
-    await pumpPage(tester, const DesktopBackgroundPage());
+    await pumpPage(
+      tester,
+      DesktopBackgroundPage(
+        now: () => DateTime(2026, 10, 16, 10, 20),
+        refreshRecordLoader: () async => refreshRecord,
+      ),
+    );
     await tester.pumpAndSettle();
   }
 
@@ -167,7 +192,7 @@ void main() {
     expect(find.textContaining('添加失败'), findsOneWidget);
   });
 
-  testWidgets('后台运行四行分别以对应 target 调起系统设置且不误报', (tester) async {
+  testWidgets('后台运行各行分别以对应 target 调起系统设置且不误报', (tester) async {
     await pumpDesktopBackgroundPage(tester);
 
     Future<void> expectNextOpen(String title, String target) async {
@@ -182,17 +207,17 @@ void main() {
     }
 
     // 与页面顺序一致，保证只向下滚动。
-    await expectNextOpen('后台运行状态', 'appDetails');
     await expectNextOpen('精确闹钟', 'exactAlarms');
     await expectNextOpen('电池优化', 'batteryOptimization');
-    await expectNextOpen('HyperOS / MIUI 自启动', 'autostart');
+    await expectNextOpen('自启动', 'autostart');
+    await expectNextOpen('系统应用信息', 'appDetails');
   });
 
-  testWidgets('后台运行行请求 appDetails 时视为成功（与目标页一致）', (tester) async {
+  testWidgets('系统应用信息行请求 appDetails 时视为成功（与目标页一致）', (tester) async {
     systemSettingsResult = 'appDetails';
     await pumpDesktopBackgroundPage(tester);
 
-    await tapRow(tester, '后台运行状态');
+    await tapRow(tester, '系统应用信息');
 
     expect(systemSettingsCalls.last.arguments, <String, Object?>{
       'target': 'appDetails',
@@ -229,7 +254,7 @@ void main() {
     systemSettingsResult = 'unavailable';
     await pumpDesktopBackgroundPage(tester);
 
-    await tapRow(tester, 'HyperOS / MIUI 自启动');
+    await tapRow(tester, '自启动');
 
     expect(systemSettingsCalls.last.arguments, <String, Object?>{
       'target': 'autostart',
@@ -240,10 +265,10 @@ void main() {
   testWidgets('通知已开启时仍可点击直达通知设置，返回后刷新真实状态', (tester) async {
     await pumpDesktopBackgroundPage(tester);
 
-    await revealRow(tester, '通知权限');
+    await revealRow(tester, '通知');
     expect(find.textContaining('已开启'), findsOneWidget);
 
-    await tester.tap(find.text('通知权限'));
+    await tester.tap(find.text('通知'));
     await tester.pumpAndSettle();
 
     expect(systemSettingsCalls, hasLength(1));
@@ -266,10 +291,10 @@ void main() {
     notificationsEnabled = false;
     await pumpDesktopBackgroundPage(tester);
 
-    await revealRow(tester, '通知权限');
+    await revealRow(tester, '通知');
     expect(find.textContaining('未开启'), findsOneWidget);
 
-    await tester.tap(find.text('通知权限'));
+    await tester.tap(find.text('通知'));
     await tester.pumpAndSettle();
 
     expect(systemSettingsCalls.single.arguments, <String, Object?>{
@@ -281,8 +306,8 @@ void main() {
     systemSettingsResult = 'settings';
     await pumpDesktopBackgroundPage(tester);
 
-    await revealRow(tester, '通知权限');
-    await tester.tap(find.text('通知权限'));
+    await revealRow(tester, '通知');
+    await tester.tap(find.text('通知'));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('未能直达通知设置'), findsOneWidget);
@@ -291,13 +316,24 @@ void main() {
 
   testWidgets('通知权限查询失败时显示状态未知，不谎称已开启', (tester) async {
     notificationsQueryThrows = true;
+    systemStatus = <String, Object?>{'isXiaomiFamily': false};
     await pumpDesktopBackgroundPage(tester);
 
-    await revealRow(tester, '通知权限');
+    await revealRow(tester, '通知');
 
-    expect(find.textContaining('状态未知'), findsOneWidget);
+    await revealRow(tester, '通知');
+    expect(_valueOf(tester, '通知'), '未知');
     expect(find.textContaining('已开启'), findsNothing);
     expect(find.text('检查中…'), findsNothing);
+  });
+
+  testWidgets('通知插件查询失败时采用原生读到的真实状态', (tester) async {
+    notificationsQueryThrows = true;
+    systemStatus = <String, Object?>{'notificationsEnabled': false};
+    await pumpDesktopBackgroundPage(tester);
+
+    expect(_valueOf(tester, '通知'), '未开启');
+    expect(_rowOf(tester, '通知').emphasizeValue, isTrue);
   });
 
   testWidgets('后台运行行暴露可点击语义', (tester) async {
@@ -315,4 +351,110 @@ void main() {
 
     handle.dispose();
   });
+
+  testWidgets('桌面组件行显示真实放置数量与上次同步时间', (tester) async {
+    await pumpDesktopBackgroundPage(tester);
+
+    expect(_valueOf(tester, '小 · 2×2 下一节课'), '未放置');
+    expect(_valueOf(tester, '中 · 4×2 今日课表'), '已放置 2 个');
+    expect(_valueOf(tester, '上次同步'), '25 分钟前');
+    // 后台刷新尚未运行过：不显示该行，不编造时间。
+    expect(find.text('上次后台刷新'), findsNothing);
+  });
+
+  testWidgets('组件状态读不到时不显示「未放置」，同步显示尚未同步', (tester) async {
+    widgetStatus = null;
+    await pumpDesktopBackgroundPage(tester);
+
+    expect(find.text('未放置'), findsNothing);
+    expect(_valueOf(tester, '上次同步'), '尚未同步');
+  });
+
+  testWidgets('后台运行各项显示真实状态，只强调未满足项', (tester) async {
+    await pumpDesktopBackgroundPage(tester);
+    await revealRow(tester, '系统应用信息');
+
+    expect(_valueOf(tester, '通知'), '已开启');
+    expect(_valueOf(tester, '精确闹钟'), '已允许');
+    expect(_valueOf(tester, '电池优化'), '受系统限制');
+    expect(_valueOf(tester, '自启动'), '无法检测');
+    expect(_rowOf(tester, '电池优化').emphasizeValue, isTrue);
+    expect(_rowOf(tester, '精确闹钟').emphasizeValue, isFalse);
+    expect(_rowOf(tester, '通知').emphasizeValue, isFalse);
+  });
+
+  testWidgets('Android 12 以下精确闹钟显示无需设置且不可点', (tester) async {
+    systemStatus = <String, Object?>{
+      'notificationsEnabled': true,
+      'exactAlarmsAllowed': null,
+      'ignoringBatteryOptimizations': true,
+      'isXiaomiFamily': false,
+    };
+    await pumpDesktopBackgroundPage(tester);
+    await revealRow(tester, '精确闹钟');
+
+    expect(_valueOf(tester, '精确闹钟'), '无需设置');
+    expect(_rowOf(tester, '精确闹钟').onTap, isNull);
+    expect(_valueOf(tester, '电池优化'), '无限制');
+    // 非小米系设备不显示自启动入口。
+    expect(find.text('自启动'), findsNothing);
+  });
+
+  testWidgets('系统状态通道不可用时各项显示未知，不谎称已允许', (tester) async {
+    systemStatus = null;
+    await pumpDesktopBackgroundPage(tester);
+    await revealRow(tester, '电池优化');
+
+    expect(_valueOf(tester, '精确闹钟'), '未知');
+    expect(_valueOf(tester, '电池优化'), '未知');
+    expect(find.text('自启动'), findsNothing);
+  });
+
+  testWidgets('点 ⓘ 弹出说明、不触发行动作，点外部关闭', (tester) async {
+    await pumpDesktopBackgroundPage(tester);
+    await revealRow(tester, '电池优化');
+
+    // 说明不再作为副标题常驻。
+    expect(find.textContaining('需要你手动把本应用设为'), findsNothing);
+
+    await tester.tap(find.bySemanticsLabel('关于电池优化'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('需要你手动把本应用设为'), findsOneWidget);
+    expect(systemSettingsCalls, isEmpty);
+
+    await tester.tapAt(const Offset(4, 4));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('需要你手动把本应用设为'), findsNothing);
+  });
+
+  testWidgets('ⓘ 是独立的读屏按钮，不并入行的点按语义', (tester) async {
+    final handle = tester.ensureSemantics();
+    await pumpDesktopBackgroundPage(tester);
+    await revealRow(tester, '电池优化');
+
+    final info = tester.getSemantics(find.bySemanticsLabel('关于电池优化'));
+    expect(info.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
+    expect(info.label, '关于电池优化');
+    final row = tester.getSemantics(find.text('电池优化'));
+    expect(row.label, isNot(contains('关于电池优化')));
+
+    handle.dispose();
+  });
+  testWidgets('后台记录展示真实结果', (tester) async {
+    refreshRecord = WidgetRefreshRecord(
+      lastAttemptAt: DateTime(2026, 10, 16, 10, 15),
+      lastOutcome: WidgetRefreshOutcome.partial,
+    );
+    await pumpDesktopBackgroundPage(tester);
+    expect(find.text('上次后台刷新'), findsOneWidget);
+    expect(find.textContaining('部分成功'), findsOneWidget);
+  });
 }
+
+PlainListRow _rowOf(WidgetTester tester, String title) => tester.widget(
+  find.ancestor(of: find.text(title), matching: find.byType(PlainListRow)),
+);
+
+String? _valueOf(WidgetTester tester, String title) =>
+    _rowOf(tester, title).value;

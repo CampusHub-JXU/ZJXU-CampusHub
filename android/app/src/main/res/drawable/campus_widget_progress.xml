@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 总览进度条：轨 + 强调色填充。API 31+ 填充由 setProgressTintList 按主题色着色，
+     以下使用此处的资源强调色（RemoteViews 无法在旧系统给 ProgressBar 运行时着色）。 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@android:id/background">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/campus_widget_track" />
+            <corners android:radius="2dp" />
+            <size android:height="4dp" />
+        </shape>
+    </item>
+    <item android:id="@android:id/progress">
+        <clip>
+            <shape android:shape="rectangle">
+                <solid android:color="@color/campus_widget_accent" />
+                <corners android:radius="2dp" />
+                <size android:height="4dp" />
+            </shape>
+        </clip>
+    </item>
+</layer-list>

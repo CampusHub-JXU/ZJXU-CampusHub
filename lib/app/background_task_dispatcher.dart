@@ -16,6 +16,7 @@ import '../core/notice/notice_sync_store.dart';
 import '../features/dorm_electricity/dorm_electricity_background.dart';
 import '../features/notice/notice_background.dart';
 import '../features/second_classroom/second_classroom_background.dart';
+import 'campus_widget_background.dart';
 
 // ── WorkManager callback (secondary fallback) ──────────────────────────
 
@@ -23,14 +24,33 @@ import '../features/second_classroom/second_classroom_background.dart';
 void appBackgroundTaskDispatcher() {
   Workmanager().executeTask((task, inputData) async {
     DartPluginRegistrant.ensureInitialized();
+    if (task == campusWidgetRefresh) {
+      try {
+        return await CampusWidgetBackground.instance.run();
+      } catch (error, stackTrace) {
+        AppLogger.instance.log(
+          LogLevel.warn,
+          LogCategory.bootstrap,
+          '后台任务「桌面组件刷新」失败',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        return false;
+      }
+    }
+    Future<bool> Function()? action;
     if (task == dormElectricityCheck) {
-      return await DormElectricityBackground.instance.executeBackgroundCheck();
+      action = DormElectricityBackground.instance.executeBackgroundCheck;
     }
     if (task == secondClassroomRecruitingMonitor) {
-      return await SecondClassroomBackground.instance.runMonitor();
+      action = SecondClassroomBackground.instance.runMonitor;
     }
-    if (task == jwcNoticeSyncCheck) {
-      return await NoticeBackground.instance.runCheck();
+    if (task == jwcNoticeSyncCheck) action = NoticeBackground.instance.runCheck;
+    if (action != null) {
+      return runBackgroundTaskAndPush(
+        action: action,
+        push: () => CampusWidgetBackground.instance.run(cacheOnly: true),
+      );
     }
     return true;
   });
@@ -79,6 +99,7 @@ Future<void> scheduleFeatureBackgroundTasks({
   Future<void> Function()? scheduleDormElectricity,
   Future<void> Function()? scheduleSecondClassroom,
   Future<void> Function()? scheduleNotice,
+  Future<void> Function()? scheduleWidget,
 }) async {
   await _runIsolated(
     '电费周期任务注册',
@@ -93,6 +114,10 @@ Future<void> scheduleFeatureBackgroundTasks({
   await _runIsolated(
     '教务处通知周期任务注册',
     scheduleNotice ?? NoticeBackground.instance.ensureScheduled,
+  );
+  await _runIsolated(
+    '桌面组件周期任务注册',
+    scheduleWidget ?? CampusWidgetBackground.instance.ensureScheduled,
   );
 }
 
@@ -133,4 +158,18 @@ Future<void> runForegroundBackgroundChecks({
           ),
     ),
   ]);
+}
+
+/// 补推失败独立记录，不改变原业务任务重试语义；业务抛错仍执行补推。
+Future<bool> runBackgroundTaskAndPush({
+  required Future<bool> Function() action,
+  required Future<bool> Function() push,
+}) async {
+  try {
+    return await action();
+  } finally {
+    await _runIsolated('后台任务组件补推', () async {
+      await push();
+    });
+  }
 }
