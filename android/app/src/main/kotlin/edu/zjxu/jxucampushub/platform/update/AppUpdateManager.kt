@@ -159,6 +159,10 @@ internal class AppUpdateManager private constructor(private val appContext: Cont
         val before = store.read()
         val transition = AppUpdateMachine.reduce(before, event)
         if (before != transition.task) store.update { transition.task }
+        // 只记阶段名 / 世代 / 事件类型，不含 URL、文件名或请求键。
+        if (before?.stage != transition.task?.stage) {
+            Log.i(TAG, "stage ${before?.stage} -> ${transition.task?.stage} (gen ${transition.task?.generation ?: before?.generation}, event ${event.javaClass.simpleName})")
+        }
         var view = transition.view
         for (effect in transition.effects) {
             val t = store.read() ?: continue
@@ -529,6 +533,7 @@ internal class AppUpdateManager private constructor(private val appContext: Cont
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             activity.startActivity(intent)
+            Log.i(TAG, "installer launched (gen ${record.generation})")
             true
         } catch (error: Exception) {
             // 只记类名会丢掉具体原因（FileProvider 白名单漂移时就是

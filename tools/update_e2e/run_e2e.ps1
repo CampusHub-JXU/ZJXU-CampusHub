@@ -106,7 +106,12 @@ function Get-InstalledVersionCode {
 
 function Invoke-FlutterBuild([string]$Label, [string[]]$ExtraArgs, [string]$Destination) {
     Write-Step "Building APK $Label (debug; several minutes, sequential) ..."
-    if (Test-Path -LiteralPath $BuiltApk) { Remove-Item -LiteralPath $BuiltApk -Force }
+    # AGP 的 zipflinger 对已有 debug APK 做原地增量更新，旧条目会留下死空间（实测同内容 A 204 MB、
+    # 全新打包的 B 121 MB）。每次构建前删掉打包产物，强制全新紧凑打包。
+    foreach ($stale in @($BuiltApk, (Join-Path $RepoRoot 'build\app\intermediates\apk\debug'),
+            (Join-Path $RepoRoot 'build\app\outputs\apk\debug'))) {
+        if (Test-Path -LiteralPath $stale) { Remove-Item -LiteralPath $stale -Recurse -Force }
+    }
     # 只打设备 ABI 的原生库：debug 全 ABI 包 200+ MB，经模拟器 NAT 下载极慢。
     $buildArgs = @('build', 'apk', '--debug', '--target', 'lib/main.dart',
         '--target-platform', $script:TargetPlatform,
@@ -285,9 +290,16 @@ try {
 
     if ($succeeded) {
         Write-Step "SUCCESS: $Package is now versionCode $TargetVersionCode ($nameB)."
-        $served = (Test-Path -LiteralPath $ServerLogPath) -and
-            (Select-String -Path $ServerLogPath -SimpleMatch "GET /$tag/$assetName" -Quiet)
-        Write-Host ("  local server saw the APK download: {0}" -f $(if ($served) { 'yes' } else { 'NOT seen (check server.log)' }))
+        # server.log 由服务进程持有写句柄：用共享读打开，避免被锁或读到截断内容。
+        $serverLines = @()
+        try {
+            $fs = [System.IO.File]::Open($ServerLogPath, 'Open', 'Read', 'ReadWrite,Delete')
+            try { $serverLines = ([System.IO.StreamReader]::new($fs)).ReadToEnd() -split "`r?`n" } finally { $fs.Dispose() }
+        } catch { }
+        $apkHits = @($serverLines | Where-Object { $_ -like "*`"GET /$tag/$assetName *" })
+        Write-Host ("  local server saw the APK download: {0}" -f $(
+            if ($apkHits.Count -gt 0) { "yes ($($apkHits.Count) request(s); statuses: $((($apkHits | ForEach-Object { ($_ -split ' ')[-2] }) | Select-Object -Unique) -join ','))" }
+            else { 'NOT seen (check server.log)' }))
         Write-Host "  logcat: $LogcatPath"
         Write-Host '  The emulator now runs B with the test origin baked in. To restore a normal build: flutter build apk --debug --target lib/main.dart, then adb -s <serial> install -r -t <apk>.'
         $exitCode = 0
