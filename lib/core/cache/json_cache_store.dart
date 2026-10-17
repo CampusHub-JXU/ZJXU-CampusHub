@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../logging/app_logger.dart';
+import '../storage/atomic_json_file.dart';
 
 /// 单条缓存记录：写入时刻 + 已编码的载荷。
 class CacheRecord {
@@ -53,6 +54,11 @@ class JsonCacheStore {
   final Map<String, Future<Map<String, CacheRecord>>> _loadFutures =
       <String, Future<Map<String, CacheRecord>>>{};
   final Map<String, Future<void>> _writeTails = <String, Future<void>>{};
+
+  /// 本 isolate 最近一次读 / 写后看到的桶文件修改时间。主引擎与 WorkManager
+  /// 后台引擎各有一份内存镜像：命中镜像前比对 mtime，别的 isolate 写过就重读，
+  /// 免得用陈旧整桶覆盖对方的写入。只收窄竞争，没有跨 isolate 锁。
+  final Map<String, DateTime?> _bucketStamps = <String, DateTime?>{};
 
   /// 测试替身：注入临时目录，避免碰真实应用文档目录。
   @visibleForTesting
@@ -105,6 +111,7 @@ class JsonCacheStore {
 
   Future<void> clearBucket(String bucket) async {
     _buckets.remove(bucket);
+    _bucketStamps.remove(bucket);
     await _persistBucket(bucket, <String, CacheRecord>{});
   }
 
@@ -114,6 +121,7 @@ class JsonCacheStore {
   Future<void> clearAll() async {
     await Future.wait<void>(_writeTails.values);
     _buckets.clear();
+    _bucketStamps.clear();
     _loadFutures.clear();
     final dir = _cacheDir;
     _cacheDir = null;
@@ -126,6 +134,7 @@ class JsonCacheStore {
   Future<void> debugClear() async {
     await Future.wait<void>(_writeTails.values);
     _buckets.clear();
+    _bucketStamps.clear();
     _loadFutures.clear();
     final dir = _cacheDir;
     if (dir != null && await dir.exists()) {
@@ -137,6 +146,7 @@ class JsonCacheStore {
   @visibleForTesting
   void debugReset() {
     _buckets.clear();
+    _bucketStamps.clear();
     _loadFutures.clear();
     _writeTails.clear();
     _cacheDir = null;
@@ -147,7 +157,13 @@ class JsonCacheStore {
 
   Future<Map<String, CacheRecord>> _loadBucket(String bucket) async {
     final cached = _buckets[bucket];
-    if (cached != null) return cached;
+    if (cached != null) {
+      // 本 isolate 有排队中的写入时镜像比磁盘新，直接用。
+      if (_writeTails.containsKey(bucket)) return cached;
+      final stamp = await _fileStamp(bucket);
+      if (stamp == _bucketStamps[bucket]) return cached;
+      _buckets.remove(bucket);
+    }
 
     final loading = _loadFutures[bucket];
     if (loading != null) return loading;
@@ -166,6 +182,7 @@ class JsonCacheStore {
   Future<Map<String, CacheRecord>> _readBucket(String bucket) async {
     final file = await _bucketFile(bucket);
     final records = <String, CacheRecord>{};
+    _bucketStamps[bucket] = await _fileStamp(bucket);
     if (await file.exists()) {
       try {
         final raw = jsonDecode(await file.readAsString());
@@ -220,14 +237,16 @@ class JsonCacheStore {
     Map<String, CacheRecord> records,
   ) async {
     final file = await _bucketFile(bucket);
-    final encoded = jsonEncode(<String, dynamic>{
+    final json = <String, dynamic>{
       'v': schemaVersion,
       'entries': records.map(
         (key, record) => MapEntry<String, dynamic>(key, record.toJson()),
       ),
-    });
+    };
     try {
-      await file.writeAsString(encoded, flush: true);
+      // 临时文件 + rename：写到一半被杀不会留下截断文件（读到坏文件会整桶删除）。
+      await AtomicJsonFile.write(file, json);
+      _bucketStamps[bucket] = await _fileStamp(bucket);
     } catch (error, stackTrace) {
       AppLogger.instance.storage(
         LogLevel.warn,
@@ -241,6 +260,15 @@ class JsonCacheStore {
   Future<File> _bucketFile(String bucket) async {
     final dir = await _resolveCacheDir();
     return File('${dir.path}${Platform.pathSeparator}$bucket.json');
+  }
+
+  Future<DateTime?> _fileStamp(String bucket) async {
+    try {
+      final stat = await (await _bucketFile(bucket)).stat();
+      return stat.type == FileSystemEntityType.notFound ? null : stat.modified;
+    } catch (_) {
+      return null;
+    }
   }
 
   static Future<void> _safeDelete(File file) async {

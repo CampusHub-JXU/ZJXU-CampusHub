@@ -29,19 +29,22 @@ Future<Response<T>> sendWithSystemProxyFallback<T>({
   void Function(Uri uri)? onRequestUri,
 }) async {
   Uri? requestUri;
-  // ponytail: overlapping sends on the same Dio can clobber requestUri.
-  final capture = InterceptorsWrapper(
-    onRequest: (options, handler) {
-      requestUri = options.uri;
-      onRequestUri?.call(options.uri);
-      handler.next(options);
-    },
-  );
 
   Future<Response<T>> send(Dio client) async {
     cancelToken.throwIfCancelled();
     final token = CancelToken();
     unawaited(cancelToken?.whenCancel.then((error) => token.cancel(error)));
+    // 同一 Dio 上可能有并发发送：只认带本次派生 token 的请求，免得别的请求
+    // 覆盖 requestUri、让回退判定用错 URI。
+    final capture = InterceptorsWrapper(
+      onRequest: (options, handler) {
+        if (identical(options.cancelToken, token)) {
+          requestUri = options.uri;
+          onRequestUri?.call(options.uri);
+        }
+        handler.next(options);
+      },
+    );
     client.interceptors.add(capture);
     try {
       final future = request(client, token);
