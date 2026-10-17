@@ -8,6 +8,7 @@ import 'automatic_login.dart';
 import 'background_auth_context.dart';
 import 'connect_mode_resolver.dart';
 import 'credential_store.dart';
+import 'login_page_detection.dart';
 import 'zhengfang_auth.dart';
 
 /// 教务会话过期时由 [AcademicAuthGuard] 抛出的统一异常。
@@ -115,11 +116,7 @@ class AcademicAuthGuard {
     if (code == 901 || code == 401) return true;
     if (code == 302 || code == 303) {
       final location = response.headers.value('location') ?? '';
-      final lower = location.toLowerCase();
-      return lower.contains('/xtgl/login_slogin.html') ||
-          lower.contains('kaptcha') ||
-          lower.contains('/cas/login') ||
-          isZhengfangGatewayLoginUrl(location);
+      return classifyLoginUrl(location) != null;
     }
     if (code == 200) {
       final data = response.data;
@@ -499,30 +496,26 @@ class AcademicAuthGuard {
 
   static Future<bool> _attemptRecovery() async {
     try {
+      final auth = ZhengfangAuth.instance;
       final mode = await ConnectModeResolver.instance.resolve();
-      if (mode != null && BackgroundAuthContext.current == null) {
-        ZhengfangAuth.instance.setMode(mode);
-      }
+      if (mode == null) return false;
+      // 探测与校验都显式带上 [mode]，不先改全局模式：恢复没成功时，并发请求
+      // 仍按发起前的模式（与其 Cookie 所在的 jar 一致）发送，不会被带到一个
+      // 未建成的模式里误判过期。只有校验确认有效才收敛全局模式。
       if (mode == ZhengfangMode.webVpn) {
-        final ok = await ZhengfangAuth.instance.ensureWebVpnGatewaySession(
+        final ok = await auth.ensureWebVpnGatewaySession(
           syncWebViewCookies: false,
         );
         if (ok != true) return false;
-        // 网关与教务是不同认证域，网关 ready 不能证明正方 Cookie 有效。
-        return await ZhengfangAuth.instance.validateSession(
-              revokeOnInvalid: false,
-            ) ==
-            true;
       }
-      if (mode == ZhengfangMode.direct) {
-        // 无登出副作用探测：撤销留给 guard 的终态条件撤销，探测本身不得
-        // 先登出，否则 guard 会因 revision 变化而 fail closed、无法走 OCR。
-        final ok = await ZhengfangAuth.instance.validateSession(
-          revokeOnInvalid: false,
-        );
-        return ok == true;
-      }
-      return false;
+      // 网关与教务是不同认证域，网关 ready 不能证明正方 Cookie 有效。
+      // 无登出副作用探测：撤销留给 guard 的终态条件撤销，探测本身不得先登出，
+      // 否则 guard 会因 revision 变化而 fail closed、无法走 OCR。
+      final ok =
+          await auth.validateSession(revokeOnInvalid: false, mode: mode) ==
+          true;
+      if (ok && BackgroundAuthContext.current == null) auth.setMode(mode);
+      return ok;
     } catch (e, s) {
       AppLogger.instance.auth(
         LogLevel.warn,

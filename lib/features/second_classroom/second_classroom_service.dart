@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../core/auth/login_page_detection.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/network/dio_client.dart';
 import '../../core/util/json_coerce.dart';
@@ -174,7 +175,7 @@ class SecondClassroomService {
     if (data is Map) return Map<String, dynamic>.from(data);
     if (data is String) {
       final text = data.trimLeft();
-      if (_looksLikeHtmlResponse(text)) {
+      if (looksLikeWeChatAuthHtml(text)) {
         throw const SecondClassroomServiceException('第二课堂登录态失效，请在微信中重新授权');
       }
       final decoded = jsonDecode(data);
@@ -182,16 +183,6 @@ class SecondClassroomService {
       if (decoded is Map) return Map<String, dynamic>.from(decoded);
     }
     throw const FormatException('第二课堂响应不是 JSON 对象');
-  }
-
-  bool _looksLikeHtmlResponse(String text) {
-    if (text.isEmpty) return false;
-    final lower = text.toLowerCase();
-    return lower.startsWith('<!doctype html') ||
-        lower.startsWith('<html') ||
-        lower.contains('_auth_provider_') ||
-        lower.contains('open.weixin.qq.com') ||
-        lower.contains('wechat_redirect');
   }
 
   Map<String, dynamic> _menuData() {

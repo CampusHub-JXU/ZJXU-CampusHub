@@ -123,7 +123,11 @@ void main() {
 
     // 忽略直连提前返回，进入 WebVPN 分支（网关校验结果视网络而定）。
     expect(forced.selectedMode, ZhengfangMode.webVpn);
-    expect(ZhengfangAuth.instance.mode, ZhengfangMode.webVpn);
+    // 全局模式只在网关会话建成后切换；未建成时保持发起前的直连。
+    expect(
+      ZhengfangAuth.instance.mode,
+      forced.ready == true ? ZhengfangMode.webVpn : ZhengfangMode.direct,
+    );
   });
 
   test(

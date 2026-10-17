@@ -5,8 +5,8 @@ import 'package:dio/dio.dart';
 
 import '../../core/auth/cas_auth_broker.dart';
 import '../../core/auth/cas_routed_access.dart';
+import '../../core/auth/login_page_detection.dart';
 import '../../core/auth/unified_auth.dart';
-import '../../core/auth/zhengfang_auth.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/network/dio_client.dart';
 import 'changxing_api_client.dart';
@@ -247,11 +247,13 @@ class ChangxingCasLogin {
 
   /// 登录页判定：统一认证登录页 / WebVPN 网关登录页（会话缺失的 bounce）。
   bool _isLoginBounce(Response<List<int>> response) {
-    final realUrl = response.realUri.toString();
-    if (isZhengfangGatewayLoginUrl(realUrl)) return true;
     final html = utf8.decode(response.data ?? const [], allowMalformed: true);
-    return CasAuthBroker.isCasLoginExchange(realUrl: realUrl, html: html) ||
-        isChangxingUnifiedAuthLoginFormResponse(realUrl, html);
+    return classifyLoginExchange(
+          realUrl: response.realUri.toString(),
+          html: html,
+          kinds: casAndGatewayLoginKinds,
+        ) !=
+        null;
   }
 
   String? _extractTokenId(String url) {

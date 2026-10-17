@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../core/auth/cas_auth_broker.dart';
 import '../../core/auth/cas_routed_access.dart';
+import '../../core/auth/login_page_detection.dart';
 import '../../core/auth/unified_auth.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/logging/app_logger.dart';
@@ -443,15 +444,17 @@ class PhysicalTestService {
 
   bool _looksLikeAuthBounce(Response<List<int>> response) {
     final data = response.data;
-    return CasAuthBroker.isCasLoginExchange(
-      realUrl: response.realUri.toString(),
-      statusCode: response.statusCode,
-      location: response.headers.value('location'),
-      requestUri: response.requestOptions.uri,
-      html: data == null || data.isEmpty
-          ? null
-          : utf8.decode(data, allowMalformed: true),
-    );
+    return classifyLoginExchange(
+          realUrl: response.realUri.toString(),
+          statusCode: response.statusCode,
+          location: response.headers.value('location'),
+          requestUri: response.requestOptions.uri,
+          html: data == null || data.isEmpty
+              ? null
+              : utf8.decode(data, allowMalformed: true),
+          kinds: casAndGatewayLoginKinds,
+        ) !=
+        null;
   }
 
   _SessionGuard _captureGuard() =>

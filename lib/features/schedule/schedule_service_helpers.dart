@@ -23,12 +23,4 @@ String _decodeHtmlEntities(String value) {
       .replaceAll('&amp;', '&');
 }
 
-bool _looksLikeLoginExpired(String text) {
-  final value = text.toLowerCase();
-  return value.contains('登录') ||
-      value.contains('登陆') ||
-      value.contains('session') ||
-      value.contains('expired') ||
-      value.contains('请先登录') ||
-      value.contains('重新登录');
-}
+bool _looksLikeLoginExpired(String text) => looksLikeLoginExpiredMessage(text);

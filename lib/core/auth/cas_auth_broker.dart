@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 
 import '../network/cancel_token_x.dart';
 import '../network/dio_client.dart';
+import 'login_page_detection.dart' as login_detection;
 import 'unified_auth.dart';
 import 'zhengfang_auth.dart';
 
@@ -246,31 +247,23 @@ class CasAuthBroker {
 
   /// 判定一次 HTTP 交换是否命中统一认证登录页/登录跳转。
   ///
-  /// 依次检查：最终落地 URL、302/303 的 location（相对 [requestUri] 解析）、
-  /// 响应体 HTML。[html] 传 null 时跳过响应体检查（调用方需要先行
-  /// 解码或做业务侧前置判断时使用，如 sjjx 的列表页预检）。
+  /// 判据唯一实现在 `login_page_detection.dart` 的 [isCasLoginExchange]：依次检查
+  /// 最终落地 URL、302/303 的 location（相对 [requestUri] 解析）、响应体 HTML，
+  /// 同时识别 WebVPN 代理形态的登录页。[html] 传 null 时跳过响应体检查（调用方
+  /// 需要先行解码或做业务侧前置判断时使用，如 sjjx 的列表页预检）。
   static bool isCasLoginExchange({
     String? realUrl,
     int? statusCode,
     String? location,
     Uri? requestUri,
     String? html,
-  }) {
-    if (realUrl != null && isUnifiedAuthLoginEntryUrl(realUrl)) return true;
-
-    final code = statusCode ?? 0;
-    if ((code == 302 || code == 303) &&
-        location != null &&
-        location.isNotEmpty) {
-      final resolved = requestUri == null
-          ? location
-          : requestUri.resolve(location).toString();
-      if (isUnifiedAuthLoginEntryUrl(resolved)) return true;
-    }
-
-    if (html != null && looksLikeUnifiedAuthLoginHtml(html)) return true;
-    return false;
-  }
+  }) => login_detection.isCasLoginExchange(
+    realUrl: realUrl,
+    statusCode: statusCode,
+    location: location,
+    requestUri: requestUri,
+    html: html,
+  );
 }
 
 /// 统一认证会话失效的统一异常。

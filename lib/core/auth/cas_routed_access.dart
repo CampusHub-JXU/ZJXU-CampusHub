@@ -7,7 +7,7 @@ import 'package:flutter/foundation.dart';
 import '../logging/app_logger.dart';
 import 'cas_auth_broker.dart';
 import 'connect_mode_resolver.dart';
-import 'unified_auth.dart';
+import 'login_page_detection.dart';
 import 'zhengfang_auth.dart';
 
 /// 一次业务访问选定的路由：直连或 WebVPN，以及据此重建 URL 的方式。
@@ -165,16 +165,6 @@ class CasRoutedAccess {
       throw TimeoutException('WebVPN 网关暂时无法连接，请稍后重试');
     }
   }
-}
-
-/// WebVPN 网关登录落地页 / CAS 登录页判定（纯函数）：[realUrl] 为最终落地
-/// URL，[html] 为解码后的正文。教务 H5 入口与 [CasRoutedAccess] 共用同一判据。
-bool isWebVpnGatewayLoginBounce(String realUrl, String html) {
-  if (isZhengfangGatewayLoginUrl(realUrl) ||
-      isZhengfangLoginEntryUrl(realUrl)) {
-    return true;
-  }
-  return looksLikeUnifiedAuthLoginHtml(html);
 }
 
 /// 网关换票失败的诊断描述：异常类型 + 状态码 + 出错那一跳的 host/path。

@@ -38,22 +38,6 @@ class AcademicCookieSyncException implements Exception {
   String toString() => 'AcademicCookieSyncException: $message';
 }
 
-/// 统一认证 / WebVPN 网关登录入口（需要统一认证，不是教务登录）。
-bool _isUnifiedOrGatewayLoginLocation(String url) {
-  if (url.isEmpty) return false;
-  if (isZhengfangGatewayLoginUrl(url)) return true;
-  if (isUnifiedAuthLoginEntryUrl(url)) return true;
-  // WebVPN 代理域下的 CAS 登录同样属于统一认证（newca 域判定不覆盖代理）。
-  return url.toLowerCase().contains('/cas/login');
-}
-
-/// 教务（正方）登录入口 / 验证码页（需要教务登录）。
-bool _isAcademicLoginLocation(String url) {
-  final lower = url.trim().toLowerCase();
-  if (lower.isEmpty) return false;
-  return lower.contains('/xtgl/login_slogin.html') || lower.contains('kaptcha');
-}
-
 /// 是否为本模式受信 origin 上已知的教务已认证页面。
 bool _isAuthenticatedAcademicLocation(ZhengfangMode mode, String url) {
   final uri = Uri.tryParse(url);
@@ -101,15 +85,19 @@ AcademicEntrySessionStatus classifyAcademicEntryResponse({
       ? requestUri.toString()
       : requestUri.resolve(location).toString();
 
-  // 明确落在统一认证 / WebVPN 网关登录：属于统一认证问题，不是教务登录。
-  if (_isUnifiedOrGatewayLoginLocation(resolvedLocation) ||
-      (status == 200 && looksLikeUnifiedAuthLoginHtml(html))) {
-    return AcademicEntrySessionStatus.unifiedLoginRequired;
-  }
-  // 明确落在教务（正方）登录入口 / 验证码页：需要教务登录。
-  if (_isAcademicLoginLocation(resolvedLocation) ||
-      (status == 200 && looksLikeZhengfangLoginHtml(html))) {
-    return AcademicEntrySessionStatus.academicLoginRequired;
+  // 登录页判定统一走 login_page_detection.dart：统一认证 / WebVPN 网关登录
+  // 属于统一认证问题，教务登录入口 / 验证码页才是需要教务登录；两者同时命中
+  // 时统一认证优先。正文只在 200 时参与判定。
+  switch (classifyLoginExchange(
+    realUrl: resolvedLocation,
+    html: status == 200 ? html : null,
+  )) {
+    case LoginPageKind.unifiedAuth || LoginPageKind.webVpnGateway:
+      return AcademicEntrySessionStatus.unifiedLoginRequired;
+    case LoginPageKind.zhengfang:
+      return AcademicEntrySessionStatus.academicLoginRequired;
+    case null:
+      break;
   }
 
   if (status == 302 || status == 303) {
@@ -402,7 +390,13 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
   ///
   /// [revokeOnInvalid] 为 false 时是**无登出副作用探测**：guard 的恢复链路用它
   /// 只判定会话是否失效，不撤销任何会话，从而能继续走一次 OCR 自动登录。
-  Future<bool?> validateSession({bool revokeOnInvalid = true}) async {
+  /// [mode] 显式指定校验所走的连接模式（默认当前全局模式）；恢复链路先按
+  /// 探测结果校验、确认有效后再切换全局模式，校验本身不改全局模式。
+  Future<bool?> validateSession({
+    bool revokeOnInvalid = true,
+    ZhengfangMode? mode,
+  }) async {
+    final effectiveMode = mode ?? _mode;
     if (!_sessionActive) return false;
 
     // 绑定发起时的 owner + revision + 持久 epoch：探测期间切号/同账号重登后，
@@ -415,11 +409,12 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
         : -1;
 
     await DioClient.instance.ensureInitialized();
-    final indexUrl = '$_baseUrl/xtgl/index_initMenu.html';
+    final indexUrl = '${_baseUrlFor(effectiveMode)}/xtgl/index_initMenu.html';
 
     try {
       final response = await _sendWithProxyFallback<String>(
         label: '教务会话校验',
+        mode: effectiveMode,
         request: (dio, token) => dio.get<String>(
           indexUrl,
           queryParameters: {'jsdm': 'xs'},
@@ -428,7 +423,7 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
             responseType: ResponseType.plain,
             followRedirects: false,
             validateStatus: (status) => status != null && status < 1000,
-            headers: {'Referer': _loginPageUrl},
+            headers: {'Referer': _loginPageUrlFor(effectiveMode)},
           ),
         ),
       );
@@ -437,11 +432,18 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
       final location = response.headers.value('location') ?? '';
       final html = (response.data ?? '').toLowerCase();
 
+      // 教务会话校验只把教务登录入口 / 验证码页与网关登录视为失效；跳统一认证
+      // 登录（`/cas/login`）是统一认证问题，不撤销教务会话（保持原口径）。
       final redirectedToLogin =
           (statusCode == 302 || statusCode == 303) &&
-          (location.toLowerCase().contains('login_slogin') ||
-              location.toLowerCase().contains('kaptcha') ||
-              isZhengfangGatewayLoginUrl(location));
+          classifyLoginUrl(
+                location,
+                kinds: const {
+                  LoginPageKind.zhengfang,
+                  LoginPageKind.webVpnGateway,
+                },
+              ) !=
+              null;
       final loginPageReturned =
           statusCode == 200 && looksLikeZhengfangLoginHtml(html);
 
@@ -472,7 +474,7 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
       }
       if ((statusCode == 302 || statusCode == 303) &&
           _isAuthenticatedAcademicLocation(
-            _mode,
+            effectiveMode,
             Uri.parse(indexUrl).resolve(location).toString(),
           )) {
         return true;
@@ -537,7 +539,8 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
       }
     }
     mode = ZhengfangMode.webVpn;
-    setMode(ZhengfangMode.webVpn);
+    // 全局模式只在网关会话确认建成后才切换：会话未激活 / 网络不确定 / 命中
+    // 登录页时保持发起前的模式，免得并发的直连请求被带到未建成的 WebVPN。
 
     final unifiedAuthActive = await UnifiedAuthService.instance.validateSession(
       serviceUrl: ZhengfangAuth.webVpnGatewayServiceUrl,
@@ -556,6 +559,7 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
     try {
       final response = await _sendWithProxyFallback<String>(
         label: 'WebVPN 网关会话校验',
+        mode: ZhengfangMode.webVpn,
         request: (dio, token) => dio.get<String>(
           ZhengfangAuth.webVpnGatewayLoginUrl,
           cancelToken: token,
@@ -576,6 +580,7 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
         return WebVpnGatewayEnsureResult(ready: false, selectedMode: mode);
       }
 
+      if (_sessionRevision == revisionAtStart) setMode(ZhengfangMode.webVpn);
       markWebVpnLoggedIn();
       if (syncWebViewCookies) {
         await syncWebVpnCookiesToWebView();
@@ -600,21 +605,8 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
     markWebVpnLoggedOut();
   }
 
-  bool _looksLikeWebVpnAuthResponse(String url, String html) {
-    if (isZhengfangGatewayLoginUrl(url) || isZhengfangLoginEntryUrl(url)) {
-      return true;
-    }
-
-    final uri = Uri.tryParse(url);
-    if (uri == null || uri.host.toLowerCase() != 'webvpn.zjxu.edu.cn') {
-      return false;
-    }
-
-    final path = uri.path.toLowerCase();
-    if (path == '/' || path == '/m/portal' || path == '/login') {
-      return true;
-    }
-
-    return looksLikeUnifiedAuthLoginHtml(html);
-  }
+  /// WebVPN 网关会话是否仍落在登录页：网关 / 统一认证 / 教务登录 URL、统一认证
+  /// 登录页正文，或网关门户页（`/`、`/m/portal`、`/login`）。
+  bool _looksLikeWebVpnAuthResponse(String url, String html) =>
+      isWebVpnGatewayLoginBounce(url, html) || isWebVpnPortalUrl(url);
 }

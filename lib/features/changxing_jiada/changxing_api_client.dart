@@ -4,12 +4,11 @@ import 'package:dio/dio.dart';
 
 import '../../core/auth/cas_auth_broker.dart';
 import '../../core/auth/cas_routed_access.dart';
+import '../../core/auth/login_page_detection.dart';
 import '../../core/auth/unified_auth.dart';
-import '../../core/auth/zhengfang_auth.dart';
 import '../../core/network/dio_client.dart';
 import 'changxing_jiada_exceptions.dart';
 import 'changxing_jiada_token_binding.dart';
-import 'changxing_sso_urls.dart';
 
 /// API 响应命中统一认证 / WebVPN 网关登录页（会话或网关 Cookie 缺失）。
 class ChangxingApiLoginBounce implements Exception {
@@ -119,10 +118,12 @@ class ChangxingApiClient {
     final data = response.data;
     if (data is Map) return Map<String, dynamic>.from(data);
     final realUrl = response.realUri.toString();
-    if (isZhengfangGatewayLoginUrl(realUrl) ||
-        (data is String &&
-            (isChangxingUnifiedAuthLoginFormResponse(realUrl, data) ||
-                looksLikeUnifiedAuthLoginHtml(data)))) {
+    if (classifyLoginExchange(
+          realUrl: realUrl,
+          html: data is String ? data : null,
+          kinds: casAndGatewayLoginKinds,
+        ) !=
+        null) {
       throw const ChangxingApiLoginBounce();
     }
     if (data == null) return <String, dynamic>{};
@@ -130,15 +131,10 @@ class ChangxingApiClient {
   }
 
   /// Location / 最终 URL 是否为统一认证 / 网关登录页。WebVPN 下网关把 newca
-  /// 登录页代理成 `/https/<enc>/cas/login`，先 [normalizeSsoRedirectUrl]
-  /// 还原再判定（与 [_fetchTokenId] 一致）。
-  bool _isLoginBounceUrl(String url) {
-    if (url.isEmpty) return false;
-    final normalized = normalizeChangxingSsoRedirectUrl(url);
-    return isUnifiedAuthLoginEntryUrl(normalized) ||
-        isZhengfangGatewayLoginUrl(normalized) ||
-        isZhengfangGatewayLoginUrl(url);
-  }
+  /// 登录页代理成 `/https/<enc>/cas/login`，统一判据
+  /// （[classifyLoginUrl]）直接覆盖该代理形态，无需先还原。
+  bool _isLoginBounceUrl(String url) =>
+      classifyLoginUrl(url, kinds: casAndGatewayLoginKinds) != null;
 
   /// 把 GET 重定向的下一跳映射到本次路由下允许的目标；不允许返回 null——
   /// 绝不把 `token` 头带到非畅行目标。判定同时校验 scheme / 端口 / 主机 / 路径：

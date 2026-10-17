@@ -19,21 +19,14 @@ import 'auth_session_persistence.dart';
 import 'captcha_challenge.dart';
 import 'credential_store.dart';
 import 'isolated_auth_session.dart';
+import 'login_page_detection.dart';
+
+// 登录页 URL / HTML 判定的唯一实现在 login_page_detection.dart；这里 re-export
+// 以保持既有 `import 'unified_auth.dart'` 调用点不变。
+export 'login_page_detection.dart'
+    show isUnifiedAuthLoginEntryUrl, looksLikeUnifiedAuthLoginHtml;
 
 part 'unified_auth_challenge.dart';
-
-bool isUnifiedAuthLoginEntryUrl(String currentUrl) {
-  final raw = currentUrl.trim();
-  if (raw.isEmpty) return false;
-
-  final uri = Uri.tryParse(raw);
-  if (uri == null) return false;
-  final host = uri.host.toLowerCase();
-  final path = uri.path.toLowerCase();
-  if (host.isEmpty) return path.contains('/cas/login');
-  if (host != 'newca.zjxu.edu.cn') return false;
-  return path.contains('/cas/login');
-}
 
 bool urlHasCasTicket(String location) {
   if (location.isEmpty) return false;
@@ -75,19 +68,6 @@ String? extractUnifiedAuthServiceUrl(String currentUrl) {
   final serviceUrl = uri.queryParameters['service']?.trim();
   if (serviceUrl == null || serviceUrl.isEmpty) return null;
   return serviceUrl;
-}
-
-bool looksLikeUnifiedAuthLoginHtml(String html) {
-  final normalizedHtml = html.toLowerCase();
-  if (normalizedHtml.isEmpty) return false;
-  return normalizedHtml.contains('id="fm1"') ||
-      normalizedHtml.contains("id='fm1'") ||
-      normalizedHtml.contains('name="execution"') ||
-      normalizedHtml.contains("name='execution'") ||
-      normalizedHtml.contains('name="lt"') ||
-      normalizedHtml.contains("name='lt'") ||
-      normalizedHtml.contains('/cas/captcha.html') ||
-      normalizedHtml.contains('统一身份认证');
 }
 
 sealed class UnifiedAuthLoginResult {

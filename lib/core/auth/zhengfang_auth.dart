@@ -22,30 +22,21 @@ import 'captcha_challenge.dart';
 import 'credential_store.dart';
 import 'connect_mode_resolver.dart';
 import 'isolated_auth_session.dart';
+import 'login_page_detection.dart';
 import 'unified_auth.dart';
+
+// 登录页 URL / HTML 判定的唯一实现在 login_page_detection.dart；这里 re-export
+// 以保持既有 `import 'zhengfang_auth.dart'` 调用点不变。
+export 'login_page_detection.dart'
+    show
+        isZhengfangGatewayLoginUrl,
+        isZhengfangLoginEntryUrl,
+        looksLikeLoginExpiredMessage,
+        looksLikeZhengfangLoginHtml;
 
 part 'zhengfang_auth_webvpn.dart';
 part 'zhengfang_auth_direct.dart';
 part 'zhengfang_auth_challenge.dart';
-
-bool isZhengfangGatewayLoginUrl(String currentUrl) {
-  final raw = currentUrl.trim();
-  if (raw.isEmpty) return false;
-
-  final uri = Uri.tryParse(raw);
-  if (uri == null) return false;
-
-  return uri.host.toLowerCase() == 'webvpn.zjxu.edu.cn' &&
-      uri.path.toLowerCase() == '/login';
-}
-
-bool isZhengfangLoginEntryUrl(String currentUrl) {
-  final normalizedUrl = currentUrl.trim().toLowerCase();
-  if (normalizedUrl.isEmpty) return false;
-  return normalizedUrl.contains('/xtgl/login_slogin.html') ||
-      normalizedUrl.contains('/cas/login') ||
-      isZhengfangGatewayLoginUrl(currentUrl);
-}
 
 bool isZhengfangAuthenticatedUrl(String currentUrl) {
   final normalizedUrl = currentUrl.trim().toLowerCase();
@@ -53,62 +44,6 @@ bool isZhengfangAuthenticatedUrl(String currentUrl) {
   return normalizedUrl.contains('index_initmenu') ||
       normalizedUrl.contains('index_cxyhxxindex') ||
       normalizedUrl.contains('/xtgl/index');
-}
-
-bool looksLikeZhengfangLoginHtml(String html) {
-  final normalizedHtml = html.toLowerCase();
-  if (normalizedHtml.isEmpty) return false;
-
-  bool containsAny(List<String> patterns) {
-    return patterns.any(normalizedHtml.contains);
-  }
-
-  final hasLoginAction = containsAny([
-    'action="/jwglxt/xtgl/login_slogin.html"',
-    "action='/jwglxt/xtgl/login_slogin.html'",
-    'action="/xtgl/login_slogin.html"',
-    "action='/xtgl/login_slogin.html'",
-    '/js/globalweb/login/login.js',
-  ]);
-  final hasUsernameField = containsAny([
-    'id="yhm"',
-    "id='yhm'",
-    'name="yhm"',
-    "name='yhm'",
-  ]);
-  final hasPasswordField = containsAny([
-    'id="mm"',
-    "id='mm'",
-    'id="hidmm"',
-    "id='hidmm'",
-    'name="mm"',
-    "name='mm'",
-  ]);
-  final hasCaptchaField = containsAny([
-    'id="yzm"',
-    "id='yzm'",
-    'name="yzm"',
-    "name='yzm'",
-  ]);
-  final hasCsrfField = containsAny([
-    'id="csrftoken"',
-    "id='csrftoken'",
-    'name="csrftoken"',
-    "name='csrftoken'",
-  ]);
-  final hasSubmitButton =
-      containsAny(['id="dl"', "id='dl'"]) ||
-      normalizedHtml.contains('>登 录<') ||
-      normalizedHtml.contains('>登录<') ||
-      normalizedHtml.contains('用户登录');
-  final credentialFieldCount = [
-    hasUsernameField,
-    hasPasswordField,
-    hasCaptchaField,
-  ].where((value) => value).length;
-
-  return (credentialFieldCount >= 2 && (hasLoginAction || hasCsrfField)) ||
-      (hasUsernameField && hasPasswordField && hasSubmitButton);
 }
 
 /// 教务系统连接模式

@@ -137,6 +137,30 @@ void main() {
     expect(ZhengfangAuth.instance.isLoggedIn, isFalse);
   });
 
+  test('过期恢复探测到 WebVPN 但网关未建成：不改全局模式', () async {
+    ZhengfangAuth.instance.debugSetSession(active: true, studentId: 'A');
+    final resolver = ConnectModeResolver.instance;
+    resolver.webVpnReachabilityChecker = () async => true;
+    expect(ZhengfangAuth.instance.mode, ZhengfangMode.direct);
+    AcademicAuthGuard.debugAutomaticLoginOverride = (
+      domain, {
+      String? expectedAccount,
+    }) async => AutomaticLoginOutcome.notEligible;
+
+    await expectLater(
+      AcademicAuthGuard.guardRequest<Map<String, dynamic>>(
+        authExpiredException: const _Marker(),
+        request: () async => _redirectResponse(),
+      ),
+      throwsA(isA<_Marker>()),
+    );
+    expect(
+      ZhengfangAuth.instance.mode,
+      ZhengfangMode.direct,
+      reason: '恢复未证实有效前不得把全局模式切到 WebVPN',
+    );
+  });
+
   group('isAuthExpiredResponse', () {
     test('901/401 与明确登录跳转识别为认证过期；403 不误判', () {
       expect(
