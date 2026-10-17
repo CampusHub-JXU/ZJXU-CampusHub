@@ -21,6 +21,11 @@ internal fun runManagerTests(root: File) {
         println("PASS " + name)
     }
     fun await(l: CountDownLatch) { check(l.await(5, TimeUnit.SECONDS)) { "latch timed out" } }
+    fun drainMain() {
+        val drained = CountDownLatch(1)
+        android.os.Handler(android.os.Looper.getMainLooper()).post { drained.countDown() }
+        await(drained)
+    }
     fun waitUntil(body: () -> Boolean) {
         val end = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
         while (!body()) { check(System.nanoTime() < end) { "condition timed out" }; Thread.sleep(5) }
@@ -207,7 +212,8 @@ internal fun runManagerTests(root: File) {
         c.packageManager.installsAllowed = true; m.onActivityResumed(a)
         waitUntil { task(c).stage == Stage.INSTALLER_LAUNCHED && a.launches == 1 }
         m.onActivityResumed(a)
-        check(task(c).stage == Stage.READY && !task(c).wantsInstall && a.launches == 1)
+        waitUntil { task(c).stage == Stage.READY && !task(c).wantsInstall }
+        check(a.launches == 1)
         val done = CountDownLatch(1)
         m.requestInstall(a, "v1.0") { check(it); done.countDown() }; await(done)
         check(a.launches == 2)
@@ -227,6 +233,39 @@ internal fun runManagerTests(root: File) {
         await(barrier); check(a.launches == 0)
         release.countDown(); await(done)
         check(a.launches == 1 && callbacks == 1)
+    }
+    case("resume_neverBlocksCaller_whileLockHeld_thenRunsOnBackgroundThread") {
+        val c = context(); val m = newManager(c); val a = Activity()
+        m.attachActivity(a); m.startDownload(manual()); file(c); successful(c); m.queryActive()
+        waitUntil { task(c).stage == Stage.READY && task(c).wantsInstall }
+        drainMain(); m.queryActive(); drainMain() // 等 reducer 投递的 scheduleInstaller 在权限缺失时跑完，再放开权限。
+        c.packageManager.installsAllowed = true
+        val lock = AppUpdateManager::class.java.getDeclaredField("mutationLock").apply { isAccessible = true }.get(m)
+        val returned = CountDownLatch(1)
+        synchronized(lock) {
+            // 模拟后台 TaskQueue 正持锁做 DM IPC：主线程入口必须立刻返回，不能排队等锁。
+            Thread { m.onActivityResumed(a); returned.countDown() }.start()
+            await(returned)
+            check(a.launches == 0 && task(c).stage == Stage.READY)
+        }
+        waitUntil { task(c).stage == Stage.INSTALLER_LAUNCHED && a.launches == 1 }
+    }
+    case("resume_droppedWhenActivityPausedBeforeItRuns") {
+        val c = context(); val m = newManager(c); val a = Activity()
+        m.attachActivity(a); m.startDownload(manual()); file(c); successful(c); m.queryActive()
+        waitUntil { task(c).stage == Stage.READY && task(c).wantsInstall }
+        drainMain(); m.queryActive(); drainMain() // 等 reducer 投递的 scheduleInstaller 在权限缺失时跑完，再放开权限。
+        c.packageManager.installsAllowed = true
+        val lock = AppUpdateManager::class.java.getDeclaredField("mutationLock").apply { isAccessible = true }.get(m)
+        synchronized(lock) { m.onActivityResumed(a); m.detachActivity(a) }
+        // 排空后台生命周期队列：被暂停的恢复不得拉起安装器，也不得改动任务。
+        val executor = AppUpdateManager::class.java.getDeclaredField("lifecycleExecutor").apply { isAccessible = true }.get(m)
+            as java.util.concurrent.ExecutorService
+        executor.submit {}.get(5, TimeUnit.SECONDS)
+        val barrier = CountDownLatch(1)
+        android.os.Handler(android.os.Looper.getMainLooper()).post { barrier.countDown() }
+        await(barrier)
+        check(a.launches == 0 && task(c).stage == Stage.READY && task(c).wantsInstall)
     }
     case("manualRecheckDigestFailure_doesNotSwitch") {
         val c = context(); val m = newManager(c); m.startDownload(sampleParams()); file(c); successful(c)

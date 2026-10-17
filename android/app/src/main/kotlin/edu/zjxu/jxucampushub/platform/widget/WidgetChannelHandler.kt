@@ -15,6 +15,7 @@ import edu.zjxu.jxucampushub.widget.CampusWidgetStore
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
 import org.json.JSONObject
+import java.util.concurrent.Executors
 
 /**
  * 桌面组件通道：只接收无凭据快照并请求固定组件。
@@ -29,6 +30,27 @@ class WidgetChannelHandler(private val activity: Activity) {
         private const val TAG = "WidgetChannel"
     }
 
+    // 单线程串行：pushSnapshot（SharedPreferences + 全部实例 RemoteViews 渲染 + 闹钟重排）与
+    // getStatus（AppWidgetManager IPC）不占主线程；保持提交顺序，回复回主线程。
+    private val ioExecutor = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "widget-channel-io").apply { isDaemon = true }
+    }
+
+    private fun runOffMain(result: MethodChannel.Result, work: () -> Any?) {
+        ioExecutor.execute {
+            val outcome = runCatching(work)
+            activity.runOnUiThread {
+                outcome.fold(
+                    onSuccess = { result.success(it) },
+                    onFailure = { error ->
+                        android.util.Log.w(TAG, "channel work failed: ${error.javaClass.simpleName}")
+                        result.error("native_error", error.javaClass.simpleName, null)
+                    },
+                )
+            }
+        }
+    }
+
     fun register(messenger: BinaryMessenger) {
         MethodChannel(messenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
@@ -38,8 +60,8 @@ class WidgetChannelHandler(private val activity: Activity) {
                         result.invalidArgs("snapshot is required")
                         return@setMethodCallHandler
                     }
-                    CampusWidgetStore.store(activity, JSONObject(snapshot).toString())
-                    result.success(null)
+                    val json = JSONObject(snapshot).toString()
+                    runOffMain(result) { CampusWidgetStore.store(activity, json); null }
                 }
 
                 "requestPin" -> {
@@ -59,7 +81,7 @@ class WidgetChannelHandler(private val activity: Activity) {
                     )
                 }
 
-                "getStatus" -> result.success(readStatus())
+                "getStatus" -> runOffMain(result) { readStatus() }
 
                 else -> result.notImplemented()
             }

@@ -25,6 +25,7 @@ import edu.zjxu.jxucampushub.platform.extractShortcutAction
 import edu.zjxu.jxucampushub.platform.requireStringArg
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
+import java.util.concurrent.Executors
 import kotlin.math.roundToInt
 
 /**
@@ -43,6 +44,12 @@ class ShortcutChannelHandler(private val activity: Activity) {
     private var pendingShortcutAction: String? = null
     private var channel: MethodChannel? = null
 
+    // 单线程串行：ShortcutManager IPC 与位图绘制（动态快捷方式同步、遗留清理）不占主线程。
+    // 固定快捷方式请求 / 权限设置页仍在主线程（需 Activity 与 launcher 交互）。
+    private val ioExecutor = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "shortcut-channel-io").apply { isDaemon = true }
+    }
+
     fun captureInitialIntent(intent: Intent?) {
         pendingShortcutAction = extractShortcutAction(intent)
     }
@@ -53,10 +60,20 @@ class ShortcutChannelHandler(private val activity: Activity) {
             return
         }
 
-        val shortcutManager = activity.getSystemService(ShortcutManager::class.java) ?: return
-        shortcutManager.removeDynamicShortcuts(
-            listOf(LEGACY_CAMPUS_CARD_PAYMENT_SHORTCUT_ID),
-        )
+        ioExecutor.execute {
+            try {
+                val shortcutManager = activity.getSystemService(ShortcutManager::class.java)
+                    ?: return@execute
+                shortcutManager.removeDynamicShortcuts(
+                    listOf(LEGACY_CAMPUS_CARD_PAYMENT_SHORTCUT_ID),
+                )
+            } catch (error: Exception) {
+                android.util.Log.w(
+                    "Shortcut",
+                    "legacy shortcut cleanup failed: ${error.javaClass.simpleName}",
+                )
+            }
+        }
     }
 
     fun onNewIntent(intent: Intent) {
@@ -98,7 +115,18 @@ class ShortcutChannelHandler(private val activity: Activity) {
                     "syncDynamicShortcuts" -> {
                         val ids = call.argument<List<String>>("ids") ?: emptyList()
                         val titles = call.argument<List<String>>("titles") ?: emptyList()
-                        result.success(syncDynamicShortcuts(ids, titles))
+                        ioExecutor.execute {
+                            val synced = try {
+                                syncDynamicShortcuts(ids, titles)
+                            } catch (error: Exception) {
+                                android.util.Log.w(
+                                    "Shortcut",
+                                    "syncDynamicShortcuts failed: ${error.javaClass.simpleName}",
+                                )
+                                false
+                            }
+                            activity.runOnUiThread { result.success(synced) }
+                        }
                     }
 
                     "openShortcutPermissionSettings" -> {

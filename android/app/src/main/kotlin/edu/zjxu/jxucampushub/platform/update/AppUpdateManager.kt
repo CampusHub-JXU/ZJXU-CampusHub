@@ -20,7 +20,12 @@ import java.util.concurrent.Executors
 
 /**
  * 状态机的 IO 执行器。所有入口、同步 effect 及结果回灌由 mutationLock 串行化；
- * 先持久化再执行副作用。大文件校验只在单线程 executor，安装器只在主线程。
+ * 先持久化再执行副作用。线程模型：
+ * - 主线程只做 attach/detach（弱引用）、投递任务和拉起安装器，**绝不**为 enter()/dispatch
+ *   等持锁 IO 阻塞（后台持锁做 DownloadManager IPC 时会 ANR）。
+ * - `lifecycleExecutor`（单线程）承载前台恢复 / 中转页校验入口的持锁重活；
+ *   `executor`（单线程）只承载大文件校验。两者互不排队，顺序语义全靠 mutationLock。
+ * - 通道调用由 AppUpdateChannelHandler 的串行 TaskQueue 承载。
  * 下载仍写私有 Download/updates，不注入凭据；不接受外部路径或 downloadId。
  */
 internal class AppUpdateManager private constructor(private val appContext: Context) {
@@ -38,6 +43,9 @@ internal class AppUpdateManager private constructor(private val appContext: Cont
     private val mainHandler = Handler(Looper.getMainLooper())
     private val executor = Executors.newSingleThreadExecutor { r ->
         Thread(r, "app-update-verify").apply { isDaemon = true }
+    }
+    private val lifecycleExecutor = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "app-update-lifecycle").apply { isDaemon = true }
     }
     @Volatile private var activityRef: WeakReference<Activity>? = null
     private val verificationJobs = mutableSetOf<Pair<String, Int>>()
@@ -106,20 +114,44 @@ internal class AppUpdateManager private constructor(private val appContext: Cont
             stateMap(dispatch(Event.SwitchRequested(reason, attempt)))
         }
     }
-    fun onActivityResumed(activity: Activity) = safely {
-        synchronized(mutationLock) {
-            attachActivity(activity)
-            enter()
-            dispatch(Event.Resumed(canRequestPackageInstalls(), isForegroundInstallTarget(activity)))
+    /**
+     * 主线程调用（MainActivity.onResume）：只同步附加 Activity（弱引用、volatile），
+     * enter() 的 PackageManager / DownloadManager 查询与落盘全部投递到 lifecycleExecutor。
+     * 权限与前台状态在持锁后的后台线程里取最新值；真正拉起安装器仍由 scheduleInstaller
+     * 回主线程并再次确认前台。排队期间 Activity 已暂停 / 被替换则丢弃本次恢复——
+     * 下一次 onResume 一定会重新投递，因此不会漏掉对账。
+     */
+    fun onActivityResumed(activity: Activity) {
+        attachActivity(activity)
+        val ref = WeakReference(activity)
+        runInBackground("resume") {
+            val target = ref.get() ?: return@runInBackground
+            safely {
+                synchronized(mutationLock) {
+                    if (activityRef?.get() !== target) return@synchronized
+                    enter()
+                    dispatch(Event.Resumed(canRequestPackageInstalls(), isForegroundInstallTarget(target)))
+                }
+            }
+        }
+    }
+
+    /** 持锁重活的后台入口；异常只记日志，绝不让未捕获异常杀掉进程。 */
+    private fun runInBackground(label: String, block: () -> Unit) {
+        lifecycleExecutor.execute {
+            try { block() } catch (error: Exception) {
+                Log.e(TAG, label + " failed: " + error.javaClass.simpleName + ": " + error.message)
+            }
         }
     }
 
     fun requestInstall(activity: Activity?, expectedReleaseTag: String? = null, callback: (Boolean) -> Unit) {
         requestInstallMatching(activity, null, expectedReleaseTag, callback)
     }
+    /** 中转页 onResume（主线程）调用：持锁的 enter()/dispatch 交 lifecycleExecutor，回调仍回主线程。 */
     fun verifyAndInstall(activity: Activity, requestKey: String?, callback: (Boolean) -> Unit) {
         if (requestKey.isNullOrEmpty()) { mainHandler.post { callback(false) }; return }
-        requestInstallMatching(activity, requestKey, null, callback)
+        runInBackground("verifyAndInstall") { requestInstallMatching(activity, requestKey, null, callback) }
     }
     private fun requestInstallMatching(activity: Activity?, key: String?, tag: String?, callback: (Boolean) -> Unit) {
         // 存储失败、取消和主线程回调可能交错；公共 callback 也只完成一次。
@@ -139,7 +171,11 @@ internal class AppUpdateManager private constructor(private val appContext: Cont
                 installTargets[identity] = activity?.let { WeakReference(it) }
                 dispatch(Event.InstallRequested(manual = true))
             }
-        } catch (_: AppUpdateException) { mainHandler.post { reply(false) } }
+        } catch (error: Exception) {
+            // 任何异常都要恰好回复一次（reply 已做单次守卫）；中转页不能卡在 verifying。
+            if (error !is AppUpdateException) Log.e(TAG, "requestInstall failed: " + error.javaClass.simpleName)
+            mainHandler.post { reply(false) }
+        }
     }
 
     /** goAsync 只覆盖同步观察/转移；耗时校验另交 executor，广播无需等待。 */

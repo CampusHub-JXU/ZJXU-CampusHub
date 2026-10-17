@@ -35,10 +35,10 @@ class AppUpdateChannelHandler internal constructor(
                         AppUpdateContract.METHOD_SWITCH_SOURCE -> result.success(manager.switchSource(requiredString(call, "reason"),
                             (call.argument<Any?>("attempt") as? Number)?.toInt() ?: invalid()))
                         AppUpdateContract.METHOD_REQUEST_INSTALL -> {
+                            // 已在串行后台 TaskQueue：持锁的 enter()/dispatch 不占主线程；
+                            // 安装器由 manager 内部回主线程拉起，回调也已投回主线程。
                             val tag = optionalString(call, "expectedReleaseTag")
-                            mainHandler.post {
-                                guarded(result) { manager.requestInstall(activity, tag) { result.success(it) } }
-                            }
+                            manager.requestInstall(activity, tag) { result.success(it) }
                         }
                         AppUpdateContract.METHOD_OPEN_INSTALL_PERMISSION_SETTINGS -> mainHandler.post {
                             guarded(result) { result.success(manager.openInstallPermissionSettings(activity)) }
