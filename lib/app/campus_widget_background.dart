@@ -11,6 +11,7 @@ import '../core/auth/auth_recovery_state_store.dart';
 import '../core/auth/auth_session_persistence.dart';
 import '../core/auth/automatic_login.dart';
 import '../core/auth/background_auth_context.dart';
+import '../core/auth/background_auth_run.dart';
 import '../core/auth/background_session_gate.dart';
 import '../core/auth/credential_store.dart';
 import '../core/auth/unified_auth.dart';
@@ -85,8 +86,31 @@ class CampusWidgetBackground {
       AppLogger.instance.network(LogLevel.info, '桌面组件后台刷新: 未放置组件，跳过');
       return true;
     }
-    final claim = await _gate.tryClaim();
-    if (claim == null) {
+    var outcome = WidgetRefreshOutcome.error;
+    var ok = false;
+    BackgroundAuthRunResult<bool>? run;
+    try {
+      // 申领 / 让位轮询 / 总预算 / 释放全部由共享原语负责（与通知恢复同一实现）。
+      // 两域 epoch 在 [_restoreCaches] 里、首次触碰会话之前钉住。
+      run = await BackgroundAuthRun.execute<bool>(
+        gate: _gate,
+        label: '桌面组件后台刷新',
+        body: (session) => _runClaimed(
+          session,
+          cacheOnly: cacheOnly,
+          setOutcome: (value) => outcome = value,
+        ),
+      );
+      ok = run.value ?? false;
+    } catch (error, stack) {
+      AppLogger.instance.network(
+        LogLevel.warn,
+        '桌面组件后台刷新异常',
+        error: error,
+        stackTrace: stack,
+      );
+    }
+    if (run != null && !run.claimed) {
       if (cacheOnly) return true;
       if (await _gate.isForegroundActive()) {
         await _recordSafely(WidgetRefreshOutcome.skippedForeground, startedAt);
@@ -97,92 +121,72 @@ class CampusWidgetBackground {
       AppLogger.instance.network(LogLevel.info, '桌面组件后台刷新: 申领被占用，稍后重试');
       return false;
     }
-    final context = BackgroundAuthContext(
-      mayContinue: () async => !await _gate.shouldYield(claim),
-    );
-    var outcome = WidgetRefreshOutcome.error;
-    var sessionTouched = false;
-    final poll = Timer.periodic(const Duration(seconds: 2), (_) {
-      unawaited(context.allowed());
-    });
-    final budget = Timer(
-      const Duration(seconds: 105),
-      () => context.cancelToken.cancel('widget budget'),
-    );
-    try {
-      return await context.run(() async {
-        if (!await context.allowed()) {
-          outcome = WidgetRefreshOutcome.skippedForeground;
-          return true;
-        }
-        await _restore();
-        final results = <WidgetRefreshOutcome>[];
-        if (!cacheOnly) {
-          if (!await _online()) {
-            results.add(WidgetRefreshOutcome.offline);
-          } else {
-            for (final refresh in _refreshers) {
-              if (!await context.allowed()) break;
-              sessionTouched = true;
-              try {
-                results.add(await refresh());
-              } catch (error, stack) {
-                AppLogger.instance.network(
-                  LogLevel.warn,
-                  '桌面组件后台数据刷新失败，保留缓存',
-                  error: error,
-                  stackTrace: stack,
-                );
-                results.add(
-                  error is AcademicSessionExpired ||
-                          error is AcademicAuthExpiredException
-                      ? WidgetRefreshOutcome.authFailed
-                      : WidgetRefreshOutcome.error,
-                );
-              }
-            }
+    if (run != null && run.timedOut) {
+      AppLogger.instance.network(LogLevel.warn, '桌面组件后台刷新: 预算耗尽，放弃本轮');
+    }
+    if (!cacheOnly) await _recordSafely(outcome, startedAt);
+    AppLogger.instance.network(LogLevel.info, '桌面组件后台刷新: ${outcome.name}');
+    return ok;
+  }
+
+  Future<bool> _runClaimed(
+    BackgroundAuthRun run, {
+    required bool cacheOnly,
+    required void Function(WidgetRefreshOutcome) setOutcome,
+  }) async {
+    final context = run.context;
+    if (!await context.allowed()) {
+      setOutcome(WidgetRefreshOutcome.skippedForeground);
+      return true;
+    }
+    await _restore();
+    final results = <WidgetRefreshOutcome>[];
+    if (!cacheOnly) {
+      if (!await _online()) {
+        results.add(WidgetRefreshOutcome.offline);
+      } else {
+        for (final refresh in _refreshers) {
+          if (!await context.allowed()) break;
+          // refreshed 仅要求前台重载两域持久状态，不推断登录成功。
+          run.recordChange(BackgroundSessionChangeKind.refreshed);
+          try {
+            results.add(await refresh());
+          } catch (error, stack) {
+            AppLogger.instance.network(
+              LogLevel.warn,
+              '桌面组件后台数据刷新失败，保留缓存',
+              error: error,
+              stackTrace: stack,
+            );
+            results.add(
+              error is AcademicSessionExpired ||
+                      error is AcademicAuthExpiredException
+                  ? WidgetRefreshOutcome.authFailed
+                  : WidgetRefreshOutcome.error,
+            );
           }
         }
-        if (!await context.allowed()) {
-          outcome = await _gate.isForegroundActive()
-              ? WidgetRefreshOutcome.skippedForeground
-              : WidgetRefreshOutcome.error;
-          return true;
-        }
-        final pushed = await _push();
-        final summary = summarizeWidgetRefresh(results);
-        // 推送失败时，若刷新本身已有明确原因（登录失败 / 离线）就保留它，
-        // 只有刷新成功却没推出去才记 error。
-        final refreshSucceeded =
-            summary == WidgetRefreshOutcome.ok ||
-            summary == WidgetRefreshOutcome.partial;
-        outcome = pushed || !refreshSucceeded
-            ? summary
-            : WidgetRefreshOutcome.error;
-        return pushed;
-      });
-    } catch (error, stack) {
-      AppLogger.instance.network(
-        LogLevel.warn,
-        '桌面组件后台刷新异常',
-        error: error,
-        stackTrace: stack,
-      );
-      return false;
-    } finally {
-      poll.cancel();
-      budget.cancel();
-      if (!context.cancelToken.isCancelled) {
-        context.cancelToken.cancel('widget finished');
       }
-      // refreshed 仅要求前台重载两域持久状态，不推断登录成功。
-      await _gate.release(
-        claim,
-        change: sessionTouched ? BackgroundSessionChangeKind.refreshed : null,
-      );
-      if (!cacheOnly) await _recordSafely(outcome, startedAt);
-      AppLogger.instance.network(LogLevel.info, '桌面组件后台刷新: ${outcome.name}');
     }
+    if (!await context.allowed()) {
+      setOutcome(
+        await _gate.isForegroundActive()
+            ? WidgetRefreshOutcome.skippedForeground
+            : WidgetRefreshOutcome.error,
+      );
+      return true;
+    }
+    final pushed = await _push();
+    final summary = summarizeWidgetRefresh(results);
+    // 推送失败时，若刷新本身已有明确原因（登录失败 / 离线）就保留它，
+    // 只有刷新成功却没推出去才记 error。
+    final refreshSucceeded =
+        summary == WidgetRefreshOutcome.ok ||
+        summary == WidgetRefreshOutcome.partial;
+    setOutcome(
+      pushed || !refreshSucceeded ? summary : WidgetRefreshOutcome.error,
+    );
+    return pushed;
   }
 
   Future<int?> _installedWidgetsOrNull() async {
@@ -231,25 +235,11 @@ WidgetRefreshOutcome summarizeWidgetRefresh(
 
 bool _themeRestored = false;
 Future<void> _restoreCaches() async {
-  final context = BackgroundAuthContext.current!;
-  context.expectedEpochs[AuthRecoveryDomain.academic.wireName] =
-      (await AuthSessionPersistence.instance.read(
-        CredentialSessionDomain.academic,
-      )).epoch;
-  context.expectedEpochs[AuthRecoveryDomain.cas.wireName] =
-      (await AuthSessionPersistence.instance.read(
-        CredentialSessionDomain.unified,
-      )).epoch;
-  context.expectedAccounts[AuthRecoveryDomain.academic.wireName] =
-      (await AuthSessionPersistence.instance.read(
-        CredentialSessionDomain.academic,
-      )).account ??
-      (await CredentialStore.instance.loadCredentials())?.$1;
-  context.expectedAccounts[AuthRecoveryDomain.cas.wireName] =
-      (await AuthSessionPersistence.instance.read(
-        CredentialSessionDomain.unified,
-      )).account ??
-      (await CredentialStore.instance.loadUnifiedAuthCredentials())?.$1;
+  // 与通知恢复共用的钉住实现：两域起始 epoch / 账号，早于任何会话读写。
+  await pinBackgroundSessions(BackgroundAuthContext.current!, const {
+    AuthRecoveryDomain.academic,
+    AuthRecoveryDomain.cas,
+  });
   await (await SharedPreferences.getInstance()).reload();
   await NetworkSettings.instance.ensureInitialized();
   await DioClient.instance.ensureInitialized();

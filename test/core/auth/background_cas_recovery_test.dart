@@ -6,8 +6,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jxu_campus_hub/core/auth/auth_operation_coordinator.dart';
 import 'package:jxu_campus_hub/core/auth/auth_session_persistence.dart';
 import 'package:jxu_campus_hub/core/auth/automatic_login.dart';
+import 'package:jxu_campus_hub/core/auth/background_auth_context.dart';
 import 'package:jxu_campus_hub/core/auth/background_cas_recovery.dart';
 import 'package:jxu_campus_hub/core/auth/background_session_gate.dart';
+import 'package:jxu_campus_hub/core/auth/credential_store.dart';
 
 const _committed = AutomaticLoginAttemptResult(
   outcome: AutomaticLoginOutcome.committed,
@@ -40,11 +42,14 @@ void main() {
     bool loggedIn = false,
     bool? validated = false,
     Duration overallBudget = const Duration(seconds: 75),
+    Duration hardStopGrace = const Duration(seconds: 8),
     int? epoch = 7,
     Future<AutomaticLoginAttemptResult> Function(String, CancelToken)? attempt,
   }) => BackgroundCasRecovery.debugNew(
     gate: gate,
     readEpoch: () async => epoch,
+    pinReader: (_) async => (epoch: epoch ?? 0, account: account),
+    hardStopGrace: hardStopGrace,
     eligibility: (_) async => decision,
     credentialAccount: () async => account,
     restoreSession: () async {},
@@ -211,4 +216,89 @@ void main() {
     ).recover();
     expect(seen.isCancelled, isTrue);
   });
+
+  test(
+    'notice path runs inside a BackgroundAuthContext pinned at claim time',
+    () async {
+      BackgroundAuthContext? seen;
+      int? pinnedEpoch;
+      String? pinnedAccount;
+      final result = await build(
+        loggedIn: true,
+        validated: false,
+        epoch: 5,
+        attempt: (a, t) async {
+          seen = BackgroundAuthContext.current;
+          pinnedEpoch = seen?.pinnedEpoch(CredentialSessionDomain.unified);
+          pinnedAccount = seen?.expectedAccounts['cas'];
+          expect(identical(seen?.cancelToken, t), isTrue);
+          return _committed;
+        },
+      ).recover();
+      expect(result, BackgroundRecoveryResult.recovered);
+      expect(seen, isNotNull);
+      expect(pinnedEpoch, 5);
+      expect(pinnedAccount, '2020001');
+    },
+  );
+
+  test(
+    'a session re-logged-in after the claim is not recorded as revoked',
+    () async {
+      // 本轮钉住 epoch 7；前台随后重新登录把磁盘 epoch 推进到 9：
+      // revoked 记录不得带上 9（否则前台会把新会话当成「被撤销的那个」）。
+      var diskEpoch = 7;
+      final recovery = BackgroundCasRecovery.debugNew(
+        gate: gate,
+        readEpoch: () async => diskEpoch,
+        pinReader: (_) async => (epoch: 7, account: '2020001'),
+        eligibility: (_) async => AuthRecoveryDecision.proceed,
+        credentialAccount: () async => '2020001',
+        restoreSession: () async {},
+        isLoggedIn: () => true,
+        currentAccount: () => '2020001',
+        validateSession: () async => false,
+        attempt: (a, t) async {
+          diskEpoch = 9;
+          return const AutomaticLoginAttemptResult(
+            outcome: AutomaticLoginOutcome.failed,
+          );
+        },
+      );
+      await recovery.recover();
+      final change = await gate.enterForeground(waitForClaim: Duration.zero);
+      gate.stopHeartbeat();
+      expect(change?.kind, BackgroundSessionChangeKind.revoked);
+      expect(change?.epoch, isNull);
+      expect(
+        change!.revokedStillApplies(currentAccount: '2020001', currentEpoch: 9),
+        isFalse,
+      );
+    },
+  );
+
+  test(
+    'an attempt that ignores cancellation is abandoned and released',
+    () async {
+      final never = Completer<AutomaticLoginAttemptResult>();
+      final stopwatch = Stopwatch()..start();
+      final result = await build(
+        loggedIn: true,
+        validated: false,
+        overallBudget: const Duration(milliseconds: 50),
+        hardStopGrace: const Duration(milliseconds: 50),
+        attempt: (a, t) => never.future,
+      ).recover();
+      stopwatch.stop();
+      expect(result, BackgroundRecoveryResult.failed);
+      expect(stopwatch.elapsed, lessThan(const Duration(seconds: 2)));
+      // 申领已释放，且留下 revoked 记录。
+      final claim = await gate.tryClaim();
+      expect(claim, isNotNull);
+      await gate.release(claim!);
+      final change = await gate.enterForeground(waitForClaim: Duration.zero);
+      gate.stopHeartbeat();
+      expect(change?.kind, BackgroundSessionChangeKind.revoked);
+    },
+  );
 }

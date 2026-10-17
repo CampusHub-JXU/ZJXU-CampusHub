@@ -586,6 +586,15 @@ class DormElectricityBackground {
   /// 恢复不出可信账号一律 fail closed。主引擎前台的调度 / 取消路径
   /// （[ensureScheduled] / [reRegisterIfNeeded] / 身份对账）不得使用本方法，
   /// 以免在登出持久撤销竞态中复活旧身份。
+  ///
+  /// **为何不经 `BackgroundSessionGate` 申领**（评审 #6 结论）：`restoreSession`
+  /// 在 `syncWebViewCookies: false` 下只读安全存储里的会话元数据并改**本 isolate
+  /// 自己的**内存身份——不触网、不读写 CookieJar、不推进或写入持久 epoch、不登录、
+  /// 不碰 WebView；整个后台检查也只读 prefs 缓存（epay100 查询依赖前台 WebView）。
+  /// 门保护的是「两个 isolate 同时写 Cookie / 会话」，这里没有可保护的写入；
+  /// 反而若前台活跃就让位，会白白丢掉低电量提醒。身份是否仍可信由本文件已有的
+  /// owner 标记 + sessionRevision + prefs.reload 多次复核（fail closed）负责。
+  /// 日后若这里引入联网、Cookie 或自动登录，必须改走 `BackgroundAuthRun`。
   Future<String?> _resolveVerifiedOwner() async {
     final auth = UnifiedAuthService.instance;
     final current = auth.verifiedAccount;

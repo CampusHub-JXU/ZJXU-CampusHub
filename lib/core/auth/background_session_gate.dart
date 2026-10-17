@@ -275,6 +275,13 @@ class BackgroundSessionGate {
     _heartbeat = null;
   }
 
+  /// 本 isolate 是否正在发前台心跳（即主引擎且应用在前台）。
+  ///
+  /// 既能在前台、也能在 WorkManager isolate 调用的入口（如第二课堂监控）据此
+  /// 区分：前台宿主自己就是心跳的发布者，不能（也不需要）向门申领；后台 isolate
+  /// 从不启动心跳，必须先申领。
+  bool get isForegroundHost => _heartbeat != null;
+
   // ── 后台侧 ────────────────────────────────────────────────────────
 
   /// 前台心跳是否新鲜（读盘失败按「新鲜」处理：fail closed，不去抢）。
