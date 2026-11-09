@@ -224,9 +224,10 @@ class AppBootstrapController {
         AuthRecoveryDomain.academic => ZhengfangAuth.instance.currentStudentId,
       };
       final outcome = await attempt(domain, expectedAccount: expectedAccount);
-      AppLogger.instance.log(
+      // 用 auth 类记录：release 包也会进入内存中的登录诊断轨迹，便于用户下次
+      // 「复制登录诊断日志」时看出是 committed / notEligible / cooldown / failed。
+      AppLogger.instance.auth(
         LogLevel.info,
-        LogCategory.general,
         '静默自动登录（${domain.wireName}）：${outcome.name}',
       );
     } catch (error, stackTrace) {

@@ -1,9 +1,11 @@
 ﻿import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:jxu_campus_hub/core/logging/app_logger.dart';
 
 void main() {
   setUp(() {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
     AppLogger.instance.debugReset();
   });
 
@@ -134,5 +136,63 @@ void main() {
     final trail = AppLogger.instance.authTrail;
     expect(trail, hasLength(AppLogger.authTrailCapacity));
     expect(trail.first.message, 'trail-3');
+  });
+
+  test('diagnostic report includes metadata, auth trail and non-auth logs', () {
+    AppLogger.instance.auth(LogLevel.info, 'auth-line password=secret');
+    AppLogger.instance.log(
+      LogLevel.warn,
+      LogCategory.network,
+      'network-line sid=2025000123',
+      force: true,
+    );
+
+    final report = AppLogger.instance.formatDiagnosticReport(
+      appVersion: '1.2.3+4',
+    );
+
+    expect(report, contains('# JXU 完整诊断日志'));
+    expect(report, contains('- 应用：1.2.3+4'));
+    expect(report, contains('## 认证轨迹（1 条）'));
+    expect(report, contains('auth-line'));
+    expect(report, contains('## 最近日志（非认证，1 条）'));
+    expect(report, contains('network-line'));
+    expect(report, isNot(contains('password=secret')));
+    expect(report, isNot(contains('2025000123')));
+    // 认证条目只出现在 AUTH TRAIL，不在非认证区重复。
+    expect('auth-line'.allMatches(report).length, 1);
+  });
+
+  test('buildDiagnosticReport falls back to the in-memory report', () async {
+    AppLogger.instance.auth(LogLevel.info, 'async-report-line');
+
+    final report = await AppLogger.instance.buildDiagnosticReport(
+      appVersion: '9.9.9+1',
+    );
+
+    expect(report, contains('- 应用：9.9.9+1'));
+    expect(report, contains('async-report-line'));
+  });
+
+  test('diagnostic capture switch persists in shared preferences', () async {
+    expect(AppLogger.instance.diagnosticCapture.value, isFalse);
+
+    await AppLogger.instance.setDiagnosticCapture(true);
+    expect(AppLogger.instance.diagnosticCapture.value, isTrue);
+    expect(
+      (await SharedPreferences.getInstance()).getBool(
+        'app_logger_diagnostic_capture',
+      ),
+      isTrue,
+    );
+
+    await AppLogger.instance.setDiagnosticCapture(false);
+    expect(AppLogger.instance.diagnosticCapture.value, isFalse);
+    expect(
+      (await SharedPreferences.getInstance()).getBool(
+        'app_logger_diagnostic_capture',
+      ),
+      isFalse,
+    );
   });
 }

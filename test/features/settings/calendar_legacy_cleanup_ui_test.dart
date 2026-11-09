@@ -134,7 +134,7 @@ void main() {
     await revealSyncRow(tester);
 
     expect(find.text('扫描遗留日程'), findsOneWidget);
-    expect(find.text('只读扫描带当前应用标记的遗留日程，不会删除任何日程'), findsOneWidget);
+    expect(find.text('只读扫描，不会删除'), findsOneWidget);
 
     await tester.tap(find.text('扫描遗留日程'));
     await tester.pumpAndSettle();

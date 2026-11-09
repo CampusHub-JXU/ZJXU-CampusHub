@@ -44,6 +44,8 @@ final CaptchaRecognizer defaultCaptchaRecognizer =
 ///
 /// 对应原生通道 `edu.zjxu.jxucampushub/captcha_ocr` 的 `recognize` 方法，
 /// 参数 `bytes` + `expectedLength`，返回候选列表（每项 `text` / `confidence`）。
+/// 同一 isolate 内的调用在本类串行化：原生插件只有一个识别槽位，并发调用会
+/// 被立即回 `busy`，排队才能让统一认证 / 教务的自动登录同时进行。
 class MethodChannelCaptchaRecognizer implements CaptchaRecognizer {
   MethodChannelCaptchaRecognizer({
     MethodChannel? channel,
@@ -67,16 +69,39 @@ class MethodChannelCaptchaRecognizer implements CaptchaRecognizer {
   final Duration timeout;
   final double minimumConfidence;
 
+  /// 原生插件是单槽位（同一时刻只接受一个识别，重复请求立即回 `busy`），
+  /// 而冷启动会同时为统一认证与教务发起自动登录。这里在 Dart 侧串行化，
+  /// 让后一个识别排队等待，而不是被 `busy` 直接判失败。
+  ///
+  /// 队尾只表示「上一次 Dart 调用已结束」；单次调用仍受 [timeout] 约束，
+  /// 不会无限阻塞后续调用。
+  static Future<void> _serial = Future<void>.value();
+
   @override
   Future<CaptchaRecognition?> recognize(
     Uint8List bytes, {
     required int expectedLength,
   }) async {
-    // 空/超限输入与不支持的位数直接拒绝，不占用平台资源。
+    // 空/超限输入与不支持的位数直接拒绝，不占用平台资源，也不进入队列。
     if (bytes.isEmpty) return null;
     if (bytes.length > maxInputBytes) return null;
     if (!supportedLengths.contains(expectedLength)) return null;
 
+    final release = Completer<void>();
+    final previous = _serial;
+    _serial = release.future;
+    await previous;
+    try {
+      return await _recognizeSerialized(bytes, expectedLength);
+    } finally {
+      release.complete();
+    }
+  }
+
+  Future<CaptchaRecognition?> _recognizeSerialized(
+    Uint8List bytes,
+    int expectedLength,
+  ) async {
     try {
       final raw = await _channel
           .invokeMethod<Object?>(methodRecognize, <String, Object?>{

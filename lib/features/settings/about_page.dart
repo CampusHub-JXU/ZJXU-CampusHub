@@ -1,7 +1,13 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../core/logging/app_logger.dart';
 import '../../core/perf/frame_timing_collector.dart';
@@ -47,6 +53,76 @@ class AboutPage extends StatelessWidget {
       AppFeedback.toastOn(messenger, '登录诊断日志已复制');
     } on PlatformException {
       AppFeedback.toastOn(messenger, '复制失败');
+    }
+  }
+
+  Future<String> _buildDiagnosticReport() async {
+    var appVersion = 'unknown';
+    try {
+      final info = await PackageInfo.fromPlatform();
+      appVersion = '${info.appName} v${info.version}+${info.buildNumber}';
+    } catch (_) {
+      // 版本信息不可用时仍导出其余内容。
+    }
+    return AppLogger.instance.buildDiagnosticReport(appVersion: appVersion);
+  }
+
+  /// 导出 Markdown 文件并打开系统分享；分享不可用时回退为复制全文。
+  ///
+  /// 文件只写到应用临时目录，不经过网络，也不自动上传。
+  Future<void> _exportDiagnosticReport(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    String? report;
+    try {
+      report = await _buildDiagnosticReport();
+      final directory = await getTemporaryDirectory();
+      final fileName = _diagnosticFileName(DateTime.now());
+      final file = File('${directory.path}/$fileName');
+      // 报告最多几百条日志，单次同步写入；导出是用户主动操作，不在热路径。
+      file.writeAsStringSync(report, flush: true);
+      final result = await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(file.path, mimeType: 'text/markdown')],
+          fileNameOverrides: [fileName],
+          subject: 'JXU 诊断日志',
+          text: 'JXU 完整诊断日志（Markdown）',
+        ),
+      );
+      if (result.status == ShareResultStatus.unavailable) {
+        await _copyDiagnosticFallback(messenger, report);
+      }
+    } catch (error, stackTrace) {
+      AppLogger.instance.log(
+        LogLevel.warn,
+        LogCategory.general,
+        '导出诊断日志失败',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      if (report != null) {
+        await _copyDiagnosticFallback(messenger, report);
+      } else {
+        AppFeedback.toastOn(messenger, '导出失败，请重试');
+      }
+    }
+  }
+
+  String _diagnosticFileName(DateTime now) {
+    String two(int value) => value.toString().padLeft(2, '0');
+    return 'JXU-diagnostics-${now.year}${two(now.month)}${two(now.day)}-'
+        '${two(now.hour)}${two(now.minute)}${two(now.second)}'
+        '${now.millisecond.toString().padLeft(3, '0')}.md';
+  }
+
+  Future<void> _copyDiagnosticFallback(
+    ScaffoldMessengerState messenger,
+    String report,
+  ) async {
+    try {
+      await Clipboard.setData(ClipboardData(text: report));
+      AppFeedback.toastOn(messenger, '系统分享不可用，已复制到剪贴板');
+    } catch (_) {
+      AppFeedback.toastOn(messenger, '导出失败，请重试');
     }
   }
 
@@ -162,6 +238,31 @@ class AboutPage extends StatelessWidget {
                 subtitle: '已脱敏，不含密码与验证码',
                 showChevron: false,
                 onTap: () => _copyAuthTrail(context),
+              ),
+              PlainListRow(
+                title: '导出诊断日志',
+                subtitle: 'Markdown 文件，含登录轨迹与最近日志',
+                showChevron: false,
+                onTap: () => _exportDiagnosticReport(context),
+              ),
+              ValueListenableBuilder<bool>(
+                valueListenable: AppLogger.instance.diagnosticCapture,
+                builder: (context, capture, child) {
+                  final active = AppLogger.instance.diagnosticCaptureActive;
+                  return PlainSwitchRow(
+                    title: '记录完整诊断日志',
+                    subtitle: kDebugMode
+                        ? 'Debug 构建默认记录；Release 可手动开启'
+                        : active
+                        ? '已开启：保留更多网络与启动日志'
+                        : '默认关闭：开启后导出内容更完整',
+                    value: active,
+                    enabled: !kDebugMode,
+                    onChanged: (value) => unawaited(
+                      AppLogger.instance.setDiagnosticCapture(value),
+                    ),
+                  );
+                },
               ),
               // 性能诊断是内部工具：未以 --dart-define 启用时整行不出现。
               if (kPerfDiagnosticsEnabled)

@@ -321,4 +321,20 @@ void main() {
 
     expect(find.text('离线缓存已清除'), findsNothing);
   });
+
+  testWidgets('360 宽 / 2 倍字号下设置页不溢出', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3;
+    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    await pumpPage(tester, const SettingsPage());
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+
+    await tester.scrollUntilVisible(find.text('关于与诊断'), 300);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
 }

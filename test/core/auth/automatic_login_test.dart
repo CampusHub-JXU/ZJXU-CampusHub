@@ -64,7 +64,8 @@ class _FakeRecognizer implements CaptchaRecognizer {
 
 /// CAS（统一认证）最小假传输：登录页 / 验证码 / 登录提交。
 class _FakeCasAdapter extends MockHttpClientAdapter {
-  _FakeCasAdapter() {
+  _FakeCasAdapter({List<String>? loginBodies})
+    : _loginBodies = loginBodies ?? const <String>['<html>登录中</html>'] {
     register('GET', '/cas/login', (options) async {
       return ResponseBody.fromString(
         '<html><form id="fm1" action="/cas/login">'
@@ -78,6 +79,7 @@ class _FakeCasAdapter extends MockHttpClientAdapter {
       );
     });
     register('GET', '/cas/captcha.html', (options) async {
+      captchaGets++;
       return ResponseBody.fromBytes(
         _png,
         200,
@@ -87,9 +89,12 @@ class _FakeCasAdapter extends MockHttpClientAdapter {
       );
     });
     register('POST', '/cas/login', (options) async {
+      final index = loginPosts < _loginBodies.length
+          ? loginPosts
+          : _loginBodies.length - 1;
       loginPosts++;
       return ResponseBody.fromString(
-        '<html>登录中</html>',
+        _loginBodies[index],
         200,
         headers: <String, List<String>>{
           Headers.contentTypeHeader: <String>['text/html; charset=utf-8'],
@@ -98,7 +103,9 @@ class _FakeCasAdapter extends MockHttpClientAdapter {
     });
   }
 
+  final List<String> _loginBodies;
   int loginPosts = 0;
+  int captchaGets = 0;
 }
 
 /// 教务（正方）最小假传输：登录页 + 验证码（本测试只走到 OCR 前）。
@@ -381,7 +388,7 @@ void main() {
     expect(result.receipt, isNull, reason: '无真实提交不得携带 receipt');
   });
 
-  test('OCR 返回 null：按域固定长度只识别一次并瞬时退避，不涨身份失败', () async {
+  test('OCR 返回 null：每张验证码只识别一次，换新验证码重试一次后瞬时退避', () async {
     final adapter = _FakeCasAdapter();
     DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
     recognizer = _FakeRecognizer(answer: null);
@@ -392,8 +399,12 @@ void main() {
     final outcome = await service.attempt(AuthRecoveryDomain.cas);
 
     expect(outcome, AutomaticLoginOutcome.failed);
-    expect(recognizer.lengths, <int>[4], reason: '不做第二次长度尝试');
+    expect(recognizer.lengths, <int>[
+      4,
+      4,
+    ], reason: '每张图固定 4 位、只识别一次；未识别时换新图重试一次');
     expect(adapter.loginPosts, 0, reason: '未识别不得提交登录');
+    expect(adapter.captchaGets, 2, reason: '重试必须换一张全新验证码');
     final record = await AuthRecoveryStateStore.instance.read(
       AuthRecoveryDomain.cas,
     );
@@ -401,7 +412,33 @@ void main() {
     expect(record.cooldownUntil, isNotNull, reason: '瞬时失败必须退避');
   });
 
-  test('教务域使用固定 6 位且只识别一次', () async {
+  test('验证码被服务端拒绝后换新验证码重试，第二次提交成功', () async {
+    final adapter = _FakeCasAdapter(
+      loginBodies: <String>[
+        '<html><div id="msg">验证码错误!</div></html>',
+        '<html>登录中</html>',
+      ],
+    );
+    DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
+    recognizer = _FakeRecognizer(answer: '1234');
+    service = AutomaticLoginService.debugNew(recognizer: recognizer);
+    await CredentialStore.instance.saveUnifiedAuthCredentials('A', 'pw');
+    await enableCasOptIn();
+
+    final result = await service.attemptWithReceipt(AuthRecoveryDomain.cas);
+
+    expect(result.outcome, AutomaticLoginOutcome.committed);
+    expect(result.receipt, isNotNull);
+    expect(adapter.loginPosts, 2, reason: '第一张验证码被拒后只再提交一次');
+    expect(adapter.captchaGets, 2, reason: '重试使用全新验证码');
+    expect(recognizer.lengths, <int>[4, 4]);
+    final record = await AuthRecoveryStateStore.instance.read(
+      AuthRecoveryDomain.cas,
+    );
+    expect(record.failureCount, 0, reason: '验证码拒绝不是身份失败');
+  });
+
+  test('教务域使用固定 6 位；未识别时换新验证码重试一次', () async {
     DioClient.instance.dio.httpClientAdapter = _FakeAcademicAdapter();
     recognizer = _FakeRecognizer(answer: null);
     service = AutomaticLoginService.debugNew(recognizer: recognizer);
@@ -411,7 +448,10 @@ void main() {
     final outcome = await service.attempt(AuthRecoveryDomain.academic);
 
     expect(outcome, AutomaticLoginOutcome.failed);
-    expect(recognizer.lengths, <int>[6], reason: '教务固定 6 位，只识别一次');
+    expect(recognizer.lengths, <int>[
+      6,
+      6,
+    ], reason: '教务固定 6 位，每张图只识别一次；未识别时换新图重试一次');
     final record = await AuthRecoveryStateStore.instance.read(
       AuthRecoveryDomain.academic,
     );
@@ -556,6 +596,12 @@ void main() {
         await service.attempt(AuthRecoveryDomain.cas),
         AutomaticLoginOutcome.failed,
       );
+      expect(
+        adapter.requestLog.where((entry) => entry == 'POST /cas/login').length,
+        1,
+        reason: '密码错误不得换验证码重试',
+      );
+      expect(adapter.captchaGets, 1);
       final record = await AuthRecoveryStateStore.instance.read(
         AuthRecoveryDomain.cas,
       );

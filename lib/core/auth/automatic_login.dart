@@ -89,9 +89,10 @@ class _AutomaticLoginFlight {
 /// 提交；互斥/资格/退避/条件提交全部由 [AuthOperationCoordinator.runAutomatic]
 /// 负责，本类**不**另造锁或提交路径。
 ///
-/// 验证码位数按域固定：CAS（统一认证）= 4 位，教务（正方）= 6 位。每个
-/// challenge 只调用一次 OCR；返回 null 即判瞬时失败退避，不做第二次长度尝试、
-/// 不发额外网络请求。
+/// 验证码位数按域固定：CAS（统一认证）= 4 位，教务（正方）= 6 位。每张
+/// challenge 只调用一次 OCR、只提交一次；未识别或被服务端判验证码错误时，
+/// 同一自动事务内最多换一张新验证码重试（见 [maxCaptchaChallenges]），
+/// 仍失败才按瞬时失败退避。绝不对同一张图做第二次长度尝试。
 ///
 /// 后台由 BackgroundAuthContext 绑定申领与让位取消；跨 isolate CookieJar 竞争仍未消除。
 class AutomaticLoginService {
@@ -142,6 +143,14 @@ class AutomaticLoginService {
 
   /// 教务（正方）验证码固定 6 位。
   static const int academicCaptchaLength = 6;
+
+  /// 单个自动事务内最多准备的验证码数量。
+  ///
+  /// **每个 challenge 仍然只 OCR 一次、只提交一次**，绝不复用旧 challenge，
+  /// 也不对同一张图做第二次长度尝试。只有「OCR 未识别」或服务端明确判验证码
+  /// 错误时，才换一张**全新**验证码重试；密码错误、网络/协议失败一律不重试。
+  /// 上限 2 防止无界循环，整个事务仍受交换 deadline 与调用方取消约束。
+  static const int maxCaptchaChallenges = 2;
 
   /// 尝试一次静默自动登录，只返回结果枚举（兼容既有调用方）。
   ///
@@ -350,7 +359,10 @@ class AutomaticLoginService {
     }
   }
 
-  /// 每域一次交换：prepare → 固定位数 OCR → 带 ticket 的真实 challenge 提交。
+  /// 每域一次交换：最多准备 [maxCaptchaChallenges] 张验证码。
+  ///
+  /// 每张验证码只 prepare / OCR / submit 各一次；OCR 未识别或验证码被服务端
+  /// 明确拒绝时换一张新验证码，其余失败立即返回，不重复提交凭据。
   Future<_AutomaticExchangeResult> _exchange(
     AuthRecoveryDomain domain, {
     required String account,
@@ -360,89 +372,153 @@ class AutomaticLoginService {
   }) async {
     switch (domain) {
       case AuthRecoveryDomain.cas:
-        final challenge = await UnifiedAuthService.instance
-            .prepareCaptchaChallenge(cancelToken: token);
-        final captcha = await _recognize(challenge, casCaptchaLength);
-        if (captcha == null) {
-          return const _AutomaticExchangeResult(ocrUnrecognized: true);
-        }
-        final result = await UnifiedAuthService.instance.submitCaptchaChallenge(
-          challengeId: challenge.id,
-          username: account,
+        return _exchangeUnified(
+          account: account,
           password: password,
-          captcha: captcha,
-          cancelToken: token,
-          recoveryTicket: ticket,
-          // 自动路径显式禁止 WebView cookie 同步。
-          syncWebViewCookies: false,
-        );
-        return _AutomaticExchangeResult(
-          receipt: result is UnifiedAuthLoginSuccess ? result.receipt : null,
-          failureKind: result is UnifiedAuthLoginFailure
-              ? result.kind
-              : AuthFailureKind.unknown,
+          ticket: ticket,
+          token: token,
         );
       case AuthRecoveryDomain.academic:
-        final auth = ZhengfangAuth.instance;
-        final mode = await ConnectModeResolver.instance.resolve(
-          targetUrl: ZhengfangAuth.directAcademicServiceUrl,
-        );
-        token.throwIfCancelled();
-        if (mode == null) {
-          return const _AutomaticExchangeResult(
-            failureKind: AuthFailureKind.networkUnavailable,
-          );
-        }
-        // 不改全局模式：模式只绑定到本次 challenge，提交成功后才由
-        // ZhengfangAuth 收敛全局模式，避免打断用户正在进行的人工登录。
-        if (mode == ZhengfangMode.webVpn) {
-          var ready = await auth.ensureWebVpnGatewaySession(
-            syncWebViewCookies: false,
-          );
-          if (ready != true) {
-            await attemptWithReceipt(
-              AuthRecoveryDomain.cas,
-              expectedAccount: UnifiedAuthService.instance.currentAccount,
-              cancelToken: token,
-            );
-            token.throwIfCancelled();
-            ready = await auth.ensureWebVpnGatewaySession(
-              syncWebViewCookies: false,
-            );
-          }
-          if (ready != true) {
-            return const _AutomaticExchangeResult(
-              failureKind: AuthFailureKind.networkUnavailable,
-            );
-          }
-        }
-        final challenge = await auth.prepareCaptchaChallenge(
-          cancelToken: token,
-          mode: mode,
-          automatic: true,
-        );
-        final captcha = await _recognize(challenge, academicCaptchaLength);
-        if (captcha == null) {
-          return const _AutomaticExchangeResult(ocrUnrecognized: true);
-        }
-        final result = await ZhengfangAuth.instance.submitCaptchaChallenge(
-          challengeId: challenge.id,
-          username: account,
+        return _exchangeAcademic(
+          account: account,
           password: password,
-          captcha: captcha,
-          cancelToken: token,
-          recoveryTicket: ticket,
-        );
-        return _AutomaticExchangeResult(
-          receipt: result is LoginSuccess ? result.receipt : null,
-          failureKind: result is LoginFailure
-              ? result.kind
-              : AuthFailureKind.unknown,
+          ticket: ticket,
+          token: token,
         );
     }
   }
 
-  /// 单次 OCR：只按域固定位数调用一次，返回 null 即视为未识别。
+  Future<_AutomaticExchangeResult> _exchangeUnified({
+    required String account,
+    required String password,
+    required AuthRecoveryTicket ticket,
+    required CancelToken token,
+  }) async {
+    var last = const _AutomaticExchangeResult();
+    for (var attempt = 1; attempt <= maxCaptchaChallenges; attempt++) {
+      token.throwIfCancelled();
+      final challenge = await UnifiedAuthService.instance
+          .prepareCaptchaChallenge(cancelToken: token);
+      final captcha = await _recognize(challenge, casCaptchaLength);
+      token.throwIfCancelled();
+      if (captcha == null) {
+        last = const _AutomaticExchangeResult(ocrUnrecognized: true);
+        _logCaptchaRetry(AuthRecoveryDomain.cas, attempt, '未识别');
+        continue;
+      }
+      final result = await UnifiedAuthService.instance.submitCaptchaChallenge(
+        challengeId: challenge.id,
+        username: account,
+        password: password,
+        captcha: captcha,
+        cancelToken: token,
+        recoveryTicket: ticket,
+        // 自动路径显式禁止 WebView cookie 同步。
+        syncWebViewCookies: false,
+      );
+      if (result is UnifiedAuthLoginSuccess) {
+        return _AutomaticExchangeResult(receipt: result.receipt);
+      }
+      if (result is UnifiedAuthLoginFailure) {
+        last = _AutomaticExchangeResult(failureKind: result.kind);
+        if (result.kind != AuthFailureKind.captchaRejected) return last;
+        _logCaptchaRetry(AuthRecoveryDomain.cas, attempt, '被拒绝');
+        continue;
+      }
+      return last;
+    }
+    return last;
+  }
+
+  Future<_AutomaticExchangeResult> _exchangeAcademic({
+    required String account,
+    required String password,
+    required AuthRecoveryTicket ticket,
+    required CancelToken token,
+  }) async {
+    final auth = ZhengfangAuth.instance;
+    final mode = await ConnectModeResolver.instance.resolve(
+      targetUrl: ZhengfangAuth.directAcademicServiceUrl,
+    );
+    token.throwIfCancelled();
+    if (mode == null) {
+      return const _AutomaticExchangeResult(
+        failureKind: AuthFailureKind.networkUnavailable,
+      );
+    }
+    // 不改全局模式：模式只绑定到本次 challenge，提交成功后才由
+    // ZhengfangAuth 收敛全局模式，避免打断用户正在进行的人工登录。
+    if (mode == ZhengfangMode.webVpn) {
+      var ready = await auth.ensureWebVpnGatewaySession(
+        syncWebViewCookies: false,
+      );
+      if (ready != true) {
+        await attemptWithReceipt(
+          AuthRecoveryDomain.cas,
+          expectedAccount: UnifiedAuthService.instance.currentAccount,
+          cancelToken: token,
+        );
+        token.throwIfCancelled();
+        ready = await auth.ensureWebVpnGatewaySession(
+          syncWebViewCookies: false,
+        );
+      }
+      if (ready != true) {
+        return const _AutomaticExchangeResult(
+          failureKind: AuthFailureKind.networkUnavailable,
+        );
+      }
+    }
+
+    var last = const _AutomaticExchangeResult();
+    for (var attempt = 1; attempt <= maxCaptchaChallenges; attempt++) {
+      token.throwIfCancelled();
+      final challenge = await auth.prepareCaptchaChallenge(
+        cancelToken: token,
+        mode: mode,
+        automatic: true,
+      );
+      final captcha = await _recognize(challenge, academicCaptchaLength);
+      token.throwIfCancelled();
+      if (captcha == null) {
+        last = const _AutomaticExchangeResult(ocrUnrecognized: true);
+        _logCaptchaRetry(AuthRecoveryDomain.academic, attempt, '未识别');
+        continue;
+      }
+      final result = await auth.submitCaptchaChallenge(
+        challengeId: challenge.id,
+        username: account,
+        password: password,
+        captcha: captcha,
+        cancelToken: token,
+        recoveryTicket: ticket,
+      );
+      if (result is LoginSuccess) {
+        return _AutomaticExchangeResult(receipt: result.receipt);
+      }
+      if (result is LoginFailure) {
+        last = _AutomaticExchangeResult(failureKind: result.kind);
+        if (result.kind != AuthFailureKind.captchaRejected) return last;
+        _logCaptchaRetry(AuthRecoveryDomain.academic, attempt, '被拒绝');
+        continue;
+      }
+      return last;
+    }
+    return last;
+  }
+
+  /// 只记录失败类别与序号，绝不记录验证码答案或图片。
+  void _logCaptchaRetry(AuthRecoveryDomain domain, int attempt, String reason) {
+    final exhausted = attempt >= maxCaptchaChallenges;
+    AppLogger.instance.auth(
+      LogLevel.info,
+      '自动登录验证码$reason（${domain.wireName}，第 $attempt/$maxCaptchaChallenges 次）'
+      '${exhausted ? '，不再自动重试' : '，换一张重试'}',
+    );
+  }
+
+  /// 单张验证码只 OCR 一次：按域固定位数调用，返回 null 即视为未识别；
+  /// 是否换新验证码由调用方的有界重试决定，绝不对同一张图再次识别。
   Future<String?> _recognize(
     CaptchaChallenge challenge,
     int expectedLength,

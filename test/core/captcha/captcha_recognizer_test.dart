@@ -359,6 +359,41 @@ void main() {
     ]);
     await Future<void>.delayed(Duration.zero);
   });
+
+  test(
+    'serializes concurrent calls instead of hitting the native busy slot',
+    () async {
+      var inFlight = 0;
+      var maxInFlight = 0;
+      final pending = <Completer<Object?>>[];
+      setHandler((_) {
+        inFlight++;
+        if (inFlight > maxInFlight) maxInFlight = inFlight;
+        final completer = Completer<Object?>();
+        pending.add(completer);
+        return completer.future.whenComplete(() => inFlight--);
+      });
+
+      final recognizer = buildRecognizer();
+      final first = recognizer.recognize(image(), expectedLength: 4);
+      final second = recognizer.recognize(image(), expectedLength: 4);
+      await Future<void>.delayed(Duration.zero);
+      expect(pending.length, 1, reason: '第二次识别必须排队等待');
+
+      pending[0].complete([
+        {'text': 'aB12', 'confidence': null},
+      ]);
+      expect((await first)?.text, 'aB12');
+      await Future<void>.delayed(Duration.zero);
+      expect(pending.length, 2);
+
+      pending[1].complete([
+        {'text': 'cD34', 'confidence': null},
+      ]);
+      expect((await second)?.text, 'cD34');
+      expect(maxInFlight, 1, reason: '原生单槽位同一时刻只能有一个识别');
+    },
+  );
 }
 
 /// 模拟方法通道抛出的非平台异常（例如编解码失败）。

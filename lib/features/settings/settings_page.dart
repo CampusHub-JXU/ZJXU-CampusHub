@@ -280,7 +280,6 @@ class SettingsPage extends StatelessWidget {
                           children: [
                             PlainSwitchRow(
                               title: '调试日志',
-                              subtitle: '开启后记录调试期日志和异常',
                               value: loggingEnabled,
                               onChanged: (value) {
                                 AppLogger.instance.setEnabled(value);
@@ -288,7 +287,6 @@ class SettingsPage extends StatelessWidget {
                             ),
                             PlainListRow(
                               title: '最低日志级别',
-                              subtitle: _formatLogLevel(logConfig.minimumLevel),
                               trailing: AppDropdown<LogLevel>(
                                 value: logConfig.minimumLevel,
                                 onChanged: (value) {
@@ -309,7 +307,6 @@ class SettingsPage extends StatelessWidget {
                             ),
                             PlainSwitchRow(
                               title: 'WebView 生命周期日志',
-                              subtitle: '页面加载、跳转和白屏探测细节',
                               value: logConfig.webviewLifecycleEnabled,
                               onChanged: (value) {
                                 AppLogger.instance.updateConfig(
@@ -321,7 +318,6 @@ class SettingsPage extends StatelessWidget {
                             ),
                             PlainSwitchRow(
                               title: 'WebView 控制台日志',
-                              subtitle: '记录页面 console warning/error',
                               value: logConfig.webviewConsoleEnabled,
                               onChanged: (value) {
                                 AppLogger.instance.updateConfig(
@@ -333,7 +329,6 @@ class SettingsPage extends StatelessWidget {
                             ),
                             PlainSwitchRow(
                               title: '网络详细日志',
-                              subtitle: '记录请求和响应细节，噪音较大',
                               value: logConfig.networkVerboseEnabled,
                               onChanged: (value) {
                                 AppLogger.instance.updateConfig(
@@ -345,7 +340,6 @@ class SettingsPage extends StatelessWidget {
                             ),
                             PlainListRow(
                               title: '通知测试',
-                              subtitle: '发送一条本地测试通知',
                               trailing: Icon(
                                 Icons.send_outlined,
                                 size: 20,
@@ -581,7 +575,7 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
         else if (_showScanEntry)
           PlainListRow(
             title: '扫描遗留日程',
-            subtitle: '只读扫描带当前应用标记的遗留日程，不会删除任何日程',
+            subtitle: '只读扫描，不会删除',
             onTap: () => unawaited(_startScan()),
           ),
         if (state == CalendarSyncControlState.cleanupPending &&
@@ -968,9 +962,7 @@ class _UpdateRouteRowState extends State<_UpdateRouteRow> {
   Widget build(BuildContext context) {
     return PlainListRow(
       title: '更新下载线路',
-      subtitle: _route == ApkDownloadRoute.auto
-          ? '先走 Cloudflare R2，连接超时 / 卡住 / 低速时自动换 EdgeOne'
-          : '只使用所选线路，失败时不会自动切换',
+      subtitle: _route == ApkDownloadRoute.auto ? null : '仅使用所选线路，不会自动切换',
       trailing: AppDropdown<ApkDownloadRoute>(
         key: const Key('update_route_dropdown'),
         inline: true,
