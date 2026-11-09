@@ -389,6 +389,9 @@ class SecondClassroomActivity {
   }
 }
 
+/// 报名状态三态：游客/会话失效时不能把服务端的 `sfbm:false` 当成“未报名”。
+enum SecondClassroomRegistrationState { registered, notRegistered, unknown }
+
 class SecondClassroomActivityDetail {
   const SecondClassroomActivityDetail({
     required this.activity,
@@ -398,6 +401,8 @@ class SecondClassroomActivityDetail {
     required this.hasCredit,
     required this.isFavorite,
     required this.isInRegistrationTime,
+    this.registrationState = SecondClassroomRegistrationState.unknown,
+    this.registrationStatusLabel = '',
   });
 
   final SecondClassroomActivity activity;
@@ -408,17 +413,33 @@ class SecondClassroomActivityDetail {
   final bool isFavorite;
   final bool isInRegistrationTime;
 
+  /// 详情接口的 `extend.sfbm` / `extend.hdbm` 只有在已登录时才有意义。
+  final SecondClassroomRegistrationState registrationState;
+
+  /// 报名记录状态（如「审核通过」「待审核」）；无记录时为空。
+  final String registrationStatusLabel;
+
   factory SecondClassroomActivityDetail.fromExtend(
-    Map<String, dynamic> extend,
-  ) {
+    Map<String, dynamic> extend, {
+    bool authenticated = false,
+  }) {
     final hd = extend['hd'];
     if (hd is! Map<String, dynamic>) {
       throw const FormatException('第二课堂活动详情缺少 hd 字段');
     }
     final signUpMode = hd['bmfs'];
+    final registrationRecord = _mapValue(extend['hdbm']);
+    final hasRegistrationRecord =
+        registrationRecord != null && registrationRecord.isNotEmpty;
+    final sfbm = extend['sfbm'] == true;
+    final registrationState = hasRegistrationRecord || sfbm
+        ? SecondClassroomRegistrationState.registered
+        : authenticated
+        ? SecondClassroomRegistrationState.notRegistered
+        : SecondClassroomRegistrationState.unknown;
     final activity = SecondClassroomActivity.fromDetailJson(hd).copyWith(
       enrolledCount: extend.containsKey('bmrs') ? asInt(extend['bmrs']) : null,
-      isRegistered: extend['sfbm'] == true,
+      isRegistered: hasRegistrationRecord || sfbm,
     );
     return SecondClassroomActivityDetail(
       activity: activity,
@@ -430,8 +451,29 @@ class SecondClassroomActivityDetail {
       hasCredit: asDouble(hd['xs']) > 0,
       isFavorite: extend['sfsc'] == true,
       isInRegistrationTime: extend['inTime'] == true,
+      registrationState: registrationState,
+      registrationStatusLabel: _registrationStatusLabel(
+        registrationRecord,
+        fallback: sfbm ? '已报名' : '',
+      ),
     );
   }
+}
+
+Map<String, dynamic>? _mapValue(Object? value) {
+  if (value is Map<String, dynamic>) return value;
+  if (value is Map) return Map<String, dynamic>.from(value);
+  return null;
+}
+
+String _registrationStatusLabel(
+  Map<String, dynamic>? record, {
+  required String fallback,
+}) {
+  if (record == null) return fallback;
+  final status = _mapValue(record['shzt']);
+  final label = asString(status?['label'], trim: true);
+  return label.isEmpty ? (fallback.isEmpty ? '已报名' : fallback) : label;
 }
 
 DateTime? parseSecondClassroomDate(Object? value) {

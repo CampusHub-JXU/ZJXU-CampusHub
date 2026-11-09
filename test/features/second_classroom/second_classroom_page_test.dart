@@ -4,6 +4,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:jxu_campus_hub/features/second_classroom/second_classroom_auth.dart';
 import 'package:jxu_campus_hub/features/second_classroom/second_classroom_cache_store.dart';
 import 'package:jxu_campus_hub/features/second_classroom/second_classroom_model.dart';
 import 'package:jxu_campus_hub/features/second_classroom/second_classroom_page.dart';
@@ -86,6 +87,7 @@ void main() {
       MaterialApp(
         home: SecondClassroomPage(
           service: _FakeSecondClassroomService(),
+          authEnsurer: _testAuth,
           subscriptionService: _testSubscriptionService(),
           cacheStore: _MemoryCacheStore(),
         ),
@@ -111,12 +113,33 @@ void main() {
     expect(tag.tone, AppStatusTone.positive);
   });
 
+  testWidgets('shows the CAS login entry when the session needs login', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SecondClassroomPage(
+          service: _FakeSecondClassroomService(),
+          authEnsurer: _needsLoginAuth,
+          subscriptionService: _testSubscriptionService(),
+          cacheStore: _MemoryCacheStore(),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('登录后查看报名状态'), findsOneWidget);
+    expect(find.text('登录统一认证'), findsOneWidget);
+  });
+
   testWidgets('status chip and filter sheet update the query', (tester) async {
     final service = _FakeSecondClassroomService();
     await tester.pumpWidget(
       MaterialApp(
         home: SecondClassroomPage(
           service: service,
+          authEnsurer: _testAuth,
           subscriptionService: _testSubscriptionService(),
           cacheStore: _MemoryCacheStore(),
         ),
@@ -160,6 +183,7 @@ void main() {
       MaterialApp(
         home: SecondClassroomPage(
           service: _FakeSecondClassroomService(),
+          authEnsurer: _testAuth,
           subscriptionService: _testSubscriptionService(),
           cacheStore: _MemoryCacheStore(),
         ),
@@ -201,6 +225,7 @@ void main() {
       MaterialApp(
         home: SecondClassroomPage(
           service: _FakeSecondClassroomService(),
+          authEnsurer: _testAuth,
           subscriptionService: _testSubscriptionService(),
           cacheStore: _MemoryCacheStore(),
         ),
@@ -235,6 +260,7 @@ void main() {
       MaterialApp(
         home: SecondClassroomPage(
           service: _FakeSecondClassroomService(),
+          authEnsurer: _testAuth,
           subscriptionService: _testSubscriptionService(),
           cacheStore: _MemoryCacheStore(),
         ),
@@ -285,6 +311,7 @@ void main() {
       MaterialApp(
         home: SecondClassroomPage(
           service: _FakeSecondClassroomService(),
+          authEnsurer: _testAuth,
           subscriptionService: _testSubscriptionService(),
           cacheStore: _MemoryCacheStore(),
         ),
@@ -335,6 +362,7 @@ void main() {
         MaterialApp(
           home: SecondClassroomPage(
             service: _FakeSecondClassroomService(),
+            authEnsurer: _testAuth,
             subscriptionService: _testSubscriptionService(),
             cacheStore: _MemoryCacheStore(),
           ),
@@ -396,7 +424,10 @@ class _FakeSecondClassroomService extends SecondClassroomService {
   }
 
   @override
-  Future<SecondClassroomActivityDetail> fetchActivityDetail(int id) async {
+  Future<SecondClassroomActivityDetail> fetchActivityDetail(
+    int id, {
+    bool authenticated = false,
+  }) async {
     return SecondClassroomActivityDetail(
       activity: _activity,
       signUpMode: '报名无需审核，人满即止',
@@ -434,6 +465,12 @@ final _activity = SecondClassroomActivity(
   hasCheckedIn: false,
   hasRetaken: false,
 );
+
+Future<SecondClassroomAuthState> _testAuth({bool force = false}) async =>
+    SecondClassroomAuthState.authenticated;
+
+Future<SecondClassroomAuthState> _needsLoginAuth({bool force = false}) async =>
+    SecondClassroomAuthState.needsLogin;
 
 /// 内存缓存替身：widget 测试跑在 FakeAsync 区，真实 [JsonCacheStore] 文件 I/O
 /// 不会完成，pumpAndSettle 会超时。

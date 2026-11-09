@@ -17,9 +17,11 @@ const secondClassroomRecruitingMonitor = 'secondClassroomRecruitingMonitor';
 
 /// 第二课堂后台监控：周期检查已订阅关键词的同名招募活动并发通知。
 ///
-/// 请求经 `DioClient.dio`（正方 `PersistCookieJar`，`persistSession: true`）发出，
-/// 响应的 Set-Cookie 会落进与前台共享的磁盘 jar——这正是后台 / 前台 jar 镜像
-/// 互相覆盖的竞争面。因此在 WorkManager isolate 里经 [BackgroundAuthRun] 申领：
+/// 请求经 `DioClient.unifiedAuthDio`（统一认证 `PersistCookieJar`，
+/// `persistSession: true`）发出：第二课堂 `SESSION` 由前台 CAS ticket 兑换后
+/// 落在该 jar，后台只读复用，不登录、不抢身份。响应的 Set-Cookie 仍会落进与
+/// 前台共享的磁盘 jar——这正是后台 / 前台 jar 镜像互相覆盖的竞争面。因此在
+/// WorkManager isolate 里经 [BackgroundAuthRun] 申领：
 /// 前台心跳新鲜或他人持有申领时本轮**跳过**（返回 true，不报错、不退避；前台
 /// resumed 时本就会自己跑一次监控，下个周期也会再查）。它不读写会话 epoch、
 /// 不登录，所以无需钉住 epoch。

@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:jxu_campus_hub/features/second_classroom/second_classroom_auth.dart';
 import 'package:jxu_campus_hub/features/second_classroom/second_classroom_cache_store.dart';
 import 'package:jxu_campus_hub/features/second_classroom/second_classroom_model.dart';
 import 'package:jxu_campus_hub/features/second_classroom/second_classroom_page.dart';
@@ -311,6 +312,7 @@ Future<void> _pumpPage(WidgetTester tester, {required String coverUrl}) async {
     MaterialApp(
       home: SecondClassroomPage(
         service: _FakeSecondClassroomService(coverUrl: coverUrl),
+        authEnsurer: _testAuth,
         subscriptionService: _testSubscriptionService(),
         cacheStore: _MemoryCacheStore(),
       ),
@@ -327,6 +329,9 @@ Future<void> _openDetailSheet(WidgetTester tester) async {
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 350));
 }
+
+Future<SecondClassroomAuthState> _testAuth({bool force = false}) async =>
+    SecondClassroomAuthState.authenticated;
 
 SecondClassroomSubscriptionService _testSubscriptionService() {
   return SecondClassroomSubscriptionService(
@@ -369,7 +374,10 @@ class _FakeSecondClassroomService extends SecondClassroomService {
   }
 
   @override
-  Future<SecondClassroomActivityDetail> fetchActivityDetail(int id) async {
+  Future<SecondClassroomActivityDetail> fetchActivityDetail(
+    int id, {
+    bool authenticated = false,
+  }) async {
     return SecondClassroomActivityDetail(
       activity: _activity,
       signUpMode: '报名无需审核，人满即止',

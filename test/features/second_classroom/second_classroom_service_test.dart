@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:jxu_campus_hub/features/second_classroom/second_classroom_model.dart';
 import 'package:jxu_campus_hub/features/second_classroom/second_classroom_service.dart';
 
 void main() {
@@ -103,6 +104,55 @@ void main() {
     expect(detail.isFavorite, isTrue);
     expect(detail.isInRegistrationTime, isTrue);
     expect(detail.signUpMode, '报名无需审核，人满即止');
+  });
+
+  test('distinguishes guest, not-registered and registered detail states', () {
+    Map<String, dynamic> payload({
+      required bool sfbm,
+      Map<String, dynamic>? hdbm,
+    }) => {
+      'extend': {
+        'hd': {
+          'id': 2895,
+          'mc': '生涯嘉年华',
+          'bmkssj': '2026-11-09T04:10:00+08:00',
+          'bmjssj': '2026-11-12T01:00:00+08:00',
+          'hdkssj': '2026-11-12T01:00:00+08:00',
+          'hdjssj': '2026-11-12T09:00:00+08:00',
+          'zmrs': 1000,
+        },
+        'sfbm': sfbm,
+        'hdbm': hdbm,
+      },
+    };
+
+    expect(
+      parseSecondClassroomActivityDetailPayload(payload(sfbm: false))
+          .registrationState,
+      SecondClassroomRegistrationState.unknown,
+    );
+    expect(
+      parseSecondClassroomActivityDetailPayload(
+        payload(sfbm: false),
+        authenticated: true,
+      ).registrationState,
+      SecondClassroomRegistrationState.notRegistered,
+    );
+    final registered = parseSecondClassroomActivityDetailPayload(
+      payload(
+        sfbm: true,
+        hdbm: {
+          'shzt': {'label': '审核通过', 'value': 1},
+        },
+      ),
+      authenticated: true,
+    );
+    expect(
+      registered.registrationState,
+      SecondClassroomRegistrationState.registered,
+    );
+    expect(registered.registrationStatusLabel, '审核通过');
+    expect(registered.activity.isRegistered, isTrue);
   });
 
   test('builds WeChat activity detail url', () {

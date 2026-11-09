@@ -17,9 +17,11 @@ import '../../shared/widgets/app_filter_chips.dart';
 import '../../shared/widgets/app_list_tile.dart';
 import '../../shared/widgets/app_search_field.dart';
 import '../../shared/widgets/app_status_tag.dart';
+import '../../shared/widgets/login_shell.dart';
 import '../../shared/widgets/plain_list.dart';
 import '../../shared/widgets/refresh_status_line.dart';
 import '../../shared/widgets/skeleton_box.dart';
+import 'second_classroom_auth.dart';
 import 'second_classroom_cache_store.dart';
 import 'second_classroom_model.dart';
 import 'second_classroom_service.dart';
@@ -78,6 +80,7 @@ class SecondClassroomPage extends StatefulWidget {
     this.service,
     this.subscriptionService,
     this.cacheStore,
+    this.authEnsurer,
   });
 
   static const authEntryUrl =
@@ -88,6 +91,9 @@ class SecondClassroomPage extends StatefulWidget {
   final SecondClassroomService? service;
   final SecondClassroomSubscriptionService? subscriptionService;
   final SecondClassroomCacheStore? cacheStore;
+
+  /// 测试注入；生产使用 [SecondClassroomAuth.instance.ensureSession]。
+  final Future<SecondClassroomAuthState> Function({bool force})? authEnsurer;
 
   @override
   State<SecondClassroomPage> createState() => _SecondClassroomPageState();
@@ -117,6 +123,8 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
   bool _openingInWeChat = false;
   int? _detailLoadingId;
   DateTime? _cacheUpdatedAt;
+  SecondClassroomAuthState _authState = SecondClassroomAuthState.unavailable;
+  bool _authChecked = false;
   String? _error;
 
   String get _wechatPageUrl => SecondClassroomPage.initialUrl;
@@ -163,13 +171,54 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
         }
         _loading = !hasCachedActivities;
       });
+      await _ensureSecondClassroomAuth();
       await _syncActivitiesFromNetwork(
         showInitialLoading: !hasCachedActivities,
       );
       return;
     }
 
+    await _ensureSecondClassroomAuth();
     await _syncActivitiesFromNetwork(showInitialLoading: true);
+  }
+
+  Future<SecondClassroomAuthState> _ensureSecondClassroomAuth({
+    bool force = false,
+  }) async {
+    final ensurer =
+        widget.authEnsurer ?? SecondClassroomAuth.instance.ensureSession;
+    final state = await ensurer(force: force);
+    if (mounted) {
+      setState(() {
+        _authState = state;
+        _authChecked = true;
+      });
+    }
+    return state;
+  }
+
+  Future<void> _handleSecondClassroomLogin() async {
+    final loggedIn = await showUnifiedAuthLoginModal(
+      context,
+      title: '登录第二课堂',
+      description: '登录统一认证后可查看报名状态；活动报名仍在微信中完成',
+    );
+    if (!loggedIn || !mounted) return;
+    final state = await _ensureSecondClassroomAuth(force: true);
+    if (!mounted) return;
+    if (state == SecondClassroomAuthState.authenticated) {
+      await _reloadActivities();
+    } else {
+      _showSnackBar('第二课堂会话建立失败，请稍后重试');
+    }
+  }
+
+  Future<void> _retrySecondClassroomAuth() async {
+    final state = await _ensureSecondClassroomAuth(force: true);
+    if (!mounted) return;
+    if (state == SecondClassroomAuthState.authenticated) {
+      await _reloadActivities();
+    }
   }
 
   Future<void> _reloadActivities() async {
@@ -326,7 +375,12 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
     if (_detailLoadingId != null) return;
     setState(() => _detailLoadingId = activity.id);
     try {
-      final detail = await _service.fetchActivityDetail(activity.id);
+      final authState = await _ensureSecondClassroomAuth();
+      if (!mounted) return;
+      final detail = await _service.fetchActivityDetail(
+        activity.id,
+        authenticated: authState == SecondClassroomAuthState.authenticated,
+      );
       if (!mounted) return;
       await _showActivityDetailSheet(detail);
     } catch (error, stackTrace) {
@@ -544,6 +598,16 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
             }
           },
         ),
+        if (_authChecked &&
+            _authState != SecondClassroomAuthState.authenticated) ...[
+          const SizedBox(height: AppSpacing.md),
+          _SecondClassroomAuthBanner(
+            state: _authState,
+            onLogin: _handleSecondClassroomLogin,
+            onRetry: _retrySecondClassroomAuth,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+        ],
         const SizedBox(height: AppSpacing.md),
         AppFilterChips<SecondClassroomActivityStatus>(
           padding: EdgeInsets.zero,

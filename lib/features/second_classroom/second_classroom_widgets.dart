@@ -1,5 +1,93 @@
 part of 'second_classroom_page.dart';
 
+/// 第二课堂登录态提示条。
+///
+/// 公开活动仍可浏览；只有 `needsLogin` / 身份异常 / 协议失败时才展示动作。
+class _SecondClassroomAuthBanner extends StatelessWidget {
+  const _SecondClassroomAuthBanner({
+    required this.state,
+    required this.onLogin,
+    required this.onRetry,
+  });
+
+  final SecondClassroomAuthState state;
+  final VoidCallback onLogin;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final (title, message, actionLabel, action) = switch (state) {
+      SecondClassroomAuthState.needsLogin => (
+        '登录后查看报名状态',
+        '活动浏览不需要登录；活动报名仍在微信中完成。',
+        '登录统一认证',
+        onLogin,
+      ),
+      SecondClassroomAuthState.identityMismatch => (
+        '第二课堂会话身份不一致',
+        '请重新登录统一认证，避免显示其他账号的报名状态。',
+        '重新登录',
+        onLogin,
+      ),
+      SecondClassroomAuthState.failed => (
+        '第二课堂会话建立失败',
+        '统一认证已登录，但第二课堂没有接受本次授权；可重试。',
+        '重试',
+        onRetry,
+      ),
+      SecondClassroomAuthState.unavailable => (
+        '第二课堂登录状态暂不可用',
+        '网络异常，当前仅显示公开活动信息。',
+        '重试',
+        onRetry,
+      ),
+      SecondClassroomAuthState.authenticated => ('', '', '', null),
+    };
+    if (action == null) return const SizedBox.shrink();
+
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    return AppCard(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.md,
+        AppSpacing.md,
+        AppSpacing.md,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.assignment_ind_outlined, color: cs.primary),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  message,
+                  style: context.appText.meta.copyWith(
+                    color: cs.onSurfaceVariant,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          TextButton(onPressed: action, child: Text(actionLabel)),
+        ],
+      ),
+    );
+  }
+}
+
 /// 招募状态只映射主题 container 色调：招募中 → secondaryContainer，
 /// 已招满 → tertiaryContainer，其余中性。
 AppStatusTone _recruitmentTone(SecondClassroomActivity activity) {
@@ -69,8 +157,14 @@ class _ActivityDetailSheet extends StatelessWidget {
                           '${_formatCreditHours(activity.creditHours)} 学时',
                         ),
                       if (detail.isFavorite) const AppStatusTag('已收藏'),
-                      if (activity.isRegistered)
-                        const AppStatusTag('已报名', tone: AppStatusTone.positive),
+                      if (detail.registrationState ==
+                          SecondClassroomRegistrationState.registered)
+                        AppStatusTag(
+                          detail.registrationStatusLabel.isEmpty
+                              ? '已报名'
+                              : detail.registrationStatusLabel,
+                          tone: AppStatusTone.positive,
+                        ),
                     ],
                   ),
                   const SizedBox(height: 18),
@@ -124,6 +218,19 @@ class _ActivityDetailSheet extends StatelessWidget {
                         value: detail.signUpMode.isEmpty
                             ? '暂无'
                             : detail.signUpMode,
+                      ),
+                      _DetailRow(
+                        icon: Icons.assignment_turned_in_outlined,
+                        label: '报名状态',
+                        value: switch (detail.registrationState) {
+                          SecondClassroomRegistrationState.registered =>
+                            detail.registrationStatusLabel.isEmpty
+                                ? '已报名'
+                                : detail.registrationStatusLabel,
+                          SecondClassroomRegistrationState.notRegistered =>
+                            '未报名',
+                          SecondClassroomRegistrationState.unknown => '登录后查看',
+                        },
                       ),
                       _DetailRow(
                         icon: Icons.school_outlined,

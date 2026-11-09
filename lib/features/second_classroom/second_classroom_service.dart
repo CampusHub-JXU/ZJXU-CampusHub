@@ -77,13 +77,19 @@ class SecondClassroomService {
     );
   }
 
-  Future<SecondClassroomActivityDetail> fetchActivityDetail(int id) async {
+  Future<SecondClassroomActivityDetail> fetchActivityDetail(
+    int id, {
+    bool authenticated = false,
+  }) async {
     final payload = await _post(
       '/mobile/detail',
       queryParameters: {'hdId': '$id', '.me': _secondClassroomMenuToken},
       data: _menuData(),
     );
-    return parseSecondClassroomActivityDetailPayload(payload);
+    return parseSecondClassroomActivityDetailPayload(
+      payload,
+      authenticated: authenticated,
+    );
   }
 
   String imageUrl(String imageId) {
@@ -167,7 +173,9 @@ class SecondClassroomService {
     if (debugDio != null) return debugDio;
 
     await DioClient.instance.ensureInitialized();
-    return DioClient.instance.dio;
+    // 第二课堂的 `SESSION` 由 CAS ticket 兑换后落在统一认证 jar；不能用
+    // 正方 `dio`（那会以游客身份请求，永远读不到 sfbm / hdbm）。
+    return DioClient.instance.unifiedAuthDio;
   }
 
   Map<String, dynamic> _payloadFromResponse(Object? data) {
@@ -247,9 +255,13 @@ SecondClassroomActivityPage parseSecondClassroomActivityPagePayload(
 
 @visibleForTesting
 SecondClassroomActivityDetail parseSecondClassroomActivityDetailPayload(
-  Map<String, dynamic> payload,
-) {
-  return SecondClassroomActivityDetail.fromExtend(_mapValue(payload['extend']));
+  Map<String, dynamic> payload, {
+  bool authenticated = false,
+}) {
+  return SecondClassroomActivityDetail.fromExtend(
+    _mapValue(payload['extend']),
+    authenticated: authenticated,
+  );
 }
 
 Map<String, dynamic> _mapValue(Object? value) {

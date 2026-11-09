@@ -45,7 +45,14 @@ enum CasService {
   changxing('http://zhx.zjxu.edu.cn:8443/api/wap/cas_login_back'),
 
   /// WebVPN 网关会话（教务两阶段登录的第一阶段，见 ZhengfangAuth）。
-  webVpnGateway(ZhengfangAuth.webVpnGatewayServiceUrl);
+  webVpnGateway(ZhengfangAuth.webVpnGatewayServiceUrl),
+
+  /// 第二课堂微信门户的 CAS ticket 回调。
+  ///
+  /// 必须是根路径 `/dekt/`（带尾斜杠）。实测 `service` 指向
+  /// `/dekt/wx/index` 时 CAS 虽签发 ticket，但第二课堂不会消费，会话仍为游客；
+  /// 只有 `/dekt/` 能完成 ticket 兑换并下发 `SESSION`。
+  secondClassroom('https://twdekt.zjxu.edu.cn/dekt/');
 
   const CasService(this.serviceUrl);
 
