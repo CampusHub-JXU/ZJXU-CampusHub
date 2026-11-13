@@ -87,7 +87,7 @@ class AppBootstrapController {
     await AppPreferencesController.instance.restore();
 
     await Future.wait<void>([
-      // 磨砂闪粉开关须在首帧前就位，避免开启闪粉的用户冷启动首帧缺贴图再补上。
+      // 首帧前清掉已下线的材质开关残留键（含旧磨砂闪粉偏好）。
       GlassStyleController.instance.restore(),
       SemesterCalendar.instance.init(),
       PersonalizationController.instance.init(),
