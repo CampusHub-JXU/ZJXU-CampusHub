@@ -466,4 +466,130 @@ void main() {
     expect(both - single, closeTo(1.0, 0.1));
     expect(states[1].debugShaderTimeSeconds, both);
   });
+
+  testWidgets('滚动 / 惯性期间暂停出帧，停止后恢复且不补时间', (tester) async {
+    final controller = ScrollController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: ListView(
+          controller: controller,
+          children: [
+            SizedBox(
+              height: 200,
+              child: HomeFluidBackground(
+                intensity: 0.4,
+                themeColor: const Color(0xFF8B1A2D),
+                monetColors: null,
+                isDarkMode: false,
+                opacity: 1,
+                animationSpeed: 1,
+                scrollController: controller,
+                fallback: const Text('wallpaper-fallback'),
+              ),
+            ),
+            const SizedBox(height: 2000),
+          ],
+        ),
+      ),
+    );
+    await tester.pump();
+    await advance(tester, const Duration(milliseconds: 200));
+    final state = stateOf(tester);
+    expect(state.debugRenderedFrames, greaterThan(0));
+
+    // 拖住不松手：isScrolling = true，驱动停帧。
+    final gesture = await tester.startGesture(const Offset(200, 400));
+    await gesture.moveBy(const Offset(0, -120));
+    await tester.pump();
+    expect(controller.position.isScrollingNotifier.value, isTrue);
+    final beforeFrames = state.debugRenderedFrames;
+    final beforeTime = state.debugShaderTimeSeconds;
+    await advance(tester, const Duration(milliseconds: 400));
+    expect(state.debugRenderedFrames, beforeFrames);
+    expect(state.debugShaderTimeSeconds, beforeTime);
+
+    // 松手无速度：滚动很快结束，出帧恢复；暂停的时间不补算。
+    await gesture.up();
+    for (var i = 0; i < 50; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      if (!controller.position.isScrollingNotifier.value) break;
+    }
+    expect(controller.position.isScrollingNotifier.value, isFalse);
+    final afterFrames = state.debugRenderedFrames;
+    await advance(tester, const Duration(milliseconds: 300));
+    expect(state.debugRenderedFrames, greaterThan(afterFrames));
+  });
+
+  testWidgets('挂控制器闲置时按 scrollBoostFps 降频出帧', (tester) async {
+    final controller = ScrollController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: ListView(
+          controller: controller,
+          children: [
+            SizedBox(
+              height: 200,
+              child: HomeFluidBackground(
+                intensity: 0.4,
+                themeColor: const Color(0xFF8B1A2D),
+                monetColors: null,
+                isDarkMode: false,
+                opacity: 1,
+                animationSpeed: 1,
+                targetFps: 60,
+                scrollBoostFps: 30,
+                scrollController: controller,
+                fallback: const Text('wallpaper-fallback'),
+              ),
+            ),
+            const SizedBox(height: 2000),
+          ],
+        ),
+      ),
+    );
+    await tester.pump();
+    await advance(tester, const Duration(seconds: 1));
+    final state = stateOf(tester);
+    final frames = state.debugRenderedFrames;
+    // 30fps 档：1 秒约 30 帧（容差给启动首帧和定时器对齐）。
+    expect(frames, inInclusiveRange(24, 40));
+  });
+
+  testWidgets('scrollBoostFps 默认 15：闲置一秒约 15 帧', (tester) async {
+    final controller = ScrollController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: ListView(
+          controller: controller,
+          children: [
+            SizedBox(
+              height: 200,
+              child: HomeFluidBackground(
+                intensity: 0.4,
+                themeColor: const Color(0xFF8B1A2D),
+                monetColors: null,
+                isDarkMode: false,
+                opacity: 1,
+                animationSpeed: 1,
+                scrollController: controller,
+                fallback: const Text('wallpaper-fallback'),
+              ),
+            ),
+            const SizedBox(height: 2000),
+          ],
+        ),
+      ),
+    );
+    await tester.pump();
+    await advance(tester, const Duration(seconds: 2));
+    final state = stateOf(tester);
+    // 15fps 档（构造默认）：2 秒约 30 帧。
+    expect(state.debugRenderedFrames, inInclusiveRange(20, 42));
+  });
 }

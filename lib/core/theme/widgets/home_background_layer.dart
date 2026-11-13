@@ -13,12 +13,16 @@ class HomeBackgroundLayer extends StatelessWidget {
     required this.path,
     this.useAsyncFilter = true,
     this.errorBuilder,
+    this.scrollController,
   });
 
   /// 壁纸路径；为 null 时仅渲染流体 Shader（不可用时回退 [HomeAmbientBackground]）。
   final String? path;
   final bool useAsyncFilter;
   final WidgetBuilder? errorBuilder;
+
+  /// 宿主页面滚动控制器：透传给流体 Shader，滚动 / 出视口时让背景暂停出帧。
+  final ScrollController? scrollController;
 
   @override
   Widget build(BuildContext context) {
@@ -92,6 +96,8 @@ class HomeBackgroundLayer extends StatelessWidget {
                                               opacity: shaderOpacity,
                                               animationSpeed: animationSpeed,
                                               targetFps: fps,
+                                              scrollController:
+                                                  scrollController,
                                               fallback: image,
                                             );
                                           },

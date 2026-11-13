@@ -14,8 +14,8 @@ import '../page_transition_activity.dart';
 /// 因此不再用 `ImageFilter.shader` 对整屏壁纸做全分辨率滤镜（每帧还要解码 / 绘制
 /// 一遍壁纸作为滤镜输入），而是：
 ///
-/// * 着色器作为普通 `Paint.shader` 画进一个 [renderScale] 倍尺寸的子树（物理像素
-///   数 1/4），再用 `ImageFilter.matrix` 双线性放大铺满整屏；着色器本身也裁掉了
+/// * 着色器作为普通 `Paint.shader` 画进一个 [renderScale] 倍尺寸的子树（像素
+///   数不到 1/10），再用 `ImageFilter.matrix` 双线性放大铺满整屏；着色器本身也裁掉了
 ///   最高频的几层噪声（见 `home_collage_background.frag` 顶部注释）；
 /// * 帧率可配置（设置 → 个性化 → 流体 Shader → 帧率）：[targetFps] 达到屏幕刷新率
 ///   就每个 vsync 一帧，低于刷新率就用 `Timer` 把「下一帧」排到该到的 vsync，
@@ -24,6 +24,13 @@ import '../page_transition_activity.dart';
 /// * 按下列条件让路（全部不依赖原生通道）：
 ///   - 不可见分支 / 被不透明路由盖住（`TickerMode`）、App 非 resumed；
 ///   - 页面转场期间（[PageTransitionActivity.isBusy]，带看门狗）；
+///   - 列表滚动 / 惯性滑行期间（[scrollController] 的 `isScrolling`）；背景
+///     自身完全滚出视口时同样停帧（背景随内容上滚的布局里，停在功能区底部
+///     时它已不可见，继续出帧只是空烧 GPU）；
+/// * 空闲降频：挂了 [scrollController] 时，停止滚动后的出帧节拍收紧到
+///   [scrollBoostFps]——滚动期间本来就不出帧（让路给磁贴模糊重采样），而停下
+///   后每个新画面都会让屏幕上十几块磁贴的 grouped 背景模糊跟着重算一次
+///   （实测 120Hz 闲置 raster p95 ≈9ms 的最大来源）。
 ///   - 系统「减弱动画」（`MediaQuery.disableAnimations`）：只画静态一帧；
 ///   - 动画速度滑条为 0。
 ///
@@ -39,16 +46,28 @@ class HomeFluidBackground extends StatefulWidget {
     required this.animationSpeed,
     required this.fallback,
     this.targetFps = 60,
+    this.scrollController,
+    this.scrollBoostFps = 15,
   });
 
-  /// 着色器渲染尺寸相对逻辑尺寸的缩放（0.5 = 宽高各一半，像素数 1/4）。
-  static const double renderScale = 0.5;
+  /// 着色器渲染尺寸相对逻辑尺寸的缩放（0.3 ≈ 像素数 9%，低频液态渐变双线性放大无损）。
+  static const double renderScale = 0.3;
 
   /// 单帧时间步长上限：超过视为暂停 / 卡顿后的恢复，丢弃这次增量避免动画跳变。
   static const Duration maxFrameDelta = Duration(milliseconds: 120);
 
   /// 目标帧率；达到屏幕刷新率时不节流（每个 vsync 一帧）。
   final int targetFps;
+
+  /// 宿主页面的滚动控制器（可选）：挂上后，滚动 / 惯性滑行期间暂停出帧，
+  /// 且背景完全滚出视口时不再出帧。为空时不做滚动感知（行为同旧版本）。
+  final ScrollController? scrollController;
+
+  /// 空闲降频：停止滚动后的出帧上限（仅当挂了 [scrollController] 才有意义；
+  /// 滚动期间不出帧）。默认 15：实测 30fps 下闲置 raster p95 仍 ≈9ms（每个
+  /// 新画面都触发磁贴 grouped 模糊重算 + backdrop 回读），15fps 仍保住动画感
+  /// 但把烧预算的帧率再砍半。
+  final int scrollBoostFps;
 
   final double intensity;
   final Color themeColor;
@@ -121,6 +140,10 @@ class HomeFluidBackgroundState extends State<HomeFluidBackground>
   double _refreshRate = 60;
   AppLifecycleState _lifecycleState = AppLifecycleState.resumed;
 
+  /// 滚动感知：当前挂着的 `ScrollPosition.isScrolling` 监听（position 会随
+  /// 滚动视图 attach / detach 更换，懒绑定见 [_syncScrollPosition]）。
+  ValueNotifier<bool>? _scrollingListened;
+
   // 出帧驱动：一次只持有一个待处理的帧回调或唤醒定时器。
   int? _frameCallbackId;
   Timer? _wakeTimer;
@@ -172,6 +195,7 @@ class HomeFluidBackgroundState extends State<HomeFluidBackground>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _syncScrollPosition();
     final enabled = TickerMode.valuesOf(context).enabled;
     if (enabled != _tickerModeEnabled) {
       _tickerModeEnabled = enabled;
@@ -197,6 +221,10 @@ class HomeFluidBackgroundState extends State<HomeFluidBackground>
     if (oldWidget.targetFps != widget.targetFps) {
       _stopDriver();
     }
+    if (oldWidget.scrollController != widget.scrollController) {
+      _bindScrolling(null);
+    }
+    _syncScrollPosition();
     _syncDriver();
   }
 
@@ -214,6 +242,7 @@ class HomeFluidBackgroundState extends State<HomeFluidBackground>
   void dispose() {
     _loadGeneration++;
     WidgetsBinding.instance.removeObserver(this);
+    _bindScrolling(null);
     _stopDriver();
     _maskImage?.dispose();
     _maskImage = null;
@@ -223,6 +252,26 @@ class HomeFluidBackgroundState extends State<HomeFluidBackground>
     super.dispose();
   }
 
+  /// 滚动 / 惯性滑行期间暂停：滚动时磁贴的 grouped 背景模糊本来就要逐帧重新
+  /// 采样，shader 再每帧产新画面等于翻倍 raster 工作量；背景在滚动的内容里
+  /// 也几乎不可辨，暂停无感。
+  bool get _scrollBusy => _scrollingListened?.value ?? false;
+
+  /// 背景自身完全滚出视口：首页把背景放进随内容上滚的 Positioned，滚到功能
+  /// 区底部后它已不可见，继续出帧只是白烧 GPU。
+  bool get _offScreen {
+    final box = context.findRenderObject();
+    if (box is! RenderBox || !box.attached || !box.hasSize) return false;
+    final view = View.maybeOf(context);
+    // `localToGlobal` 返回逻辑像素，视口高度也要用逻辑尺寸比较。
+    final logicalHeight = view == null
+        ? double.infinity
+        : view.physicalSize.height / view.devicePixelRatio;
+    final topLeft = box.localToGlobal(Offset.zero);
+    final bottom = topLeft.dy + box.size.height;
+    return bottom <= 0 || topLeft.dy >= logicalHeight;
+  }
+
   bool get _canRun =>
       _shader != null &&
       _maskImage != null &&
@@ -230,7 +279,34 @@ class HomeFluidBackgroundState extends State<HomeFluidBackground>
       !_reduceMotion &&
       widget.animationSpeed > 0 &&
       _tickerModeEnabled &&
-      _lifecycleState == AppLifecycleState.resumed;
+      _lifecycleState == AppLifecycleState.resumed &&
+      !_scrollBusy &&
+      !_offScreen;
+
+  /// 懒绑定 `ScrollPosition.isScrolling`：position 在滚动视图 attach 后才存
+  /// 在，且 attach / detach 会换对象，所以在依赖变化、出帧入口与 activity 通
+  /// 知里都补一次绑定；没有 position（或没挂控制器）时视为不滚动。
+  void _syncScrollPosition() {
+    final controller = widget.scrollController;
+    ValueNotifier<bool>? notifier;
+    if (controller != null && controller.hasClients) {
+      notifier = controller.position.isScrollingNotifier;
+    }
+    if (identical(notifier, _scrollingListened)) return;
+    _bindScrolling(notifier);
+  }
+
+  void _bindScrolling(ValueNotifier<bool>? notifier) {
+    _scrollingListened?.removeListener(_onScrollActivity);
+    _scrollingListened = notifier;
+    _scrollingListened?.addListener(_onScrollActivity);
+  }
+
+  void _onScrollActivity() {
+    if (!mounted) return;
+    _syncScrollPosition();
+    _syncDriver();
+  }
 
   bool get _driverActive => _frameCallbackId != null || _wakeTimer != null;
 
@@ -286,6 +362,8 @@ class HomeFluidBackgroundState extends State<HomeFluidBackground>
   /// 每个出帧节拍的入口（transient frame callback，与 `Ticker` 同阶段）。
   void _onFrame(Duration stamp) {
     _frameCallbackId = null;
+    // position 可能在驱动运行期间才 attach / detach，顺手补绑定。
+    _syncScrollPosition();
     if (!mounted || !_canRun) {
       _stopDriver();
       return;
@@ -333,9 +411,14 @@ class HomeFluidBackgroundState extends State<HomeFluidBackground>
     _scheduleNext(stamp);
   }
 
+  /// 本帧生效的出帧上限：不滚动时收紧到 [scrollBoostFps]（挂控制器才生效）。
+  int get _effectiveFps => widget.scrollController != null && !_scrollBusy
+      ? widget.scrollBoostFps
+      : widget.targetFps;
+
   void _scheduleNext(Duration stamp) {
     final interval = HomeFluidBackground.frameIntervalFor(
-      widget.targetFps,
+      _effectiveFps,
       _refreshRate,
     );
     if (interval == null) {

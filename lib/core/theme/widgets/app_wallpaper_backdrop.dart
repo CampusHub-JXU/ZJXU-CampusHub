@@ -14,7 +14,10 @@ import 'home_background_layer.dart';
 /// 变矮，Shader 画布与渐隐遮罩会整体被「顶起」。这里让背景按屏幕高度顶部
 /// 对齐溢出，被键盘遮住的部分由父级 Stack 裁掉。
 class AppWallpaperBackdrop extends StatelessWidget {
-  const AppWallpaperBackdrop({super.key});
+  const AppWallpaperBackdrop({super.key, this.scrollController});
+
+  /// 宿主页面滚动控制器：透传给流体 Shader，滚动 / 出视口时暂停出帧。
+  final ScrollController? scrollController;
 
   @override
   Widget build(BuildContext context) {
@@ -51,7 +54,10 @@ class AppWallpaperBackdrop extends StatelessWidget {
           return Stack(
             fit: StackFit.expand,
             children: [
-              HomeBackgroundLayer(path: bgImagePath),
+              HomeBackgroundLayer(
+                path: bgImagePath,
+                scrollController: scrollController,
+              ),
               ..._overlays(context, shaderEnabled: shaderEnabled),
             ],
           );

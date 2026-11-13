@@ -540,12 +540,27 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _scrollToFunction() async {
     final sectionContext = _functionSectionKey.currentContext;
-    if (sectionContext == null) return;
-    // alignment 0：功能区顶对齐视口顶——dock「功能」的语义是直达功能区，
-    // 而非最小可见（新布局功能区起点已在首屏内，最小可见会原地不动）。
-    await Scrollable.ensureVisible(
-      sectionContext,
-      alignment: 0.0,
+    final viewportContext = _scrollViewportKey.currentContext;
+    if (sectionContext == null || viewportContext == null) return;
+    if (!_scrollController.hasClients) return;
+
+    final viewportBox = viewportContext.findRenderObject() as RenderBox?;
+    final sectionBox = sectionContext.findRenderObject() as RenderBox?;
+    if (viewportBox == null || sectionBox == null) return;
+
+    // 直接算目标偏移，而不是先 ensureVisible 再回拉：两段动画会顿一下。
+    // 留出状态栏高度 + 8dp，让「功能」两个字落在实色区而不是渐隐羽化区里
+    // （状态栏透明后，区块顶对齐屏幕顶 = 标题被羽化洗掉）。
+    final topInset = MediaQuery.paddingOf(context).top;
+    final sectionTop = sectionBox
+        .localToGlobal(Offset.zero, ancestor: viewportBox)
+        .dy;
+    final target = (_scrollController.offset + sectionTop - topInset - 8).clamp(
+      0.0,
+      _scrollController.position.maxScrollExtent,
+    );
+    await _scrollController.animateTo(
+      target,
       duration: AppMotion.scroll,
       curve: AppMotion.standard,
     );
@@ -649,14 +664,17 @@ class _HomePageState extends State<HomePage> {
             statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
           ),
       child: Scaffold(
+        // 页面主体跟随主题色（个性化 / 壁纸取色都在这里生效）。
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         // 功能区磁贴的亚克力模糊共用一次背景读取（见 AppTileSurface）。
         body: BackdropGroup(
           child: Stack(
-            fit: StackFit.expand,
             children: [
-              const AppWallpaperBackdrop(),
               SafeArea(
+                // 顶部不吃系统内边距：内容要能从状态栏底下滚过去，状态栏才是
+                // 真透明（否则滚动后状态栏位置会留下一条 Scaffold 底色「横杠」）。
+                // 首屏的让位改在滚动内容里补 `paddingOf(context).top`。
+                top: false,
                 bottom: false,
                 child: ValueListenableBuilder<HomeTextColorMode>(
                   valueListenable:
@@ -672,6 +690,40 @@ class _HomePageState extends State<HomePage> {
                       ),
                 ),
               ),
+              // 状态栏微羽化：内容从下面滚过时系统图标仍可读。
+              // 强度按明度分开——浅色下 shader 本来就亮，压太狠会拉出一条
+              // 灰白横带；深色下才需要接近实色。
+              if (MediaQuery.paddingOf(context).top > 0)
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: MediaQuery.paddingOf(context).top + 10,
+                  child: IgnorePointer(
+                    child: Builder(
+                      builder: (context) {
+                        final isDark =
+                            Theme.of(context).brightness == Brightness.dark;
+                        final tint = Theme.of(context).scaffoldBackgroundColor;
+                        final base = isDark ? 0.42 : 0.22;
+                        return DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              stops: const [0.0, 0.6, 1.0],
+                              colors: [
+                                tint.withValues(alpha: base),
+                                tint.withValues(alpha: base),
+                                tint.withValues(alpha: 0),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
@@ -727,94 +779,109 @@ class _HomePageState extends State<HomePage> {
     return SingleChildScrollView(
       key: _scrollViewportKey,
       controller: _scrollController,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Stack(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              _pageGutter,
-              AppSpacing.xl,
-              _pageGutter,
-              0,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                heroWidget,
-                if (presentation.alert != null) ...[
-                  const SizedBox(height: AppSpacing.xl),
-                  HomeEventBanner(
-                    alert: presentation.alert!,
-                    onTap: () async {
-                      await _pushFeatureRoute(
-                        context,
-                        presentation.alert!.routeName,
-                      );
-                    },
-                  ),
-                ],
-                // 今天列表（含次日预览与「Hero 大字首课 + 单行折叠摘要」
-                // 形态）优先于资产行：课程安排是第一屏价值最高的状态信息,
-                // 余额/电费次之。
-                // Today 段落为空（如假期）时只留一段间距，避免 Hero 与资产行
-                // 之间空出两倍段距。
-                if (!presentation.today.isEmpty) ...[
-                  const SizedBox(height: _sectionGap),
-                  todayWidget,
-                ],
-                const SizedBox(height: _sectionGap),
-                assetWidget,
-              ],
-            ),
+          // 流体背景 / 壁纸只覆盖首屏，并且**随内容一起上滚**：滚到公告与
+          // 功能区时它已经离开视口，那两段因此坐在纯白 / 纯黑纸面上，
+          // 不会被 shader 或壁纸染色。
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: MediaQuery.sizeOf(context).height,
+            child: AppWallpaperBackdrop(scrollController: _scrollController),
           ),
-          // 公告 + 功能区尾段：公告开关变化时整段重建。公告紧随资产行
-          //（用户可不经滚动直达完整公告列表），其后是功能区小按钮段落。
-          ValueListenableBuilder<bool>(
-            valueListenable:
-                PersonalizationController.instance.homeCampusNoticeEnabled,
-            builder: (context, noticeEnabled, _) {
-              final noticeVisible = noticeEnabled && !_noticeHead.isEmpty;
-              final noticeWidget = HomeCampusNoticeSection(
-                head: _noticeHead,
-                onTapNotice: _openCampusNotice,
-                onTapAll: () => context.pushNamed('notification-center'),
-              );
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: EdgeInsets.fromLTRB(
+                  _pageGutter,
+                  AppSpacing.xl + MediaQuery.paddingOf(context).top,
+                  _pageGutter,
+                  0,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    heroWidget,
+                    if (presentation.alert != null) ...[
+                      const SizedBox(height: AppSpacing.xl),
+                      HomeEventBanner(
+                        alert: presentation.alert!,
+                        onTap: () async {
+                          await _pushFeatureRoute(
+                            context,
+                            presentation.alert!.routeName,
+                          );
+                        },
+                      ),
+                    ],
+                    // 今天列表（含次日预览与「Hero 大字首课 + 单行折叠摘要」
+                    // 形态）优先于资产行：课程安排是第一屏价值最高的状态信息,
+                    // 余额/电费次之。
+                    // Today 段落为空（如假期）时只留一段间距，避免 Hero 与资产行
+                    // 之间空出两倍段距。
+                    if (!presentation.today.isEmpty) ...[
+                      const SizedBox(height: _sectionGap),
+                      todayWidget,
+                    ],
+                    const SizedBox(height: _sectionGap),
+                    assetWidget,
+                  ],
+                ),
+              ),
+              // 公告 + 功能区尾段：公告开关变化时整段重建。公告紧随资产行
+              //（用户可不经滚动直达完整公告列表），其后是功能区小按钮段落。
+              ValueListenableBuilder<bool>(
+                valueListenable:
+                    PersonalizationController.instance.homeCampusNoticeEnabled,
+                builder: (context, noticeEnabled, _) {
+                  final noticeVisible = noticeEnabled && !_noticeHead.isEmpty;
+                  final noticeWidget = HomeCampusNoticeSection(
+                    head: _noticeHead,
+                    onTapNotice: _openCampusNotice,
+                    onTapAll: () => context.pushNamed('notification-center'),
+                  );
 
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (noticeVisible)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                        _pageGutter,
-                        _sectionGap,
-                        _pageGutter,
-                        AppSpacing.sectionBreak,
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (noticeVisible)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(
+                            _pageGutter,
+                            _sectionGap,
+                            _pageGutter,
+                            AppSpacing.sectionBreak,
+                          ),
+                          child: noticeWidget,
+                        ),
+                      // 功能区锚点：key 挂在容器上，ensureVisible 滚动到位后
+                      // 标题不贴视口顶；公告关闭时顶距退回普通段落间距。
+                      Container(
+                        key: _functionSectionKey,
+                        padding: EdgeInsets.only(
+                          top: noticeVisible ? 0 : AppSpacing.sectionBreak,
+                          bottom: bottomClearance,
+                        ),
+                        child: FunctionZoneSection(
+                          campusCardBalance:
+                              presentation.status.campusCardBalance,
+                          dormElectricity: presentation.status.dormElectricity,
+                          padding: EdgeInsets.fromLTRB(
+                            _pageGutter,
+                            0,
+                            _pageGutter,
+                            0,
+                          ),
+                        ),
                       ),
-                      child: noticeWidget,
-                    ),
-                  // 功能区锚点：key 挂在容器上，ensureVisible 滚动到位后
-                  // 标题不贴视口顶；公告关闭时顶距退回普通段落间距。
-                  Container(
-                    key: _functionSectionKey,
-                    padding: EdgeInsets.only(
-                      top: noticeVisible ? 0 : AppSpacing.sectionBreak,
-                      bottom: bottomClearance,
-                    ),
-                    child: FunctionZoneSection(
-                      campusCardBalance: presentation.status.campusCardBalance,
-                      dormElectricity: presentation.status.dormElectricity,
-                      padding: EdgeInsets.fromLTRB(
-                        _pageGutter,
-                        0,
-                        _pageGutter,
-                        0,
-                      ),
-                    ),
-                  ),
-                ],
-              );
-            },
+                    ],
+                  );
+                },
+              ),
+            ],
           ),
         ],
       ),
