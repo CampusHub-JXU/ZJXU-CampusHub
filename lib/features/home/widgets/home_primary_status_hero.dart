@@ -301,7 +301,7 @@ class HomePrimaryStatusHero extends StatelessWidget {
   }
 
   /// 课程类 Hero（正在上课 / 下一节课今天 / 下一节课今天没课）：
-  /// 课程名 30sp 全屏最强视觉 → 时间 → 地点/节次 → 查看课表。
+  /// 课程名（`O4` 自适应 34/28/22）→ 时间 → 地点/节次 → 查看课表。
   /// 课程信息主体整体可点跳转课表（课表双入口：hero 主体 + 功能区瓦片）。
   Widget _buildCourseHero(
     BuildContext context, {
@@ -309,33 +309,31 @@ class HomePrimaryStatusHero extends StatelessWidget {
     required Color primaryTextColor,
     required Color secondaryTextColor,
   }) {
-    final textTheme = Theme.of(context).textTheme;
     // 「下一节课(今天)」的倒计时大字（如「42 分钟后上课」）并入时间行；
     // 「下一节课(今天没课)」的时间行自带日期标签（如「明天 08:00」），原样展示。
     final timeLine =
         hero.kind == HomeHeroKind.nextCourseToday && hero.headline.isNotEmpty
         ? '${hero.timeText} · ${hero.headline}'
         : hero.timeText;
+    // `O4` 自适应课名：4 个汉字和 18 个汉字都真实存在，固定字号不是折成
+    // 4 行就是截掉「（上）」「实验」这类关键后缀。
+    final courseTitle = hero.courseName ?? hero.headline;
     final courseInfo = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          hero.courseName ?? hero.headline,
-          style: textTheme.headlineLarge!.copyWith(
-            height: 1.3,
-            color: primaryTextColor,
-          ),
-          maxLines: 2,
+          courseTitle,
+          style: AppHeroType.forTitle(courseTitle)
+              .copyWith(color: primaryTextColor),
+          maxLines: AppHeroType.maxLinesFor(courseTitle),
           overflow: TextOverflow.ellipsis,
         ),
         if (timeLine != null && timeLine.isNotEmpty) ...[
           const SizedBox(height: 10),
           Text(
             timeLine,
-            style: textTheme.titleMedium!.copyWith(
-              fontSize: 18,
+            style: AppChromeType.topBar.copyWith(
               height: 1.5,
-              fontWeight: FontWeight.w600,
               color: primaryTextColor,
             ),
           ),

@@ -2,8 +2,19 @@ import 'package:flutter/material.dart';
 
 import '../../../core/semester/semester_calendar.dart';
 import '../../../core/theme/app_design_tokens.dart';
+import '../../../core/theme/app_surface_tokens.dart';
+import '../../../core/theme/app_typography.dart';
 import '../../../core/academic/schedule_constants.dart';
 
+/// 课表表头：节次列上方是周次，右侧 7 列是「周几 + 日期」。
+///
+/// 设计系统 v2 · `O1` 微字阶：星期 `12/600`、日期 `10.5/400`，今天用
+/// 品牌淡底胶囊 + 品牌色文字标记。表头与网格之间那条线是全 App 唯一
+/// 允许的坐标辅助线之一（`AppSurfaces.matrixLine`）。
+///
+/// 「本周 / 非本周 / 未开学」不再挤在 30dp 的节次列里（挤不下且会把
+/// 周次数字顶掉）——学期状态由 `ScheduleInfoBanner` 在页面顶部说明，
+/// 非本周课程的角标由课程块自己标。
 class ScheduleDayHeaders extends StatelessWidget {
   const ScheduleDayHeaders({
     super.key,
@@ -11,7 +22,6 @@ class ScheduleDayHeaders extends StatelessWidget {
     required this.dayColumnWidth,
     required this.currentWeek,
     required this.isCurrentWeek,
-    this.showNotStartedBadge = false,
   });
 
   final double slotColumnWidth;
@@ -19,28 +29,22 @@ class ScheduleDayHeaders extends StatelessWidget {
   final int currentWeek;
   final bool isCurrentWeek;
 
-  /// 第 1 周且当前不存在"本周"（未开学）时，周徽标显示"未开学"。
-  final bool showNotStartedBadge;
-
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    final surfaces = context.appSurfaces;
     final today = DateTime.now().weekday;
     // 一周以周一为起点，日期必须与真实星期对齐。
     final weekStartDate = SemesterCalendar.instance.weekStartFor(currentWeek);
+    final weekAccent = isCurrentWeek ? surfaces.brand : surfaces.ink2;
 
     return Container(
-      // 头部与课表网格之间用一条发丝线分层，日期/周次层级更清晰。
       decoration: BoxDecoration(
-        color: cs.surfaceContainerLowest,
+        color: surfaces.card,
         border: Border(
-          bottom: BorderSide(
-            color: cs.outlineVariant.withValues(alpha: 0.35),
-            width: 0.7,
-          ),
+          bottom: BorderSide(color: surfaces.matrixLine, width: 0.7),
         ),
       ),
-      padding: const EdgeInsets.fromLTRB(0, 8, 0, 8),
+      padding: const EdgeInsets.fromLTRB(0, 8, 0, 7),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -49,26 +53,18 @@ class ScheduleDayHeaders extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Text(
-                    '$scheduleTermLabelPrefix$currentWeek$scheduleWeekLabelSuffix',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.labelMedium!.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: cs.onSurface,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 2),
                 Text(
-                  isCurrentWeek
-                      ? scheduleCurrentWeekLabel
-                      : showNotStartedBadge
-                      ? scheduleNotStartedLabel
-                      : scheduleNonCurrentWeekLabel,
+                  '$currentWeek',
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 10.5, color: cs.onSurfaceVariant),
+                  style: AppScheduleType.slotIndex.copyWith(color: weekAccent),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  scheduleWeekLabelSuffix,
+                  textAlign: TextAlign.center,
+                  style: AppScheduleType.slotTime.copyWith(
+                    color: surfaces.ink3,
+                  ),
                 ),
               ],
             ),
@@ -85,35 +81,39 @@ class ScheduleDayHeaders extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isToday ? 6 : 2,
+                          vertical: 3,
                         ),
                         decoration: BoxDecoration(
-                          color: isToday ? cs.primary : Colors.transparent,
-                          borderRadius: BorderRadius.circular(AppRadius.badge),
+                          color: isToday
+                              ? surfaces.brandTint
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(AppRadius.tag),
                         ),
-                        child: Text(
-                          '${date.day}',
-                          style: Theme.of(context).textTheme.labelMedium!
-                              .copyWith(
-                                fontWeight: isToday
-                                    ? FontWeight.w700
-                                    : FontWeight.w500,
-                                color: isToday ? cs.onPrimary : cs.onSurface,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              scheduleWeekdayLabels[i],
+                              maxLines: 1,
+                              style: AppScheduleType.weekday.copyWith(
+                                color: isToday ? surfaces.brand : surfaces.ink1,
                               ),
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '周${scheduleWeekdayLabels[i]}',
-                        style: Theme.of(context).textTheme.labelMedium!
-                            .copyWith(
-                              fontWeight: isToday
-                                  ? FontWeight.w700
-                                  : FontWeight.normal,
-                              color: isToday ? cs.primary : cs.onSurfaceVariant,
                             ),
+                            const SizedBox(height: 1),
+                            Text(
+                              '${date.day}',
+                              maxLines: 1,
+                              style: AppScheduleType.date.copyWith(
+                                color: isToday ? surfaces.brand : surfaces.ink2,
+                                fontWeight: isToday
+                                    ? FontWeight.w600
+                                    : FontWeight.w400,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),

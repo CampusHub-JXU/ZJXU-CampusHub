@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../../core/academic/schedule_constants.dart';
 import '../../../core/academic/schedule_model.dart';
+import '../../../core/theme/app_surface_tokens.dart';
+import '../../../core/theme/app_typography.dart';
 import '../schedule_week_view_model.dart';
 import 'schedule_course_cell.dart';
 import 'schedule_day_headers.dart';
@@ -19,8 +21,6 @@ class ScheduleGrid extends StatelessWidget {
   /// 真实当前周；null 表示当前不存在"本周"（未开学或学期已结束）。
   final int? actualCurrentWeek;
   int get currentWeek => weekViewModel.week;
-
-  static const _courseHueOffsets = <double>[0, 34, 72, 116, 164, 208, 258, 310];
 
   /// Merge adjacent/overlapping same-name courses on the same day into one
   /// entry spanning the full range, then deduplicate.
@@ -96,120 +96,77 @@ class ScheduleGrid extends StatelessWidget {
     return mergeAdjacentCourses(deduped);
   }
 
-  Color _colorForCourse(
-    String name,
-    bool isCurrentWeek,
-    ColorScheme cs,
-    bool isDark,
-  ) {
-    final index = name.hashCode.abs() % _courseHueOffsets.length;
-    final offset = _courseHueOffsets[index];
-    return _themeCourseColor(
-      cs.primary,
-      hueOffset: offset,
-      isCurrentWeek: isCurrentWeek,
-      isDark: isDark,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final surfaces = context.appSurfaces;
     return LayoutBuilder(
       builder: (context, constraints) {
         final dayColumnWidth =
             (constraints.maxWidth - scheduleGridSlotColumnWidth) / 7;
 
-        return Column(
-          children: [
-            ScheduleDayHeaders(
-              slotColumnWidth: scheduleGridSlotColumnWidth,
-              dayColumnWidth: dayColumnWidth,
-              currentWeek: currentWeek,
-              isCurrentWeek:
-                  actualCurrentWeek != null && currentWeek == actualCurrentWeek,
-              showNotStartedBadge:
-                  actualCurrentWeek == null && currentWeek == 1,
-            ),
-            Expanded(
-              child: SingleChildScrollView(
-                physics: const ClampingScrollPhysics(),
-                child: CustomPaint(
-                  // 极淡的节次横线（含节次列竖分隔线），只画在网格底层，
-                  // 不参与内容布局；深浅色统一用 outlineVariant 低透明度。
-                  painter: _SlotGridLinePainter(
-                    color: cs.outlineVariant.withValues(alpha: 0.32),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      ScheduleSlotColumn(
-                        slotColumnWidth: scheduleGridSlotColumnWidth,
-                      ),
-                      for (int day = 1; day <= 7; day++)
-                        RepaintBoundary(
-                          child: _DayColumn(
-                            currentWeekCourses: weekViewModel
-                                .coursesForDay(day)
-                                .currentWeekCourses,
-                            otherWeekCourses: weekViewModel
-                                .coursesForDay(day)
-                                .otherWeekCourses,
-                            colorFor: (name, isCurrentWeek) => _colorForCourse(
-                              name,
-                              isCurrentWeek,
-                              cs,
-                              isDark,
-                            ),
-                            dayColumnWidth: dayColumnWidth,
-                            displayWeek: currentWeek,
-                          ),
+        // `O1` 硬约束：二维网格内文字缩放钳制在 [0.95, 1.08]，
+        // 系统拉到 130% 也不会把 3 个汉字挤成 1 个半。
+        return AppTextScaleGuard.scheduleGrid(
+          child: Column(
+            children: [
+              ScheduleDayHeaders(
+                slotColumnWidth: scheduleGridSlotColumnWidth,
+                dayColumnWidth: dayColumnWidth,
+                currentWeek: currentWeek,
+                isCurrentWeek:
+                    actualCurrentWeek != null &&
+                    currentWeek == actualCurrentWeek,
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  physics: const ClampingScrollPhysics(),
+                  child: CustomPaint(
+                    // 极淡的节次横线（含节次列竖分隔线），只画在网格底层，
+                    // 不参与内容布局。这是 v2 里唯一允许出现的辅助线：
+                    // 二维时间 × 星期矩阵没有坐标线就读不出行列关系。
+                    painter: _SlotGridLinePainter(color: surfaces.matrixLine),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ScheduleSlotColumn(
+                          slotColumnWidth: scheduleGridSlotColumnWidth,
                         ),
-                    ],
+                        for (int day = 1; day <= 7; day++)
+                          RepaintBoundary(
+                            child: _DayColumn(
+                              currentWeekCourses: weekViewModel
+                                  .coursesForDay(day)
+                                  .currentWeekCourses,
+                              otherWeekCourses: weekViewModel
+                                  .coursesForDay(day)
+                                  .otherWeekCourses,
+                              dayColumnWidth: dayColumnWidth,
+                              displayWeek: currentWeek,
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         );
       },
     );
   }
 }
 
-Color _themeCourseColor(
-  Color base, {
-  required double hueOffset,
-  required bool isCurrentWeek,
-  required bool isDark,
-}) {
-  final hsl = HSLColor.fromColor(base);
-  final saturation = isCurrentWeek
-      ? (hsl.saturation * 0.88).clamp(0.42, 0.92)
-      : (hsl.saturation * 0.34).clamp(0.14, 0.42);
-  final lightness = isCurrentWeek
-      ? (isDark ? 0.66 : 0.42)
-      : (isDark ? 0.48 : 0.72);
-  return hsl
-      .withHue((hsl.hue + hueOffset) % 360.0)
-      .withSaturation(saturation)
-      .withLightness(lightness)
-      .toColor();
-}
-
 class _DayColumn extends StatelessWidget {
   const _DayColumn({
     required this.currentWeekCourses,
     required this.otherWeekCourses,
-    required this.colorFor,
     required this.dayColumnWidth,
     required this.displayWeek,
   });
 
   final List<CourseEntry> currentWeekCourses;
   final List<CourseEntry> otherWeekCourses;
-  final Color Function(String, bool) colorFor;
   final double dayColumnWidth;
   final int displayWeek;
 
@@ -243,10 +200,6 @@ class _DayColumn extends StatelessWidget {
                 child: ScheduleCourseCell(
                   course: placement.entry.course,
                   span: placement.span,
-                  color: colorFor(
-                    placement.entry.course.courseName,
-                    placement.entry.isCurrentWeek,
-                  ),
                   dayColumnWidth: placement.width,
                   isCurrentWeek: placement.entry.isCurrentWeek,
                 ),

@@ -1,33 +1,35 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_design_tokens.dart';
+import '../../../core/theme/app_surface_tokens.dart';
+import '../../../core/theme/app_typography.dart';
 import '../../../shared/widgets/app_feedback.dart';
 import '../../../core/academic/schedule_constants.dart';
 import '../../../core/academic/schedule_model.dart';
 
+/// 课表网格里的一个课程块（设计系统 v2 · `O1` 微字阶 + 8 色色板）。
+///
+/// 颜色不再由外部传入、也不再按主题色算色相：v2 规定色相由课程名稳定
+/// 哈希到 8 个无障碍色相之一（[AppSurfaces.hueFor]），同一门课在任何设备、
+/// 任何次启动、任何主题下都是同一个颜色；非本周课程统一走
+/// [AppSurfaces.dimmedHue]（降饱和但不隐形）。
 class ScheduleCourseCell extends StatelessWidget {
   const ScheduleCourseCell({
     super.key,
     required this.course,
     required this.span,
-    required this.color,
     required this.dayColumnWidth,
     required this.isCurrentWeek,
   });
 
   final CourseEntry course;
   final int span;
-  final Color color;
   final double dayColumnWidth;
   final bool isCurrentWeek;
 
   static const _cellBorderRadius = BorderRadius.all(
-    Radius.circular(AppRadius.chip),
+    Radius.circular(AppRadius.cell),
   );
-
-  static Color _blendColor(Color background, Color foreground, double amount) {
-    return Color.lerp(background, foreground, amount)!;
-  }
 
   void _showCourseDetail(BuildContext context) {
     AppFeedback.sheet<void>(
@@ -103,40 +105,27 @@ class ScheduleCourseCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cellBackgroundColor = isDark
-        ? cs.surfaceContainerHigh
-        : cs.surfaceContainerLowest;
-    final cellFillColor = isCurrentWeek
-        ? _blendColor(cellBackgroundColor, color, isDark ? 0.18 : 0.1)
-        : _blendColor(
-            cellBackgroundColor,
-            cs.outlineVariant,
-            isDark ? 0.04 : 0.06,
-          );
-    final titleColor = isCurrentWeek
-        ? (isDark ? _blendColor(color, cs.onSurface, 0.24) : color)
-        : cs.onSurfaceVariant;
-    final metaColor = isCurrentWeek
-        ? (isDark
-              ? _blendColor(color, cs.onSurface, 0.14)
-              : _blendColor(cellFillColor, titleColor, 0.75))
-        : _blendColor(cellFillColor, cs.onSurfaceVariant, 0.75);
-    final accentColor = isCurrentWeek
-        ? color
-        : _blendColor(color, cs.outline, 0.35);
+    final surfaces = context.appSurfaces;
+    final hue = isCurrentWeek
+        ? surfaces.hueFor(course.courseName)
+        : surfaces.dimmedHue;
+    final titleColor = hue.foreground;
+    final metaColor = hue.foreground.withValues(alpha: 0.78);
+    // 颜色条 + 白 / 黑底：色相只落在左侧 3dp 竖条与文字上，底面积保持
+    // 中性卡面，七列网格才不会变成一块花布。
+    final accentColor = hue.foreground;
+    final cellFillColor = isCurrentWeek ? surfaces.card : surfaces.tile;
     final cellHeight = scheduleGridSlotHeight * span;
     final narrow = dayColumnWidth < 24;
-    final dense = cellHeight < 92;
-    final titleFontSize = narrow ? 10.5 : 12.0;
-    final metaFontSize = narrow ? 9.0 : 10.0;
     final hasRoom = !narrow && cellHeight >= 88;
     final hasExtraRoom = hasRoom && cellHeight >= 120;
-    final titleLines = cellHeight >= 180
-        ? (narrow ? 5 : 4)
-        : cellHeight >= 120
-        ? 3
+    // 课名最多 7 行：一节 68dp 的竖向空间本来就够，没必要提前截断。
+    final titleLines = cellHeight >= 204
+        ? 7
+        : cellHeight >= 136
+        ? 6
+        : cellHeight >= 88
+        ? 4
         : 2;
     final classroomMaxLines = cellHeight >= 200 ? 4 : 2;
     final teacherMaxLines = cellHeight >= 160 ? 2 : 1;
@@ -166,18 +155,14 @@ class ScheduleCourseCell extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // 颜色条：色相只在这里和文字上出现，底面积保持中性卡面。
                   ColoredBox(
                     color: accentColor,
-                    child: const SizedBox(width: 4),
+                    child: const SizedBox(width: 3),
                   ),
                   Expanded(
                     child: Padding(
-                      padding: EdgeInsets.fromLTRB(
-                        narrow ? 2 : 4,
-                        6,
-                        narrow ? 2 : 4,
-                        6,
-                      ),
+                      padding: const EdgeInsets.fromLTRB(2, 5, 2, 5),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -186,11 +171,8 @@ class ScheduleCourseCell extends StatelessWidget {
                               alignment: Alignment.topLeft,
                               child: Text(
                                 course.courseName,
-                                style: TextStyle(
-                                  fontSize: titleFontSize,
-                                  fontWeight: FontWeight.w600,
+                                style: AppScheduleType.cellTitle.copyWith(
                                   color: titleColor,
-                                  height: dense ? 1.1 : 1.18,
                                 ),
                                 maxLines: titleLines,
                                 overflow: TextOverflow.ellipsis,
@@ -217,10 +199,8 @@ class ScheduleCourseCell extends StatelessWidget {
                                         alignment: Alignment.bottomRight,
                                         child: Text(
                                           course.classroom,
-                                          style: TextStyle(
-                                            fontSize: metaFontSize,
-                                            color: metaColor,
-                                          ),
+                                          style: AppScheduleType.cellRoom
+                                              .copyWith(color: metaColor),
                                           maxLines: classroomMaxLines,
                                           overflow: TextOverflow.ellipsis,
                                           textAlign: TextAlign.right,
@@ -234,10 +214,8 @@ class ScheduleCourseCell extends StatelessWidget {
                                         alignment: Alignment.bottomRight,
                                         child: Text(
                                           course.teacherName,
-                                          style: TextStyle(
-                                            fontSize: metaFontSize,
-                                            color: metaColor,
-                                          ),
+                                          style: AppScheduleType.cellRoom
+                                              .copyWith(color: metaColor),
                                           maxLines: teacherMaxLines,
                                           overflow: TextOverflow.ellipsis,
                                         ),
@@ -249,10 +227,8 @@ class ScheduleCourseCell extends StatelessWidget {
                                         alignment: Alignment.bottomRight,
                                         child: Text(
                                           scheduleInactiveWeekTag,
-                                          style: TextStyle(
-                                            fontSize: 9,
-                                            color: cs.onSurfaceVariant,
-                                          ),
+                                          style: AppScheduleType.cellRoom
+                                              .copyWith(color: surfaces.ink3),
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           softWrap: false,

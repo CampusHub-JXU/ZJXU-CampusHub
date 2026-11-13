@@ -3,12 +3,8 @@
 // 数字变小或条目消失。
 
 const designRatchetBaseline = <String, Map<String, int>>{
-  'features/home/widgets/home_asset_strip.dart': {'fontSize': 1},
-  'features/home/widgets/home_primary_status_hero.dart': {'fontSize': 2},
+  'features/home/widgets/home_primary_status_hero.dart': {'fontSize': 1},
   'features/my/my_page.dart': {'fontSize': 7},
-  'features/schedule/widgets/schedule_course_cell.dart': {'fontSize': 1},
-  'features/schedule/widgets/schedule_day_headers.dart': {'fontSize': 1},
-  'features/schedule/widgets/schedule_slot_column.dart': {'fontSize': 1},
   'features/settings/background_editor_page.dart': {'fontSize': 2},
   'features/settings/widgets/appearance_preview.dart': {'fontSize': 2},
   'features/settings/widgets/hsv_color_picker_sheet.dart': {'fontSize': 1},

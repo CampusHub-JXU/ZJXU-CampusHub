@@ -1,7 +1,14 @@
 const scheduleWeekdayLabels = ['一', '二', '三', '四', '五', '六', '日'];
 const scheduleWeekCount = 20;
 const scheduleSlotCount = 13;
-const scheduleGridSlotColumnWidth = 48.0;
+
+/// 节次列宽度（设计系统 v2 · `O1`）。
+///
+/// `385dp` 视口扣掉 `32dp` 页面留白后剩 `353dp`；节次列从 `48dp` 收窄到
+/// `30dp`，7 个日列各得 `46.1dp`，扣掉卡片与内边距后仍有 `~36dp` 文字
+/// 宽度——`11sp` 刚好排下 3 个汉字，这正是 `O1` 微字阶成立的前提。
+/// 再宽（48dp）就只能排 2 个汉字，课名与教室号必然截断。
+const scheduleGridSlotColumnWidth = 30.0;
 const scheduleGridSlotHeight = 68.0;
 const scheduleUnknownText = '待定';
 const scheduleUnknownTimeText = '??';

@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/notice/notice_detail.dart';
 import '../../core/notice/notice_detail_service.dart';
+import '../../core/theme/app_typography.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_error_view.dart';
 import '../../shared/widgets/app_feedback.dart';
@@ -284,7 +285,7 @@ class _ParagraphViewState extends State<_ParagraphView> {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final paragraph = widget.paragraph;
-    final base = theme.textTheme.bodyLarge?.copyWith(height: 1.75);
+    final base = AppArticleType.body.copyWith(color: cs.onSurface);
     final spans = <InlineSpan>[];
     // 原文首行缩进 2 字符，且正文自身没带全角空格时补齐。
     if (paragraph.indent &&

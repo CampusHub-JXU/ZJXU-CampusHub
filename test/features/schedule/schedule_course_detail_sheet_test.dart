@@ -32,7 +32,6 @@ void main() {
             child: ScheduleCourseCell(
               course: course,
               span: 2,
-              color: Colors.blue,
               dayColumnWidth: 80,
               isCurrentWeek: true,
             ),

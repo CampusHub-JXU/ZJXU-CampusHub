@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme/app_typography.dart';
 import 'app_state_view_transition.dart';
 
 /// 统一的错误态视图：图标 + 标题 + 描述 + 重试按钮。
@@ -30,6 +31,7 @@ class AppErrorView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final text = context.appText;
     final hasMessage = message != null && message!.isNotEmpty;
 
     // 整块内容走统一的淡入 + 轻微上浮，避免内容 → 错误态瞬切。
@@ -42,33 +44,29 @@ class AppErrorView extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                // 与空态同构，只有底色 / 图标换成警示色（v2 六态状态机：
+                // 「拉取失败」必须与「真为空」视觉可分）。
                 Container(
-                  width: 56,
-                  height: 56,
+                  width: 44,
+                  height: 44,
                   decoration: BoxDecoration(
                     color: cs.errorContainer,
-                    borderRadius: BorderRadius.circular(16),
+                    shape: BoxShape.circle,
                   ),
-                  child: Icon(icon, color: cs.onErrorContainer, size: 28),
+                  child: Icon(icon, color: cs.onErrorContainer, size: 22),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
                 Text(
                   title,
                   textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w700),
+                  style: text.rowTitleStrong,
                 ),
                 if (hasMessage) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    message!,
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodySmall
-                        ?.copyWith(color: cs.onSurfaceVariant),
-                  ),
+                  const SizedBox(height: 4),
+                  Text(message!, textAlign: TextAlign.center, style: text.meta),
                 ],
                 if (onRetry != null) ...[
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
                   FilledButton.tonalIcon(
                     onPressed: onRetry,
                     icon: const Icon(Icons.refresh_rounded, size: 18),

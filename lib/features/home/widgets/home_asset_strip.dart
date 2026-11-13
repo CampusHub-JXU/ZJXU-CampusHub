@@ -114,7 +114,6 @@ class _AssetZone extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
     final phase = state.phase;
     final hasValue = state.hasValue;
     // 失败（无缓存）时的受控重试优先；未提供回调则维持导航。
@@ -180,9 +179,9 @@ class _AssetZone extends StatelessWidget {
                       Flexible(
                         child: Text(
                           text,
-                          style: textTheme.titleMedium!.copyWith(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
+                          // `O3` 紧凑读数：双列资产格里 24sp 会把
+                          // 「1,248.50 元」顶到截断，20sp 才装得下。
+                          style: AppCompactMetricType.value.copyWith(
                             color: valueColor,
                           ),
                           maxLines: 1,

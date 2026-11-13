@@ -32,6 +32,8 @@ void main() {
     expect(find.text('高等数学 C2'), findsWidgets);
     expect(find.text('微观经济学'), findsOneWidget);
     expect(find.text('大学英语'), findsOneWidget);
+    expect(find.text('¥32.50'), findsOneWidget);
+    expect(find.text('18.4 度'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

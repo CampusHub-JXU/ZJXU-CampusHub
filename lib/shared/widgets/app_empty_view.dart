@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme/app_typography.dart';
 import 'app_state_view_transition.dart';
 
 /// 统一的空态视图：图标 + 标题 + 描述 + 可选操作按钮。
@@ -28,6 +29,7 @@ class AppEmptyView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final text = context.appText;
     final hasMessage = message != null && message!.isNotEmpty;
     final hasAction = actionLabel != null && onAction != null;
 
@@ -41,33 +43,28 @@ class AppEmptyView extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                // v2 状态图标的唯一形态：44dp 圆形底 + 20dp 线性图标。
                 Container(
-                  width: 56,
-                  height: 56,
+                  width: 44,
+                  height: 44,
                   decoration: BoxDecoration(
                     color: cs.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(16),
+                    shape: BoxShape.circle,
                   ),
-                  child: Icon(icon, color: cs.onSurfaceVariant, size: 28),
+                  child: Icon(icon, color: cs.onSurfaceVariant, size: 22),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
                 Text(
                   title,
                   textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w700),
+                  style: text.rowTitleStrong,
                 ),
                 if (hasMessage) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    message!,
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodySmall
-                        ?.copyWith(color: cs.onSurfaceVariant),
-                  ),
+                  const SizedBox(height: 4),
+                  Text(message!, textAlign: TextAlign.center, style: text.meta),
                 ],
                 if (hasAction) ...[
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
                   FilledButton.tonal(
                     onPressed: onAction,
                     child: Text(actionLabel!),

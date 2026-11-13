@@ -17,8 +17,8 @@ abstract final class ExampleCampusSnapshot {
     ),
     alert: null,
     status: HomeStatusPresentation(
-      campusCardBalance: '¥32.50',
-      dormElectricity: '18.4 度',
+      campusCardBalance: '32.50',
+      dormElectricity: '18.4',
       hasCampusCardData: true,
       hasElectricityData: true,
       lowBalance: false,
