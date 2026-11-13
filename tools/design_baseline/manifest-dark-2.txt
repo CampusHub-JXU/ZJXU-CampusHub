@@ -1,0 +1,15 @@
+# Dark theme — remaining pages
+5|11-exam|exam.open
+5|14-library|library.open
+5|17-notification-center|notification.center
+5|18-service-hall|service-hall.open
+5|19-dorm-electricity|electricity.open
+5|20-physical-test|physical-test.open
+5|21-changxing-jiada|changxing-jiada.open
+5|22-sjjx-notice|sjjx-notice.open
+5|23-shuati|shuati.open
+5|25-one-stop|one-stop-service.open
+5|26-micro-life|micro-life.open
+5|13-campus-card-payment|campus-card.payment
+5|60-academic-progress|academic-progress.open
+5|50-notice-inbox|notice.inbox

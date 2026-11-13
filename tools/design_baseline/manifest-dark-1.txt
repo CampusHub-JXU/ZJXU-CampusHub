@@ -1,0 +1,10 @@
+# wait | slug | action | taps
+8|00-home|-|
+8|01-my|-|947,2282
+8|02-schedule|schedule.open|
+8|10-grades|grades.open|
+10|12-campus-card|campus-card.open|
+9|16-second-classroom|second-classroom.open|
+8|30-settings|-|947,2282;589,1108
+8|40-function-directory|-|578,2282
+10|24-academic-web|academic-web.open|

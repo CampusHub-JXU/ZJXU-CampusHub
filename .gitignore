@@ -100,3 +100,5 @@ packages/**/.cxx/
 # Firebase 已退役；本地可能残留旧的配置文件，继续忽略防止误提交
 android/app/google-services.json
 /.ocr_work/
+/.playwright-mcp/
+/docs/design-baseline/_work/

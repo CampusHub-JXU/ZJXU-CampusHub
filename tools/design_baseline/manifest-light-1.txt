@@ -1,0 +1,18 @@
+# wait | slug | deep-link action id ("-" = plain launch)
+8|10-grades|grades.open
+8|11-exam|exam.open
+10|12-campus-card|campus-card.open
+9|13-campus-card-payment|campus-card.payment
+10|14-library|library.open
+10|15-library-borrows|library.open
+9|16-second-classroom|second-classroom.open
+8|17-notification-center|notification.center
+10|18-service-hall|service-hall.open
+10|19-dorm-electricity|electricity.open
+12|20-physical-test|physical-test.open
+10|21-changxing-jiada|changxing-jiada.open
+10|22-sjjx-notice|sjjx-notice.open
+8|23-shuati|shuati.open
+12|24-academic-web|academic-web.open
+12|25-one-stop|one-stop-service.open
+12|26-micro-life|micro-life.open
