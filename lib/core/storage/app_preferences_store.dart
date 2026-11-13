@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../theme/app_preferences_controller.dart';
+import '../theme/app_icon_style.dart';
 import '../theme/app_theme_controller.dart';
 import '../theme/app_theme_palette.dart';
 
@@ -17,7 +18,9 @@ class AppPreferencesStore {
   static const _pureBlackKey = 'app_theme_pure_black_mode';
   static const _textScaleKey = 'text_scale_factor';
   static const _homeTextColorModeKey = 'app_theme_home_text_color_mode';
-  static const _filledButtonSoftStyleKey = 'app_theme_filled_button_soft_style';
+  static const _appIconStyleKey = 'app_icon_style';
+  static const _iconFollowThemeColorKey = 'app_icon_follow_theme_color';
+  static const _iconDarkInvertKey = 'app_icon_dark_invert';
 
   Future<AppPreferences> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -61,10 +64,6 @@ class AppPreferencesStore {
       orElse: () => HomeTextColorPreference.system,
     );
 
-    // filledButtonSoftStyle
-    final filledButtonSoftStyle =
-        prefs.getBool(_filledButtonSoftStyleKey) ?? false;
-
     return AppPreferences(
       themeMode: themeMode,
       colorSource: colorSource,
@@ -73,13 +72,25 @@ class AppPreferencesStore {
       pureBlack: pureBlack,
       textScale: textScale,
       homeTextColor: homeTextColor,
-      filledButtonSoftStyle: filledButtonSoftStyle,
+      appIconStyle: AppIconStyle.values.firstWhere(
+        (style) => style.name == prefs.getString(_appIconStyleKey),
+        orElse: () => AppIconStyle.celadonSlate,
+      ),
+      iconFollowThemeColor: prefs.getBool(_iconFollowThemeColorKey) ?? false,
+      iconDarkInvert: prefs.getBool(_iconDarkInvertKey) ?? true,
     );
   }
 
   Future<void> saveThemeMode(AppThemePreference value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_themeModeKey, value.name);
+  }
+
+  Future<void> saveAppIconPreferences(AppPreferences value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_appIconStyleKey, value.appIconStyle.name);
+    await prefs.setBool(_iconFollowThemeColorKey, value.iconFollowThemeColor);
+    await prefs.setBool(_iconDarkInvertKey, value.iconDarkInvert);
   }
 
   Future<void> savePaletteIndex(int value) async {
@@ -110,10 +121,5 @@ class AppPreferencesStore {
   Future<void> saveHomeTextColor(HomeTextColorPreference value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_homeTextColorModeKey, value.index);
-  }
-
-  Future<void> saveFilledButtonSoftStyle(bool value) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_filledButtonSoftStyleKey, value);
   }
 }

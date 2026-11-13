@@ -26,7 +26,8 @@ void main() {
     final context = tester.element(find.text('高等数学'));
     final title = tester.widget<Text>(find.text('高等数学'));
     expect(title.style?.fontSize, context.appText.rowTitle.fontSize);
-    expect(title.style?.fontWeight, FontWeight.w600);
+    // v2：列表行标题降到 w500，中文在 600+ 会挤成一片。
+    expect(title.style?.fontWeight, FontWeight.w500);
     // 平色底，不做背景模糊。
     expect(find.byType(BackdropFilter), findsNothing);
   });

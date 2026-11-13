@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import 'app_design_tokens.dart';
+import 'app_surface_tokens.dart';
 import 'app_typography.dart';
 import 'page_transition_activity.dart';
 
@@ -106,8 +107,12 @@ class AppThemeBuilder {
   /// 弹出菜单（`PopupMenuButton`）与 [AppDropdown] 的弹层同一材质：
   /// surfaceContainerHigh + 输入框圆角 + 0.3 描边，避免出现原生 Material 菜单。
   static PopupMenuThemeData _popupMenuTheme(ColorScheme colorScheme) {
+    final light = colorScheme.brightness == Brightness.light;
     return PopupMenuThemeData(
-      color: colorScheme.surfaceContainerHigh,
+      // 浅色菜单走纯白卡面（比页面底色更亮），靠投影分层；深色沿用最高面阶。
+      color: light
+          ? colorScheme.surfaceContainerLowest
+          : colorScheme.surfaceContainerHigh,
       surfaceTintColor: Colors.transparent,
       elevation: 6,
       shadowColor: colorScheme.shadow,
@@ -139,14 +144,11 @@ class AppThemeBuilder {
     final TextStyle labelBase = _appleTextTheme.labelLarge!.copyWith(
       fontFamily: 'Inter',
     );
-    // iOS 式「轨道 + 滑块」：轨道取较深的中性面阶，选中项是明显更亮的滑块。
-    // 中性种子下相邻 surfaceContainer 面阶只差 1–3 个色调，选中态几乎不可辨，
-    // 所以浅色滑块直接用最亮的 surfaceContainerLowest（≈白），深色在最高面阶上
-    // 再叠 16% 前景色提亮。
+    // iOS 式「轨道 + 滑块」：轨道取「未选中控件轨道」面阶（v2 `--surface-mid`），
+    // 选中项是明显更亮的滑块。浅色滑块直接用最亮的 surfaceContainerLowest
+    // （≈白），深色在最高面阶上再叠 16% 前景色提亮。
     final dark = colorScheme.brightness == Brightness.dark;
-    final Color track = dark
-        ? colorScheme.surfaceContainerHigh
-        : colorScheme.surfaceContainerHighest;
+    final Color track = colorScheme.surfaceContainerHigh;
     final Color selectedThumb = dark
         ? Color.alphaBlend(
             colorScheme.onSurface.withValues(alpha: 0.16),
@@ -208,10 +210,7 @@ class AppThemeBuilder {
     );
   }
 
-  static ThemeData light(
-    Color seedColor, {
-    bool filledButtonSoftStyle = false,
-  }) {
+  static ThemeData light(Color seedColor) {
     var colorScheme = ColorScheme.fromSeed(
       seedColor: seedColor,
       brightness: Brightness.light,
@@ -220,14 +219,16 @@ class AppThemeBuilder {
     // 中性种子：浅色模式走中性冷灰表面阶梯，阻断种子色粉调渗入
     // （背景 #FEF8F7、描边 #E2DDDC 之类的粉白观感），卡面纯白、
     // 描边中性灰，与深色模式的表面策略对偶。
+    // 具体色值取 design system v2 的 `--bg / --surface-lowest / --surface-low`
+    // 三档（docs/design-baseline/DESIGN.md §2.1）。
     if (_isNeutralSeed(seedColor)) {
       colorScheme = colorScheme.copyWith(
-        surface: const Color(0xFFF4F5F7),
+        surface: const Color(0xFFF3F4F6),
         surfaceContainerLowest: Colors.white,
         surfaceContainerLow: const Color(0xFFF8F9FA),
-        surfaceContainer: const Color(0xFFF2F3F6),
-        surfaceContainerHigh: const Color(0xFFEAECF0),
-        surfaceContainerHighest: const Color(0xFFE3E6EA),
+        surfaceContainer: const Color(0xFFF0F2F5),
+        surfaceContainerHigh: const Color(0xFFE2E5EB),
+        surfaceContainerHighest: const Color(0xFFECEEF2),
         outlineVariant: const Color(0xFFE1E4E9),
       );
     }
@@ -237,7 +238,10 @@ class AppThemeBuilder {
       colorScheme: colorScheme,
       fontFamily: 'Inter',
       textTheme: _appleTextTheme,
-      extensions: [AppTypography.fromScheme(colorScheme)],
+      extensions: [
+        AppTypography.fromScheme(colorScheme),
+        AppSurfaces.resolve(colorScheme),
+      ],
       scaffoldBackgroundColor: colorScheme.surface,
       pageTransitionsTheme: _appPageTransitionsTheme,
       appBarTheme: AppBarTheme(
@@ -267,12 +271,8 @@ class AppThemeBuilder {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: filledButtonSoftStyle
-              ? colorScheme.primaryContainer
-              : colorScheme.primary,
-          foregroundColor: filledButtonSoftStyle
-              ? colorScheme.onPrimaryContainer
-              : colorScheme.onPrimary,
+          backgroundColor: colorScheme.primary,
+          foregroundColor: colorScheme.onPrimary,
           shape: const StadiumBorder(),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
           textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
@@ -381,11 +381,7 @@ class AppThemeBuilder {
         .toColor();
   }
 
-  static ThemeData dark(
-    Color seedColor, {
-    bool pureBlack = false,
-    bool filledButtonSoftStyle = false,
-  }) {
+  static ThemeData dark(Color seedColor, {bool pureBlack = false}) {
     final isNeutralDark = _isNeutralSeed(seedColor);
     final baseScheme = ColorScheme.fromSeed(
       seedColor: seedColor,
@@ -395,20 +391,22 @@ class AppThemeBuilder {
     final seedRaised = _darkSeedTone(seedColor, 0.18);
     final seedHigh = _darkSeedTone(seedColor, 0.24);
 
+    // 深色三档取自 design system v2（`--bg / --surface-lowest /
+    // --surface-low / --surface-mid`），纯黑模式关掉一切提亮。
     final darkBase = pureBlack
         ? const Color(0xFF000000)
         : isNeutralDark
-        ? const Color(0xFF101418)
+        ? const Color(0xFF111315)
         : baseScheme.surface;
     final darkSurf = pureBlack
-        ? const Color(0xFF0A0A0A)
+        ? const Color(0xFF0D0F12)
         : isNeutralDark
-        ? const Color(0xFF171C20)
+        ? const Color(0xFF1A1D21)
         : baseScheme.surfaceContainerLow;
     final darkSurfHigh = pureBlack
-        ? const Color(0xFF111111)
+        ? const Color(0xFF16191E)
         : isNeutralDark
-        ? const Color(0xFF242B30)
+        ? const Color(0xFF22262B)
         : baseScheme.surfaceContainerHigh;
 
     final background = isNeutralDark
@@ -434,7 +432,7 @@ class AppThemeBuilder {
             ),
       surfaceContainer: surface,
       surfaceContainerLow: isNeutralDark
-          ? const Color(0xFF12171B)
+          ? surface
           : _mix(
               pureBlack
                   ? const Color(0xFF060606)
@@ -461,7 +459,10 @@ class AppThemeBuilder {
       colorScheme: colorScheme,
       fontFamily: 'Inter',
       textTheme: _appleTextTheme,
-      extensions: [AppTypography.fromScheme(colorScheme)],
+      extensions: [
+        AppTypography.fromScheme(colorScheme),
+        AppSurfaces.resolve(colorScheme, amoled: pureBlack),
+      ],
       scaffoldBackgroundColor: background,
       pageTransitionsTheme: _appPageTransitionsTheme,
       appBarTheme: AppBarTheme(
@@ -494,12 +495,8 @@ class AppThemeBuilder {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: filledButtonSoftStyle
-              ? colorScheme.primaryContainer
-              : colorScheme.primary,
-          foregroundColor: filledButtonSoftStyle
-              ? colorScheme.onPrimaryContainer
-              : colorScheme.onPrimary,
+          backgroundColor: colorScheme.primary,
+          foregroundColor: colorScheme.onPrimary,
           shape: const StadiumBorder(),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
           textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),

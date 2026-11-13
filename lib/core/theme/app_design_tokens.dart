@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 ///
 /// Centralizes radius / spacing / elevation / icon-badge sizing so that
 /// scattered hard-coded values across features converge on a single source of
-/// truth. See `docs/archive/design.md` §5 (P0-1) for the full migration plan.
+/// truth. See `docs/design-baseline/DESIGN.md` §4（v2 七档圆角）for the spec.
 ///
 /// Conventions:
 /// * Values are tuned to match the current visual language (Material 3 seed
@@ -13,11 +13,32 @@ import 'package:flutter/material.dart';
 class AppRadius {
   AppRadius._();
 
-  /// 内容面唯一圆角：AppCard、品牌卡（cardAlt）、功能区/服务瓦片、
-  /// 输入框、事件横幅共用一档，保证跨页面圆角观感一致。
+  /// 6dp：行内语义小胶囊（`AppStatusTag` 非 stadium 形态、tag 背景）。
+  static const double tag = 6;
+
+  /// 9dp：课表课程块（`ScheduleCourseCell`）。网格边长太小，再大会糊成圆形。
+  static const double cell = 9;
+
+  /// 10dp：输入框 / 搜索框 / 步进器 / 下拉胶囊 / chips。
+  static const double control = 10;
+
+  /// 短选项分段控件（`SegmentedButton`）：介于 control 与内容面之间的一档，
+  /// 替代 MD3 默认的 StadiumBorder（胶囊）。
+  static const double segment = 11;
+
+  /// 12dp：图标底座（`AppIconBadge`）/ 卡内嵌块。
+  static const double badge = 12;
+
+  /// 16dp：内容面唯一圆角：AppCard、品牌卡、功能区 / 服务瓦片。
   /// （历史上 card=22 / cardAlt=18 / tile=16 / input=14 四档并存，
   /// 已按设计规范收敛为单档 16。）
   static const double card = 16;
+
+  /// 22dp：浮动玻璃 Dock。
+  static const double dock = 22;
+
+  /// 28dp：底部弹层 / 对话框 / 浮动面板顶角。
+  static const double sheet = 28;
 
   /// 品牌卡历史别名，现与 [card] 同值；仅保留 API 兼容。
   static const double cardAlt = card;
@@ -25,31 +46,17 @@ class AppRadius {
   /// 功能瓦片，与 [card] 同档。
   static const double tile = card;
 
-  /// Icon badge base radius（图标底座，独立小元素档）。
-  static const double badge = 12;
+  /// 输入框 / 表单字段圆角（= [control]），保留旧名兼容。
+  static const double input = control;
 
-  /// 输入框/表单字段圆角，与内容面同档。
-  static const double input = card;
+  /// Chips（= [control]）。
+  static const double chip = control;
 
-  /// Chips。
-  static const double chip = 10;
+  /// 对话框 / 浮动面板（= [sheet]）。
+  static const double floating = sheet;
 
-  /// 短选项分段控件（`SegmentedButton`）：介于 chip 与内容面之间的一档小圆角，
-  /// 替代 MD3 默认的 StadiumBorder（胶囊）。
-  static const double segment = 11;
-
-  /// Bottom sheet top.
-  static const double sheet = 26;
-
-  /// Floating glass dock (bottom nav bar) — rectangle-leaning radius,
-  /// tighter than sheet/dialog corners but softer than tiles.
-  static const double dock = 20;
-
-  /// Dialog / floating panels (matches M3 dialog corners).
-  static const double floating = 28;
-
-  /// Small decorative icon badge (home small cards).
-  static const double badgeSmall = 9;
+  /// 小图标底座（= [cell]）。
+  static const double badgeSmall = cell;
 
   static BorderRadius get cardBorder => BorderRadius.circular(card);
   static BorderRadius get cardAltBorder => BorderRadius.circular(cardAlt);
@@ -57,6 +64,8 @@ class AppRadius {
   static BorderRadius get inputBorder => BorderRadius.circular(input);
   static BorderRadius get chipBorder => BorderRadius.circular(chip);
   static BorderRadius get sheetBorder => BorderRadius.circular(sheet);
+  static BorderRadius get dockBorder => BorderRadius.circular(dock);
+  static BorderRadius get cellBorder => BorderRadius.circular(cell);
 }
 
 /// Apple-flavored continuous-corner shapes (squircle).
@@ -158,15 +167,16 @@ class AppElevation {
 class AppBadgeSize {
   AppBadgeSize._();
 
-  /// Small badge — home small cards & list rows.
+  /// Small badge — home small cards & list rows（v2 基准：36dp 底座 + 20dp 图标
+  /// + 12dp 圆角）。
   static const double smallBox = 36;
   static const double smallIcon = 20;
-  static const double smallRadius = AppRadius.badgeSmall;
+  static const double smallRadius = AppRadius.badge;
 
   /// Medium badge — service hub tiles.
   static const double mediumBox = 38;
   static const double mediumIcon = 21;
-  static const double mediumRadius = 13;
+  static const double mediumRadius = AppRadius.badge;
 
   /// Large badge — My page status cards.
   static const double largeBox = 40;

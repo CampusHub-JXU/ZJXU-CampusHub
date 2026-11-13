@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../storage/app_preferences_store.dart';
+import '../system_surface/app_icon_switcher.dart';
+import 'app_icon_style.dart';
 import 'app_theme_controller.dart';
 import 'app_theme_palette.dart';
 import 'text_scale_controller.dart';
@@ -19,7 +23,9 @@ class AppPreferences {
   final bool pureBlack;
   final double textScale;
   final HomeTextColorPreference homeTextColor;
-  final bool filledButtonSoftStyle;
+  final AppIconStyle appIconStyle;
+  final bool iconFollowThemeColor;
+  final bool iconDarkInvert;
 
   const AppPreferences({
     this.themeMode = AppThemePreference.system,
@@ -29,7 +35,9 @@ class AppPreferences {
     this.pureBlack = false,
     this.textScale = 0.9,
     this.homeTextColor = HomeTextColorPreference.system,
-    this.filledButtonSoftStyle = false,
+    this.appIconStyle = AppIconStyle.celadonSlate,
+    this.iconFollowThemeColor = false,
+    this.iconDarkInvert = true,
   });
 
   AppPreferences copyWith({
@@ -40,7 +48,9 @@ class AppPreferences {
     bool? pureBlack,
     double? textScale,
     HomeTextColorPreference? homeTextColor,
-    bool? filledButtonSoftStyle,
+    AppIconStyle? appIconStyle,
+    bool? iconFollowThemeColor,
+    bool? iconDarkInvert,
   }) {
     return AppPreferences(
       themeMode: themeMode ?? this.themeMode,
@@ -50,8 +60,9 @@ class AppPreferences {
       pureBlack: pureBlack ?? this.pureBlack,
       textScale: textScale ?? this.textScale,
       homeTextColor: homeTextColor ?? this.homeTextColor,
-      filledButtonSoftStyle:
-          filledButtonSoftStyle ?? this.filledButtonSoftStyle,
+      appIconStyle: appIconStyle ?? this.appIconStyle,
+      iconFollowThemeColor: iconFollowThemeColor ?? this.iconFollowThemeColor,
+      iconDarkInvert: iconDarkInvert ?? this.iconDarkInvert,
     );
   }
 
@@ -84,6 +95,7 @@ class AppPreferencesController extends ChangeNotifier {
 
     _syncSeedColorNotifier();
     _syncHomeTextColorNotifier();
+    _syncLauncherIcon();
     notifyListeners();
   }
 
@@ -92,6 +104,7 @@ class AppPreferencesController extends ChangeNotifier {
   Future<void> setThemeMode(AppThemePreference value) async {
     if (_state.themeMode == value) return;
     _state = _state.copyWith(themeMode: value);
+    _syncLauncherIcon();
     notifyListeners();
 
     await AppPreferencesStore.instance.saveThemeMode(value);
@@ -110,6 +123,7 @@ class AppPreferencesController extends ChangeNotifier {
       paletteIndex: safe,
     );
     _syncSeedColorNotifier();
+    _syncLauncherIcon();
     notifyListeners();
 
     await AppPreferencesStore.instance.savePaletteIndex(safe);
@@ -126,6 +140,7 @@ class AppPreferencesController extends ChangeNotifier {
       customSeedColor: safeColor,
     );
     _syncSeedColorNotifier();
+    _syncLauncherIcon();
     notifyListeners();
 
     await AppPreferencesStore.instance.saveCustomSeedColor(safeColor);
@@ -163,16 +178,6 @@ class AppPreferencesController extends ChangeNotifier {
     await AppPreferencesStore.instance.saveHomeTextColor(value);
   }
 
-  // ── Filled Button Soft Style ──────────────────────────────────────────
-
-  Future<void> setFilledButtonSoftStyle(bool value) async {
-    if (_state.filledButtonSoftStyle == value) return;
-    _state = _state.copyWith(filledButtonSoftStyle: value);
-    notifyListeners();
-
-    await AppPreferencesStore.instance.saveFilledButtonSoftStyle(value);
-  }
-
   void _syncHomeTextColorNotifier() {
     final mode = switch (_state.homeTextColor) {
       HomeTextColorPreference.system => HomeTextColorMode.system,
@@ -182,6 +187,49 @@ class AppPreferencesController extends ChangeNotifier {
     AppThemeController.instance.updateHomeTextColorMode(mode);
   }
 
+  Future<void> setAppIconStyle(AppIconStyle value) async {
+    _state = _state.copyWith(
+      appIconStyle: value,
+      iconFollowThemeColor: value == AppIconStyle.followTheme,
+    );
+    _syncLauncherIcon();
+    notifyListeners();
+    await AppPreferencesStore.instance.saveAppIconPreferences(_state);
+  }
+
+  Future<void> setIconFollowThemeColor(bool value) async {
+    _state = _state.copyWith(
+      iconFollowThemeColor: value,
+      appIconStyle: value
+          ? AppIconStyle.followTheme
+          : AppIconStyle.celadonSlate,
+    );
+    _syncLauncherIcon();
+    notifyListeners();
+    await AppPreferencesStore.instance.saveAppIconPreferences(_state);
+  }
+
+  Future<void> setIconDarkInvert(bool value) async {
+    _state = _state.copyWith(iconDarkInvert: value);
+    _syncLauncherIcon();
+    notifyListeners();
+    await AppPreferencesStore.instance.saveAppIconPreferences(_state);
+  }
+
+  void _syncLauncherIcon() {
+    final alias = resolveAppIconLauncherAlias(
+      style: _state.appIconStyle,
+      seedColor: _state.seedColor,
+      presetPaletteIndex: _state.colorSource == AppColorPreference.preset
+          ? _state.paletteIndex
+          : null,
+      followThemeColor: _state.iconFollowThemeColor,
+      darkInvert: _state.iconDarkInvert,
+      themeModeName: _state.themeMode.name,
+    );
+    unawaited(AppIconSwitcher.instance.setAlias(alias));
+  }
+
   void _syncSeedColorNotifier() {
     AppThemeController.instance.updateSeedColor(_state.seedColor);
   }
@@ -189,6 +237,7 @@ class AppPreferencesController extends ChangeNotifier {
   @visibleForTesting
   void debugReset() {
     _state = const AppPreferences();
+    AppIconSwitcher.instance.clearCache();
     _syncSeedColorNotifier();
     _syncHomeTextColorNotifier();
     notifyListeners();

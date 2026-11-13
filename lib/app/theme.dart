@@ -9,21 +9,9 @@ class AppTheme {
   static ThemeData lightTheme = lightThemeFor(AppColors.primary);
   static ThemeData darkTheme = darkThemeFor(AppColors.primary);
 
-  static ThemeData lightThemeFor(
-    Color seedColor, {
-    bool filledButtonSoftStyle = false,
-  }) => AppThemeBuilder.light(
-    seedColor,
-    filledButtonSoftStyle: filledButtonSoftStyle,
-  );
+  static ThemeData lightThemeFor(Color seedColor) =>
+      AppThemeBuilder.light(seedColor);
 
-  static ThemeData darkThemeFor(
-    Color seedColor, {
-    bool pureBlack = false,
-    bool filledButtonSoftStyle = false,
-  }) => AppThemeBuilder.dark(
-    seedColor,
-    pureBlack: pureBlack,
-    filledButtonSoftStyle: filledButtonSoftStyle,
-  );
+  static ThemeData darkThemeFor(Color seedColor, {bool pureBlack = false}) =>
+      AppThemeBuilder.dark(seedColor, pureBlack: pureBlack);
 }

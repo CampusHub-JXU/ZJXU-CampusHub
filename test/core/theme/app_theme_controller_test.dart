@@ -74,7 +74,7 @@ void main() {
     final theme = AppTheme.darkThemeFor(AppThemeController.presetSeedColors[7]);
 
     expect(theme.colorScheme.primary, const Color(0xFF455A64));
-    expect(theme.colorScheme.surface, const Color(0xFF171C20));
-    expect(theme.scaffoldBackgroundColor, const Color(0xFF101418));
+    expect(theme.colorScheme.surface, const Color(0xFF1A1D21));
+    expect(theme.scaffoldBackgroundColor, const Color(0xFF111315));
   });
 }

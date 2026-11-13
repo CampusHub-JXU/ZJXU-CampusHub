@@ -101,9 +101,7 @@ void main() {
 
       test('$name：轨道 + 明显更亮的选中滑块', () {
         final dark = scheme.brightness == Brightness.dark;
-        final track = dark
-            ? scheme.surfaceContainerHigh
-            : scheme.surfaceContainerHighest;
+        final track = scheme.surfaceContainerHigh;
         expect(style.backgroundColor!.resolve(_none), track);
         expect(style.backgroundColor!.resolve(_hovered), track);
         final thumb = style.backgroundColor!.resolve(_selected)!;
@@ -469,22 +467,6 @@ List<Widget> _callerConfigs() => <Widget>[
       ButtonSegment<int>(value: 0, label: Text('跟随系统')),
       ButtonSegment<int>(value: 1, label: Text('深色文字')),
       ButtonSegment<int>(value: 2, label: Text('浅色文字')),
-    ],
-    selected: const <int>{0},
-    onSelectionChanged: (_) {},
-  ),
-  // personalization_page.dart:122（带本地 compact 覆盖）
-  SegmentedButton<int>(
-    key: const Key('personalization_scene_segments'),
-    showSelectedIcon: false,
-    style: const ButtonStyle(
-      visualDensity: VisualDensity.compact,
-      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-    ),
-    segments: const <ButtonSegment<int>>[
-      ButtonSegment<int>(value: 0, label: Text('主页')),
-      ButtonSegment<int>(value: 1, label: Text('功能')),
-      ButtonSegment<int>(value: 2, label: Text('我的')),
     ],
     selected: const <int>{0},
     onSelectionChanged: (_) {},

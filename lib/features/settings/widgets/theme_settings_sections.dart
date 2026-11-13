@@ -54,12 +54,6 @@ class _ThemeSettingsSectionsState extends State<ThemeSettingsSections> {
                   value: prefs.pureBlack,
                   onChanged: _ctrl.setPureBlack,
                 ),
-                PlainSwitchRow(
-                  title: '柔和强调色按钮',
-                  subtitle: '强调按钮使用主题柔和色块，降低视觉强度',
-                  value: prefs.filledButtonSoftStyle,
-                  onChanged: _ctrl.setFilledButtonSoftStyle,
-                ),
                 ..._buildTextScale(prefs),
               ],
             ),

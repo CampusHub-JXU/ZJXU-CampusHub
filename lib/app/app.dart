@@ -139,14 +139,10 @@ class _JXUCampusHubAppState extends State<JXUCampusHubApp> {
     final prefs = _preferencesController.state;
     return MaterialApp.router(
       title: '嘉兴大学',
-      theme: AppTheme.lightThemeFor(
-        prefs.seedColor,
-        filledButtonSoftStyle: prefs.filledButtonSoftStyle,
-      ),
+      theme: AppTheme.lightThemeFor(prefs.seedColor),
       darkTheme: AppTheme.darkThemeFor(
         prefs.seedColor,
         pureBlack: prefs.pureBlack,
-        filledButtonSoftStyle: prefs.filledButtonSoftStyle,
       ),
       themeMode: prefs.materialThemeMode,
       scaffoldMessengerKey: rootScaffoldMessengerKey,
