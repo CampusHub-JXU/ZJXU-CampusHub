@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -11,8 +10,6 @@ import '../../core/calendar/calendar_reminder_settings.dart';
 import '../../core/calendar/calendar_sync_channel.dart';
 import '../../core/calendar/calendar_sync_control.dart';
 import '../../core/calendar/calendar_sync_models.dart';
-import '../../core/logging/app_logger.dart';
-import '../../core/notification/app_notification_service.dart';
 import '../../core/semester/current_term_resolver.dart';
 import '../../core/semester/semester_calendar.dart';
 import '../../core/semester/schedule_term_context.dart';
@@ -35,15 +32,6 @@ class SettingsPage extends StatelessWidget {
 
   /// 宽屏（平板 / 折叠屏展开）下内容列限宽居中；手机宽度不受影响。
   static const double _contentMaxWidth = 640;
-
-  String _formatLogLevel(LogLevel level) {
-    return switch (level) {
-      LogLevel.debug => 'Debug',
-      LogLevel.info => 'Info',
-      LogLevel.warn => 'Warn',
-      LogLevel.error => 'Error',
-    };
-  }
 
   String _formatMonthDay(DateTime date) => '${date.month}月${date.day}日';
 
@@ -122,8 +110,6 @@ class SettingsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
     return Scaffold(
       appBar: AppAppBar(title: const Text('设置')),
       body: Center(
@@ -141,12 +127,8 @@ class SettingsPage extends StatelessWidget {
               PlainListGroup(
                 children: [
                   PlainListRow(
-                    title: '主题与色彩',
+                    title: '外观与个性化',
                     onTap: () => context.pushNamed('appearance'),
-                  ),
-                  PlainListRow(
-                    title: '个性化',
-                    onTap: () => context.pushNamed('personalization'),
                   ),
                 ],
               ),
@@ -267,101 +249,6 @@ class SettingsPage extends StatelessWidget {
                   ),
                 ],
               ),
-              if (kDebugMode) ...[
-                const SizedBox(height: kPlainListGroupGap),
-                const PlainSectionHeader('调试'),
-                ValueListenableBuilder<bool>(
-                  valueListenable: AppLogger.instance.loggingEnabled,
-                  builder: (context, loggingEnabled, child) {
-                    return ValueListenableBuilder<LogConfig>(
-                      valueListenable: AppLogger.instance.config,
-                      builder: (context, logConfig, _) {
-                        return PlainListGroup(
-                          children: [
-                            PlainSwitchRow(
-                              title: '调试日志',
-                              value: loggingEnabled,
-                              onChanged: (value) {
-                                AppLogger.instance.setEnabled(value);
-                              },
-                            ),
-                            PlainListRow(
-                              title: '最低日志级别',
-                              trailing: AppDropdown<LogLevel>(
-                                value: logConfig.minimumLevel,
-                                onChanged: (value) {
-                                  if (value == null) return;
-                                  AppLogger.instance.updateConfig(
-                                    logConfig.copyWith(minimumLevel: value),
-                                  );
-                                },
-                                items: LogLevel.values
-                                    .map(
-                                      (level) => AppDropdownItem(
-                                        value: level,
-                                        label: _formatLogLevel(level),
-                                      ),
-                                    )
-                                    .toList(),
-                              ),
-                            ),
-                            PlainSwitchRow(
-                              title: 'WebView 生命周期日志',
-                              value: logConfig.webviewLifecycleEnabled,
-                              onChanged: (value) {
-                                AppLogger.instance.updateConfig(
-                                  logConfig.copyWith(
-                                    webviewLifecycleEnabled: value,
-                                  ),
-                                );
-                              },
-                            ),
-                            PlainSwitchRow(
-                              title: 'WebView 控制台日志',
-                              value: logConfig.webviewConsoleEnabled,
-                              onChanged: (value) {
-                                AppLogger.instance.updateConfig(
-                                  logConfig.copyWith(
-                                    webviewConsoleEnabled: value,
-                                  ),
-                                );
-                              },
-                            ),
-                            PlainSwitchRow(
-                              title: '网络详细日志',
-                              value: logConfig.networkVerboseEnabled,
-                              onChanged: (value) {
-                                AppLogger.instance.updateConfig(
-                                  logConfig.copyWith(
-                                    networkVerboseEnabled: value,
-                                  ),
-                                );
-                              },
-                            ),
-                            PlainListRow(
-                              title: '通知测试',
-                              trailing: Icon(
-                                Icons.send_outlined,
-                                size: 20,
-                                color: cs.onSurfaceVariant,
-                              ),
-                              onTap: () {
-                                AppNotificationService.instance.showNotification(
-                                  id: 999,
-                                  title: '测试通知',
-                                  body:
-                                      '这是一条来自开发模式的测试通知，${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}',
-                                  payload: 'test',
-                                );
-                              },
-                            ),
-                          ],
-                        );
-                      },
-                    );
-                  },
-                ),
-              ],
             ],
           ),
         ),

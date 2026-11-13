@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/theme/glass_style_controller.dart';
 import '../../../core/theme/personalization_controller.dart';
 import '../../../shared/widgets/plain_list.dart';
 import 'shader_tuning_controls.dart';
 
 /// 个性化 — 「效果」分组：只剩流体 Shader（含参数滑条）。
 ///
-/// 亚克力材质始终开启（见 [GlassStyleController]），「亚克力材质」与只影响
-/// 预览的「课表卡片毛玻璃」开关均已下线。Shader 仅保留流体纹理一种模式。
+/// 亚克力材质始终开启（见 GlassStyleController），「亚克力材质」、只影响
+/// 预览的「课表卡片毛玻璃」与「磨砂闪粉」开关均已下线。Shader 仅保留
+/// 流体纹理一种模式。
 class PersonalizationEffectsSection extends StatelessWidget {
   const PersonalizationEffectsSection({super.key});
 
@@ -21,16 +21,6 @@ class PersonalizationEffectsSection extends StatelessWidget {
         const PlainSectionHeader('效果'),
         PlainListGroup(
           children: [
-            ValueListenableBuilder<bool>(
-              valueListenable: GlassStyleController.instance.frostGrainEnabled,
-              builder: (context, grainEnabled, _) => PlainSwitchRow(
-                switchKey: const Key('personalization_frost_grain'),
-                title: '磨砂闪粉',
-                subtitle: '在磁贴、顶栏等磨砂表面叠加一层稀疏的细小闪点；默认关闭，只保留模糊与雾面',
-                value: grainEnabled,
-                onChanged: GlassStyleController.instance.setFrostGrainEnabled,
-              ),
-            ),
             ValueListenableBuilder<bool>(
               valueListenable: controller.shaderEnabled,
               builder: (context, shaderEnabled, _) => Column(

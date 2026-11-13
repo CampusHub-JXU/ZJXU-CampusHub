@@ -6,7 +6,6 @@ const designRatchetBaseline = <String, Map<String, int>>{
   'features/home/widgets/home_primary_status_hero.dart': {'fontSize': 1},
   'features/my/my_page.dart': {'fontSize': 7},
   'features/settings/background_editor_page.dart': {'fontSize': 2},
-  'features/settings/widgets/appearance_preview.dart': {'fontSize': 2},
   'features/settings/widgets/hsv_color_picker_sheet.dart': {'fontSize': 1},
   'features/settings/widgets/personalization_background_section.dart': {
     'fontSize': 1,

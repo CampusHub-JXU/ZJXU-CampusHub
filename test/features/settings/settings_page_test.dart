@@ -28,8 +28,9 @@ void main() {
     await pumpPage(tester, const SettingsPage());
 
     expect(find.text('外观'), findsOneWidget);
-    expect(find.text('主题与色彩'), findsOneWidget);
-    expect(find.text('个性化'), findsOneWidget);
+    expect(find.text('外观与个性化'), findsOneWidget);
+    expect(find.text('主题与色彩'), findsNothing);
+    expect(find.text('个性化'), findsNothing);
 
     await tester.scrollUntilVisible(find.text('检查更新'), 300);
     expect(find.text('检查更新'), findsOneWidget);
@@ -249,14 +250,14 @@ void main() {
 
     final tapNode = ancestorWith(
       tester,
-      find.text('主题与色彩'),
+      find.text('外观与个性化'),
       (data) => data.hasAction(SemanticsAction.tap),
     );
     expect(tapNode, isNotNull, reason: '导航设置行应暴露点击动作');
 
     final buttonNode = ancestorWith(
       tester,
-      find.text('主题与色彩'),
+      find.text('外观与个性化'),
       (data) => data.flagsCollection.isButton,
     );
     expect(buttonNode, isNotNull, reason: '可点击设置行应标记为按钮');
@@ -336,5 +337,14 @@ void main() {
     await tester.scrollUntilVisible(find.text('关于与诊断'), 300);
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('设置页不再直接暴露调试日志分段（已迁往关于页隐藏入口）', (tester) async {
+    await pumpPage(tester, const SettingsPage());
+    await tester.scrollUntilVisible(find.text('关于与诊断'), 300);
+
+    expect(find.text('调试日志'), findsNothing);
+    expect(find.text('最低日志级别'), findsNothing);
+    expect(find.text('通知测试'), findsNothing);
   });
 }

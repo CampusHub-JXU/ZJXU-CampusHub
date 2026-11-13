@@ -166,4 +166,41 @@ void main() {
     expect(copied, contains('fallback-auth-line'));
     expect(copied, contains('# JXU 完整诊断日志'));
   });
+
+  testWidgets('调试日志区默认隐藏，连点 5 下顶栏「关于」标题后显示', (tester) async {
+    await pumpPage(tester, const AboutPage());
+
+    expect(find.text('调试'), findsNothing);
+    expect(find.text('调试日志'), findsNothing);
+
+    // 点 4 下不解锁
+    for (var i = 0; i < 4; i++) {
+      await tester.tap(find.text('关于'));
+      await tester.pump();
+    }
+    expect(find.text('调试'), findsNothing);
+    expect(find.text('调试日志'), findsNothing);
+
+    // 第 5 下解锁并提示
+    await tester.tap(find.text('关于'));
+    await tester.pumpAndSettle();
+    expect(find.text('已显示调试选项'), findsOneWidget);
+
+    await tester.scrollUntilVisible(find.text('通知测试'), 200);
+    expect(find.text('调试'), findsOneWidget);
+    expect(find.text('调试日志'), findsOneWidget);
+    expect(find.text('最低日志级别'), findsOneWidget);
+    expect(find.text('WebView 生命周期日志'), findsOneWidget);
+    expect(find.text('WebView 控制台日志'), findsOneWidget);
+    expect(find.text('网络详细日志'), findsOneWidget);
+    expect(find.text('通知测试'), findsOneWidget);
+
+    // 可以切换开关更新 AppLogger 状态
+    await tester.ensureVisible(find.text('调试日志'));
+    await tester.pumpAndSettle();
+    final beforeEnabled = AppLogger.instance.loggingEnabled.value;
+    await tester.tap(find.text('调试日志'));
+    await tester.pumpAndSettle();
+    expect(AppLogger.instance.loggingEnabled.value, !beforeEnabled);
+  });
 }

@@ -10,9 +10,12 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/logging/app_logger.dart';
+import '../../core/notification/app_notification_service.dart';
 import '../../core/perf/frame_timing_collector.dart';
 import '../../core/theme/app_typography.dart';
 import '../../shared/widgets/app_app_bar.dart';
+import '../../shared/widgets/app_brand_icon.dart';
+import '../../shared/widgets/app_dropdown.dart';
 import '../../shared/widgets/app_feedback.dart';
 import '../../shared/widgets/external_url_launcher.dart';
 import '../../shared/widgets/plain_list.dart';
@@ -28,9 +31,47 @@ const String kAppProjectUrl = 'https://github.com/FHfanshu/ZJXU-CampusHub';
 const String kAppIconAsset = 'assets/brand/app_icon.png';
 const String kAppAuthorAvatarAsset = 'assets/brand/author_avatar.jpg';
 
-/// 「关于与诊断」页：版本、作者联系方式、APK 分发地址与登录诊断日志。
-class AboutPage extends StatelessWidget {
+/// 「关于与诊断」页：版本、作者联系方式、APK 分发地址与登录诊断日志；
+/// 连续点按顶栏「关于」标题 5 次可展开隐藏的调试日志控制项。
+class AboutPage extends StatefulWidget {
   const AboutPage({super.key});
+
+  @override
+  State<AboutPage> createState() => _AboutPageState();
+}
+
+class _AboutPageState extends State<AboutPage> {
+  static const int _debugUnlockTaps = 5;
+  static const Duration _tapResetWindow = Duration(seconds: 2);
+
+  int _titleTapCount = 0;
+  DateTime? _lastTitleTapAt;
+  bool _debugToolsUnlocked = false;
+
+  void _onTitleTap() {
+    if (_debugToolsUnlocked) return;
+    final now = DateTime.now();
+    if (_lastTitleTapAt == null ||
+        now.difference(_lastTitleTapAt!) > _tapResetWindow) {
+      _titleTapCount = 1;
+    } else {
+      _titleTapCount++;
+    }
+    _lastTitleTapAt = now;
+    if (_titleTapCount >= _debugUnlockTaps) {
+      setState(() => _debugToolsUnlocked = true);
+      AppFeedback.toast(context, '已显示调试选项');
+    }
+  }
+
+  String _formatLogLevel(LogLevel level) {
+    return switch (level) {
+      LogLevel.debug => 'Debug',
+      LogLevel.info => 'Info',
+      LogLevel.warn => 'Warn',
+      LogLevel.error => 'Error',
+    };
+  }
 
   Future<void> _open(String url) async {
     final uri = Uri.tryParse(url);
@@ -133,10 +174,7 @@ class AboutPage extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(4, 16, 4, 20),
       child: Row(
         children: [
-          ClipRSuperellipse(
-            borderRadius: BorderRadius.circular(20),
-            child: Image.asset(kAppIconAsset, width: 76, height: 76),
-          ),
+          const AppBrandIcon(size: 76),
           const SizedBox(width: 20),
           Expanded(
             child: Column(
@@ -201,10 +239,111 @@ class AboutPage extends StatelessWidget {
     );
   }
 
+  Widget _buildDebugSection(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return ValueListenableBuilder<bool>(
+      valueListenable: AppLogger.instance.loggingEnabled,
+      builder: (context, loggingEnabled, child) {
+        return ValueListenableBuilder<LogConfig>(
+          valueListenable: AppLogger.instance.config,
+          builder: (context, logConfig, _) {
+            return PlainListGroup(
+              children: [
+                PlainSwitchRow(
+                  title: '调试日志',
+                  value: loggingEnabled,
+                  onChanged: (value) {
+                    AppLogger.instance.setEnabled(value);
+                  },
+                ),
+                PlainListRow(
+                  title: '最低日志级别',
+                  trailing: AppDropdown<LogLevel>(
+                    key: const Key('about_debug_min_level_dropdown'),
+                    value: logConfig.minimumLevel,
+                    onChanged: (value) {
+                      if (value == null) return;
+                      AppLogger.instance.updateConfig(
+                        logConfig.copyWith(minimumLevel: value),
+                      );
+                    },
+                    items: LogLevel.values
+                        .map(
+                          (level) => AppDropdownItem(
+                            value: level,
+                            label: _formatLogLevel(level),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ),
+                PlainSwitchRow(
+                  title: 'WebView 生命周期日志',
+                  value: logConfig.webviewLifecycleEnabled,
+                  onChanged: (value) {
+                    AppLogger.instance.updateConfig(
+                      logConfig.copyWith(webviewLifecycleEnabled: value),
+                    );
+                  },
+                ),
+                PlainSwitchRow(
+                  title: 'WebView 控制台日志',
+                  value: logConfig.webviewConsoleEnabled,
+                  onChanged: (value) {
+                    AppLogger.instance.updateConfig(
+                      logConfig.copyWith(webviewConsoleEnabled: value),
+                    );
+                  },
+                ),
+                PlainSwitchRow(
+                  title: '网络详细日志',
+                  value: logConfig.networkVerboseEnabled,
+                  onChanged: (value) {
+                    AppLogger.instance.updateConfig(
+                      logConfig.copyWith(networkVerboseEnabled: value),
+                    );
+                  },
+                ),
+                PlainListRow(
+                  title: '通知测试',
+                  trailing: Icon(
+                    Icons.send_outlined,
+                    size: 20,
+                    color: cs.onSurfaceVariant,
+                  ),
+                  onTap: () {
+                    final now = DateTime.now();
+                    final hh = now.hour.toString().padLeft(2, '0');
+                    final mm = now.minute.toString().padLeft(2, '0');
+                    AppNotificationService.instance.showNotification(
+                      id: 999,
+                      title: '测试通知',
+                      body: '这是一条来自调试模式的测试通知，$hh:$mm',
+                      payload: 'test',
+                    );
+                  },
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppAppBar(title: const Text('关于')),
+      appBar: AppAppBar(
+        title: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: _onTitleTap,
+          child: const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Text('关于'),
+          ),
+        ),
+      ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
           kPlainListGutter,
@@ -274,6 +413,11 @@ class AboutPage extends StatelessWidget {
                 ),
             ],
           ),
+          if (_debugToolsUnlocked) ...[
+            const SizedBox(height: kPlainListGroupGap),
+            const PlainSectionHeader('调试'),
+            _buildDebugSection(context),
+          ],
         ],
       ),
     );

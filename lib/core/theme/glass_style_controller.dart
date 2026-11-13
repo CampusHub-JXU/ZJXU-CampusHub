@@ -37,8 +37,9 @@ class GlassStyleController {
   /// 亚克力是否开启：生产环境恒为 true；测试可经 [setEnabled] 切到实色。
   final ValueNotifier<bool> enabled = ValueNotifier<bool>(true);
 
-  /// 磨砂表面是否叠加稀疏闪粉贴图（`frost_grain.dart`）。默认**关闭**，用户可在
-  /// 个性化「效果」里开启；只影响贴图层，模糊 / 雾 / 描边不变。
+  /// 磨砂表面是否叠加稀疏闪粉贴图（`frost_grain.dart`）。用户开关已下线，
+  /// 恒为 **false**（旧持久化键随 [restore] 清理，见 [_retiredKeys]）；只影响
+  /// 贴图层，模糊 / 雾 / 描边不变。测试仍可手动改值以覆盖闪粉路径。
   final ValueNotifier<bool> frostGrainEnabled = ValueNotifier<bool>(false);
 
   /// 材质表面需要重建的合并信号：亚克力开关或闪粉开关任一变化。
@@ -58,20 +59,20 @@ class GlassStyleController {
     if (_restored) return;
     final prefs = await SharedPreferences.getInstance();
     enabled.value = true;
-    frostGrainEnabled.value = prefs.getBool(_keyFrostGrain) ?? false;
+    frostGrainEnabled.value = false;
     _restored = true;
-    // 开关与可调的风格/模糊/透明度均已下线，清掉残留键，避免日后误读。
+    // 开关与可调的风格/模糊/透明度（含磨砂闪粉）均已下线，清掉残留键，
+    // 避免日后误读，也确保旧版本开过闪粉的用户升级后回到默认关闭。
     for (final key in _retiredKeys) {
       if (prefs.containsKey(key)) await prefs.remove(key);
     }
   }
 
-  /// 设置磨砂闪粉开关并持久化。值未变化时不写盘、不通知。
+  /// 仅测试：切换闪粉贴图层（不落盘，[restore] 恒复位为 false）。
+  @visibleForTesting
   Future<void> setFrostGrainEnabled(bool value) async {
     if (frostGrainEnabled.value == value) return;
     frostGrainEnabled.value = value;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_keyFrostGrain, value);
   }
 
   static const _retiredKeys = [
@@ -79,6 +80,7 @@ class GlassStyleController {
     _keyBlurSigma,
     _keyTintOpacity,
     _keyMaterialStyle,
+    _keyFrostGrain,
   ];
 
   /// 仅测试：切换亚克力 / 实色路径（不落盘）。
@@ -98,7 +100,5 @@ class GlassStyleController {
     for (final key in _retiredKeys) {
       await prefs.remove(key);
     }
-    // 不在这里清 [_keyFrostGrain]：测试夹具不 await 本方法，迟到的 remove 会
-    // 抹掉紧随其后的 setFrostGrainEnabled 写入；存储由夹具重置 mock 值负责。
   }
 }

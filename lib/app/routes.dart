@@ -198,6 +198,7 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => AppearancePage(
         homeSceneBuilder: (context) => const HomeSurfaceScene(
           presentation: ExampleCampusSnapshot.presentation,
+          scaleToFit: false,
         ),
       ),
     ),
@@ -207,6 +208,7 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => PersonalizationPage(
         homeSceneBuilder: (context) => const HomeSurfaceScene(
           presentation: ExampleCampusSnapshot.presentation,
+          scaleToFit: false,
         ),
       ),
     ),

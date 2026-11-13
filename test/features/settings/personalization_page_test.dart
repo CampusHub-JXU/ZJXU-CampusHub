@@ -4,7 +4,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jxu_campus_hub/core/theme/glass_style_controller.dart';
 import 'package:jxu_campus_hub/core/theme/personalization_controller.dart';
 import 'package:jxu_campus_hub/features/settings/personalization_page.dart';
-import 'package:jxu_campus_hub/features/settings/widgets/appearance_preview.dart';
+import 'package:jxu_campus_hub/core/theme/app_icon_style.dart';
+import 'package:jxu_campus_hub/core/theme/app_preferences_controller.dart';
+import 'package:jxu_campus_hub/core/storage/app_preferences_store.dart';
 
 import '../../helpers/test_setup.dart';
 
@@ -43,35 +45,38 @@ void main() {
     await tester.pump();
   }
 
-  ScrollPosition scrollPosition(WidgetTester tester) => tester
-      .state<ScrollableState>(
-        find
-            .descendant(
-              of: find.byKey(const Key('personalization_scroll')),
-              matching: find.byType(Scrollable),
-            )
-            .first,
+  Finder mainScrollable() => find
+      .descendant(
+        of: find.byKey(const Key('personalization_scroll')),
+        matching: find.byType(Scrollable),
       )
-      .position;
+      .first;
+
+  Future<void> scrollTo(WidgetTester tester, Finder finder) async {
+    await tester.scrollUntilVisible(finder, 300, scrollable: mainScrollable());
+    await tester.ensureVisible(finder);
+    await tester.pump();
+  }
 
   Future<void> tapKey(WidgetTester tester, String key) async {
     final finder = find.byKey(Key(key));
-    await tester.ensureVisible(finder);
-    await tester.pump();
+    await scrollTo(tester, finder);
     await tester.tap(finder);
     await tester.pump();
   }
 
-  testWidgets('三个分组按设计顺序出现', (tester) async {
+  testWidgets('各分组按设计顺序出现', (tester) async {
     await pumpPersonalization(tester);
 
+    expect(find.text('主题模式'), findsOneWidget);
+    await scrollTo(tester, find.text('壁纸'));
     expect(find.text('壁纸'), findsOneWidget);
     expect(find.text('更换壁纸'), findsOneWidget);
     expect(find.text('默认'), findsOneWidget);
-    scrollPosition(tester).jumpTo(scrollPosition(tester).maxScrollExtent);
-    await tester.pump();
+    await scrollTo(tester, find.text('效果'));
     expect(find.text('效果'), findsOneWidget);
     expect(find.text('耗电'), findsOneWidget);
+    await scrollTo(tester, find.text('首页内容'));
     expect(find.text('首页内容'), findsOneWidget);
   });
 
@@ -85,12 +90,9 @@ void main() {
     expect(find.byKey(const Key('personalization_acrylic')), findsNothing);
     expect(find.byKey(const Key('personalization_header_glass')), findsNothing);
 
-    // 磨砂闪粉：默认关闭，用户可开启，写回材质总控。
+    // 磨砂闪粉：用户开关已下线，材质总控恒为关闭。
     expect(glass.frostGrainEnabled.value, isFalse);
-    await tapKey(tester, 'personalization_frost_grain');
-    expect(glass.frostGrainEnabled.value, isTrue);
-    await tapKey(tester, 'personalization_frost_grain');
-    expect(glass.frostGrainEnabled.value, isFalse);
+    expect(find.byKey(const Key('personalization_frost_grain')), findsNothing);
 
     expect(personalization.emblemWatermarkEnabled.value, isTrue);
     await tapKey(tester, 'personalization_emblem');
@@ -115,19 +117,19 @@ void main() {
       'personalization_shader_strength',
       'personalization_shader_opacity',
     ]) {
+      await scrollTo(tester, find.byKey(Key(key)));
       expect(find.byKey(Key(key)), findsOneWidget);
     }
+    await scrollTo(tester, find.text('60 fps'));
     expect(find.text('60 fps'), findsOneWidget);
   });
 
   testWidgets('帧率滑条：档位写回控制器并持久化，关闭 Shader 后消失', (tester) async {
     await pumpPersonalization(tester);
     final slider = find.byKey(const Key('personalization_shader_fps'));
+    await scrollTo(tester, slider);
     expect(slider, findsOneWidget);
     expect(personalization.shaderFps.value, 60);
-    // 效果分组新增了「磨砂闪粉」一行，滑条可能被挤出首屏。
-    await tester.ensureVisible(slider);
-    await tester.pump();
 
     // 档位 30 / 45 / 60 / 90 / 120 对应 0..4；拖到最左 = 30，最右 = 120。
     await tester.drag(slider, const Offset(-600, 0));
@@ -161,9 +163,12 @@ void main() {
     await tapKey(tester, 'personalization_shader');
     expect(personalization.shaderEnabled.value, isTrue);
     for (final key in sliders) {
+      await scrollTo(tester, find.byKey(Key(key)));
       expect(find.byKey(Key(key)), findsOneWidget);
     }
+    await scrollTo(tester, find.text('1.0×'));
     expect(find.text('1.0×'), findsOneWidget);
+    await scrollTo(tester, find.text('45%'));
     expect(find.text('45%'), findsOneWidget);
   });
 
@@ -173,11 +178,24 @@ void main() {
       find.byKey(const Key('personalization_remove_wallpaper')),
       findsNothing,
     );
+    expect(
+      find.byKey(const Key('personalization_edit_transform')),
+      findsNothing,
+    );
 
     await personalization.setBackgroundImagePath('/nonexistent/bg.jpg');
     await personalization.setShaderEnabled(true);
     await tester.pump();
+    await scrollTo(tester, find.text('自定义'));
     expect(find.text('自定义'), findsOneWidget);
+    await scrollTo(
+      tester,
+      find.byKey(const Key('personalization_edit_transform')),
+    );
+    expect(
+      find.byKey(const Key('personalization_edit_transform')),
+      findsOneWidget,
+    );
 
     await tapKey(tester, 'personalization_remove_wallpaper');
     expect(personalization.backgroundImagePath.value, isNull);
@@ -191,10 +209,12 @@ void main() {
   testWidgets('填充分段映射到 backgroundFit，旧档位显示为未选中', (tester) async {
     await pumpPersonalization(tester);
 
+    final segmentsFinder = find.byKey(
+      const Key('personalization_fit_segments'),
+    );
+    await scrollTo(tester, segmentsFinder);
     SegmentedButton<HomeBackgroundFit> segments() =>
-        tester.widget<SegmentedButton<HomeBackgroundFit>>(
-          find.byKey(const Key('personalization_fit_segments')),
-        );
+        tester.widget<SegmentedButton<HomeBackgroundFit>>(segmentsFinder);
 
     expect(segments().selected, {HomeBackgroundFit.cover});
 
@@ -224,50 +244,30 @@ void main() {
     await pumpPersonalization(tester);
     await personalization.setBackgroundOpacity(0.35);
     await tester.pump();
+    await scrollTo(tester, find.text('35%'));
     expect(find.text('35%'), findsOneWidget);
   });
 
-  testWidgets('预览随滚动从 300 收缩到 120 并固定', (tester) async {
-    await pumpPersonalization(tester, size: const Size(412, 700));
-    final preview = find.byKey(const Key('personalization_preview'));
-    expect(tester.getSize(preview).height, 300);
-
-    scrollPosition(tester).jumpTo(90);
-    await tester.pump();
-    expect(tester.getSize(preview).height, closeTo(210, 0.5));
-
-    await tester.drag(
-      find.byKey(const Key('personalization_scroll')),
-      const Offset(0, -600),
-    );
-    await tester.pumpAndSettle();
-    expect(scrollPosition(tester).pixels, greaterThan(180));
-    expect(tester.getSize(preview).height, 120);
-    expect(preview, findsOneWidget);
-  });
-
-  testWidgets('场景切换：主页用真实首页场景，功能/我的为静态示意', (tester) async {
+  testWidgets('应用图标选择与开关立即更新并持久化', (tester) async {
     await pumpPersonalization(tester);
-    expect(find.text('真实首页场景'), findsOneWidget);
-
-    await tester.tap(find.text('功能'));
-    await tester.pump();
-    expect(find.text('真实首页场景'), findsNothing);
+    await scrollTo(tester, find.text('应用图标'));
+    expect(find.text('应用图标'), findsOneWidget);
+    await tapKey(tester, 'personalization_icon_crimsonClassic');
     expect(
-      tester.widget<AppearancePreview>(find.byType(AppearancePreview)).scene,
-      AppearancePreviewScene.functions,
+      AppPreferencesController.instance.state.appIconStyle,
+      AppIconStyle.crimsonClassic,
     );
-
-    await tester.tap(find.text('我的'));
-    await tester.pump();
+    await tapKey(tester, 'personalization_icon_follow_theme');
     expect(
-      tester.widget<AppearancePreview>(find.byType(AppearancePreview)).scene,
-      AppearancePreviewScene.my,
+      AppPreferencesController.instance.state.appIconStyle,
+      AppIconStyle.followTheme,
     );
-
-    await tester.tap(find.text('主页'));
-    await tester.pump();
-    expect(find.text('真实首页场景'), findsOneWidget);
+    await tapKey(tester, 'personalization_icon_dark_invert');
+    await tester.pumpAndSettle();
+    final saved = await AppPreferencesStore.instance.load();
+    expect(saved.appIconStyle, AppIconStyle.followTheme);
+    expect(saved.iconFollowThemeColor, isTrue);
+    expect(saved.iconDarkInvert, isFalse);
   });
 
   for (final brightness in Brightness.values) {
@@ -285,20 +285,14 @@ void main() {
 
       for (final key in [
         'personalization_fit_segments',
+        'personalization_edit_transform',
         'personalization_reset_transform',
         'personalization_remove_wallpaper',
         'personalization_shader_opacity',
         'personalization_campus_notice',
       ]) {
-        await tester.ensureVisible(find.byKey(Key(key)));
-        await tester.pump();
+        await scrollTo(tester, find.byKey(Key(key)));
         expect(tester.takeException(), isNull, reason: key);
-      }
-
-      for (final scene in ['功能', '我的']) {
-        await tester.tap(find.text(scene));
-        await tester.pump();
-        expect(tester.takeException(), isNull, reason: scene);
       }
     });
   }

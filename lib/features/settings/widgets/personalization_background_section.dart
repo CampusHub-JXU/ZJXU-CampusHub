@@ -19,9 +19,7 @@ const List<(HomeBackgroundFit, String)> kWallpaperFitSegments = [
   (HomeBackgroundFit.none, '居中'),
 ];
 
-/// 个性化 — 「壁纸」分组：更换 / 填充方式 / 不透明度 / 移除。
-///
-/// 位置与缩放在顶部预览的「主页」场景里拖动、双指捏合调整。
+/// 个性化 — 「壁纸」分组：更换 / 填充方式 / 不透明度 / 位置与缩放 / 移除。
 class PersonalizationBackgroundSection extends StatelessWidget {
   const PersonalizationBackgroundSection({super.key});
 
@@ -56,6 +54,12 @@ class PersonalizationBackgroundSection extends StatelessWidget {
                     onChanged: controller.setBackgroundOpacity,
                   ),
                 ),
+                if (bgPath != null)
+                  PlainListRow(
+                    key: const Key('personalization_edit_transform'),
+                    title: '调整位置与缩放',
+                    onTap: () => _editWallpaperTransform(context, bgPath),
+                  ),
                 if (bgPath != null) const _ResetTransformRow(),
                 if (bgPath != null)
                   PlainListRow(
@@ -71,6 +75,24 @@ class PersonalizationBackgroundSection extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  Future<void> _editWallpaperTransform(
+    BuildContext context,
+    String bgPath,
+  ) async {
+    final controller = PersonalizationController.instance;
+    final result = await context.pushNamed<BackgroundEditorResult?>(
+      'background-editor',
+      extra: BackgroundEditorArgs(
+        imagePath: bgPath,
+        alignment: controller.backgroundAlignment.value,
+        scale: controller.backgroundScale.value,
+      ),
+    );
+    if (result == null) return;
+    await controller.setBackgroundAlignment(result.alignment);
+    await controller.setBackgroundScale(result.scale);
   }
 
   Future<void> _removeWallpaper(BuildContext context) async {
