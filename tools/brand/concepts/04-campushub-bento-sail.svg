@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>JXU-CampusHub Icon Concept 04 — CampusHub Swiss Bento Sail</title>
+  <desc>Fuses Swiss Dividerless Bento/Schedule geometry (--ink-1 cool obsidian + tonal cards) with a bold JXU Crimson South Lake sail and Single Focal Anchor pill.</desc>
+  <defs>
+    <!-- Neutral cool-obsidian canvas from DESIGN.md Dark tokens (#111315 -> #1A1D21) -->
+    <linearGradient id="c04-obsidianBg" x1="0.15" y1="0.05" x2="0.85" y2="0.95">
+      <stop offset="0%" stop-color="#1E2228"/>
+      <stop offset="55%" stop-color="#141619"/>
+      <stop offset="100%" stop-color="#0D0F12"/>
+    </linearGradient>
+    <!-- Subtle crimson ambient glow under the sail -->
+    <radialGradient id="c04-crimsonAmbient" cx="0.65" cy="0.38" r="0.58">
+      <stop offset="0%" stop-color="#8B1A2D" stop-opacity="0.38"/>
+      <stop offset="100%" stop-color="#141619" stop-opacity="0"/>
+    </radialGradient>
+    <!-- Vibrant crimson gradient for dark-surface contrast -->
+    <linearGradient id="c04-crimsonSail" x1="0.2" y1="0.0" x2="0.8" y2="1.0">
+      <stop offset="0%" stop-color="#E0526B"/>
+      <stop offset="50%" stop-color="#B0223B"/>
+      <stop offset="100%" stop-color="#8B1A2D"/>
+    </linearGradient>
+    <!-- Cool porcelain surface card -->
+    <linearGradient id="c04-porcelainTile" x1="0.0" y1="0.0" x2="0.0" y2="1.0">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#E6E9EF"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background Layer -->
+  <g id="bg-layer">
+    <rect x="0" y="0" width="100%" height="100%" fill="url(#c04-obsidianBg)"/>
+    <rect x="0" y="0" width="100%" height="100%" fill="url(#c04-crimsonAmbient)"/>
+  </g>
+
+  <!-- Foreground Layer -->
+  <g id="fg-layer">
+    <!-- Left Swiss Schedule Column Tile (Tonal Slate #272C34) -->
+    <rect
+      x="228"
+      y="356"
+      width="172"
+      height="284"
+      rx="48"
+      fill="#282D35"
+      stroke="#FFFFFF"
+      stroke-opacity="0.08"
+      stroke-width="3"
+    />
+
+    <!-- Top-Left Focal Anchor Pill (Active Schedule Slot) -->
+    <rect
+      x="228"
+      y="228"
+      width="172"
+      height="96"
+      rx="48"
+      fill="#E06C7E"
+    />
+
+    <!-- Bottom Swiss Porcelain Bento Bar with Open-Book V-Notch -->
+    <path
+      d="M 276 672
+         H 444
+         C 470 672, 492 684, 512 700
+         C 532 684, 554 672, 580 672
+         H 748
+         C 775 672, 796 693, 796 720
+         V 748
+         C 796 775, 775 796, 748 796
+         H 276
+         C 249 796, 228 775, 228 748
+         V 720
+         C 228 693, 249 672, 276 672 Z"
+      fill="url(#c04-porcelainTile)"
+    />
+
+    <!-- Dominant JXU Crimson Billowing Sail Rising Over the Grid -->
+    <path
+      d="M 454 214
+         C 456 205, 467 201, 478 204
+         C 568 228, 662 252, 748 270
+         C 761 273, 770 284, 771 298
+         C 788 462, 718 614, 466 640
+         C 453 641, 446 630, 456 620
+         C 584 528, 582 382, 484 252
+         C 473 237, 462 225, 454 214 Z"
+      fill="url(#c04-crimsonSail)"
+    />
+  </g>
+</svg>

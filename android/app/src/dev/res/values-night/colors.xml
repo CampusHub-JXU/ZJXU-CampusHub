@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dev 变体深色模式：深海蓝底色，衬托夜间粉墙白帆船。 -->
+    <color name="ic_launcher_background">#182636</color>
+</resources>

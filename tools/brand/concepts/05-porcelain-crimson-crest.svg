@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>JXU-CampusHub Icon Concept 05 — Porcelain &amp; Crimson Crest</title>
+  <desc>Light editorial icon built on DESIGN.md Light tokens (--surface-lowest #FFFFFF, --surface-low #ECEEF2, --brand #8B1A2D, AppColors.gold #D4AF37): high contrast on dark mobile wallpapers.</desc>
+  <defs>
+    <!-- Neutral cool-porcelain surface (never pink-tinted, per DESIGN.md anti-pattern #7) -->
+    <linearGradient id="c05-porcelainCanvas" x1="0.5" y1="0.0" x2="0.5" y2="1.0">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#EAECEF"/>
+    </linearGradient>
+    <!-- Crimson medallion fill -->
+    <linearGradient id="c05-crestCrimson" x1="0.25" y1="0.95" x2="0.75" y2="0.05">
+      <stop offset="0%" stop-color="#6B0F1F"/>
+      <stop offset="58%" stop-color="#8B1A2D"/>
+      <stop offset="100%" stop-color="#A8243B"/>
+    </linearGradient>
+    <!-- Subtle medallion shadow on porcelain -->
+    <filter id="c05-crestElevation" x="-15%" y="-12%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="16" stdDeviation="20" flood-color="#141619" flood-opacity="0.14"/>
+    </filter>
+  </defs>
+
+  <!-- Background Layer -->
+  <g id="bg-layer">
+    <rect x="0" y="0" width="100%" height="100%" fill="url(#c05-porcelainCanvas)"/>
+  </g>
+
+  <!-- Foreground Layer -->
+  <g id="fg-layer">
+    <!-- Subtle Brand-Tint Outer Halo (#F6E7EA) -->
+    <circle cx="512" cy="512" r="338" fill="#F6E7EA"/>
+
+    <!-- Core Crimson Crest Medallion -->
+    <circle cx="512" cy="512" r="306" fill="url(#c05-crestCrimson)" filter="url(#c05-crestElevation)"/>
+
+    <!-- Heritage Gold Hairline Ring (#D4AF37) -->
+    <circle
+      cx="512"
+      cy="512"
+      r="278"
+      fill="none"
+      stroke="#D4AF37"
+      stroke-opacity="0.55"
+      stroke-width="4"
+    />
+
+    <!-- Negative-Space White South Lake Sail -->
+    <path
+      d="M 432 292
+         C 434 285, 443 282, 452 285
+         C 514 302, 580 318, 640 331
+         C 650 333, 656 341, 657 351
+         C 670 468, 624 584, 444 606
+         C 434 607, 429 598, 437 591
+         C 528 524, 526 414, 456 320
+         C 447 308, 438 299, 432 292 Z"
+      fill="#FFFFFF"
+    />
+
+    <!-- Bold Sculptural Open-Book V-Wave Cradle -->
+    <path
+      d="M 326 644
+         H 442
+         C 468 644, 491 655, 512 672
+         C 533 655, 556 644, 582 644
+         H 698
+         C 708 644, 714 653, 709 662
+         C 694 686, 672 706, 646 720
+         H 576
+         C 552 720, 531 710, 512 696
+         C 493 710, 472 720, 448 720
+         H 378
+         C 352 706, 330 686, 315 662
+         C 310 653, 316 644, 326 644 Z"
+      fill="#FFFFFF"
+    />
+
+    <!-- Academic Gold 4-Point Compass Spark (#D4AF37) -->
+    <path
+      d="M 366 364
+         L 375 390
+         L 401 399
+         L 375 408
+         L 366 434
+         L 357 408
+         L 331 399
+         L 357 390 Z"
+      fill="#E6C55A"
+    />
+  </g>
+</svg>

@@ -2,6 +2,7 @@ package edu.zjxu.jxucampushub
 
 import android.content.Intent
 import android.os.Bundle
+import edu.zjxu.jxucampushub.platform.app_icon.AppIconChannelHandler
 import edu.zjxu.jxucampushub.platform.calendar.CalendarSyncChannelHandler
 import edu.zjxu.jxucampushub.platform.deeplink.DeepLinkChannelHandler
 import edu.zjxu.jxucampushub.platform.download.DownloadChannelHandler
@@ -44,6 +45,7 @@ class MainActivity : FlutterActivity() {
         SystemSettingsChannelHandler(this).register(messenger)
         calendarHandler.register(messenger)
         AppUpdateChannelHandler(this, appUpdateManager).register(messenger)
+        AppIconChannelHandler(this).register(messenger)
     }
 
     override fun onResume() {

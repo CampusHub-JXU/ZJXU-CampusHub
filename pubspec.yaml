@@ -53,8 +53,10 @@ dev_dependencies:
 flutter_launcher_icons:
   image_path: "tools/brand/app_icon_master.png"
   android: true
-  adaptive_icon_background: "#8B1A2D"
+  adaptive_icon_background: "#CFDADF"
   adaptive_icon_foreground: "tools/brand/app_icon_foreground.png"
+  adaptive_icon_foreground_inset: 0
+  adaptive_icon_monochrome: "tools/brand/app_icon_monochrome.png"
 
 flutter:
   uses-material-design: true

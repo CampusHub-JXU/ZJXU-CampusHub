@@ -35,10 +35,6 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
-            <meta-data
-              android:name="android.app.shortcuts"
-              android:resource="@xml/shortcuts"
-              />
             <!-- 自定义 scheme 统一由 CampusDeepLinkService / ShortcutChannelHandler
                  解析后派发（PRD §8：只允许已注册 Action，禁止外部直接携带 URL /
                  Route / Component）。关闭 Flutter 默认 deep link 转发，否则
@@ -47,10 +43,6 @@
             <meta-data
               android:name="flutter_deeplinking_enabled"
               android:value="false" />
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
-            </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW"/>
 
@@ -66,6 +58,426 @@
                     android:host="shortcut" />
             </intent-filter>
         </activity>
+        <activity-alias
+            android:name="edu.zjxu.jxucampushub.LauncherCeladon"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="嘉兴大学"
+            android:targetActivity=".MainActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="edu.zjxu.jxucampushub.LauncherCeladonDay"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_celadon_day"
+            android:label="嘉兴大学"
+            android:targetActivity=".MainActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="edu.zjxu.jxucampushub.LauncherCrimson"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_crimson"
+            android:label="嘉兴大学"
+            android:targetActivity=".MainActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="edu.zjxu.jxucampushub.LauncherRedBlack"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_red_black"
+            android:label="嘉兴大学"
+            android:targetActivity=".MainActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="edu.zjxu.jxucampushub.LauncherTheme0"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_theme_0"
+            android:label="嘉兴大学"
+            android:targetActivity=".MainActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="edu.zjxu.jxucampushub.LauncherTheme0Dark"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_theme_0_dark"
+            android:label="嘉兴大学"
+            android:targetActivity=".MainActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="edu.zjxu.jxucampushub.LauncherTheme0Auto"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_theme_0_auto"
+            android:label="嘉兴大学"
+            android:targetActivity=".MainActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="edu.zjxu.jxucampushub.LauncherTheme1"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_theme_1"
+            android:label="嘉兴大学"
+            android:targetActivity=".MainActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="edu.zjxu.jxucampushub.LauncherTheme1Dark"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_theme_1_dark"
+            android:label="嘉兴大学"
+            android:targetActivity=".MainActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="edu.zjxu.jxucampushub.LauncherTheme1Auto"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_theme_1_auto"
+            android:label="嘉兴大学"
+            android:targetActivity=".MainActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="edu.zjxu.jxucampushub.LauncherTheme2"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_theme_2"
+            android:label="嘉兴大学"
+            android:targetActivity=".MainActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="edu.zjxu.jxucampushub.LauncherTheme2Dark"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_theme_2_dark"
+            android:label="嘉兴大学"
+            android:targetActivity=".MainActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="edu.zjxu.jxucampushub.LauncherTheme2Auto"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_theme_2_auto"
+            android:label="嘉兴大学"
+            android:targetActivity=".MainActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="edu.zjxu.jxucampushub.LauncherTheme3"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_theme_3"
+            android:label="嘉兴大学"
+            android:targetActivity=".MainActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="edu.zjxu.jxucampushub.LauncherTheme3Dark"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_theme_3_dark"
+            android:label="嘉兴大学"
+            android:targetActivity=".MainActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="edu.zjxu.jxucampushub.LauncherTheme3Auto"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_theme_3_auto"
+            android:label="嘉兴大学"
+            android:targetActivity=".MainActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="edu.zjxu.jxucampushub.LauncherTheme4"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_theme_4"
+            android:label="嘉兴大学"
+            android:targetActivity=".MainActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="edu.zjxu.jxucampushub.LauncherTheme4Dark"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_theme_4_dark"
+            android:label="嘉兴大学"
+            android:targetActivity=".MainActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="edu.zjxu.jxucampushub.LauncherTheme4Auto"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_theme_4_auto"
+            android:label="嘉兴大学"
+            android:targetActivity=".MainActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="edu.zjxu.jxucampushub.LauncherTheme5"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_theme_5"
+            android:label="嘉兴大学"
+            android:targetActivity=".MainActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="edu.zjxu.jxucampushub.LauncherTheme5Dark"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_theme_5_dark"
+            android:label="嘉兴大学"
+            android:targetActivity=".MainActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="edu.zjxu.jxucampushub.LauncherTheme5Auto"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_theme_5_auto"
+            android:label="嘉兴大学"
+            android:targetActivity=".MainActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="edu.zjxu.jxucampushub.LauncherTheme6"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_theme_6"
+            android:label="嘉兴大学"
+            android:targetActivity=".MainActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="edu.zjxu.jxucampushub.LauncherTheme6Dark"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_theme_6_dark"
+            android:label="嘉兴大学"
+            android:targetActivity=".MainActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="edu.zjxu.jxucampushub.LauncherTheme6Auto"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_theme_6_auto"
+            android:label="嘉兴大学"
+            android:targetActivity=".MainActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="edu.zjxu.jxucampushub.LauncherTheme7"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_theme_7"
+            android:label="嘉兴大学"
+            android:targetActivity=".MainActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="edu.zjxu.jxucampushub.LauncherTheme7Dark"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_theme_7_dark"
+            android:label="嘉兴大学"
+            android:targetActivity=".MainActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="edu.zjxu.jxucampushub.LauncherTheme7Auto"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_theme_7_auto"
+            android:label="嘉兴大学"
+            android:targetActivity=".MainActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
         <!-- 桌面组件配置页：每个 appWidgetId 独立设置显示内容。
              exported 供 launcher 拉起，仅提供开关读写，不涉及凭据。 -->
         <activity

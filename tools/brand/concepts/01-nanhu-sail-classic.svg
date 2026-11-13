@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>JXU-CampusHub Icon Concept 01 — Nanhu Sail Classic</title>
+  <desc>Distilled from Jiaxing University official emblem: JXU Crimson (#8B1A2D) with signature top-right ambient glow, billowing South Lake sail, and three open-book wave ribbons.</desc>
+  <defs>
+    <!-- Base crimson depth -->
+    <linearGradient id="c01-bgBase" x1="0.15" y1="0.95" x2="0.85" y2="0.05">
+      <stop offset="0%" stop-color="#6B0F1F"/>
+      <stop offset="55%" stop-color="#8B1A2D"/>
+      <stop offset="100%" stop-color="#9E2137"/>
+    </linearGradient>
+    <!-- Ambient top-right glow matching make_icons.py (0.78W, -0.12H, r=0.9W) -->
+    <radialGradient id="c01-topRightGlow" cx="0.78" cy="-0.12" r="0.90" fx="0.78" fy="-0.12">
+      <stop offset="0%" stop-color="#D96B80" stop-opacity="0.42"/>
+      <stop offset="55%" stop-color="#C4546A" stop-opacity="0.16"/>
+      <stop offset="100%" stop-color="#8B1A2D" stop-opacity="0"/>
+    </radialGradient>
+    <!-- Subtle warm porcelain sheen on primary sail -->
+    <linearGradient id="c01-sailSheen" x1="0.3" y1="0.0" x2="0.7" y2="1.0">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#F8EEF0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background Layer (toggle off to export adaptive foreground) -->
+  <g id="bg-layer">
+    <rect x="0" y="0" width="100%" height="100%" fill="url(#c01-bgBase)"/>
+    <rect x="0" y="0" width="100%" height="100%" fill="url(#c01-topRightGlow)"/>
+  </g>
+
+  <!-- Foreground Layer (fits cleanly within Android 66% adaptive safe circle) -->
+  <g id="fg-layer">
+    <!-- South Lake Billowing Sail (distilled & smoothed from jxu_emblem.svg) -->
+    <path
+      d="M 408 214
+         C 410 206, 420 203, 430 206
+         C 502 226, 578 245, 650 260
+         C 661 262, 668 271, 669 282
+         C 684 422, 632 566, 422 590
+         C 411 591, 405 582, 413 574
+         C 520 498, 518 368, 434 248
+         C 424 234, 414 223, 408 214 Z"
+      fill="url(#c01-sailSheen)"
+    />
+
+    <!-- Open Book / Lake Wave Ribbon 1 (Upper, widest) -->
+    <path
+      d="M 244 628
+         H 428
+         C 462 628, 488 638, 512 652
+         C 536 638, 562 628, 596 628
+         H 780
+         C 790 628, 796 636, 793 645
+         C 790 654, 783 660, 773 660
+         H 592
+         C 562 660, 536 670, 512 684
+         C 488 670, 462 660, 432 660
+         H 251
+         C 241 660, 234 654, 231 645
+         C 228 636, 234 628, 244 628 Z"
+      fill="#FFFFFF"
+    />
+
+    <!-- Open Book / Lake Wave Ribbon 2 (Middle) -->
+    <path
+      d="M 276 690
+         H 434
+         C 464 690, 489 701, 512 716
+         C 535 701, 560 690, 590 690
+         H 748
+         C 758 690, 764 699, 759 708
+         C 754 717, 746 722, 736 722
+         H 586
+         C 558 722, 535 733, 512 748
+         C 489 733, 466 722, 438 722
+         H 288
+         C 278 722, 270 717, 265 708
+         C 260 699, 266 690, 276 690 Z"
+      fill="#FFFFFF"
+      fill-opacity="0.90"
+    />
+
+    <!-- Open Book / Lake Wave Keel 3 (Lower cradle) -->
+    <path
+      d="M 326 752
+         H 442
+         C 468 752, 491 763, 512 778
+         C 533 763, 556 752, 582 752
+         H 698
+         C 709 752, 714 763, 706 772
+         C 658 814, 590 836, 512 836
+         C 434 836, 366 814, 318 772
+         C 310 763, 315 752, 326 752 Z"
+      fill="#FFFFFF"
+      fill-opacity="0.78"
+    />
+  </g>
+</svg>

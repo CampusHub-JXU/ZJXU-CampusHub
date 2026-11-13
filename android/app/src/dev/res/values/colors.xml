@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Dev 变体：蓝色图标，便于与正式版（@color/ic_launcher_background #8B1A2D）区分。 -->
-    <color name="ic_launcher_background">#1565C0</color>
+    <!-- Dev 变体：浅冰蓝底色，保持深色帆船高对比且与正式版（#CFDADF）区分。 -->
+    <color name="ic_launcher_background">#C9DDF0</color>
 </resources>
