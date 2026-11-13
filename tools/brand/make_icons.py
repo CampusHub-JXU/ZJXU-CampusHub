@@ -34,6 +34,14 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
+try:
+    from material_color_utilities import Hct, TonalPalette
+except ImportError as exc:
+    raise SystemExit(
+        "缺少 material-color-utilities（深色款图标需派生 M3 tonalSpot 色阶）："
+        "pip install material-color-utilities"
+    ) from exc
+
 SIZE = 1024
 SS = 4  # 4x 超采样抗锯齿
 ASSET_ICON_SIZE = 256  # assets/brand/app_icon.png
@@ -114,7 +122,6 @@ THEME_PALETTES = [
 
 IVORY = (243, 242, 238)  # #F3F2EE
 RED_BLACK = (22, 6, 9)  # #160609
-BRIGHT_RED = (230, 77, 99)  # #E64D63
 CRIMSON = (139, 26, 45)  # #8B1A2D
 
 PATHS = {
@@ -365,13 +372,39 @@ def _palette_light_spec(primary: tuple[int, int, int]):
     }
 
 
+def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
+    return tuple(
+        int(hex_color.lstrip("#")[i : i + 2], 16) for i in (0, 2, 4)
+    )
+
+
+def _dark_seed_tone(
+    rgb: tuple[int, int, int], lightness: float
+) -> tuple[int, int, int]:
+    """与 AppThemeBuilder._darkSeedTone 一致：HSL 饱和 ×0.72 夹紧到目标明度。"""
+    h, _l, s = colorsys.rgb_to_hls(rgb[0] / 255.0, rgb[1] / 255.0, rgb[2] / 255.0)
+    s = min(max(s * 0.72, 0.28), 0.78)
+    r, g, b = colorsys.hls_to_rgb(h, lightness, s)
+    return (round(r * 255), round(g * 255), round(b * 255))
+
+
+def _tonal_spot_primary_dark(rgb: tuple[int, int, int]) -> tuple[int, int, int]:
+    """Flutter `ColorScheme.fromSeed`（tonalSpot）深色 primary = 种子色相 + 色度36 的 T80。"""
+    hct = Hct(0xFF000000 | (rgb[0] << 16) | (rgb[1] << 8) | rgb[2])
+    return _hex_to_rgb(TonalPalette(hct.hue, 36.0).get(80.0))
+
+
 def _palette_dark_spec(primary: tuple[int, int, int]):
-    sail = BRIGHT_RED if _compute_luminance(primary) < 0.18 else primary
-    return RED_BLACK, {
+    """深色款 = 色彩系统派生（非粗暴反色）：帆用种子色 dark tonal primary，
+    底用 _dark_seed_tone 种子调暗面，波纹与浅色款同一条 sail→bg 渐变带。
+    与 lib/core/theme/app_icon_style.dart AppIconColors._themeDark 保持同步。"""
+    sail = _tonal_spot_primary_dark(primary)
+    bg = _dark_seed_tone(primary, 0.14)
+    return bg, {
         "sail": sail,
-        "wave1": IVORY,
-        "wave2": _lerp_rgb(IVORY, RED_BLACK, 0.24),
-        "wave3": _lerp_rgb(IVORY, RED_BLACK, 0.48),
+        "wave1": sail,
+        "wave2": _lerp_rgb(sail, bg, 0.24),
+        "wave3": _lerp_rgb(sail, bg, 0.48),
     }
 
 

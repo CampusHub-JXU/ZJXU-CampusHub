@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_bg_theme_0_auto">#160609</color>
-    <color name="ic_launcher_bg_theme_1_auto">#160609</color>
-    <color name="ic_launcher_bg_theme_2_auto">#160609</color>
-    <color name="ic_launcher_bg_theme_3_auto">#160609</color>
-    <color name="ic_launcher_bg_theme_4_auto">#160609</color>
-    <color name="ic_launcher_bg_theme_5_auto">#160609</color>
-    <color name="ic_launcher_bg_theme_6_auto">#160609</color>
-    <color name="ic_launcher_bg_theme_7_auto">#160609</color>
+    <color name="ic_launcher_bg_theme_0_auto">#351218</color>
+    <color name="ic_launcher_bg_theme_1_auto">#0F2238</color>
+    <color name="ic_launcher_bg_theme_2_auto">#0A3D3D</color>
+    <color name="ic_launcher_bg_theme_3_auto">#151137</color>
+    <color name="ic_launcher_bg_theme_4_auto">#381024</color>
+    <color name="ic_launcher_bg_theme_5_auto">#3D260A</color>
+    <color name="ic_launcher_bg_theme_6_auto">#183019</color>
+    <color name="ic_launcher_bg_theme_7_auto">#1A272E</color>
 </resources>

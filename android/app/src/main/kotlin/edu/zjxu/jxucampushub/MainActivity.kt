@@ -22,6 +22,7 @@ class MainActivity : FlutterActivity() {
     private val shortcutHandler = ShortcutChannelHandler(this)
     private val deepLinkHandler = DeepLinkChannelHandler()
     private val calendarHandler = CalendarSyncChannelHandler(this)
+    private val appIconHandler = AppIconChannelHandler(this)
     private lateinit var appUpdateManager: AppUpdateManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -45,7 +46,7 @@ class MainActivity : FlutterActivity() {
         SystemSettingsChannelHandler(this).register(messenger)
         calendarHandler.register(messenger)
         AppUpdateChannelHandler(this, appUpdateManager).register(messenger)
-        AppIconChannelHandler(this).register(messenger)
+        appIconHandler.register(messenger)
     }
 
     override fun onResume() {
@@ -57,6 +58,13 @@ class MainActivity : FlutterActivity() {
     override fun onPause() {
         appUpdateManager.detachActivity(this)
         super.onPause()
+    }
+
+    override fun onStop() {
+        // 前台禁用「启动当前任务」的 launcher alias 会被系统退回桌面，
+        // 退到后台后再应用挂起的图标切换。
+        appIconHandler.onActivityStopped()
+        super.onStop()
     }
 
     override fun onRequestPermissionsResult(

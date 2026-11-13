@@ -19,11 +19,18 @@ class AppPreferencesStore {
   static const _textScaleKey = 'text_scale_factor';
   static const _homeTextColorModeKey = 'app_theme_home_text_color_mode';
   static const _appIconStyleKey = 'app_icon_style';
-  static const _iconFollowThemeColorKey = 'app_icon_follow_theme_color';
-  static const _iconDarkInvertKey = 'app_icon_dark_invert';
+
+  /// 已退役的图标偏好键（深浅自动翻转那套已并入资源限定符）。
+  static const _retiredIconKeys = [
+    'app_icon_follow_theme_color',
+    'app_icon_dark_invert',
+  ];
 
   Future<AppPreferences> load() async {
     final prefs = await SharedPreferences.getInstance();
+    for (final key in _retiredIconKeys) {
+      await prefs.remove(key);
+    }
 
     // themeMode
     final themeModeName = prefs.getString(_themeModeKey);
@@ -76,8 +83,6 @@ class AppPreferencesStore {
         (style) => style.name == prefs.getString(_appIconStyleKey),
         orElse: () => AppIconStyle.celadonSlate,
       ),
-      iconFollowThemeColor: prefs.getBool(_iconFollowThemeColorKey) ?? false,
-      iconDarkInvert: prefs.getBool(_iconDarkInvertKey) ?? true,
     );
   }
 
@@ -89,8 +94,6 @@ class AppPreferencesStore {
   Future<void> saveAppIconPreferences(AppPreferences value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_appIconStyleKey, value.appIconStyle.name);
-    await prefs.setBool(_iconFollowThemeColorKey, value.iconFollowThemeColor);
-    await prefs.setBool(_iconDarkInvertKey, value.iconDarkInvert);
   }
 
   Future<void> savePaletteIndex(int value) async {

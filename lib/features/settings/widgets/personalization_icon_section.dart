@@ -33,6 +33,9 @@ class PersonalizationIconSection extends StatelessWidget {
                 for (final style in AppIconStyle.values)
                   PlainListRow(
                     key: Key('personalization_icon_${style.name}'),
+                    leading: ExcludeSemantics(
+                      child: AppBrandIcon(size: 40, style: style),
+                    ),
                     title: style.label,
                     onTap: () => controller.setAppIconStyle(style),
                     trailing: prefs.appIconStyle == style
@@ -43,24 +46,12 @@ class PersonalizationIconSection extends StatelessWidget {
                         : null,
                     showChevron: false,
                   ),
-                PlainSwitchRow(
-                  switchKey: const Key('personalization_icon_follow_theme'),
-                  title: '图标跟随主题色',
-                  value: prefs.iconFollowThemeColor,
-                  onChanged: controller.setIconFollowThemeColor,
-                ),
-                PlainSwitchRow(
-                  switchKey: const Key('personalization_icon_dark_invert'),
-                  title: '深色模式反色',
-                  value: prefs.iconDarkInvert,
-                  onChanged: controller.setIconDarkInvert,
-                ),
               ],
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
               child: Text(
-                '切换后系统桌面可能需要 1–2 秒刷新；自定义主题色在桌面会匹配最接近的预设色。',
+                '「青瓷 · 黛瓦」与「跟随主题色」的深色款会随系统深/浅模式自动换色；切换后系统桌面可能需要几秒刷新，自定义主题色会匹配最接近的预设色。',
                 style: context.appText.meta,
               ),
             ),

@@ -22,10 +22,8 @@ class AppBrandIcon extends StatelessWidget {
         final selected = style ?? prefs.appIconStyle;
         final colors = AppIconColors.resolve(
           style: selected,
-          primary: theme.colorScheme.primary,
+          seed: prefs.seedColor,
           isDark: theme.brightness == Brightness.dark,
-          followThemeColor: style == null && prefs.iconFollowThemeColor,
-          darkInvert: prefs.iconDarkInvert,
         );
         return Semantics(
           image: true,

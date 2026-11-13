@@ -24,8 +24,6 @@ class AppPreferences {
   final double textScale;
   final HomeTextColorPreference homeTextColor;
   final AppIconStyle appIconStyle;
-  final bool iconFollowThemeColor;
-  final bool iconDarkInvert;
 
   const AppPreferences({
     this.themeMode = AppThemePreference.system,
@@ -36,8 +34,6 @@ class AppPreferences {
     this.textScale = 0.9,
     this.homeTextColor = HomeTextColorPreference.system,
     this.appIconStyle = AppIconStyle.celadonSlate,
-    this.iconFollowThemeColor = false,
-    this.iconDarkInvert = true,
   });
 
   AppPreferences copyWith({
@@ -49,8 +45,6 @@ class AppPreferences {
     double? textScale,
     HomeTextColorPreference? homeTextColor,
     AppIconStyle? appIconStyle,
-    bool? iconFollowThemeColor,
-    bool? iconDarkInvert,
   }) {
     return AppPreferences(
       themeMode: themeMode ?? this.themeMode,
@@ -61,8 +55,6 @@ class AppPreferences {
       textScale: textScale ?? this.textScale,
       homeTextColor: homeTextColor ?? this.homeTextColor,
       appIconStyle: appIconStyle ?? this.appIconStyle,
-      iconFollowThemeColor: iconFollowThemeColor ?? this.iconFollowThemeColor,
-      iconDarkInvert: iconDarkInvert ?? this.iconDarkInvert,
     );
   }
 
@@ -104,7 +96,6 @@ class AppPreferencesController extends ChangeNotifier {
   Future<void> setThemeMode(AppThemePreference value) async {
     if (_state.themeMode == value) return;
     _state = _state.copyWith(themeMode: value);
-    _syncLauncherIcon();
     notifyListeners();
 
     await AppPreferencesStore.instance.saveThemeMode(value);
@@ -188,29 +179,7 @@ class AppPreferencesController extends ChangeNotifier {
   }
 
   Future<void> setAppIconStyle(AppIconStyle value) async {
-    _state = _state.copyWith(
-      appIconStyle: value,
-      iconFollowThemeColor: value == AppIconStyle.followTheme,
-    );
-    _syncLauncherIcon();
-    notifyListeners();
-    await AppPreferencesStore.instance.saveAppIconPreferences(_state);
-  }
-
-  Future<void> setIconFollowThemeColor(bool value) async {
-    _state = _state.copyWith(
-      iconFollowThemeColor: value,
-      appIconStyle: value
-          ? AppIconStyle.followTheme
-          : AppIconStyle.celadonSlate,
-    );
-    _syncLauncherIcon();
-    notifyListeners();
-    await AppPreferencesStore.instance.saveAppIconPreferences(_state);
-  }
-
-  Future<void> setIconDarkInvert(bool value) async {
-    _state = _state.copyWith(iconDarkInvert: value);
+    _state = _state.copyWith(appIconStyle: value);
     _syncLauncherIcon();
     notifyListeners();
     await AppPreferencesStore.instance.saveAppIconPreferences(_state);
@@ -223,9 +192,6 @@ class AppPreferencesController extends ChangeNotifier {
       presetPaletteIndex: _state.colorSource == AppColorPreference.preset
           ? _state.paletteIndex
           : null,
-      followThemeColor: _state.iconFollowThemeColor,
-      darkInvert: _state.iconDarkInvert,
-      themeModeName: _state.themeMode.name,
     );
     unawaited(AppIconSwitcher.instance.setAlias(alias));
   }

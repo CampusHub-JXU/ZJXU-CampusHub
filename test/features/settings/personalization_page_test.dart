@@ -248,26 +248,32 @@ void main() {
     expect(find.text('35%'), findsOneWidget);
   });
 
-  testWidgets('应用图标选择与开关立即更新并持久化', (tester) async {
+  testWidgets('应用图标选择立即更新并持久化，无深浅翻转开关', (tester) async {
     await pumpPersonalization(tester);
     await scrollTo(tester, find.text('应用图标'));
     expect(find.text('应用图标'), findsOneWidget);
+    // 自动深色/跟随开关已移除：用户直接选固定风格
+    expect(
+      find.byKey(const Key('personalization_icon_dark_invert')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('personalization_icon_follow_theme')),
+      findsNothing,
+    );
     await tapKey(tester, 'personalization_icon_crimsonClassic');
     expect(
       AppPreferencesController.instance.state.appIconStyle,
       AppIconStyle.crimsonClassic,
     );
-    await tapKey(tester, 'personalization_icon_follow_theme');
+    await tapKey(tester, 'personalization_icon_followTheme');
     expect(
       AppPreferencesController.instance.state.appIconStyle,
       AppIconStyle.followTheme,
     );
-    await tapKey(tester, 'personalization_icon_dark_invert');
     await tester.pumpAndSettle();
     final saved = await AppPreferencesStore.instance.load();
     expect(saved.appIconStyle, AppIconStyle.followTheme);
-    expect(saved.iconFollowThemeColor, isTrue);
-    expect(saved.iconDarkInvert, isFalse);
   });
 
   for (final brightness in Brightness.values) {

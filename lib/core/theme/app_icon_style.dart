@@ -37,38 +37,26 @@ int nearestIconPaletteIndex(Color color) {
 
 /// 把用户偏好映射为 `AndroidManifest.xml` 中注册的 `<activity-alias>` 后缀名。
 ///
-/// [themeMode] 取值 `'system'` / `'light'` / `'dark'`（避免 `app_icon_style` 与
-/// `app_preferences_controller` 循环 import）。
+/// 深浅切换全部交给资源限定符（`drawable-night` / `values-night`）随系统夜间
+/// 模式自动渲染：跟随主题色用 `LauncherTheme{N}Auto`，青瓷用默认
+/// `LauncherCeladon`；运行时不再随主题模式翻转 alias（禁用当前启动组件会把
+/// 任务退回桌面）。
 String resolveAppIconLauncherAlias({
   required AppIconStyle style,
   required Color seedColor,
   int? presetPaletteIndex,
-  required bool followThemeColor,
-  required bool darkInvert,
-  required String themeModeName,
 }) {
   if (style == AppIconStyle.crimsonClassic) {
     return 'LauncherCrimson';
   }
-  final follows = followThemeColor || style == AppIconStyle.followTheme;
   if (style == AppIconStyle.themeInverted) {
-    if (!follows) {
-      return 'LauncherRedBlack';
-    }
-    final index = _resolvePaletteIndex(seedColor, presetPaletteIndex);
-    return 'LauncherTheme${index}Dark';
+    return 'LauncherRedBlack';
   }
-  if (follows) {
+  if (style == AppIconStyle.followTheme) {
     final index = _resolvePaletteIndex(seedColor, presetPaletteIndex);
-    if (!darkInvert || themeModeName == 'light') {
-      return 'LauncherTheme$index';
-    }
-    if (themeModeName == 'dark') {
-      return 'LauncherTheme${index}Dark';
-    }
     return 'LauncherTheme${index}Auto';
   }
-  return darkInvert ? 'LauncherCeladon' : 'LauncherCeladonDay';
+  return 'LauncherCeladon';
 }
 
 int _resolvePaletteIndex(Color seedColor, int? presetPaletteIndex) {
@@ -81,6 +69,15 @@ int _resolvePaletteIndex(Color seedColor, int? presetPaletteIndex) {
 }
 
 /// Nanhu Sail 品牌配色；04b 汝窑天青与 05 烟雨黛瓦沿用品牌母稿。
+///
+/// 跟随主题色时浅/深两条路径都走色彩系统派生，不做粗暴反色：
+/// - 浅色：白底掺 6% 种子色，帆用种子色本体（过亮时压回 HSL L0.35）；
+/// - 深色：帆用 `ColorScheme.fromSeed(seed, dark).primary`（tonalSpot T80，
+///   即应用深色主题的同源强调色），底用与 `AppThemeBuilder._darkSeedTone`
+///   同款的种子调暗面（HSL 饱和 ×0.72 夹紧、明度 0.14），波纹沿用帆→底
+///   24%/48% 渐变带。
+/// Android 侧由 `tools/brand/make_icons.py::_palette_dark_spec` 按同一公式
+/// 烘焙（TonalPalette(hue, 36).get(80) ≡ tonalSpot T80），改公式必须两端同步。
 @immutable
 class AppIconColors {
   const AppIconColors(this.top, this.bottom, this.sail, this.waves);
@@ -92,7 +89,6 @@ class AppIconColors {
 
   static const ivory = Color(0xFFF3F2EE);
   static const redBlack = Color(0xFF160609);
-  static const brightRed = Color(0xFFE64D63);
   static const celadon = AppIconColors(
     Color(0xFFDDE5E9),
     Color(0xFFC7D3DA),
@@ -106,45 +102,64 @@ class AppIconColors {
     [Color(0xFFCFD5D9), Color(0xFF929CA4), Color(0xFF5C666E)],
   );
 
+  /// 与 alias 资源逐款对应：深色只取资源限定符那套（青瓷→05a 黛瓦、
+  /// 跟随主题色→种子调暗面），「深色反色 · 红黑」是固定风格不随模式变化。
   static AppIconColors resolve({
     required AppIconStyle style,
-    required Color primary,
+    required Color seed,
     required bool isDark,
-    bool followThemeColor = false,
-    bool darkInvert = false,
   }) {
-    final follows = followThemeColor || style == AppIconStyle.followTheme;
-    final inverted =
-        style == AppIconStyle.themeInverted ||
-        (follows && isDark && darkInvert);
-    if (inverted) {
-      final sail = follows
-          ? (primary.computeLuminance() < 0.18 ? brightRed : primary)
-          : ivory;
-      return AppIconColors(redBlack, redBlack, sail, [
-        ivory,
-        Color.lerp(ivory, redBlack, 0.24)!,
-        Color.lerp(ivory, redBlack, 0.48)!,
-      ]);
-    }
-    if (follows) {
-      final background = Color.lerp(Colors.white, primary, 0.06)!;
-      final sail = primary.computeLuminance() > 0.65
-          ? HSLColor.fromColor(primary).withLightness(0.35).toColor()
-          : primary;
-      return AppIconColors(background, background, sail, [
-        sail,
-        Color.lerp(sail, background, 0.24)!,
-        Color.lerp(sail, background, 0.48)!,
-      ]);
-    }
-    if (style == AppIconStyle.crimsonClassic) {
-      return AppIconColors(AppColors.primary, AppColors.primary, ivory, [
-        ivory,
-        Color.lerp(ivory, AppColors.primary, 0.24)!,
-        Color.lerp(ivory, AppColors.primary, 0.48)!,
-      ]);
-    }
-    return isDark ? slate : celadon;
+    return switch (style) {
+      AppIconStyle.celadonSlate => isDark ? slate : celadon,
+      AppIconStyle.crimsonClassic => _crimson(),
+      AppIconStyle.themeInverted => _redBlack(),
+      AppIconStyle.followTheme => isDark ? _themeDark(seed) : _themeLight(seed),
+    };
+  }
+
+  static AppIconColors _redBlack() => AppIconColors(redBlack, redBlack, ivory, [
+    ivory,
+    Color.lerp(ivory, redBlack, 0.24)!,
+    Color.lerp(ivory, redBlack, 0.48)!,
+  ]);
+
+  static AppIconColors _crimson() => AppIconColors(
+    AppColors.primary,
+    AppColors.primary,
+    ivory,
+    [
+      ivory,
+      Color.lerp(ivory, AppColors.primary, 0.24)!,
+      Color.lerp(ivory, AppColors.primary, 0.48)!,
+    ],
+  );
+
+  static AppIconColors _themeLight(Color seed) {
+    final background = Color.lerp(Colors.white, seed, 0.06)!;
+    final sail = seed.computeLuminance() > 0.65
+        ? HSLColor.fromColor(seed).withLightness(0.35).toColor()
+        : seed;
+    return AppIconColors(background, background, sail, [
+      sail,
+      Color.lerp(sail, background, 0.24)!,
+      Color.lerp(sail, background, 0.48)!,
+    ]);
+  }
+
+  static AppIconColors _themeDark(Color seed) {
+    final sail = ColorScheme.fromSeed(
+      seedColor: seed,
+      brightness: Brightness.dark,
+    ).primary;
+    final hsl = HSLColor.fromColor(seed);
+    final background = hsl
+        .withSaturation((hsl.saturation * 0.72).clamp(0.28, 0.78))
+        .withLightness(0.14)
+        .toColor();
+    return AppIconColors(background, background, sail, [
+      sail,
+      Color.lerp(sail, background, 0.24)!,
+      Color.lerp(sail, background, 0.48)!,
+    ]);
   }
 }

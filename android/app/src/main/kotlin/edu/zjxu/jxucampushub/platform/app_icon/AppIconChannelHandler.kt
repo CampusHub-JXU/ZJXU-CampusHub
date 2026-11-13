@@ -14,7 +14,12 @@ import io.flutter.plugin.common.MethodChannel
  * 原则：
  * 1. 只允许白名单内的已知 alias；
  * 2. 目标 alias 已唯一启用时直接返回 true，避免重复触发桌面重建图标；
- * 3. 切换时先启用新 alias 再禁用旧 alias（DONT_KILL_APP），防止桌面图标瞬间丢失。
+ * 3. alias 切换排队到 [onActivityStopped] 才真正执行——在前台禁用「启动当前任务」
+ *    的那个 launcher 组件，会被 HyperOS 等系统直接把任务退回桌面（DONT_KILL_APP
+ *    也救不回来）；应用退到后台后任务已不可见，此时切换安全且桌面即时刷新；
+ * 4. 切换时先启用新 alias 再禁用旧 alias，保证任意时刻至少有一个 LAUNCHER 入口；
+ * 5. 深浅款靠 `drawable-night`/`values-night` 资源随系统夜间模式渲染，运行时
+ *    不随主题模式翻转 alias。
  */
 class AppIconChannelHandler(private val activity: Activity) {
     companion object {
@@ -36,6 +41,9 @@ class AppIconChannelHandler(private val activity: Activity) {
         private val VALID_ALIASES = ALL_ALIASES.toSet()
     }
 
+    @Volatile
+    private var pendingAlias: String? = null
+
     fun register(messenger: BinaryMessenger) {
         MethodChannel(messenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
@@ -45,16 +53,26 @@ class AppIconChannelHandler(private val activity: Activity) {
                         result.invalidArgs("Unknown icon alias: $alias")
                         return@setMethodCallHandler
                     }
-                    result.success(applyIconAlias(alias))
+                    // 只排队，真正生效在 onActivityStopped；Dart 侧已持久化偏好，
+                    // 即便进程在下次 onStop 前被杀，下次启动会重新同步。
+                    pendingAlias = alias
+                    result.success(true)
                 }
 
                 "getIconAlias" -> {
-                    result.success(currentEnabledAlias())
+                    result.success(pendingAlias ?: currentEnabledAlias())
                 }
 
                 else -> result.notImplemented()
             }
         }
+    }
+
+    /** MainActivity.onStop 调用：应用退到后台后应用挂起的 alias 切换。 */
+    fun onActivityStopped() {
+        val alias = pendingAlias ?: return
+        pendingAlias = null
+        applyIconAlias(alias)
     }
 
     private fun componentFor(alias: String): ComponentName {
@@ -74,11 +92,11 @@ class AppIconChannelHandler(private val activity: Activity) {
         return ALL_ALIASES.firstOrNull { isAliasEnabled(pm, it) } ?: DEFAULT_ALIAS
     }
 
-    private fun applyIconAlias(targetAlias: String): Boolean {
+    private fun applyIconAlias(targetAlias: String) {
         val pm = activity.packageManager
         val currentlyEnabled = ALL_ALIASES.filter { isAliasEnabled(pm, it) }
         if (currentlyEnabled.size == 1 && currentlyEnabled[0] == targetAlias) {
-            return true
+            return
         }
 
         // 先启用目标 alias，再禁用其余 alias，保证任意时刻至少有一个 LAUNCHER 入口。
@@ -97,6 +115,5 @@ class AppIconChannelHandler(private val activity: Activity) {
                 )
             }
         }
-        return true
     }
 }
