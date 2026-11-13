@@ -123,16 +123,12 @@ class AppIconColors {
     Color.lerp(ivory, redBlack, 0.48)!,
   ]);
 
-  static AppIconColors _crimson() => AppIconColors(
-    AppColors.primary,
-    AppColors.primary,
-    ivory,
-    [
-      ivory,
-      Color.lerp(ivory, AppColors.primary, 0.24)!,
-      Color.lerp(ivory, AppColors.primary, 0.48)!,
-    ],
-  );
+  static AppIconColors _crimson() =>
+      AppIconColors(AppColors.primary, AppColors.primary, ivory, [
+        ivory,
+        Color.lerp(ivory, AppColors.primary, 0.24)!,
+        Color.lerp(ivory, AppColors.primary, 0.48)!,
+      ]);
 
   static AppIconColors _themeLight(Color seed) {
     final background = Color.lerp(Colors.white, seed, 0.06)!;

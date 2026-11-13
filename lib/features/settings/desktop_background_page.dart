@@ -166,10 +166,7 @@ class _DesktopBackgroundPageState extends State<DesktopBackgroundPage>
           PlainListGroup(children: _backgroundRows(context)),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: Text(
-              '点按行前往系统设置，返回后自动刷新状态。',
-              style: context.appText.meta,
-            ),
+            child: Text('点按行前往系统设置，返回后自动刷新状态。', style: context.appText.meta),
           ),
         ],
       ),
