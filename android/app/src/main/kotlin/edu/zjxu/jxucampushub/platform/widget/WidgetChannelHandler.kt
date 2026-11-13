@@ -5,7 +5,21 @@ import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Intent
+import android.content.res.ColorStateList
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
+import android.view.View
+import android.view.ViewGroup
+import android.widget.FrameLayout
+import android.widget.ImageView
+import android.widget.ProgressBar
+import android.widget.RemoteViews
+import android.widget.TextView
+import edu.zjxu.jxucampushub.R
+import edu.zjxu.jxucampushub.widget.CampusWidgetTheme
+import java.io.ByteArrayOutputStream
 import edu.zjxu.jxucampushub.platform.MiuiShortcutPermission
 import edu.zjxu.jxucampushub.platform.PinRequestResult
 import edu.zjxu.jxucampushub.platform.invalidArgs
@@ -83,6 +97,16 @@ class WidgetChannelHandler(private val activity: Activity) {
 
                 "getStatus" -> runOffMain(result) { readStatus() }
 
+                "getPreview" -> {
+                    val kind = CampusWidgetKind.fromCode(call.argument<String>("size"))
+                    val widthPx = call.argument<Int>("widthPx")
+                    if (kind == null || widthPx == null || widthPx <= 0) {
+                        result.invalidArgs("size must be small, medium or large; widthPx > 0")
+                        return@setMethodCallHandler
+                    }
+                    runOffMain(result) { renderPreviewPng(kind, widthPx) }
+                }
+
                 else -> result.notImplemented()
             }
         }
@@ -107,6 +131,79 @@ class WidgetChannelHandler(private val activity: Activity) {
             "installed" to installed,
             "lastSnapshotAtMs" to lastSnapshotAt,
         )
+    }
+
+    /**
+     * 把 launcher 组件选择器同款的 `previewLayout` 离屏渲染成 PNG（设置页预览用）。
+     *
+     * 视图只含 LinearLayout/TextView/ProgressBar/ImageView，`RemoteViews.apply` +
+     * measure/layout/draw 不要求主线程。宽度按 Dart 传入的展示宽 [widthPx]（物理像素），
+     * 高度按 `appwidget-provider` minHeight/minWidth 比例——字号保持真实 sp 规格，
+     * 不做缩放失真；强调色用 [CampusWidgetTheme] 取与真实组件一致的值（快照
+     * `theme.accent*` → 已保存 → `campus_widget_accent` 资源兜底），XML 里打
+     * `accent_text` / `accent_bg` / `accent_progress` tag 的元素被改写。失败返回 null，
+     * Dart 侧隐藏预览区，不阻塞页面。
+     */
+    private fun renderPreviewPng(kind: CampusWidgetKind, widthPx: Int): ByteArray? {
+        val (layoutId, minW, minH) = when (kind) {
+            CampusWidgetKind.SMALL ->
+                Triple(R.layout.campus_widget_small_preview, 110, 110)
+            CampusWidgetKind.MEDIUM ->
+                Triple(R.layout.campus_widget_medium_preview, 250, 110)
+            CampusWidgetKind.LARGE ->
+                Triple(R.layout.campus_widget_large_preview, 250, 250)
+        }
+        return runCatching {
+            val host = FrameLayout(activity)
+            val view = RemoteViews(activity.packageName, layoutId).apply(activity, host)
+            applyPreviewAccent(view)
+            val heightPx = (widthPx.toLong() * minH / minW).toInt()
+            view.measure(
+                View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(heightPx, View.MeasureSpec.EXACTLY),
+            )
+            view.layout(0, 0, view.measuredWidth, view.measuredHeight)
+            val bitmap = Bitmap.createBitmap(
+                view.measuredWidth,
+                view.measuredHeight,
+                Bitmap.Config.ARGB_8888,
+            )
+            view.draw(Canvas(bitmap))
+            ByteArrayOutputStream().also { stream ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
+            }.toByteArray()
+        }.onFailure { error ->
+            android.util.Log.w(TAG, "renderPreviewPng failed: ${error.javaClass.simpleName}")
+        }.getOrNull()
+    }
+
+    /** 预览的强调色改成与真实组件一致（主题色派生）；tint 用强调色 + 8%/14% 透明度。 */
+    private fun applyPreviewAccent(root: View) {
+        val palette = CampusWidgetTheme.palette(activity, null)
+        val accent = palette.accent.pick(palette.night)
+        val tint = palette.tint.pick(palette.night)
+        val tintRadius = activity.resources.getDimension(R.dimen.campus_widget_inner_radius)
+        applyAccentRecursive(root, accent, tint, tintRadius)
+    }
+
+    private fun applyAccentRecursive(view: View, accent: Int, tint: Int, tintRadius: Float) {
+        when (view.tag) {
+            "accent_text" -> (view as? TextView)?.setTextColor(accent)
+            "accent_progress" -> (view as? ProgressBar)?.progressTintList =
+                ColorStateList.valueOf(accent)
+            "accent_bg" -> (view as? ImageView)?.setImageDrawable(
+                GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    setColor(tint)
+                    cornerRadius = tintRadius
+                },
+            )
+        }
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) {
+                applyAccentRecursive(view.getChildAt(i), accent, tint, tintRadius)
+            }
+        }
     }
 
     private fun requestCampusWidgetPin(kind: CampusWidgetKind): PinRequestResult {

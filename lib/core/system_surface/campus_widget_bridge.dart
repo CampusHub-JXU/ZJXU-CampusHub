@@ -180,6 +180,22 @@ class CampusWidgetBridge {
         category: LogCategory.general,
       );
 
+  /// 原生把 launcher 组件选择器同款的 `previewLayout` 渲染成 PNG 位图
+  /// （设置页「桌面与后台」预览用）。[widthPx] 为位图的目标展示宽（物理像素），
+  /// 字号按真实 sp 栅格化不缩放失真；通道缺失 / 失败返回 null，UI 隐藏预览。
+  Future<Uint8List?> getPreview(CampusWidgetSize size, {required int widthPx}) =>
+      safeInvoke<Uint8List, Uint8List?>(
+        _channel,
+        'getPreview',
+        arguments: <String, Object?>{'size': size.code, 'widthPx': widthPx},
+        map: (value) => value,
+        missing: null,
+        failed: null,
+        label: '读取桌面组件预览',
+        level: LogLevel.warn,
+        category: LogCategory.general,
+      );
+
   /// 设备/桌面是否支持固定组件。
   Future<bool> isSupported() => _invokeBool('isSupported');
 

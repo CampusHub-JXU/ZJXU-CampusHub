@@ -34,7 +34,18 @@ void main() {
   late bool notificationsQueryThrows;
   late Object? widgetStatus;
   late Object? systemStatus;
+  late Map<String, Uint8List> widgetPreviews;
   WidgetRefreshRecord? refreshRecord;
+
+  /// 1×1 透明 PNG：足够通过 Image.memory 解码路径。
+  final previewPng = Uint8List.fromList(const [
+    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
+    0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+    0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00,
+    0x0D, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x62, 0x00, 0x01, 0x00, 0x00,
+    0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
+    0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+  ]);
 
   setUpAll(() {
     // widget 测试默认平台为 android，但插件实现不经 GeneratedPluginRegistrant
@@ -51,6 +62,7 @@ void main() {
     systemSettingsResult = 'target';
     notificationsEnabled = true;
     notificationsQueryThrows = false;
+    widgetPreviews = {};
     widgetStatus = <String, Object?>{
       'pinSupported': true,
       'installed': <String, Object?>{'small': 0, 'medium': 2, 'large': 0},
@@ -73,6 +85,9 @@ void main() {
     });
     messenger.setMockMethodCallHandler(widgetChannel, (call) async {
       if (call.method == 'getStatus') return widgetStatus;
+      if (call.method == 'getPreview') {
+        return widgetPreviews[(call.arguments as Map)['size']];
+      }
       widgetCalls.add(call);
       return call.method == 'requestPin' ? widgetPinResult : null;
     });
@@ -410,37 +425,17 @@ void main() {
     expect(find.text('自启动'), findsNothing);
   });
 
-  testWidgets('点 ⓘ 弹出说明、不触发行动作，点外部关闭', (tester) async {
-    await pumpDesktopBackgroundPage(tester);
-    await revealRow(tester, '电池优化');
-
-    // 说明不再作为副标题常驻。
-    expect(find.textContaining('需要你手动把本应用设为'), findsNothing);
-
-    await tester.tap(find.bySemanticsLabel('关于电池优化'));
-    await tester.pumpAndSettle();
-
-    expect(find.textContaining('需要你手动把本应用设为'), findsOneWidget);
-    expect(systemSettingsCalls, isEmpty);
-
-    await tester.tapAt(const Offset(4, 4));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('需要你手动把本应用设为'), findsNothing);
-  });
-
-  testWidgets('ⓘ 是独立的读屏按钮，不并入行的点按语义', (tester) async {
+  testWidgets('页面不再提供 ⓘ 说明按钮', (tester) async {
     final handle = tester.ensureSemantics();
     await pumpDesktopBackgroundPage(tester);
-    await revealRow(tester, '电池优化');
+    await revealRow(tester, '系统应用信息');
 
-    final info = tester.getSemantics(find.bySemanticsLabel('关于电池优化'));
-    expect(info.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
-    expect(info.label, '关于电池优化');
-    final row = tester.getSemantics(find.text('电池优化'));
-    expect(row.label, isNot(contains('关于电池优化')));
+    // 说明 popover 已下线：全页没有「关于xx」读屏按钮，行只保留标题+状态。
+    expect(find.bySemanticsLabel(RegExp('^关于')), findsNothing);
 
     handle.dispose();
   });
+
   testWidgets('后台记录展示真实结果', (tester) async {
     refreshRecord = WidgetRefreshRecord(
       lastAttemptAt: DateTime(2026, 10, 16, 10, 15),
@@ -449,6 +444,24 @@ void main() {
     await pumpDesktopBackgroundPage(tester);
     expect(find.text('上次后台刷新'), findsOneWidget);
     expect(find.textContaining('部分成功'), findsOneWidget);
+  });
+
+  testWidgets('原生预览位图按尺寸渲染，缺失时整块隐藏', (tester) async {
+    widgetPreviews = {'medium': previewPng, 'large': previewPng};
+    await pumpDesktopBackgroundPage(tester);
+    expect(
+      find.byKey(const Key('desktop_widget_preview_medium')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('desktop_widget_preview_large')),
+      findsOneWidget,
+    );
+    // small 未返回位图：预览区整块隐藏，不留占位。
+    expect(
+      find.byKey(const Key('desktop_widget_preview_small')),
+      findsNothing,
+    );
   });
 }
 

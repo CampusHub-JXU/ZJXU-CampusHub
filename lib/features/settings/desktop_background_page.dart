@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
@@ -8,14 +9,14 @@ import '../../core/shortcut/app_shortcut_service.dart';
 import '../../core/system_surface/campus_widget_bridge.dart';
 import '../../core/system_surface/system_settings_launcher.dart';
 import '../../core/system_surface/widget_refresh_state.dart';
+import '../../core/theme/app_typography.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_feedback.dart';
-import '../../shared/widgets/info_popover_button.dart';
 import '../../shared/widgets/plain_list.dart';
 
 /// 设置 → 桌面与后台（PRD §42，契约 `docs/desktop-widget-v2.md` §6）。
 ///
-/// 状态驱动：每行只显示标题 + 真实状态（未满足的项用强调色），说明收进行尾 ⓘ。
+/// 状态驱动：每行只显示标题 + 真实状态（未满足的项用强调色）。
 /// 状态全部只读查询，**打开设置页不代表已授权**；从系统设置返回（resumed）时重新查询。
 /// 不提供误导性的「一键全部开启」。
 class DesktopBackgroundPage extends StatefulWidget {
@@ -36,6 +37,9 @@ class _DesktopBackgroundPageState extends State<DesktopBackgroundPage>
   CampusWidgetStatus _widgets = CampusWidgetStatus.unknown;
   SystemBackgroundStatus _system = SystemBackgroundStatus.unknown;
   WidgetRefreshRecord? _refresh;
+
+  /// 原生渲染的各尺寸组件预览 PNG；通道缺失 / 渲染失败时对应项缺省。
+  Map<CampusWidgetSize, Uint8List> _previews = const {};
 
   /// 通知权限真实查询结果；null = 查询失败，状态未知（不谎称已开启）。
   bool? _notificationsEnabled;
@@ -81,6 +85,30 @@ class _DesktopBackgroundPageState extends State<DesktopBackgroundPage>
           results[3] as bool? ?? system.notificationsEnabled;
       _loading = false;
     });
+    unawaited(_loadPreviews());
+  }
+
+  /// 预览位图按卡内展示宽（物理像素）栅格化，字号保持真实 sp 规格；
+  /// 与状态查询解耦：渲染失败 / 通道缺失只少一块图，不影响页面。
+  Future<void> _loadPreviews() async {
+    final generation = _generation;
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    // PlainListGroup 内边距：卡片两侧 kPlainListGutter + 组内 padding 16×2。
+    final contentWidth =
+        MediaQuery.sizeOf(context).width - kPlainListGutter * 2 - 32;
+    final previews = <CampusWidgetSize, Uint8List>{};
+    for (final size in CampusWidgetSize.values) {
+      final widthDp = size == CampusWidgetSize.small
+          ? contentWidth * 0.5
+          : contentWidth;
+      final png = await CampusWidgetBridge.instance.getPreview(
+        size,
+        widthPx: (widthDp * dpr).round(),
+      );
+      if (png != null) previews[size] = png;
+    }
+    if (!mounted || generation != _generation) return;
+    setState(() => _previews = previews);
   }
 
   Future<bool?> _queryNotifications() async {
@@ -110,18 +138,25 @@ class _DesktopBackgroundPageState extends State<DesktopBackgroundPage>
         children: [
           const PlainSectionHeader('桌面组件'),
           PlainListGroup(children: _widgetRows(context)),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Text(
+              '点按对应行请求添加到桌面；预览为示意数据，组件外观随系统深/浅色换色。',
+              style: context.appText.meta,
+            ),
+          ),
           const SizedBox(height: kPlainListGroupGap),
           const PlainSectionHeader('快捷方式'),
           PlainListGroup(
             children: [
-              _InfoRow(
+              PlainListRow(
                 title: '今日课表快捷方式',
-                info: '固定到桌面后，点一下直接打开今日课表。点按这一行发起添加，桌面会弹窗请你确认。',
+                subtitle: '固定到桌面，一键打开今日课表',
                 onTap: () => _addShortcut(context),
               ),
-              _InfoRow(
-                title: '快捷方式权限',
-                info: '部分系统（如 MIUI / HyperOS）默认不允许应用创建桌面快捷方式或组件，需要在系统权限设置里手动打开「桌面快捷方式」。',
+              PlainListRow(
+                title: '桌面快捷方式权限',
+                subtitle: '部分系统默认禁止创建，需手动允许',
                 onTap: () => _openShortcutSettings(context),
               ),
             ],
@@ -129,6 +164,13 @@ class _DesktopBackgroundPageState extends State<DesktopBackgroundPage>
           const SizedBox(height: kPlainListGroupGap),
           const PlainSectionHeader('后台运行'),
           PlainListGroup(children: _backgroundRows(context)),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Text(
+              '点按行前往系统设置，返回后自动刷新状态。',
+              style: context.appText.meta,
+            ),
+          ),
         ],
       ),
     );
@@ -139,30 +181,28 @@ class _DesktopBackgroundPageState extends State<DesktopBackgroundPage>
   List<Widget> _widgetRows(BuildContext context) {
     final refresh = _refresh;
     return [
-      for (final size in CampusWidgetSize.values)
-        _InfoRow(
+      for (final size in CampusWidgetSize.values) ...[
+        _WidgetPreview(size: size, png: _previews[size]),
+        PlainListRow(
           title: '${size.sizeLabel} ${size.contentLabel}',
           value: _installedText(size),
-          info:
-              '${_widgetDescription(size)}\n\n点按这一行请求添加到桌面。放到哪一页、哪个位置由桌面决定，App 无法控制；也可以长按桌面 → 小组件 → 嘉兴大学 手动添加。',
           onTap: () => _addWidget(context, size),
         ),
-      _InfoRow(
+      ],
+      PlainListRow(
         title: '上次同步',
         value: _loading
             ? '检查中…'
             : _relativeTime(_widgets.lastSnapshotAt) ?? '尚未同步',
-        info: '桌面组件显示的是 App 里已有的数据：课表、考试、一卡通、电费或通知在 App 内更新后会同步到组件。组件本身不联网，也不保存任何账号信息。',
       ),
       if (refresh != null)
-        _InfoRow(
+        PlainListRow(
           title: '上次后台刷新',
           value:
               '${_relativeTime(refresh.lastAttemptAt)} · ${_outcomeText(refresh.lastOutcome)}',
           emphasizeValue:
               refresh.lastOutcome != WidgetRefreshOutcome.ok &&
               refresh.lastOutcome != WidgetRefreshOutcome.skippedForeground,
-          info: 'App 不在前台时，系统会定期在后台刷新组件数据。系统省电策略可能推迟或跳过刷新，下方「后台运行」里的设置会影响它。',
         ),
     ];
   }
@@ -174,12 +214,6 @@ class _DesktopBackgroundPageState extends State<DesktopBackgroundPage>
     // 通道不可用时数量未知，不显示「未放置」以免误导。
     return identical(_widgets, CampusWidgetStatus.unknown) ? null : '未放置';
   }
-
-  static String _widgetDescription(CampusWidgetSize size) => switch (size) {
-    CampusWidgetSize.small => '显示下一节课的课程名、时间与地点。',
-    CampusWidgetSize.medium => '显示今天最多 3 节课。',
-    CampusWidgetSize.large => '显示课表、考试、一卡通、电费与未读通知。',
-  };
 
   static String _outcomeText(WidgetRefreshOutcome outcome) => switch (outcome) {
     WidgetRefreshOutcome.ok => '成功',
@@ -209,7 +243,7 @@ class _DesktopBackgroundPageState extends State<DesktopBackgroundPage>
     final exactNotApplicable = system.available && exact == null;
     final battery = system.ignoringBatteryOptimizations;
     return [
-      _InfoRow(
+      PlainListRow(
         title: '通知',
         value: _loading
             ? '检查中…'
@@ -219,10 +253,9 @@ class _DesktopBackgroundPageState extends State<DesktopBackgroundPage>
                 null => '未知',
               },
         emphasizeValue: !_loading && _notificationsEnabled == false,
-        info: '关闭后，电费、教务处通知、第二课堂等提醒都不会弹出。点按这一行前往系统通知设置；打开设置页不等于已开启，返回后这里会重新检查。',
         onTap: () => _openNotificationSettings(context),
       ),
-      _InfoRow(
+      PlainListRow(
         title: '精确闹钟',
         value: _loading
             ? '检查中…'
@@ -234,7 +267,6 @@ class _DesktopBackgroundPageState extends State<DesktopBackgroundPage>
                 null => '无需设置',
               },
         emphasizeValue: !_loading && exact == false,
-        info: 'Android 12 起，准点提醒需要允许本应用使用「闹钟和提醒」。未允许时提醒仍会发出，但可能晚几分钟。Android 12 以下无需设置。',
         onTap: exactNotApplicable
             ? null
             : () => _openSystemSettings(
@@ -242,7 +274,7 @@ class _DesktopBackgroundPageState extends State<DesktopBackgroundPage>
                 SystemSettingsTarget.exactAlarms,
               ),
       ),
-      _InfoRow(
+      PlainListRow(
         title: '电池优化',
         value: _loading
             ? '检查中…'
@@ -252,25 +284,20 @@ class _DesktopBackgroundPageState extends State<DesktopBackgroundPage>
                 null => system.available ? '无需设置' : '未知',
               },
         emphasizeValue: !_loading && battery == false,
-        info:
-            '系统省电策略可能推迟后台任务，让提醒和组件数据更新变慢。点按只会打开电池优化列表页，需要你手动把本应用设为「无限制」（会更耗电）。',
         onTap: () => _openSystemSettings(
           context,
           SystemSettingsTarget.batteryOptimization,
         ),
       ),
       if (system.isXiaomiFamily)
-        _InfoRow(
+        PlainListRow(
           title: '自启动',
           value: '无法检测',
-          info: '小米系系统（MIUI / HyperOS）可能限制后台任务启动，也可能出现链式启动确认，属系统正常行为。App 无法读取这项设置；点按尝试打开自启动管理，部分系统不保证直达，可能需要手动查找。',
           onTap: () =>
               _openSystemSettings(context, SystemSettingsTarget.autostart),
         ),
-      _InfoRow(
+      PlainListRow(
         title: '系统应用信息',
-        info:
-            '通知与数据更新由系统后台任务调度，App 不会在后台自动弹出界面。如果后台表现异常，可以在应用详情页检查系统对本应用的后台限制。',
         onTap: () =>
             _openSystemSettings(context, SystemSettingsTarget.appDetails),
       ),
@@ -367,44 +394,48 @@ class _DesktopBackgroundPageState extends State<DesktopBackgroundPage>
 void _toast(BuildContext context, String message) =>
     AppFeedback.toast(context, message);
 
-/// 设置行 + 行尾 ⓘ 说明。
-///
-/// ⓘ 放在 [PlainListRow] **外面**：行内部是 `MergeSemantics`，按钮放进 `trailing`
-/// 会和行的点按合并成一个读屏节点。分开后两块命中区互不重叠，读屏也是两个按钮。
-class _InfoRow extends StatelessWidget {
-  const _InfoRow({
-    required this.title,
-    required this.info,
-    this.value,
-    this.emphasizeValue = false,
-    this.onTap,
-  });
+/// 原生 previewLayout 位图预览，按真实桌面格子占位：2×2 半宽方形，
+/// 4×2 / 4×4 全宽。位图缺失（通道不可用 / 渲染失败）时整块隐藏。
+class _WidgetPreview extends StatelessWidget {
+  const _WidgetPreview({required this.size, required this.png});
 
-  final String title;
-  final String info;
-  final String? value;
-  final bool emphasizeValue;
-  final VoidCallback? onTap;
+  final CampusWidgetSize size;
+  final Uint8List? png;
+
+  /// 与 `appwidget-provider` minWidth/minHeight 同比例的展示宽高比。
+  static const _aspect = <CampusWidgetSize, double>{
+    CampusWidgetSize.small: 1,
+    CampusWidgetSize.medium: 250 / 110,
+    CampusWidgetSize.large: 1,
+  };
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: PlainListRow(
-            title: title,
-            value: value,
-            emphasizeValue: emphasizeValue,
-            onTap: onTap,
-            showChevron: false,
+    final png = this.png;
+    if (png == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: FractionallySizedBox(
+        widthFactor: size == CampusWidgetSize.small ? 0.5 : 1,
+        alignment: Alignment.centerLeft,
+        child: Semantics(
+          image: true,
+          label: '${size.contentLabel}组件预览',
+          child: ClipRSuperellipse(
+            borderRadius: BorderRadius.circular(20),
+            child: AspectRatio(
+              aspectRatio: _aspect[size]!,
+              child: Image.memory(
+                png,
+                key: Key('desktop_widget_preview_${size.code}'),
+                fit: BoxFit.fill,
+                gaplessPlayback: true,
+                filterQuality: FilterQuality.medium,
+              ),
+            ),
           ),
         ),
-        // 48dp 按钮里 20dp 图标两侧各留 14，右侧再补 2，图标右缘与行内边距对齐。
-        Padding(
-          padding: const EdgeInsets.only(right: kPlainListRowInset - 14),
-          child: InfoPopoverButton(subject: title, message: info),
-        ),
-      ],
+      ),
     );
   }
 }

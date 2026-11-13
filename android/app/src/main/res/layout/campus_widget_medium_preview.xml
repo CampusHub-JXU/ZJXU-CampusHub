@@ -47,7 +47,8 @@
             android:layout_height="match_parent"
             android:importantForAccessibility="no"
             android:scaleType="fitXY"
-            android:src="@drawable/campus_widget_row_tint_preview" />
+            android:src="@drawable/campus_widget_row_tint_preview"
+            android:tag="accent_bg" />
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -66,6 +67,7 @@
                 android:includeFontPadding="false"
                 android:maxLines="1"
                 android:text="08:00-09:35"
+                android:tag="accent_text"
                 android:textColor="@color/campus_widget_accent"
                 android:textSize="13sp" />
 
@@ -78,6 +80,7 @@
                 android:includeFontPadding="false"
                 android:maxLines="1"
                 android:text="高等数学"
+                android:tag="accent_text"
                 android:textColor="@color/campus_widget_accent"
                 android:textSize="15sp" />
 
@@ -90,6 +93,7 @@
                 android:maxLines="1"
                 android:minWidth="52dp"
                 android:text="7-201"
+                android:tag="accent_text"
                 android:textColor="@color/campus_widget_accent"
                 android:textSize="13sp" />
         </LinearLayout>

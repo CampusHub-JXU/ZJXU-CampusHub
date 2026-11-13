@@ -22,6 +22,7 @@
         android:includeFontPadding="false"
         android:maxLines="1"
         android:text="进行中 · 09:35 下课"
+        android:tag="accent_text"
         android:textColor="@color/campus_widget_accent"
         android:textSize="12sp" />
     <TextView
@@ -58,7 +59,7 @@
         android:textColor="@color/campus_widget_text_secondary"
         android:textSize="13sp" />
     <ProgressBar
-        style="?android:attr/progressBarStyleHorizontal"
+        android:tag="accent_progress"        style="?android:attr/progressBarStyleHorizontal"
         android:layout_width="match_parent"
         android:layout_height="4dp"
         android:layout_marginTop="10dp"
@@ -248,7 +249,8 @@
                 android:includeFontPadding="false"
                 android:maxLines="1"
                 android:text="3 天"
-                android:textColor="@color/campus_widget_accent"
+                android:tag="accent_text"
+        android:textColor="@color/campus_widget_accent"
                 android:textSize="18sp"
                 android:textStyle="bold" />
         </LinearLayout>
@@ -263,6 +265,7 @@
         android:includeFontPadding="false"
         android:maxLines="1"
         android:text="2 条未读通知"
+        android:tag="accent_text"
         android:textColor="@color/campus_widget_accent"
         android:textSize="13sp" />
 </LinearLayout>

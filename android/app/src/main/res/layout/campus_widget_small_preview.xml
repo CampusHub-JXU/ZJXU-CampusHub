@@ -16,6 +16,7 @@
         android:includeFontPadding="false"
         android:maxLines="1"
         android:text="进行中"
+        android:tag="accent_text"
         android:textColor="@color/campus_widget_accent"
         android:textSize="12sp" />
     <TextView
