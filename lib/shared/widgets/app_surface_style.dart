@@ -1,5 +1,9 @@
-import 'package:flutter/material.dart';
+import 'dart:ui' as ui;
 
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+
+import '../../core/theme/glass_refraction.dart';
 import '../../core/theme/surface_material.dart';
 
 /// Apple 风格平色卡面配方（浅 / 深双模式，零高光、零 BackdropFilter）。
@@ -103,4 +107,133 @@ ImageFilterConfig acrylicBackdropFilter(
       ColorFilter.matrix(saturationColorMatrix(recipe.saturation)),
     ),
   );
+}
+
+/// 把折射层叠到模糊层之上：`compose` 的语义是 `outer(inner(source))`，
+/// 所以折射必须是 `outer`、模糊是 `inner`，即「先模糊背景，再让玻璃曲面
+/// 去折射已经模糊过的背景」。
+///
+/// 顺序写反（`outer: blur`）时 sigma≈19 的高斯会跑在折射之后，把整条
+/// 18dp 边缘折射带、1.6dp 色散与窄镜面高光一起糊平——肉眼只剩普通磨砂，
+/// 液态玻璃完全看不出来。
+///
+/// [refraction] 为 null（shader 未预载 / 非 Impeller 后端）时原样退回纯磨砂。
+ImageFilterConfig composeLiquidGlassLayers({
+  required ImageFilterConfig blur,
+  ImageFilterConfig? refraction,
+}) {
+  if (refraction == null) return blur;
+  return ImageFilterConfig.compose(outer: refraction, inner: blur);
+}
+
+/// 液态玻璃专用：模糊 → 液态玻璃边缘折射 → 色散。
+///
+/// 传入 [boundsHolder]（由 `LiquidGlassBoundsTracker` 在绘制前写入）时，
+/// 每次 `resolve` 按真实屏幕坐标与缩放比构造 `u_bounds`，确保 Dock 与滚动卡片的
+/// 边缘 SDF 与屏幕坐标严格对齐；shader 不可用时退回纯磨砂。
+ImageFilterConfig liquidGlassBackdropFilter({
+  required MaterialRecipe recipe,
+  required double sigma,
+  required double radius,
+  required double devicePixelRatio,
+  LiquidGlassBoundsHolder? boundsHolder,
+}) {
+  // 不用 bounded：Impeller 下 bounded 模糊与外层 ImageFilter（此处为 shader）
+  // compose 时会把卡片底部区域裁成黑块；外层已有 ClipRRect 且 shader 自身
+  // 按 u_bounds 夹紧采样范围，不会溢出卡面。
+  final blur = acrylicBackdropFilter(recipe, sigma: sigma, bounded: false);
+  if (boundsHolder == null) {
+    return composeLiquidGlassLayers(
+      blur: blur,
+      refraction: LiquidGlass.filterConfig(
+        radius: radius,
+        devicePixelRatio: devicePixelRatio,
+      ),
+    );
+  }
+  return _LiquidGlassImageFilterConfig(
+    blur: blur,
+    radius: radius,
+    devicePixelRatio: devicePixelRatio,
+    boundsHolder: boundsHolder,
+  );
+}
+
+class _LiquidGlassImageFilterConfig implements ImageFilterConfig {
+  const _LiquidGlassImageFilterConfig({
+    required this.blur,
+    required this.radius,
+    required this.devicePixelRatio,
+    required this.boundsHolder,
+  });
+
+  final ImageFilterConfig blur;
+  final double radius;
+  final double devicePixelRatio;
+  final LiquidGlassBoundsHolder boundsHolder;
+
+  @override
+  ui.ImageFilter? get filter => null;
+
+  @override
+  ui.ImageFilter resolve(ImageFilterContext context) {
+    final innerBlur = blur.resolve(context);
+    final globalRect = boundsHolder.globalRect;
+    final localSize = boundsHolder.localSize;
+    final scale =
+        (globalRect != null && localSize != null && localSize.width > 0)
+        ? (globalRect.width / localSize.width)
+        : 1.0;
+    final cached = boundsHolder.lookup(
+      globalRect: globalRect,
+      localBounds: context.bounds,
+      radius: radius,
+      scale: scale,
+      dpr: devicePixelRatio,
+      innerBlur: innerBlur,
+    );
+    if (cached != null) return cached;
+
+    final refraction = LiquidGlass.createImageFilter(
+      radius: radius,
+      devicePixelRatio: devicePixelRatio,
+      bounds: globalRect,
+      scale: scale,
+    );
+    if (refraction == null) return innerBlur;
+    final composed = ui.ImageFilter.compose(
+      outer: refraction,
+      inner: innerBlur,
+    );
+    boundsHolder.store(
+      globalRect: globalRect,
+      localBounds: context.bounds,
+      radius: radius,
+      scale: scale,
+      dpr: devicePixelRatio,
+      innerBlur: innerBlur,
+      composed: composed,
+    );
+    return composed;
+  }
+
+  @override
+  String get debugShortDescription =>
+      '${blur.debugShortDescription} -> liquidGlass(radius=$radius)';
+
+  @override
+  String toString() =>
+      'ImageFilterConfig.compose(source -> $debugShortDescription -> result)';
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is _LiquidGlassImageFilterConfig &&
+          other.blur == blur &&
+          other.radius == radius &&
+          other.devicePixelRatio == devicePixelRatio &&
+          identical(other.boundsHolder, boundsHolder);
+
+  @override
+  int get hashCode => Object.hash(blur, radius, devicePixelRatio, boundsHolder);
 }

@@ -16,6 +16,7 @@ import 'package:jxu_campus_hub/core/calendar/calendar_sync_control.dart';
 import 'package:jxu_campus_hub/core/network/dio_client.dart';
 import 'package:jxu_campus_hub/core/logging/app_logger.dart';
 import 'package:jxu_campus_hub/core/profile/user_profile_controller.dart';
+import 'package:jxu_campus_hub/core/theme/glass_refraction.dart';
 import 'package:jxu_campus_hub/core/theme/glass_style_controller.dart';
 import 'package:jxu_campus_hub/core/theme/personalization_controller.dart';
 import 'package:jxu_campus_hub/core/network/network_settings.dart';
@@ -46,6 +47,7 @@ Future<void> resetTestEnvironment() async {
   );
 
   GlassStyleController.instance.debugReset();
+  LiquidGlass.debugReset();
   PersonalizationController.instance.debugReset();
   AppPreferencesController.instance.debugReset();
   UnifiedAuthService.instance.debugReset();

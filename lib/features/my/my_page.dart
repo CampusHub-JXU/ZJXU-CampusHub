@@ -17,7 +17,7 @@ import '../../core/theme/page_transition_activity.dart';
 import '../../core/theme/widgets/app_wallpaper_backdrop.dart';
 import '../../shared/widgets/app_feedback.dart';
 import '../../shared/widgets/app_icon_badge.dart';
-import '../../shared/widgets/app_tile_surface.dart';
+import '../../shared/widgets/glass_container.dart';
 import '../../shared/widgets/login_shell.dart';
 import '../../shared/widgets/plain_list.dart';
 
@@ -73,6 +73,9 @@ class MyPage extends StatefulWidget {
 }
 
 class _MyPageState extends State<MyPage> {
+  /// 透传给流体背景：滚动 / 惯性滑行期间暂停出帧（省电 + 让路 raster）。
+  final _scrollController = ScrollController();
+
   bool _campusLoggedIn = false;
   bool _academicLoggedIn = false;
   int _statusRefreshVersion = 0;
@@ -105,6 +108,7 @@ class _MyPageState extends State<MyPage> {
   @override
   void dispose() {
     _silentRetryTimer?.cancel();
+    _scrollController.dispose();
     UnifiedAuthService.instance.removeListener(_onAuthChanged);
     ZhengfangAuth.instance.removeListener(_onAuthChanged);
     super.dispose();
@@ -475,11 +479,12 @@ class _MyPageState extends State<MyPage> {
           fit: StackFit.expand,
           children: [
             // 与主页 / 功能页同一层壁纸与 Shader 背景，三个 tab 视觉连续。
-            const AppWallpaperBackdrop(),
+            AppWallpaperBackdrop(scrollController: _scrollController),
             SafeArea(
               bottom: false,
               child: LayoutBuilder(
                 builder: (context, constraints) => SingleChildScrollView(
+                  controller: _scrollController,
                   // 内容不满一屏时撑到视口高度，让 [Spacer] 把底部版本号锚到
                   // 页面底缘；大字号/内容超屏时自然回退为普通滚动。
                   child: ConstrainedBox(
@@ -786,8 +791,10 @@ class _MyAccountTile extends StatelessWidget {
     return Semantics(
       button: true,
       label: title,
-      child: AppTileSurface(
+      child: GlassContainer(
+        borderRadius: AppRadius.tileBorder,
         padding: const EdgeInsets.all(16),
+        liquid: true,
         onTap: onTap,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -868,8 +875,10 @@ class _MyTile extends StatelessWidget {
     return Semantics(
       button: true,
       label: title,
-      child: AppTileSurface(
+      child: GlassContainer(
+        borderRadius: AppRadius.tileBorder,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        liquid: true,
         onTap: onTap,
         child: Row(
           children: [

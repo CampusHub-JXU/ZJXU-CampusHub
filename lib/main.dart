@@ -24,6 +24,7 @@ import 'core/network/dio_client.dart';
 import 'core/network/webview_direct_route.dart';
 import 'core/notice/notice_sync_service.dart';
 import 'core/notice/notice_sync_store.dart';
+import 'core/theme/glass_refraction.dart';
 import 'core/notification/app_notification_service.dart';
 import 'core/notification/background_task_service.dart';
 import 'core/shortcut/app_shortcut_service.dart';
@@ -118,6 +119,8 @@ Future<void> main() async {
   runZonedGuarded(
     () async {
       WidgetsFlutterBinding.ensureInitialized();
+      // Dock 的液态玻璃折射 shader：预载失败会静默退回普通磨砂，不阻塞启动。
+      unawaited(LiquidGlass.preload());
       await AppLogger.instance.init();
       // 冷启动：先建立前台心跳与变更基线，后台会话恢复见此即让位；冷启动的
       // CookieJar 本来就从磁盘读取，不需要对账历史变更。

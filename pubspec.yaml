@@ -82,3 +82,4 @@ flutter:
           weight: 700
   shaders:
     - shaders/home_collage_background.frag
+    - shaders/liquid_glass.frag

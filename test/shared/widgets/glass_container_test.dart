@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:jxu_campus_hub/core/theme/glass_refraction.dart';
 import 'package:jxu_campus_hub/core/theme/glass_style_controller.dart';
 import 'package:jxu_campus_hub/shared/widgets/glass_container.dart';
 
@@ -11,20 +12,50 @@ void main() {
     await resetTestEnvironment();
   });
 
-  Future<void> pumpSurface(WidgetTester tester, Widget surface) async {
+  Future<void> pumpSurface(
+    WidgetTester tester,
+    Widget surface, {
+    bool dark = false,
+  }) async {
     await tester.pumpWidget(
       MaterialApp(
+        theme: dark ? ThemeData.dark() : null,
         home: Scaffold(body: Center(child: surface)),
       ),
     );
     await tester.pumpAndSettle();
   }
 
-  // 颗粒噪点已移除：任何 CustomPaint 都不应出现在材质层里。
+  // 颗粒噪点已移除：任何 CustomPaint 都不应出现在材质层（BackdropFilter）里。
+  // nav 档的液态玻璃高光描边刻意放在 BackdropFilter 之外（同级 Stack 前景），
+  // 该守卫语义保持不变。
   Finder noisePainterFinder() => find.descendant(
     of: find.byType(BackdropFilter),
     matching: find.byType(CustomPaint),
   );
+
+  // nav 档液态玻璃边缘高光描边。
+  Finder liquidEdgePainterFinder() => find.descendant(
+    of: find.byType(GlassContainer),
+    matching: find.byType(CustomPaint),
+  );
+
+  // ClipRRect 外层的 nav 悬浮影：CustomPaint（背景 painter）包住 ClipRRect，
+  // evenOdd 挖空玻璃轮廓、只在轮廓外围投影；原先铺满内部的
+  // DecoratedBox(BoxShadow) 会透过半透明玻璃把浅色 Dock 染成脏灰。
+  // 用背景 painter（非 foregroundPainter）与高光描边区分开。
+  Finder outerShadowPainterFinder() => find.byWidgetPredicate(
+    (widget) =>
+        widget is CustomPaint &&
+        widget.painter != null &&
+        widget.painter!.runtimeType.toString() == '_NavOuterShadowPainter',
+  );
+
+  CustomPaint? outerShadowPaint(WidgetTester tester) {
+    final finder = outerShadowPainterFinder();
+    if (finder.evaluate().isEmpty) return null;
+    return tester.widget<CustomPaint>(finder);
+  }
 
   ShapeDecoration surfaceDecoration(WidgetTester tester) {
     final surface = tester.widget<Container>(
@@ -98,5 +129,219 @@ void main() {
       matching: find.byType(BackdropFilter),
     );
     expect(backdropFinder, findsOneWidget);
+  });
+
+  testWidgets('nav 档监听 LiquidGlass 就绪：shader 加载完能重建（否则永远停在磨砂）', (tester) async {
+    await pumpSurface(
+      tester,
+      const GlassContainer(tier: GlassTier.nav, child: Text('底栏')),
+    );
+    final beforeFilter = tester.widget<BackdropFilter>(
+      find.byType(BackdropFilter),
+    );
+
+    // 模拟 preload 完成：就绪通知翻转。
+    LiquidGlass.ready.value = true;
+    await tester.pump();
+
+    final afterFilter = tester.widget<BackdropFilter>(
+      find.byType(BackdropFilter),
+    );
+    expect(
+      identical(beforeFilter, afterFilter),
+      isFalse,
+      reason: '就绪翻转必须让 Dock 重建出折射滤镜，而不是停在纯磨砂',
+    );
+  });
+
+  testWidgets('card 档不订阅液态玻璃就绪（无谓重建）', (tester) async {
+    await pumpSurface(tester, const GlassContainer(child: Text('卡片')));
+    final beforeFilter = tester.widget<BackdropFilter>(
+      find.byType(BackdropFilter),
+    );
+
+    LiquidGlass.ready.value = true;
+    await tester.pump();
+
+    final afterFilter = tester.widget<BackdropFilter>(
+      find.byType(BackdropFilter),
+    );
+    expect(identical(beforeFilter, afterFilter), isTrue);
+  });
+
+  testWidgets('shader 未就绪时 Dock 退回纯磨砂 σ≈18.8（磨砂自己撑起材质感）', (tester) async {
+    await pumpSurface(
+      tester,
+      const GlassContainer(tier: GlassTier.nav, child: Text('底栏')),
+    );
+
+    final filter = tester
+        .widget<BackdropFilter>(find.byType(BackdropFilter))
+        .filterConfig
+        .toString();
+    expect(filter, contains('18.8'));
+    expect(filter, isNot(contains('28.2')));
+  });
+
+  testWidgets('液态玻璃就绪后 Dock 模糊压到 σ≈2.8（折射与色散不被糊平）', (tester) async {
+    LiquidGlass.debugForceReady = true;
+    await pumpSurface(
+      tester,
+      const GlassContainer(tier: GlassTier.nav, child: Text('底栏')),
+    );
+
+    final filter = tester
+        .widget<BackdropFilter>(find.byType(BackdropFilter))
+        .filterConfig
+        .toString();
+    expect(filter, contains('2.82'));
+    expect(filter, isNot(contains('18.8')));
+  });
+
+  testWidgets('shader 未就绪时 Dock 底色仍是普通磨砂档（0.18~0.26）', (tester) async {
+    await pumpSurface(
+      tester,
+      const GlassContainer(tier: GlassTier.nav, child: Text('底栏')),
+    );
+
+    expect(surfaceDecoration(tester).color!.a, inInclusiveRange(0.18, 0.26));
+  });
+
+  testWidgets('液态玻璃就绪后浅色 Dock 是清亮白玻璃（0.18~0.26，不发灰）', (tester) async {
+    LiquidGlass.debugForceReady = true;
+    await pumpSurface(
+      tester,
+      const GlassContainer(tier: GlassTier.nav, child: Text('底栏')),
+    );
+
+    expect(surfaceDecoration(tester).color!.a, inInclusiveRange(0.18, 0.26));
+  });
+
+  testWidgets('液态玻璃就绪后深色 Dock 是通透深琉璃（0.10~0.18，不泛白雾）', (tester) async {
+    LiquidGlass.debugForceReady = true;
+    await pumpSurface(
+      tester,
+      const GlassContainer(tier: GlassTier.nav, child: Text('底栏')),
+      dark: true,
+    );
+
+    expect(surfaceDecoration(tester).color!.a, inInclusiveRange(0.10, 0.18));
+  });
+
+  testWidgets('card 档显式 liquid=true 走与 nav 同款液态玻璃链路且支持点击', (tester) async {
+    LiquidGlass.debugForceReady = true;
+    var tapped = false;
+    await pumpSurface(
+      tester,
+      GlassContainer(
+        liquid: true,
+        onTap: () => tapped = true,
+        child: const Text('我的卡片'),
+      ),
+    );
+
+    expect(find.byType(LiquidGlassBoundsTracker), findsOneWidget);
+    expect(outerShadowPaint(tester), isNotNull);
+    expect(
+      find.descendant(
+        of: find.byType(ClipRRect),
+        matching: liquidEdgePainterFinder(),
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('我的卡片'));
+    await tester.pump();
+    expect(tapped, isTrue);
+  });
+
+  testWidgets('nav 档（浅色 acrylic）挖空外投影画在 ClipRRect 外层并渲染高光描边', (tester) async {
+    await pumpSurface(
+      tester,
+      const GlassContainer(tier: GlassTier.nav, child: Text('底栏')),
+    );
+
+    // 悬浮影：CustomPaint 背景 painter 包住 ClipRRect，evenOdd 挖空玻璃
+    // 内部，阴影只落在轮廓外围（alpha 0.08 柔和单色影，绝不再透灰）。
+    final shadowPaint = outerShadowPaint(tester);
+    expect(shadowPaint, isNotNull);
+    expect(shadowPaint!.painter, isNotNull);
+    expect((shadowPaint.painter! as dynamic).color.a, closeTo(0.08, 0.001));
+
+    // 外投影必须在 ClipRRect 外层（画在内层会被整圈裁掉）。
+    expect(
+      find.descendant(
+        of: outerShadowPainterFinder(),
+        matching: find.byType(ClipRRect),
+      ),
+      findsOneWidget,
+    );
+
+    // 高光描边 CustomPaint：在 ClipRRect 内、BackdropFilter 外（守卫不破）。
+    expect(
+      find.descendant(
+        of: find.byType(ClipRRect),
+        matching: liquidEdgePainterFinder(),
+      ),
+      findsOneWidget,
+    );
+    expect(noisePainterFinder(), findsNothing);
+
+    // 高光描边生效时收起内部 hairline，避免双框。
+    final shape =
+        (surfaceDecoration(tester).shape as RoundedSuperellipseBorder).side;
+    expect(shape, BorderSide.none);
+  });
+
+  testWidgets('nav 档（深色 acrylic）外投影沿用配方不透明度', (tester) async {
+    await pumpSurface(
+      tester,
+      const GlassContainer(tier: GlassTier.nav, child: Text('底栏')),
+      dark: true,
+    );
+
+    final shadowPaint = outerShadowPaint(tester);
+    expect(shadowPaint, isNotNull);
+    expect((shadowPaint!.painter! as dynamic).color.a, closeTo(0.14, 0.001));
+    expect(
+      find.descendant(
+        of: find.byType(ClipRRect),
+        matching: liquidEdgePainterFinder(),
+      ),
+      findsOneWidget,
+    );
+    expect(noisePainterFinder(), findsNothing);
+  });
+
+  testWidgets('card 档无高光描边、无外层悬浮影', (tester) async {
+    await pumpSurface(tester, const GlassContainer(child: Text('卡片')));
+
+    expect(liquidEdgePainterFinder(), findsNothing);
+    expect(outerShadowPainterFinder(), findsNothing);
+  });
+
+  testWidgets('overlay 档无高光描边、无外层悬浮影', (tester) async {
+    await pumpSurface(
+      tester,
+      const GlassContainer(tier: GlassTier.overlay, child: Text('弹层')),
+    );
+
+    expect(liquidEdgePainterFinder(), findsNothing);
+    expect(outerShadowPainterFinder(), findsNothing);
+  });
+
+  testWidgets('solid 退化态：nav 无高光描边、无悬浮影，仍走普通描边', (tester) async {
+    await GlassStyleController.instance.setEnabled(false);
+    await pumpSurface(
+      tester,
+      const GlassContainer(tier: GlassTier.nav, child: Text('底栏')),
+    );
+
+    expect(find.byType(BackdropFilter), findsNothing);
+    expect(liquidEdgePainterFinder(), findsNothing);
+    expect(outerShadowPainterFinder(), findsNothing);
+
+    final shape =
+        (surfaceDecoration(tester).shape as RoundedSuperellipseBorder).side;
+    expect(shape.style, BorderStyle.solid);
   });
 }
