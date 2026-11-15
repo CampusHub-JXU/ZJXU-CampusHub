@@ -1,8 +1,12 @@
 package edu.zjxu.jxucampushub.platform.app_icon
 
 import android.app.Activity
+import android.app.ActivityManager
 import android.content.ComponentName
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.os.Build
 import edu.zjxu.jxucampushub.platform.invalidArgs
 import edu.zjxu.jxucampushub.platform.requireStringArg
 import io.flutter.plugin.common.BinaryMessenger
@@ -55,7 +59,9 @@ class AppIconChannelHandler(private val activity: Activity) {
                     }
                     // 只排队，真正生效在 onActivityStopped；Dart 侧已持久化偏好，
                     // 即便进程在下次 onStop 前被杀，下次启动会重新同步。
+                    // 同时立即同步 TaskDescription，让后台多任务卡片图标与所选桌面图标一致。
                     pendingAlias = alias
+                    syncTaskDescription(alias)
                     result.success(true)
                 }
 
@@ -73,6 +79,48 @@ class AppIconChannelHandler(private val activity: Activity) {
         val alias = pendingAlias ?: return
         pendingAlias = null
         applyIconAlias(alias)
+        syncTaskDescription(alias)
+    }
+
+    /**
+     * 将当前生效（或挂起）的 `<activity-alias>` 图标同步到多任务卡片（Recents）。
+     *
+     * Android 多任务默认读取 `<application android:icon>`，不会自动跟随
+     * `<activity-alias>` 切换；通过 `Activity.setTaskDescription` 显式写入当前
+     * alias 的 `iconResource`，可保证桌面图标与后台卡片图标一致。
+     */
+    fun syncTaskDescription(targetAlias: String? = null) {
+        val alias = targetAlias ?: pendingAlias ?: currentEnabledAlias()
+        val pm = activity.packageManager
+        val iconRes = runCatching {
+            val flags = PackageManager.MATCH_DISABLED_COMPONENTS
+            @Suppress("DEPRECATION")
+            val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                pm.getActivityInfo(
+                    componentFor(alias),
+                    PackageManager.ComponentInfoFlags.of(flags.toLong()),
+                )
+            } else {
+                pm.getActivityInfo(componentFor(alias), flags)
+            }
+            info.iconResource
+        }.getOrDefault(0)
+        if (iconRes == 0) return
+
+        val label = activity.title?.toString()
+        runCatching {
+            // HyperOS 等 OEM Recents 会忽略 TaskDescription.iconRes，直接回退到
+            // <application android:icon>；将当前 alias 图标渲染为 Bitmap 写入
+            // TaskDescription（iconBitmap=true），可让多任务卡片跟随切换后的图标。
+            val drawable = activity.resources.getDrawable(iconRes, activity.theme)
+            val size = (activity.resources.displayMetrics.density * 48).toInt().coerceAtLeast(96)
+            val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            drawable.setBounds(0, 0, size, size)
+            drawable.draw(canvas)
+            @Suppress("DEPRECATION")
+            activity.setTaskDescription(ActivityManager.TaskDescription(label, bitmap))
+        }
     }
 
     private fun componentFor(alias: String): ComponentName {

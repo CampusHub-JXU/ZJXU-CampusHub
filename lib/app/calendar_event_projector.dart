@@ -238,6 +238,7 @@ List<ProjectedCourseOccurrence> projectCurrentTermCalendarEvents({
       courses: snapshot.courses,
       week: week,
       changeRules: snapshot.changeRules,
+      dateOverrides: snapshot.dateOverrides,
       termContext: confirmedCurrentTerm,
     );
     for (final course in weekCourses) {

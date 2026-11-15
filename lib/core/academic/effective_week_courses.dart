@@ -1,14 +1,22 @@
 import '../semester/schedule_term_context.dart';
 import 'schedule_change_rule.dart';
+import 'schedule_date_override.dart';
 import 'schedule_model.dart';
 
-/// 按周计算「有效课程」：权威课表 + 调课通知规则（纯函数，无 IO / 无状态）。
+/// 按周计算「有效课程」：权威课表 + 调课通知规则 + 用户特定日期编辑
+/// （纯函数，无 IO / 无状态）。
 ///
 /// 由课表页、首页聚合与课表日历投影共用；原为 `ScheduleService` 的实例方法。
+///
+/// [dateOverrides] 是用户对「某一次课」的本地编辑（移动时间 / 改教室 /
+/// 改老师）：源周里命中 [ScheduleDateOverride.matchesSource] 的原课程被移除，
+/// 目标周里按目标槽位合成一条 `hasScheduleChange = true` 的课程。
+/// `ScheduleDateOverride.termContext` 为 null 时随调用方给定的学期生效。
 List<CourseEntry> buildEffectiveWeekCourses({
   required List<CourseEntry> courses,
   required int week,
   List<CourseChangeRule> changeRules = const [],
+  List<ScheduleDateOverride> dateOverrides = const [],
   ScheduleTermContext? termContext,
 }) {
   final applicableRules = changeRules.where(
@@ -17,11 +25,22 @@ List<CourseEntry> buildEffectiveWeekCourses({
         (termContext == null || rule.termContext == termContext) &&
         !_isProtectedByAuthoritativeCourse(rule, courses),
   );
+  final applicableOverrides = dateOverrides.where(
+    (override) =>
+        termContext == null ||
+        override.termContext == null ||
+        override.termContext == termContext,
+  );
   final effectiveCourses = courses
       .where((course) => course.isInWeek(week))
       .where(
         (course) =>
             !applicableRules.any((rule) => rule.removesCourse(course, week)),
+      )
+      .where(
+        (course) => !applicableOverrides.any(
+          (override) => override.matchesSource(week, course),
+        ),
       )
       .toList();
 
@@ -36,6 +55,13 @@ List<CourseEntry> buildEffectiveWeekCourses({
     if (syntheticCourse != null) {
       effectiveCourses.add(syntheticCourse);
     }
+  }
+
+  for (final override in applicableOverrides) {
+    if (override.targetWeek != week) continue;
+    effectiveCourses.add(
+      _buildOverrideCourse(override: override, week: week, courses: courses),
+    );
   }
 
   final deduped = <CourseEntry>[];
@@ -111,6 +137,45 @@ CourseEntry? _buildSyntheticCourse({
     campus: template?.campus ?? '',
     typeSymbol: template?.typeSymbol ?? '',
   );
+}
+
+/// 为一条用户特定日期编辑合成目标周的展示课程。
+///
+/// 课名始终沿用源课名（编辑不换课）；教室 / 老师取编辑后的目标值。
+/// `hasScheduleChange = true` 沿用权威调课课程的既有视觉语义（UI 标「调」），
+/// 用户的移动编辑本质就是一次本地调课。校区 / 类型标记从源原课程继承；
+/// 找不到原课程模板时留空（编辑仍可生效，只是丢失校区 / 类型徽标）。
+CourseEntry _buildOverrideCourse({
+  required ScheduleDateOverride override,
+  required int week,
+  required List<CourseEntry> courses,
+}) {
+  final template = _findOverrideTemplateCourse(override, courses);
+  return CourseEntry(
+    courseName: override.sourceCourseName,
+    teacherName: override.targetTeacherName,
+    weekday: override.targetWeekday,
+    startLesson: override.targetStartLesson,
+    endLesson: override.targetEndLesson,
+    weekRange: '$week周',
+    classroom: override.targetClassroom,
+    campus: template?.campus ?? '',
+    typeSymbol: template?.typeSymbol ?? '',
+    hasScheduleChange: true,
+  );
+}
+
+/// 在权威课表中定位 override 的「原课程」，供合成课程继承校区 / 类型。
+CourseEntry? _findOverrideTemplateCourse(
+  ScheduleDateOverride override,
+  List<CourseEntry> courses,
+) {
+  for (final course in courses) {
+    if (override.matchesSource(override.sourceWeek, course)) {
+      return course;
+    }
+  }
+  return null;
 }
 
 CourseEntry? _findTemplateCourse(

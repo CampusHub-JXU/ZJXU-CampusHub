@@ -287,8 +287,8 @@ class _DormElectricityPageState extends State<DormElectricityPage> {
       context,
       url: DormElectricityService.rechargeUrl,
       title: '电费充值',
-      successMessage: '已跳转到微信，请在微信中完成电费充值',
-      failureMessage: '未能打开页面，充值链接已复制，请到微信中打开',
+      successMessage: '已请求打开微信，若未直达请复制链接在微信中完成电费充值',
+      failureMessage: '未能拉起微信，充值链接已复制，请在微信中粘贴打开',
       autoCopyOnFailure: true,
     );
   }

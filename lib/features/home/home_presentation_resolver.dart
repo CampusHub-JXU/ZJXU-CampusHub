@@ -697,6 +697,7 @@ List<CourseEntry> _effectiveWeekCourses(HomeSnapshot snapshot, int week) {
     courses: snapshot.courses,
     week: week,
     changeRules: snapshot.changeRules,
+    dateOverrides: snapshot.dateOverrides,
   );
 }
 

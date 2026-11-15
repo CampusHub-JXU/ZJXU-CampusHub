@@ -268,7 +268,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(clipboard, [DormElectricityService.rechargeUrl]);
-    expect(find.text('未能打开页面，充值链接已复制，请到微信中打开'), findsOneWidget);
+    expect(find.text('未能拉起微信，充值链接已复制，请在微信中粘贴打开'), findsOneWidget);
     expect(find.textContaining('已安装微信'), findsNothing);
     expect(find.widgetWithText(SnackBarAction, '复制链接'), findsOneWidget);
 

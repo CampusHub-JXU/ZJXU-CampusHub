@@ -1,17 +1,27 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/semester/semester_calendar.dart';
+import '../../core/academic/schedule_date_override.dart';
+import '../../core/academic/schedule_model.dart';
+import '../../core/theme/app_design_tokens.dart';
+import '../../core/theme/app_surface_tokens.dart';
+import '../../core/theme/app_typography.dart';
 import '../../shared/widgets/app_empty_view.dart';
 import '../../shared/widgets/app_error_view.dart';
+import '../../shared/widgets/app_feedback.dart';
 import '../../shared/widgets/auth_required_view.dart';
 import '../../shared/widgets/glass_dialog_route.dart';
 import '../../shared/widgets/login_shell.dart';
 import 'controllers/schedule_page_controller.dart';
 import '../../core/academic/schedule_constants.dart';
 import 'widgets/schedule_change_sheet.dart';
+import 'widgets/schedule_course_edit_sheet.dart';
+import 'widgets/schedule_date_override_editing.dart';
+import 'widgets/schedule_edit_wiggle.dart';
 import 'widgets/schedule_grid.dart';
 import 'widgets/schedule_info_banner.dart';
 import '../../shared/widgets/app_app_bar.dart';
@@ -33,11 +43,16 @@ class SchedulePage extends StatefulWidget {
   State<SchedulePage> createState() => _SchedulePageState();
 }
 
-class _SchedulePageState extends State<SchedulePage> {
+class _SchedulePageState extends State<SchedulePage>
+    with SingleTickerProviderStateMixin {
   late final SchedulePageController _controller;
   late final PageController _weekPageController;
+  late final AnimationController _wiggleController;
   bool _loginPromptShown = false;
   bool _loginPromptInFlight = false;
+
+  /// 「特定日期课程编辑」模式：长按本周课程块进入，本周块抖动 + 可拖拽改期。
+  bool _isEditing = false;
 
   @override
   void initState() {
@@ -49,6 +64,10 @@ class _SchedulePageState extends State<SchedulePage> {
     );
     _weekPageController = PageController(
       initialPage: _controller.displayWeek - 1,
+    );
+    _wiggleController = AnimationController(
+      vsync: this,
+      duration: ScheduleWiggleDriver.period,
     );
     ZhengfangAuth.instance.addListener(_handleAuthChanged);
     _controller.restoreCachedSnapshot();
@@ -68,6 +87,7 @@ class _SchedulePageState extends State<SchedulePage> {
   @override
   void dispose() {
     ZhengfangAuth.instance.removeListener(_handleAuthChanged);
+    _wiggleController.dispose();
     _weekPageController.dispose();
     _controller.dispose();
     super.dispose();
@@ -87,11 +107,102 @@ class _SchedulePageState extends State<SchedulePage> {
     );
 
     if (becameLoggedOut) {
+      // 身份已不属于本账号：编辑态一并退出，避免向新会话写编辑。
+      _exitEditMode();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         unawaited(_presentLoginPrompt(force: true));
       });
     }
+  }
+
+  void _enterEditMode() {
+    if (_isEditing) return;
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _isEditing = true;
+      if (!AppMotion.reduced(context)) {
+        _wiggleController.repeat();
+      }
+    });
+  }
+
+  void _exitEditMode() {
+    if (!_isEditing) return;
+    setState(() {
+      _isEditing = false;
+      _wiggleController.stop();
+    });
+  }
+
+  ScheduleDateOverride? _findOverride(int week, CourseEntry course) =>
+      _controller.findOverrideForCourse(week, course);
+
+  /// 编辑模式点击课程块 / 详情弹层「调整此日课程」：打开编辑弹层。
+  Future<void> _openCourseEdit(int week, CourseEntry course) async {
+    final result = await AppFeedback.sheet<String>(
+      context,
+      scrollControlled: true,
+      builder: (sheetContext) => ScheduleCourseEditSheet(
+        week: week,
+        course: course,
+        existingOverride: _controller.findOverrideForCourse(week, course),
+        onSave: _controller.saveDateOverride,
+        onRevert: (override) => _revertDateOverride(override),
+      ),
+    );
+    if (!mounted) return;
+    if (result == 'saved') {
+      AppFeedback.toast(context, '已调整该次课程');
+    }
+    // 回退 toast 由 _revertDateOverride 统一负责。
+  }
+
+  /// 拖拽落点变更：保持原节数跨度，把课程改到 (targetWeekday, targetStart)。
+  Future<bool> _moveCourseToSlot(
+    int week,
+    CourseEntry course,
+    int targetWeekday,
+    int targetStartLesson,
+  ) async {
+    final span = course.endLesson - course.startLesson + 1;
+    final start = targetStartLesson.clamp(1, scheduleSlotCount - span + 1);
+    final end = (start + span - 1).clamp(1, scheduleSlotCount);
+    final existing = _controller.findOverrideForCourse(week, course);
+    final override = buildCourseEditOverride(
+      week: week,
+      course: course,
+      existing: existing,
+      targetWeekday: targetWeekday,
+      targetStartLesson: start,
+      targetEndLesson: end,
+      targetClassroom: existing?.targetClassroom.isNotEmpty ?? false
+          ? existing!.targetClassroom
+          : course.classroom,
+      targetTeacherName: existing?.targetTeacherName.isNotEmpty ?? false
+          ? existing!.targetTeacherName
+          : course.teacherName,
+    );
+    final ok = await _controller.saveDateOverride(override);
+    if (!mounted) return ok;
+    if (ok) {
+      HapticFeedback.lightImpact();
+      AppFeedback.toast(
+        context,
+        '已移动到${scheduleSlotLabel(targetWeekday, start, end)}',
+      );
+    } else {
+      AppFeedback.toast(context, '调整失败，请稍后重试');
+    }
+    return ok;
+  }
+
+  /// 快捷回退：恢复原课。详情弹层与编辑弹层共用。
+  Future<bool> _revertDateOverride(ScheduleDateOverride override) async {
+    final ok = await _controller.revertDateOverride(override.id);
+    if (!mounted) return ok;
+    AppFeedback.toast(context, ok ? '已恢复原课' : '回退失败，请稍后重试');
+    return ok;
   }
 
   void _onWeekPageChanged(int index) {
@@ -190,13 +301,60 @@ class _SchedulePageState extends State<SchedulePage> {
     return Column(
       children: [
         if (_controller.loading) const LinearProgressIndicator(minHeight: 2),
-        ScheduleInfoBanner(
-          message: _bannerMessage(),
-          updatedAt: _controller.scheduleUpdatedAt,
-          loggedIn: _controller.loggedIn,
-        ),
+        // 编辑模式下只保留操作提示条：信息横幅先让位，避免上下叠两条
+        // 大横幅挤压课表网格高度。
+        if (_isEditing)
+          _buildEditModeBar()
+        else
+          ScheduleInfoBanner(
+            message: _bannerMessage(),
+            updatedAt: _controller.scheduleUpdatedAt,
+            loggedIn: _controller.loggedIn,
+          ),
         Expanded(child: _buildWeekPager()),
       ],
+    );
+  }
+
+  /// 编辑模式提示条：说明交互方式 +「完成」退出。主色微弱底色 +
+  /// 1px 淡边框，与纯信息横幅（中性 tint 卡）区分开。
+  Widget _buildEditModeBar() {
+    final surfaces = context.appSurfaces;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: surfaces.brand.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(AppRadius.input),
+          border: Border.all(color: surfaces.brand.withValues(alpha: 0.18)),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.edit_calendar_outlined, size: 16, color: surfaces.brand),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Text(
+                '按住拖动课程块调整时间，轻触编辑地点与老师',
+                style: context.appText.meta.copyWith(
+                  color: surfaces.brand,
+                  height: 1.35,
+                ),
+              ),
+            ),
+            FilledButton.tonal(
+              key: const ValueKey('schedule-edit-done'),
+              onPressed: _exitEditMode,
+              style: FilledButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+              ),
+              child: const Text('完成'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -220,9 +378,12 @@ class _SchedulePageState extends State<SchedulePage> {
   }
 
   Widget _buildWeekPager() {
+    final editReduced = AppMotion.reduced(context);
     return PageView.builder(
       controller: _weekPageController,
-      physics: const ClampingScrollPhysics(),
+      physics: _isEditing
+          ? const NeverScrollableScrollPhysics()
+          : const ClampingScrollPhysics(),
       itemCount: scheduleWeekCount,
       onPageChanged: _onWeekPageChanged,
       itemBuilder: (context, index) {
@@ -235,6 +396,16 @@ class _SchedulePageState extends State<SchedulePage> {
             actualCurrentWeek: _controller.hasCurrentWeek
                 ? _controller.currentWeek
                 : null,
+            isEditing: _isEditing,
+            editReduced: editReduced,
+            wiggleListenable: _isEditing && !editReduced
+                ? _wiggleController
+                : null,
+            overrideForCourse: _findOverride,
+            onCourseLongPress: (week, course) => _enterEditMode(),
+            onCourseEditRequested: _openCourseEdit,
+            onCourseRevertRequested: _revertDateOverride,
+            onCourseMoved: _moveCourseToSlot,
           ),
         );
       },
@@ -246,51 +417,59 @@ class _SchedulePageState extends State<SchedulePage> {
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, _) {
-        return Scaffold(
-          appBar: AppAppBar(
-            title: const Text('课表'),
-            actions: (_controller.loggedIn || _controller.courses.isNotEmpty)
-                ? [
-                    if (_controller.courseChangeNotices.isNotEmpty)
-                      IconButton(
-                        tooltip: '调课提醒',
-                        onPressed: _showCourseChangeSheet,
-                        icon: Badge(
-                          label: Text(
-                            _controller.courseChangeNotices.length > 99
-                                ? '99+'
-                                : '${_controller.courseChangeNotices.length}',
+        return PopScope(
+          // 编辑模式下系统返回先退出编辑模式，不直接退出页面。
+          canPop: !_isEditing,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop) _exitEditMode();
+          },
+          child: Scaffold(
+            appBar: AppAppBar(
+              title: const Text('课表'),
+              actions: (_controller.loggedIn || _controller.courses.isNotEmpty)
+                  ? [
+                      if (_controller.courseChangeNotices.isNotEmpty)
+                        IconButton(
+                          tooltip: '调课提醒',
+                          onPressed: _showCourseChangeSheet,
+                          icon: Badge(
+                            label: Text(
+                              _controller.courseChangeNotices.length > 99
+                                  ? '99+'
+                                  : '${_controller.courseChangeNotices.length}',
+                            ),
+                            child: const Icon(Icons.swap_horiz_rounded),
                           ),
-                          child: const Icon(Icons.swap_horiz_rounded),
                         ),
+                      PopupMenuButton<int>(
+                        icon: const Icon(Icons.calendar_today),
+                        tooltip: '切换学期',
+                        onSelected: (value) {
+                          _exitEditMode();
+                          _controller.switchTerm(value);
+                          if (_weekPageController.hasClients) {
+                            _weekPageController.jumpToPage(
+                              _controller.displayWeek - 1,
+                            );
+                          }
+                          unawaited(_controller.fetchSchedule());
+                        },
+                        itemBuilder: (_) => const [
+                          PopupMenuItem(value: 3, child: Text('第一学期')),
+                          PopupMenuItem(value: 12, child: Text('第二学期')),
+                        ],
                       ),
-                    PopupMenuButton<int>(
-                      icon: const Icon(Icons.calendar_today),
-                      tooltip: '切换学期',
-                      onSelected: (value) {
-                        _controller.switchTerm(value);
-                        if (_weekPageController.hasClients) {
-                          _weekPageController.jumpToPage(
-                            _controller.displayWeek - 1,
-                          );
-                        }
-                        unawaited(_controller.fetchSchedule());
-                      },
-                      itemBuilder: (_) => const [
-                        PopupMenuItem(value: 3, child: Text('第一学期')),
-                        PopupMenuItem(value: 12, child: Text('第二学期')),
-                      ],
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.refresh),
-                      onPressed: _refreshScheduleOrLogin,
-                    ),
-                  ]
-                : null,
+                      IconButton(
+                        icon: const Icon(Icons.refresh),
+                        onPressed: _refreshScheduleOrLogin,
+                      ),
+                    ]
+                  : null,
+            ),
+            body: (_controller.loggedIn || _controller.courses.isNotEmpty)
+                ? _buildScheduleBody()
+                : _buildLoginBody(),
           ),
-          body: (_controller.loggedIn || _controller.courses.isNotEmpty)
-              ? _buildScheduleBody()
-              : _buildLoginBody(),
         );
       },
     );

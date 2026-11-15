@@ -78,8 +78,10 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    expect(find.text('未能打开页面，可复制链接后到微信中打开'), findsOneWidget);
+    expect(find.text('无法拉起微信，请复制链接后到微信中打开'), findsOneWidget);
     expect(find.textContaining('已安装微信'), findsNothing);
+    expect(find.textContaining('已跳转到微信'), findsNothing);
+    expect(find.textContaining('已打开微信'), findsNothing);
     expect(find.widgetWithText(SnackBarAction, '复制链接'), findsOneWidget);
 
     await tester.ensureVisible(find.widgetWithText(SnackBarAction, '复制链接'));

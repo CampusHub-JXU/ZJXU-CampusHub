@@ -83,6 +83,14 @@ android {
         getByName("debug").res.srcDir("src/dev/res")
         maybeCreate("profile").res.srcDir("src/dev/res")
     }
+
+    testOptions {
+        unitTests {
+            // 本地 JVM 单测需要构造/抛出 android.jar 里的异常类型
+            // （ActivityNotFoundException/SecurityException）来模拟启动失败分支。
+            isReturnDefaultValues = true
+        }
+    }
 }
 
 // Keep debug builds usable without private signing material, but fail closed as
@@ -121,4 +129,5 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    testImplementation("junit:junit:4.13.2")
 }

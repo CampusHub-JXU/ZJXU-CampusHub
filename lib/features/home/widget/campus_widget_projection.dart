@@ -1,6 +1,7 @@
 import '../../../core/academic/effective_week_courses.dart';
 import '../../../core/academic/exam_model.dart';
 import '../../../core/academic/schedule_change_rule.dart';
+import '../../../core/academic/schedule_date_override.dart';
 import '../../../core/academic/schedule_model.dart';
 import '../../../core/notice/notice_model.dart';
 import '../../../core/notice/notice_sync_store.dart';
@@ -261,6 +262,7 @@ List<Map<String, Object?>> buildCampusWidgetDays({
   required bool hasCourseData,
   required List<CourseEntry> courses,
   required List<CourseChangeRule> changeRules,
+  List<ScheduleDateOverride> dateOverrides = const [],
   required DateTime semesterStartDate,
 }) {
   final today = _day(now);
@@ -289,6 +291,7 @@ List<Map<String, Object?>> buildCampusWidgetDays({
           courses: courses,
           week: week,
           changeRules: changeRules,
+          dateOverrides: dateOverrides,
         ).where((c) => c.weekday == date.weekday).toList();
         if (effective.isEmpty &&
             courses.any((c) => c.isInWeek(week) && c.weekday == date.weekday)) {
@@ -410,6 +413,7 @@ CampusWidgetProjection buildCampusWidgetProjection({DateTime? now}) {
     hasScheduleCache: restore.hasScheduleCache,
     courses: restore.scheduleSnapshot?.courses ?? const [],
     changeRules: restore.scheduleSnapshot?.changeRules ?? const [],
+    dateOverrides: restore.scheduleSnapshot?.dateOverrides ?? const [],
     isBeforeSemesterStart: calendar.isBeforeSemesterStart(at),
     isAfterSemesterEnd: calendar.isAfterSemesterEnd(at),
     currentWeek: calendar.weekForDate(at),
@@ -431,6 +435,7 @@ CampusWidgetProjection buildCampusWidgetProjection({DateTime? now}) {
     hasCourseData: restore.courseLoggedIn && restore.hasScheduleCache,
     courses: snapshot.courses,
     changeRules: snapshot.changeRules,
+    dateOverrides: snapshot.dateOverrides,
     semesterStartDate: snapshot.semesterStartDate,
   );
   final unread = NoticeSyncStore.instance.unreadSummary.value;

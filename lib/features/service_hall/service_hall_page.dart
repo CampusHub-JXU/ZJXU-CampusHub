@@ -65,7 +65,7 @@ class _ServiceHallPageState extends State<ServiceHallPage> {
       context,
       url: ServiceHallPage.homeUrl,
       title: '服务大厅',
-      successMessage: '已打开微信，请在学校公众号服务中继续',
+      successMessage: '已请求打开微信，若未直达请复制链接到微信中继续',
     );
     if (!mounted) return;
 

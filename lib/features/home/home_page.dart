@@ -626,6 +626,7 @@ class _HomePageState extends State<HomePage> {
       hasScheduleCache: _hasScheduleCache,
       courses: _scheduleSnapshot?.courses ?? const [],
       changeRules: _scheduleSnapshot?.changeRules ?? const [],
+      dateOverrides: _scheduleSnapshot?.dateOverrides ?? const [],
       isBeforeSemesterStart: SemesterCalendar.instance.isBeforeSemesterStart(
         now,
       ),

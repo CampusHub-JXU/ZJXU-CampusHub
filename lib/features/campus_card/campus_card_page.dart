@@ -619,8 +619,8 @@ class _CampusCardPageState extends State<CampusCardPage> {
       context,
       url: AppConfig.xiaofubaoRechargeUri.toString(),
       title: '一卡通充值',
-      successMessage: '已跳转到微信，请在微信中完成充值',
-      failureMessage: '未能打开页面，充值链接已复制，请到微信中打开',
+      successMessage: '已请求打开微信，若未直达请复制链接在微信中完成充值',
+      failureMessage: '未能拉起微信，充值链接已复制，请在微信中粘贴打开',
       autoCopyOnFailure: true,
     );
   }

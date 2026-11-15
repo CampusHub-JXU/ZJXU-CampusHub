@@ -8,6 +8,7 @@ import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/core/semester/semester_calendar.dart';
 import 'package:jxu_campus_hub/features/schedule/controllers/schedule_page_controller.dart';
 import 'package:jxu_campus_hub/core/academic/schedule_cache_snapshot.dart';
+import 'package:jxu_campus_hub/core/academic/schedule_date_override.dart';
 import 'package:jxu_campus_hub/core/academic/schedule_model.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';
 import 'package:jxu_campus_hub/core/semester/schedule_term_context.dart';
@@ -749,4 +750,284 @@ void main() {
       expect(controller.automaticLoginPaused, isTrue);
     },
   );
+
+  group('date overrides', () {
+    ScheduleDateOverride overrideFor({
+      String id = 'o1',
+      int targetWeekday = 3,
+      String targetClassroom = 'C303',
+    }) {
+      return ScheduleDateOverride(
+        id: id,
+        sourceDate: '2026-04-06',
+        sourceWeek: 1,
+        sourceWeekday: 1,
+        sourceStartLesson: 1,
+        sourceEndLesson: 2,
+        sourceCourseName: 'A班课表',
+        sourceTeacherName: '教师',
+        sourceClassroom: '101',
+        targetDate: '2026-04-08',
+        targetWeek: 1,
+        targetWeekday: targetWeekday,
+        targetStartLesson: 7,
+        targetEndLesson: 8,
+        targetClassroom: targetClassroom,
+        targetTeacherName: '教师',
+        updatedAt: DateTime(2026, 4, 1, 12, 0),
+      );
+    }
+
+    /// 该课与 [snapshotFor] 的课程同槽位（周一 1-2 节，weekRange 1-18周），
+    /// 因此第 1 周里 override 的 matchesSource 能命中它。
+    CourseEntry editedCourseOf(SchedulePageController controller) =>
+        controller.courses.single;
+
+    test('snapshot adoption exposes persisted date overrides', () {
+      final termContext = ScheduleTermContext.current();
+      ZhengfangAuth.instance.debugSetSession(active: true, studentId: ownerA);
+      ScheduleService.instance.debugSetSnapshot(
+        snapshotFor(
+          ownerA,
+          courseName: 'A班课表',
+          termContext: termContext,
+        ).copyWith(dateOverrides: [overrideFor()]),
+      );
+
+      final controller = controllerWith(emptyResult);
+      controller.restoreCachedSnapshot();
+
+      expect(controller.dateOverrides, hasLength(1));
+      expect(controller.dateOverrides.single.id, 'o1');
+      // 第 1 周有效课：原周一 1-2 节被挪到周三 7-8 节。
+      final weekCourses = controller
+          .weekViewModelFor(1)
+          .coursesForDay(3)
+          .currentWeekCourses;
+      expect(weekCourses.single.startLesson, 7);
+      expect(weekCourses.single.hasScheduleChange, isTrue);
+      expect(
+        controller.weekViewModelFor(1).coursesForDay(1).currentWeekCourses,
+        isEmpty,
+      );
+    });
+
+    test('findOverrideForCourse resolves source and synthesized courses', () {
+      final termContext = ScheduleTermContext.current();
+      ZhengfangAuth.instance.debugSetSession(active: true, studentId: ownerA);
+      ScheduleService.instance.debugSetSnapshot(
+        snapshotFor(
+          ownerA,
+          courseName: 'A班课表',
+          termContext: termContext,
+        ).copyWith(dateOverrides: [overrideFor()]),
+      );
+      final controller = controllerWith(emptyResult);
+      controller.restoreCachedSnapshot();
+
+      // 原始课程（仍在权威列表里）。
+      expect(
+        controller.findOverrideForCourse(1, editedCourseOf(controller))?.id,
+        'o1',
+      );
+      // 目标周合成课程。
+      final synthesized = controller
+          .weekViewModelFor(1)
+          .coursesForDay(3)
+          .currentWeekCourses
+          .single;
+      expect(controller.findOverrideForCourse(1, synthesized)?.id, 'o1');
+      // 无关课程不命中。
+      const other = CourseEntry(
+        courseName: '别的课',
+        teacherName: '教师',
+        weekday: 5,
+        startLesson: 1,
+        endLesson: 2,
+        weekRange: '1-18周',
+        classroom: '',
+        campus: '',
+        typeSymbol: '',
+      );
+      expect(controller.findOverrideForCourse(1, other), isNull);
+    });
+
+    test('saveDateOverride optimistically updates and persists', () async {
+      final termContext = ScheduleTermContext.current();
+      ZhengfangAuth.instance.debugSetSession(active: true, studentId: ownerA);
+      ScheduleService.instance.debugSetSnapshot(
+        snapshotFor(ownerA, courseName: 'A班课表', termContext: termContext),
+      );
+      final controller = controllerWith(emptyResult);
+      controller.restoreCachedSnapshot();
+      expect(controller.dateOverrides, isEmpty);
+
+      final saved = await controller.saveDateOverride(overrideFor());
+
+      expect(saved, isTrue);
+      expect(controller.dateOverrides, hasLength(1));
+      expect(controller.dateOverrides.single.termContext, termContext);
+      // 已落到服务端快照。
+      expect(
+        ScheduleService.instance
+            .preferredSnapshot(studentId: ownerA, termContext: termContext)
+            ?.dateOverrides,
+        hasLength(1),
+      );
+      // 周视图已重建。
+      expect(
+        controller.weekViewModelFor(1).coursesForDay(1).currentWeekCourses,
+        isEmpty,
+      );
+      expect(
+        controller
+            .weekViewModelFor(1)
+            .coursesForDay(3)
+            .currentWeekCourses
+            .single
+            .classroom,
+        'C303',
+      );
+    });
+
+    test('re-editing the same course replaces the stored override', () async {
+      final termContext = ScheduleTermContext.current();
+      ZhengfangAuth.instance.debugSetSession(active: true, studentId: ownerA);
+      ScheduleService.instance.debugSetSnapshot(
+        snapshotFor(ownerA, courseName: 'A班课表', termContext: termContext),
+      );
+      final controller = controllerWith(emptyResult);
+      controller.restoreCachedSnapshot();
+
+      await controller.saveDateOverride(
+        overrideFor(id: 'a', targetClassroom: 'X1'),
+      );
+      await controller.saveDateOverride(
+        overrideFor(id: 'b', targetClassroom: 'X2'),
+      );
+
+      expect(controller.dateOverrides, hasLength(1));
+      expect(controller.dateOverrides.single.id, 'b');
+      expect(
+        controller
+            .weekViewModelFor(1)
+            .coursesForDay(3)
+            .currentWeekCourses
+            .single
+            .classroom,
+        'X2',
+      );
+    });
+
+    test('revertDateOverride removes the edit optimistically', () async {
+      final termContext = ScheduleTermContext.current();
+      ZhengfangAuth.instance.debugSetSession(active: true, studentId: ownerA);
+      ScheduleService.instance.debugSetSnapshot(
+        snapshotFor(
+          ownerA,
+          courseName: 'A班课表',
+          termContext: termContext,
+        ).copyWith(dateOverrides: [overrideFor()]),
+      );
+      final controller = controllerWith(emptyResult);
+      controller.restoreCachedSnapshot();
+      expect(controller.dateOverrides, hasLength(1));
+
+      final reverted = await controller.revertDateOverride('o1');
+
+      expect(reverted, isTrue);
+      expect(controller.dateOverrides, isEmpty);
+      // 原课程回到第 1 周周一。
+      expect(
+        controller
+            .weekViewModelFor(1)
+            .coursesForDay(1)
+            .currentWeekCourses
+            .single
+            .courseName,
+        'A班课表',
+      );
+      // 未知 id 是 no-op。
+      expect(await controller.revertDateOverride('missing'), isFalse);
+    });
+
+    test('save and revert refuse when logged out', () async {
+      final controller = controllerWith(
+        emptyResult,
+        loggedIn: false,
+        studentId: null,
+      );
+
+      expect(await controller.saveDateOverride(overrideFor()), isFalse);
+      expect(await controller.revertDateOverride('o1'), isFalse);
+      expect(controller.dateOverrides, isEmpty);
+    });
+
+    test('a failed persist rolls the optimistic save back', () async {
+      final termContext = ScheduleTermContext.current();
+      ZhengfangAuth.instance.debugSetSession(active: true, studentId: ownerA);
+      ScheduleService.instance.debugSetSnapshot(
+        snapshotFor(ownerA, courseName: 'A班课表', termContext: termContext),
+      );
+      final controller = controllerWith(emptyResult);
+      controller.restoreCachedSnapshot();
+      // 写途中身份失效 → 服务端拒绝提交。
+      ScheduleService.debugBeforePersistWrite = () async {
+        ZhengfangAuth.instance.debugSetSession(active: false);
+      };
+      addTearDown(() => ScheduleService.debugBeforePersistWrite = null);
+
+      final saved = await controller.saveDateOverride(overrideFor());
+
+      expect(saved, isFalse);
+      expect(controller.dateOverrides, isEmpty);
+      // 周视图回到原始课表。
+      expect(
+        controller
+            .weekViewModelFor(1)
+            .coursesForDay(1)
+            .currentWeekCourses
+            .single
+            .courseName,
+        'A班课表',
+      );
+      ZhengfangAuth.instance.debugSetSession(active: true, studentId: ownerA);
+    });
+
+    test('account switch clears overrides and isolates per owner', () async {
+      final termContext = ScheduleTermContext.current();
+      ZhengfangAuth.instance.debugSetSession(active: true, studentId: ownerA);
+      ScheduleService.instance.debugSetSnapshot(
+        snapshotFor(
+          ownerA,
+          courseName: 'A班课表',
+          termContext: termContext,
+        ).copyWith(dateOverrides: [overrideFor()]),
+      );
+      ScheduleService.instance.debugSetSnapshot(
+        snapshotFor(ownerB, courseName: 'B班课表', termContext: termContext),
+      );
+      final controller = controllerWith(emptyResult);
+      controller.restoreCachedSnapshot();
+      expect(controller.dateOverrides, hasLength(1));
+
+      ZhengfangAuth.instance.debugSetSession(active: true, studentId: ownerB);
+      controller.updateLoggedIn(true, studentId: ownerB);
+
+      expect(controller.dateOverrides, isEmpty);
+      // B 的周视图绝不含 A 的编辑。
+      expect(
+        controller.weekViewModelFor(1).coursesForDay(3).currentWeekCourses,
+        isEmpty,
+      );
+      // B 无法回退 A 的编辑（owner 隔离，revert 对当前 owner 是 no-op）。
+      expect(await controller.revertDateOverride('o1'), isFalse);
+      expect(
+        ScheduleService.instance
+            .preferredSnapshot(studentId: ownerB, termContext: termContext)
+            ?.dateOverrides,
+        isEmpty,
+      );
+    });
+  });
 }

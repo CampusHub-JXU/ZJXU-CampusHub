@@ -301,7 +301,7 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
 
   Future<void> _openInWeChat(
     String url, {
-    String successMessage = '已打开微信，请在微信中完成第二课堂授权',
+    String successMessage = '已请求打开微信，若未直达请复制链接后在微信中完成第二课堂授权',
   }) async {
     if (_openingInWeChat) return;
     _openingInWeChat = true;
@@ -422,7 +422,7 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
                 onOpenInWeChat: () {
                   _openInWeChat(
                     _service.activityWebUrl(detail.activity.id),
-                    successMessage: '已打开微信，可直接查看该活动详情',
+                    successMessage: '已请求打开微信，若未直达请复制链接后在微信中查看该活动详情',
                   );
                 },
                 onToggleSubscription: () async {

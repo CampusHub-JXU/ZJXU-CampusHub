@@ -213,7 +213,7 @@ void main() {
       (calls.single.arguments as Map)['url'],
       contains('webapp.xiaofubao.com'),
     );
-    expect(find.text('已跳转到微信，请在微信中完成充值'), findsOneWidget);
+    expect(find.text('已请求打开微信，若未直达请复制链接在微信中完成充值'), findsOneWidget);
     expect(find.widgetWithText(SnackBarAction, '复制链接'), findsOneWidget);
 
     await tester.tap(find.widgetWithText(SnackBarAction, '复制链接'));
@@ -242,7 +242,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(clipboard, [url]);
-    expect(find.text('未能打开页面，充值链接已复制，请到微信中打开'), findsOneWidget);
+    expect(find.text('未能拉起微信，充值链接已复制，请在微信中粘贴打开'), findsOneWidget);
     expect(find.textContaining('已安装微信'), findsNothing);
     expect(find.widgetWithText(SnackBarAction, '复制链接'), findsOneWidget);
 
@@ -270,7 +270,7 @@ void main() {
     await tester.tap(find.text('充值'));
     await tester.pumpAndSettle();
 
-    expect(find.text('未能打开页面，可复制链接后到微信中打开'), findsOneWidget);
+    expect(find.text('无法拉起微信，请复制链接后到微信中打开'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     await tester.tap(find.widgetWithText(SnackBarAction, '复制链接'));
@@ -279,6 +279,100 @@ void main() {
     expect(find.text('复制失败'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('recharge not_installed status tells user wechat is missing', (
+    tester,
+  ) async {
+    const wechatChannel = MethodChannel('edu.zjxu.jxucampushub/wechat');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          wechatChannel,
+          (call) async => {'status': 'not_installed'},
+        );
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(wechatChannel, null);
+    });
+    final clipboard = _mockClipboard();
+
+    await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('充值'));
+    await tester.pumpAndSettle();
+
+    expect(clipboard, [AppConfig.xiaofubaoRechargeUri.toString()]);
+    expect(find.text('未检测到微信，链接已复制，请在微信中粘贴打开'), findsOneWidget);
+    expect(find.textContaining('已请求打开微信'), findsNothing);
+    expect(find.widgetWithText(SnackBarAction, '复制链接'), findsOneWidget);
+  });
+
+  testWidgets('recharge no_handler copies link then launches WeChat app', (
+    tester,
+  ) async {
+    const wechatChannel = MethodChannel('edu.zjxu.jxucampushub/wechat');
+    final calls = <MethodCall>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(wechatChannel, (call) async {
+          calls.add(call);
+          return switch (call.method) {
+            'openUrlInWeChat' => {'status': 'no_handler'},
+            'openWeChatApp' => {'status': 'launched'},
+            _ => throw UnimplementedError(call.method),
+          };
+        });
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(wechatChannel, null);
+    });
+    final clipboard = _mockClipboard();
+    final url = AppConfig.xiaofubaoRechargeUri.toString();
+
+    await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('充值'));
+    await tester.pumpAndSettle();
+
+    // 先直达请求、失败复制后再拉起微信 App 本体。
+    expect(calls.map((call) => call.method), [
+      'openUrlInWeChat',
+      'openWeChatApp',
+    ]);
+    expect(clipboard, [url]);
+    expect(find.text('微信不支持外部直达该网页，已复制链接并打开微信，请在微信内粘贴打开'), findsOneWidget);
+    expect(find.textContaining('已请求打开微信'), findsNothing);
+    expect(find.widgetWithText(SnackBarAction, '复制链接'), findsOneWidget);
+  });
+
+  testWidgets(
+    'recharge no_handler falls back to failure message when app launch fails',
+    (tester) async {
+      const wechatChannel = MethodChannel('edu.zjxu.jxucampushub/wechat');
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(wechatChannel, (call) async {
+            return switch (call.method) {
+              'openUrlInWeChat' => {'status': 'no_handler'},
+              'openWeChatApp' => {'status': 'launch_failed'},
+              _ => throw UnimplementedError(call.method),
+            };
+          });
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(wechatChannel, null);
+      });
+      final clipboard = _mockClipboard();
+      final url = AppConfig.xiaofubaoRechargeUri.toString();
+
+      await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('充值'));
+      await tester.pumpAndSettle();
+
+      // 微信 App 也拉不起来时复用调用方 failureMessage。
+      expect(clipboard, [url]);
+      expect(find.text('未能拉起微信，充值链接已复制，请在微信中粘贴打开'), findsOneWidget);
+      expect(find.widgetWithText(SnackBarAction, '复制链接'), findsOneWidget);
+    },
+  );
 
   testWidgets('payment code tile opens the payment page', (tester) async {
     final router = GoRouter(

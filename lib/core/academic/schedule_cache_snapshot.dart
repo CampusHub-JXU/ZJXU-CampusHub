@@ -1,5 +1,6 @@
 import 'schedule_model.dart';
 import 'schedule_change_rule.dart';
+import 'schedule_date_override.dart';
 import '../semester/schedule_term_context.dart';
 
 class ScheduleCacheSnapshot {
@@ -8,6 +9,7 @@ class ScheduleCacheSnapshot {
     required this.termContext,
     this.courses = const [],
     this.changeRules = const [],
+    this.dateOverrides = const [],
     this.scheduleUpdatedAt,
     this.changeRulesUpdatedAt,
     this.changeRulesCurrentScoped = false,
@@ -18,6 +20,10 @@ class ScheduleCacheSnapshot {
   final ScheduleTermContext termContext;
   final List<CourseEntry> courses;
   final List<CourseChangeRule> changeRules;
+
+  /// 用户的特定日期课程编辑（本地覆盖）；与课表 / 调课规则一样按
+  /// owner + 学期缓存键隔离，网络刷新落盘必须保留，不得被冲掉。
+  final List<ScheduleDateOverride> dateOverrides;
   final DateTime? scheduleUpdatedAt;
   final DateTime? changeRulesUpdatedAt;
 
@@ -30,6 +36,7 @@ class ScheduleCacheSnapshot {
   bool get hasData =>
       courses.isNotEmpty ||
       changeRules.isNotEmpty ||
+      dateOverrides.isNotEmpty ||
       scheduleUpdatedAt != null ||
       changeRulesUpdatedAt != null;
 
@@ -65,6 +72,7 @@ class ScheduleCacheSnapshot {
     ScheduleTermContext? termContext,
     List<CourseEntry>? courses,
     List<CourseChangeRule>? changeRules,
+    List<ScheduleDateOverride>? dateOverrides,
     DateTime? scheduleUpdatedAt,
     DateTime? changeRulesUpdatedAt,
     bool? changeRulesCurrentScoped,
@@ -77,6 +85,7 @@ class ScheduleCacheSnapshot {
       termContext: termContext ?? this.termContext,
       courses: courses ?? this.courses,
       changeRules: changeRules ?? this.changeRules,
+      dateOverrides: dateOverrides ?? this.dateOverrides,
       scheduleUpdatedAt: clearScheduleUpdatedAt
           ? null
           : scheduleUpdatedAt ?? this.scheduleUpdatedAt,
@@ -94,6 +103,9 @@ class ScheduleCacheSnapshot {
     'termContext': termContext.toJson(),
     'courses': courses.map((course) => course.toJson()).toList(),
     'changeRules': changeRules.map((rule) => rule.toJson()).toList(),
+    'dateOverrides': dateOverrides
+        .map((override) => override.toJson())
+        .toList(),
     'scheduleUpdatedAt': scheduleUpdatedAt?.millisecondsSinceEpoch,
     'changeRulesUpdatedAt': changeRulesUpdatedAt?.millisecondsSinceEpoch,
     'changeRulesCurrentScoped': changeRulesCurrentScoped,
@@ -103,6 +115,9 @@ class ScheduleCacheSnapshot {
   factory ScheduleCacheSnapshot.fromJson(Map<String, dynamic> json) {
     final courseList = json['courses'] as List<dynamic>? ?? const [];
     final changeRuleList = json['changeRules'] as List<dynamic>? ?? const [];
+    // 旧缓存没有该字段：回退为空列表，绝不因缺失而整段失效。
+    final dateOverrideList =
+        json['dateOverrides'] as List<dynamic>? ?? const [];
 
     return ScheduleCacheSnapshot(
       studentId: json['studentId']?.toString() ?? '',
@@ -116,6 +131,10 @@ class ScheduleCacheSnapshot {
       changeRules: changeRuleList
           .whereType<Map<String, dynamic>>()
           .map(CourseChangeRule.fromJson)
+          .toList(),
+      dateOverrides: dateOverrideList
+          .whereType<Map<String, dynamic>>()
+          .map(ScheduleDateOverride.fromJson)
           .toList(),
       scheduleUpdatedAt: dateFromEpochMillis(json['scheduleUpdatedAt']),
       changeRulesUpdatedAt: dateFromEpochMillis(json['changeRulesUpdatedAt']),

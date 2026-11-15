@@ -7,6 +7,7 @@ import '../../../core/semester/semester_calendar.dart';
 import '../../../core/academic/effective_week_courses.dart';
 import '../../../core/academic/schedule_cache_snapshot.dart';
 import '../../../core/academic/schedule_constants.dart';
+import '../../../core/academic/schedule_date_override.dart';
 import '../../../core/academic/schedule_model.dart';
 import '../schedule_service.dart';
 import '../../../core/semester/schedule_term_context.dart';
@@ -24,7 +25,9 @@ class SchedulePageController extends ChangeNotifier {
     required this._loggedIn,
     String? studentId,
     @visibleForTesting this._loader,
-  }) : _termContext = ScheduleService.instance.getCurrentTermContext(),
+    @visibleForTesting ScheduleService? service,
+  }) : _service = service ?? ScheduleService.instance,
+       _termContext = ScheduleService.instance.getCurrentTermContext(),
        _displayWeek = ScheduleService.instance.getCurrentWeek() {
     _studentId = _loggedIn ? _normalizeStudentId(studentId) : null;
     _term = _termContext.term;
@@ -34,6 +37,9 @@ class SchedulePageController extends ChangeNotifier {
   }
 
   final ScheduleSnapshotLoader? _loader;
+
+  /// 特定日期课程编辑的持久化服务；测试可注入，生产走单例。
+  final ScheduleService _service;
 
   bool _loggedIn;
 
@@ -48,6 +54,9 @@ class SchedulePageController extends ChangeNotifier {
   String? _infoMessage;
   List<CourseEntry> _courses = [];
   List<CourseChangeRule> _courseChangeRules = const [];
+
+  /// 当前身份的特定日期课程编辑；随快照采纳同步，随身份切换清空。
+  List<ScheduleDateOverride> _dateOverrides = const [];
   ScheduleTermContext _termContext;
   late int _term;
   int _displayWeek;
@@ -92,6 +101,8 @@ class SchedulePageController extends ChangeNotifier {
   String? get infoMessage => _infoMessage;
   bool get automaticLoginPaused => _automaticLoginPaused;
   List<CourseEntry> get courses => _courses;
+  List<ScheduleDateOverride> get dateOverrides =>
+      List.unmodifiable(_dateOverrides);
   List<CourseChangeNotice> get courseChangeNotices =>
       ScheduleService.instance.buildCourseChangeNotices(
         courses: _courses,
@@ -196,6 +207,7 @@ class SchedulePageController extends ChangeNotifier {
   void _resetAccountScopedState() {
     _courses = [];
     _courseChangeRules = const [];
+    _dateOverrides = const [];
     _scheduleUpdatedAt = null;
     _weekViewModels.clear();
     _error = null;
@@ -401,6 +413,7 @@ class SchedulePageController extends ChangeNotifier {
   void _applySnapshot(ScheduleCacheSnapshot snapshot) {
     _courses = snapshot.courses;
     _courseChangeRules = snapshot.changeRules;
+    _dateOverrides = snapshot.dateOverrides;
     _scheduleUpdatedAt = snapshot.lastUpdatedAt;
     _weekViewModels.clear();
     _primeNearbyWeekViewModels(_displayWeek);
@@ -422,6 +435,7 @@ class SchedulePageController extends ChangeNotifier {
       courses: _courses,
       week: week,
       changeRules: _courseChangeRules,
+      dateOverrides: _dateOverrides,
       termContext: activeTermContext,
     );
 
@@ -457,5 +471,139 @@ class SchedulePageController extends ChangeNotifier {
       );
     }
     return ScheduleWeekViewModel(week: week, days: days);
+  }
+
+  /// 找到覆盖 [course]（源周的原课程或目标周的合成课程）的那条编辑；
+  /// 未编辑过返回 null。UI 据此区分「编辑原课程」与「再次编辑已移动的课」。
+  ScheduleDateOverride? findOverrideForCourse(int week, CourseEntry course) {
+    for (final override in _dateOverrides) {
+      if (override.matchesSource(week, course)) return override;
+    }
+    for (final override in _dateOverrides) {
+      if (override.matchesTarget(week, course)) return override;
+    }
+    return null;
+  }
+
+  /// 保存一条特定日期课程编辑：先按当前身份乐观更新展示态，再异步落盘。
+  ///
+  /// 按 [ScheduleDateOverride.sourceSignature] 覆盖同一原课程的旧编辑。
+  /// `override.termContext` 缺失时补当前视图学期；返回 `false` 表示当前无
+  /// 已验证身份（提交被拒绝，UI 不得当作成功）。持久化被身份复核拒绝时
+  /// 回滚本地状态，并回读服务端快照恢复展示。
+  Future<bool> saveDateOverride(ScheduleDateOverride override) async {
+    final owner = _verifiedOwner;
+    if (owner == null) return false;
+    final epoch = _identityEpoch;
+    // 归属学期一律钉到当前视图学期：与落盘缓存键（owner + activeTermContext）
+    // 保持一致，避免调用方传错学期标签后编辑在展示层被过滤掉。
+    final normalized = override.copyWith(termContext: activeTermContext);
+    final signature = normalized.sourceSignature;
+    _applyDateOverrides([
+      for (final existing in _dateOverrides)
+        if (existing.sourceSignature != signature) existing,
+      normalized,
+    ]);
+    final persisted = await _service.saveDateOverride(
+      termContext: activeTermContext,
+      override: normalized,
+    );
+    if (persisted == null) {
+      _rollbackOptimisticSave(normalized, epoch);
+      return false;
+    }
+    // 身份未变时与服务端落盘态对齐（服务端可能已合并其它编辑）。
+    if (epoch == _identityEpoch) {
+      _applyDateOverrides(persisted.dateOverrides);
+    }
+    return true;
+  }
+
+  /// 回退一条特定日期课程编辑（按 id 删除）：先乐观移除，再异步落盘。
+  ///
+  /// override 不存在或当前无已验证身份时返回 `false`；持久化被身份复核
+  /// 拒绝时把删掉的 override 放回本地（若期间无更新编辑顶掉同一原课程）。
+  Future<bool> revertDateOverride(String overrideId) async {
+    final owner = _verifiedOwner;
+    if (owner == null) return false;
+    final epoch = _identityEpoch;
+    ScheduleDateOverride? removed;
+    for (final override in _dateOverrides) {
+      if (override.id == overrideId) {
+        removed = override;
+        break;
+      }
+    }
+    if (removed == null) return false;
+    _applyDateOverrides([
+      for (final override in _dateOverrides)
+        if (override.id != overrideId) override,
+    ]);
+    final persisted = await _service.revertDateOverride(
+      termContext: activeTermContext,
+      overrideId: overrideId,
+    );
+    if (persisted == null) {
+      _rollbackOptimisticRevert(removed, epoch);
+      return false;
+    }
+    if (epoch == _identityEpoch) {
+      _applyDateOverrides(persisted.dateOverrides);
+    }
+    return true;
+  }
+
+  /// 乐观更新 + 清空周视图缓存 + 预热邻近周 + 通知刷新。
+  void _applyDateOverrides(List<ScheduleDateOverride> overrides) {
+    _dateOverrides = List.unmodifiable(overrides);
+    _weekViewModels.clear();
+    _primeNearbyWeekViewModels(_displayWeek);
+    if (!_disposed) {
+      notifyListeners();
+    }
+  }
+
+  /// 保存持久化被拒：把本次乐观写入从本地撤回（只删仍持有的同 id 项，
+  /// 期间若有同签名的新编辑顶上来，绝不误删更新的那条），随后回读快照。
+  void _rollbackOptimisticSave(ScheduleDateOverride override, int epoch) {
+    if (_disposed) return;
+    if (epoch == _identityEpoch) {
+      final stillHeld = _dateOverrides.any(
+        (existing) => identical(existing, override),
+      );
+      if (stillHeld) {
+        _applyDateOverrides([
+          for (final existing in _dateOverrides)
+            if (!identical(existing, override)) existing,
+        ]);
+      }
+      _resyncDateOverridesFromService();
+    }
+  }
+
+  /// 回退持久化被拒：把删掉的 override 放回（期间同原课程已有更新编辑时
+  /// 不复活旧编辑），随后回读快照。
+  void _rollbackOptimisticRevert(ScheduleDateOverride removed, int epoch) {
+    if (_disposed) return;
+    if (epoch == _identityEpoch) {
+      final superseded = _dateOverrides.any(
+        (existing) => existing.sourceSignature == removed.sourceSignature,
+      );
+      if (!superseded) {
+        _applyDateOverrides([..._dateOverrides, removed]);
+      }
+      _resyncDateOverridesFromService();
+    }
+  }
+
+  /// 持久化被拒后的最终对账：直接读服务端 owner 快照恢复展示态。
+  void _resyncDateOverridesFromService() {
+    final snapshot = _service.preferredSnapshot(
+      termContext: activeTermContext,
+      studentId: _verifiedOwner,
+    );
+    if (snapshot != null) {
+      _applyDateOverrides(snapshot.dateOverrides);
+    }
   }
 }

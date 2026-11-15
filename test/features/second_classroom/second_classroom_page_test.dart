@@ -199,7 +199,7 @@ void main() {
       (calls.last.arguments as Map<Object?, Object?>)['url'],
       SecondClassroomPage.initialUrl,
     );
-    expect(find.text('已打开微信，请在微信中完成第二课堂授权'), findsOneWidget);
+    expect(find.text('已请求打开微信，若未直达请复制链接后在微信中完成第二课堂授权'), findsOneWidget);
     expect(find.widgetWithText(SnackBarAction, '复制链接'), findsOneWidget);
   });
 
@@ -236,8 +236,9 @@ void main() {
     await tester.tap(find.byTooltip('在微信中打开'));
     await tester.pumpAndSettle();
 
-    expect(find.text('未能打开页面，可复制链接后到微信中打开'), findsOneWidget);
+    expect(find.text('无法拉起微信，请复制链接后到微信中打开'), findsOneWidget);
     expect(find.textContaining('已安装微信'), findsNothing);
+    expect(find.textContaining('已打开微信'), findsNothing);
 
     await tester.tap(find.widgetWithText(SnackBarAction, '复制链接'));
     await tester.pumpAndSettle();
@@ -280,7 +281,7 @@ void main() {
       (calls.last.arguments as Map<Object?, Object?>)['url'],
       'https://twdekt.zjxu.edu.cn/dekt/wx/index?_WXFTL=0#/hd-detail?hdId=2485',
     );
-    expect(find.text('已打开微信，可直接查看该活动详情'), findsOneWidget);
+    expect(find.text('已请求打开微信，若未直达请复制链接后在微信中查看该活动详情'), findsOneWidget);
     expect(find.widgetWithText(SnackBarAction, '复制链接'), findsOneWidget);
   });
 

@@ -1,5 +1,6 @@
 import '../../../core/academic/exam_model.dart';
 import '../../../core/academic/schedule_change_rule.dart';
+import '../../../core/academic/schedule_date_override.dart';
 import '../../../core/academic/schedule_model.dart';
 import 'home_asset_state.dart';
 
@@ -15,6 +16,7 @@ class HomeSnapshot {
     required this.hasScheduleCache,
     required this.courses,
     required this.changeRules,
+    this.dateOverrides = const [],
     required this.isBeforeSemesterStart,
     required this.isAfterSemesterEnd,
     required this.currentWeek,
@@ -34,6 +36,10 @@ class HomeSnapshot {
   final bool hasScheduleCache;
   final List<CourseEntry> courses;
   final List<CourseChangeRule> changeRules;
+
+  /// 用户的特定日期课程编辑（课表页本地覆盖）；随课表缓存快照透传，
+  /// 首页有效课与桌面组件投影与课表页保持同一展开口径。
+  final List<ScheduleDateOverride> dateOverrides;
 
   /// 日历上下文（由 SemesterCalendar 在快照构建时求值）。
   final bool isBeforeSemesterStart;

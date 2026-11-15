@@ -53,6 +53,8 @@ class MainActivity : FlutterActivity() {
         super.onResume()
         // 前台恢复：若受管更新已就绪且用户此前点过「更新」，补一次自动安装。
         appUpdateManager.onActivityResumed(this)
+        // 同步多任务卡片图标与当前启用的桌面图标（含夜间模式切换后重新生效）。
+        appIconHandler.syncTaskDescription()
     }
 
     override fun onPause() {

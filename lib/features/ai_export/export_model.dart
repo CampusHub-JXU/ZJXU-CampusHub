@@ -576,6 +576,7 @@ final class ScheduleModuleData extends ExportModuleData {
               courses: snapshot.courses,
               week: w,
               changeRules: snapshot.changeRules,
+              dateOverrides: snapshot.dateOverrides,
               termContext: snapshot.termContext,
             ))
               ScheduleCourseRecord.fromEntry(c),

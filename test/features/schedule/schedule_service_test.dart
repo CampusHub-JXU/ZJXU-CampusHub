@@ -18,6 +18,7 @@ import 'package:jxu_campus_hub/core/network/dio_client.dart';
 import 'package:jxu_campus_hub/core/semester/semester_calendar.dart';
 import 'package:jxu_campus_hub/core/academic/effective_week_courses.dart';
 import 'package:jxu_campus_hub/core/academic/schedule_cache_snapshot.dart';
+import 'package:jxu_campus_hub/core/academic/schedule_date_override.dart';
 import 'package:jxu_campus_hub/core/academic/schedule_model.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';
 import 'package:jxu_campus_hub/core/semester/schedule_term_context.dart';
@@ -2180,6 +2181,305 @@ void main() {
           termContext: termContext,
         ),
         isNull,
+      );
+    });
+  });
+
+  group('ScheduleService date overrides', () {
+    const termContext = ScheduleTermContext(academicYear: 2025, term: 12);
+
+    ScheduleDateOverride overrideFor({
+      String id = 'o1',
+      int targetWeekday = 3,
+      String targetClassroom = 'C303',
+      ScheduleTermContext term = termContext,
+    }) {
+      return ScheduleDateOverride(
+        id: id,
+        termContext: term,
+        sourceDate: '2026-04-06',
+        sourceWeek: 5,
+        sourceWeekday: 1,
+        sourceStartLesson: 1,
+        sourceEndLesson: 2,
+        sourceCourseName: 'A班课表',
+        sourceTeacherName: '教师A',
+        sourceClassroom: '101',
+        targetDate: '2026-04-08',
+        targetWeek: 5,
+        targetWeekday: targetWeekday,
+        targetStartLesson: 7,
+        targetEndLesson: 8,
+        targetClassroom: targetClassroom,
+        targetTeacherName: '教师A',
+        updatedAt: DateTime(2026, 4, 1, 12, 0),
+      );
+    }
+
+    ScheduleCacheSnapshot seededSnapshot() => ScheduleCacheSnapshot(
+      studentId: '20230001',
+      termContext: termContext,
+      courses: const [
+        CourseEntry(
+          courseName: 'A班课表',
+          teacherName: '教师A',
+          weekday: 1,
+          startLesson: 1,
+          endLesson: 2,
+          weekRange: '1-18周',
+          classroom: '101',
+          campus: '嘉兴校区',
+          typeSymbol: '',
+        ),
+      ],
+      scheduleUpdatedAt: DateTime.now(),
+    );
+
+    test('saveDateOverride persists and returns the latest snapshot', () async {
+      loginAs('20230001');
+      ScheduleService.instance.debugSetSnapshot(seededSnapshot());
+
+      final persisted = await ScheduleService.instance.saveDateOverride(
+        termContext: termContext,
+        override: overrideFor(),
+      );
+
+      expect(persisted?.dateOverrides, hasLength(1));
+      expect(persisted?.dateOverrides.single.id, 'o1');
+      // 展示态同样可见（学期匹配）。
+      expect(
+        ScheduleService.instance
+            .preferredSnapshot(studentId: '20230001', termContext: termContext)
+            ?.dateOverrides,
+        hasLength(1),
+      );
+      // 冷启动从磁盘恢复仍在。
+      await ScheduleService.instance.restoreCache();
+      expect(
+        ScheduleService.instance
+            .preferredSnapshot(studentId: '20230001', termContext: termContext)
+            ?.dateOverrides
+            .single
+            .targetWeekday,
+        3,
+      );
+    });
+
+    test(
+      'saving the same source course again replaces instead of stacking',
+      () async {
+        loginAs('20230001');
+        ScheduleService.instance.debugSetSnapshot(seededSnapshot());
+
+        await ScheduleService.instance.saveDateOverride(
+          termContext: termContext,
+          override: overrideFor(id: 'a', targetClassroom: 'X1'),
+        );
+        final persisted = await ScheduleService.instance.saveDateOverride(
+          termContext: termContext,
+          override: overrideFor(id: 'b', targetClassroom: 'X2'),
+        );
+
+        expect(persisted?.dateOverrides, hasLength(1));
+        expect(persisted?.dateOverrides.single.id, 'b');
+        expect(persisted?.dateOverrides.single.targetClassroom, 'X2');
+      },
+    );
+
+    test('revertDateOverride removes the edit and persists', () async {
+      loginAs('20230001');
+      ScheduleService.instance.debugSetSnapshot(seededSnapshot());
+      await ScheduleService.instance.saveDateOverride(
+        termContext: termContext,
+        override: overrideFor(),
+      );
+
+      final persisted = await ScheduleService.instance.revertDateOverride(
+        termContext: termContext,
+        overrideId: 'o1',
+      );
+
+      expect(persisted, isNotNull);
+      expect(persisted?.dateOverrides, isEmpty);
+      expect(
+        ScheduleService.instance
+            .preferredSnapshot(studentId: '20230001', termContext: termContext)
+            ?.dateOverrides,
+        isEmpty,
+      );
+    });
+
+    test('revert of an unknown id is a no-op without data loss', () async {
+      loginAs('20230001');
+      ScheduleService.instance.debugSetSnapshot(seededSnapshot());
+      await ScheduleService.instance.saveDateOverride(
+        termContext: termContext,
+        override: overrideFor(),
+      );
+
+      final persisted = await ScheduleService.instance.revertDateOverride(
+        termContext: termContext,
+        overrideId: 'missing',
+      );
+
+      expect(persisted?.dateOverrides, hasLength(1));
+    });
+
+    test('save and revert refuse without a verified owner', () async {
+      ScheduleService.instance.debugSetSnapshot(seededSnapshot());
+
+      expect(
+        await ScheduleService.instance.saveDateOverride(
+          termContext: termContext,
+          override: overrideFor(),
+        ),
+        isNull,
+      );
+      expect(
+        await ScheduleService.instance.revertDateOverride(
+          termContext: termContext,
+          overrideId: 'o1',
+        ),
+        isNull,
+      );
+    });
+
+    test('save refuses when no snapshot exists for owner + term', () async {
+      loginAs('20230001');
+      // 当前 owner 在 (term=3) 下没有快照：绝不新建空键把编辑挂到别处。
+      expect(
+        await ScheduleService.instance.saveDateOverride(
+          termContext: const ScheduleTermContext(academicYear: 2025, term: 3),
+          override: overrideFor(
+            term: const ScheduleTermContext(academicYear: 2025, term: 3),
+          ),
+        ),
+        isNull,
+      );
+    });
+
+    test('an identity change during the write rejects the commit', () async {
+      loginAs('20230001');
+      ScheduleService.instance.debugSetSnapshot(seededSnapshot());
+      ScheduleService.debugBeforePersistWrite = () async {
+        ZhengfangAuth.instance.debugSetSession(active: false);
+      };
+
+      final persisted = await ScheduleService.instance.saveDateOverride(
+        termContext: termContext,
+        override: overrideFor(),
+      );
+
+      expect(persisted, isNull, reason: '写途中身份失效必须拒绝提交');
+      // 内存态也要回滚，不得留下半提交的编辑。
+      loginAs('20230001');
+      expect(
+        ScheduleService.instance
+            .preferredSnapshot(studentId: '20230001', termContext: termContext)
+            ?.dateOverrides,
+        isEmpty,
+      );
+    });
+
+    test('overrides are isolated per owner after an A to B switch', () async {
+      const otherTerm = ScheduleTermContext(academicYear: 2025, term: 12);
+      loginAs('20230001');
+      ScheduleService.instance.debugSetSnapshot(seededSnapshot());
+      await ScheduleService.instance.saveDateOverride(
+        termContext: termContext,
+        override: overrideFor(),
+      );
+
+      loginAs('20230002');
+      ScheduleService.instance.debugSetSnapshot(
+        ScheduleCacheSnapshot(
+          studentId: '20230002',
+          termContext: otherTerm,
+          courses: const [
+            CourseEntry(
+              courseName: 'B班课表',
+              teacherName: '教师B',
+              weekday: 2,
+              startLesson: 3,
+              endLesson: 4,
+              weekRange: '1-18周',
+              classroom: '202',
+              campus: '嘉兴校区',
+              typeSymbol: '',
+            ),
+          ],
+          scheduleUpdatedAt: DateTime.now(),
+        ),
+      );
+
+      // B 的快照里绝不得出现 A 的编辑。
+      expect(
+        ScheduleService.instance
+            .preferredSnapshot(studentId: '20230002', termContext: otherTerm)
+            ?.dateOverrides,
+        isEmpty,
+      );
+      // A 的编辑只挂在 A 的缓存键下。
+      loginAs('20230001');
+      expect(
+        ScheduleService.instance
+            .preferredSnapshot(studentId: '20230001', termContext: termContext)
+            ?.dateOverrides,
+        hasLength(1),
+      );
+    });
+
+    test('a network schedule refresh never wipes dateOverrides', () async {
+      const current = ScheduleTermContext(academicYear: 2025, term: 12);
+      loginAs('20230001');
+      ScheduleService.instance.debugSetSnapshot(
+        ScheduleCacheSnapshot(
+          studentId: '20230001',
+          termContext: current,
+          courses: const [
+            CourseEntry(
+              courseName: '旧课表',
+              teacherName: '教师A',
+              weekday: 1,
+              startLesson: 1,
+              endLesson: 2,
+              weekRange: '1-18周',
+              classroom: '101',
+              campus: '嘉兴校区',
+              typeSymbol: '',
+            ),
+          ],
+          dateOverrides: [overrideFor()],
+          scheduleUpdatedAt: DateTime.now().subtract(const Duration(days: 30)),
+        ),
+      );
+      final adapter = MockHttpClientAdapter()
+        ..registerJson('POST', '/jwglxt/kbcx/xskbcx_cxXsKb.html', {
+          'xsxx': <String, dynamic>{},
+          'kbList': [_courseJson('新缓存课表')],
+        });
+      await DioClient.instance.ensureInitialized();
+      DioClient.instance.dio.httpClientAdapter = adapter;
+
+      final result = await ScheduleService.instance.loadScheduleSnapshot(
+        studentId: '20230001',
+        termContext: current,
+        forceRefresh: true,
+      );
+
+      expect(result.didRefresh, isTrue);
+      expect(result.snapshot?.courses.single.courseName, '新缓存课表');
+      expect(
+        result.snapshot?.dateOverrides.single.id,
+        'o1',
+        reason: '网络刷新落盘必须保留用户的本地编辑',
+      );
+      // 落盘快照同样保留。
+      expect(
+        ScheduleService.instance
+            .preferredSnapshot(studentId: '20230001', termContext: current)
+            ?.dateOverrides,
+        hasLength(1),
       );
     });
   });

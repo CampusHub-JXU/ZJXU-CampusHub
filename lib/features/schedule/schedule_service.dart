@@ -14,6 +14,7 @@ import '../../core/semester/semester_calendar.dart';
 import '../../core/system_surface/campus_data_change_bus.dart';
 import '../../core/academic/schedule_cache_snapshot.dart';
 import '../../core/academic/schedule_change_rule.dart';
+import '../../core/academic/schedule_date_override.dart';
 import '../../core/academic/schedule_model.dart';
 import '../../core/semester/schedule_term_context.dart';
 
@@ -1030,6 +1031,132 @@ class ScheduleService {
     );
   }
 
+  /// 保存一条特定日期课程编辑：按 [ScheduleDateOverride.sourceSignature]
+  /// 替换同一原课程的既有编辑（重复编辑覆盖更新，绝不叠加），随后落盘。
+  ///
+  /// 返回落盘后的最新快照；当前无已验证 owner / owner-revision 已变化 /
+  /// 持久化被身份复核拒绝时返回 `null`（调用方据此回滚乐观更新）。
+  /// [override].studentId 不属于本模型——归属由 [termContext] + 当前已验证
+  /// owner 共同决定，绝不把编辑写到别的账号的缓存键下。
+  Future<ScheduleCacheSnapshot?> saveDateOverride({
+    required ScheduleTermContext termContext,
+    required ScheduleDateOverride override,
+  }) {
+    final signature = override.sourceSignature;
+    return _mutateSnapshot(
+      termContext: termContext,
+      mutate: (snapshot) => snapshot.copyWith(
+        dateOverrides: [
+          for (final existing in snapshot.dateOverrides)
+            if (existing.sourceSignature != signature) existing,
+          override,
+        ],
+      ),
+    );
+  }
+
+  /// 回退一条特定日期课程编辑（按 [ScheduleDateOverride.id] 删除）并落盘。
+  ///
+  /// 返回落盘后的最新快照；override 不存在、无快照或无已验证 owner /
+  /// owner-revision 已变化 / 持久化被身份复核拒绝时返回 `null`。
+  Future<ScheduleCacheSnapshot?> revertDateOverride({
+    required ScheduleTermContext termContext,
+    required String overrideId,
+  }) {
+    return _mutateSnapshot(
+      termContext: termContext,
+      mutate: (snapshot) {
+        if (!snapshot.dateOverrides.any(
+          (override) => override.id == overrideId,
+        )) {
+          return null;
+        }
+        return snapshot.copyWith(
+          dateOverrides: snapshot.dateOverrides
+              .where((override) => override.id != overrideId)
+              .toList(),
+        );
+      },
+    );
+  }
+
+  /// 在持久写临界区内对「owner + 学期」快照做本地编辑并落盘。
+  ///
+  /// 与 [_persistSnapshot] 共用 [_persistWriteChain]：读-改-写整 map 必须串行，
+  /// mutate 一律读临界区内的最新快照（save / revert 与网络刷新的写交错时，
+  /// 编辑不会在旧基线上被丢掉）。返回最终落盘快照；任一身份复核失败或
+  /// mutate 无效果返回 `null`。
+  Future<ScheduleCacheSnapshot?> _mutateSnapshot({
+    required ScheduleTermContext termContext,
+    required ScheduleCacheSnapshot? Function(ScheduleCacheSnapshot snapshot)
+    mutate,
+  }) async {
+    await _ensureRestored();
+    final identity = _currentIdentity();
+    if (identity == null) return null;
+    final owner = identity.owner;
+    final revision = identity.revision;
+    final task = _persistWriteChain.then(
+      (_) => _mutateSnapshotSerialized(
+        owner: owner,
+        termContext: termContext,
+        revision: revision,
+        mutate: mutate,
+      ),
+    );
+    // 链本身必须始终以成功收尾：单次写入失败（含异常）不得永久阻塞后续写入，
+    // 也不得产生未处理异常。
+    _persistWriteChain = task.then<void>((_) {}, onError: (Object _) {});
+    return task;
+  }
+
+  Future<ScheduleCacheSnapshot?> _mutateSnapshotSerialized({
+    required String owner,
+    required ScheduleTermContext termContext,
+    required int revision,
+    required ScheduleCacheSnapshot? Function(ScheduleCacheSnapshot snapshot)
+    mutate,
+  }) async {
+    if (!_isIdentityCurrent(owner, revision)) return null;
+    final cacheKey = _cacheKeyFor(owner, termContext);
+    final previous = _snapshots[cacheKey];
+    if (previous == null) return null;
+    void rollbackMemoryWrite() {
+      _snapshots[cacheKey] = previous;
+    }
+
+    final next = mutate(previous);
+    if (next == null || identical(next, previous)) {
+      return previous;
+    }
+    // mutate 不得偷换归属：防调用方 bug，绝不把编辑写到别 owner / 学期。
+    if (next.studentId != owner || next.termContext != termContext) {
+      return null;
+    }
+    _snapshots[cacheKey] = next;
+    // 在当前临界区内基于最新 map 重新编码，绝不复用临界区外的陈旧 encoded。
+    final encoded = jsonEncode(
+      _snapshots.map((key, value) => MapEntry(key, value.toJson())),
+    );
+    if (!_isIdentityCurrent(owner, revision)) {
+      rollbackMemoryWrite();
+      return null;
+    }
+    final write = debugBeforePersistWrite;
+    if (write != null) {
+      await write();
+      if (!_isIdentityCurrent(owner, revision)) {
+        rollbackMemoryWrite();
+        return null;
+      }
+    }
+    await _prefs?.setString(_cacheStorageKey, encoded);
+    if (!_isIdentityCurrent(owner, revision)) {
+      return null;
+    }
+    return next;
+  }
+
   /// 身份 / 账号不一致时的统一结果：不展示任何历史快照、零副作用。
   ScheduleLoadResult _identityChangedResult() {
     return const ScheduleLoadResult(
@@ -1168,12 +1295,23 @@ class ScheduleService {
               rule.termContext == snapshot.termContext,
         )
         .toList();
+    // 用户的特定日期编辑与调课规则同规则域：`termContext == null` 的本地
+    // 编辑随快照学期生效；显式标记其它学期的不出现在当前学期视图。
+    final scopedOverrides = snapshot.dateOverrides
+        .where(
+          (override) =>
+              override.termContext == null ||
+              override.termContext == snapshot.termContext,
+        )
+        .toList();
     if (scopedRules.length == snapshot.changeRules.length &&
+        scopedOverrides.length == snapshot.dateOverrides.length &&
         (scopedRules.isNotEmpty || snapshot.changeRulesUpdatedAt == null)) {
       return snapshot;
     }
     return snapshot.copyWith(
       changeRules: scopedRules,
+      dateOverrides: scopedOverrides,
       clearChangeRulesUpdatedAt: scopedRules.isEmpty,
     );
   }

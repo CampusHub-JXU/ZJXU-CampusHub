@@ -16,29 +16,30 @@ class AppRadius {
   /// 6dp：行内语义小胶囊（`AppStatusTag` 非 stadium 形态、tag 背景）。
   static const double tag = 6;
 
-  /// 9dp：课表课程块（`ScheduleCourseCell`）。网格边长太小，再大会糊成圆形。
+  /// 9dp：课表课程块（`ScheduleCourseCell`）。网格块边长较小，保持紧凑圆角；
+  /// 其余卡片 / 控件维持新版中度圆角（20 / 13）。
   static const double cell = 9;
 
-  /// 10dp：输入框 / 搜索框 / 步进器 / 下拉胶囊 / chips。
-  static const double control = 10;
+  /// 13dp：输入框 / 搜索框 / 步进器 / 下拉胶囊 / chips。
+  static const double control = 13;
 
   /// 短选项分段控件（`SegmentedButton`）：介于 control 与内容面之间的一档，
   /// 替代 MD3 默认的 StadiumBorder（胶囊）。
-  static const double segment = 11;
+  static const double segment = 14;
 
-  /// 12dp：图标底座（`AppIconBadge`）/ 卡内嵌块。
-  static const double badge = 12;
+  /// 14dp：图标底座（`AppIconBadge`）/ 卡内嵌块。
+  static const double badge = 14;
 
-  /// 16dp：内容面唯一圆角：AppCard、品牌卡、功能区 / 服务瓦片。
+  /// 20dp：内容面唯一圆角：AppCard、品牌卡、功能区 / 服务瓦片。
   /// （历史上 card=22 / cardAlt=18 / tile=16 / input=14 四档并存，
-  /// 已按设计规范收敛为单档 16。）
-  static const double card = 16;
+  /// 已按设计规范收敛为单档；2026-11 由 16 上调至 20 对齐新版系统卡片。）
+  static const double card = 20;
 
-  /// 22dp：浮动玻璃 Dock。
-  static const double dock = 22;
+  /// 26dp：浮动玻璃 Dock。
+  static const double dock = 26;
 
-  /// 28dp：底部弹层 / 对话框 / 浮动面板顶角。
-  static const double sheet = 28;
+  /// 30dp：底部弹层 / 对话框 / 浮动面板顶角。
+  static const double sheet = 30;
 
   /// 品牌卡历史别名，现与 [card] 同值；仅保留 API 兼容。
   static const double cardAlt = card;
