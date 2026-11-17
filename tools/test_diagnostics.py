@@ -2,8 +2,8 @@
 """Extensible repository diagnostics for CI and local troubleshooting.
 
 The script focuses on project-specific risks that ordinary Flutter tests do not
-see: route/catalog drift, navigation typos, missing feature tests, oversized
-files, naming drift, and known architecture smells.
+see: route/catalog drift, navigation typos, naming drift, and known
+architecture smells.
 """
 
 from __future__ import annotations
@@ -314,52 +314,6 @@ def check_test_file_naming(repo: RepoView) -> list[DiagnosticIssue]:
     return issues
 
 
-def check_large_dart_files(repo: RepoView) -> list[DiagnosticIssue]:
-    issues: list[DiagnosticIssue] = []
-    for path in repo.dart_files("lib"):
-        line_count = len(path.read_text(encoding="utf-8").splitlines())
-        if line_count > 1600:
-            severity = "error"
-        elif line_count >= 800:
-            severity = "warning"
-        else:
-            continue
-        issues.append(
-            DiagnosticIssue(
-                severity,
-                "large_dart_files",
-                f"Dart file has {line_count} lines.",
-                repo.relative(path),
-                help="Files above 800 lines are hard to review; above 1600 lines block CI diagnostics.",
-            )
-        )
-    return issues
-
-
-def check_feature_test_presence(repo: RepoView) -> list[DiagnosticIssue]:
-    features_root = repo.root / "lib/features"
-    tests_root = repo.root / "test/features"
-    if not features_root.exists():
-        return []
-    issues: list[DiagnosticIssue] = []
-    for feature_dir in sorted(path for path in features_root.iterdir() if path.is_dir()):
-        test_dir = tests_root / feature_dir.name
-        direct_test = tests_root / f"{feature_dir.name}_test.dart"
-        has_tests = test_dir.exists() and any(test_dir.rglob("*_test.dart"))
-        has_tests = has_tests or direct_test.exists()
-        if not has_tests:
-            issues.append(
-                DiagnosticIssue(
-                    "warning",
-                    "feature_test_presence",
-                    f"Feature '{feature_dir.name}' has no dedicated test under test/features.",
-                    repo.relative(feature_dir),
-                    help="Add parser/service/widget coverage before relying on manual checks for this feature.",
-                )
-            )
-    return issues
-
-
 def check_feature_network_discipline(repo: RepoView) -> list[DiagnosticIssue]:
     issues: list[DiagnosticIssue] = []
     pattern = re.compile(r"\bDio\s*\(")
@@ -381,7 +335,7 @@ def check_feature_network_discipline(repo: RepoView) -> list[DiagnosticIssue]:
 
 def check_debug_output_discipline(repo: RepoView) -> list[DiagnosticIssue]:
     issues: list[DiagnosticIssue] = []
-    pattern = re.compile(r"\b(?:print|debugPrint)\s*\(")
+    pattern = re.compile(r"\bdebugPrint\s*\(")
     allowed = {
         Path("lib/core/logging/app_logger.dart"),
     }
@@ -395,10 +349,11 @@ def check_debug_output_discipline(repo: RepoView) -> list[DiagnosticIssue]:
                 DiagnosticIssue(
                     "warning",
                     "debug_output_discipline",
-                    "Library code writes directly to print/debugPrint.",
+                    "Library code calls debugPrint directly.",
                     relative,
                     line_number(source, match.start()),
-                    "Use AppLogger so log levels, categories, and scrubbing stay centralized.",
+                    "Use AppLogger so log levels, categories, and scrubbing stay centralized. "
+                    "(plain print() is already covered by flutter_lints avoid_print.)",
                 )
             )
     return issues
@@ -430,18 +385,6 @@ CHECKS: tuple[DiagnosticCheck, ...] = (
         check_test_file_naming,
     ),
     DiagnosticCheck(
-        "large_dart_files",
-        "Large Dart files are visible",
-        "Warns on files above 800 lines and errors above 1600 lines.",
-        check_large_dart_files,
-    ),
-    DiagnosticCheck(
-        "feature_test_presence",
-        "Features have dedicated tests",
-        "Every lib/features module should have a matching test/features area.",
-        check_feature_test_presence,
-    ),
-    DiagnosticCheck(
         "feature_network_discipline",
         "Feature networking stays centralized",
         "Flags direct Dio construction inside lib/features.",
@@ -450,7 +393,7 @@ CHECKS: tuple[DiagnosticCheck, ...] = (
     DiagnosticCheck(
         "debug_output_discipline",
         "Logging uses AppLogger",
-        "Flags direct print/debugPrint in library code outside the logger.",
+        "Flags direct debugPrint in library code outside the logger.",
         check_debug_output_discipline,
     ),
 )

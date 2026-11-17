@@ -13,7 +13,8 @@
 规则：
 - 改动的 `*_test.dart` 本身一定会跑；
 - `test/helpers/test_setup.dart` 只在自身改动时展开，不作为传递中转；
-- 改动 `lib/` 下 Dart 文件时，`test/structure/`（分层 / 设计棘轮等扫源码的守卫）一并跑；
+- `test/structure/` 守卫测试不再随任意 `lib/` 改动全跑，只在改动触及对应
+  高风险 / 结构契约路径时精确追加（见 STRUCTURE_GUARD_TRIGGERS）；
 - 改动 `test/fixtures/` 下文件时，跑源码里提到该文件名的测试；
 - 改动 `pubspec.yaml` / `pubspec.lock` / `analysis_options.yaml` / `test/flutter_test_config.dart`
   时无法静态判断影响范围，退化为全量。
@@ -40,6 +41,69 @@ FULL_SUITE_TRIGGERS = {
 # 只为「重置单例」而 import 全部服务的测试枢纽：经它传递会把几乎所有测试拉进来。
 # 它本身被改动时照常展开；只是不作为中转（签名破坏由 flutter analyze 兜底）。
 NON_PROPAGATING_HUBS = {"test/helpers/test_setup.dart"}
+# 结构守卫测试只对触及对应契约路径的改动精确追加，不再随任意 lib/ 改动全跑。
+STRUCTURE_GUARD_TRIGGERS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
+    (
+        (
+            "lib/core/update/",
+            "android/app/src/main/res/xml/",
+            "android/app/src/main/AndroidManifest.xml",
+        ),
+        (
+            "test/structure/app_update_security_test.dart",
+            "test/structure/update_file_provider_paths_test.dart",
+        ),
+    ),
+    (
+        (
+            "lib/core/calendar/",
+            "android/app/src/main/kotlin/:calendar",
+        ),
+        ("test/structure/calendar_cleanup_guard_test.dart",),
+    ),
+    (
+        ("packages/campus_captcha_ocr/", "android/app/proguard-rules.pro"),
+        (
+            "test/structure/ocr_r8_keep_rules_test.dart",
+            "test/structure/notification_r8_keep_rules_test.dart",
+        ),
+    ),
+    (
+        ("lib/app/", "tools/architecture/"),
+        (
+            "test/structure/import_layering_test.dart",
+            "test/structure/architecture_guard_test.dart",
+        ),
+    ),
+)
+
+
+def _trigger_matches(changed: set[str], needles: tuple[str, ...]) -> bool:
+    """needle 形如 ``path/substring`` 时限定在该路径前缀内匹配文件名。
+
+    普通 ``dir/`` 前缀或精确文件路径直接 startswith / 相等匹配。
+    """
+    for needle in needles:
+        if ":" in needle:
+            prefix, _, fragment = needle.partition(":")
+            if any(
+                f.startswith(prefix) and fragment.lower() in Path(f).name.lower()
+                for f in changed
+            ):
+                return True
+        elif any(f.startswith(needle) or f == needle for f in changed):
+            return True
+    return False
+
+
+def structure_guard_tests(changed: set[str]) -> set[str]:
+    tests: set[str] = set()
+    for needles, tests_for in STRUCTURE_GUARD_TRIGGERS:
+        if _trigger_matches(changed, needles):
+            tests.update(tests_for)
+    return tests
+
+
 _DIRECTIVE = re.compile(r"""^\s*(?:import|export|part)\s+['"]([^'"]+)['"]""", re.M)
 _PROXY_VARS = ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy")
 
@@ -112,8 +176,11 @@ def affected_tests(changed: set[str]) -> list[str] | None:
                 seen.add(dependent)
                 queue.append(dependent)
 
-    if any(f.startswith("lib/") and f.endswith(".dart") for f in changed):
-        result.update(p for p in all_tests if (ROOT / "test/structure") in p.parents)
+    result.update(
+        (ROOT / t).resolve()
+        for t in structure_guard_tests(changed)
+        if (ROOT / t).exists()
+    )
 
     fixtures = [Path(f).name for f in changed if f.startswith("test/fixtures/")]
     if fixtures:
