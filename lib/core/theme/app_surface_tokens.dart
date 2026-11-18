@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// 课表色块的「底色 + 文字色」二元组（设计系统 v2 §2.2）。
 ///

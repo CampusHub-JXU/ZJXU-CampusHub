@@ -5,10 +5,22 @@ on:
     branches:
       - main
       - master
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - '.vscode/**'
+      - '.gitignore'
+      - 'LICENSE'
   pull_request:
     branches:
       - main
       - master
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - '.vscode/**'
+      - '.gitignore'
+      - 'LICENSE'
   workflow_dispatch:
     inputs:
       run_apk_build:
@@ -35,21 +47,51 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  FLUTTER_VERSION: '3.47.2'
+  FLUTTER_VERSION: '3.50.0'
 
 jobs:
   checks:
     name: Format, Analyze And Diagnostics
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    outputs:
+      run_update_native: ${{ steps.changed.outputs.run_update_native }}
     env:
       SHUATI_PWA_REPO_TOKEN: ${{ secrets.SHUATI_PWA_REPO_TOKEN }}
 
     steps:
       - name: Checkout private repository
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+
+      - name: Detect update-native changes
+        id: changed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "run_update_native=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          base_ref=""
+          if [ "${{ github.event_name }}" = "pull_request" ] && git rev-parse --verify HEAD^1 >/dev/null 2>&1; then
+            base_ref="HEAD^1"
+          elif [ -n "${{ github.event.before }}" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ] && git cat-file -e "${{ github.event.before }}^{commit}" 2>/dev/null; then
+            base_ref="${{ github.event.before }}"
+          fi
+          if [ -z "${base_ref}" ]; then
+            echo "run_update_native=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          if git diff --name-only "${base_ref}" HEAD | grep -Eq '^(android/app/src/main/kotlin/edu/zjxu/jxucampushub/platform/update/|tools/update_native_tests/|\.github/workflows/ci\.yml$)'; then
+            echo "run_update_native=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "run_update_native=false" >> "${GITHUB_OUTPUT}"
+          fi
 
       - name: Set up Java
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_apk_build == true }}
         uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -74,6 +116,18 @@ jobs:
 
       - name: Verify formatting
         run: dart format --output=none --set-exit-if-changed lib test integration_test
+
+      - name: Parse workflow YAML files
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruby -e 'require "yaml"; Dir[".github/workflows/*.{yml,yaml}"].sort.each { |path| YAML.load_file(path); puts "parsed #{path}" }'
+
+      - name: Validate release workflow target
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/check_release_workflow.py
 
       - name: Analyze project source
         run: flutter analyze
@@ -154,13 +208,13 @@ jobs:
           grep -E " lib/[^/]+/libonnxruntime.*\.so$| assets/captcha_ocr/" <<<"${listing}"
 
   test:
-    name: Flutter Test (shard ${{ matrix.shard }}/3)
+    name: Flutter Test (shard ${{ matrix.shard }}/2)
     runs-on: ubuntu-latest
     timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2]
 
     steps:
       - name: Checkout private repository
@@ -187,8 +241,8 @@ jobs:
           WITH_COVERAGE: ${{ github.event_name == 'workflow_dispatch' && inputs.with_coverage == true }}
         run: |
           set -euo pipefail
-          mapfile -t files < <(find test -name '*_test.dart' | LC_ALL=C sort | awk -v n=3 -v i=${{ matrix.shard }} '(NR - 1) % n == i - 1')
-          echo "Shard ${{ matrix.shard }}/3: ${#files[@]} test files"
+          mapfile -t files < <(find test -name '*_test.dart' | LC_ALL=C sort | awk -v n=2 -v i=${{ matrix.shard }} '(NR - 1) % n == i - 1')
+          echo "Shard ${{ matrix.shard }}/2: ${#files[@]} test files"
           if [ "${WITH_COVERAGE}" = "true" ]; then
             flutter test --coverage "${files[@]}"
           else
@@ -220,7 +274,7 @@ jobs:
           echo "checks: ${{ needs.checks.result }}"
           echo "test: ${{ needs.test.result }}"
           echo "update-native-tests: ${{ needs.update-native-tests.result }}"
-          [ "${{ needs.checks.result }}" = "success" ] && [ "${{ needs.test.result }}" = "success" ] && [ "${{ needs.update-native-tests.result }}" = "success" ]
+          [ "${{ needs.checks.result }}" = "success" ] && [ "${{ needs.test.result }}" = "success" ] && { [ "${{ needs.update-native-tests.result }}" = "success" ] || [ "${{ needs.update-native-tests.result }}" = "skipped" ]; }
 
   # Production update-lifecycle Kotlin (state machine / store / manager) compiled
   # and run on the JVM against Android stubs; no Android SDK, emulator or Flutter.
@@ -229,6 +283,8 @@ jobs:
   # read from android/settings.gradle.kts, no second pin).
   update-native-tests:
     name: Update Native Host Tests
+    needs: [checks]
+    if: ${{ needs.checks.outputs.run_update_native == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -272,36 +328,3 @@ jobs:
       - name: Run update native host tests
         shell: bash
         run: python3 tools/update_native_tests/run.py
-
-  workflow-smoke:
-    name: Workflow Smoke Test
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-
-    steps:
-      - name: Checkout private repository
-        uses: actions/checkout@v5
-
-      - name: Parse workflow YAML files
-        shell: bash
-        run: |
-          set -euo pipefail
-          ruby -e 'require "yaml"; Dir[".github/workflows/*.{yml,yaml}"].sort.each { |path| YAML.load_file(path); puts "parsed #{path}" }'
-
-      - name: Validate release workflow target
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 tools/check_release_workflow.py
-
-      - name: Summarize workflow smoke test
-        shell: bash
-        run: |
-          {
-            echo "## Workflow Smoke Test"
-            echo
-            echo "- CI workflow parsed successfully"
-            echo "- Release workflow targets FHfanshu/ZJXU-CampusHub main"
-            echo "- Release identity and production signing guards are present"
-            echo "- Gitee publishing references are absent"
-          } >> "${GITHUB_STEP_SUMMARY}"

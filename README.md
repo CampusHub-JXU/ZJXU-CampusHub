@@ -8,8 +8,8 @@
 
 ### 1. 准备环境
 
-- Flutter 3.47.2
-- Dart 3.13.2
+- Flutter 3.50.0
+- Dart 3.14.0
 - Java 17
 - Android Studio / Android SDK
 

@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../core/auth/cas_auth_broker.dart';
 import '../../core/auth/unified_auth.dart';

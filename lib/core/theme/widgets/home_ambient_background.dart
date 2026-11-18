@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// 首页默认环境背景：用户未设置背景图时的最底层。
 ///

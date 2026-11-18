@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
@@ -79,13 +79,23 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp.router(
+        theme: ThemeData(
+          pageTransitionsTheme: const PageTransitionsTheme(
+            builders: {
+              TargetPlatform.android: _NoTransitionsBuilder(),
+            },
+          ),
+        ),
         routerConfig: router,
-        builder: (context, child) => reduceMotion
-            ? MediaQuery(
-                data: MediaQuery.of(context).copyWith(disableAnimations: true),
-                child: child!,
-              )
-            : child!,
+        builder: (context, child) {
+          final wrapped = MaterialUiCompatibilityBridge(child: child!);
+          return reduceMotion
+              ? MediaQuery(
+                  data: MediaQuery.of(context).copyWith(disableAnimations: true),
+                  child: wrapped,
+                )
+              : wrapped;
+        },
       ),
     );
     await tester.pumpAndSettle();
@@ -233,8 +243,8 @@ void main() {
 
     // 同级高频切换不做位移，反复切不会左右晃。
     expect(
-      find.ancestor(
-        of: find.text('我的页面'),
+      find.descendant(
+        of: find.byType(AppShellBranchContainer),
         matching: find.byType(SlideTransition),
       ),
       findsNothing,
@@ -255,4 +265,17 @@ void main() {
     );
     expect(fade.opacity.value, 1.0);
   });
+}
+
+class _NoTransitionsBuilder extends PageTransitionsBuilder {
+  const _NoTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) => child;
 }

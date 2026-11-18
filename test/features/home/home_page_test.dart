@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -868,7 +868,20 @@ void main() {
           ),
         ],
       );
-      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pumpWidget(
+        MaterialApp.router(
+          theme: ThemeData(
+            pageTransitionsTheme: const PageTransitionsTheme(
+              builders: {
+                TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
+              },
+            ),
+          ),
+          routerConfig: router,
+          builder: (context, child) =>
+              MaterialUiCompatibilityBridge(child: child!),
+        ),
+      );
       AppBootstrapController.instance.debugSetPhase(
         AppBootstrapPhase.localStateReady,
       );
@@ -882,7 +895,7 @@ void main() {
       PageTransitionActivity.instance.acquire();
       router.pop();
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 500));
       expect(find.text('校园卡页面'), findsNothing);
 
       // 转场期间余额缓存更新（校园卡页内刷新落盘）：首页此刻不应响应。

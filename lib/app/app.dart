@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../core/logging/app_logger.dart';
 import '../core/network/proxy_mode.dart';
@@ -155,7 +155,9 @@ class _JXUCampusHubAppState extends State<JXUCampusHubApp> {
         // Relative to the ambient system textScaler: AppTextScaleScope
         // multiplies the system scale by the user factor and passes the
         // system scale through untouched at the default factor (0.9).
-        return AppTextScaleScope(scaleFactor: prefs.textScale, child: child);
+        return MaterialUiCompatibilityBridge(
+          child: AppTextScaleScope(scaleFactor: prefs.textScale, child: child),
+        );
       },
       routerConfig: widget.routerConfig,
       debugShowCheckedModeBanner: false,

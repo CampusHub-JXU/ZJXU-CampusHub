@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// 内容层字号角色 —— 设计系统 v2（`docs/design-baseline/DESIGN.md` §3）。
 ///

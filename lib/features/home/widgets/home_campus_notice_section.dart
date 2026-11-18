@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../../core/notice/notice_model.dart';
 import '../../../core/notice/notice_relevance.dart';

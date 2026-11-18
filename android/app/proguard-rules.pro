@@ -20,3 +20,9 @@
 -keep,allowobfuscation,allowshrinking class com.google.gson.reflect.TypeToken
 -keep,allowobfuscation,allowshrinking class * extends com.google.gson.reflect.TypeToken
 -keep class com.dexterous.** { *; }
+
+# Keep Kotlin classes and methods accessed directly from Dart via JNIgen.
+-keep @androidx.annotation.Keep class * { *; }
+-keepclassmembers class * {
+  @androidx.annotation.Keep *;
+}

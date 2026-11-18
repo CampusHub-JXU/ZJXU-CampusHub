@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../core/calendar/calendar_sync_control.dart';
 import '../../core/theme/app_typography.dart';

@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../storage/app_preferences_store.dart';
 import '../system_surface/app_icon_switcher.dart';

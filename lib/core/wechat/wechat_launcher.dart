@@ -1,6 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:jni/jni.dart';
+import 'package:jni_flutter/jni_flutter.dart';
 
 import '../logging/app_logger.dart';
+import '../platform/android_platform_bindings.dart';
 import '../platform/safe_invoke.dart';
 
 /// 微信拉起结果分类。
@@ -138,6 +142,11 @@ class WechatLauncher {
     }
 
     final sanitized = sanitizeWechatShareUrl(trimmedUrl);
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      final jniResult = _openUrlViaJni(sanitized);
+      if (jniResult != null) return jniResult;
+    }
+
     return safeInvoke<Object?, WechatLaunchResult>(
       _channel,
       _launchMethod,
@@ -160,7 +169,12 @@ class WechatLauncher {
   /// 内没有外部入口时，先复制干净链接，再把微信请到前台由用户粘贴打开。
   ///
   /// 返回值同样只代表「intent 已发出」，不代表微信真的切到前台。
-  Future<WechatLaunchResult> openWeChatApp() {
+  Future<WechatLaunchResult> openWeChatApp() async {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      final jniResult = _openAppViaJni();
+      if (jniResult != null) return jniResult;
+    }
+
     return safeInvoke<Object?, WechatLaunchResult>(
       _channel,
       _openAppMethod,
@@ -178,6 +192,79 @@ class WechatLauncher {
     );
   }
 
+  WechatLaunchResult? _openUrlViaJni(String sanitized) {
+    final engineId = PlatformDispatcher.instance.engineId;
+    if (engineId == null) return null;
+    try {
+      return using((arena) {
+        final rawActivity = androidActivity(engineId);
+        if (rawActivity == null) return null;
+        final activity = rawActivity.as(Activity.type, releaseOriginal: true)
+          ..releasedBy(arena);
+        final handler = WeChatChannelHandler(activity)..releasedBy(arena);
+        final jUrl = sanitized.toJString()..releasedBy(arena);
+        final res = handler.openUrlInWeChatJni(jUrl)..releasedBy(arena);
+        return _fromJniResult(res, sanitized, arena);
+      });
+    } catch (error) {
+      AppLogger.instance.log(
+        LogLevel.warn,
+        LogCategory.webview,
+        'JNI 打开微信网页失败: $error',
+      );
+      return WechatLaunchResult(
+        status: WechatLaunchStatus.launchFailed,
+        sanitizedUrl: sanitized,
+      );
+    }
+  }
+
+  WechatLaunchResult? _openAppViaJni() {
+    final engineId = PlatformDispatcher.instance.engineId;
+    if (engineId == null) return null;
+    try {
+      return using((arena) {
+        final rawActivity = androidActivity(engineId);
+        if (rawActivity == null) return null;
+        final activity = rawActivity.as(Activity.type, releaseOriginal: true)
+          ..releasedBy(arena);
+        final handler = WeChatChannelHandler(activity)..releasedBy(arena);
+        final res = handler.openWeChatAppJni()..releasedBy(arena);
+        return _fromJniResult(res, '', arena);
+      });
+    } catch (error) {
+      AppLogger.instance.log(
+        LogLevel.warn,
+        LogCategory.webview,
+        'JNI 拉起微信失败: $error',
+      );
+      return const WechatLaunchResult(
+        status: WechatLaunchStatus.launchFailed,
+        sanitizedUrl: '',
+      );
+    }
+  }
+
+  static WechatLaunchResult _fromJniResult(
+    WeChatJniResult res,
+    String sanitizedUrl,
+    Arena arena,
+  ) {
+    final statusStr = (res.status..releasedBy(arena)).toDartString();
+    final jRoute = res.route;
+    final jDetail = res.detail;
+    if (jRoute != null) jRoute.releasedBy(arena);
+    if (jDetail != null) jDetail.releasedBy(arena);
+    final route = jRoute?.toDartString();
+    final detail = jDetail?.toDartString() ?? statusStr;
+    return WechatLaunchResult(
+      status: _mapWechatStatus(statusStr),
+      sanitizedUrl: sanitizedUrl,
+      route: route,
+      detail: detail,
+    );
+  }
+
   /// True means a URL intent was launched, not that the webpage finished loading.
   Future<bool> openUrl(String url) async {
     final result = await openUrlDetailed(url);
@@ -191,6 +278,15 @@ class WechatLauncher {
 ///   `detail` 诊断字段；
 /// - `bool`：旧实现与旧测试 mock，`true` → launched，`false` → launchFailed。
 /// 无法识别的形态一律按 `launchFailed` 处理（保守视为未拉起）。
+WechatLaunchStatus _mapWechatStatus(Object? rawStatus) => switch (rawStatus) {
+  'launched' => WechatLaunchStatus.launched,
+  'not_installed' => WechatLaunchStatus.notInstalled,
+  'unsupported_url' => WechatLaunchStatus.unsupportedUrl,
+  'no_handler' => WechatLaunchStatus.noHandler,
+  'launch_failed' => WechatLaunchStatus.launchFailed,
+  _ => WechatLaunchStatus.launchFailed,
+};
+
 WechatLaunchResult _parseNativeResult(Object? raw, String sanitizedUrl) {
   switch (raw) {
     case bool opened:
@@ -201,16 +297,8 @@ WechatLaunchResult _parseNativeResult(Object? raw, String sanitizedUrl) {
         sanitizedUrl: sanitizedUrl,
       );
     case Map response:
-      final status = switch (response['status']) {
-        'launched' => WechatLaunchStatus.launched,
-        'not_installed' => WechatLaunchStatus.notInstalled,
-        'unsupported_url' => WechatLaunchStatus.unsupportedUrl,
-        'no_handler' => WechatLaunchStatus.noHandler,
-        'launch_failed' => WechatLaunchStatus.launchFailed,
-        _ => WechatLaunchStatus.launchFailed,
-      };
       return WechatLaunchResult(
-        status: status,
+        status: _mapWechatStatus(response['status']),
         sanitizedUrl: sanitizedUrl,
         route: response['route'] as String?,
         detail: response['detail'] as String? ?? response['status']?.toString(),

@@ -15,7 +15,7 @@ const int kPerfReportSchemaVersion = 1;
 /// Flutter 没有可用的运行时版本常量；`Platform.version` 会带上主机名 /
 /// 用户名等无界字符串，禁止写进报告。这里写仓库当前工具链基线，并附出处，
 /// 让读报告的人知道它是「构建基线」而非「本机实测」。
-const String kPerfConfiguredFlutterBaseline = '3.47.2';
+const String kPerfConfiguredFlutterBaseline = '3.50.0';
 const String kPerfConfiguredFlutterBaselineProvenance =
     'configured toolchain baseline (docs/agents/build-and-run.md); not runtime-detected';
 

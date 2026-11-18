@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// 状态视图（空态 / 错误态 / 登录引导）的统一入场动画。
 ///

@@ -1,14 +1,23 @@
 package edu.zjxu.jxucampushub.platform.wechat
 
 import android.app.Activity
+import androidx.annotation.Keep
 import io.flutter.plugin.common.BinaryMessenger
 import edu.zjxu.jxucampushub.platform.requireStringArg
 import io.flutter.plugin.common.MethodChannel
+
+@Keep
+class WeChatJniResult(
+    val status: String,
+    val route: String?,
+    val detail: String?,
+)
 
 /**
  * 微信跳转通道：结果以 Map 返回（status/route/detail）。
  * status == launched 仅表示 intent 已发出，不代表页面加载成功。
  */
+@Keep
 class WeChatChannelHandler(private val activity: Activity) {
     private val planner = WeChatLaunchPlanner(AndroidWeChatLaunchGateway(activity))
 
@@ -32,6 +41,26 @@ class WeChatChannelHandler(private val activity: Activity) {
                 else -> result.notImplemented()
             }
         }
+    }
+
+    @Keep
+    fun openUrlInWeChatJni(url: String): WeChatJniResult {
+        val result = planner.openUrlInWeChat(url)
+        return WeChatJniResult(
+            status = result.status,
+            route = result.route,
+            detail = result.detail,
+        )
+    }
+
+    @Keep
+    fun openWeChatAppJni(): WeChatJniResult {
+        val result = planner.openWeChatApp()
+        return WeChatJniResult(
+            status = result.status,
+            route = result.route,
+            detail = result.detail,
+        )
     }
 
     internal fun openUrlInWeChat(url: String): Map<String, Any?> {

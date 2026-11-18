@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// 无缓存首次加载时的占位骨架块（见 design-guidelines 4.5）。
 ///

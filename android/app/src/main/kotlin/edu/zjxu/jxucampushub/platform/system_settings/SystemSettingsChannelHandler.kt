@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
+import androidx.annotation.Keep
 import edu.zjxu.jxucampushub.platform.requireStringArg
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
@@ -23,6 +24,15 @@ import io.flutter.plugin.common.MethodChannel
  * 每个目标失败后逐级降级：目标页 → 应用详情页 → 系统设置首页；全部失败返回
  * `unavailable`。返回值小写字符串与 Dart `SystemSettingsOpenResult` 一一对应。
  */
+@Keep
+class SystemBackgroundStatusSnapshot(
+    val notificationsEnabled: Boolean?,
+    val exactAlarmsAllowed: Boolean?,
+    val ignoringBatteryOptimizations: Boolean?,
+    val isXiaomiFamily: Boolean,
+)
+
+@Keep
 class SystemSettingsChannelHandler(private val activity: Activity) {
     companion object {
         private const val CHANNEL = "edu.zjxu.jxucampushub/system_settings"
@@ -60,31 +70,48 @@ class SystemSettingsChannelHandler(private val activity: Activity) {
      * - `ignoringBatteryOptimizations`：Android 6 以下没有电池优化，返回 null。
      * 每项单独兜底，一项抛异常不影响其他项。
      */
-    private fun readStatus(): Map<String, Any?> = mapOf(
-        "notificationsEnabled" to runCatching {
+    @Keep
+    fun readStatusSnapshot(): SystemBackgroundStatusSnapshot {
+        val notificationsEnabled = runCatching {
             activity.getSystemService(NotificationManager::class.java)
                 ?.areNotificationsEnabled()
-        }.getOrNull(),
-        "exactAlarmsAllowed" to if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        }.getOrNull()
+        val exactAlarmsAllowed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             runCatching {
                 activity.getSystemService(AlarmManager::class.java)?.canScheduleExactAlarms()
             }.getOrNull()
         } else {
             null
-        },
-        "ignoringBatteryOptimizations" to if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        }
+        val ignoringBatteryOptimizations = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             runCatching {
                 activity.getSystemService(PowerManager::class.java)
                     ?.isIgnoringBatteryOptimizations(activity.packageName)
             }.getOrNull()
         } else {
             null
-        },
-        "isXiaomiFamily" to isMiuiLikeDevice(),
-    )
+        }
+        return SystemBackgroundStatusSnapshot(
+            notificationsEnabled = notificationsEnabled,
+            exactAlarmsAllowed = exactAlarmsAllowed,
+            ignoringBatteryOptimizations = ignoringBatteryOptimizations,
+            isXiaomiFamily = isMiuiLikeDevice(),
+        )
+    }
+
+    private fun readStatus(): Map<String, Any?> {
+        val snapshot = readStatusSnapshot()
+        return mapOf(
+            "notificationsEnabled" to snapshot.notificationsEnabled,
+            "exactAlarmsAllowed" to snapshot.exactAlarmsAllowed,
+            "ignoringBatteryOptimizations" to snapshot.ignoringBatteryOptimizations,
+            "isXiaomiFamily" to snapshot.isXiaomiFamily,
+        )
+    }
 
     /** 打开目标设置页；逐级降级，全部失败返回 `unavailable`。 */
-    private fun open(target: String, channelId: String?): String {
+    @Keep
+    fun open(target: String, channelId: String?): String {
         if (tryOpenTarget(target, channelId)) {
             return RESULT_TARGET
         }

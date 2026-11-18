@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../../core/theme/personalization_controller.dart';
 import '../../../shared/widgets/plain_list.dart';

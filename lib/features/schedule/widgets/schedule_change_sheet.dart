@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../../core/academic/schedule_change_rule.dart';
 import '../../../core/academic/schedule_constants.dart';

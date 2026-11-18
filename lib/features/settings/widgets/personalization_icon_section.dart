@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../../core/theme/app_icon_style.dart';
 import '../../../core/theme/app_preferences_controller.dart';

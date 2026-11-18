@@ -21,6 +21,20 @@ subprojects {
     val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
     project.layout.buildDirectory.value(newSubprojectBuildDir)
 
+    // Flutter 3.50's PluginHandler copies :app's `profile` buildType onto library
+    // plugins via `initWith(appBuildType)`, which leaks `applicationIdSuffix = ".dev"`
+    // and fails AGP 9.3.1 validation on library modules. Pre-creating `profile` on
+    // library modules from their own `debug` buildType avoids that copy.
+    pluginManager.withPlugin("com.android.library") {
+        extensions.configure<com.android.build.api.dsl.LibraryExtension> {
+            buildTypes {
+                maybeCreate("profile").apply {
+                    initWith(getByName("debug"))
+                }
+            }
+        }
+    }
+
     // workmanager_android 0.9.3 skips `kotlin-android` on AGP 9 because it
     // assumes built-in Kotlin, but this build keeps android.builtInKotlin=false
     // (other plugins still apply KGP themselves). Without this its Kotlin

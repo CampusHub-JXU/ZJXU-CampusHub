@@ -108,7 +108,7 @@ void main() {
       expect(metadata['impellerBackend'], 'unknown');
       expect(metadata['gpuModel'], 'unknown');
       expect(metadata['batteryTemperatureC'], 'unknown');
-      expect(metadata['flutterBaseline'], '3.47.2');
+      expect(metadata['flutterBaseline'], '3.50.0');
       expect(metadata['flutterBaselineProvenance'], isNotEmpty);
       // 不猜 Adreno / 不写 GPU 型号。
       expect(metadata.toString().toLowerCase(), isNot(contains('adreno')));
