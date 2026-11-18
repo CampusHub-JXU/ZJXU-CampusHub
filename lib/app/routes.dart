@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 
@@ -24,10 +26,11 @@ import '../features/shuati/shuati_webview_page.dart';
 import '../features/settings/settings_page.dart';
 import '../features/settings/about_page.dart';
 import '../features/settings/performance_diagnostics_page.dart';
-import '../features/settings/appearance_page.dart';
-import '../features/settings/personalization_page.dart';
+import '../features/settings/theme_material_page.dart';
+import '../features/settings/home_personalization_page.dart';
 import '../features/settings/background_editor_page.dart';
 import '../features/settings/desktop_background_page.dart';
+import '../features/welcome/welcome_page.dart';
 import '../features/home/home_surface_scene.dart';
 import '../features/home/models/example_campus_snapshot.dart';
 import '../features/dorm_electricity/dorm_electricity_page.dart';
@@ -193,22 +196,30 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const SettingsPage(),
     ),
     _appRoute(
-      path: '/appearance',
-      name: 'appearance',
-      builder: (context, state) => AppearancePage(
-        homeSceneBuilder: (context) => const HomeSurfaceScene(
-          presentation: ExampleCampusSnapshot.presentation,
-          scaleToFit: false,
-        ),
+      path: '/welcome',
+      name: 'welcome',
+      // 「设置 → 重放新手引导」的注册路由：动作落点与首启
+      // welcomeGate（app.dart）保持一致，feature 不横向依赖 welcome。
+      builder: (context, state) => WelcomePage(
+        onLoginShortcut: (_) => context.goNamed('my'),
+        onNotificationsShortcut: (_) =>
+            unawaited(context.pushNamed('desktop-background')),
+        // 日历页主动作：向导关闭后自然回到设置页，无需额外导航
+        // （与重放调用方原行为一致）。
+        onCalendarShortcut: (_) {},
       ),
     ),
     _appRoute(
-      path: '/personalization',
-      name: 'personalization',
-      builder: (context, state) => PersonalizationPage(
+      path: '/appearance/theme',
+      name: 'appearance-theme',
+      builder: (context, state) => const ThemeMaterialPage(),
+    ),
+    _appRoute(
+      path: '/appearance/personalization',
+      name: 'appearance-personalization',
+      builder: (context, state) => HomePersonalizationPage(
         homeSceneBuilder: (context) => const HomeSurfaceScene(
           presentation: ExampleCampusSnapshot.presentation,
-          scaleToFit: false,
         ),
       ),
     ),

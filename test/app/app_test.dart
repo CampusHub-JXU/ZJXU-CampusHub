@@ -2,8 +2,10 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:jxu_campus_hub/app/app.dart';
 import 'package:jxu_campus_hub/core/network/proxy_mode.dart';
+import 'package:jxu_campus_hub/features/welcome/welcome_page.dart';
 
 import '../helpers/test_setup.dart';
 
@@ -40,6 +42,7 @@ void main() {
     SystemProxyDetector? systemProxyDetector,
     ConnectivityChecker? connectivityChecker,
     Duration startupProxyWarningDuration = const Duration(milliseconds: 200),
+    Future<void> Function(NavigatorState rootNavigator)? welcomeGate,
   }) async {
     await tester.pumpWidget(
       JXUCampusHubApp(
@@ -48,6 +51,7 @@ void main() {
         connectivityChecker:
             connectivityChecker ?? () async => const [ConnectivityResult.wifi],
         startupProxyWarningDuration: startupProxyWarningDuration,
+        welcomeGate: welcomeGate,
       ),
     );
     await tester.pump();
@@ -64,6 +68,36 @@ void main() {
     );
 
     expect(find.text(startupProxyWarningText), findsNothing);
+    expect(find.text('首页内容'), findsOneWidget);
+  });
+
+  testWidgets('首启未写 welcome_completed 时弹出欢迎向导', (tester) async {
+    await pumpApp(
+      tester,
+      systemProxyDetector: ({testUrl = 'https://newca.zjxu.edu.cn/'}) async =>
+          null,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(WelcomePage), findsOneWidget);
+    // 首屏标题随引导页改版更新；断言首屏真实文案而非历史占位文案。
+    expect(find.text('连接校园身份'), findsOneWidget);
+
+    await tester.tap(find.text('跳过'));
+    await tester.pumpAndSettle();
+    expect(find.byType(WelcomePage), findsNothing);
+    expect(find.text('首页内容'), findsOneWidget);
+  });
+
+  testWidgets('已写 welcome_completed 时不再弹出欢迎向导', (tester) async {
+    SharedPreferences.setMockInitialValues({'welcome_completed': true});
+    await pumpApp(
+      tester,
+      systemProxyDetector: ({testUrl = 'https://newca.zjxu.edu.cn/'}) async =>
+          null,
+    );
+
+    expect(find.byType(WelcomePage), findsNothing);
     expect(find.text('首页内容'), findsOneWidget);
   });
 
@@ -124,6 +158,8 @@ void main() {
         onStartupProxyWarningShown: () {
           shownCount += 1;
         },
+        // 本例专注 SnackBar 去重，关掉欢迎闸门避免全屏页盖住被测首页。
+        welcomeGate: (_) async {},
       );
 
       await tester.pumpWidget(app);

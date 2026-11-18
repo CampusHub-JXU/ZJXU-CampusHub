@@ -3,9 +3,12 @@ import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:material_ui/material_ui.dart';
 
+import 'package:go_router/go_router.dart';
+
 import '../core/logging/app_logger.dart';
 import '../core/network/proxy_mode.dart';
 import '../core/theme/app_preferences_controller.dart';
+import '../features/welcome/welcome_page.dart';
 import 'app_messenger.dart';
 import 'routes.dart';
 import '../core/theme/text_scale_controller.dart';
@@ -22,15 +25,31 @@ class JXUCampusHubApp extends StatefulWidget {
     ConnectivityChecker? connectivityChecker,
     this.startupProxyWarningDuration = const Duration(seconds: 4),
     this.onStartupProxyWarningShown,
+    Future<void> Function(NavigatorState rootNavigator)? welcomeGate,
   }) : routerConfig = routerConfig ?? appRouter,
        systemProxyDetector = systemProxyDetector ?? detectSystemProxy,
-       connectivityChecker = connectivityChecker ?? _defaultConnectivityChecker;
+       connectivityChecker = connectivityChecker ?? _defaultConnectivityChecker,
+       welcomeGate = welcomeGate ?? _defaultWelcomeGate;
 
   final RouterConfig<Object> routerConfig;
   final SystemProxyDetector systemProxyDetector;
   final ConnectivityChecker connectivityChecker;
   final Duration startupProxyWarningDuration;
   final VoidCallback? onStartupProxyWarningShown;
+
+  /// 首启欢迎向导闸门；测试注入以禁用（避免遮罩挡住被测页面）。
+  final Future<void> Function(NavigatorState rootNavigator) welcomeGate;
+
+  static Future<void> _defaultWelcomeGate(NavigatorState rootNavigator) async {
+    if (!await WelcomeFlow.shouldShow()) return;
+    if (!rootNavigator.mounted) return;
+    await WelcomeFlow.showOnNavigator(
+      rootNavigator,
+      onLoginShortcut: (_) => appRouter.goNamed('my'),
+      onNotificationsShortcut: (_) => appRouter.pushNamed('desktop-background'),
+      onCalendarShortcut: (_) => appRouter.pushNamed('settings'),
+    );
+  }
 
   static Future<List<ConnectivityResult>> _defaultConnectivityChecker() {
     return Connectivity().checkConnectivity();
@@ -48,6 +67,7 @@ class _JXUCampusHubAppState extends State<JXUCampusHubApp> {
   bool _shouldShowStartupProxyWarning = false;
   bool _startupProxyWarningShown = false;
   bool _startupProxyWarningScheduled = false;
+  bool _welcomeGateRequested = false;
 
   @override
   void initState() {
@@ -55,6 +75,7 @@ class _JXUCampusHubAppState extends State<JXUCampusHubApp> {
     _preferencesController.addListener(_onPreferencesChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_checkStartupGuards());
+      unawaited(_requestWelcomeGate());
     });
   }
 
@@ -65,6 +86,32 @@ class _JXUCampusHubAppState extends State<JXUCampusHubApp> {
   }
 
   void _onPreferencesChanged() => setState(() {});
+
+  /// 首启欢迎向导：第一帧之后检查 `welcome_completed` 标记，未完成的以
+  /// 全屏路由盖在 shell 之上。延迟一帧重试——注入的 router 首帧时
+  /// navigatorKey 可能还没就位（如路由解析尚未完成）。
+  int _welcomeGateRetries = 0;
+
+  Future<void> _requestWelcomeGate() async {
+    if (_welcomeGateRequested) return;
+    _welcomeGateRequested = true;
+
+    final delegate = widget.routerConfig.routerDelegate;
+    final rootNavigator = delegate is GoRouterDelegate
+        ? delegate.navigatorKey.currentState
+        : null;
+    if (rootNavigator == null) {
+      _welcomeGateRequested = false;
+      if (_welcomeGateRetries++ < 5 && mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          unawaited(_requestWelcomeGate());
+        });
+      }
+      return;
+    }
+    if (!mounted) return;
+    await widget.welcomeGate(rootNavigator);
+  }
 
   Future<void> _checkStartupGuards() async {
     if (_shouldShowStartupProxyWarning || _startupProxyWarningShown) return;
