@@ -287,8 +287,11 @@ class _DormElectricityPageState extends State<DormElectricityPage> {
       context,
       url: DormElectricityService.rechargeUrl,
       title: '电费充值',
-      successMessage: '已请求打开微信，若未直达请复制链接在微信中完成电费充值',
-      failureMessage: '未能拉起微信，充值链接已复制，请在微信中粘贴打开',
+      // 电费充值在「嘉大微生活」公众号内；拉起失败复制关键词，用户到
+      // 微信「搜一搜」直达公众号（粘链接打不开）。
+      searchKeyword: '嘉大微生活',
+      successMessage: '已请求打开微信，若未直达请复制关键词到微信「搜一搜」搜索「嘉大微生活」充值',
+      failureMessage: '未能拉起微信，「嘉大微生活」已复制，请在微信「搜一搜」粘贴搜索',
       autoCopyOnFailure: true,
     );
   }

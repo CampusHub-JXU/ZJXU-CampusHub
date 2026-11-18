@@ -3,7 +3,12 @@ import 'package:flutter/services.dart';
 
 /// 复制文本到剪贴板并弹轻提示；messenger 在 await 前捕获，免去 mounted 检查。
 /// PlatformException（部分 ROM 限制剪贴板）降级为「复制失败」提示。
-Future<void> copyTextWithFeedback(BuildContext context, String text) async {
+/// [doneLabel] 覆盖成功文案（如「关键词已复制」），默认「链接已复制」。
+Future<void> copyTextWithFeedback(
+  BuildContext context,
+  String text, {
+  String doneLabel = '链接已复制',
+}) async {
   final messenger = ScaffoldMessenger.of(context);
   var copied = false;
   try {
@@ -14,5 +19,5 @@ Future<void> copyTextWithFeedback(BuildContext context, String text) async {
   }
   messenger
     ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(copied ? '链接已复制' : '复制失败')));
+    ..showSnackBar(SnackBar(content: Text(copied ? doneLabel : '复制失败')));
 }

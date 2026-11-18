@@ -90,7 +90,10 @@ class CampusActionRegistry {
     CampusAction(
       id: CampusActionIds.campusCardRecharge,
       title: '一卡通充值',
-      target: WechatActionTarget(AppConfig.xiaofubaoRechargeUri.toString()),
+      target: WechatActionTarget(
+        AppConfig.xiaofubaoRechargeUri.toString(),
+        searchKeyword: '嘉兴大学校园卡',
+      ),
     ),
     const CampusAction(
       id: CampusActionIds.campusCardResetPassword,
@@ -117,7 +120,10 @@ class CampusActionRegistry {
     const CampusAction(
       id: CampusActionIds.electricityRecharge,
       title: '电费充值',
-      target: WechatActionTarget(HeadlessEpay100Gateway.rechargeUrl),
+      target: WechatActionTarget(
+        HeadlessEpay100Gateway.rechargeUrl,
+        searchKeyword: '嘉大微生活',
+      ),
     ),
     const CampusAction(
       id: CampusActionIds.libraryOpen,

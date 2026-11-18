@@ -8,6 +8,7 @@ import 'package:jxu_campus_hub/core/actions/campus_action_ids.dart';
 import 'package:jxu_campus_hub/core/actions/campus_action_registry.dart';
 import 'package:jxu_campus_hub/core/actions/campus_deep_link.dart';
 import 'package:jxu_campus_hub/core/config/feature_entry_catalog.dart';
+import 'package:jxu_campus_hub/core/wechat/wechat_launcher.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -111,7 +112,6 @@ void main() {
   });
 
   group('CampusActionExecutor.executeWechat', () {
-    const wechatChannel = MethodChannel('edu.zjxu.jxucampushub/wechat');
     const testUrl = 'https://example.cn/dekt/wx/index?_WXFTL=0';
 
     /// 泵一个带 ScaffoldMessenger 的最小页面并触发一次 executeWechat。
@@ -147,18 +147,20 @@ void main() {
     }
 
     tearDown(() {
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(wechatChannel, null);
+      WechatLauncher.instance.setGatewayForTesting(null);
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(SystemChannels.platform, null);
     });
 
     testWidgets('launched 状态返回 success 且文案不断言已打开', (tester) async {
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(
-            wechatChannel,
-            (call) async => {'status': 'launched'},
-          );
+      WechatLauncher.instance.setGatewayForTesting(
+        _FakeWechatGateway(
+          openUrlResult: const WechatLaunchResult(
+            status: WechatLaunchStatus.launched,
+            sanitizedUrl: '',
+          ),
+        ),
+      );
 
       final result = await runExecuteWechat(tester);
 
@@ -171,16 +173,17 @@ void main() {
     });
 
     testWidgets('no_handler 复制干净链接后拉起微信 App，仍按降级上报', (tester) async {
-      final calls = <MethodCall>[];
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(wechatChannel, (call) async {
-            calls.add(call);
-            return switch (call.method) {
-              'openUrlInWeChat' => {'status': 'no_handler'},
-              'openWeChatApp' => {'status': 'launched'},
-              _ => throw UnimplementedError(call.method),
-            };
-          });
+      final gateway = _FakeWechatGateway(
+        openUrlResult: const WechatLaunchResult(
+          status: WechatLaunchStatus.noHandler,
+          sanitizedUrl: '',
+        ),
+        openAppResult: const WechatLaunchResult(
+          status: WechatLaunchStatus.launched,
+          sanitizedUrl: '',
+        ),
+      );
+      WechatLauncher.instance.setGatewayForTesting(gateway);
       final clipboard = <String>[];
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(SystemChannels.platform, (call) async {
@@ -197,10 +200,8 @@ void main() {
       );
 
       // 先请求直达 → 复制 → 再拉起微信 App 本体。
-      expect(calls.map((call) => call.method), [
-        'openUrlInWeChat',
-        'openWeChatApp',
-      ]);
+      expect(gateway.urls, hasLength(1));
+      expect(gateway.openAppCalls, 1);
       // 微信被拉起 ≠ 目标网页已打开：绝不能上报 success。
       expect(result.status, CampusActionStatus.fallbackAvailable);
       expect(clipboard, ['https://example.cn/pay?schoolCode=001']);
@@ -209,14 +210,18 @@ void main() {
     });
 
     testWidgets('no_handler + 微信 App 拉起但复制失败时如实提示', (tester) async {
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(wechatChannel, (call) async {
-            return switch (call.method) {
-              'openUrlInWeChat' => {'status': 'no_handler'},
-              'openWeChatApp' => {'status': 'launched'},
-              _ => throw UnimplementedError(call.method),
-            };
-          });
+      WechatLauncher.instance.setGatewayForTesting(
+        _FakeWechatGateway(
+          openUrlResult: const WechatLaunchResult(
+            status: WechatLaunchStatus.noHandler,
+            sanitizedUrl: '',
+          ),
+          openAppResult: const WechatLaunchResult(
+            status: WechatLaunchStatus.launched,
+            sanitizedUrl: '',
+          ),
+        ),
+      );
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(SystemChannels.platform, (call) async {
             if (call.method == 'Clipboard.setData') {
@@ -233,14 +238,18 @@ void main() {
     });
 
     testWidgets('no_handler + 未安装微信时提示未检测到微信', (tester) async {
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(wechatChannel, (call) async {
-            return switch (call.method) {
-              'openUrlInWeChat' => {'status': 'no_handler'},
-              'openWeChatApp' => {'status': 'not_installed'},
-              _ => throw UnimplementedError(call.method),
-            };
-          });
+      WechatLauncher.instance.setGatewayForTesting(
+        _FakeWechatGateway(
+          openUrlResult: const WechatLaunchResult(
+            status: WechatLaunchStatus.noHandler,
+            sanitizedUrl: '',
+          ),
+          openAppResult: const WechatLaunchResult(
+            status: WechatLaunchStatus.notInstalled,
+            sanitizedUrl: '',
+          ),
+        ),
+      );
       final clipboard = <String>[];
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(SystemChannels.platform, (call) async {
@@ -260,14 +269,18 @@ void main() {
     });
 
     testWidgets('no_handler + 微信 App 拉起失败时回退复制提示', (tester) async {
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(wechatChannel, (call) async {
-            return switch (call.method) {
-              'openUrlInWeChat' => {'status': 'no_handler'},
-              'openWeChatApp' => {'status': 'launch_failed'},
-              _ => throw UnimplementedError(call.method),
-            };
-          });
+      WechatLauncher.instance.setGatewayForTesting(
+        _FakeWechatGateway(
+          openUrlResult: const WechatLaunchResult(
+            status: WechatLaunchStatus.noHandler,
+            sanitizedUrl: '',
+          ),
+          openAppResult: const WechatLaunchResult(
+            status: WechatLaunchStatus.launchFailed,
+            sanitizedUrl: '',
+          ),
+        ),
+      );
       final clipboard = <String>[];
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(SystemChannels.platform, (call) async {
@@ -286,11 +299,14 @@ void main() {
     });
 
     testWidgets('not_installed 提示未检测到微信并保留复制降级', (tester) async {
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(
-            wechatChannel,
-            (call) async => {'status': 'not_installed'},
-          );
+      WechatLauncher.instance.setGatewayForTesting(
+        _FakeWechatGateway(
+          openUrlResult: const WechatLaunchResult(
+            status: WechatLaunchStatus.notInstalled,
+            sanitizedUrl: '',
+          ),
+        ),
+      );
 
       final result = await runExecuteWechat(tester);
 
@@ -300,12 +316,8 @@ void main() {
     });
 
     testWidgets('unsupportedUrl 返回 failed 且不复制链接', (tester) async {
-      var called = false;
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(wechatChannel, (call) async {
-            called = true;
-            return true;
-          });
+      final gateway = _FakeWechatGateway();
+      WechatLauncher.instance.setGatewayForTesting(gateway);
       final clipboard = <String>[];
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(SystemChannels.platform, (call) async {
@@ -322,17 +334,21 @@ void main() {
       );
 
       expect(result.status, CampusActionStatus.failed);
-      expect(called, isFalse);
+      // URL 校验在 launcher 内短路，不应触及 gateway。
+      expect(gateway.urls, isEmpty);
       expect(clipboard, isEmpty);
       expect(find.text('链接格式不支持，无法在微信中打开'), findsOneWidget);
     });
 
     testWidgets('launchFailed 提供复制降级', (tester) async {
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(
-            wechatChannel,
-            (call) async => {'status': 'launch_failed'},
-          );
+      WechatLauncher.instance.setGatewayForTesting(
+        _FakeWechatGateway(
+          openUrlResult: const WechatLaunchResult(
+            status: WechatLaunchStatus.launchFailed,
+            sanitizedUrl: '',
+          ),
+        ),
+      );
 
       final result = await runExecuteWechat(tester);
 
@@ -343,8 +359,14 @@ void main() {
     });
 
     testWidgets('snackbar 复制链接动作复制的是清理后的链接', (tester) async {
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(wechatChannel, (call) async => false);
+      WechatLauncher.instance.setGatewayForTesting(
+        _FakeWechatGateway(
+          openUrlResult: const WechatLaunchResult(
+            status: WechatLaunchStatus.launchFailed,
+            sanitizedUrl: '',
+          ),
+        ),
+      );
       final clipboard = <String>[];
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(SystemChannels.platform, (call) async {
@@ -367,4 +389,36 @@ void main() {
       expect(find.text('链接已复制'), findsOneWidget);
     });
   });
+}
+
+/// 记录式 WechatGateway 替身：openUrl / openApp 结果可配置。
+class _FakeWechatGateway implements WechatGateway {
+  _FakeWechatGateway({
+    this.openUrlResult = const WechatLaunchResult(
+      status: WechatLaunchStatus.launched,
+      sanitizedUrl: '',
+    ),
+    this.openAppResult = const WechatLaunchResult(
+      status: WechatLaunchStatus.launched,
+      sanitizedUrl: '',
+    ),
+  });
+
+  WechatLaunchResult openUrlResult;
+  WechatLaunchResult openAppResult;
+
+  final urls = <String>[];
+  int openAppCalls = 0;
+
+  @override
+  Future<WechatLaunchResult> openUrl(String sanitizedUrl) async {
+    urls.add(sanitizedUrl);
+    return openUrlResult;
+  }
+
+  @override
+  Future<WechatLaunchResult> openApp() async {
+    openAppCalls++;
+    return openAppResult;
+  }
 }

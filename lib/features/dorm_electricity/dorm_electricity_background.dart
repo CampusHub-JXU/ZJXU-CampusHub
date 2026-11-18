@@ -25,13 +25,14 @@ import 'package:timezone/timezone.dart' as tz;
 
 import '../../core/auth/unified_auth.dart';
 import '../../core/logging/app_logger.dart';
+import '../../core/notification/app_notification_service.dart';
 import '../../core/notification/background_task_service.dart';
 import 'dorm_electricity_service.dart';
 
 const dormElectricityCheck = 'dormElectricityCheck';
 const _scheduledNotificationId = 200;
 const _immediateNotificationId = 100;
-const _channelId = 'dorm_electricity_alert';
+const _channelId = AppNotificationService.dormElectricityChannelId;
 const _channelName = '寝室电费提醒';
 
 // SharedPreferences keys（取自服务层公开常量，避免两处字面量漂移）。
@@ -116,8 +117,8 @@ Future<void> _showNotification({
         _channelId,
         _channelName,
         channelDescription: '当寝室剩余电量低于设定阈值时发送提醒',
-        importance: Importance.high,
-        priority: Priority.high,
+        importance: Importance.defaultImportance,
+        priority: Priority.defaultPriority,
         icon: '@mipmap/ic_launcher',
       ),
     ),
@@ -177,8 +178,8 @@ Future<void> _scheduleDailyAlarmNotification() async {
           _channelId,
           _channelName,
           channelDescription: '当寝室剩余电量低于设定阈值时发送提醒',
-          importance: Importance.high,
-          priority: Priority.high,
+          importance: Importance.defaultImportance,
+          priority: Priority.defaultPriority,
           icon: '@mipmap/ic_launcher',
         ),
       ),

@@ -42,9 +42,13 @@ class RouteActionTarget extends CampusActionTarget {
 }
 
 class WechatActionTarget extends CampusActionTarget {
-  const WechatActionTarget(this.url);
+  const WechatActionTarget(this.url, {this.searchKeyword});
 
   final String url;
+
+  /// 拉起失败/降级时写进剪贴板的微信「搜一搜」关键词（公众号/小程序名）。
+  /// 非空时降级语义从「复制链接」变为「复制关键词到微信搜索」。
+  final String? searchKeyword;
 }
 
 class CampusAction {

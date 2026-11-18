@@ -13,6 +13,7 @@ import 'package:jxu_campus_hub/core/theme/app_theme_builder.dart';
 import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_page.dart';
 import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_service.dart';
 import 'package:jxu_campus_hub/core/epay100/epay100_gateway.dart';
+import 'package:jxu_campus_hub/core/wechat/wechat_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../helpers/test_setup.dart';
@@ -109,6 +110,37 @@ class _IdentityGateway implements Epay100Gateway {
   Future<void> invalidate() async {}
 }
 
+/// 记录式 WechatGateway 替身：openUrl / openApp 结果可配置。
+class _FakeWechatGateway implements WechatGateway {
+  _FakeWechatGateway({
+    this.openUrlResult = const WechatLaunchResult(
+      status: WechatLaunchStatus.launched,
+      sanitizedUrl: '',
+    ),
+  });
+
+  WechatLaunchResult openUrlResult;
+  WechatLaunchResult openAppResult = const WechatLaunchResult(
+    status: WechatLaunchStatus.launched,
+    sanitizedUrl: '',
+  );
+
+  final urls = <String>[];
+  int openAppCalls = 0;
+
+  @override
+  Future<WechatLaunchResult> openUrl(String sanitizedUrl) async {
+    urls.add(sanitizedUrl);
+    return openUrlResult;
+  }
+
+  @override
+  Future<WechatLaunchResult> openApp() async {
+    openAppCalls++;
+    return openAppResult;
+  }
+}
+
 const _configA = DormRoomConfig(
   areaId: '3',
   buildingId: '114',
@@ -151,6 +183,7 @@ void main() {
   });
 
   tearDown(() {
+    WechatLauncher.instance.setGatewayForTesting(null);
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(notificationsChannel, null);
   });
@@ -233,13 +266,14 @@ void main() {
       _FakeEpayElectricityGateway(),
     );
 
-    const wechatChannel = MethodChannel('edu.zjxu.jxucampushub/wechat');
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(wechatChannel, (call) async => false);
-    addTearDown(() {
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(wechatChannel, null);
-    });
+    WechatLauncher.instance.setGatewayForTesting(
+      _FakeWechatGateway(
+        openUrlResult: const WechatLaunchResult(
+          status: WechatLaunchStatus.launchFailed,
+          sanitizedUrl: '',
+        ),
+      ),
+    );
     final clipboard = <String>[];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform, (call) async {
@@ -267,21 +301,18 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    expect(clipboard, [DormElectricityService.rechargeUrl]);
-    expect(find.text('未能拉起微信，充值链接已复制，请在微信中粘贴打开'), findsOneWidget);
+    expect(clipboard, ['嘉大微生活']);
+    expect(find.text('未能拉起微信，「嘉大微生活」已复制，请在微信「搜一搜」粘贴搜索'), findsOneWidget);
     expect(find.textContaining('已安装微信'), findsNothing);
-    expect(find.widgetWithText(SnackBarAction, '复制链接'), findsOneWidget);
+    expect(find.widgetWithText(SnackBarAction, '复制关键词'), findsOneWidget);
 
-    await tester.ensureVisible(find.widgetWithText(SnackBarAction, '复制链接'));
-    await tester.tap(find.widgetWithText(SnackBarAction, '复制链接'));
+    await tester.ensureVisible(find.widgetWithText(SnackBarAction, '复制关键词'));
+    await tester.tap(find.widgetWithText(SnackBarAction, '复制关键词'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    expect(clipboard, [
-      DormElectricityService.rechargeUrl,
-      DormElectricityService.rechargeUrl,
-    ]);
-    expect(find.text('链接已复制'), findsOneWidget);
+    expect(clipboard, ['嘉大微生活', '嘉大微生活']);
+    expect(find.text('关键词已复制'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });

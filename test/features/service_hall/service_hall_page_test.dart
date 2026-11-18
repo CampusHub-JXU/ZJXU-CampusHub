@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/core/auth/cas_auth_broker.dart';
 import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
+import 'package:jxu_campus_hub/core/wechat/wechat_launcher.dart';
 import 'package:jxu_campus_hub/features/service_hall/service_hall_page.dart';
 
 import '../../helpers/fake_inappwebview.dart';
@@ -12,15 +13,12 @@ import '../../helpers/fake_inappwebview.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  const wechatChannel = MethodChannel('edu.zjxu.jxucampushub/wechat');
-
   setUpAll(() {
     InAppWebViewPlatform.instance = FakeInAppWebViewPlatform();
   });
 
   tearDown(() {
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(wechatChannel, null);
+    WechatLauncher.instance.setGatewayForTesting(null);
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform, null);
     UnifiedAuthService.instance.debugReset();
@@ -58,8 +56,14 @@ void main() {
     UnifiedAuthService.instance.debugSyncCookiesToWebViewForUrlOverride = (
       _,
     ) async {};
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(wechatChannel, (call) async => false);
+    WechatLauncher.instance.setGatewayForTesting(
+      _FakeWechatGateway(
+        openUrlResult: const WechatLaunchResult(
+          status: WechatLaunchStatus.launchFailed,
+          sanitizedUrl: '',
+        ),
+      ),
+    );
     final clipboard = <String>[];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform, (call) async {
@@ -92,4 +96,35 @@ void main() {
     expect(clipboard, [ServiceHallPage.homeUrl]);
     expect(find.text('链接已复制'), findsOneWidget);
   });
+}
+
+/// 记录式 WechatGateway 替身：openUrl / openApp 结果可配置。
+class _FakeWechatGateway implements WechatGateway {
+  _FakeWechatGateway({
+    this.openUrlResult = const WechatLaunchResult(
+      status: WechatLaunchStatus.launched,
+      sanitizedUrl: '',
+    ),
+  });
+
+  WechatLaunchResult openUrlResult;
+  WechatLaunchResult openAppResult = const WechatLaunchResult(
+    status: WechatLaunchStatus.launched,
+    sanitizedUrl: '',
+  );
+
+  final urls = <String>[];
+  int openAppCalls = 0;
+
+  @override
+  Future<WechatLaunchResult> openUrl(String sanitizedUrl) async {
+    urls.add(sanitizedUrl);
+    return openUrlResult;
+  }
+
+  @override
+  Future<WechatLaunchResult> openApp() async {
+    openAppCalls++;
+    return openAppResult;
+  }
 }
