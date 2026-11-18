@@ -11,6 +11,7 @@ import 'app/calendar_sync_coordinator.dart';
 import 'app/campus_refresh_coordinator.dart';
 import 'app/campus_widget_background.dart';
 import 'app/routes.dart';
+import 'core/academic/schedule_model.dart';
 import 'core/auth/auth_session_persistence.dart';
 import 'core/auth/background_session_gate.dart';
 import 'core/auth/connect_mode_resolver.dart';
@@ -29,8 +30,16 @@ import 'core/notification/app_notification_service.dart';
 import 'core/notification/background_task_service.dart';
 import 'core/shortcut/app_shortcut_service.dart';
 import 'features/dorm_electricity/dorm_electricity_background.dart';
+import 'features/schedule/schedule_service.dart';
 import 'features/second_classroom/second_classroom_subscription_service.dart';
 import 'features/home/widget/campus_widget_sync.dart';
+
+/// 二课堂课表冲突检查的课程来源（组合层接线）：从 ScheduleService 当前
+/// 快照读课表，前台与 WorkManager isolate 各自绑定一次。
+Future<List<CourseEntry>> _loadSecondClassroomCourses() async {
+  await ScheduleService.instance.restoreCache();
+  return ScheduleService.instance.preferredSnapshot()?.courses ?? const [];
+}
 
 /// Release 构建下为 true；用编译期常量替代 kDebugMode，避免额外导入 foundation。
 const bool _isProductBuild = bool.fromEnvironment('dart.vm.product');
@@ -192,6 +201,10 @@ Future<void> main() async {
       CampusWidgetSync.instance.start();
       unawaited(CampusWidgetSync.instance.syncNow());
       unawaited(AppNotificationService.instance.initialize());
+      // 二课堂课表冲突检查：组合层把课程来源绑定到课表快照
+      // （feature 之间不横向依赖）。
+      SecondClassroomSubscriptionService.courseLoader =
+          _loadSecondClassroomCourses;
       unawaited(
         SecondClassroomSubscriptionService.instance.checkRecruitingMatches(
           automatic: true,

@@ -7,7 +7,9 @@ import '../../core/auth/login_page_detection.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/network/dio_client.dart';
 import '../../core/util/json_coerce.dart';
+import 'second_classroom_auth.dart';
 import 'second_classroom_model.dart';
+import 'second_classroom_route.dart';
 
 const _secondClassroomHost = 'twdekt.zjxu.edu.cn';
 const _secondClassroomBasePath = '/dekt';
@@ -25,14 +27,19 @@ class SecondClassroomServiceException implements Exception {
 }
 
 class SecondClassroomService {
-  SecondClassroomService({Dio? dio}) : _debugDio = dio;
+  SecondClassroomService({Dio? dio, SecondClassroomAuth? auth})
+    : _debugDio = dio,
+      _injectedAuth = auth;
 
   static final SecondClassroomService instance = SecondClassroomService();
 
   Dio? _debugDio;
+  final SecondClassroomAuth? _injectedAuth;
+  SecondClassroomAuth get _auth =>
+      _injectedAuth ?? SecondClassroomAuth.instance;
 
   Future<SecondClassroomCatalog> fetchCatalog() async {
-    final payload = await _post('/mobile/hdList', data: _menuData());
+    final payload = await _post('hdList', data: _menuData());
     return parseSecondClassroomCatalogPayload(payload);
   }
 
@@ -40,7 +47,7 @@ class SecondClassroomService {
     SecondClassroomActivityQuery query,
   ) async {
     final payload = await _post(
-      '/mobile/search',
+      'search',
       data: query.toFormData(menuToken: _secondClassroomMenuToken),
     );
     return parseSecondClassroomActivityPagePayload(payload);
@@ -82,9 +89,10 @@ class SecondClassroomService {
     bool authenticated = false,
   }) async {
     final payload = await _post(
-      '/mobile/detail',
+      'detail',
       queryParameters: {'hdId': '$id', '.me': _secondClassroomMenuToken},
       data: _menuData(),
+      authenticated: authenticated,
     );
     return parseSecondClassroomActivityDetailPayload(
       payload,
@@ -112,33 +120,75 @@ class SecondClassroomService {
     String path, {
     Map<String, dynamic>? data,
     Map<String, dynamic>? queryParameters,
+    bool authenticated = false,
   }) async {
-    final dio = await _resolveDio();
-    final uri = Uri.https(
-      _secondClassroomHost,
-      '$_secondClassroomBasePath$path',
-      queryParameters,
-    );
+    final (dio, initialRoute) = await _resolveDio();
+    final directUri = SecondClassroomRoute.mobileUri(path, queryParameters);
+    var route = initialRoute;
+    var uri = route.uriFor(directUri);
+    final verifyIdentity =
+        authenticated && (_debugDio == null || _injectedAuth != null);
+    final owner = verifyIdentity ? _auth.currentUserId : null;
+    if (verifyIdentity && owner == null) {
+      throw const SecondClassroomServiceException('暂时无法确认第二课堂会话，请稍后重试');
+    }
 
     try {
-      final response = await dio.post<Object?>(
-        uri.toString(),
+      Future<Response<Object?>> send() => dio.postUri<Object?>(
+        uri,
         data: data,
         options: Options(
           contentType: Headers.formUrlEncodedContentType,
           responseType: ResponseType.json,
-          followRedirects: true,
-          headers: const {
-            'Accept': 'application/json, text/plain, */*',
-            'Origin': 'https://twdekt.zjxu.edu.cn',
-            'Referer': _secondClassroomReferer,
-            'X-Requested-With': 'XMLHttpRequest',
-          },
+          followRedirects: false,
+          headers: route.xhrHeaders(uri),
           validateStatus: (status) => status != null && status < 500,
         ),
       );
 
-      final payload = _payloadFromResponse(response.data);
+      var response = await send();
+      var redirect = SecondClassroomRoute.redirectTarget(response);
+      if (route == SecondClassroomRoute.direct &&
+          redirect != null &&
+          SecondClassroomRoute.forUri(redirect) ==
+              SecondClassroomRoute.webVpn &&
+          !SecondClassroomRoute.isLoginUrl(redirect)) {
+        // 列表等读取可用已存 Cookie 改道，不触发后台登录。详情要先验证代理
+        // SESSION 的身份，避免把代理侧的游客数据解释成「未报名」。
+        if (authenticated) {
+          final state = await _auth.ensureSession(
+            force: true,
+            forceWebVpn: true,
+          );
+          if (state != SecondClassroomAuthState.authenticated ||
+              (verifyIdentity && _auth.currentUserId != owner) ||
+              _auth.authenticatedRoute != SecondClassroomRoute.webVpn) {
+            throw SecondClassroomServiceException(
+              state == SecondClassroomAuthState.needsLogin
+                  ? '第二课堂 WebVPN 会话需要登录'
+                  : '暂时无法确认第二课堂 WebVPN 会话，请稍后重试',
+            );
+          }
+        }
+        route = SecondClassroomRoute.webVpn;
+        uri = route.uriFor(directUri);
+        response = await send();
+        redirect = SecondClassroomRoute.redirectTarget(response);
+      }
+
+      if (SecondClassroomRoute.isLoginResponse(response, redirect)) {
+        throw const SecondClassroomServiceException('第二课堂会话需要登录');
+      }
+      if (verifyIdentity &&
+          (_auth.currentUserId != owner || _auth.authenticatedRoute != route)) {
+        throw const SecondClassroomServiceException('第二课堂会话已变化，请稍后重试');
+      }
+      final status = response.statusCode ?? 0;
+      if (status < 200 || status >= 300) {
+        throw const SecondClassroomServiceException('第二课堂连接失败，请稍后重试');
+      }
+
+      final payload = _payloadFromResponse(response.data, route);
       final success = payload['success'];
       final code = payload['code'];
       if (success == false || (code is num && code != 0)) {
@@ -168,22 +218,33 @@ class SecondClassroomService {
     }
   }
 
-  Future<Dio> _resolveDio() async {
+  Future<(Dio, SecondClassroomRoute)> _resolveDio() async {
     final debugDio = _debugDio;
-    if (debugDio != null) return debugDio;
+    if (debugDio != null) {
+      return (
+        debugDio,
+        _injectedAuth?.authenticatedRoute ?? SecondClassroomRoute.direct,
+      );
+    }
 
     await DioClient.instance.ensureInitialized();
-    // 第二课堂的 `SESSION` 由 CAS ticket 兑换后落在统一认证 jar；不能用
-    // 正方 `dio`（那会以游客身份请求，永远读不到 sfbm / hdbm）。
-    return DioClient.instance.unifiedAuthDio;
+    // 两种路由均使用统一认证 jar，Cookie 拦截器按实际请求的域 / 路径携带 Cookie。
+    return (
+      DioClient.instance.unifiedAuthDio,
+      _auth.authenticatedRoute ?? SecondClassroomRoute.direct,
+    );
   }
 
-  Map<String, dynamic> _payloadFromResponse(Object? data) {
+  Map<String, dynamic> _payloadFromResponse(
+    Object? data,
+    SecondClassroomRoute route,
+  ) {
     if (data is Map<String, dynamic>) return data;
     if (data is Map) return Map<String, dynamic>.from(data);
     if (data is String) {
       final text = data.trimLeft();
-      if (looksLikeWeChatAuthHtml(text)) {
+      if (route == SecondClassroomRoute.direct &&
+          looksLikeWeChatAuthHtml(text)) {
         throw const SecondClassroomServiceException('第二课堂登录态失效，请在微信中重新授权');
       }
       final decoded = jsonDecode(data);

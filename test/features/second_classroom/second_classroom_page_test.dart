@@ -4,6 +4,8 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:jxu_campus_hub/core/system_surface/system_settings_launcher.dart';
+import 'package:jxu_campus_hub/core/wechat/wechat_launcher.dart';
 import 'package:jxu_campus_hub/features/second_classroom/second_classroom_auth.dart';
 import 'package:jxu_campus_hub/features/second_classroom/second_classroom_cache_store.dart';
 import 'package:jxu_campus_hub/features/second_classroom/second_classroom_model.dart';
@@ -15,8 +17,6 @@ import 'package:jxu_campus_hub/shared/widgets/app_status_tag.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  const wechatChannel = MethodChannel('edu.zjxu.jxucampushub/wechat');
-
   setUp(() {
     // 订阅弹层的通知渠道行要查询真实权限状态，需注册插件实现才走可 mock 的方法通道。
     AndroidFlutterLocalNotificationsPlugin.registerWith();
@@ -27,8 +27,8 @@ void main() {
   });
 
   tearDown(() {
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(wechatChannel, null);
+    WechatLauncher.instance.setGatewayForTesting(null);
+    SystemSettingsLauncher.instance.setGatewayForTesting(null);
   });
 
   test('detects second classroom auth provider entry urls', () {
@@ -99,7 +99,9 @@ void main() {
     expect(find.text('第二课堂'), findsOneWidget);
     expect(find.text('榜样分享活动'), findsOneWidget);
     expect(find.text('招募中'), findsOneWidget);
-    expect(find.byTooltip('在微信中打开'), findsOneWidget);
+    // AppBar：「订阅管理」直达 + ⋮ 菜单（微信入口收在里面）。
+    expect(find.byTooltip('订阅管理'), findsOneWidget);
+    expect(find.byTooltip('更多操作'), findsOneWidget);
     // 状态 chip 行 + 排序 + 筛选入口，不再横排多个下拉（ui-unification-plan §4.5）。
     expect(find.widgetWithText(ChoiceChip, '全部'), findsOneWidget);
     expect(find.widgetWithText(ChoiceChip, '正在招募'), findsOneWidget);
@@ -172,12 +174,8 @@ void main() {
   });
 
   testWidgets('opens second classroom in WeChat from app bar', (tester) async {
-    final calls = <MethodCall>[];
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(wechatChannel, (call) async {
-          calls.add(call);
-          return true;
-        });
+    final gateway = _FakeWechatGateway();
+    WechatLauncher.instance.setGatewayForTesting(gateway);
 
     await tester.pumpWidget(
       MaterialApp(
@@ -191,23 +189,28 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('在微信中打开'));
+    await tester.tap(find.byTooltip('更多操作'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('在微信中打开').last);
     await tester.pumpAndSettle();
 
-    expect(calls.map((call) => call.method), contains('openUrlInWeChat'));
-    expect(
-      (calls.last.arguments as Map<Object?, Object?>)['url'],
-      SecondClassroomPage.initialUrl,
-    );
-    expect(find.text('已请求打开微信，若未直达请复制链接后在微信中完成第二课堂授权'), findsOneWidget);
-    expect(find.widgetWithText(SnackBarAction, '复制链接'), findsOneWidget);
+    expect(gateway.urls, isNotEmpty);
+    expect(gateway.urls.last, SecondClassroomPage.initialUrl);
+    expect(find.text('已请求打开微信，若未直达请复制关键词到微信「搜一搜」搜索「青春嘉大」完成授权'), findsOneWidget);
+    expect(find.widgetWithText(SnackBarAction, '复制关键词'), findsOneWidget);
   });
 
   testWidgets('app bar wechat failure offers copy of exact page url', (
     tester,
   ) async {
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(wechatChannel, (call) async => false);
+    WechatLauncher.instance.setGatewayForTesting(
+      _FakeWechatGateway(
+        openUrlResult: const WechatLaunchResult(
+          status: WechatLaunchStatus.launchFailed,
+          sanitizedUrl: '',
+        ),
+      ),
+    );
     final clipboard = <String>[];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform, (call) async {
@@ -233,29 +236,27 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('在微信中打开'));
+    await tester.tap(find.byTooltip('更多操作'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('在微信中打开').last);
     await tester.pumpAndSettle();
 
-    expect(find.text('无法拉起微信，请复制链接后到微信中打开'), findsOneWidget);
+    expect(find.text('无法拉起微信，请点「复制关键词」后到微信「搜一搜」搜索「青春嘉大」'), findsOneWidget);
     expect(find.textContaining('已安装微信'), findsNothing);
     expect(find.textContaining('已打开微信'), findsNothing);
 
-    await tester.tap(find.widgetWithText(SnackBarAction, '复制链接'));
+    await tester.tap(find.widgetWithText(SnackBarAction, '复制关键词'));
     await tester.pumpAndSettle();
 
-    expect(clipboard, [SecondClassroomPage.initialUrl]);
-    expect(find.text('链接已复制'), findsOneWidget);
+    expect(clipboard, ['青春嘉大']);
+    expect(find.text('关键词已复制'), findsOneWidget);
   });
 
   testWidgets('opens activity detail page in WeChat from detail sheet', (
     tester,
   ) async {
-    final calls = <MethodCall>[];
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(wechatChannel, (call) async {
-          calls.add(call);
-          return true;
-        });
+    final gateway = _FakeWechatGateway();
+    WechatLauncher.instance.setGatewayForTesting(gateway);
 
     await tester.pumpWidget(
       MaterialApp(
@@ -276,35 +277,31 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 350));
 
-    expect(calls.map((call) => call.method), contains('openUrlInWeChat'));
+    expect(gateway.urls, isNotEmpty);
     expect(
-      (calls.last.arguments as Map<Object?, Object?>)['url'],
+      gateway.urls.last,
       'https://twdekt.zjxu.edu.cn/dekt/wx/index?_WXFTL=0#/hd-detail?hdId=2485',
     );
-    expect(find.text('已请求打开微信，若未直达请复制链接后在微信中查看该活动详情'), findsOneWidget);
-    expect(find.widgetWithText(SnackBarAction, '复制链接'), findsOneWidget);
+    expect(
+      find.text('已请求打开微信，若未直达请复制关键词到微信「搜一搜」搜索「青春嘉大」查看活动详情'),
+      findsOneWidget,
+    );
+    expect(find.widgetWithText(SnackBarAction, '复制关键词'), findsOneWidget);
   });
 
   testWidgets('订阅弹层提供直达第二课堂通知渠道并如实说明限制', (tester) async {
-    const systemSettingsChannel = MethodChannel(
-      'edu.zjxu.jxucampushub/system_settings',
-    );
     const notificationsChannel = MethodChannel(
       'dexterous.com/flutter/local_notifications',
     );
-    final calls = <MethodCall>[];
+    final settingsGateway = _FakeSystemSettingsGateway();
+    SystemSettingsLauncher.instance.setGatewayForTesting(settingsGateway);
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-    messenger.setMockMethodCallHandler(systemSettingsChannel, (call) async {
-      calls.add(call);
-      return 'target';
-    });
     messenger.setMockMethodCallHandler(notificationsChannel, (call) async {
       if (call.method == 'areNotificationsEnabled') return true;
       return null;
     });
     addTearDown(() {
-      messenger.setMockMethodCallHandler(systemSettingsChannel, null);
       messenger.setMockMethodCallHandler(notificationsChannel, null);
     });
 
@@ -320,7 +317,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('已订阅活动名'));
+    await tester.tap(find.byTooltip('订阅管理'));
     await tester.pumpAndSettle();
 
     expect(find.text('开招提醒'), findsOneWidget);
@@ -332,12 +329,15 @@ void main() {
     await tester.tap(find.text('通知横幅设置'));
     await tester.pumpAndSettle();
 
-    expect(calls, hasLength(1));
-    expect(calls.single.method, 'open');
-    expect(calls.single.arguments, <String, Object?>{
-      'target': 'notificationChannel',
-      'channelId': 'second_classroom_activity_reminder',
-    });
+    expect(settingsGateway.opens, hasLength(1));
+    expect(
+      settingsGateway.opens.single.target,
+      SystemSettingsTarget.notificationChannel,
+    );
+    expect(
+      settingsGateway.opens.single.channelId,
+      'second_classroom_activity_reminder',
+    );
     // 命中渠道页不弹提示：打开设置页不代表横幅已开启。
     expect(find.byType(SnackBar), findsNothing);
   });
@@ -370,7 +370,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('已订阅活动名'));
+      await tester.tap(find.byTooltip('订阅管理'));
       await tester.pumpAndSettle();
 
       expect(
@@ -511,5 +511,60 @@ class _MemoryCacheStore implements SecondClassroomCacheStore {
   Future<void> debugClear() async {
     _catalog = null;
     _activities.clear();
+  }
+}
+
+/// 记录式 WechatGateway 替身：openUrl / openApp 结果可配置。
+class _FakeWechatGateway implements WechatGateway {
+  _FakeWechatGateway({
+    this.openUrlResult = const WechatLaunchResult(
+      status: WechatLaunchStatus.launched,
+      sanitizedUrl: '',
+    ),
+  });
+
+  WechatLaunchResult openUrlResult;
+  WechatLaunchResult openAppResult = const WechatLaunchResult(
+    status: WechatLaunchStatus.launched,
+    sanitizedUrl: '',
+  );
+
+  final urls = <String>[];
+  int openAppCalls = 0;
+
+  @override
+  Future<WechatLaunchResult> openUrl(String sanitizedUrl) async {
+    urls.add(sanitizedUrl);
+    return openUrlResult;
+  }
+
+  @override
+  Future<WechatLaunchResult> openApp() async {
+    openAppCalls++;
+    return openAppResult;
+  }
+}
+
+/// 记录式 SystemSettingsGateway 替身。
+class _FakeSystemSettingsGateway implements SystemSettingsGateway {
+  final opens = <({SystemSettingsTarget target, String? channelId})>[];
+  int getStatusCalls = 0;
+
+  SystemSettingsOpenResult openResult = SystemSettingsOpenResult.target;
+  SystemBackgroundStatus status = const SystemBackgroundStatus();
+
+  @override
+  Future<SystemSettingsOpenResult> open(
+    SystemSettingsTarget target, {
+    String? channelId,
+  }) async {
+    opens.add((target: target, channelId: channelId));
+    return openResult;
+  }
+
+  @override
+  Future<SystemBackgroundStatus> getStatus() async {
+    getStatusCalls++;
+    return status;
   }
 }

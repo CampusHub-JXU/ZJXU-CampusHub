@@ -13,10 +13,19 @@ import '../core/async/run_isolated.dart';
 import '../core/logging/app_logger.dart';
 import '../core/notice/notice_sync_service.dart';
 import '../core/notice/notice_sync_store.dart';
+import '../core/academic/schedule_model.dart';
 import '../features/dorm_electricity/dorm_electricity_background.dart';
 import '../features/notice/notice_background.dart';
+import '../features/schedule/schedule_service.dart';
 import '../features/second_classroom/second_classroom_background.dart';
+import '../features/second_classroom/second_classroom_subscription_service.dart';
 import 'campus_widget_background.dart';
+
+/// 与 main.dart 同源的二课堂课程来源：供后台 isolate 绑定。
+Future<List<CourseEntry>> _loadSecondClassroomCourses() async {
+  await ScheduleService.instance.restoreCache();
+  return ScheduleService.instance.preferredSnapshot()?.courses ?? const [];
+}
 
 // ── WorkManager callback (secondary fallback) ──────────────────────────
 
@@ -43,6 +52,10 @@ void appBackgroundTaskDispatcher() {
       action = DormElectricityBackground.instance.executeBackgroundCheck;
     }
     if (task == secondClassroomRecruitingMonitor) {
+      // WorkManager isolate 内重绑课程来源（前台在 main.dart 绑过的不
+      // 跨 isolate 生效），保持与前台一致的课表冲突检查。
+      SecondClassroomSubscriptionService.courseLoader =
+          _loadSecondClassroomCourses;
       action = SecondClassroomBackground.instance.runMonitor;
     }
     if (task == jwcNoticeSyncCheck) action = NoticeBackground.instance.runCheck;

@@ -323,11 +323,15 @@ class _SubscriptionSheet extends StatelessWidget {
     required this.activities,
     required this.onOpen,
     required this.onRemove,
+    required this.onManageRules,
   });
 
   final List<SecondClassroomActivity> activities;
   final ValueChanged<SecondClassroomActivity> onOpen;
   final ValueChanged<SecondClassroomActivity> onRemove;
+
+  /// 「关键词订阅规则」入口：管理页保持独立路由，弹层只作中转。
+  final VoidCallback onManageRules;
 
   @override
   Widget build(BuildContext context) {
@@ -382,8 +386,15 @@ class _SubscriptionSheet extends StatelessWidget {
                 ),
               const SizedBox(height: AppSpacing.md),
               const PlainSectionHeader('开招提醒'),
-              const PlainListGroup(
-                children: [_NotificationChannelSettingsRow()],
+              PlainListGroup(
+                children: [
+                  PlainListRow(
+                    title: '关键词订阅规则',
+                    subtitle: '按关键词匹配活动名，命中后发提醒',
+                    onTap: onManageRules,
+                  ),
+                  const _NotificationChannelSettingsRow(),
+                ],
               ),
               const SizedBox(height: AppSpacing.xs),
               Text(

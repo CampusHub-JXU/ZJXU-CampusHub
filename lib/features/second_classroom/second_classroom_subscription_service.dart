@@ -3,10 +3,15 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/academic/schedule_model.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/notification/app_notification_service.dart';
+import '../../core/semester/semester_calendar.dart';
 import '../../core/util/json_coerce.dart';
+import 'second_classroom_enroll_gateway.dart';
+import 'second_classroom_matcher.dart';
 import 'second_classroom_model.dart';
+import 'second_classroom_schedule_conflict.dart';
 import 'second_classroom_service.dart';
 
 typedef SecondClassroomRecruitingNotifier = Future<void> Function({
@@ -18,8 +23,23 @@ typedef SecondClassroomRecruitingNotifier = Future<void> Function({
 
 const _subscriptionsKey = 'second_classroom_subscriptions_v2';
 const _legacySubscriptionsKey = 'second_classroom_subscriptions_v1';
+const _rulesKey = 'second_classroom_rule_subscriptions_v1';
+const _ruleMatchesKey = 'second_classroom_rule_matches_v1';
 const _recruitingNotificationBaseId = 500000;
 const _automaticCheckMinInterval = Duration(minutes: 5);
+
+class SecondClassroomRuleSubscription {
+  const SecondClassroomRuleSubscription({
+    required this.keywords,
+    required this.createdAt,
+  });
+  final List<String> keywords;
+  final DateTime createdAt;
+  Map<String, dynamic> toJson() => {
+    'keywords': keywords,
+    'createdAt': createdAt.toIso8601String(),
+  };
+}
 
 class SecondClassroomMonitorResult {
   const SecondClassroomMonitorResult({
@@ -32,6 +52,10 @@ class SecondClassroomMonitorResult {
   final int checkedActivityCount;
   final int notificationCount;
 }
+
+/// 课表课程来源：由 app 组合层（main / 后台 dispatcher）绑定
+/// ScheduleService 快照，feature 之间不横向依赖；未绑定视为无课表数据。
+typedef SecondClassroomCourseLoader = Future<List<CourseEntry>> Function();
 
 class SecondClassroomSubscriptionService {
   SecondClassroomSubscriptionService({
@@ -46,12 +70,109 @@ class SecondClassroomSubscriptionService {
   static final SecondClassroomSubscriptionService instance =
       SecondClassroomSubscriptionService();
 
+  /// 课表冲突检查的数据来源；默认空实现（无课程），组合层必须绑定真实
+  /// ScheduleService 快照读取。WorkManager isolate 需要在各自入口绑定。
+  static SecondClassroomCourseLoader courseLoader = () async => const [];
+
   final SecondClassroomRecruitingNotifier _notifyRecruitingActivity;
   final SecondClassroomService _activityService;
   final DateTime Function() _nowProvider;
   DateTime? _lastAutomaticCheckSucceededAt;
   Future<SecondClassroomMonitorResult>? _automaticCheckInFlight;
   int _subscriptionGeneration = 0;
+
+  Future<List<SecondClassroomRuleSubscription>> loadRuleSubscriptions() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+    final raw = prefs.getString(_rulesKey);
+    if (raw == null) return [];
+    try {
+      final list = jsonDecode(raw) as List;
+      return list
+          .whereType<Map>()
+          .map(
+            (entry) => SecondClassroomRuleSubscription(
+              keywords: (entry['keywords'] as List)
+                  .whereType<String>()
+                  .toList(),
+              createdAt: entry['createdAt'] is int
+                  ? DateTime.fromMillisecondsSinceEpoch(
+                      entry['createdAt'] as int,
+                    )
+                  : DateTime.parse(entry['createdAt'] as String),
+            ),
+          )
+          .where((rule) => rule.keywords.isNotEmpty)
+          .toList();
+    } catch (_) {
+      AppLogger.instance.storage(LogLevel.warn, '第二课堂规则订阅读取失败');
+      return [];
+    }
+  }
+
+  Future<void> addRuleSubscription(String input) async {
+    final keywords = secondClassroomKeywords(input);
+    if (keywords.isEmpty) return;
+    final rules = await loadRuleSubscriptions();
+    final key = keywords.map(normalizeSecondClassroomTag).join(' ');
+    if (rules.any(
+      (rule) => rule.keywords.map(normalizeSecondClassroomTag).join(' ') == key,
+    )) {
+      return;
+    }
+    rules.add(
+      SecondClassroomRuleSubscription(
+        keywords: keywords,
+        createdAt: _nowProvider(),
+      ),
+    );
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _rulesKey,
+      jsonEncode(
+        rules
+            .map(
+              (rule) => {
+                'keywords': rule.keywords,
+                'createdAt': rule.createdAt.millisecondsSinceEpoch,
+              },
+            )
+            .toList(),
+      ),
+    );
+    _invalidateAutomaticCheck();
+  }
+
+  Future<void> removeRuleSubscription(
+    SecondClassroomRuleSubscription rule,
+  ) async {
+    final rules = await loadRuleSubscriptions();
+    rules.removeWhere(
+      (item) =>
+          item.createdAt == rule.createdAt &&
+          item.keywords.join('\u0000') == rule.keywords.join('\u0000'),
+    );
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _rulesKey,
+      jsonEncode(
+        rules
+            .map(
+              (item) => {
+                'keywords': item.keywords,
+                'createdAt': item.createdAt.millisecondsSinceEpoch,
+              },
+            )
+            .toList(),
+      ),
+    );
+    _invalidateAutomaticCheck();
+  }
+
+  Future<bool> isAutoEnrollEnabled() =>
+      SecondClassroomEnrollGateway.instance.isAutoEnrollEnabled();
+  Future<void> setAutoEnrollEnabled(bool enabled) =>
+      SecondClassroomEnrollGateway.instance.setAutoEnrollEnabled(enabled);
 
   Future<List<SecondClassroomActivity>> loadSubscriptions() async {
     final activities = (await _loadSubscriptionRecords()).values
@@ -120,9 +241,13 @@ class SecondClassroomSubscriptionService {
     if (lastSuccess != null) {
       final age = now.difference(lastSuccess);
       if (!age.isNegative && age < _automaticCheckMinInterval) {
-        return _loadSubscriptionRecords().then(
-          (records) => SecondClassroomMonitorResult(
-            subscriptionCount: records.length,
+        return Future.wait([
+          _loadSubscriptionRecords(),
+          loadRuleSubscriptions(),
+        ]).then(
+          (values) => SecondClassroomMonitorResult(
+            subscriptionCount:
+                (values[0] as Map).length + (values[1] as List).length,
             checkedActivityCount: 0,
             notificationCount: 0,
           ),
@@ -151,7 +276,8 @@ class SecondClassroomSubscriptionService {
 
   Future<SecondClassroomMonitorResult> _checkRecruitingMatches() async {
     final records = await _loadSubscriptionRecords();
-    if (records.isEmpty) {
+    final rules = await loadRuleSubscriptions();
+    if (records.isEmpty && rules.isEmpty) {
       return const SecondClassroomMonitorResult(
         subscriptionCount: 0,
         checkedActivityCount: 0,
@@ -174,7 +300,8 @@ class SecondClassroomSubscriptionService {
     List<SecondClassroomActivity> activities,
   ) async {
     final records = await _loadSubscriptionRecords();
-    if (records.isEmpty) {
+    final rules = await loadRuleSubscriptions();
+    if (records.isEmpty && rules.isEmpty) {
       return SecondClassroomMonitorResult(
         subscriptionCount: 0,
         checkedActivityCount: activities.length,
@@ -233,11 +360,93 @@ class SecondClassroomSubscriptionService {
       await _saveSubscriptionRecords(records);
     }
 
+    notificationCount += await _notifyRuleMatches(activities, rules, now);
     return SecondClassroomMonitorResult(
-      subscriptionCount: records.length,
+      subscriptionCount: records.length + rules.length,
       checkedActivityCount: activities.length,
       notificationCount: notificationCount,
     );
+  }
+
+  Future<int> _notifyRuleMatches(
+    List<SecondClassroomActivity> activities,
+    List<SecondClassroomRuleSubscription> rules,
+    DateTime now,
+  ) async {
+    if (rules.isEmpty) return 0;
+    final prefs = await SharedPreferences.getInstance();
+    final seen = (prefs.getStringList(_ruleMatchesKey) ?? []).toSet();
+    var count = 0;
+    for (final activity in activities) {
+      if (activity.id <= 0 || !activity.isRecruitingAt(now)) continue;
+      final matched = rules
+          .where(
+            (rule) =>
+                secondClassroomMatchesKeywords(activity.title, rule.keywords),
+          )
+          .toList();
+      if (matched.isEmpty) continue;
+      if (seen.contains('${activity.id}')) {
+        if (await isAutoEnrollEnabled()) {
+          await SecondClassroomEnrollGateway.instance.submit(activity);
+        }
+        continue;
+      }
+      var suffix = '';
+      try {
+        await SemesterCalendar.instance.init();
+        final courses = await SecondClassroomSubscriptionService.courseLoader();
+        final conflicts = secondClassroomScheduleConflicts(
+          activityStart: activity.activityStartAt,
+          activityEnd: activity.activityEndAt,
+          semesterStart: SemesterCalendar.instance.semesterStartDate.value,
+          courses: courses,
+        );
+        if (conflicts.isNotEmpty) suffix = '；课表冲突：${conflicts.join('、')}';
+      } catch (_) {
+        AppLogger.instance.storage(LogLevel.warn, '第二课堂课表冲突检查不可用');
+      }
+      var action = '点开查看详情';
+      if (await isAutoEnrollEnabled()) {
+        final result = await SecondClassroomEnrollGateway.instance.submit(
+          activity,
+        );
+        action = switch (result) {
+          SecondClassroomEnrollResult.done => '报名成功',
+          SecondClassroomEnrollResult.needsForm => '需手动填表报名',
+          SecondClassroomEnrollResult.needsLogin => '登录失效，请重新登录',
+          SecondClassroomEnrollResult.failed =>
+            SecondClassroomEnrollGateway.instance.lastFailureReason ??
+                '报名失败，请手动查看',
+          SecondClassroomEnrollResult.pending => '报名结果待核验',
+          SecondClassroomEnrollResult.unavailable => '报名暂不可用，请手动查看',
+        };
+        if (result == SecondClassroomEnrollResult.needsLogin) {
+          await AppNotificationService.instance.showAppNotification(
+            id: secondClassroomRecruitingNotificationId(activity.id) + 1000000,
+            title: '第二课堂登录失效',
+            body: '请重新登录后继续使用活动报名',
+            priority: AppNotificationPriority.high,
+            channel: AppNotificationChannel.auth,
+          );
+        }
+      }
+      try {
+        await _notifyRecruitingActivity(
+          id: secondClassroomRecruitingNotificationId(activity.id),
+          title: '订阅活动开始招募',
+          body:
+              '《${_compactTitle(activity.title)}》命中：${matched.expand((rule) => rule.keywords).toSet().join('、')}；$action$suffix',
+          payload: 'second-classroom?id=${activity.id}',
+        );
+        seen.add('${activity.id}');
+        await prefs.setStringList(_ruleMatchesKey, seen.toList());
+        count++;
+      } catch (_) {
+        AppLogger.instance.storage(LogLevel.warn, '第二课堂规则通知发送失败');
+      }
+    }
+    return count;
   }
 
   Future<Map<String, _SecondClassroomSubscriptionRecord>>

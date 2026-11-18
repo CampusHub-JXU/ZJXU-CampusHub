@@ -24,6 +24,7 @@ import '../../shared/widgets/skeleton_box.dart';
 import 'second_classroom_auth.dart';
 import 'second_classroom_cache_store.dart';
 import 'second_classroom_model.dart';
+import 'second_classroom_rules_page.dart';
 import 'second_classroom_service.dart';
 import 'second_classroom_subscription_service.dart';
 
@@ -301,7 +302,7 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
 
   Future<void> _openInWeChat(
     String url, {
-    String successMessage = '已请求打开微信，若未直达请复制链接后在微信中完成第二课堂授权',
+    String successMessage = '已请求打开微信，若未直达请复制关键词到微信「搜一搜」搜索「青春嘉大」完成授权',
   }) async {
     if (_openingInWeChat) return;
     _openingInWeChat = true;
@@ -312,6 +313,8 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
         context,
         url: url,
         title: '第二课堂',
+        // 第二课堂服务在「青春嘉大」公众号内；拉起失败复制关键词到微信搜索。
+        searchKeyword: '青春嘉大',
         successMessage: successMessage,
       );
     } finally {
@@ -422,7 +425,7 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
                 onOpenInWeChat: () {
                   _openInWeChat(
                     _service.activityWebUrl(detail.activity.id),
-                    successMessage: '已请求打开微信，若未直达请复制链接后在微信中查看该活动详情',
+                    successMessage: '已请求打开微信，若未直达请复制关键词到微信「搜一搜」搜索「青春嘉大」查看活动详情',
                   );
                 },
                 onToggleSubscription: () async {
@@ -491,6 +494,10 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
                   Navigator.of(sheetContext).pop();
                   unawaited(_openActivityDetail(activity));
                 },
+                onManageRules: () {
+                  Navigator.of(sheetContext).pop();
+                  _openRuleManager();
+                },
                 onRemove: (activity) async {
                   await _subscriptionService.unsubscribeActivity(activity);
                   if (mounted) {
@@ -523,6 +530,12 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
     );
   }
 
+  void _openRuleManager() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const SecondClassroomRulesPage()),
+    );
+  }
+
   void _showSnackBar(String message) {
     if (!mounted) return;
     AppFeedback.toast(context, message);
@@ -546,16 +559,32 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
         appBar: AppAppBar(
           title: const Text('第二课堂'),
           actions: [
+            // 直达只留「订阅」一个入口（含已订阅活动名与关键词规则，在弹层内
+            // 分流）；低频动作收进 ⋮（design-guidelines §4.6）。
             _SubscriptionActionButton(
               count: _subscribedKeys.length,
               onPressed: _openSubscriptionsSheet,
             ),
-            IconButton(
-              icon: const Icon(Icons.open_in_new_rounded),
-              tooltip: '在微信中打开',
-              onPressed: () {
-                _openInWeChat(_wechatPageUrl);
+            PopupMenuButton<_SecondClassroomAction>(
+              tooltip: '更多操作',
+              onSelected: (action) {
+                switch (action) {
+                  case _SecondClassroomAction.rules:
+                    _openRuleManager();
+                  case _SecondClassroomAction.wechat:
+                    _openInWeChat(_wechatPageUrl);
+                }
               },
+              itemBuilder: (context) => const [
+                PopupMenuItem(
+                  value: _SecondClassroomAction.rules,
+                  child: Text('关键词订阅规则'),
+                ),
+                PopupMenuItem(
+                  value: _SecondClassroomAction.wechat,
+                  child: Text('在微信中打开'),
+                ),
+              ],
             ),
           ],
         ),
@@ -696,13 +725,16 @@ class _SubscriptionActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final button = IconButton(
       icon: const Icon(Icons.notifications_outlined),
-      tooltip: '已订阅活动名',
+      tooltip: '订阅管理',
       onPressed: onPressed,
     );
     if (count == 0) return button;
     return Badge.count(count: count, child: button);
   }
 }
+
+/// AppBar ⋮ 菜单里的动作。
+enum _SecondClassroomAction { rules, wechat }
 
 /// 状态 chip 行里平铺的状态；「全部活动（含未开放）」收进筛选弹层。
 const _statusChipValues = [

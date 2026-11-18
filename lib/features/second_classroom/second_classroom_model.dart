@@ -403,6 +403,7 @@ class SecondClassroomActivityDetail {
     required this.isInRegistrationTime,
     this.registrationState = SecondClassroomRegistrationState.unknown,
     this.registrationStatusLabel = '',
+    this.requiresRegistrationForm,
   });
 
   final SecondClassroomActivity activity;
@@ -418,6 +419,9 @@ class SecondClassroomActivityDetail {
 
   /// 报名记录状态（如「审核通过」「待审核」）；无记录时为空。
   final String registrationStatusLabel;
+
+  /// null 表示详情未给出字段，不能安全判断是否允许自动报名。
+  final bool? requiresRegistrationForm;
 
   factory SecondClassroomActivityDetail.fromExtend(
     Map<String, dynamic> extend, {
@@ -452,6 +456,9 @@ class SecondClassroomActivityDetail {
       isFavorite: extend['sfsc'] == true,
       isInRegistrationTime: extend['inTime'] == true,
       registrationState: registrationState,
+      requiresRegistrationForm: extend['sfthdmb'] is bool
+          ? extend['sfthdmb'] as bool
+          : null,
       registrationStatusLabel: _registrationStatusLabel(
         registrationRecord,
         fallback: sfbm ? '已报名' : '',
