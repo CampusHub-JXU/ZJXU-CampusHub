@@ -4,6 +4,8 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jxu_campus_hub/core/auth/connect_mode_resolver.dart';
+import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/core/network/dio_client.dart';
 import 'package:jxu_campus_hub/features/campus_card/ecard_service.dart';
 
@@ -132,6 +134,9 @@ void main() {
               '${Directory.systemTemp.createTempSync('ecard_test_').path}/'
               '$folderName/';
       await DioClient.instance.ensureInitialized();
+      final resolver = ConnectModeResolver.instance;
+      resolver.targetDirectReachabilityChecker = (_) async => false;
+      resolver.webVpnReachabilityChecker = () async => true;
     });
 
     test('QueryAccAuth 在途取消后，不再发送 QueryAccInfoH/GetQRCode', () async {
@@ -200,10 +205,12 @@ void main() {
       ]);
     });
 
-    test('QueryAccAuth 连接失败：initialize 返回固定可读错误，不推断校园网', () async {
+    test('QueryAccAuth 连接失败且 WebVPN 未登录：提示登录', () async {
       final adapter = MockHttpClientAdapter();
       DioClient.instance.dio.interceptors.clear();
       DioClient.instance.dio.httpClientAdapter = adapter;
+      final vpnAdapter = MockHttpClientAdapter();
+      DioClient.instance.unifiedAuthDio.httpClientAdapter = vpnAdapter;
       adapter.register('POST', '/QueryAccAuth.aspx', (_) async {
         throw DioException(
           requestOptions: RequestOptions(path: '/QueryAccAuth.aspx'),
@@ -218,22 +225,68 @@ void main() {
       );
 
       expect(result.isSuccess, isFalse);
-      expect(result.error, EcardService.connectionFailureMessage);
-      expect(result.error, isNot(contains('校园网')));
+      expect(result.error, contains('WebVPN 未登录'));
       expect(adapter.requestLog, ['POST /QueryAccAuth.aspx']);
+      expect(vpnAdapter.requestLog, isEmpty);
     });
 
-    test('GetQRCode 超时：initialize 返回同一固定错误', () async {
+    test('GetQRCode 超时：网关预热后用相同签名表单经 WebVPN 取码', () async {
       final adapter = MockHttpClientAdapter();
       DioClient.instance.dio.interceptors.clear();
       DioClient.instance.dio.httpClientAdapter = adapter;
+      UnifiedAuthService.instance
+        ..debugSetSession(active: true, account: '213544')
+        ..debugSessionValidator = (_) async => true;
+
+      const proxyPrefix =
+          '/http-8012/77726476706e69737468656265737421f5f4408e237e725a661dc7a99c406d363e';
+      final vpnCookie = Cookie('wengine_vpn_ticket', 'fake-test-value')
+        ..path = '/'
+        ..secure = true;
+      Object? directForm;
+      final vpnAdapter = MockHttpClientAdapter()
+        ..register('GET', '/login', (_) async {
+          return ResponseBody.fromString(
+              '',
+              200,
+              headers: {
+                'set-cookie': [vpnCookie.toString()],
+              },
+            )
+            ..redirects = [
+              RedirectRecord(
+                302,
+                'GET',
+                Uri.parse('https://webvpn.zjxu.edu.cn/portal'),
+              ),
+            ];
+        })
+        ..register('POST', '$proxyPrefix/GetQRCode.aspx', (options) async {
+          expect(options.data, directForm);
+          expect(options.headers['Origin'], 'https://webvpn.zjxu.edu.cn');
+          expect(
+            options.headers['Referer'],
+            'https://webvpn.zjxu.edu.cn$proxyPrefix/index.html',
+          );
+          expect(
+            options.headers['cookie'],
+            '${vpnCookie.name}=${vpnCookie.value}',
+          );
+          return ResponseBody.fromString(
+            jsonEncode({'Code': 1, 'QRCode': 'abc'}),
+            200,
+          );
+        });
+      DioClient.instance.unifiedAuthDio.httpClientAdapter = vpnAdapter;
+
       adapter
         ..registerJson('POST', '/QueryAccAuth.aspx', {'Code': '1'})
         ..registerJson('POST', '/QueryAccInfoH.aspx', {
           'Code': '1',
           'AccName': '张三',
         })
-        ..register('POST', '/GetQRCode.aspx', (_) async {
+        ..register('POST', '/GetQRCode.aspx', (options) async {
+          directForm = options.data;
           throw DioException(
             requestOptions: RequestOptions(path: '/GetQRCode.aspx'),
             type: DioExceptionType.receiveTimeout,
@@ -244,8 +297,12 @@ void main() {
         '213544',
       );
 
-      expect(result.isSuccess, isFalse);
-      expect(result.error, EcardService.connectionFailureMessage);
+      expect(result.isSuccess, isTrue);
+      expect(result.qrCode, 'abc');
+      expect(vpnAdapter.requestLog, [
+        'GET /login',
+        'POST $proxyPrefix/GetQRCode.aspx',
+      ]);
     });
   });
 }

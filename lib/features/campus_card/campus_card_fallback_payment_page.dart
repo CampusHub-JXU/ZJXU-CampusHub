@@ -5,7 +5,6 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../core/auth/credential_store.dart';
 import '../../core/auth/unified_auth.dart';
-import '../../core/theme/app_design_tokens.dart';
 import '../../core/theme/app_typography.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_card.dart';
@@ -22,7 +21,8 @@ class CampusCardFallbackPaymentPage extends StatefulWidget {
 
   /// 路由观察者：由宿主页注入（feature 不得直接 import app 层）。
   /// 必填，避免默认构造静默失去 RouteAware 清码遮挡。
-  final RouteObserver<ModalRoute<dynamic>> routeObserver;
+  /// 只观察 PageRoute——弹层/对话框路由不算遮挡出码页。
+  final RouteObserver<PageRoute<dynamic>> routeObserver;
 
   @override
   State<CampusCardFallbackPaymentPage> createState() =>
@@ -426,7 +426,7 @@ class _CampusCardFallbackPaymentPageState
           ? const Center(child: CircularProgressIndicator())
           : _error != null
           ? _buildError()
-          : _buildContent(colorScheme),
+          : _buildContent(theme, colorScheme),
     );
   }
 
@@ -444,113 +444,199 @@ class _CampusCardFallbackPaymentPageState
     );
   }
 
-  Widget _buildContent(ColorScheme colorScheme) {
-    final text = context.appText;
+  Widget _buildContent(ThemeData theme, ColorScheme colorScheme) {
     return Center(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(AppSpacing.pageMargin),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (_accName != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(
-                  _accName!,
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ),
-            if (_accNum != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 24),
-                child: Text(
-                  '卡号 $_accNum',
-                  style: text.secondary.copyWith(
-                    fontFeatures: const [FontFeature.tabularFigures()],
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 400),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_accNum != null && _accNum!.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.account_circle_outlined,
+                        size: 18,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          _accName != null && _accName!.isNotEmpty
+                              ? '$_accName · 卡号 $_accNum'
+                              : '卡号 $_accNum',
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w500,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+              _buildQRCodeCard(theme, colorScheme),
+              const SizedBox(height: 20),
+              OutlinedButton.icon(
+                onPressed: _loading ? null : _refreshQRCode,
+                icon: _loading
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh, size: 18),
+                label: const Text('刷新消费码'),
               ),
-            _buildQRCodeCard(colorScheme),
-            const SizedBox(height: 16),
-            Text('请将二维码对准扫码设备', style: text.secondary),
-            if (_pollingStopped)
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: Text(
-                  '状态轮询已暂停，请手动刷新后继续使用',
-                  textAlign: TextAlign.center,
-                  style: text.secondary.copyWith(color: colorScheme.error),
-                ),
-              ),
-            const SizedBox(height: 24),
-            OutlinedButton.icon(
-              onPressed: _refreshQRCode,
-              icon: const Icon(Icons.refresh, size: 18),
-              label: const Text('刷新消费码'),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildQRCodeCard(ColorScheme colorScheme) {
+  Widget _buildQRCodeCard(ThemeData theme, ColorScheme colorScheme) {
     return AppCard(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
       child: AnimatedSwitcher(
         duration: const Duration(milliseconds: 300),
         child: _showPaymentResult
-            ? _buildPaymentResult(colorScheme)
-            : _buildQRCode(colorScheme),
+            ? _buildPaymentResult(theme, colorScheme)
+            : _buildQRCodeBody(theme, colorScheme),
       ),
     );
   }
 
-  Widget _buildQRCode(ColorScheme colorScheme) {
-    if (_qrCode == null) return const SizedBox.shrink();
-    final qrData = _qrCode!.contains(',')
-        ? _qrCode!.split(',').first
-        : _qrCode!;
+  /// 与付款码页同款的白底扫码卡：16 内边距 + 圆角 16 + 弱投影。
+  Widget _buildWhiteSurface(Widget child) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+
+  Widget _buildScanHint(ThemeData theme, ColorScheme colorScheme) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.qr_code_scanner,
+              size: 16,
+              color: colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              '请将二维码对准扫码设备',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+        if (_pollingStopped)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              '状态轮询已暂停，请手动刷新后继续使用',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colorScheme.error,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildQRCodeBody(ThemeData theme, ColorScheme colorScheme) {
+    final qrCode = _qrCode;
+    if (qrCode == null) return const SizedBox.shrink();
+    final qrData = qrCode.contains(',') ? qrCode.split(',').first : qrCode;
 
     return Column(
       key: const ValueKey('qrcode'),
       mainAxisSize: MainAxisSize.min,
       children: [
-        QrImageView(
-          data: qrData,
-          semanticsLabel: '付款二维码',
-          version: QrVersions.auto,
-          size: 260,
-          backgroundColor: Colors.white,
-          // 码点固定黑色：白底上的对比度与深色模式无关（onSurface 在深色
-          // 模式下是浅色，会让二维码几乎不可扫）。
-          eyeStyle: const QrEyeStyle(
-            eyeShape: QrEyeShape.square,
-            color: Colors.black,
-          ),
-          dataModuleStyle: const QrDataModuleStyle(
-            dataModuleShape: QrDataModuleShape.square,
-            color: Colors.black,
+        _buildWhiteSurface(
+          QrImageView(
+            key: ValueKey('fallback_qr_$qrData'),
+            data: qrData,
+            semanticsLabel: '付款二维码',
+            version: QrVersions.auto,
+            size: 240,
+            backgroundColor: Colors.white,
+            // 码点固定黑色：白底上的对比度与深色模式无关（onSurface 在深色
+            // 模式下是浅色，会让二维码几乎不可扫）。
+            eyeStyle: const QrEyeStyle(
+              eyeShape: QrEyeShape.square,
+              color: Colors.black,
+            ),
+            dataModuleStyle: const QrDataModuleStyle(
+              dataModuleShape: QrDataModuleShape.square,
+              color: Colors.black,
+            ),
           ),
         ),
+        const SizedBox(height: 16),
+        _buildScanHint(theme, colorScheme),
       ],
     );
   }
 
-  Widget _buildPaymentResult(ColorScheme colorScheme) {
-    return SizedBox(
+  /// 支付结果占住与二维码相同的白底方块位，切换时卡片不跳动。
+  Widget _buildPaymentResult(ThemeData theme, ColorScheme colorScheme) {
+    return Column(
       key: const ValueKey('payment'),
-      height: 260,
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.check_circle, size: 64, color: colorScheme.primary),
-            const SizedBox(height: 16),
-            Text(_lastPaymentInfo ?? '支付成功', style: context.appText.rowValue),
-          ],
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _buildWhiteSurface(
+          SizedBox(
+            width: 240,
+            height: 240,
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.check_circle,
+                    size: 64,
+                    color: colorScheme.primary,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    _lastPaymentInfo ?? '支付成功',
+                    style: context.appText.rowValue,
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
-      ),
+        const SizedBox(height: 16),
+        _buildScanHint(theme, colorScheme),
+      ],
     );
   }
 }

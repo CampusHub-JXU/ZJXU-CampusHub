@@ -11,9 +11,9 @@ import 'package:jxu_campus_hub/core/auth/auth_session_persistence.dart';
 import 'package:jxu_campus_hub/core/auth/credential_store.dart';
 import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/core/cache/private_cache_store.dart';
-import 'package:jxu_campus_hub/core/config/app_config.dart';
 import 'package:jxu_campus_hub/core/epay100/epay100_gateway.dart';
 import 'package:jxu_campus_hub/core/theme/app_theme_builder.dart';
+import 'package:jxu_campus_hub/core/wechat/wechat_launcher.dart';
 import 'package:jxu_campus_hub/features/campus_card/campus_card_page.dart';
 import 'package:jxu_campus_hub/features/campus_card/campus_card_service.dart';
 import 'package:jxu_campus_hub/shared/widgets/auth_required_view.dart';
@@ -65,6 +65,7 @@ void main() {
   });
 
   tearDown(() async {
+    WechatLauncher.instance.setGatewayForTesting(null);
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(shortcutChannel, null);
     AuthSessionPersistence.instance
@@ -189,17 +190,8 @@ void main() {
   });
 
   testWidgets('recharge tile opens xiaofubao page in WeChat', (tester) async {
-    const wechatChannel = MethodChannel('edu.zjxu.jxucampushub/wechat');
-    final calls = <MethodCall>[];
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(wechatChannel, (call) async {
-          calls.add(call);
-          return true;
-        });
-    addTearDown(() {
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(wechatChannel, null);
-    });
+    final gateway = _FakeWechatGateway();
+    WechatLauncher.instance.setGatewayForTesting(gateway);
     final clipboard = _mockClipboard();
 
     await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
@@ -207,62 +199,64 @@ void main() {
     await tester.tap(find.text('充值'));
     await tester.pumpAndSettle();
 
-    expect(calls, hasLength(1));
-    expect(calls.single.method, 'openUrlInWeChat');
+    expect(gateway.urls, hasLength(1));
+    expect(gateway.openAppCalls, 0);
+    expect(gateway.urls.single, contains('webapp.xiaofubao.com'));
     expect(
-      (calls.single.arguments as Map)['url'],
-      contains('webapp.xiaofubao.com'),
+      find.text('已请求打开微信，若未直达请复制关键词到微信「搜一搜」搜索「嘉兴大学校园卡」充值'),
+      findsOneWidget,
     );
-    expect(find.text('已请求打开微信，若未直达请复制链接在微信中完成充值'), findsOneWidget);
-    expect(find.widgetWithText(SnackBarAction, '复制链接'), findsOneWidget);
+    expect(find.widgetWithText(SnackBarAction, '复制关键词'), findsOneWidget);
 
-    await tester.tap(find.widgetWithText(SnackBarAction, '复制链接'));
+    await tester.tap(find.widgetWithText(SnackBarAction, '复制关键词'));
     await tester.pumpAndSettle();
 
-    expect(clipboard.single, AppConfig.xiaofubaoRechargeUri.toString());
-    expect(find.text('链接已复制'), findsOneWidget);
+    expect(clipboard.single, '嘉兴大学校园卡');
+    expect(find.text('关键词已复制'), findsOneWidget);
   });
 
   testWidgets('recharge failure auto-copies link and copy action copies url', (
     tester,
   ) async {
-    const wechatChannel = MethodChannel('edu.zjxu.jxucampushub/wechat');
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(wechatChannel, (call) async => false);
-    addTearDown(() {
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(wechatChannel, null);
-    });
+    WechatLauncher.instance.setGatewayForTesting(
+      _FakeWechatGateway(
+        openUrlResult: const WechatLaunchResult(
+          status: WechatLaunchStatus.launchFailed,
+          sanitizedUrl: '',
+        ),
+      ),
+    );
     final clipboard = _mockClipboard();
-    final url = AppConfig.xiaofubaoRechargeUri.toString();
+    const keyword = '嘉兴大学校园卡';
 
     await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
     await tester.pumpAndSettle();
     await tester.tap(find.text('充值'));
     await tester.pumpAndSettle();
 
-    expect(clipboard, [url]);
-    expect(find.text('未能拉起微信，充值链接已复制，请在微信中粘贴打开'), findsOneWidget);
+    expect(clipboard, [keyword]);
+    expect(find.text('未能拉起微信，「嘉兴大学校园卡」已复制，请在微信「搜一搜」粘贴搜索'), findsOneWidget);
     expect(find.textContaining('已安装微信'), findsNothing);
-    expect(find.widgetWithText(SnackBarAction, '复制链接'), findsOneWidget);
+    expect(find.widgetWithText(SnackBarAction, '复制关键词'), findsOneWidget);
 
-    await tester.tap(find.widgetWithText(SnackBarAction, '复制链接'));
+    await tester.tap(find.widgetWithText(SnackBarAction, '复制关键词'));
     await tester.pumpAndSettle();
 
-    expect(clipboard, [url, url]);
-    expect(find.text('链接已复制'), findsOneWidget);
+    expect(clipboard, [keyword, keyword]);
+    expect(find.text('关键词已复制'), findsOneWidget);
   });
 
   testWidgets('recharge copy survives clipboard PlatformException', (
     tester,
   ) async {
-    const wechatChannel = MethodChannel('edu.zjxu.jxucampushub/wechat');
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(wechatChannel, (call) async => false);
-    addTearDown(() {
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(wechatChannel, null);
-    });
+    WechatLauncher.instance.setGatewayForTesting(
+      _FakeWechatGateway(
+        openUrlResult: const WechatLaunchResult(
+          status: WechatLaunchStatus.launchFailed,
+          sanitizedUrl: '',
+        ),
+      ),
+    );
     _mockClipboard(throwOnSet: true);
 
     await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
@@ -270,10 +264,10 @@ void main() {
     await tester.tap(find.text('充值'));
     await tester.pumpAndSettle();
 
-    expect(find.text('无法拉起微信，请复制链接后到微信中打开'), findsOneWidget);
+    expect(find.text('无法拉起微信且关键词复制失败，请在微信「搜一搜」手动搜索「嘉兴大学校园卡」'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
-    await tester.tap(find.widgetWithText(SnackBarAction, '复制链接'));
+    await tester.tap(find.widgetWithText(SnackBarAction, '复制关键词'));
     await tester.pumpAndSettle();
 
     expect(find.text('复制失败'), findsOneWidget);
@@ -283,16 +277,14 @@ void main() {
   testWidgets('recharge not_installed status tells user wechat is missing', (
     tester,
   ) async {
-    const wechatChannel = MethodChannel('edu.zjxu.jxucampushub/wechat');
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(
-          wechatChannel,
-          (call) async => {'status': 'not_installed'},
-        );
-    addTearDown(() {
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(wechatChannel, null);
-    });
+    WechatLauncher.instance.setGatewayForTesting(
+      _FakeWechatGateway(
+        openUrlResult: const WechatLaunchResult(
+          status: WechatLaunchStatus.notInstalled,
+          sanitizedUrl: '',
+        ),
+      ),
+    );
     final clipboard = _mockClipboard();
 
     await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
@@ -300,67 +292,61 @@ void main() {
     await tester.tap(find.text('充值'));
     await tester.pumpAndSettle();
 
-    expect(clipboard, [AppConfig.xiaofubaoRechargeUri.toString()]);
-    expect(find.text('未检测到微信，链接已复制，请在微信中粘贴打开'), findsOneWidget);
+    expect(clipboard, ['嘉兴大学校园卡']);
+    expect(find.text('未检测到微信，「嘉兴大学校园卡」已复制，可在微信「搜一搜」粘贴搜索'), findsOneWidget);
     expect(find.textContaining('已请求打开微信'), findsNothing);
-    expect(find.widgetWithText(SnackBarAction, '复制链接'), findsOneWidget);
+    expect(find.widgetWithText(SnackBarAction, '复制关键词'), findsOneWidget);
   });
 
   testWidgets('recharge no_handler copies link then launches WeChat app', (
     tester,
   ) async {
-    const wechatChannel = MethodChannel('edu.zjxu.jxucampushub/wechat');
-    final calls = <MethodCall>[];
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(wechatChannel, (call) async {
-          calls.add(call);
-          return switch (call.method) {
-            'openUrlInWeChat' => {'status': 'no_handler'},
-            'openWeChatApp' => {'status': 'launched'},
-            _ => throw UnimplementedError(call.method),
-          };
-        });
-    addTearDown(() {
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(wechatChannel, null);
-    });
+    final gateway = _FakeWechatGateway(
+      openUrlResult: const WechatLaunchResult(
+        status: WechatLaunchStatus.noHandler,
+        sanitizedUrl: '',
+      ),
+      openAppResult: const WechatLaunchResult(
+        status: WechatLaunchStatus.launched,
+        sanitizedUrl: '',
+      ),
+    );
+    WechatLauncher.instance.setGatewayForTesting(gateway);
     final clipboard = _mockClipboard();
-    final url = AppConfig.xiaofubaoRechargeUri.toString();
 
     await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
     await tester.pumpAndSettle();
     await tester.tap(find.text('充值'));
     await tester.pumpAndSettle();
 
-    // 先直达请求、失败复制后再拉起微信 App 本体。
-    expect(calls.map((call) => call.method), [
-      'openUrlInWeChat',
-      'openWeChatApp',
-    ]);
-    expect(clipboard, [url]);
-    expect(find.text('微信不支持外部直达该网页，已复制链接并打开微信，请在微信内粘贴打开'), findsOneWidget);
+    // 先直达请求、失败复制关键词后再拉起微信 App 本体。
+    expect(gateway.urls, hasLength(1));
+    expect(gateway.openAppCalls, 1);
+    expect(clipboard, ['嘉兴大学校园卡']);
+    expect(
+      find.text('微信不支持外部直达，已复制「嘉兴大学校园卡」并打开微信，请在微信「搜一搜」粘贴搜索'),
+      findsOneWidget,
+    );
     expect(find.textContaining('已请求打开微信'), findsNothing);
-    expect(find.widgetWithText(SnackBarAction, '复制链接'), findsOneWidget);
+    expect(find.widgetWithText(SnackBarAction, '复制关键词'), findsOneWidget);
   });
 
   testWidgets(
     'recharge no_handler falls back to failure message when app launch fails',
     (tester) async {
-      const wechatChannel = MethodChannel('edu.zjxu.jxucampushub/wechat');
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(wechatChannel, (call) async {
-            return switch (call.method) {
-              'openUrlInWeChat' => {'status': 'no_handler'},
-              'openWeChatApp' => {'status': 'launch_failed'},
-              _ => throw UnimplementedError(call.method),
-            };
-          });
-      addTearDown(() {
-        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-            .setMockMethodCallHandler(wechatChannel, null);
-      });
+      WechatLauncher.instance.setGatewayForTesting(
+        _FakeWechatGateway(
+          openUrlResult: const WechatLaunchResult(
+            status: WechatLaunchStatus.noHandler,
+            sanitizedUrl: '',
+          ),
+          openAppResult: const WechatLaunchResult(
+            status: WechatLaunchStatus.launchFailed,
+            sanitizedUrl: '',
+          ),
+        ),
+      );
       final clipboard = _mockClipboard();
-      final url = AppConfig.xiaofubaoRechargeUri.toString();
 
       await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
       await tester.pumpAndSettle();
@@ -368,9 +354,9 @@ void main() {
       await tester.pumpAndSettle();
 
       // 微信 App 也拉不起来时复用调用方 failureMessage。
-      expect(clipboard, [url]);
-      expect(find.text('未能拉起微信，充值链接已复制，请在微信中粘贴打开'), findsOneWidget);
-      expect(find.widgetWithText(SnackBarAction, '复制链接'), findsOneWidget);
+      expect(clipboard, ['嘉兴大学校园卡']);
+      expect(find.text('未能拉起微信，「嘉兴大学校园卡」已复制，请在微信「搜一搜」粘贴搜索'), findsOneWidget);
+      expect(find.widgetWithText(SnackBarAction, '复制关键词'), findsOneWidget);
     },
   );
 
@@ -1519,6 +1505,38 @@ List<String> _mockClipboard({bool throwOnSet = false}) {
         .setMockMethodCallHandler(SystemChannels.platform, null);
   });
   return texts;
+}
+
+/// 记录式 WechatGateway 替身：openUrl / openApp 结果可配置。
+class _FakeWechatGateway implements WechatGateway {
+  _FakeWechatGateway({
+    this.openUrlResult = const WechatLaunchResult(
+      status: WechatLaunchStatus.launched,
+      sanitizedUrl: '',
+    ),
+    this.openAppResult = const WechatLaunchResult(
+      status: WechatLaunchStatus.launched,
+      sanitizedUrl: '',
+    ),
+  });
+
+  WechatLaunchResult openUrlResult;
+  WechatLaunchResult openAppResult;
+
+  final urls = <String>[];
+  int openAppCalls = 0;
+
+  @override
+  Future<WechatLaunchResult> openUrl(String sanitizedUrl) async {
+    urls.add(sanitizedUrl);
+    return openUrlResult;
+  }
+
+  @override
+  Future<WechatLaunchResult> openApp() async {
+    openAppCalls++;
+    return openAppResult;
+  }
 }
 
 /// UI 走真实入口：打开 ⋮「更多操作」再点「刷新余额」。

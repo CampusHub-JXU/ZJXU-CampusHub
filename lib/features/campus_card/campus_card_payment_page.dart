@@ -338,6 +338,7 @@ class _CampusCardPaymentPageState extends State<CampusCardPaymentPage>
   }
 
   void _openLegacyFallbackPage() {
+    // 打开备用码前清码（与官方网页同一约定）
     _cancelTimerAndClearCode();
     Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -365,13 +366,12 @@ class _CampusCardPaymentPageState extends State<CampusCardPaymentPage>
       appBar: AppAppBar(
         title: const Text('付款码'),
         actions: [
-          TextButton(
-            onPressed: _openOfficialWebPage,
-            child: const Text('官方网页'),
-          ),
           PopupMenuButton<String>(
-            tooltip: '更多选项',
-            onSelected: (v) => v == 'legacy' ? _openLegacyFallbackPage() : null,
+            tooltip: '更多操作',
+            icon: const Icon(Icons.more_vert),
+            onSelected: (value) {
+              if (value == 'legacy') _openLegacyFallbackPage();
+            },
             itemBuilder: (context) => const [
               PopupMenuItem(value: 'legacy', child: Text('旧版备用码')),
             ],
@@ -505,17 +505,6 @@ class _CampusCardPaymentPageState extends State<CampusCardPaymentPage>
                       : const Icon(Icons.refresh, size: 18),
                   label: const Text('已完成，重新获取'),
                 ),
-                const SizedBox(height: 12),
-                Center(
-                  child: TextButton(
-                    onPressed: _openLegacyFallbackPage,
-                    style: TextButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                      foregroundColor: colorScheme.outline,
-                    ),
-                    child: const Text('遇到兼容问题？使用旧版备用码'),
-                  ),
-                ),
               ],
             ),
           ),
@@ -623,69 +612,17 @@ class _CampusCardPaymentPageState extends State<CampusCardPaymentPage>
                   ],
                 ),
               ),
-              const SizedBox(height: 16),
-              AppCard(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      Icons.shield_outlined,
-                      size: 20,
-                      color: colorScheme.primary,
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        '需要支付密码确认时，请使用官方付款页。此页面不显示支付结果。',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
-                          height: 1.4,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
               const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _loading ? null : _fetchCode,
-                      icon: _loading
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.refresh, size: 18),
-                      label: const Text('手动刷新'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: FilledButton.tonalIcon(
-                      onPressed: _openOfficialWebPage,
-                      icon: const Icon(Icons.open_in_browser, size: 18),
-                      label: const Text('官方付款页'),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Center(
-                child: TextButton(
-                  onPressed: _openLegacyFallbackPage,
-                  style: TextButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    foregroundColor: colorScheme.outline,
-                  ),
-                  child: const Text('遇到兼容问题？使用旧版备用码'),
-                ),
+              OutlinedButton.icon(
+                onPressed: _loading ? null : _fetchCode,
+                icon: _loading
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh, size: 18),
+                label: const Text('手动刷新'),
               ),
               const SizedBox(height: 4),
               Center(

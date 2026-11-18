@@ -16,7 +16,6 @@ import 'package:jxu_campus_hub/features/campus_card/campus_card_payment_page.dar
 import 'package:jxu_campus_hub/features/campus_card/epay_payment_code_service.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_error_view.dart';
 import 'package:jxu_campus_hub/shared/widgets/auth_required_view.dart';
-import 'package:jxu_campus_hub/shared/widgets/unified_auth_protected_webview_page.dart';
 
 import '../../helpers/mock_http_client_adapter.dart';
 import '../../helpers/test_setup.dart';
@@ -147,8 +146,8 @@ void main() {
       // 扫码设备提示
       expect(find.text('请将二维码对准扫码设备'), findsOneWidget);
 
-      // 安全提示文案必须存在
-      expect(find.text('需要支付密码确认时，请使用官方付款页。此页面不显示支付结果。'), findsOneWidget);
+      // 防御性安全提示已归档到仓库根目录《免责声明.txt》，页面不再展示
+      expect(find.text('需要支付密码确认时，请使用官方付款页。此页面不显示支付结果。'), findsNothing);
 
       // 不能宣称支付成功
       expect(find.text('支付成功'), findsNothing);
@@ -507,44 +506,37 @@ void main() {
       expect(find.text('登录一卡通'), findsOneWidget);
     });
 
-    testWidgets('10. official entry vs old entry isolation: 官方与旧入口隔离', (
-      tester,
-    ) async {
+    testWidgets('10. 内容页不提供旧版备用码正文入口与官方付款页入口', (tester) async {
       final service = _FakePaymentCodeService();
 
       await tester.pumpWidget(buildSubject(service: service));
       await tester.pumpAndSettle();
 
-      // 点击官方付款页（底部按钮，先滚动到可见）
-      await tester.ensureVisible(find.text('官方付款页'));
-      await tester.pump();
-      await tester.tap(find.text('官方付款页'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
+      // 二维码与手动刷新保留
+      expect(find.byType(QrImageView), findsOneWidget);
+      expect(find.text('手动刷新'), findsOneWidget);
+      expect(find.text('忘记一卡通密码？'), findsOneWidget);
 
-      // 验证直达官方 epay URL，并开启 warmUpAsResource
-      expect(find.byType(UnifiedAuthProtectedWebViewPage), findsOneWidget);
-      final webView = tester.widget<UnifiedAuthProtectedWebViewPage>(
-        find.byType(UnifiedAuthProtectedWebViewPage),
-      );
-      expect(webView.url, EpayPaymentCodeService.officialUrl);
-      expect(webView.warmUpAsResource, isTrue);
-      expect(webView.emulateDingTalkEnvironment, isFalse);
+      // 已移除的入口（旧版备用码仅保留在 ⋯ 菜单，见用例 10b）
+      expect(find.text('官方付款页'), findsNothing);
+      expect(find.text('官方网页'), findsNothing);
+      expect(find.text('遇到兼容问题？使用旧版备用码'), findsNothing);
+      expect(find.byIcon(Icons.open_in_browser), findsNothing);
+    });
 
-      // 返回
-      final nav = tester.state<NavigatorState>(find.byType(Navigator));
-      nav.pop();
+    testWidgets('10b. ⋯ 菜单：点更多操作后出现「旧版备用码」入口', (tester) async {
+      final service = _FakePaymentCodeService();
+
+      await tester.pumpWidget(buildSubject(service: service));
       await tester.pumpAndSettle();
 
-      // 点击旧版备用码
-      await tester.ensureVisible(find.text('遇到兼容问题？使用旧版备用码'));
-      await tester.pump();
-      await tester.tap(find.text('遇到兼容问题？使用旧版备用码'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
+      // 菜单默认收起
+      expect(find.text('旧版备用码'), findsNothing);
 
-      // 验证打开的是旧版备用码页面
-      expect(find.byType(CampusCardFallbackPaymentPage), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+
+      expect(find.text('旧版备用码'), findsOneWidget);
     });
 
     testWidgets('11. large text scaling & dark theme: 大字与深色主题适配良好', (

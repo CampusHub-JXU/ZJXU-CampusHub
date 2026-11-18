@@ -14,6 +14,8 @@ import '../../core/epay100/epay100_gateway.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/network/dio_client.dart';
 import '../../core/system_surface/campus_data_change_bus.dart';
+import 'campus_card_bill_gateway.dart';
+import 'campus_card_consumption.dart';
 
 /// 余额查询失败类型。
 ///
@@ -29,9 +31,85 @@ enum BalanceFailureKind {
   network,
 }
 
+/// `app.portal.getBillList` 单条交易的标准化视图（**渠道充值流水**）。
+///
+/// 实证字段（2026-11-19，「余额充值 -120」一条）：`pay_time`
+/// （`yyyy-MM-dd HH:mm:ss`）、`real_fee_pay`/`fee_pay`（**实付带符号**，
+/// 负=从渠道扣的钱）、`pre_title`/`remark`（名目）、`type_name`（服务端
+/// 记账分类：消费/充值…）、`pay_name`（渠道显示名）、`pay_type`（渠道码）、
+/// `pay_week`（星期）、`fee_total`/`fee_attach`/`fee_subsidy`/`fee_refund`。
+/// 注意「余额充值」业务是钱**进**卡，`real_fee_pay=-120` 是银行卡实付。
+///
+/// 这不是卡内消费：真实消费见 [CampusCardConsumptionEntry]（FineReport 账单）。
+/// 本类与 [CampusCardService.fetchBillList] 保留待清理——v0.12.3 起页面
+/// 「最近账单」内嵌区块已挂起（它展示的本就是这条充值流水，语义不对），
+/// 恢复时整体改用 [CampusCardService.fetchConsumption]。
+class CampusCardBillEntry {
+  const CampusCardBillEntry({
+    required this.payTime,
+    required this.title,
+    required this.amount,
+    this.payType = '',
+    this.payName = '',
+    this.typeName = '',
+    this.type = 0,
+  });
+
+  factory CampusCardBillEntry.fromJson(Map<String, dynamic> json) {
+    final title = (json['pre_title'] ?? json['remark'] ?? '').toString().trim();
+    return CampusCardBillEntry(
+      payTime: _parseTime(json['pay_time']),
+      title: title.isEmpty ? '交易' : title,
+      amount: _toDouble(json['real_fee_pay'] ?? json['fee_pay']),
+      payType: (json['pay_type'] ?? '').toString(),
+      payName: (json['pay_name'] ?? '').toString(),
+      typeName: (json['type_name'] ?? '').toString(),
+      type: _toInt(json['type']),
+    );
+  }
+
+  /// 交易时间；解析失败回退 epoch，由展示层决定显隐。
+  final DateTime payTime;
+  final String title;
+
+  /// 实付带符号金额（负=渠道扣款；「充值」对卡是进账、对账单是支出）。
+  final double amount;
+
+  /// 渠道码（如 `pay_bank_ccb`、`pay_yktpay`），空=未知。
+  final String payType;
+
+  /// 渠道显示名（如「建行支付」），空=未知。
+  final String payName;
+
+  /// 服务端记账分类（消费/充值…），空=未知。比 `type` 码更可靠。
+  final String typeName;
+
+  /// 业务类型码，原样保留供扩展。
+  final int type;
+
+  /// 是否为充值类条目（名目含「充值」或服务端分类=充值）。
+  bool get isRecharge => typeName.contains('充值') || title.contains('充值');
+
+  static DateTime _parseTime(Object? v) {
+    final s = (v ?? '').toString().trim();
+    if (s.isEmpty) return DateTime.fromMillisecondsSinceEpoch(0);
+    return DateTime.tryParse(s.replaceFirst(' ', 'T')) ??
+        DateTime.fromMillisecondsSinceEpoch(0);
+  }
+
+  static double _toDouble(Object? v) {
+    if (v is num) return v.toDouble();
+    return double.tryParse((v ?? '0').toString()) ?? 0;
+  }
+
+  static int _toInt(Object? v) {
+    if (v is num) return v.toInt();
+    return int.tryParse((v ?? '0').toString()) ?? 0;
+  }
+}
+
 class CampusCardService {
-  CampusCardService._() {
-    UnifiedAuthService.instance.addListener(_onUnifiedAuthChanged);
+  CampusCardService._() {    UnifiedAuthService.instance.addListener(_onUnifiedAuthChanged);
   }
 
   static final CampusCardService instance = CampusCardService._();
@@ -57,11 +135,40 @@ class CampusCardService {
   /// 无 data 参数，响应 `data.balance`。
   static const _balanceMethod = 'app.yktservice.getBalance';
 
+  /// 账单快照（四格统计 + 近期消费 + 三餐 / 单日统计）的缓存有效期。
+  /// 与余额同档、只放内存，不做磁盘持久化（消费流水属于敏感账目）。
+  static const consumptionRefreshWindow = Duration(minutes: 5);
+
+  /// 校园卡主页「最近消费」内嵌预览条数上限；完整账单在原生账单页 / H5。
+  static const consumptionPreviewLimit = 4;
+
+  /// 旧「最近账单」（充值流水）预览窗口：服务端要求起止间隔 ≤31 天。
+  /// 仅遗留内嵌区块使用，真实消费不走这里。
+  static const billPreviewDays = 30;
+
+  /// 旧内嵌预览条数上限。
+  static const billPreviewLimit = 4;
+
+  /// 旧预览内存缓存有效期（不落盘）。
+  static const billRefreshWindow = Duration(minutes: 5);
+
   double? _cachedBalance;
   DateTime? _lastUpdated;
   String? _cachedOwner;
   int? _cachedEpoch;
   BalanceFailureKind _lastBalanceFailure = BalanceFailureKind.none;
+
+  /// 账单快照进程内缓存（不落盘）：owner 归属校验 + 采纳侧 epoch 守卫。
+  CampusCardConsumptionSummary? _cachedConsumption;
+  String? _cachedConsumptionOwner;
+  DateTime? _consumptionUpdatedAt;
+  int _latestConsumptionFetch = 0;
+
+  /// 旧「充值流水」预览进程内缓存（遗留内嵌区块专用，见 [CampusCardBillEntry]）。
+  List<CampusCardBillEntry>? _cachedBillEntries;
+  String? _cachedBillOwner;
+  DateTime? _billUpdatedAt;
+  int _latestBillFetch = 0;
 
   /// 当前有效的持久身份纪元（最近一次读到 durable session 的 epoch）。
   int? _validEpoch;
@@ -89,6 +196,19 @@ class CampusCardService {
 
   @visibleForTesting
   Future<double?> Function()? debugBalanceFetcher;
+
+  /// 测试注入：替代 [CampusCardService.fetchConsumption] 的真实网关抓取；返回
+  /// 非 null 的快照会走归属守卫写入内存缓存（抛异常 → 抓取失败返回 null）。
+  @visibleForTesting
+  Future<CampusCardConsumptionSummary?> Function()? debugConsumptionFetcher;
+
+  /// 测试注入：替代 [CampusCardBillGateway.fetch] 的原始响应抓取。
+  @visibleForTesting
+  Future<CampusCardBillRawPayload> Function()? debugBillRawFetcher;
+
+  /// 测试注入：替代旧「充值流水」预览抓取（遗留内嵌区块）。
+  @visibleForTesting
+  Future<List<CampusCardBillEntry>> Function()? debugBillFetcher;
 
   @visibleForTesting
   Epay100Gateway? debugGateway;
@@ -121,6 +241,14 @@ class CampusCardService {
     _lastUpdated = null;
     _cachedOwner = null;
     _cachedEpoch = null;
+    _cachedConsumption = null;
+    _cachedConsumptionOwner = null;
+    _consumptionUpdatedAt = null;
+    _latestConsumptionFetch++;
+    _cachedBillEntries = null;
+    _cachedBillOwner = null;
+    _billUpdatedAt = null;
+    _latestBillFetch++;
   }
 
   /// 记录当前 durable epoch；识别到纪元更换（跨 isolate 登出/重登、同账号
@@ -654,6 +782,185 @@ class CampusCardService {
   @visibleForTesting
   void debugHandleUnifiedAuthChanged() => _onUnifiedAuthChanged();
 
+  /// 当前可见的账单快照缓存：归属校验只看 owner（为 null 或与当前 CAS
+  /// 账号不一致即不可见，fail closed）。纯内存缓存不写盘，身份变化时
+  /// [_onUnifiedAuthChanged] 已整体清掉并作废在途请求，无需 durable
+  /// epoch 参与可见性；跨 isolate 纪元漂移风险由 [fetchConsumption] 采
+  /// 纳侧的 epoch 守卫覆盖。
+  CampusCardConsumptionSummary? get cachedConsumption {
+    final summary = _cachedConsumption;
+    if (summary == null) return null;
+    final owner = _cachedConsumptionOwner;
+    if (owner == null || owner != _currentAccount) return null;
+    return summary;
+  }
+
+  /// 缓存是否已过 [consumptionRefreshWindow]；无缓存视为过期。
+  bool get consumptionCacheIsStale {
+    if (_cachedConsumption == null) return true;
+    final updatedAt = _consumptionUpdatedAt;
+    if (updatedAt == null) return true;
+    return DateTime.now().difference(updatedAt) >= consumptionRefreshWindow;
+  }
+
+  /// 校园卡主页内嵌预览用的最近几条真实消费；没有快照时返回 null。
+  List<CampusCardConsumptionEntry>? get cachedConsumptionPreview {
+    final summary = cachedConsumption;
+    if (summary == null) return null;
+    return summary.recent
+        .take(consumptionPreviewLimit)
+        .toList(growable: false);
+  }
+
+  /// 抓一次账单快照（四格统计 + 近期消费 + 三餐 / 单日统计）。
+  ///
+  /// 无明确 CAS owner / 持久身份时不发起查询、返回 null（页面按认证状态渲染）；
+  /// 网关 / 网络 / 会话失败同样返回 null，由页面给出「重试 + H5 兜底」——
+  /// 失败不清已有缓存，也不升格为登录问题。
+  ///
+  /// [forceRefresh] 为 false 时命中未过期缓存直接返回，不触网。请求完成后校验
+  /// 捕获的 owner / revision / durable epoch / fetch 序号仍是当前身份上下文才
+  /// 采纳；登出 / 换号 / 新一次请求已发出时旧结果一律丢弃（页面再读缓存看到
+  /// 空态，而不是旧账号流水）。
+  Future<CampusCardConsumptionSummary?> fetchConsumption({
+    bool forceRefresh = false,
+  }) async {
+    final owner = _currentAccount;
+    if (owner == null) return null;
+    if (!forceRefresh) {
+      final cached = cachedConsumption;
+      if (cached != null && !consumptionCacheIsStale) return cached;
+    }
+
+    final revisionAtRead = _authRevision;
+    final durable = await _readDurableSession(owner);
+    if (durable == null) return null;
+    _observeDurableEpoch(durable.epoch);
+    final fetchId = ++_latestConsumptionFetch;
+
+    try {
+      final summary = await (debugConsumptionFetcher ??
+          fetchConsumptionRemote)();
+      if (summary == null) return null;
+      if (_latestConsumptionFetch != fetchId) return null;
+      if (_currentAccount != owner) return null;
+      if (_authRevision != revisionAtRead) return null;
+      if (_validEpoch != durable.epoch) return null;
+      _cachedConsumption = summary;
+      _cachedConsumptionOwner = owner;
+      _consumptionUpdatedAt = DateTime.now();
+      return summary;
+    } catch (error, stackTrace) {
+      AppLogger.instance.network(
+        LogLevel.warn,
+        '校园卡账单获取失败',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return null;
+    }
+  }
+
+  /// 网关抓取 + 解析：`CampusCardBillGateway` 负责页面上下文取数，
+  /// [CampusCardConsumptionSummary.parse] 做纯函数解析。
+  Future<CampusCardConsumptionSummary> fetchConsumptionRemote() async {
+    final raw = await (debugBillRawFetcher ??
+        CampusCardBillGateway.instance.fetch)();
+    return CampusCardConsumptionSummary.parse(raw);
+  }
+
+  /// 丢弃账单页网关会话（登录态变化 / 手动重试连不上时调用）。
+  Future<void> invalidateBillGateway() =>
+      CampusCardBillGateway.instance.invalidate();
+
+  // ── 遗留：渠道充值流水（`app.portal.getBillList`）───────────────────────
+  // 不是真实消费，勿用作账单数据源。保留仅为尚未切换的内嵌区块编译。
+
+  /// 当前可见的旧预览缓存：归属校验只看 owner（fail closed）。
+  List<CampusCardBillEntry>? get cachedBillEntries {
+    final entries = _cachedBillEntries;
+    if (entries == null) return null;
+    final owner = _cachedBillOwner;
+    if (owner == null || owner != _currentAccount) return null;
+    return entries;
+  }
+
+  /// 旧预览缓存是否已过期；无缓存视为过期。
+  bool get billCacheIsStale {
+    if (_cachedBillEntries == null) return true;
+    final updatedAt = _billUpdatedAt;
+    if (updatedAt == null) return true;
+    return DateTime.now().difference(updatedAt) >= billRefreshWindow;
+  }
+
+  /// 旧「最近账单」预览：取最近 [billPreviewDays] 天充值流水，截
+  /// [billPreviewLimit] 条。身份 / 网关失败一律返回 null。
+  Future<List<CampusCardBillEntry>?> fetchBillPreview({
+    bool forceRefresh = false,
+  }) async {
+    final owner = _currentAccount;
+    if (owner == null) return null;
+    if (!forceRefresh) {
+      final cached = cachedBillEntries;
+      if (cached != null && !billCacheIsStale) return cached;
+    }
+
+    final revisionAtRead = _authRevision;
+    final durable = await _readDurableSession(owner);
+    if (durable == null) return null;
+    _observeDurableEpoch(durable.epoch);
+    final fetchId = ++_latestBillFetch;
+
+    try {
+      final now = DateTime.now();
+      final entries =
+          await (debugBillFetcher ??
+              () => fetchBillList(
+                start: now.subtract(const Duration(days: billPreviewDays)),
+                end: now,
+              ))();
+      if (_latestBillFetch != fetchId) return null;
+      if (_currentAccount != owner) return null;
+      if (_authRevision != revisionAtRead) return null;
+      if (_validEpoch != durable.epoch) return null;
+      final preview = entries.take(billPreviewLimit).toList(growable: false);
+      _cachedBillEntries = preview;
+      _cachedBillOwner = owner;
+      _billUpdatedAt = DateTime.now();
+      return preview;
+    } catch (error, stackTrace) {
+      AppLogger.instance.network(
+        LogLevel.warn,
+        '校园卡账单预览获取失败',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return null;
+    }
+  }
+
+  /// 旧充值流水：经共享 [Epay100Gateway] 发 `app.portal.getBillList`
+  /// （入参 `startDate`/`endDate`，`yyyyMMdd`，间隔 ≤31 天）。
+  Future<List<CampusCardBillEntry>> fetchBillList({
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    final body = await _gateway.call('app.portal.getBillList', {
+      'startDate': _fmtBillDate(start),
+      'endDate': _fmtBillDate(end),
+    });
+    final data = _decodeEpayData(body);
+    final list = data['data'];
+    if (list is! List) return const [];
+    return [
+      for (final item in list)
+        if (item is Map<String, dynamic>) CampusCardBillEntry.fromJson(item),
+    ];
+  }
+
+  static String _fmtBillDate(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}${d.month.toString().padLeft(2, '0')}${d.day.toString().padLeft(2, '0')}';
+
   @visibleForTesting
   void debugReset() {
     _clearMemoryCache();
@@ -665,6 +972,9 @@ class CampusCardService {
     debugRestoreBarrier = null;
     debugDurableReadBarrier = null;
     debugBalanceFetcher = null;
+    debugConsumptionFetcher = null;
+    debugBillRawFetcher = null;
+    debugBillFetcher = null;
     debugGateway = null;
   }
 }

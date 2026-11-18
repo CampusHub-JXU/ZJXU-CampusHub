@@ -66,6 +66,13 @@ class _CampusCardPageState extends State<CampusCardPage> {
   /// 认证通知会作废在途请求，过早发出的拉取既白费触网又让余额悬空。
   int _loginModalDepth = 0;
 
+  // ── Bill preview state ──────────────────────────────────────────────────
+  // 「最近账单」内嵌区块已从页面挂起（v0.12.3）：既有实现展示的是 epay100
+  // 渠道充值流水（getBillList），并非卡内消费；真实消费端点已确认为
+  // mobilehall FineReport ykt.frm（service 层 fetchConsumption 已就绪，
+  // 见 docs/dorm-electricity-epay100-api.md 账单端点一节）。原生账单页
+  // 恢复时重建本区块与下方状态机。
+
   @override
   void initState() {
     super.initState();
@@ -280,7 +287,10 @@ class _CampusCardPageState extends State<CampusCardPage> {
     final balance = service.cachedBalance;
     final lastUpdated = service.lastUpdated;
     return RefreshIndicator(
-      onRefresh: () => _refreshBalance(showFeedback: false),
+      onRefresh: () {
+        // 下拉一次即余额刷新（账单内嵌区块已挂起，见类内注释）。
+        return _refreshBalance(showFeedback: false);
+      },
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(
@@ -619,8 +629,11 @@ class _CampusCardPageState extends State<CampusCardPage> {
       context,
       url: AppConfig.xiaofubaoRechargeUri.toString(),
       title: '一卡通充值',
-      successMessage: '已请求打开微信，若未直达请复制链接在微信中完成充值',
-      failureMessage: '未能拉起微信，充值链接已复制，请在微信中粘贴打开',
+      // 校付宝充值服务在「嘉兴大学校园卡」服务号内；拉起失败复制关键词，
+      // 让用户到微信「搜一搜」直达服务号（粘链接打不开）。
+      searchKeyword: '嘉兴大学校园卡',
+      successMessage: '已请求打开微信，若未直达请复制关键词到微信「搜一搜」搜索「嘉兴大学校园卡」充值',
+      failureMessage: '未能拉起微信，「嘉兴大学校园卡」已复制，请在微信「搜一搜」粘贴搜索',
       autoCopyOnFailure: true,
     );
   }
