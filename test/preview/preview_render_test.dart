@@ -28,9 +28,9 @@ import 'package:jxu_campus_hub/features/home/home_page.dart';
 import 'package:jxu_campus_hub/features/my/my_page.dart';
 import 'package:jxu_campus_hub/features/notification_center/notification_center_page.dart';
 
-import 'package:jxu_campus_hub/features/settings/appearance_page.dart';
-import 'package:jxu_campus_hub/features/settings/personalization_page.dart';
+import 'package:jxu_campus_hub/features/settings/home_personalization_page.dart';
 import 'package:jxu_campus_hub/features/settings/settings_page.dart';
+import 'package:jxu_campus_hub/features/settings/theme_material_page.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_app_bar.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_card.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_dropdown.dart';
@@ -383,27 +383,31 @@ void main() {
     );
   });
 
-  previewTest('page_appearance_light', (tester) async {
-    await renderPage(tester, 'page_appearance_light', const AppearancePage());
+  previewTest('page_theme_material_light', (tester) async {
+    await renderPage(
+      tester,
+      'page_theme_material_light',
+      const ThemeMaterialPage(),
+    );
   });
 
-  // 个性化：展开 Shader 滑条，超高视口一次呈现三个分组。
-  previewTest('page_personalization_light', (tester) async {
+  // 首页个性化：展开 Shader 滑条，超高视口一次呈现全部四个分组。
+  previewTest('page_home_personalization_light', (tester) async {
     await PersonalizationController.instance.setShaderEnabled(true);
     await renderPage(
       tester,
-      'page_personalization_light',
-      const PersonalizationPage(),
+      'page_home_personalization_light',
+      const HomePersonalizationPage(),
       logicalSize: const Size(412, 1500),
     );
   });
 
-  previewTest('page_personalization_dark', (tester) async {
+  previewTest('page_home_personalization_dark', (tester) async {
     await PersonalizationController.instance.setShaderEnabled(true);
     await renderPage(
       tester,
-      'page_personalization_dark',
-      const PersonalizationPage(),
+      'page_home_personalization_dark',
+      const HomePersonalizationPage(),
       brightness: Brightness.dark,
       logicalSize: const Size(412, 1500),
     );

@@ -3,6 +3,7 @@ import 'dart:ui' show Tristate;
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 
 import 'package:jxu_campus_hub/app/theme.dart';
 import 'package:jxu_campus_hub/core/calendar/calendar_reminder_settings.dart';
@@ -10,6 +11,7 @@ import 'package:jxu_campus_hub/core/theme/app_colors.dart';
 import 'package:jxu_campus_hub/core/update/apk_download_route.dart';
 import 'package:jxu_campus_hub/core/theme/page_transition_activity.dart';
 import 'package:jxu_campus_hub/features/settings/settings_page.dart';
+import 'package:jxu_campus_hub/features/welcome/welcome_page.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_dropdown.dart';
 import 'package:jxu_campus_hub/shared/widgets/plain_list.dart';
 
@@ -28,9 +30,10 @@ void main() {
     await pumpPage(tester, const SettingsPage());
 
     expect(find.text('外观'), findsOneWidget);
-    expect(find.text('外观与个性化'), findsOneWidget);
+    expect(find.text('主题与材质'), findsOneWidget);
+    expect(find.text('首页个性化'), findsOneWidget);
+    expect(find.text('外观与个性化'), findsNothing);
     expect(find.text('主题与色彩'), findsNothing);
-    expect(find.text('个性化'), findsNothing);
 
     await tester.scrollUntilVisible(find.text('检查更新'), 300);
     expect(find.text('检查更新'), findsOneWidget);
@@ -250,14 +253,14 @@ void main() {
 
     final tapNode = ancestorWith(
       tester,
-      find.text('外观与个性化'),
+      find.text('主题与材质'),
       (data) => data.hasAction(SemanticsAction.tap),
     );
     expect(tapNode, isNotNull, reason: '导航设置行应暴露点击动作');
 
     final buttonNode = ancestorWith(
       tester,
-      find.text('外观与个性化'),
+      find.text('主题与材质'),
       (data) => data.flagsCollection.isButton,
     );
     expect(buttonNode, isNotNull, reason: '可点击设置行应标记为按钮');
@@ -346,5 +349,46 @@ void main() {
     expect(find.text('调试日志'), findsNothing);
     expect(find.text('最低日志级别'), findsNothing);
     expect(find.text('通知测试'), findsNothing);
+  });
+
+  testWidgets('「其他」分区常驻「重放新手引导」，点按弹出欢迎向导', (tester) async {
+    // 重放走注册路由（routes.dart 组合层），测试侧需最小 GoRouter
+    // 提供 'welcome' 目标；动作落点行为不在本用例范围。
+    final router = GoRouter(
+      initialLocation: '/settings',
+      routes: [
+        GoRoute(
+          path: '/settings',
+          name: 'settings',
+          builder: (context, state) => const SettingsPage(),
+        ),
+        GoRoute(
+          path: '/welcome',
+          name: 'welcome',
+          builder: (context, state) => const WelcomePage(),
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      MaterialApp.router(
+        theme: AppTheme.darkThemeFor(AppColors.primary)
+            .copyWith(platform: TargetPlatform.android),
+        routerConfig: router,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(find.text('重放新手引导'), 300);
+    await tester.ensureVisible(find.text('重放新手引导'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('重放新手引导'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(WelcomePage), findsOneWidget);
+    expect(find.text('连接校园身份'), findsOneWidget);
+
+    await tester.tap(find.text('跳过'));
+    await tester.pumpAndSettle();
+    expect(find.byType(WelcomePage), findsNothing);
   });
 }

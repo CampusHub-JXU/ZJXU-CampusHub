@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/core/theme/glass_style_controller.dart';
 import 'package:jxu_campus_hub/core/theme/personalization_controller.dart';
-import 'package:jxu_campus_hub/features/settings/personalization_page.dart';
+import 'package:jxu_campus_hub/features/settings/home_personalization_page.dart';
 import 'package:jxu_campus_hub/core/theme/app_icon_style.dart';
 import 'package:jxu_campus_hub/core/theme/app_preferences_controller.dart';
 import 'package:jxu_campus_hub/core/storage/app_preferences_store.dart';
@@ -37,7 +37,7 @@ void main() {
               .copyWith(textScaler: TextScaler.linear(textScale)),
           child: child!,
         ),
-        home: PersonalizationPage(
+        home: HomePersonalizationPage(
           homeSceneBuilder: (context) => const Center(child: Text('真实首页场景')),
         ),
       ),
@@ -53,8 +53,25 @@ void main() {
       .first;
 
   Future<void> scrollTo(WidgetTester tester, Finder finder) async {
-    await tester.scrollUntilVisible(finder, 300, scrollable: mainScrollable());
-    await tester.ensureVisible(finder);
+    // scrollUntilVisible 的模拟拖拽会与 DraggableScrollableSheet 的
+    // hold/drag 生命周期互相打断（snap 档位间 _hold 断言）；拖拽也常只
+    // 移动 sheet 而不滚列表。改为无手势直跳：先把 sheet 拉到最大档
+    // （jumpTo 自带钳位），再直接跳 ListView position 构建懒加载子项。
+    tester
+        .widget<DraggableScrollableSheet>(find.byType(DraggableScrollableSheet))
+        .controller
+        ?.jumpTo(1.0);
+    await tester.pump();
+    final scrollable = tester.state<ScrollableState>(mainScrollable());
+    for (var i = 0; i < 24 && finder.evaluate().isEmpty; i++) {
+      scrollable.position.jumpTo(scrollable.position.maxScrollExtent);
+      await tester.pump();
+    }
+    if (finder.evaluate().isNotEmpty) {
+      await tester.ensureVisible(finder);
+      // ensureVisible 起一段驱动动画，多走几帧收尾再交还调用方。
+      await tester.pump(const Duration(milliseconds: 350));
+    }
     await tester.pump();
   }
 
@@ -68,11 +85,16 @@ void main() {
   testWidgets('各分组按设计顺序出现', (tester) async {
     await pumpPersonalization(tester);
 
-    expect(find.text('主题模式'), findsOneWidget);
+    expect(find.text('首页个性化'), findsOneWidget);
+    expect(find.text('实时预览'), findsOneWidget);
+    // 主题分组已拆到「主题与材质」页。
+    expect(find.text('主题模式'), findsNothing);
     await scrollTo(tester, find.text('壁纸'));
     expect(find.text('壁纸'), findsOneWidget);
-    expect(find.text('更换壁纸'), findsOneWidget);
+    // 预览浮层与列表行各有一份「更换壁纸」。
+    expect(find.text('更换壁纸'), findsWidgets);
     expect(find.text('默认'), findsOneWidget);
+    // 「效果」分组保留：只有「流体 Shader」总开关，参数滑条隐藏。
     await scrollTo(tester, find.text('效果'));
     expect(find.text('效果'), findsOneWidget);
     expect(find.text('耗电'), findsOneWidget);
@@ -81,8 +103,6 @@ void main() {
   });
 
   testWidgets('开关写回对应控制器', (tester) async {
-    // Shader 默认开启会展开四条滑条把下方开关挤出首屏；这里只测下方开关。
-    personalization.shaderEnabled.value = false;
     await pumpPersonalization(tester);
 
     // 亚克力始终开启：设置页不再提供材质 / 课表卡片毛玻璃开关。
@@ -107,69 +127,21 @@ void main() {
     expect(personalization.homeCampusNoticeEnabled.value, isTrue);
   });
 
-  testWidgets('Shader 默认开启：展开帧率 / 速度 / 强度 / 不透明度四条滑条', (tester) async {
-    // 出厂默认：开。
-    expect(personalization.shaderEnabled.value, isTrue);
+  testWidgets('效果分组保留开关：Shader 总开关在，四根参数滑条隐藏', (tester) async {
     await pumpPersonalization(tester);
+
+    await scrollTo(tester, find.byKey(const Key('personalization_shader')));
+    expect(find.byKey(const Key('personalization_shader')), findsOneWidget);
     for (final key in const [
       'personalization_shader_fps',
       'personalization_shader_speed',
       'personalization_shader_strength',
       'personalization_shader_opacity',
     ]) {
-      await scrollTo(tester, find.byKey(Key(key)));
-      expect(find.byKey(Key(key)), findsOneWidget);
-    }
-    await scrollTo(tester, find.text('60 fps'));
-    expect(find.text('60 fps'), findsOneWidget);
-  });
-
-  testWidgets('帧率滑条：档位写回控制器并持久化，关闭 Shader 后消失', (tester) async {
-    await pumpPersonalization(tester);
-    final slider = find.byKey(const Key('personalization_shader_fps'));
-    await scrollTo(tester, slider);
-    expect(slider, findsOneWidget);
-    expect(personalization.shaderFps.value, 60);
-
-    // 档位 30 / 45 / 60 / 90 / 120 对应 0..4；拖到最左 = 30，最右 = 120。
-    await tester.drag(slider, const Offset(-600, 0));
-    await tester.pump();
-    expect(personalization.shaderFps.value, 30);
-    expect(find.text('30 fps'), findsOneWidget);
-
-    await tester.drag(slider, const Offset(600, 0));
-    await tester.pump();
-    expect(personalization.shaderFps.value, 120);
-
-    await tapKey(tester, 'personalization_shader');
-    expect(personalization.shaderEnabled.value, isFalse);
-    expect(find.byKey(const Key('personalization_shader_fps')), findsNothing);
-  });
-
-  testWidgets('Shader 关闭时不显示参数滑条，开启后展开', (tester) async {
-    personalization.shaderEnabled.value = false;
-    await pumpPersonalization(tester);
-
-    const sliders = [
-      'personalization_shader_fps',
-      'personalization_shader_speed',
-      'personalization_shader_strength',
-      'personalization_shader_opacity',
-    ];
-    for (final key in sliders) {
       expect(find.byKey(Key(key)), findsNothing);
     }
-
-    await tapKey(tester, 'personalization_shader');
-    expect(personalization.shaderEnabled.value, isTrue);
-    for (final key in sliders) {
-      await scrollTo(tester, find.byKey(Key(key)));
-      expect(find.byKey(Key(key)), findsOneWidget);
-    }
-    await scrollTo(tester, find.text('1.0×'));
-    expect(find.text('1.0×'), findsOneWidget);
-    await scrollTo(tester, find.text('45%'));
-    expect(find.text('45%'), findsOneWidget);
+    expect(find.text('效果'), findsOneWidget);
+    expect(find.text('耗电'), findsOneWidget);
   });
 
   testWidgets('无壁纸时不显示「移除壁纸」，有壁纸时移除并关闭 Shader', (tester) async {
@@ -240,12 +212,10 @@ void main() {
     expect(personalization.backgroundFit.value, HomeBackgroundFit.cover);
   });
 
-  testWidgets('壁纸不透明度显示百分比', (tester) async {
+  testWidgets('壁纸不透明度滑条已下线', (tester) async {
     await pumpPersonalization(tester);
-    await personalization.setBackgroundOpacity(0.35);
-    await tester.pump();
-    await scrollTo(tester, find.text('35%'));
-    expect(find.text('35%'), findsOneWidget);
+    expect(find.byKey(const Key('personalization_bg_opacity')), findsNothing);
+    expect(find.text('壁纸不透明度'), findsNothing);
   });
 
   testWidgets('应用图标选择立即更新并持久化，无深浅翻转开关', (tester) async {
@@ -279,7 +249,6 @@ void main() {
   for (final brightness in Brightness.values) {
     testWidgets('360 宽 1.3× 字号展开全部项无溢出（${brightness.name}）', (tester) async {
       await personalization.setBackgroundImagePath('/nonexistent/bg.jpg');
-      await personalization.setShaderEnabled(true);
       await personalization.setBackgroundAlignment(const Alignment(0.4, 0));
       await pumpPersonalization(
         tester,
@@ -291,10 +260,10 @@ void main() {
 
       for (final key in [
         'personalization_fit_segments',
+        'personalization_shader',
         'personalization_edit_transform',
         'personalization_reset_transform',
         'personalization_remove_wallpaper',
-        'personalization_shader_opacity',
         'personalization_campus_notice',
       ]) {
         await scrollTo(tester, find.byKey(Key(key)));
@@ -302,6 +271,15 @@ void main() {
       }
     });
   }
+
+  testWidgets('顶部常驻实时预览展示真实首页实体', (tester) async {
+    await pumpPersonalization(tester);
+
+    // 预览常驻渲染，不再依赖「按住预览」。
+    expect(find.text('真实首页场景'), findsOneWidget);
+    expect(find.byKey(const Key('appearance_hold_preview')), findsNothing);
+    expect(find.text('实时预览'), findsOneWidget);
+  });
 
   testWidgets('复原位置与缩放只在移动过壁纸后出现', (tester) async {
     await personalization.setBackgroundImagePath('/nonexistent/bg.jpg');

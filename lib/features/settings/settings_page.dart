@@ -108,6 +108,11 @@ class SettingsPage extends StatelessWidget {
     if (messenger != null) AppFeedback.toastOn(messenger, '离线缓存已清除');
   }
 
+  /// 「重放新手引导」：走注册路由（routes.dart 组合层持有 WelcomePage 与
+  /// 各动作落点），设置页不横向依赖 welcome feature。
+  Future<void> _replayWelcome(BuildContext context) =>
+      context.pushNamed('welcome');
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -127,8 +132,13 @@ class SettingsPage extends StatelessWidget {
               PlainListGroup(
                 children: [
                   PlainListRow(
-                    title: '外观与个性化',
-                    onTap: () => context.pushNamed('appearance'),
+                    title: '主题与材质',
+                    onTap: () => context.pushNamed('appearance-theme'),
+                  ),
+                  PlainListRow(
+                    title: '首页个性化',
+                    onTap: () =>
+                        context.pushNamed('appearance-personalization'),
                   ),
                 ],
               ),
@@ -242,6 +252,11 @@ class SettingsPage extends StatelessWidget {
                   PlainListRow(
                     title: '清除离线缓存',
                     onTap: () => _clearOfflineCache(context),
+                  ),
+                  PlainListRow(
+                    title: '重放新手引导',
+                    subtitle: '登录、通知与日历同步的设置向导',
+                    onTap: () => _replayWelcome(context),
                   ),
                   PlainListRow(
                     title: '关于与诊断',

@@ -6,6 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/features/settings/desktop_background_page.dart';
 import 'package:jxu_campus_hub/shared/widgets/plain_list.dart';
+import 'package:jxu_campus_hub/core/system_surface/campus_widget_bridge.dart';
+import 'package:jxu_campus_hub/core/system_surface/system_settings_launcher.dart';
 import 'package:jxu_campus_hub/core/system_surface/widget_refresh_state.dart';
 
 import '../../helpers/pump_app.dart';
@@ -13,28 +15,20 @@ import '../../helpers/pump_app.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  // 原生 lane 的系统设置通道契约：method 'open'，参数 {'target': <枚举名>}。
-  const systemSettingsChannel = MethodChannel(
-    'edu.zjxu.jxucampushub/system_settings',
-  );
   // flutter_local_notifications 的 Android 实现通道（通知权限状态查询）。
   const notificationsChannel = MethodChannel(
     'dexterous.com/flutter/local_notifications',
   );
 
-  const widgetChannel = MethodChannel('edu.zjxu.jxucampushub/widget');
   const shortcutChannel = MethodChannel('edu.zjxu.jxucampushub/shortcut');
 
-  late List<MethodCall> widgetCalls;
+  late _FakeCampusWidgetGateway widgetGateway;
   late List<MethodCall> shortcutCalls;
-  late String widgetPinResult;
-  late List<MethodCall> systemSettingsCalls;
-  late String systemSettingsResult;
+  late _FakeSystemSettingsGateway systemSettingsGateway;
+  late SystemSettingsOpenResult systemSettingsResult;
   late bool notificationsEnabled;
   late bool notificationsQueryThrows;
-  late Object? widgetStatus;
-  late Object? systemStatus;
-  late Map<String, Uint8List> widgetPreviews;
+  late SystemBackgroundStatus systemStatus;
   WidgetRefreshRecord? refreshRecord;
 
   /// 1×1 透明 PNG：足够通过 Image.memory 解码路径。
@@ -116,42 +110,38 @@ void main() {
 
   setUp(() {
     refreshRecord = null;
-    widgetCalls = <MethodCall>[];
     shortcutCalls = <MethodCall>[];
-    widgetPinResult = 'requested';
-    systemSettingsCalls = <MethodCall>[];
-    systemSettingsResult = 'target';
+    widgetGateway = _FakeCampusWidgetGateway();
+    widgetGateway.status = CampusWidgetStatus.fromPlatformValue(
+      <String, Object?>{
+        'pinSupported': true,
+        'installed': <String, Object?>{'small': 0, 'medium': 2, 'large': 0},
+        'lastSnapshotAtMs': DateTime(
+          2026,
+          10,
+          16,
+          9,
+          55,
+        ).millisecondsSinceEpoch,
+      },
+    );
+    systemSettingsGateway = _FakeSystemSettingsGateway();
+    systemSettingsResult = SystemSettingsOpenResult.target;
     notificationsEnabled = true;
     notificationsQueryThrows = false;
-    widgetPreviews = {};
-    widgetStatus = <String, Object?>{
-      'pinSupported': true,
-      'installed': <String, Object?>{'small': 0, 'medium': 2, 'large': 0},
-      'lastSnapshotAtMs': DateTime(2026, 10, 16, 9, 55).millisecondsSinceEpoch,
-    };
-    systemStatus = <String, Object?>{
-      'notificationsEnabled': true,
-      'exactAlarmsAllowed': true,
-      'ignoringBatteryOptimizations': false,
-      'isXiaomiFamily': true,
-    };
+    systemStatus = const SystemBackgroundStatus(
+      notificationsEnabled: true,
+      exactAlarmsAllowed: true,
+      ignoringBatteryOptimizations: false,
+      isXiaomiFamily: true,
+    );
+    systemSettingsGateway.statusProvider = () => systemStatus;
+    systemSettingsGateway.openResultProvider = () => systemSettingsResult;
+    SystemSettingsLauncher.instance.setGatewayForTesting(systemSettingsGateway);
+    CampusWidgetBridge.instance.setGatewayForTesting(widgetGateway);
 
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-    messenger.setMockMethodCallHandler(systemSettingsChannel, (call) async {
-      if (call.method == 'getStatus') return systemStatus;
-      systemSettingsCalls.add(call);
-      if (call.method != 'open') return null;
-      return systemSettingsResult;
-    });
-    messenger.setMockMethodCallHandler(widgetChannel, (call) async {
-      if (call.method == 'getStatus') return widgetStatus;
-      if (call.method == 'getPreview') {
-        return widgetPreviews[(call.arguments as Map)['size']];
-      }
-      widgetCalls.add(call);
-      return call.method == 'requestPin' ? widgetPinResult : null;
-    });
     messenger.setMockMethodCallHandler(shortcutChannel, (call) async {
       shortcutCalls.add(call);
       return call.method == 'openShortcutPermissionSettings' ? true : null;
@@ -168,10 +158,10 @@ void main() {
   });
 
   tearDown(() {
+    SystemSettingsLauncher.instance.setGatewayForTesting(null);
+    CampusWidgetBridge.instance.setGatewayForTesting(null);
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-    messenger.setMockMethodCallHandler(systemSettingsChannel, null);
-    messenger.setMockMethodCallHandler(widgetChannel, null);
     messenger.setMockMethodCallHandler(shortcutChannel, null);
     messenger.setMockMethodCallHandler(notificationsChannel, null);
   });
@@ -220,21 +210,19 @@ void main() {
     expect(find.text('大 · 4×4 校园总览'), findsOneWidget);
 
     for (final (title, size) in const [
-      ('小 · 2×2 下一节课', 'small'),
-      ('中 · 4×2 今日课表', 'medium'),
-      ('大 · 4×4 校园总览', 'large'),
+      ('小 · 2×2 下一节课', CampusWidgetSize.small),
+      ('中 · 4×2 今日课表', CampusWidgetSize.medium),
+      ('大 · 4×4 校园总览', CampusWidgetSize.large),
     ]) {
       await tapRow(tester, title);
-      final call = widgetCalls.last;
-      expect(call.method, 'requestPin');
-      expect(call.arguments, <String, Object?>{'size': size});
+      expect(widgetGateway.pinRequests.last, size);
       expect(find.text('已请求添加，请在桌面确认'), findsOneWidget);
     }
-    expect(widgetCalls, hasLength(3));
+    expect(widgetGateway.pinRequests, hasLength(3));
   });
 
   testWidgets('桌面不支持一键添加时提示手动添加路径', (tester) async {
-    widgetPinResult = 'unsupported';
+    widgetGateway.pinResult = CampusWidgetPinResult.unsupported;
     await pumpDesktopBackgroundPage(tester);
 
     await tapRow(tester, '小 · 2×2 下一节课');
@@ -244,7 +232,7 @@ void main() {
   });
 
   testWidgets('固定被拒绝时提示并可跳转快捷方式权限设置', (tester) async {
-    widgetPinResult = 'rejected';
+    widgetGateway.pinResult = CampusWidgetPinResult.rejected;
     await pumpDesktopBackgroundPage(tester);
 
     await tapRow(tester, '中 · 4×2 今日课表');
@@ -260,7 +248,7 @@ void main() {
   });
 
   testWidgets('原生异常时提示添加失败，不抛出', (tester) async {
-    widgetPinResult = 'error';
+    widgetGateway.pinResult = CampusWidgetPinResult.error;
     await pumpDesktopBackgroundPage(tester);
 
     await tapRow(tester, '大 · 4×4 校园总览');
@@ -271,70 +259,75 @@ void main() {
   testWidgets('后台运行各行分别以对应 target 调起系统设置且不误报', (tester) async {
     await pumpDesktopBackgroundPage(tester);
 
-    Future<void> expectNextOpen(String title, String target) async {
-      final before = systemSettingsCalls.length;
+    Future<void> expectNextOpen(
+      String title,
+      SystemSettingsTarget target,
+    ) async {
+      final before = systemSettingsGateway.opens.length;
       await tapRow(tester, title);
-      expect(systemSettingsCalls, hasLength(before + 1));
-      final call = systemSettingsCalls.last;
-      expect(call.method, 'open');
-      expect(call.arguments, <String, Object?>{'target': target});
+      expect(systemSettingsGateway.opens, hasLength(before + 1));
+      expect(systemSettingsGateway.opens.last.target, target);
       // 命中目标页不弹提示；打开设置页不代表权限已授予。
       expect(find.byType(SnackBar), findsNothing);
     }
 
     // 与页面顺序一致，保证只向下滚动。
-    await expectNextOpen('精确闹钟', 'exactAlarms');
-    await expectNextOpen('电池优化', 'batteryOptimization');
-    await expectNextOpen('自启动', 'autostart');
-    await expectNextOpen('系统应用信息', 'appDetails');
+    await expectNextOpen('精确闹钟', SystemSettingsTarget.exactAlarms);
+    await expectNextOpen('电池优化', SystemSettingsTarget.batteryOptimization);
+    await expectNextOpen('自启动', SystemSettingsTarget.autostart);
+    await expectNextOpen('系统应用信息', SystemSettingsTarget.appDetails);
   });
 
   testWidgets('系统应用信息行请求 appDetails 时视为成功（与目标页一致）', (tester) async {
-    systemSettingsResult = 'appDetails';
+    systemSettingsResult = SystemSettingsOpenResult.appDetails;
     await pumpDesktopBackgroundPage(tester);
 
     await tapRow(tester, '系统应用信息');
 
-    expect(systemSettingsCalls.last.arguments, <String, Object?>{
-      'target': 'appDetails',
-    });
+    expect(
+      systemSettingsGateway.opens.last.target,
+      SystemSettingsTarget.appDetails,
+    );
     expect(find.byType(SnackBar), findsNothing);
   });
 
   testWidgets('降级到应用详情页时用 SnackBar 说明实际打开的页面', (tester) async {
-    systemSettingsResult = 'appDetails';
+    systemSettingsResult = SystemSettingsOpenResult.appDetails;
     await pumpDesktopBackgroundPage(tester);
 
     await tapRow(tester, '精确闹钟');
 
-    expect(systemSettingsCalls.last.arguments, <String, Object?>{
-      'target': 'exactAlarms',
-    });
+    expect(
+      systemSettingsGateway.opens.last.target,
+      SystemSettingsTarget.exactAlarms,
+    );
     expect(find.textContaining('未能直达'), findsOneWidget);
     expect(find.textContaining('已打开应用详情页'), findsOneWidget);
   });
 
   testWidgets('降级到系统设置首页时用 SnackBar 说明实际打开的页面', (tester) async {
-    systemSettingsResult = 'settings';
+    systemSettingsResult = SystemSettingsOpenResult.settings;
     await pumpDesktopBackgroundPage(tester);
 
     await tapRow(tester, '电池优化');
 
-    expect(systemSettingsCalls.last.arguments, <String, Object?>{
-      'target': 'batteryOptimization',
-    });
+    expect(
+      systemSettingsGateway.opens.last.target,
+      SystemSettingsTarget.batteryOptimization,
+    );
     expect(find.textContaining('已打开系统设置首页'), findsOneWidget);
   });
 
   testWidgets('通道不可用时提示手动前往，不静默失败', (tester) async {
-    systemSettingsResult = 'unavailable';
+    systemSettingsResult = SystemSettingsOpenResult.unavailable;
     await pumpDesktopBackgroundPage(tester);
 
     await tapRow(tester, '自启动');
 
-    expect(systemSettingsCalls.last.arguments, <String, Object?>{
-      'target': 'autostart',
-    });
+    expect(
+      systemSettingsGateway.opens.last.target,
+      SystemSettingsTarget.autostart,
+    );
     expect(find.textContaining('未能打开系统设置'), findsOneWidget);
   });
 
@@ -347,11 +340,11 @@ void main() {
     await tester.tap(find.text('通知'));
     await tester.pumpAndSettle();
 
-    expect(systemSettingsCalls, hasLength(1));
-    expect(systemSettingsCalls.single.method, 'open');
-    expect(systemSettingsCalls.single.arguments, <String, Object?>{
-      'target': 'notifications',
-    });
+    expect(systemSettingsGateway.opens, hasLength(1));
+    expect(
+      systemSettingsGateway.opens.single.target,
+      SystemSettingsTarget.notifications,
+    );
     // 打开通知设置页 ≠ 已授权，成功路径不弹「已开启」类提示。
     expect(find.byType(SnackBar), findsNothing);
 
@@ -373,13 +366,14 @@ void main() {
     await tester.tap(find.text('通知'));
     await tester.pumpAndSettle();
 
-    expect(systemSettingsCalls.single.arguments, <String, Object?>{
-      'target': 'notifications',
-    });
+    expect(
+      systemSettingsGateway.opens.single.target,
+      SystemSettingsTarget.notifications,
+    );
   });
 
   testWidgets('通知降级打开时明确说明实际页面', (tester) async {
-    systemSettingsResult = 'settings';
+    systemSettingsResult = SystemSettingsOpenResult.settings;
     await pumpDesktopBackgroundPage(tester);
 
     await revealRow(tester, '通知');
@@ -392,7 +386,7 @@ void main() {
 
   testWidgets('通知权限查询失败时显示状态未知，不谎称已开启', (tester) async {
     notificationsQueryThrows = true;
-    systemStatus = <String, Object?>{'isXiaomiFamily': false};
+    systemStatus = const SystemBackgroundStatus(isXiaomiFamily: false);
     await pumpDesktopBackgroundPage(tester);
 
     await revealRow(tester, '通知');
@@ -405,7 +399,7 @@ void main() {
 
   testWidgets('通知插件查询失败时采用原生读到的真实状态', (tester) async {
     notificationsQueryThrows = true;
-    systemStatus = <String, Object?>{'notificationsEnabled': false};
+    systemStatus = const SystemBackgroundStatus(notificationsEnabled: false);
     await pumpDesktopBackgroundPage(tester);
 
     expect(_valueOf(tester, '通知'), '未开启');
@@ -439,7 +433,7 @@ void main() {
   });
 
   testWidgets('组件状态读不到时不显示「未放置」，同步显示尚未同步', (tester) async {
-    widgetStatus = null;
+    widgetGateway.status = CampusWidgetStatus.unknown;
     await pumpDesktopBackgroundPage(tester);
 
     expect(find.text('未放置'), findsNothing);
@@ -460,12 +454,10 @@ void main() {
   });
 
   testWidgets('Android 12 以下精确闹钟显示无需设置且不可点', (tester) async {
-    systemStatus = <String, Object?>{
-      'notificationsEnabled': true,
-      'exactAlarmsAllowed': null,
-      'ignoringBatteryOptimizations': true,
-      'isXiaomiFamily': false,
-    };
+    systemStatus = const SystemBackgroundStatus(
+      notificationsEnabled: true,
+      ignoringBatteryOptimizations: true,
+    );
     await pumpDesktopBackgroundPage(tester);
     await revealRow(tester, '精确闹钟');
 
@@ -477,7 +469,7 @@ void main() {
   });
 
   testWidgets('系统状态通道不可用时各项显示未知，不谎称已允许', (tester) async {
-    systemStatus = null;
+    systemStatus = SystemBackgroundStatus.unknown;
     await pumpDesktopBackgroundPage(tester);
     await revealRow(tester, '电池优化');
 
@@ -508,7 +500,8 @@ void main() {
   });
 
   testWidgets('原生预览位图按尺寸渲染，缺失时整块隐藏', (tester) async {
-    widgetPreviews = {'medium': previewPng, 'large': previewPng};
+    widgetGateway.previews[CampusWidgetSize.medium] = previewPng;
+    widgetGateway.previews[CampusWidgetSize.large] = previewPng;
     await pumpDesktopBackgroundPage(tester);
     expect(
       find.byKey(const Key('desktop_widget_preview_medium')),
@@ -523,9 +516,64 @@ void main() {
   });
 }
 
+/// 记录式 SystemSettingsGateway 替身：open 记录目标，getStatus 回传可配置状态。
+class _FakeSystemSettingsGateway implements SystemSettingsGateway {
+  final opens = <({SystemSettingsTarget target, String? channelId})>[];
+  int getStatusCalls = 0;
+
+  SystemBackgroundStatus Function()? statusProvider;
+  SystemSettingsOpenResult Function()? openResultProvider;
+
+  @override
+  Future<SystemSettingsOpenResult> open(
+    SystemSettingsTarget target, {
+    String? channelId,
+  }) async {
+    opens.add((target: target, channelId: channelId));
+    return openResultProvider?.call() ?? SystemSettingsOpenResult.target;
+  }
+
+  @override
+  Future<SystemBackgroundStatus> getStatus() async {
+    getStatusCalls++;
+    return statusProvider?.call() ?? const SystemBackgroundStatus();
+  }
+}
+
 PlainListRow _rowOf(WidgetTester tester, String title) => tester.widget(
   find.ancestor(of: find.text(title), matching: find.byType(PlainListRow)),
 );
 
 String? _valueOf(WidgetTester tester, String title) =>
     _rowOf(tester, title).value;
+
+/// 记录式 CampusWidgetGateway 替身：记录固定请求，返回可配置状态 / 预览。
+class _FakeCampusWidgetGateway implements CampusWidgetGateway {
+  final pinRequests = <CampusWidgetSize>[];
+  final previews = <CampusWidgetSize, Uint8List>{};
+
+  CampusWidgetPinResult pinResult = CampusWidgetPinResult.requested;
+  CampusWidgetStatus status = CampusWidgetStatus.unknown;
+  bool supported = true;
+
+  @override
+  Future<void> pushSnapshot(Map<String, Object?> projection) async {}
+
+  @override
+  Future<CampusWidgetPinResult> requestPin(CampusWidgetSize size) async {
+    pinRequests.add(size);
+    return pinResult;
+  }
+
+  @override
+  Future<CampusWidgetStatus> getStatus() async => status;
+
+  @override
+  Future<Uint8List?> getPreview(
+    CampusWidgetSize size, {
+    required int widthPx,
+  }) async => previews[size];
+
+  @override
+  Future<bool> isSupported() async => supported;
+}

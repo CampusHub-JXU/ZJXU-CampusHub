@@ -19,154 +19,155 @@ const List<(HomeBackgroundFit, String)> kWallpaperFitSegments = [
   (HomeBackgroundFit.none, '居中'),
 ];
 
-/// 个性化 — 「壁纸」分组：更换 / 填充方式 / 不透明度 / 位置与缩放 / 移除。
+/// 个性化 — 「壁纸」分组：更换 / 填充方式 / 位置与缩放 / 移除。
 class PersonalizationBackgroundSection extends StatelessWidget {
   const PersonalizationBackgroundSection({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final controller = PersonalizationController.instance;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const PlainSectionHeader('壁纸'),
-        ValueListenableBuilder<String?>(
-          valueListenable: controller.backgroundImagePath,
-          builder: (context, bgPath, _) {
-            return PlainListGroup(
-              children: [
-                PlainListRow(
-                  key: const Key('personalization_pick_wallpaper'),
-                  leading: _WallpaperThumbnail(path: bgPath),
-                  title: '更换壁纸',
-                  value: bgPath != null ? '自定义' : '默认',
-                  onTap: () => _pickHomeBackgroundImage(context),
-                ),
-                const _FitSegmentsRow(),
-                ValueListenableBuilder<double>(
-                  valueListenable: controller.backgroundOpacity,
-                  builder: (context, opacity, _) => PlainSliderRow(
-                    sliderKey: const Key('personalization_bg_opacity'),
-                    title: '壁纸不透明度',
-                    value: opacity,
-                    valueLabel: '${(opacity * 100).round()}%',
-                    divisions: 20,
-                    onChanged: controller.setBackgroundOpacity,
-                  ),
-                ),
-                if (bgPath != null)
-                  PlainListRow(
-                    key: const Key('personalization_edit_transform'),
-                    title: '调整位置与缩放',
-                    onTap: () => _editWallpaperTransform(context, bgPath),
-                  ),
-                if (bgPath != null) const _ResetTransformRow(),
-                if (bgPath != null)
-                  PlainListRow(
-                    key: const Key('personalization_remove_wallpaper'),
-                    title: '移除壁纸',
-                    titleColor: Theme.of(context).colorScheme.error,
-                    showChevron: false,
-                    onTap: () => _removeWallpaper(context),
-                  ),
-              ],
-            );
-          },
-        ),
+      children: const [
+        PlainSectionHeader('壁纸'),
+        PersonalizationWallpaperCard(),
       ],
     );
   }
+}
 
-  Future<void> _editWallpaperTransform(
-    BuildContext context,
-    String bgPath,
-  ) async {
+/// 「壁纸」分组卡片：更换 / 填充方式 / 位置与缩放 / 移除。
+///
+/// 从 [PersonalizationBackgroundSection] 抽出的独立小组件，「首页个性化」
+/// 编辑台布局把它放进工作台 sheet，不再额外带分组标题。
+class PersonalizationWallpaperCard extends StatelessWidget {
+  const PersonalizationWallpaperCard({super.key});
+
+  @override
+  Widget build(BuildContext context) {
     final controller = PersonalizationController.instance;
+    return ValueListenableBuilder<String?>(
+      valueListenable: controller.backgroundImagePath,
+      builder: (context, bgPath, _) {
+        return PlainListGroup(
+          children: [
+            PlainListRow(
+              key: const Key('personalization_pick_wallpaper'),
+              leading: _WallpaperThumbnail(path: bgPath),
+              title: '更换壁纸',
+              value: bgPath != null ? '自定义' : '默认',
+              onTap: () => pickHomeWallpaperImage(context),
+            ),
+            const _FitSegmentsRow(),
+            if (bgPath != null)
+              PlainListRow(
+                key: const Key('personalization_edit_transform'),
+                title: '调整位置与缩放',
+                onTap: () => editHomeWallpaperTransform(context, bgPath),
+              ),
+            if (bgPath != null) const _ResetTransformRow(),
+            if (bgPath != null)
+              PlainListRow(
+                key: const Key('personalization_remove_wallpaper'),
+                title: '移除壁纸',
+                titleColor: Theme.of(context).colorScheme.error,
+                showChevron: false,
+                onTap: () => removeHomeWallpaper(context),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// 打开全屏背景编辑器调整位置与缩放；确认后写回正式设置。
+Future<void> editHomeWallpaperTransform(
+  BuildContext context,
+  String bgPath,
+) async {
+  final controller = PersonalizationController.instance;
+  final result = await context.pushNamed<BackgroundEditorResult?>(
+    'background-editor',
+    extra: BackgroundEditorArgs(
+      imagePath: bgPath,
+      alignment: controller.backgroundAlignment.value,
+      scale: controller.backgroundScale.value,
+    ),
+  );
+  if (result == null) return;
+  await controller.setBackgroundAlignment(result.alignment);
+  await controller.setBackgroundScale(result.scale);
+}
+
+/// 移除首页壁纸；流体 Shader 依赖壁纸取样，一并关闭。
+Future<void> removeHomeWallpaper(BuildContext context) async {
+  final controller = PersonalizationController.instance;
+  await controller.setBackgroundImagePath(null);
+  await controller.setShaderEnabled(false);
+  if (context.mounted) {
+    AppFeedback.toast(context, '已移除首页背景');
+  }
+}
+
+/// 从图库选择新壁纸，复制进私有目录后进入全屏编辑器；确认后写回。
+Future<void> pickHomeWallpaperImage(BuildContext context) async {
+  try {
+    // 保留原始图像：不设 maxWidth/maxHeight/imageQuality，避免默认重编码
+    // （PRD §19）；decode 尺寸在渲染层控制。
+    final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
+    if (picked == null) return;
+
+    final appDir = await getApplicationDocumentsDirectory();
+    final destDir = Directory('${appDir.path}/home_bg');
+    if (!await destDir.exists()) {
+      await destDir.create(recursive: true);
+    }
+
+    final dotIdx = picked.path.lastIndexOf('.');
+    final ext = dotIdx == -1 ? '.jpg' : picked.path.substring(dotIdx);
+    final destPath =
+        '${destDir.path}/bg_${DateTime.now().millisecondsSinceEpoch}$ext';
+    await File(picked.path).copy(destPath);
+
+    if (!context.mounted) return;
+    final controller = PersonalizationController.instance;
+
+    // 全屏编辑：编辑状态独立，确认前不修改正式设置（PRD §18）。
     final result = await context.pushNamed<BackgroundEditorResult?>(
       'background-editor',
       extra: BackgroundEditorArgs(
-        imagePath: bgPath,
+        imagePath: destPath,
         alignment: controller.backgroundAlignment.value,
         scale: controller.backgroundScale.value,
       ),
     );
-    if (result == null) return;
+
+    if (result == null) {
+      // 取消：丢弃新副本，保留原正式背景。
+      unawaited(File(destPath).delete().catchError((_) => File(destPath)));
+      return;
+    }
+
+    await controller.setBackgroundImagePath(destPath);
     await controller.setBackgroundAlignment(result.alignment);
     await controller.setBackgroundScale(result.scale);
-  }
+    await _pruneOtherBackgrounds(destDir, destPath);
 
-  Future<void> _removeWallpaper(BuildContext context) async {
-    final controller = PersonalizationController.instance;
-    await controller.setBackgroundImagePath(null);
-    // 流体 Shader 依赖壁纸取样，移除壁纸时一并关闭。
-    await controller.setShaderEnabled(false);
     if (context.mounted) {
-      AppFeedback.toast(context, '已移除首页背景');
+      AppFeedback.toast(context, '已设置首页背景');
+    }
+  } catch (e) {
+    if (context.mounted) {
+      AppFeedback.toast(context, '选择图片失败，请稍后重试');
     }
   }
+}
 
-  Future<void> _pickHomeBackgroundImage(BuildContext context) async {
-    try {
-      // 保留原始图像：不设 maxWidth/maxHeight/imageQuality，避免默认重编码
-      // （PRD §19）；decode 尺寸在渲染层控制。
-      final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
-      if (picked == null) return;
-
-      final appDir = await getApplicationDocumentsDirectory();
-      final destDir = Directory('${appDir.path}/home_bg');
-      if (!await destDir.exists()) {
-        await destDir.create(recursive: true);
-      }
-
-      final dotIdx = picked.path.lastIndexOf('.');
-      final ext = dotIdx == -1 ? '.jpg' : picked.path.substring(dotIdx);
-      final destPath =
-          '${destDir.path}/bg_${DateTime.now().millisecondsSinceEpoch}$ext';
-      await File(picked.path).copy(destPath);
-
-      if (!context.mounted) return;
-      final controller = PersonalizationController.instance;
-
-      // 全屏编辑：编辑状态独立，确认前不修改正式设置（PRD §18）。
-      final result = await context.pushNamed<BackgroundEditorResult?>(
-        'background-editor',
-        extra: BackgroundEditorArgs(
-          imagePath: destPath,
-          alignment: controller.backgroundAlignment.value,
-          scale: controller.backgroundScale.value,
-        ),
-      );
-
-      if (result == null) {
-        // 取消：丢弃新副本，保留原正式背景。
-        unawaited(File(destPath).delete().catchError((_) => File(destPath)));
-        return;
-      }
-
-      await controller.setBackgroundImagePath(destPath);
-      await controller.setBackgroundAlignment(result.alignment);
-      await controller.setBackgroundScale(result.scale);
-      await _pruneOtherBackgrounds(destDir, destPath);
-
-      if (context.mounted) {
-        AppFeedback.toast(context, '已设置首页背景');
-      }
-    } catch (e) {
-      if (context.mounted) {
-        AppFeedback.toast(context, '选择图片失败，请稍后重试');
-      }
-    }
-  }
-
-  /// 确认后清理旧背景文件，只保留当前生效的一份。
-  Future<void> _pruneOtherBackgrounds(
-    Directory destDir,
-    String keepPath,
-  ) async {
-    await for (final file in destDir.list()) {
-      if (file is File && file.path != keepPath) {
-        unawaited(file.delete().catchError((_) => file));
-      }
+/// 确认后清理旧背景文件，只保留当前生效的一份。
+Future<void> _pruneOtherBackgrounds(Directory destDir, String keepPath) async {
+  await for (final file in destDir.list()) {
+    if (file is File && file.path != keepPath) {
+      unawaited(file.delete().catchError((_) => file));
     }
   }
 }

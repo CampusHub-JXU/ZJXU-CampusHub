@@ -57,9 +57,6 @@ class _ThemeSettingsSectionsState extends State<ThemeSettingsSections> {
                 ..._buildTextScale(prefs),
               ],
             ),
-            const SizedBox(height: kPlainListGroupGap),
-            const PlainSectionHeader('首页卡片文字'),
-            _buildHomeTextColor(prefs),
           ],
         );
       },
@@ -178,30 +175,7 @@ class _ThemeSettingsSectionsState extends State<ThemeSettingsSections> {
     ];
   }
 
-  Widget _buildHomeTextColor(AppPreferences prefs) {
-    return SegmentedButton<HomeTextColorPreference>(
-      segments: HomeTextColorPreference.values
-          .map((m) => ButtonSegment(value: m, label: Text(m.label)))
-          .toList(),
-      selected: {prefs.homeTextColor},
-      onSelectionChanged: (selection) {
-        _ctrl.setHomeTextColor(selection.first);
-      },
-      showSelectedIcon: false,
-    );
-  }
-
   String _formatScale(double value) => '${(value * 100).round()}%';
-}
-
-// ── Extension for label ──────────────────────────────────────────────────
-
-extension on HomeTextColorPreference {
-  String get label => switch (this) {
-    HomeTextColorPreference.system => '跟随系统',
-    HomeTextColorPreference.dark => '深色文字',
-    HomeTextColorPreference.light => '浅色文字',
-  };
 }
 
 // ── Palette Card (quartered circle preview) ───────────────────────────────
