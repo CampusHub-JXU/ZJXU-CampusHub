@@ -51,10 +51,9 @@ vec2 normal_round_rect(vec2 p, vec2 half_size, float r) {
 vec4 sample_backdrop_px(vec2 px, vec2 min_px, vec2 max_px, vec2 tex_size) {
   // 采样点夹在控件自身的 bounded 模糊区域内：既防越出纹理，也防采到
   // 外部透明/未模糊像素拉出一圈重影描边。
+  // OpenGLES 实验：暂时取消 Y 翻转，用来验证黑底和横向接缝是否来自
+  // 输入纹理与采样坐标的方向不一致。尚需在受影响模拟器上做 A/B 验证。
   vec2 clamped_uv = clamp(clamp(px, min_px, max_px) / tex_size, vec2(0.0), vec2(1.0));
-#ifdef IMPELLER_TARGET_OPENGLES
-  clamped_uv.y = 1.0 - clamped_uv.y;
-#endif
   return texture(u_texture_input, clamped_uv);
 }
 
