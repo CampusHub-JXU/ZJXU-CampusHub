@@ -155,6 +155,7 @@ class _JXUCampusHubAppState extends State<JXUCampusHubApp> {
         // Relative to the ambient system textScaler: AppTextScaleScope
         // multiplies the system scale by the user factor and passes the
         // system scale through untouched at the default factor (0.9).
+        // ignore: deprecated_member_use -- 包方标 deprecated 的临时迁移桥接，过渡期内保留
         return MaterialUiCompatibilityBridge(
           child: AppTextScaleScope(scaleFactor: prefs.textScale, child: child),
         );

@@ -11,12 +11,6 @@ analyzer:
   exclude:
     - build/**
     - android/**
-  errors:
-    # Flutter 3.50 把 package:flutter/material.dart 标记为 deprecated（迁移到
-    # package:material_ui）。本仓库按既定路线暂不整体迁移（见
-    # docs/agents/sdk-upgrade.md §6.4），全仓 deprecation info 只产噪音，
-    # 统一降级屏蔽；迁移立项后再移除。
-    deprecated_member_use: ignore
 include: package:flutter_lints/flutter.yaml
 
 linter:

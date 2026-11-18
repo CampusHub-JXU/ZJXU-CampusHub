@@ -81,17 +81,17 @@ void main() {
       MaterialApp.router(
         theme: ThemeData(
           pageTransitionsTheme: const PageTransitionsTheme(
-            builders: {
-              TargetPlatform.android: _NoTransitionsBuilder(),
-            },
+            builders: {TargetPlatform.android: _NoTransitionsBuilder()},
           ),
         ),
         routerConfig: router,
         builder: (context, child) {
+          // ignore: deprecated_member_use -- 与 lib/app/app.dart 根层桥接保持一致
           final wrapped = MaterialUiCompatibilityBridge(child: child!);
           return reduceMotion
               ? MediaQuery(
-                  data: MediaQuery.of(context).copyWith(disableAnimations: true),
+                  data: MediaQuery.of(context)
+                      .copyWith(disableAnimations: true),
                   child: wrapped,
                 )
               : wrapped;

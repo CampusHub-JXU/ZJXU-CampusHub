@@ -879,6 +879,7 @@ void main() {
           ),
           routerConfig: router,
           builder: (context, child) =>
+              // ignore: deprecated_member_use -- 与 lib/app/app.dart 根层桥接保持一致
               MaterialUiCompatibilityBridge(child: child!),
         ),
       );
