@@ -15,9 +15,9 @@ buildscript {
 
     dependencies {
         // Keep in lockstep with android/settings.gradle.kts baseline
-        // (AGP 9.1.0 / Kotlin 2.4.0) to avoid pulling a newer toolchain.
-        classpath "com.android.tools.build:gradle:9.1.0"
-        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.0"
+        // (AGP 9.3.1 / Kotlin 2.4.20) to avoid pulling a newer toolchain.
+        classpath "com.android.tools.build:gradle:9.3.1"
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.20"
     }
 }
 
