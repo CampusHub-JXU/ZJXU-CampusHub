@@ -10,13 +10,10 @@ import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.annotation.Keep
-import edu.zjxu.jxucampushub.platform.requireStringArg
-import io.flutter.plugin.common.BinaryMessenger
-import io.flutter.plugin.common.MethodChannel
 
 /**
- * 系统设置通道：把用户带到通知 / 应用详情 / 精确闹钟 / 电池优化 / 自启动设置页，
- * 并只读查询这些项的真实状态（`getStatus`，供「桌面与后台」设置页展示）。
+ * 系统设置原生服务（由 Dart 经 JNIgen 直调）：把用户带到通知 / 应用详情 / 精确闹钟 /
+ * 电池优化 / 自启动设置页，并只读查询这些项的真实状态（供「桌面与后台」设置页展示）。
  *
  * 仅负责「打开设置页」，**不代表任何权限已授予**：本类不修改权限、不申请危险
  * 权限、不发起电池优化直接授权弹窗（只打开列表页）。
@@ -35,8 +32,6 @@ class SystemBackgroundStatusSnapshot(
 @Keep
 class SystemSettingsChannelHandler(private val activity: Activity) {
     companion object {
-        private const val CHANNEL = "edu.zjxu.jxucampushub/system_settings"
-
         private const val RESULT_TARGET = "target"
         private const val RESULT_APP_DETAILS = "appDetails"
         private const val RESULT_SETTINGS = "settings"
@@ -45,23 +40,6 @@ class SystemSettingsChannelHandler(private val activity: Activity) {
         private const val MIUI_SECURITY_CENTER_PACKAGE = "com.miui.securitycenter"
         private const val MIUI_AUTOSTART_ACTIVITY =
             "com.miui.permcenter.autostart.AutoStartManagementActivity"
-    }
-
-    fun register(messenger: BinaryMessenger) {
-        MethodChannel(messenger, CHANNEL).setMethodCallHandler { call, result ->
-            when (call.method) {
-                "open" -> {
-                    val target = call.requireStringArg("target", result)
-                        ?: return@setMethodCallHandler
-                    val channelId = call.argument<String>("channelId")?.trim()
-                    result.success(open(target, channelId))
-                }
-
-                "getStatus" -> result.success(readStatus())
-
-                else -> result.notImplemented()
-            }
-        }
     }
 
     /**
@@ -96,16 +74,6 @@ class SystemSettingsChannelHandler(private val activity: Activity) {
             exactAlarmsAllowed = exactAlarmsAllowed,
             ignoringBatteryOptimizations = ignoringBatteryOptimizations,
             isXiaomiFamily = isMiuiLikeDevice(),
-        )
-    }
-
-    private fun readStatus(): Map<String, Any?> {
-        val snapshot = readStatusSnapshot()
-        return mapOf(
-            "notificationsEnabled" to snapshot.notificationsEnabled,
-            "exactAlarmsAllowed" to snapshot.exactAlarmsAllowed,
-            "ignoringBatteryOptimizations" to snapshot.ignoringBatteryOptimizations,
-            "isXiaomiFamily" to snapshot.isXiaomiFamily,
         )
     }
 

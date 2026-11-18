@@ -1,6 +1,7 @@
 import 'dart:convert';
+import 'dart:typed_data';
+import 'dart:ui';
 
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -14,6 +15,7 @@ import 'package:jxu_campus_hub/core/semester/china_public_holidays.dart';
 import 'package:jxu_campus_hub/core/semester/schedule_term_context.dart';
 import 'package:jxu_campus_hub/core/semester/semester_calendar.dart';
 import 'package:jxu_campus_hub/core/system_surface/campus_data_change_bus.dart';
+import 'package:jxu_campus_hub/core/system_surface/campus_widget_bridge.dart';
 import 'package:jxu_campus_hub/core/theme/app_theme_controller.dart';
 import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_service.dart';
 import 'package:jxu_campus_hub/features/home/widget/campus_widget_projection.dart';
@@ -25,19 +27,13 @@ import '../../helpers/test_setup.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  const channel = MethodChannel('edu.zjxu.jxucampushub/widget');
-  final pushes = <Map<Object?, Object?>>[];
+  final gateway = _FakeCampusWidgetGateway();
+  final pushes = gateway.snapshots;
 
   setUp(() async {
     pushes.clear();
     await resetTestEnvironment();
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, (call) async {
-          if (call.method == 'pushSnapshot') {
-            pushes.add(call.arguments as Map<Object?, Object?>);
-          }
-          return null;
-        });
+    CampusWidgetBridge.instance.setGatewayForTesting(gateway);
     CampusWidgetSync.instance.start();
   });
 
@@ -47,8 +43,7 @@ void main() {
     );
     NoticeSyncStore.instance.debugReset();
     debugChinaPublicHolidaysOverride = null;
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, null);
+    CampusWidgetBridge.instance.setGatewayForTesting(null);
     CampusWidgetSync.instance.debugReset();
     CampusDataChangeBus.instance.debugReset();
   });
@@ -58,8 +53,7 @@ void main() {
     await pumpEventQueue();
 
     expect(pushes, hasLength(1));
-    final snapshot =
-        pushes.single['snapshot'] as Map<Object?, Object?>? ?? const {};
+    final snapshot = pushes.single;
     expect(snapshot.keys, contains('generatedAt'));
     expect(snapshot.keys, isNot(contains('cookie')));
     expect(snapshot.keys, isNot(contains('token')));
@@ -93,7 +87,7 @@ void main() {
     );
     await CampusWidgetSync.instance.syncNow();
     expect(pushes, hasLength(1));
-    var snapshot = pushes.last['snapshot'] as Map<Object?, Object?>;
+    var snapshot = pushes.last;
     expect(snapshot['dormElectricity'], '3.20');
     expect(snapshot['hasElectricityData'], isTrue);
 
@@ -108,14 +102,14 @@ void main() {
     await pumpEventQueue();
 
     expect(pushes, isNotEmpty);
-    snapshot = pushes.last['snapshot'] as Map<Object?, Object?>;
+    snapshot = pushes.last;
     expect(snapshot['dormElectricity'], '--');
     expect(snapshot['hasElectricityData'], isFalse);
   });
   test('主题色变化会立即重推快照，theme 强调色随之改变', () async {
     CampusWidgetSync.instance.debugSetDebounce(Duration.zero);
     await CampusWidgetSync.instance.syncNow();
-    var theme = (pushes.last['snapshot'] as Map)['theme'] as Map;
+    var theme = pushes.last['theme'] as Map;
     final before = theme['accentLight'];
     expect(before, '#8B1A2D');
     pushes.clear();
@@ -124,7 +118,7 @@ void main() {
     await pumpEventQueue();
 
     expect(pushes, isNotEmpty);
-    theme = (pushes.last['snapshot'] as Map)['theme'] as Map;
+    theme = pushes.last['theme'] as Map;
     expect(theme['accentLight'], isNot(before));
     expect(theme['accentLight'], matches(RegExp(r'^#[0-9A-F]{6}$')));
     expect(theme['accentDark'], matches(RegExp(r'^#[0-9A-F]{6}$')));
@@ -132,7 +126,7 @@ void main() {
 
   test('未登录：emptyState=notLoggedIn，7 天全空课程，不含身份字段', () async {
     await CampusWidgetSync.instance.syncNow();
-    final snapshot = pushes.last['snapshot'] as Map;
+    final snapshot = pushes.last;
     expect(snapshot['schemaVersion'], 2);
     expect(snapshot['emptyState'], 'notLoggedIn');
     expect(snapshot['emptyStateText'], '登录教务后显示课表');
@@ -177,7 +171,7 @@ void main() {
     );
 
     await CampusWidgetSync.instance.syncNow();
-    var snapshot = pushes.last['snapshot'] as Map;
+    var snapshot = pushes.last;
     expect(snapshot['emptyState'], isNull);
     final days = (snapshot['days'] as List).cast<Map>();
     expect(days, hasLength(7));
@@ -192,7 +186,7 @@ void main() {
     pushes.clear();
     ZhengfangAuth.instance.debugReset();
     await CampusWidgetSync.instance.syncNow();
-    snapshot = pushes.last['snapshot'] as Map;
+    snapshot = pushes.last;
     expect(snapshot['emptyState'], 'notLoggedIn');
     expect(
       (snapshot['days'] as List).expand((d) => (d as Map)['courses'] as List),
@@ -218,16 +212,12 @@ void main() {
     await pumpEventQueue();
     pushes.clear();
     await CampusWidgetSync.instance.syncNow();
-    final notices = (pushes.last['snapshot'] as Map)['notices'] as Map;
+    final notices = pushes.last['notices'] as Map;
     expect(notices['unreadCount'], 9);
     final items = (notices['items'] as List).cast<Map>();
     expect(items, hasLength(5));
     expect(items.first, {'title': '通知 1', 'publishedAt': '2026-10-01'});
-    expect(
-      (pushes.last['snapshot'] as Map)['unreadNoticeCount'],
-      9,
-      reason: 'v1 兼容字段保留',
-    );
+    expect(pushes.last['unreadNoticeCount'], 9, reason: 'v1 兼容字段保留');
   });
 
   test('buildCampusWidgetProjection 的 toMap 可直接 JSON 编码', () {
@@ -236,4 +226,30 @@ void main() {
     expect(map['generatedAt'], '2026-10-16T07:58:00');
     expect(() => jsonEncode(map), returnsNormally);
   });
+}
+
+/// 记录式 CampusWidgetGateway 替身：只关心推送到原生的展示投影。
+class _FakeCampusWidgetGateway implements CampusWidgetGateway {
+  final snapshots = <Map<String, Object?>>[];
+
+  @override
+  Future<void> pushSnapshot(Map<String, Object?> projection) async {
+    snapshots.add(projection);
+  }
+
+  @override
+  Future<CampusWidgetPinResult> requestPin(CampusWidgetSize size) async =>
+      CampusWidgetPinResult.unsupported;
+
+  @override
+  Future<CampusWidgetStatus> getStatus() async => CampusWidgetStatus.unknown;
+
+  @override
+  Future<Uint8List?> getPreview(
+    CampusWidgetSize size, {
+    required int widthPx,
+  }) async => null;
+
+  @override
+  Future<bool> isSupported() async => false;
 }

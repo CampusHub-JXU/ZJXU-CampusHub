@@ -33,6 +33,7 @@ import 'package:jxu_campus_hub/features/grades/grades_service.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';
 import 'package:jxu_campus_hub/core/config/service_hub_usage_store.dart';
 import 'package:jxu_campus_hub/features/home/widget/campus_widget_sync.dart';
+import 'package:jxu_campus_hub/features/welcome/welcome_page.dart';
 
 Future<void> resetTestEnvironment() async {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -83,6 +84,8 @@ Future<void> resetTestEnvironment() async {
   ServiceHubUsageStore.instance.debugReset();
   UserProfileController.instance.debugReset();
   CampusWidgetSync.instance.debugReset();
+  // 欢迎向导在途引用；flag 本身由 setMockInitialValues 清空。
+  WelcomeFlow.debugReset();
   // 桌面组件同步的 debounce 会创建 App 级 Timer；测试里归零走同步路径。
   CampusWidgetSync.instance.debugSetDebounce(Duration.zero);
 }

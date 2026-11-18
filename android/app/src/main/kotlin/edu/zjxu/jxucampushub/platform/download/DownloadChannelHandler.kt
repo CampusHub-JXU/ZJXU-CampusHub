@@ -5,45 +5,15 @@ import android.app.DownloadManager
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
-import edu.zjxu.jxucampushub.platform.invalidArgs
-import io.flutter.plugin.common.BinaryMessenger
-import io.flutter.plugin.common.MethodChannel
+import androidx.annotation.Keep
 
 /**
- * 下载通道：附件转交系统 DownloadManager，并注入 Cookie / UA / Referer。
+ * 下载原生服务（由 Dart 经 JNIgen 直调）：附件转交系统 DownloadManager，并注入 Cookie / UA / Referer。
  */
+@Keep
 class DownloadChannelHandler(private val activity: Activity) {
-    companion object {
-        private const val CHANNEL = "edu.zjxu.jxucampushub/download"
-    }
-
-    fun register(messenger: BinaryMessenger) {
-        MethodChannel(messenger, CHANNEL).setMethodCallHandler { call, result ->
-            when (call.method) {
-                "enqueueDownload" -> {
-                    val url = call.argument<String>("url")
-                    val fileName = call.argument<String>("fileName")
-                    if (url.isNullOrBlank() || fileName.isNullOrBlank()) {
-                        result.invalidArgs("url and fileName are required")
-                        return@setMethodCallHandler
-                    }
-                    result.success(
-                        enqueueDownload(
-                            url = url,
-                            fileName = fileName,
-                            mimeType = call.argument<String>("mimeType"),
-                            userAgent = call.argument<String>("userAgent"),
-                            cookie = call.argument<String>("cookie"),
-                            referer = call.argument<String>("referer"),
-                        ),
-                    )
-                }
-                else -> result.notImplemented()
-            }
-        }
-    }
-
-    private fun enqueueDownload(
+    @Keep
+    fun enqueueDownload(
         url: String,
         fileName: String,
         mimeType: String?,
@@ -51,6 +21,9 @@ class DownloadChannelHandler(private val activity: Activity) {
         cookie: String?,
         referer: String?,
     ): Boolean {
+        if (url.isBlank() || fileName.isBlank()) {
+            return false
+        }
         return try {
             val safeName = fileName
                 .replace(Regex("[\\\\/:*?\"<>|]"), "_")

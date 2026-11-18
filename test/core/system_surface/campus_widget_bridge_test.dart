@@ -1,4 +1,5 @@
-import 'package:flutter/services.dart';
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/core/system_surface/campus_widget_bridge.dart';
@@ -6,115 +7,129 @@ import 'package:jxu_campus_hub/core/system_surface/campus_widget_bridge.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  const channel = MethodChannel('edu.zjxu.jxucampushub/widget');
-  final messenger =
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+  late _FakeCampusWidgetGateway gateway;
 
-  tearDown(() => messenger.setMockMethodCallHandler(channel, null));
-
-  test('pushSnapshot 把投影包装为 {snapshot: ...} 推送', () async {
-    final calls = <MethodCall>[];
-    messenger.setMockMethodCallHandler(channel, (call) async {
-      calls.add(call);
-      return null;
-    });
-
-    await CampusWidgetBridge.instance.pushSnapshot({'a': 1});
-
-    expect(calls.single.method, 'pushSnapshot');
-    expect(calls.single.arguments, {
-      'snapshot': {'a': 1},
-    });
+  setUp(() {
+    gateway = _FakeCampusWidgetGateway();
+    CampusWidgetBridge.instance.setGatewayForTesting(gateway);
   });
 
-  test('requestPin 携带 size 参数并映射结果码', () async {
-    final calls = <MethodCall>[];
-    var reply = 'requested';
-    messenger.setMockMethodCallHandler(channel, (call) async {
-      calls.add(call);
-      return reply;
-    });
+  tearDown(() => CampusWidgetBridge.instance.setGatewayForTesting(null));
 
+  test('pushSnapshot 把展示投影原样交给网关', () async {
+    await CampusWidgetBridge.instance.pushSnapshot({'a': 1});
+    await CampusWidgetBridge.instance.pushSnapshot({'b': 2});
+
+    expect(gateway.snapshots, [
+      {'a': 1},
+      {'b': 2},
+    ]);
+  });
+
+  test('requestPin 透传尺寸并原样返回网关结果', () async {
     for (final size in CampusWidgetSize.values) {
+      await CampusWidgetBridge.instance.requestPin(size);
+    }
+    expect(gateway.pinRequests, CampusWidgetSize.values);
+
+    for (final result in CampusWidgetPinResult.values) {
+      gateway.pinResult = result;
       expect(
-        await CampusWidgetBridge.instance.requestPin(size),
-        CampusWidgetPinResult.requested,
+        await CampusWidgetBridge.instance.requestPin(CampusWidgetSize.small),
+        result,
       );
     }
-    expect(calls.map((c) => c.method), everyElement('requestPin'));
-    expect(calls.map((c) => c.arguments), [
-      {'size': 'small'},
-      {'size': 'medium'},
-      {'size': 'large'},
-    ]);
-
-    reply = 'unsupported';
-    expect(
-      await CampusWidgetBridge.instance.requestPin(CampusWidgetSize.small),
-      CampusWidgetPinResult.unsupported,
-    );
-    reply = 'rejected';
-    expect(
-      await CampusWidgetBridge.instance.requestPin(CampusWidgetSize.medium),
-      CampusWidgetPinResult.rejected,
-    );
-    reply = 'error';
-    expect(
-      await CampusWidgetBridge.instance.requestPin(CampusWidgetSize.large),
-      CampusWidgetPinResult.error,
-    );
   });
 
-  test('requestPin 未知 / 旧版返回值降级为 error，isSupported null 视为 false', () async {
-    Object? reply = true;
-    messenger.setMockMethodCallHandler(channel, (call) async {
-      return call.method == 'requestPin' ? reply : null;
-    });
+  test('网关降级结果原样透传给调用方', () async {
+    gateway.pinResult = CampusWidgetPinResult.unsupported;
+    gateway.status = CampusWidgetStatus.unknown;
+    gateway.supported = false;
 
-    // 旧版原生返回 bool：不再被当作成功。
-    expect(
-      await CampusWidgetBridge.instance.requestPin(CampusWidgetSize.small),
-      CampusWidgetPinResult.error,
-    );
-    reply = null;
-    expect(
-      await CampusWidgetBridge.instance.requestPin(CampusWidgetSize.small),
-      CampusWidgetPinResult.error,
-    );
-    expect(await CampusWidgetBridge.instance.isSupported(), isFalse);
-  });
-
-  test('通道缺失时静默降级', () async {
-    await CampusWidgetBridge.instance.pushSnapshot({'a': 1});
     expect(
       await CampusWidgetBridge.instance.requestPin(CampusWidgetSize.large),
       CampusWidgetPinResult.unsupported,
     );
-    expect(await CampusWidgetBridge.instance.isSupported(), isFalse);
-  });
-
-  test('PlatformException 降级且不抛出', () async {
-    messenger.setMockMethodCallHandler(channel, (call) async {
-      throw PlatformException(code: 'invalid_args', message: 'bad');
-    });
-
-    await CampusWidgetBridge.instance.pushSnapshot({'a': 1});
     expect(
-      await CampusWidgetBridge.instance.requestPin(CampusWidgetSize.medium),
-      CampusWidgetPinResult.error,
+      identical(
+        await CampusWidgetBridge.instance.getStatus(),
+        CampusWidgetStatus.unknown,
+      ),
+      isTrue,
     );
     expect(await CampusWidgetBridge.instance.isSupported(), isFalse);
   });
 
-  test('requestPin 遇到非平台异常映射为 error 而不抛出', () async {
-    messenger.setMockMethodCallHandler(channel, (call) async {
-      throw StateError('boom');
-    });
+  test('getPreview 透传尺寸与目标像素宽度并返回位图', () async {
+    final png = Uint8List.fromList(const [1, 2, 3]);
+    gateway.previews[CampusWidgetSize.medium] = png;
 
     expect(
-      await CampusWidgetBridge.instance.requestPin(CampusWidgetSize.small),
-      CampusWidgetPinResult.error,
+      await CampusWidgetBridge.instance.getPreview(
+        CampusWidgetSize.medium,
+        widthPx: 480,
+      ),
+      same(png),
     );
+    expect(gateway.previewRequests, [(CampusWidgetSize.medium, 480)]);
+    expect(
+      await CampusWidgetBridge.instance.getPreview(
+        CampusWidgetSize.small,
+        widthPx: 240,
+      ),
+      isNull,
+    );
+  });
+
+  test('网关异常向调用方传播（失败映射由 JNI 网关内部完成）', () async {
+    gateway.pushError = StateError('boom');
+    await expectLater(
+      CampusWidgetBridge.instance.pushSnapshot({'a': 1}),
+      throwsStateError,
+    );
+
+    gateway.pinError = StateError('boom');
+    await expectLater(
+      CampusWidgetBridge.instance.requestPin(CampusWidgetSize.small),
+      throwsStateError,
+    );
+  });
+
+  group('CampusWidgetPinResult.fromPlatformValue', () {
+    test('已知结果码映射到对应枚举', () {
+      expect(
+        CampusWidgetPinResult.fromPlatformValue('requested'),
+        CampusWidgetPinResult.requested,
+      );
+      expect(
+        CampusWidgetPinResult.fromPlatformValue('unsupported'),
+        CampusWidgetPinResult.unsupported,
+      );
+      expect(
+        CampusWidgetPinResult.fromPlatformValue('rejected'),
+        CampusWidgetPinResult.rejected,
+      );
+    });
+
+    test('未知 / 旧版返回值降级为 error', () {
+      expect(
+        CampusWidgetPinResult.fromPlatformValue('error'),
+        CampusWidgetPinResult.error,
+      );
+      // 旧版原生返回 bool：不再被当作成功。
+      expect(
+        CampusWidgetPinResult.fromPlatformValue(true),
+        CampusWidgetPinResult.error,
+      );
+      expect(
+        CampusWidgetPinResult.fromPlatformValue(null),
+        CampusWidgetPinResult.error,
+      );
+      expect(
+        CampusWidgetPinResult.fromPlatformValue('bogus'),
+        CampusWidgetPinResult.error,
+      );
+    });
   });
 
   group('CampusWidgetStatus.fromPlatformValue', () {
@@ -148,4 +163,48 @@ void main() {
       expect(empty.lastSnapshotAt, isNull);
     });
   });
+}
+
+/// 记录式 CampusWidgetGateway 替身：记录入参，返回可配置结果。
+class _FakeCampusWidgetGateway implements CampusWidgetGateway {
+  final snapshots = <Map<String, Object?>>[];
+  final pinRequests = <CampusWidgetSize>[];
+  final previewRequests = <(CampusWidgetSize, int)>[];
+
+  CampusWidgetPinResult pinResult = CampusWidgetPinResult.requested;
+  CampusWidgetStatus status = CampusWidgetStatus.unknown;
+  final previews = <CampusWidgetSize, Uint8List>{};
+  bool supported = true;
+  Object? pushError;
+  Object? pinError;
+
+  @override
+  Future<void> pushSnapshot(Map<String, Object?> projection) async {
+    final error = pushError;
+    if (error != null) throw error;
+    snapshots.add(projection);
+  }
+
+  @override
+  Future<CampusWidgetPinResult> requestPin(CampusWidgetSize size) async {
+    final error = pinError;
+    if (error != null) throw error;
+    pinRequests.add(size);
+    return pinResult;
+  }
+
+  @override
+  Future<CampusWidgetStatus> getStatus() async => status;
+
+  @override
+  Future<Uint8List?> getPreview(
+    CampusWidgetSize size, {
+    required int widthPx,
+  }) async {
+    previewRequests.add((size, widthPx));
+    return previews[size];
+  }
+
+  @override
+  Future<bool> isSupported() async => supported;
 }

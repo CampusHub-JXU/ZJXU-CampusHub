@@ -72,7 +72,7 @@ void main() {
     messenger.setMockMethodCallHandler(channel, null);
   });
 
-  test('并发 initialize 只初始化一次、创建三渠道并补发一次', () async {
+  test('并发 initialize 只初始化一次、创建五渠道并补发一次', () async {
     final entered = Completer<void>();
     final release = Completer<void>();
     onCreateChannel = () async {
@@ -91,7 +91,7 @@ void main() {
     expect(calls.where((c) => c.method == 'initialize'), hasLength(1));
     expect(
       calls.where((c) => c.method == 'createNotificationChannel'),
-      hasLength(3),
+      hasLength(5),
     );
     expect(
       calls.where((c) => c.method == 'getNotificationAppLaunchDetails'),

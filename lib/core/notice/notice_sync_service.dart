@@ -275,11 +275,13 @@ class NoticeSyncService {
           payload: aggregatePayload,
         );
       } else {
-        await AppNotificationService.instance.showNoticeUpdateNotification(
+        await AppNotificationService.instance.showAppNotification(
           id: _authExpiredNotificationId,
           title: title,
           body: body,
           payload: aggregatePayload,
+          priority: AppNotificationPriority.high,
+          channel: AppNotificationChannel.auth,
         );
       }
       return true;

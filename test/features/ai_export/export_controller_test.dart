@@ -134,7 +134,8 @@ void main() {
       for (final m in [...controller.selected]) {
         controller.toggleModule(m);
       }
-      expect(controller.selected, hasLength(1), reason: '最后一个不能取消');
+      // 控制器不设下限（可以清空）；「至少一项」由页面禁用末项勾选保证。
+      expect(controller.selected, isEmpty);
     });
   });
 

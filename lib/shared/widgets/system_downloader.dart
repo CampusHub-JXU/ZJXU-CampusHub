@@ -1,8 +1,68 @@
-import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:jni/jni.dart';
 
 import '../../core/logging/app_logger.dart';
+import '../../core/platform/android_jni_bridge.dart';
+import '../../core/platform/android_platform_bindings.dart';
 import 'external_url_launcher.dart';
+
+/// 系统下载原生能力网关（默认通过 JNIgen 直调 Kotlin，单测可注入 Fake）。
+abstract interface class DownloadGateway {
+  Future<bool> enqueue({
+    required String url,
+    required String fileName,
+    String? mimeType,
+    String? userAgent,
+    String? cookieHeader,
+    String? referer,
+  });
+}
+
+class _JniDownloadGateway implements DownloadGateway {
+  const _JniDownloadGateway();
+
+  @override
+  Future<bool> enqueue({
+    required String url,
+    required String fileName,
+    String? mimeType,
+    String? userAgent,
+    String? cookieHeader,
+    String? referer,
+  }) async {
+    return AndroidJniBridge.withActivity<bool>(
+      (arena, activity) {
+        final handler = DownloadChannelHandler(activity)..releasedBy(arena);
+        final jUrl = url.toJString()..releasedBy(arena);
+        final jFileName = fileName.toJString()..releasedBy(arena);
+        final jMime = (mimeType != null && mimeType.isNotEmpty)
+            ? (mimeType.toJString()..releasedBy(arena))
+            : null;
+        final jUa = (userAgent != null && userAgent.isNotEmpty)
+            ? (userAgent.toJString()..releasedBy(arena))
+            : null;
+        final jCookie = (cookieHeader != null && cookieHeader.isNotEmpty)
+            ? (cookieHeader.toJString()..releasedBy(arena))
+            : null;
+        final jReferer = (referer != null && referer.isNotEmpty)
+            ? (referer.toJString()..releasedBy(arena))
+            : null;
+        return handler.enqueueDownload(
+          jUrl,
+          jFileName,
+          jMime,
+          jUa,
+          jCookie,
+          jReferer,
+        );
+      },
+      unavailable: false,
+      label: 'JNI 系统下载入队（${scrubSensitiveUrl(url)}）',
+      category: LogCategory.webview,
+    );
+  }
+}
 
 /// 把 WebView 附件交给系统下载服务（Android DownloadManager）。
 ///
@@ -11,7 +71,12 @@ import 'external_url_launcher.dart';
 class SystemDownloader {
   SystemDownloader._();
 
-  static const _channel = MethodChannel('edu.zjxu.jxucampushub/download');
+  static DownloadGateway _gateway = const _JniDownloadGateway();
+
+  @visibleForTesting
+  static void setGatewayForTesting(DownloadGateway? gateway) {
+    _gateway = gateway ?? const _JniDownloadGateway();
+  }
 
   /// 入队一次系统下载；返回是否成功入队。
   static Future<bool> enqueue({
@@ -28,16 +93,15 @@ class SystemDownloader {
         url: WebUri(url),
       )).map((cookie) => '${cookie.name}=${cookie.value}').join('; ');
 
-      final enqueued = await _channel.invokeMethod<bool>('enqueueDownload', {
-        'url': url,
-        'fileName': fileName,
-        if (mimeType != null && mimeType.isNotEmpty) 'mimeType': mimeType,
-        if (userAgent != null && userAgent.isNotEmpty) 'userAgent': userAgent,
-        if (cookieHeader.isNotEmpty) 'cookie': cookieHeader,
-        if (referer != null && referer.isNotEmpty) 'referer': referer,
-      });
-      return enqueued ?? false;
-    } on PlatformException catch (error, stackTrace) {
+      return await _gateway.enqueue(
+        url: url,
+        fileName: fileName,
+        mimeType: mimeType,
+        userAgent: userAgent,
+        cookieHeader: cookieHeader,
+        referer: referer,
+      );
+    } catch (error, stackTrace) {
       AppLogger.instance.webview(
         LogLevel.warn,
         '系统下载入队失败: ${scrubSensitiveUrl(url)}',

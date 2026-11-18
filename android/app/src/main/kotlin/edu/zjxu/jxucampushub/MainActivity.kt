@@ -5,13 +5,9 @@ import android.os.Bundle
 import edu.zjxu.jxucampushub.platform.app_icon.AppIconChannelHandler
 import edu.zjxu.jxucampushub.platform.calendar.CalendarSyncChannelHandler
 import edu.zjxu.jxucampushub.platform.deeplink.DeepLinkChannelHandler
-import edu.zjxu.jxucampushub.platform.download.DownloadChannelHandler
 import edu.zjxu.jxucampushub.platform.shortcut.ShortcutChannelHandler
-import edu.zjxu.jxucampushub.platform.system_settings.SystemSettingsChannelHandler
 import edu.zjxu.jxucampushub.platform.update.AppUpdateChannelHandler
 import edu.zjxu.jxucampushub.platform.update.AppUpdateManager
-import edu.zjxu.jxucampushub.platform.wechat.WeChatChannelHandler
-import edu.zjxu.jxucampushub.platform.widget.WidgetChannelHandler
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 
@@ -38,15 +34,10 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
 
         val messenger = flutterEngine.dartExecutor.binaryMessenger
-        WeChatChannelHandler(this).register(messenger)
         shortcutHandler.register(messenger)
         deepLinkHandler.register(messenger)
-        WidgetChannelHandler(this).register(messenger)
-        DownloadChannelHandler(this).register(messenger)
-        SystemSettingsChannelHandler(this).register(messenger)
         calendarHandler.register(messenger)
         AppUpdateChannelHandler(this, appUpdateManager).register(messenger)
-        appIconHandler.register(messenger)
     }
 
     override fun onResume() {

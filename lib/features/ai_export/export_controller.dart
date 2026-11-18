@@ -166,7 +166,10 @@ class AiExportController extends ChangeNotifier {
     Listenable? identityChanges,
     DateTime Function()? clock,
     ExportEnvironment Function(DateTime now)? environment,
-    ExportPreset initialPreset = ExportPreset.planning,
+
+    /// 初始预设决定默认勾选：默认「全部」——勾选清单即导出范围，
+    /// 页面打开时所有有来源的模块都处于勾选状态。
+    ExportPreset initialPreset = ExportPreset.all,
   }) : _sources = {for (final s in sources) s.module: s},
        _identity = identity ?? readCurrentExportIdentity,
        _identityChanges = identityChanges ?? currentExportIdentityChanges(),
@@ -249,13 +252,13 @@ class AiExportController extends ChangeNotifier {
     _notify();
   }
 
-  /// 微调：切换单个模块。至少保留一个。
+  /// 微调：切换单个模块。允许清空为 0 项（页面以禁用末项勾选保证至少一项，
+  /// 此处不设下限，避免与「勾选即导出项」的语义互相抵消）。
   void toggleModule(ExportModule module) {
     final next = {..._selected};
     if (!next.remove(module)) {
       next.add(module);
     }
-    if (next.isEmpty) return;
     _selected = next;
     _notify();
   }

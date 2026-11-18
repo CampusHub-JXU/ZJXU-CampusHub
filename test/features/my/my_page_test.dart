@@ -157,10 +157,7 @@ void main() {
         '去登录',
       );
       // 副标题只写学校名，不带任何身份数字。
-      expect(
-        tester.widget<Text>(find.byKey(const Key('my_identity'))).data,
-        '嘉兴大学',
-      );
+      expect(find.byKey(const Key('my_identity')), findsNothing);
     },
   );
 
@@ -324,10 +321,7 @@ void main() {
       await tester.pumpWidget(const MaterialApp(home: MyPage()));
       await tester.pump();
       await tester.pump();
-      expect(
-        tester.widget<Text>(find.byKey(const Key('my_identity'))).data,
-        '嘉兴大学',
-      );
+      expect(find.byKey(const Key('my_identity')), findsNothing);
       expect(find.textContaining('2025001'), findsNothing);
     });
 
@@ -552,7 +546,7 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: MyPage()));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('my_identity')), findsOneWidget);
+    expect(find.byKey(const Key('my_identity')), findsNothing);
     expect(find.text('统一认证'), findsOneWidget);
     expect(find.text('教务系统'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -576,7 +570,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('my_identity')), findsOneWidget);
+    expect(find.byKey(const Key('my_identity')), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -589,7 +583,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('my_identity')), findsOneWidget);
+    expect(find.byKey(const Key('my_identity')), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -810,7 +804,7 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: MyPage()));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('my_identity')), findsOneWidget);
+    expect(find.byKey(const Key('my_identity')), findsNothing);
     expect(find.byKey(const Key('my_logout')), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -871,7 +865,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('my_identity')), findsOneWidget);
+      expect(find.byKey(const Key('my_identity')), findsNothing);
       expect(find.byKey(const Key('my_logout')), findsOneWidget);
       expect(tester.takeException(), isNull);
     },

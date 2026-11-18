@@ -1,11 +1,9 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:jni/jni.dart';
-import 'package:jni_flutter/jni_flutter.dart';
 
 import '../logging/app_logger.dart';
+import '../platform/android_jni_bridge.dart';
 import '../platform/android_platform_bindings.dart';
-import '../platform/safe_invoke.dart';
 
 /// 系统设置页跳转目标（固定契约，设置页 / 权限引导共用）。
 enum SystemSettingsTarget {
@@ -58,40 +56,88 @@ class SystemBackgroundStatus {
   final bool? exactAlarmsAllowed;
   final bool? ignoringBatteryOptimizations;
   final bool isXiaomiFamily;
+}
 
-  /// 解析 system_settings 通道 `getStatus` 的返回；非 Map 视为整体未知。
-  static SystemBackgroundStatus fromPlatformValue(Object? value) {
-    if (value is! Map) return unknown;
-    bool? flag(String key) {
-      final v = value[key];
-      return v is bool ? v : null;
-    }
+/// 系统设置原生能力网关（默认通过 JNIgen 直调 Kotlin，单测可注入 Fake）。
+abstract interface class SystemSettingsGateway {
+  Future<SystemSettingsOpenResult> open(
+    SystemSettingsTarget target, {
+    String? channelId,
+  });
 
-    return SystemBackgroundStatus(
-      notificationsEnabled: flag('notificationsEnabled'),
-      exactAlarmsAllowed: flag('exactAlarmsAllowed'),
-      ignoringBatteryOptimizations: flag('ignoringBatteryOptimizations'),
-      isXiaomiFamily: value['isXiaomiFamily'] == true,
+  Future<SystemBackgroundStatus> getStatus();
+}
+
+class _JniSystemSettingsGateway implements SystemSettingsGateway {
+  const _JniSystemSettingsGateway();
+
+  @override
+  Future<SystemSettingsOpenResult> open(
+    SystemSettingsTarget target, {
+    String? channelId,
+  }) async {
+    return AndroidJniBridge.withActivity<SystemSettingsOpenResult>(
+      (arena, activity) {
+        final handler = SystemSettingsChannelHandler(activity)
+          ..releasedBy(arena);
+        final jTarget = target.name.toJString()..releasedBy(arena);
+        final jChannelId = channelId == null
+            ? null
+            : (channelId.toJString()..releasedBy(arena));
+        final result = handler.open(jTarget, jChannelId)..releasedBy(arena);
+        return SystemSettingsLauncher.parseOpenResult(result.toDartString());
+      },
+      unavailable: SystemSettingsOpenResult.unavailable,
+      label: 'JNI 调用打开系统设置页（${target.name}）',
+      category: LogCategory.general,
+    );
+  }
+
+  @override
+  Future<SystemBackgroundStatus> getStatus() async {
+    return AndroidJniBridge.withActivity<SystemBackgroundStatus>(
+      (arena, activity) {
+        final handler = SystemSettingsChannelHandler(activity)
+          ..releasedBy(arena);
+        final snapshot = handler.readStatusSnapshot()..releasedBy(arena);
+        final notifications = snapshot.notificationsEnabled;
+        final exactAlarms = snapshot.exactAlarmsAllowed;
+        final batteryOpt = snapshot.ignoringBatteryOptimizations;
+        if (notifications != null) notifications.releasedBy(arena);
+        if (exactAlarms != null) exactAlarms.releasedBy(arena);
+        if (batteryOpt != null) batteryOpt.releasedBy(arena);
+        return SystemBackgroundStatus(
+          notificationsEnabled: notifications?.booleanValue(),
+          exactAlarmsAllowed: exactAlarms?.booleanValue(),
+          ignoringBatteryOptimizations: batteryOpt?.booleanValue(),
+          isXiaomiFamily: snapshot.isXiaomiFamily,
+        );
+      },
+      unavailable: SystemBackgroundStatus.unknown,
+      label: 'JNI 读取后台运行状态',
+      category: LogCategory.general,
     );
   }
 }
 
-/// 系统设置 launcher（方法通道 `edu.zjxu.jxucampushub/system_settings`）。
+/// 系统设置 launcher（Android 经 JNIgen 直调 `SystemSettingsChannelHandler`）。
 ///
 /// 只负责把用户带到对应设置页：**打开成功不代表权限已授予**，调用方不得据此
 /// 改写权限状态；本类不修改任何权限，也不申请危险权限。
 ///
-/// 非 Android / 测试环境下通道缺失（`MissingPluginException`）或原生异常
-/// （`PlatformException`）一律降级为 [SystemSettingsOpenResult.unavailable]，
+/// 非 Android / 测试环境或原生异常一律降级为 [SystemSettingsOpenResult.unavailable]，
 /// 不向 UI 抛出平台异常。
 class SystemSettingsLauncher {
   SystemSettingsLauncher._();
 
   static final SystemSettingsLauncher instance = SystemSettingsLauncher._();
 
-  static const _channel = MethodChannel(
-    'edu.zjxu.jxucampushub/system_settings',
-  );
+  SystemSettingsGateway _gateway = const _JniSystemSettingsGateway();
+
+  @visibleForTesting
+  void setGatewayForTesting(SystemSettingsGateway? gateway) {
+    _gateway = gateway ?? const _JniSystemSettingsGateway();
+  }
 
   /// 打开 [target] 对应的系统设置页。
   ///
@@ -108,113 +154,14 @@ class SystemSettingsLauncher {
         ? normalizedChannelId
         : null;
 
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-      final jniResult = _openViaJni(target, effectiveChannelId);
-      if (jniResult != null) return jniResult;
-    }
-
-    return safeInvoke<String, SystemSettingsOpenResult>(
-      _channel,
-      'open',
-      arguments: <String, Object?>{
-        'target': target.name,
-        'channelId': ?effectiveChannelId,
-      },
-      map: _fromPlatformValue,
-      missing: SystemSettingsOpenResult.unavailable,
-      failed: SystemSettingsOpenResult.unavailable,
-      label: '打开系统设置页（${target.name}）',
-      level: LogLevel.warn,
-      category: LogCategory.general,
-    );
+    return _gateway.open(target, channelId: effectiveChannelId);
   }
 
-  /// 查询后台运行相关的真实状态；通道缺失 / 失败返回 [SystemBackgroundStatus.unknown]。
-  Future<SystemBackgroundStatus> getStatus() async {
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-      final jniStatus = _getStatusViaJni();
-      if (jniStatus != null) return jniStatus;
-    }
+  /// 查询后台运行相关的真实状态；非 Android / 失败返回 [SystemBackgroundStatus.unknown]。
+  Future<SystemBackgroundStatus> getStatus() => _gateway.getStatus();
 
-    return safeInvoke<Object, SystemBackgroundStatus>(
-      _channel,
-      'getStatus',
-      map: SystemBackgroundStatus.fromPlatformValue,
-      missing: SystemBackgroundStatus.unknown,
-      failed: SystemBackgroundStatus.unknown,
-      label: '读取后台运行状态',
-      level: LogLevel.warn,
-      category: LogCategory.general,
-    );
-  }
-
-  SystemSettingsOpenResult? _openViaJni(
-    SystemSettingsTarget target,
-    String? channelId,
-  ) {
-    final engineId = PlatformDispatcher.instance.engineId;
-    if (engineId == null) return null;
-    try {
-      return using((arena) {
-        final rawActivity = androidActivity(engineId);
-        if (rawActivity == null) return null;
-        final activity = rawActivity.as(Activity.type, releaseOriginal: true)
-          ..releasedBy(arena);
-        final handler = SystemSettingsChannelHandler(activity)
-          ..releasedBy(arena);
-        final jTarget = target.name.toJString()..releasedBy(arena);
-        final jChannelId = channelId == null
-            ? null
-            : (channelId.toJString()..releasedBy(arena));
-        final result = handler.open(jTarget, jChannelId)..releasedBy(arena);
-        return _fromPlatformValue(result.toDartString());
-      });
-    } catch (error) {
-      AppLogger.instance.log(
-        LogLevel.warn,
-        LogCategory.general,
-        'JNI 调用打开系统设置页失败（${target.name}）: $error',
-      );
-      return SystemSettingsOpenResult.unavailable;
-    }
-  }
-
-  SystemBackgroundStatus? _getStatusViaJni() {
-    final engineId = PlatformDispatcher.instance.engineId;
-    if (engineId == null) return null;
-    try {
-      return using((arena) {
-        final rawActivity = androidActivity(engineId);
-        if (rawActivity == null) return null;
-        final activity = rawActivity.as(Activity.type, releaseOriginal: true)
-          ..releasedBy(arena);
-        final handler = SystemSettingsChannelHandler(activity)
-          ..releasedBy(arena);
-        final snapshot = handler.readStatusSnapshot()..releasedBy(arena);
-        final notifications = snapshot.notificationsEnabled;
-        final exactAlarms = snapshot.exactAlarmsAllowed;
-        final batteryOpt = snapshot.ignoringBatteryOptimizations;
-        if (notifications != null) notifications.releasedBy(arena);
-        if (exactAlarms != null) exactAlarms.releasedBy(arena);
-        if (batteryOpt != null) batteryOpt.releasedBy(arena);
-        return SystemBackgroundStatus(
-          notificationsEnabled: notifications?.booleanValue(),
-          exactAlarmsAllowed: exactAlarms?.booleanValue(),
-          ignoringBatteryOptimizations: batteryOpt?.booleanValue(),
-          isXiaomiFamily: snapshot.isXiaomiFamily,
-        );
-      });
-    } catch (error) {
-      AppLogger.instance.log(
-        LogLevel.warn,
-        LogCategory.general,
-        'JNI 读取后台运行状态失败: $error',
-      );
-      return SystemBackgroundStatus.unknown;
-    }
-  }
-
-  static SystemSettingsOpenResult _fromPlatformValue(String? value) {
+  @visibleForTesting
+  static SystemSettingsOpenResult parseOpenResult(String? value) {
     return switch (value) {
       'target' => SystemSettingsOpenResult.target,
       'appDetails' => SystemSettingsOpenResult.appDetails,

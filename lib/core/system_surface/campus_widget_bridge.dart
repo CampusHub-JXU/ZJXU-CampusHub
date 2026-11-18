@@ -1,6 +1,12 @@
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:jni/jni.dart';
 
 import '../logging/app_logger.dart';
+import '../platform/android_jni_bridge.dart';
+import '../platform/android_platform_bindings.dart';
 import '../platform/safe_invoke.dart';
 
 /// 桌面组件的三种固定尺寸（与原生 `CampusWidgetKind` 一一对应）。
@@ -94,6 +100,122 @@ class CampusWidgetStatus {
   }
 }
 
+/// 桌面组件前台原生能力网关（默认通过 JNIgen 直调 Kotlin，单测可注入 Fake）。
+abstract interface class CampusWidgetGateway {
+  Future<void> pushSnapshot(Map<String, Object?> projection);
+
+  Future<CampusWidgetPinResult> requestPin(CampusWidgetSize size);
+
+  Future<CampusWidgetStatus> getStatus();
+
+  Future<Uint8List?> getPreview(CampusWidgetSize size, {required int widthPx});
+
+  Future<bool> isSupported();
+}
+
+class _JniCampusWidgetGateway implements CampusWidgetGateway {
+  const _JniCampusWidgetGateway();
+
+  @override
+  Future<void> pushSnapshot(Map<String, Object?> projection) async {
+    final snapshotJson = jsonEncode(projection);
+    AndroidJniBridge.withActivity<void>(
+      (arena, activity) {
+        final handler = WidgetChannelHandler(activity)..releasedBy(arena);
+        final jJson = snapshotJson.toJString()..releasedBy(arena);
+        handler.pushSnapshot(jJson);
+      },
+      unavailable: null,
+      label: 'JNI 桌面组件投影推送',
+      category: LogCategory.general,
+    );
+  }
+
+  @override
+  Future<CampusWidgetPinResult> requestPin(CampusWidgetSize size) async {
+    return AndroidJniBridge.withActivity<CampusWidgetPinResult>(
+      (arena, activity) {
+        final handler = WidgetChannelHandler(activity)..releasedBy(arena);
+        final jSize = size.code.toJString()..releasedBy(arena);
+        final code = (handler.requestPin(
+          jSize,
+        )..releasedBy(arena)).toDartString();
+        return CampusWidgetPinResult.fromPlatformValue(code);
+      },
+      unavailable: CampusWidgetPinResult.unsupported,
+      failed: CampusWidgetPinResult.error,
+      label: 'JNI 添加桌面组件',
+      category: LogCategory.general,
+    );
+  }
+
+  @override
+  Future<CampusWidgetStatus> getStatus() async {
+    return AndroidJniBridge.withActivity<CampusWidgetStatus>(
+      (arena, activity) {
+        final handler = WidgetChannelHandler(activity)..releasedBy(arena);
+        final snapshot = handler.readStatusSnapshot()..releasedBy(arena);
+        final installed = <CampusWidgetSize, int>{
+          if (snapshot.smallCount > 0)
+            CampusWidgetSize.small: snapshot.smallCount,
+          if (snapshot.mediumCount > 0)
+            CampusWidgetSize.medium: snapshot.mediumCount,
+          if (snapshot.largeCount > 0)
+            CampusWidgetSize.large: snapshot.largeCount,
+        };
+        final lastMs = snapshot.lastSnapshotAtMs;
+        return CampusWidgetStatus(
+          pinSupported: snapshot.pinSupported,
+          installed: installed,
+          lastSnapshotAt: lastMs > 0
+              ? DateTime.fromMillisecondsSinceEpoch(lastMs)
+              : null,
+        );
+      },
+      unavailable: CampusWidgetStatus.unknown,
+      label: 'JNI 读取桌面组件状态',
+      category: LogCategory.general,
+    );
+  }
+
+  @override
+  Future<Uint8List?> getPreview(
+    CampusWidgetSize size, {
+    required int widthPx,
+  }) async {
+    return AndroidJniBridge.withActivity<Uint8List?>(
+      (arena, activity) {
+        final handler = WidgetChannelHandler(activity)..releasedBy(arena);
+        final jSize = size.code.toJString()..releasedBy(arena);
+        final jBytes = handler.getPreview(jSize, widthPx);
+        if (jBytes == null) return null;
+        jBytes.releasedBy(arena);
+        final signed = jBytes.getRange(0, jBytes.length);
+        return signed.buffer.asUint8List(
+          signed.offsetInBytes,
+          signed.lengthInBytes,
+        );
+      },
+      unavailable: null,
+      label: 'JNI 读取桌面组件预览',
+      category: LogCategory.general,
+    );
+  }
+
+  @override
+  Future<bool> isSupported() async {
+    return AndroidJniBridge.withActivity<bool>(
+      (arena, activity) {
+        final handler = WidgetChannelHandler(activity)..releasedBy(arena);
+        return handler.isSupported;
+      },
+      unavailable: false,
+      label: 'JNI 检查桌面组件固定支持',
+      category: LogCategory.general,
+    );
+  }
+}
+
 /// 桌面组件原生桥（PRD §13）。
 ///
 /// 只接受「无凭据」的展示投影：`CampusSnapshot → WidgetProjection` 之后才进入
@@ -103,29 +225,16 @@ class CampusWidgetBridge {
 
   static final CampusWidgetBridge instance = CampusWidgetBridge._();
 
-  static const _channel = MethodChannel('edu.zjxu.jxucampushub/widget');
+  CampusWidgetGateway _gateway = const _JniCampusWidgetGateway();
 
-  /// 推送展示投影到原生桌面组件状态。
-  ///
-  /// 原生侧读取的是 `snapshot` 参数（`call.argument("snapshot")`），因此这里必须
-  /// 包装成 `{'snapshot': {...}}`；直接传投影 map 会让原生拿不到数据并抛
-  /// `invalid_args`（此前的静默失败即由此产生）。
-  Future<void> pushSnapshot(Map<String, Object?> projection) {
-    // 原生组件不可用（旧设备/单元测试）静默降级；推送失败不影响 App 主流程，
-    // 但要留下可诊断的记录。非平台异常仍原样抛出（保持原语义）。
-    return safeInvoke<void, void>(
-      _channel,
-      'pushSnapshot',
-      arguments: <String, Object?>{'snapshot': projection},
-      map: (_) {},
-      missing: null,
-      failed: null,
-      label: '桌面组件投影推送',
-      level: LogLevel.warn,
-      category: LogCategory.general,
-      catchUnknown: false,
-    );
+  @visibleForTesting
+  void setGatewayForTesting(CampusWidgetGateway? gateway) {
+    _gateway = gateway ?? const _JniCampusWidgetGateway();
   }
+
+  /// 推送展示投影到原生桌面组件状态（前台走 JNIgen 直调）。
+  Future<void> pushSnapshot(Map<String, Object?> projection) =>
+      _gateway.pushSnapshot(projection);
 
   /// 后台引擎可用的已放置组件实例数（三种尺寸合计）；插件缺失或查询失败返回
   /// null（未知），调用方不得把未知当成「没放」。
@@ -152,61 +261,22 @@ class CampusWidgetBridge {
 
   /// 请求把指定尺寸的组件固定到桌面。
   ///
-  /// 通道缺失（非 Android / 单测）→ [CampusWidgetPinResult.unsupported]；
-  /// [PlatformException]、未知异常与未知返回值 → [CampusWidgetPinResult.error]，不向 UI 抛异常。
+  /// 非 Android / 不支持 → [CampusWidgetPinResult.unsupported]；
+  /// 原生异常与未知返回值 → [CampusWidgetPinResult.error]，不向 UI 抛异常。
   Future<CampusWidgetPinResult> requestPin(CampusWidgetSize size) =>
-      safeInvoke<Object, CampusWidgetPinResult>(
-        _channel,
-        'requestPin',
-        arguments: <String, Object?>{'size': size.code},
-        map: CampusWidgetPinResult.fromPlatformValue,
-        missing: CampusWidgetPinResult.unsupported,
-        failed: CampusWidgetPinResult.error,
-        label: '添加桌面组件',
-        level: LogLevel.warn,
-        category: LogCategory.general,
-      );
+      _gateway.requestPin(size);
 
-  /// 读取已放置实例数与最近同步时间；通道缺失 / 失败返回 [CampusWidgetStatus.unknown]。
-  Future<CampusWidgetStatus> getStatus() =>
-      safeInvoke<Object, CampusWidgetStatus>(
-        _channel,
-        'getStatus',
-        map: CampusWidgetStatus.fromPlatformValue,
-        missing: CampusWidgetStatus.unknown,
-        failed: CampusWidgetStatus.unknown,
-        label: '读取桌面组件状态',
-        level: LogLevel.warn,
-        category: LogCategory.general,
-      );
+  /// 读取已放置实例数与最近同步时间；非 Android / 失败返回 [CampusWidgetStatus.unknown]。
+  Future<CampusWidgetStatus> getStatus() => _gateway.getStatus();
 
   /// 原生把 launcher 组件选择器同款的 `previewLayout` 渲染成 PNG 位图
   /// （设置页「桌面与后台」预览用）。[widthPx] 为位图的目标展示宽（物理像素），
-  /// 字号按真实 sp 栅格化不缩放失真；通道缺失 / 失败返回 null，UI 隐藏预览。
+  /// 字号按真实 sp 栅格化不缩放失真；非 Android / 失败返回 null，UI 隐藏预览。
   Future<Uint8List?> getPreview(
     CampusWidgetSize size, {
     required int widthPx,
-  }) => safeInvoke<Uint8List, Uint8List?>(
-    _channel,
-    'getPreview',
-    arguments: <String, Object?>{'size': size.code, 'widthPx': widthPx},
-    map: (value) => value,
-    missing: null,
-    failed: null,
-    label: '读取桌面组件预览',
-    level: LogLevel.warn,
-    category: LogCategory.general,
-  );
+  }) => _gateway.getPreview(size, widthPx: widthPx);
 
   /// 设备/桌面是否支持固定组件。
-  Future<bool> isSupported() => _invokeBool('isSupported');
-
-  Future<bool> _invokeBool(String method) => safeInvoke<bool, bool>(
-    _channel,
-    method,
-    map: (value) => value ?? false,
-    missing: false,
-    failed: false,
-    catchUnknown: false,
-  );
+  Future<bool> isSupported() => _gateway.isSupported();
 }

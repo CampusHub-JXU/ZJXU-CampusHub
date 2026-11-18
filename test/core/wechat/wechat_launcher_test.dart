@@ -1,4 +1,3 @@
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/core/config/app_config.dart';
@@ -7,11 +6,8 @@ import 'package:jxu_campus_hub/core/wechat/wechat_launcher.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  const wechatChannel = MethodChannel('edu.zjxu.jxucampushub/wechat');
-
   tearDown(() {
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(wechatChannel, null);
+    WechatLauncher.instance.setGatewayForTesting(null);
   });
 
   test('xiaofubao recharge uri keeps required wechat parameters', () {
@@ -71,72 +67,52 @@ void main() {
   });
 
   group('openUrlDetailed', () {
-    test(
-      'opens url through native WeChat channel with sanitized url',
-      () async {
-        final calls = <MethodCall>[];
-        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-            .setMockMethodCallHandler(wechatChannel, (call) async {
-              calls.add(call);
-              return true;
-            });
-
-        final result = await WechatLauncher.instance.openUrlDetailed(
-          'https://twdekt.zjxu.edu.cn/dekt/wx/index?_WXFTL=0&code=abc'
-          '#/hd-detail?hdId=1&ticket=t',
+    test('passes sanitized url to the injected gateway', () async {
+      final gateway = _FakeWechatGateway()
+        ..nextResult = const WechatLaunchResult(
+          status: WechatLaunchStatus.launched,
+          sanitizedUrl: '',
         );
+      WechatLauncher.instance.setGatewayForTesting(gateway);
 
-        expect(result.status, WechatLaunchStatus.launched);
-        expect(result.isLaunchRequested, isTrue);
-        expect(calls, hasLength(1));
-        expect(calls.single.method, 'openUrlInWeChat');
-        // 一次性凭证不得下发到原生侧 / 微信。
-        expect(calls.single.arguments, {
-          'url': 'https://twdekt.zjxu.edu.cn/dekt/wx/index?_WXFTL=0#/hd-detail?hdId=1',
-        });
-      },
-    );
+      final result = await WechatLauncher.instance.openUrlDetailed(
+        'https://twdekt.zjxu.edu.cn/dekt/wx/index?_WXFTL=0&code=abc'
+        '#/hd-detail?hdId=1&ticket=t',
+      );
 
-    test('maps native status strings to launch statuses', () async {
-      const cases = <String, WechatLaunchStatus>{
-        'launched': WechatLaunchStatus.launched,
-        'not_installed': WechatLaunchStatus.notInstalled,
-        'unsupported_url': WechatLaunchStatus.unsupportedUrl,
-        'no_handler': WechatLaunchStatus.noHandler,
-        'launch_failed': WechatLaunchStatus.launchFailed,
-      };
-      for (final entry in cases.entries) {
-        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-            .setMockMethodCallHandler(
-              wechatChannel,
-              (call) async => {'status': entry.key, 'route': 'r0'},
-            );
-        final result = await WechatLauncher.instance.openUrlDetailed(
-          'https://twdekt.zjxu.edu.cn/dekt/wx/index?_WXFTL=0',
-        );
-        expect(result.status, entry.value, reason: entry.key);
-        expect(result.route, 'r0');
-        expect(
-          result.sanitizedUrl,
-          'https://twdekt.zjxu.edu.cn/dekt/wx/index?_WXFTL=0',
-        );
-      }
+      expect(result.status, WechatLaunchStatus.launched);
+      expect(result.isLaunchRequested, isTrue);
+      expect(gateway.urls, hasLength(1));
+      expect(gateway.openAppCalls, 0);
+      // 一次性凭证不得下发到原生侧 / 微信。
+      expect(
+        gateway.urls.single,
+        'https://twdekt.zjxu.edu.cn/dekt/wx/index?_WXFTL=0#/hd-detail?hdId=1',
+      );
     });
 
-    test(
-      'bool channel reply maps true/false to launched/launchFailed',
-      () async {
-        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-            .setMockMethodCallHandler(wechatChannel, (call) async => false);
-        final result = await WechatLauncher.instance.openUrlDetailed(
-          'https://twdekt.zjxu.edu.cn/dekt/wx/index?_WXFTL=0',
+    test('forwards the gateway result verbatim', () async {
+      final gateway = _FakeWechatGateway()
+        ..nextResult = const WechatLaunchResult(
+          status: WechatLaunchStatus.noHandler,
+          sanitizedUrl: 'native-url',
+          route: 'r0',
+          detail: 'no external handler',
         );
-        expect(result.status, WechatLaunchStatus.launchFailed);
-        expect(result.isLaunchRequested, isFalse);
-      },
-    );
+      WechatLauncher.instance.setGatewayForTesting(gateway);
 
-    test('returns channelUnavailable when native channel is missing', () async {
+      final result = await WechatLauncher.instance.openUrlDetailed(
+        'https://twdekt.zjxu.edu.cn/dekt/wx/index?_WXFTL=0',
+      );
+
+      expect(result.status, WechatLaunchStatus.noHandler);
+      expect(result.route, 'r0');
+      expect(result.detail, 'no external handler');
+      // gateway 结果原样透传，不再由通道回值反推 sanitizedUrl。
+      expect(result.sanitizedUrl, 'native-url');
+    });
+
+    test('returns channelUnavailable when no gateway is injected', () async {
       final result = await WechatLauncher.instance.openUrlDetailed(
         'https://twdekt.zjxu.edu.cn/dekt/wx/index?_WXFTL=0',
       );
@@ -150,71 +126,45 @@ void main() {
     });
 
     test(
-      'rejects empty and unsupported schemes without touching channel',
+      'rejects empty and unsupported schemes without touching the gateway',
       () async {
-        var called = false;
-        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-            .setMockMethodCallHandler(wechatChannel, (call) async {
-              called = true;
-              return true;
-            });
+        final gateway = _FakeWechatGateway();
+        WechatLauncher.instance.setGatewayForTesting(gateway);
 
         for (final url in ['', '   ', 'ftp://a.cn/x', 'javascript:alert(1)']) {
           final result = await WechatLauncher.instance.openUrlDetailed(url);
           expect(result.status, WechatLaunchStatus.unsupportedUrl, reason: url);
           expect(result.isLaunchRequested, isFalse);
         }
-        expect(called, isFalse);
+        expect(gateway.urls, isEmpty);
+        expect(gateway.openAppCalls, 0);
       },
     );
   });
 
   group('openWeChatApp', () {
-    test('invokes openWeChatApp method and maps native status', () async {
-      const cases = <String, WechatLaunchStatus>{
-        'launched': WechatLaunchStatus.launched,
-        'not_installed': WechatLaunchStatus.notInstalled,
-        'unsupported_url': WechatLaunchStatus.unsupportedUrl,
-        'no_handler': WechatLaunchStatus.noHandler,
-        'launch_failed': WechatLaunchStatus.launchFailed,
-      };
-      for (final entry in cases.entries) {
-        final calls = <MethodCall>[];
-        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-            .setMockMethodCallHandler(wechatChannel, (call) async {
-              calls.add(call);
-              return {'status': entry.key, 'route': 'r0'};
-            });
+    test('delegates to gateway.openApp and forwards its result', () async {
+      for (final status in WechatLaunchStatus.values) {
+        final gateway = _FakeWechatGateway()
+          ..nextAppResult = WechatLaunchResult(
+            status: status,
+            sanitizedUrl: '',
+            route: 'r0',
+          );
+        WechatLauncher.instance.setGatewayForTesting(gateway);
+
         final result = await WechatLauncher.instance.openWeChatApp();
-        expect(result.status, entry.value, reason: entry.key);
-        expect(
-          result.isLaunchRequested,
-          entry.value == WechatLaunchStatus.launched,
-        );
+
+        expect(result.status, status, reason: status.name);
+        expect(result.isLaunchRequested, status == WechatLaunchStatus.launched);
         expect(result.sanitizedUrl, isEmpty);
         expect(result.route, 'r0');
-        expect(calls.map((call) => call.method), ['openWeChatApp']);
+        expect(gateway.openAppCalls, 1);
+        expect(gateway.urls, isEmpty);
       }
     });
 
-    test(
-      'bool channel reply maps true/false to launched/launchFailed',
-      () async {
-        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-            .setMockMethodCallHandler(wechatChannel, (call) async => true);
-        var result = await WechatLauncher.instance.openWeChatApp();
-        expect(result.status, WechatLaunchStatus.launched);
-        expect(result.isLaunchRequested, isTrue);
-
-        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-            .setMockMethodCallHandler(wechatChannel, (call) async => false);
-        result = await WechatLauncher.instance.openWeChatApp();
-        expect(result.status, WechatLaunchStatus.launchFailed);
-        expect(result.isLaunchRequested, isFalse);
-      },
-    );
-
-    test('returns channelUnavailable when native channel is missing', () async {
+    test('returns channelUnavailable when no gateway is injected', () async {
       final result = await WechatLauncher.instance.openWeChatApp();
 
       expect(result.status, WechatLaunchStatus.channelUnavailable);
@@ -227,11 +177,12 @@ void main() {
     test(
       'delegates to openUrlDetailed and reports launch request only',
       () async {
-        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-            .setMockMethodCallHandler(
-              wechatChannel,
-              (call) async => {'status': 'launched'},
-            );
+        final gateway = _FakeWechatGateway()
+          ..nextResult = const WechatLaunchResult(
+            status: WechatLaunchStatus.launched,
+            sanitizedUrl: '',
+          );
+        WechatLauncher.instance.setGatewayForTesting(gateway);
         expect(
           await WechatLauncher.instance.openUrl(
             'https://twdekt.zjxu.edu.cn/dekt/wx/index?_WXFTL=0',
@@ -239,11 +190,10 @@ void main() {
           isTrue,
         );
 
-        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-            .setMockMethodCallHandler(
-              wechatChannel,
-              (call) async => {'status': 'no_handler'},
-            );
+        gateway.nextResult = const WechatLaunchResult(
+          status: WechatLaunchStatus.noHandler,
+          sanitizedUrl: '',
+        );
         expect(
           await WechatLauncher.instance.openUrl(
             'https://twdekt.zjxu.edu.cn/dekt/wx/index?_WXFTL=0',
@@ -253,7 +203,7 @@ void main() {
       },
     );
 
-    test('returns false when native WeChat channel is unavailable', () async {
+    test('returns false when no gateway is injected', () async {
       final opened = await WechatLauncher.instance.openUrl(
         'https://twdekt.zjxu.edu.cn/dekt/wx/index?_WXFTL=0',
       );
@@ -261,4 +211,33 @@ void main() {
       expect(opened, isFalse);
     });
   });
+}
+
+/// 记录式 WechatGateway 替身：捕获下发的干净链接与拉起次数，结果可配置。
+class _FakeWechatGateway implements WechatGateway {
+  final urls = <String>[];
+  int openAppCalls = 0;
+
+  WechatLaunchResult? nextResult;
+  WechatLaunchResult? nextAppResult;
+
+  @override
+  Future<WechatLaunchResult> openUrl(String sanitizedUrl) async {
+    urls.add(sanitizedUrl);
+    return nextResult ??
+        WechatLaunchResult(
+          status: WechatLaunchStatus.launched,
+          sanitizedUrl: sanitizedUrl,
+        );
+  }
+
+  @override
+  Future<WechatLaunchResult> openApp() async {
+    openAppCalls++;
+    return nextAppResult ??
+        const WechatLaunchResult(
+          status: WechatLaunchStatus.launched,
+          sanitizedUrl: '',
+        );
+  }
 }

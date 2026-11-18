@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/logging/app_logger.dart';
@@ -11,7 +12,6 @@ import '../../core/theme/app_typography.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_banner.dart';
 import '../../shared/widgets/app_feedback.dart';
-import '../../shared/widgets/app_filter_chips.dart';
 import '../../shared/widgets/login_shell.dart';
 import '../../shared/widgets/plain_list.dart';
 import 'export_builder.dart';
@@ -48,7 +48,10 @@ Future<bool> defaultExportLoginHandler(
   }
 }
 
-/// 「导出给 AI」页：按用途预设选内容，缺的模块按需获取，复制 / 保存 / 分享。
+/// 「导出给 AI」页：按用途预设勾选内容，缺的模块按需获取，复制 / 保存 / 分享。
+///
+/// 「内容」是可勾选清单：所有可用模块平铺，勾选 = 进入导出文档，取消勾选
+/// 即从导出剔除；预览实时渲染最终 Markdown（勾选变化立即联动）。
 class AiExportPage extends StatefulWidget {
   const AiExportPage({
     super.key,
@@ -72,8 +75,6 @@ class AiExportPage extends StatefulWidget {
 class _AiExportPageState extends State<AiExportPage> {
   late final AiExportController _controller;
   late final bool _ownsController;
-
-  bool _expanded = false;
 
   late AiExportDocument _document;
   late String _content;
@@ -204,7 +205,8 @@ class _AiExportPageState extends State<AiExportPage> {
               ),
               children: [
                 Text(
-                  '仅含本机已加载或刚获取的数据，不含学号、姓名等身份信息。',
+                  '勾选的内容会写进同一份 Markdown，仅含本机已加载或刚获取的数据，'
+                  '不含学号、姓名等身份信息。',
                   style: context.appText.meta,
                 ),
                 if (_controller.identityReset) ...[
@@ -223,14 +225,12 @@ class _AiExportPageState extends State<AiExportPage> {
                 const PlainSectionHeader('内容'),
                 PlainListGroup(
                   children: [
-                    for (final module in ExportModule.values)
-                      if (_controller.selected.contains(module))
-                        _buildModuleRow(module),
+                    for (final module in _controller.availableModules)
+                      _buildModuleRow(module),
                   ],
                 ),
-                const SizedBox(height: AppSpacing.md),
-                _buildAdjust(),
-                const SizedBox(height: AppSpacing.md),
+                const SizedBox(height: kPlainListGroupGap),
+                const PlainSectionHeader('预览'),
                 _buildPreview(cs),
               ],
             ),
@@ -260,45 +260,8 @@ class _AiExportPageState extends State<AiExportPage> {
     );
   }
 
-  Widget _buildAdjust() {
-    return PlainListGroup(
-      children: [
-        PlainListRow(
-          key: const Key('ai_export_adjust'),
-          title: '调整内容',
-          value: _expanded ? null : '${_controller.selected.length} 项',
-          showChevron: false,
-          trailing: AnimatedRotation(
-            turns: _expanded ? 0.25 : 0,
-            duration: AppMotion.quick,
-            child: Icon(
-              Icons.chevron_right,
-              size: 20,
-              color: Theme.of(context).colorScheme.outline,
-            ),
-          ),
-          onTap: () => setState(() => _expanded = !_expanded),
-        ),
-        if (_expanded)
-          Padding(
-            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-            child: AppFilterChips<ExportModule>.multi(
-              key: const Key('ai_export_modules'),
-              wrap: true,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              options: [
-                for (final m in _controller.availableModules)
-                  AppFilterOption(m, m.label),
-              ],
-              selectedValues: _controller.selected,
-              onSelected: _controller.toggleModule,
-            ),
-          ),
-      ],
-    );
-  }
-
   Widget _buildModuleRow(ExportModule module) {
+    final cs = Theme.of(context).colorScheme;
     final slot = _controller.slotOf(module);
     final kind = _controller.rowKindOf(module);
     final data = slot.data;
@@ -325,12 +288,24 @@ class _AiExportPageState extends State<AiExportPage> {
             ? ('重新获取', () => _controller.fetch(module))
             : (null, null),
     };
+    final checked = _controller.selected.contains(module);
+    // 已勾选项只剩最后一个时不能再取消：导出至少留一项（见
+    // AiExportController.toggleModule 的契约注释）。
+    final toggleable = checked ? _controller.selected.length > 1 : true;
     return PlainListRow(
       key: Key('ai_export_row_${module.key}'),
       title: module.label,
       value: value,
       valueKey: Key('ai_export_status_${module.key}'),
       showChevron: false,
+      titleColor: checked ? null : cs.onSurfaceVariant,
+      leading: Checkbox(
+        key: Key('ai_export_check_${module.key}'),
+        value: checked,
+        onChanged: toggleable ? (_) => _controller.toggleModule(module) : null,
+        visualDensity: VisualDensity.compact,
+      ),
+      onTap: toggleable ? () => _controller.toggleModule(module) : null,
       trailing: kind == ExportRowKind.loading
           ? const SizedBox(
               width: 18,
@@ -350,23 +325,55 @@ class _AiExportPageState extends State<AiExportPage> {
     );
   }
 
+  // ── 预览 ────────────────────────────────────────────────────────────────
+
+  /// 预览卡片：真·Markdown 渲染（`flutter_markdown_plus`，表格 / 标题 /
+  /// 列表真渲染），整块可选中复制；右上角全屏按钮打开只读放大页。
   Widget _buildPreview(ColorScheme cs) {
     return Container(
-      height: 220,
+      key: const Key('ai_export_preview'),
+      height: 264,
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest,
         borderRadius: AppRadius.cardBorder,
       ),
-      padding: const EdgeInsets.all(AppSpacing.md),
-      child: SingleChildScrollView(
-        child: SelectableText(
-          _content,
-          key: const Key('ai_export_preview'),
-          style: context.appText.meta.copyWith(
-            fontFamily: 'monospace',
-            color: cs.onSurface,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: _ExportMarkdown(
+              data: _content,
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.md,
+                AppSpacing.md,
+                AppSpacing.xxl,
+                AppSpacing.md,
+              ),
+            ),
           ),
-        ),
+          Positioned(
+            top: 2,
+            right: 2,
+            child: IconButton(
+              key: const Key('ai_export_preview_expand'),
+              icon: const Icon(Icons.open_in_full_rounded, size: 18),
+              tooltip: '放大预览',
+              visualDensity: VisualDensity.compact,
+              style: IconButton.styleFrom(
+                foregroundColor: cs.onSurfaceVariant,
+                minimumSize: const Size(34, 34),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              onPressed: () => unawaited(
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (context) =>
+                        _ExportMarkdownFullscreenPage(content: _content),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -412,4 +419,96 @@ class _AiExportPageState extends State<AiExportPage> {
       ),
     );
   }
+}
+
+/// 「导出给 AI」预览的 Markdown 渲染体：样式接 AppTypography / 主题色。
+/// 用 `MarkdownBody`（一次构建全部块）而非 `Markdown`（懒加载 ListView），
+/// 保证全文都在树里、可被整体选中复制；滚动由外层提供。
+class _ExportMarkdown extends StatelessWidget {
+  const _ExportMarkdown({required this.data, this.padding});
+
+  final String data;
+  final EdgeInsets? padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final text = context.appText;
+    return SingleChildScrollView(
+      padding: padding ?? const EdgeInsets.all(AppSpacing.md),
+      child: MarkdownBody(
+        data: data,
+        selectable: true,
+        styleSheet: _exportMarkdownStyleSheet(cs, text),
+      ),
+    );
+  }
+}
+
+/// 全屏只读预览：与卡片内同一份 Markdown、同一套样式。
+class _ExportMarkdownFullscreenPage extends StatelessWidget {
+  const _ExportMarkdownFullscreenPage({required this.content});
+
+  final String content;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      key: const Key('ai_export_preview_fullscreen'),
+      appBar: AppAppBar(title: const Text('预览')),
+      body: SafeArea(
+        top: false,
+        child: _ExportMarkdown(
+          data: content,
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.pageMargin,
+            AppSpacing.sm,
+            AppSpacing.pageMargin,
+            AppSpacing.md,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+MarkdownStyleSheet _exportMarkdownStyleSheet(
+  ColorScheme cs,
+  AppTypography text,
+) {
+  return MarkdownStyleSheet(
+    p: text.body,
+    a: text.body.copyWith(color: cs.primary),
+    h1: text.section,
+    h2: text.rowTitleStrong,
+    h3: text.group.copyWith(color: cs.onSurface),
+    h4: text.rowTitleStrong,
+    h5: text.body.copyWith(fontWeight: FontWeight.w600),
+    h6: text.body,
+    listBullet: text.body,
+    blockquote: text.body.copyWith(color: cs.onSurfaceVariant),
+    blockquoteDecoration: BoxDecoration(
+      border: Border(left: BorderSide(color: cs.outlineVariant, width: 3)),
+    ),
+    code: text.body.copyWith(
+      fontFamily: 'monospace',
+      color: cs.onSurface,
+      backgroundColor: cs.surfaceContainerLowest,
+    ),
+    codeblockDecoration: BoxDecoration(
+      color: cs.surfaceContainerLowest,
+      borderRadius: BorderRadius.circular(AppRadius.control),
+    ),
+    tableHead: text.meta.copyWith(
+      fontWeight: FontWeight.w600,
+      color: cs.onSurface,
+    ),
+    tableBody: text.meta.copyWith(color: cs.onSurface),
+    tableBorder: TableBorder.all(color: cs.outlineVariant, width: 0.5),
+    tableColumnWidth: const IntrinsicColumnWidth(),
+    tableCellsPadding: const EdgeInsets.symmetric(
+      horizontal: AppSpacing.sm,
+      vertical: AppSpacing.xs,
+    ),
+  );
 }

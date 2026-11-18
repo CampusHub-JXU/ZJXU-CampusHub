@@ -38,6 +38,377 @@ import 'package:jni/jni.dart' as jni$_;
 
 const _$jniVersionCheck = jni$_.JniVersionCheck(1, 1);
 
+/// from: `edu.zjxu.jxucampushub.platform.app_icon.AppIconChannelHandler$Companion`
+extension type AppIconChannelHandler$Companion._(jni$_.JObject _$this)
+    implements jni$_.JObject {
+  static final _class = jni$_.JClass.forName(
+    r'edu/zjxu/jxucampushub/platform/app_icon/AppIconChannelHandler$Companion',
+  );
+
+  /// The type which includes information such as the signature of this class.
+  static const jni$_.JType<AppIconChannelHandler$Companion> type =
+      $AppIconChannelHandler$Companion$Type$();
+  static final _id_new$ = _class.constructorId(
+    r'(Lkotlin/jvm/internal/DefaultConstructorMarker;)V',
+  );
+
+  static final _new$ =
+      jni$_.ProtectedJniExtensions.lookup<
+            jni$_.NativeFunction<
+              jni$_.JniResult Function(
+                jni$_.Pointer<jni$_.Void>,
+                jni$_.JMethodIDPtr,
+                jni$_.VarArgs<(jni$_.Pointer<jni$_.Void>,)>,
+              )
+            >
+          >('globalEnv_NewObject')
+          .asFunction<
+            jni$_.JniResult Function(
+              jni$_.Pointer<jni$_.Void>,
+              jni$_.JMethodIDPtr,
+              jni$_.Pointer<jni$_.Void>,
+            )
+          >();
+
+  /// from: `synthetic public void <init>(kotlin.jvm.internal.DefaultConstructorMarker defaultConstructorMarker)`
+  /// The returned object must be released after use, by calling the [release] method.
+  factory AppIconChannelHandler$Companion(
+    DefaultConstructorMarker? defaultConstructorMarker,
+  ) {
+    final _$$classRef = _class.reference;
+    final _$defaultConstructorMarker =
+        defaultConstructorMarker?.reference ?? jni$_.jNullReference;
+    return _new$(
+      _$$classRef.pointer,
+      _id_new$.pointer,
+      _$defaultConstructorMarker.pointer,
+    ).object<AppIconChannelHandler$Companion>();
+  }
+}
+
+final class $AppIconChannelHandler$Companion$Type$
+    extends jni$_.JType<AppIconChannelHandler$Companion> {
+  @jni$_.internal
+  const $AppIconChannelHandler$Companion$Type$();
+
+  @jni$_.internal
+  @core$_.override
+  String get signature =>
+      r'Ledu/zjxu/jxucampushub/platform/app_icon/AppIconChannelHandler$Companion;';
+}
+
+/// from: `edu.zjxu.jxucampushub.platform.app_icon.AppIconChannelHandler`
+extension type AppIconChannelHandler._(jni$_.JObject _$this)
+    implements jni$_.JObject {
+  static final _class = jni$_.JClass.forName(
+    r'edu/zjxu/jxucampushub/platform/app_icon/AppIconChannelHandler',
+  );
+
+  /// The type which includes information such as the signature of this class.
+  static const jni$_.JType<AppIconChannelHandler> type =
+      $AppIconChannelHandler$Type$();
+  static final _id_Companion = _class.staticFieldId(
+    r'Companion',
+    r'Ledu/zjxu/jxucampushub/platform/app_icon/AppIconChannelHandler$Companion;',
+  );
+
+  /// from: `static public final edu.zjxu.jxucampushub.platform.app_icon.AppIconChannelHandler$Companion Companion`
+  /// The returned object must be released after use, by calling the [release] method.
+  static AppIconChannelHandler$Companion get Companion =>
+      _id_Companion.get(_class, AppIconChannelHandler$Companion.type)
+          as AppIconChannelHandler$Companion;
+
+  static final _id_new$ = _class.constructorId(r'(Landroid/app/Activity;)V');
+
+  static final _new$ =
+      jni$_.ProtectedJniExtensions.lookup<
+            jni$_.NativeFunction<
+              jni$_.JniResult Function(
+                jni$_.Pointer<jni$_.Void>,
+                jni$_.JMethodIDPtr,
+                jni$_.VarArgs<(jni$_.Pointer<jni$_.Void>,)>,
+              )
+            >
+          >('globalEnv_NewObject')
+          .asFunction<
+            jni$_.JniResult Function(
+              jni$_.Pointer<jni$_.Void>,
+              jni$_.JMethodIDPtr,
+              jni$_.Pointer<jni$_.Void>,
+            )
+          >();
+
+  /// from: `public void <init>(android.app.Activity activity)`
+  /// The returned object must be released after use, by calling the [release] method.
+  factory AppIconChannelHandler(Activity activity) {
+    final _$$classRef = _class.reference;
+    final _$activity = activity.reference;
+    return _new$(
+      _$$classRef.pointer,
+      _id_new$.pointer,
+      _$activity.pointer,
+    ).object<AppIconChannelHandler>();
+  }
+}
+
+extension AppIconChannelHandler$$Methods on AppIconChannelHandler {
+  static final _id_setIconAlias = AppIconChannelHandler._class.instanceMethodId(
+    r'setIconAlias',
+    r'(Ljava/lang/String;)Z',
+  );
+
+  static final _setIconAlias =
+      jni$_.ProtectedJniExtensions.lookup<
+            jni$_.NativeFunction<
+              jni$_.JniResult Function(
+                jni$_.Pointer<jni$_.Void>,
+                jni$_.JMethodIDPtr,
+                jni$_.VarArgs<(jni$_.Pointer<jni$_.Void>,)>,
+              )
+            >
+          >('globalEnv_CallBooleanMethod')
+          .asFunction<
+            jni$_.JniResult Function(
+              jni$_.Pointer<jni$_.Void>,
+              jni$_.JMethodIDPtr,
+              jni$_.Pointer<jni$_.Void>,
+            )
+          >();
+
+  /// from: `public fun setIconAlias(alias: kotlin.String): kotlin.Boolean`
+  core$_.bool setIconAlias(jni$_.JString string) {
+    final _$$selfRef = reference;
+    final _$string = string.reference;
+    return _setIconAlias(
+      _$$selfRef.pointer,
+      _id_setIconAlias.pointer,
+      _$string.pointer,
+    ).boolean;
+  }
+
+  static final _id_get$iconAlias = AppIconChannelHandler._class
+      .instanceMethodId(r'getIconAlias', r'()Ljava/lang/String;');
+
+  static final _get$iconAlias =
+      jni$_.ProtectedJniExtensions.lookup<
+            jni$_.NativeFunction<
+              jni$_.JniResult Function(
+                jni$_.Pointer<jni$_.Void>,
+                jni$_.JMethodIDPtr,
+              )
+            >
+          >('globalEnv_CallObjectMethod')
+          .asFunction<
+            jni$_.JniResult Function(
+              jni$_.Pointer<jni$_.Void>,
+              jni$_.JMethodIDPtr,
+            )
+          >();
+
+  /// from: `public fun getIconAlias(): kotlin.String`
+  /// The returned object must be released after use, by calling the [release] method.
+  jni$_.JString get iconAlias {
+    final _$$selfRef = reference;
+    return _get$iconAlias(
+      _$$selfRef.pointer,
+      _id_get$iconAlias.pointer,
+    ).object<jni$_.JString>();
+  }
+
+  static final _id_onActivityStopped = AppIconChannelHandler._class
+      .instanceMethodId(r'onActivityStopped', r'()V');
+
+  static final _onActivityStopped =
+      jni$_.ProtectedJniExtensions.lookup<
+            jni$_.NativeFunction<
+              jni$_.JThrowablePtr Function(
+                jni$_.Pointer<jni$_.Void>,
+                jni$_.JMethodIDPtr,
+              )
+            >
+          >('globalEnv_CallVoidMethod')
+          .asFunction<
+            jni$_.JThrowablePtr Function(
+              jni$_.Pointer<jni$_.Void>,
+              jni$_.JMethodIDPtr,
+            )
+          >();
+
+  /// from: `public fun onActivityStopped(): kotlin.Unit`
+  void onActivityStopped() {
+    final _$$selfRef = reference;
+    _onActivityStopped(
+      _$$selfRef.pointer,
+      _id_onActivityStopped.pointer,
+    ).check();
+  }
+
+  static final _id_syncTaskDescription = AppIconChannelHandler._class
+      .instanceMethodId(r'syncTaskDescription', r'(Ljava/lang/String;)V');
+
+  static final _syncTaskDescription =
+      jni$_.ProtectedJniExtensions.lookup<
+            jni$_.NativeFunction<
+              jni$_.JThrowablePtr Function(
+                jni$_.Pointer<jni$_.Void>,
+                jni$_.JMethodIDPtr,
+                jni$_.VarArgs<(jni$_.Pointer<jni$_.Void>,)>,
+              )
+            >
+          >('globalEnv_CallVoidMethod')
+          .asFunction<
+            jni$_.JThrowablePtr Function(
+              jni$_.Pointer<jni$_.Void>,
+              jni$_.JMethodIDPtr,
+              jni$_.Pointer<jni$_.Void>,
+            )
+          >();
+
+  /// from: `public fun syncTaskDescription(targetAlias: kotlin.String?): kotlin.Unit`
+  void syncTaskDescription(jni$_.JString? string) {
+    final _$$selfRef = reference;
+    final _$string = string?.reference ?? jni$_.jNullReference;
+    _syncTaskDescription(
+      _$$selfRef.pointer,
+      _id_syncTaskDescription.pointer,
+      _$string.pointer,
+    ).check();
+  }
+}
+
+final class $AppIconChannelHandler$Type$
+    extends jni$_.JType<AppIconChannelHandler> {
+  @jni$_.internal
+  const $AppIconChannelHandler$Type$();
+
+  @jni$_.internal
+  @core$_.override
+  String get signature =>
+      r'Ledu/zjxu/jxucampushub/platform/app_icon/AppIconChannelHandler;';
+}
+
+/// from: `edu.zjxu.jxucampushub.platform.download.DownloadChannelHandler`
+extension type DownloadChannelHandler._(jni$_.JObject _$this)
+    implements jni$_.JObject {
+  static final _class = jni$_.JClass.forName(
+    r'edu/zjxu/jxucampushub/platform/download/DownloadChannelHandler',
+  );
+
+  /// The type which includes information such as the signature of this class.
+  static const jni$_.JType<DownloadChannelHandler> type =
+      $DownloadChannelHandler$Type$();
+  static final _id_new$ = _class.constructorId(r'(Landroid/app/Activity;)V');
+
+  static final _new$ =
+      jni$_.ProtectedJniExtensions.lookup<
+            jni$_.NativeFunction<
+              jni$_.JniResult Function(
+                jni$_.Pointer<jni$_.Void>,
+                jni$_.JMethodIDPtr,
+                jni$_.VarArgs<(jni$_.Pointer<jni$_.Void>,)>,
+              )
+            >
+          >('globalEnv_NewObject')
+          .asFunction<
+            jni$_.JniResult Function(
+              jni$_.Pointer<jni$_.Void>,
+              jni$_.JMethodIDPtr,
+              jni$_.Pointer<jni$_.Void>,
+            )
+          >();
+
+  /// from: `public void <init>(android.app.Activity activity)`
+  /// The returned object must be released after use, by calling the [release] method.
+  factory DownloadChannelHandler(Activity activity) {
+    final _$$classRef = _class.reference;
+    final _$activity = activity.reference;
+    return _new$(
+      _$$classRef.pointer,
+      _id_new$.pointer,
+      _$activity.pointer,
+    ).object<DownloadChannelHandler>();
+  }
+}
+
+extension DownloadChannelHandler$$Methods on DownloadChannelHandler {
+  static final _id_enqueueDownload = DownloadChannelHandler._class
+      .instanceMethodId(
+        r'enqueueDownload',
+        r'(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Z',
+      );
+
+  static final _enqueueDownload =
+      jni$_.ProtectedJniExtensions.lookup<
+            jni$_.NativeFunction<
+              jni$_.JniResult Function(
+                jni$_.Pointer<jni$_.Void>,
+                jni$_.JMethodIDPtr,
+                jni$_.VarArgs<
+                  (
+                    jni$_.Pointer<jni$_.Void>,
+                    jni$_.Pointer<jni$_.Void>,
+                    jni$_.Pointer<jni$_.Void>,
+                    jni$_.Pointer<jni$_.Void>,
+                    jni$_.Pointer<jni$_.Void>,
+                    jni$_.Pointer<jni$_.Void>,
+                  )
+                >,
+              )
+            >
+          >('globalEnv_CallBooleanMethod')
+          .asFunction<
+            jni$_.JniResult Function(
+              jni$_.Pointer<jni$_.Void>,
+              jni$_.JMethodIDPtr,
+              jni$_.Pointer<jni$_.Void>,
+              jni$_.Pointer<jni$_.Void>,
+              jni$_.Pointer<jni$_.Void>,
+              jni$_.Pointer<jni$_.Void>,
+              jni$_.Pointer<jni$_.Void>,
+              jni$_.Pointer<jni$_.Void>,
+            )
+          >();
+
+  /// from: `public fun enqueueDownload(url: kotlin.String, fileName: kotlin.String, mimeType: kotlin.String?, userAgent: kotlin.String?, cookie: kotlin.String?, referer: kotlin.String?): kotlin.Boolean`
+  core$_.bool enqueueDownload(
+    jni$_.JString string,
+    jni$_.JString string1,
+    jni$_.JString? string2,
+    jni$_.JString? string3,
+    jni$_.JString? string4,
+    jni$_.JString? string5,
+  ) {
+    final _$$selfRef = reference;
+    final _$string = string.reference;
+    final _$string1 = string1.reference;
+    final _$string2 = string2?.reference ?? jni$_.jNullReference;
+    final _$string3 = string3?.reference ?? jni$_.jNullReference;
+    final _$string4 = string4?.reference ?? jni$_.jNullReference;
+    final _$string5 = string5?.reference ?? jni$_.jNullReference;
+    return _enqueueDownload(
+      _$$selfRef.pointer,
+      _id_enqueueDownload.pointer,
+      _$string.pointer,
+      _$string1.pointer,
+      _$string2.pointer,
+      _$string3.pointer,
+      _$string4.pointer,
+      _$string5.pointer,
+    ).boolean;
+  }
+}
+
+final class $DownloadChannelHandler$Type$
+    extends jni$_.JType<DownloadChannelHandler> {
+  @jni$_.internal
+  const $DownloadChannelHandler$Type$();
+
+  @jni$_.internal
+  @core$_.override
+  String get signature =>
+      r'Ledu/zjxu/jxucampushub/platform/download/DownloadChannelHandler;';
+}
+
 /// from: `edu.zjxu.jxucampushub.platform.system_settings.SystemSettingsChannelHandler$Companion`
 extension type SystemSettingsChannelHandler$Companion._(jni$_.JObject _$this)
     implements jni$_.JObject {
@@ -153,41 +524,6 @@ extension type SystemSettingsChannelHandler._(jni$_.JObject _$this)
 
 extension SystemSettingsChannelHandler$$Methods
     on SystemSettingsChannelHandler {
-  static final _id_register = SystemSettingsChannelHandler._class
-      .instanceMethodId(
-        r'register',
-        r'(Lio/flutter/plugin/common/BinaryMessenger;)V',
-      );
-
-  static final _register =
-      jni$_.ProtectedJniExtensions.lookup<
-            jni$_.NativeFunction<
-              jni$_.JThrowablePtr Function(
-                jni$_.Pointer<jni$_.Void>,
-                jni$_.JMethodIDPtr,
-                jni$_.VarArgs<(jni$_.Pointer<jni$_.Void>,)>,
-              )
-            >
-          >('globalEnv_CallVoidMethod')
-          .asFunction<
-            jni$_.JThrowablePtr Function(
-              jni$_.Pointer<jni$_.Void>,
-              jni$_.JMethodIDPtr,
-              jni$_.Pointer<jni$_.Void>,
-            )
-          >();
-
-  /// from: `public fun register(messenger: io.flutter.plugin.common.BinaryMessenger): kotlin.Unit`
-  void register(BinaryMessenger binaryMessenger) {
-    final _$$selfRef = reference;
-    final _$binaryMessenger = binaryMessenger.reference;
-    _register(
-      _$$selfRef.pointer,
-      _id_register.pointer,
-      _$binaryMessenger.pointer,
-    ).check();
-  }
-
   static final _id_readStatusSnapshot = SystemSettingsChannelHandler._class
       .instanceMethodId(
         r'readStatusSnapshot',
@@ -471,65 +807,6 @@ final class $SystemBackgroundStatusSnapshot$Type$
       r'Ledu/zjxu/jxucampushub/platform/system_settings/SystemBackgroundStatusSnapshot;';
 }
 
-/// from: `edu.zjxu.jxucampushub.platform.wechat.WeChatChannelHandler$Companion`
-extension type WeChatChannelHandler$Companion._(jni$_.JObject _$this)
-    implements jni$_.JObject {
-  static final _class = jni$_.JClass.forName(
-    r'edu/zjxu/jxucampushub/platform/wechat/WeChatChannelHandler$Companion',
-  );
-
-  /// The type which includes information such as the signature of this class.
-  static const jni$_.JType<WeChatChannelHandler$Companion> type =
-      $WeChatChannelHandler$Companion$Type$();
-  static final _id_new$ = _class.constructorId(
-    r'(Lkotlin/jvm/internal/DefaultConstructorMarker;)V',
-  );
-
-  static final _new$ =
-      jni$_.ProtectedJniExtensions.lookup<
-            jni$_.NativeFunction<
-              jni$_.JniResult Function(
-                jni$_.Pointer<jni$_.Void>,
-                jni$_.JMethodIDPtr,
-                jni$_.VarArgs<(jni$_.Pointer<jni$_.Void>,)>,
-              )
-            >
-          >('globalEnv_NewObject')
-          .asFunction<
-            jni$_.JniResult Function(
-              jni$_.Pointer<jni$_.Void>,
-              jni$_.JMethodIDPtr,
-              jni$_.Pointer<jni$_.Void>,
-            )
-          >();
-
-  /// from: `synthetic public void <init>(kotlin.jvm.internal.DefaultConstructorMarker defaultConstructorMarker)`
-  /// The returned object must be released after use, by calling the [release] method.
-  factory WeChatChannelHandler$Companion(
-    DefaultConstructorMarker? defaultConstructorMarker,
-  ) {
-    final _$$classRef = _class.reference;
-    final _$defaultConstructorMarker =
-        defaultConstructorMarker?.reference ?? jni$_.jNullReference;
-    return _new$(
-      _$$classRef.pointer,
-      _id_new$.pointer,
-      _$defaultConstructorMarker.pointer,
-    ).object<WeChatChannelHandler$Companion>();
-  }
-}
-
-final class $WeChatChannelHandler$Companion$Type$
-    extends jni$_.JType<WeChatChannelHandler$Companion> {
-  @jni$_.internal
-  const $WeChatChannelHandler$Companion$Type$();
-
-  @jni$_.internal
-  @core$_.override
-  String get signature =>
-      r'Ledu/zjxu/jxucampushub/platform/wechat/WeChatChannelHandler$Companion;';
-}
-
 /// from: `edu.zjxu.jxucampushub.platform.wechat.WeChatChannelHandler`
 extension type WeChatChannelHandler._(jni$_.JObject _$this)
     implements jni$_.JObject {
@@ -540,17 +817,6 @@ extension type WeChatChannelHandler._(jni$_.JObject _$this)
   /// The type which includes information such as the signature of this class.
   static const jni$_.JType<WeChatChannelHandler> type =
       $WeChatChannelHandler$Type$();
-  static final _id_Companion = _class.staticFieldId(
-    r'Companion',
-    r'Ledu/zjxu/jxucampushub/platform/wechat/WeChatChannelHandler$Companion;',
-  );
-
-  /// from: `static public final edu.zjxu.jxucampushub.platform.wechat.WeChatChannelHandler$Companion Companion`
-  /// The returned object must be released after use, by calling the [release] method.
-  static WeChatChannelHandler$Companion get Companion =>
-      _id_Companion.get(_class, WeChatChannelHandler$Companion.type)
-          as WeChatChannelHandler$Companion;
-
   static final _id_new$ = _class.constructorId(r'(Landroid/app/Activity;)V');
 
   static final _new$ =
@@ -585,47 +851,13 @@ extension type WeChatChannelHandler._(jni$_.JObject _$this)
 }
 
 extension WeChatChannelHandler$$Methods on WeChatChannelHandler {
-  static final _id_register = WeChatChannelHandler._class.instanceMethodId(
-    r'register',
-    r'(Lio/flutter/plugin/common/BinaryMessenger;)V',
-  );
-
-  static final _register =
-      jni$_.ProtectedJniExtensions.lookup<
-            jni$_.NativeFunction<
-              jni$_.JThrowablePtr Function(
-                jni$_.Pointer<jni$_.Void>,
-                jni$_.JMethodIDPtr,
-                jni$_.VarArgs<(jni$_.Pointer<jni$_.Void>,)>,
-              )
-            >
-          >('globalEnv_CallVoidMethod')
-          .asFunction<
-            jni$_.JThrowablePtr Function(
-              jni$_.Pointer<jni$_.Void>,
-              jni$_.JMethodIDPtr,
-              jni$_.Pointer<jni$_.Void>,
-            )
-          >();
-
-  /// from: `public fun register(messenger: io.flutter.plugin.common.BinaryMessenger): kotlin.Unit`
-  void register(BinaryMessenger binaryMessenger) {
-    final _$$selfRef = reference;
-    final _$binaryMessenger = binaryMessenger.reference;
-    _register(
-      _$$selfRef.pointer,
-      _id_register.pointer,
-      _$binaryMessenger.pointer,
-    ).check();
-  }
-
-  static final _id_openUrlInWeChatJni = WeChatChannelHandler._class
+  static final _id_openUrlInWeChat = WeChatChannelHandler._class
       .instanceMethodId(
-        r'openUrlInWeChatJni',
+        r'openUrlInWeChat',
         r'(Ljava/lang/String;)Ledu/zjxu/jxucampushub/platform/wechat/WeChatJniResult;',
       );
 
-  static final _openUrlInWeChatJni =
+  static final _openUrlInWeChat =
       jni$_.ProtectedJniExtensions.lookup<
             jni$_.NativeFunction<
               jni$_.JniResult Function(
@@ -643,25 +875,24 @@ extension WeChatChannelHandler$$Methods on WeChatChannelHandler {
             )
           >();
 
-  /// from: `public fun openUrlInWeChatJni(url: kotlin.String): edu.zjxu.jxucampushub.platform.wechat.WeChatJniResult`
+  /// from: `public fun openUrlInWeChat(url: kotlin.String): edu.zjxu.jxucampushub.platform.wechat.WeChatJniResult`
   /// The returned object must be released after use, by calling the [release] method.
-  WeChatJniResult openUrlInWeChatJni(jni$_.JString string) {
+  WeChatJniResult openUrlInWeChat(jni$_.JString string) {
     final _$$selfRef = reference;
     final _$string = string.reference;
-    return _openUrlInWeChatJni(
+    return _openUrlInWeChat(
       _$$selfRef.pointer,
-      _id_openUrlInWeChatJni.pointer,
+      _id_openUrlInWeChat.pointer,
       _$string.pointer,
     ).object<WeChatJniResult>();
   }
 
-  static final _id_openWeChatAppJni = WeChatChannelHandler._class
-      .instanceMethodId(
-        r'openWeChatAppJni',
-        r'()Ledu/zjxu/jxucampushub/platform/wechat/WeChatJniResult;',
-      );
+  static final _id_openWeChatApp = WeChatChannelHandler._class.instanceMethodId(
+    r'openWeChatApp',
+    r'()Ledu/zjxu/jxucampushub/platform/wechat/WeChatJniResult;',
+  );
 
-  static final _openWeChatAppJni =
+  static final _openWeChatApp =
       jni$_.ProtectedJniExtensions.lookup<
             jni$_.NativeFunction<
               jni$_.JniResult Function(
@@ -677,13 +908,13 @@ extension WeChatChannelHandler$$Methods on WeChatChannelHandler {
             )
           >();
 
-  /// from: `public fun openWeChatAppJni(): edu.zjxu.jxucampushub.platform.wechat.WeChatJniResult`
+  /// from: `public fun openWeChatApp(): edu.zjxu.jxucampushub.platform.wechat.WeChatJniResult`
   /// The returned object must be released after use, by calling the [release] method.
-  WeChatJniResult openWeChatAppJni() {
+  WeChatJniResult openWeChatApp() {
     final _$$selfRef = reference;
-    return _openWeChatAppJni(
+    return _openWeChatApp(
       _$$selfRef.pointer,
-      _id_openWeChatAppJni.pointer,
+      _id_openWeChatApp.pointer,
     ).object<WeChatJniResult>();
   }
 }
@@ -864,6 +1095,538 @@ final class $WeChatJniResult$Type$ extends jni$_.JType<WeChatJniResult> {
       r'Ledu/zjxu/jxucampushub/platform/wechat/WeChatJniResult;';
 }
 
+/// from: `edu.zjxu.jxucampushub.platform.widget.WidgetChannelHandler$Companion`
+extension type WidgetChannelHandler$Companion._(jni$_.JObject _$this)
+    implements jni$_.JObject {
+  static final _class = jni$_.JClass.forName(
+    r'edu/zjxu/jxucampushub/platform/widget/WidgetChannelHandler$Companion',
+  );
+
+  /// The type which includes information such as the signature of this class.
+  static const jni$_.JType<WidgetChannelHandler$Companion> type =
+      $WidgetChannelHandler$Companion$Type$();
+  static final _id_new$ = _class.constructorId(
+    r'(Lkotlin/jvm/internal/DefaultConstructorMarker;)V',
+  );
+
+  static final _new$ =
+      jni$_.ProtectedJniExtensions.lookup<
+            jni$_.NativeFunction<
+              jni$_.JniResult Function(
+                jni$_.Pointer<jni$_.Void>,
+                jni$_.JMethodIDPtr,
+                jni$_.VarArgs<(jni$_.Pointer<jni$_.Void>,)>,
+              )
+            >
+          >('globalEnv_NewObject')
+          .asFunction<
+            jni$_.JniResult Function(
+              jni$_.Pointer<jni$_.Void>,
+              jni$_.JMethodIDPtr,
+              jni$_.Pointer<jni$_.Void>,
+            )
+          >();
+
+  /// from: `synthetic public void <init>(kotlin.jvm.internal.DefaultConstructorMarker defaultConstructorMarker)`
+  /// The returned object must be released after use, by calling the [release] method.
+  factory WidgetChannelHandler$Companion(
+    DefaultConstructorMarker? defaultConstructorMarker,
+  ) {
+    final _$$classRef = _class.reference;
+    final _$defaultConstructorMarker =
+        defaultConstructorMarker?.reference ?? jni$_.jNullReference;
+    return _new$(
+      _$$classRef.pointer,
+      _id_new$.pointer,
+      _$defaultConstructorMarker.pointer,
+    ).object<WidgetChannelHandler$Companion>();
+  }
+}
+
+final class $WidgetChannelHandler$Companion$Type$
+    extends jni$_.JType<WidgetChannelHandler$Companion> {
+  @jni$_.internal
+  const $WidgetChannelHandler$Companion$Type$();
+
+  @jni$_.internal
+  @core$_.override
+  String get signature =>
+      r'Ledu/zjxu/jxucampushub/platform/widget/WidgetChannelHandler$Companion;';
+}
+
+/// from: `edu.zjxu.jxucampushub.platform.widget.WidgetChannelHandler$WhenMappings`
+extension type WidgetChannelHandler$WhenMappings._(jni$_.JObject _$this)
+    implements jni$_.JObject {
+  static final _class = jni$_.JClass.forName(
+    r'edu/zjxu/jxucampushub/platform/widget/WidgetChannelHandler$WhenMappings',
+  );
+
+  /// The type which includes information such as the signature of this class.
+  static const jni$_.JType<WidgetChannelHandler$WhenMappings> type =
+      $WidgetChannelHandler$WhenMappings$Type$();
+}
+
+final class $WidgetChannelHandler$WhenMappings$Type$
+    extends jni$_.JType<WidgetChannelHandler$WhenMappings> {
+  @jni$_.internal
+  const $WidgetChannelHandler$WhenMappings$Type$();
+
+  @jni$_.internal
+  @core$_.override
+  String get signature =>
+      r'Ledu/zjxu/jxucampushub/platform/widget/WidgetChannelHandler$WhenMappings;';
+}
+
+/// from: `edu.zjxu.jxucampushub.platform.widget.WidgetChannelHandler`
+extension type WidgetChannelHandler._(jni$_.JObject _$this)
+    implements jni$_.JObject {
+  static final _class = jni$_.JClass.forName(
+    r'edu/zjxu/jxucampushub/platform/widget/WidgetChannelHandler',
+  );
+
+  /// The type which includes information such as the signature of this class.
+  static const jni$_.JType<WidgetChannelHandler> type =
+      $WidgetChannelHandler$Type$();
+  static final _id_Companion = _class.staticFieldId(
+    r'Companion',
+    r'Ledu/zjxu/jxucampushub/platform/widget/WidgetChannelHandler$Companion;',
+  );
+
+  /// from: `static public final edu.zjxu.jxucampushub.platform.widget.WidgetChannelHandler$Companion Companion`
+  /// The returned object must be released after use, by calling the [release] method.
+  static WidgetChannelHandler$Companion get Companion =>
+      _id_Companion.get(_class, WidgetChannelHandler$Companion.type)
+          as WidgetChannelHandler$Companion;
+
+  static final _id_new$ = _class.constructorId(r'(Landroid/app/Activity;)V');
+
+  static final _new$ =
+      jni$_.ProtectedJniExtensions.lookup<
+            jni$_.NativeFunction<
+              jni$_.JniResult Function(
+                jni$_.Pointer<jni$_.Void>,
+                jni$_.JMethodIDPtr,
+                jni$_.VarArgs<(jni$_.Pointer<jni$_.Void>,)>,
+              )
+            >
+          >('globalEnv_NewObject')
+          .asFunction<
+            jni$_.JniResult Function(
+              jni$_.Pointer<jni$_.Void>,
+              jni$_.JMethodIDPtr,
+              jni$_.Pointer<jni$_.Void>,
+            )
+          >();
+
+  /// from: `public void <init>(android.app.Activity activity)`
+  /// The returned object must be released after use, by calling the [release] method.
+  factory WidgetChannelHandler(Activity activity) {
+    final _$$classRef = _class.reference;
+    final _$activity = activity.reference;
+    return _new$(
+      _$$classRef.pointer,
+      _id_new$.pointer,
+      _$activity.pointer,
+    ).object<WidgetChannelHandler>();
+  }
+}
+
+extension WidgetChannelHandler$$Methods on WidgetChannelHandler {
+  static final _id_pushSnapshot = WidgetChannelHandler._class.instanceMethodId(
+    r'pushSnapshot',
+    r'(Ljava/lang/String;)V',
+  );
+
+  static final _pushSnapshot =
+      jni$_.ProtectedJniExtensions.lookup<
+            jni$_.NativeFunction<
+              jni$_.JThrowablePtr Function(
+                jni$_.Pointer<jni$_.Void>,
+                jni$_.JMethodIDPtr,
+                jni$_.VarArgs<(jni$_.Pointer<jni$_.Void>,)>,
+              )
+            >
+          >('globalEnv_CallVoidMethod')
+          .asFunction<
+            jni$_.JThrowablePtr Function(
+              jni$_.Pointer<jni$_.Void>,
+              jni$_.JMethodIDPtr,
+              jni$_.Pointer<jni$_.Void>,
+            )
+          >();
+
+  /// from: `public fun pushSnapshot(snapshotJson: kotlin.String): kotlin.Unit`
+  void pushSnapshot(jni$_.JString string) {
+    final _$$selfRef = reference;
+    final _$string = string.reference;
+    _pushSnapshot(
+      _$$selfRef.pointer,
+      _id_pushSnapshot.pointer,
+      _$string.pointer,
+    ).check();
+  }
+
+  static final _id_requestPin = WidgetChannelHandler._class.instanceMethodId(
+    r'requestPin',
+    r'(Ljava/lang/String;)Ljava/lang/String;',
+  );
+
+  static final _requestPin =
+      jni$_.ProtectedJniExtensions.lookup<
+            jni$_.NativeFunction<
+              jni$_.JniResult Function(
+                jni$_.Pointer<jni$_.Void>,
+                jni$_.JMethodIDPtr,
+                jni$_.VarArgs<(jni$_.Pointer<jni$_.Void>,)>,
+              )
+            >
+          >('globalEnv_CallObjectMethod')
+          .asFunction<
+            jni$_.JniResult Function(
+              jni$_.Pointer<jni$_.Void>,
+              jni$_.JMethodIDPtr,
+              jni$_.Pointer<jni$_.Void>,
+            )
+          >();
+
+  /// from: `public fun requestPin(size: kotlin.String): kotlin.String`
+  /// The returned object must be released after use, by calling the [release] method.
+  jni$_.JString requestPin(jni$_.JString string) {
+    final _$$selfRef = reference;
+    final _$string = string.reference;
+    return _requestPin(
+      _$$selfRef.pointer,
+      _id_requestPin.pointer,
+      _$string.pointer,
+    ).object<jni$_.JString>();
+  }
+
+  static final _id_get$isSupported = WidgetChannelHandler._class
+      .instanceMethodId(r'isSupported', r'()Z');
+
+  static final _get$isSupported =
+      jni$_.ProtectedJniExtensions.lookup<
+            jni$_.NativeFunction<
+              jni$_.JniResult Function(
+                jni$_.Pointer<jni$_.Void>,
+                jni$_.JMethodIDPtr,
+              )
+            >
+          >('globalEnv_CallBooleanMethod')
+          .asFunction<
+            jni$_.JniResult Function(
+              jni$_.Pointer<jni$_.Void>,
+              jni$_.JMethodIDPtr,
+            )
+          >();
+
+  /// from: `public fun isSupported(): kotlin.Boolean`
+  core$_.bool get isSupported {
+    final _$$selfRef = reference;
+    return _get$isSupported(
+      _$$selfRef.pointer,
+      _id_get$isSupported.pointer,
+    ).boolean;
+  }
+
+  static final _id_readStatusSnapshot = WidgetChannelHandler._class
+      .instanceMethodId(
+        r'readStatusSnapshot',
+        r'()Ledu/zjxu/jxucampushub/platform/widget/WidgetStatusJniSnapshot;',
+      );
+
+  static final _readStatusSnapshot =
+      jni$_.ProtectedJniExtensions.lookup<
+            jni$_.NativeFunction<
+              jni$_.JniResult Function(
+                jni$_.Pointer<jni$_.Void>,
+                jni$_.JMethodIDPtr,
+              )
+            >
+          >('globalEnv_CallObjectMethod')
+          .asFunction<
+            jni$_.JniResult Function(
+              jni$_.Pointer<jni$_.Void>,
+              jni$_.JMethodIDPtr,
+            )
+          >();
+
+  /// from: `public fun readStatusSnapshot(): edu.zjxu.jxucampushub.platform.widget.WidgetStatusJniSnapshot`
+  /// The returned object must be released after use, by calling the [release] method.
+  WidgetStatusJniSnapshot readStatusSnapshot() {
+    final _$$selfRef = reference;
+    return _readStatusSnapshot(
+      _$$selfRef.pointer,
+      _id_readStatusSnapshot.pointer,
+    ).object<WidgetStatusJniSnapshot>();
+  }
+
+  static final _id_getPreview = WidgetChannelHandler._class.instanceMethodId(
+    r'getPreview',
+    r'(Ljava/lang/String;I)[B',
+  );
+
+  static final _getPreview =
+      jni$_.ProtectedJniExtensions.lookup<
+            jni$_.NativeFunction<
+              jni$_.JniResult Function(
+                jni$_.Pointer<jni$_.Void>,
+                jni$_.JMethodIDPtr,
+                jni$_.VarArgs<(jni$_.Pointer<jni$_.Void>, jni$_.Int32)>,
+              )
+            >
+          >('globalEnv_CallObjectMethod')
+          .asFunction<
+            jni$_.JniResult Function(
+              jni$_.Pointer<jni$_.Void>,
+              jni$_.JMethodIDPtr,
+              jni$_.Pointer<jni$_.Void>,
+              core$_.int,
+            )
+          >();
+
+  /// from: `public fun getPreview(size: kotlin.String, widthPx: kotlin.Int): kotlin.ByteArray?`
+  /// The returned object must be released after use, by calling the [release] method.
+  jni$_.JByteArray? getPreview(jni$_.JString string, core$_.int i) {
+    final _$$selfRef = reference;
+    final _$string = string.reference;
+    return _getPreview(
+      _$$selfRef.pointer,
+      _id_getPreview.pointer,
+      _$string.pointer,
+      i,
+    ).object<jni$_.JByteArray?>();
+  }
+}
+
+final class $WidgetChannelHandler$Type$
+    extends jni$_.JType<WidgetChannelHandler> {
+  @jni$_.internal
+  const $WidgetChannelHandler$Type$();
+
+  @jni$_.internal
+  @core$_.override
+  String get signature =>
+      r'Ledu/zjxu/jxucampushub/platform/widget/WidgetChannelHandler;';
+}
+
+/// from: `edu.zjxu.jxucampushub.platform.widget.WidgetStatusJniSnapshot`
+extension type WidgetStatusJniSnapshot._(jni$_.JObject _$this)
+    implements jni$_.JObject {
+  static final _class = jni$_.JClass.forName(
+    r'edu/zjxu/jxucampushub/platform/widget/WidgetStatusJniSnapshot',
+  );
+
+  /// The type which includes information such as the signature of this class.
+  static const jni$_.JType<WidgetStatusJniSnapshot> type =
+      $WidgetStatusJniSnapshot$Type$();
+  static final _id_new$ = _class.constructorId(r'(ZIIIJ)V');
+
+  static final _new$ =
+      jni$_.ProtectedJniExtensions.lookup<
+            jni$_.NativeFunction<
+              jni$_.JniResult Function(
+                jni$_.Pointer<jni$_.Void>,
+                jni$_.JMethodIDPtr,
+                jni$_.VarArgs<
+                  (
+                    jni$_.Int32,
+                    jni$_.Int32,
+                    jni$_.Int32,
+                    jni$_.Int32,
+                    jni$_.Int64,
+                  )
+                >,
+              )
+            >
+          >('globalEnv_NewObject')
+          .asFunction<
+            jni$_.JniResult Function(
+              jni$_.Pointer<jni$_.Void>,
+              jni$_.JMethodIDPtr,
+              core$_.int,
+              core$_.int,
+              core$_.int,
+              core$_.int,
+              core$_.int,
+            )
+          >();
+
+  /// from: `public void <init>(boolean z, int i, int i1, int i2, long j)`
+  /// The returned object must be released after use, by calling the [release] method.
+  factory WidgetStatusJniSnapshot(
+    core$_.bool z,
+    core$_.int i,
+    core$_.int i1,
+    core$_.int i2,
+    core$_.int j,
+  ) {
+    final _$$classRef = _class.reference;
+    return _new$(
+      _$$classRef.pointer,
+      _id_new$.pointer,
+      z ? 1 : 0,
+      i,
+      i1,
+      i2,
+      j,
+    ).object<WidgetStatusJniSnapshot>();
+  }
+}
+
+extension WidgetStatusJniSnapshot$$Methods on WidgetStatusJniSnapshot {
+  static final _id_get$pinSupported = WidgetStatusJniSnapshot._class
+      .instanceMethodId(r'getPinSupported', r'()Z');
+
+  static final _get$pinSupported =
+      jni$_.ProtectedJniExtensions.lookup<
+            jni$_.NativeFunction<
+              jni$_.JniResult Function(
+                jni$_.Pointer<jni$_.Void>,
+                jni$_.JMethodIDPtr,
+              )
+            >
+          >('globalEnv_CallBooleanMethod')
+          .asFunction<
+            jni$_.JniResult Function(
+              jni$_.Pointer<jni$_.Void>,
+              jni$_.JMethodIDPtr,
+            )
+          >();
+
+  /// from: `public final boolean getPinSupported()`
+  core$_.bool get pinSupported {
+    final _$$selfRef = reference;
+    return _get$pinSupported(
+      _$$selfRef.pointer,
+      _id_get$pinSupported.pointer,
+    ).boolean;
+  }
+
+  static final _id_get$smallCount = WidgetStatusJniSnapshot._class
+      .instanceMethodId(r'getSmallCount', r'()I');
+
+  static final _get$smallCount =
+      jni$_.ProtectedJniExtensions.lookup<
+            jni$_.NativeFunction<
+              jni$_.JniResult Function(
+                jni$_.Pointer<jni$_.Void>,
+                jni$_.JMethodIDPtr,
+              )
+            >
+          >('globalEnv_CallIntMethod')
+          .asFunction<
+            jni$_.JniResult Function(
+              jni$_.Pointer<jni$_.Void>,
+              jni$_.JMethodIDPtr,
+            )
+          >();
+
+  /// from: `public final int getSmallCount()`
+  core$_.int get smallCount {
+    final _$$selfRef = reference;
+    return _get$smallCount(
+      _$$selfRef.pointer,
+      _id_get$smallCount.pointer,
+    ).integer;
+  }
+
+  static final _id_get$mediumCount = WidgetStatusJniSnapshot._class
+      .instanceMethodId(r'getMediumCount', r'()I');
+
+  static final _get$mediumCount =
+      jni$_.ProtectedJniExtensions.lookup<
+            jni$_.NativeFunction<
+              jni$_.JniResult Function(
+                jni$_.Pointer<jni$_.Void>,
+                jni$_.JMethodIDPtr,
+              )
+            >
+          >('globalEnv_CallIntMethod')
+          .asFunction<
+            jni$_.JniResult Function(
+              jni$_.Pointer<jni$_.Void>,
+              jni$_.JMethodIDPtr,
+            )
+          >();
+
+  /// from: `public final int getMediumCount()`
+  core$_.int get mediumCount {
+    final _$$selfRef = reference;
+    return _get$mediumCount(
+      _$$selfRef.pointer,
+      _id_get$mediumCount.pointer,
+    ).integer;
+  }
+
+  static final _id_get$largeCount = WidgetStatusJniSnapshot._class
+      .instanceMethodId(r'getLargeCount', r'()I');
+
+  static final _get$largeCount =
+      jni$_.ProtectedJniExtensions.lookup<
+            jni$_.NativeFunction<
+              jni$_.JniResult Function(
+                jni$_.Pointer<jni$_.Void>,
+                jni$_.JMethodIDPtr,
+              )
+            >
+          >('globalEnv_CallIntMethod')
+          .asFunction<
+            jni$_.JniResult Function(
+              jni$_.Pointer<jni$_.Void>,
+              jni$_.JMethodIDPtr,
+            )
+          >();
+
+  /// from: `public final int getLargeCount()`
+  core$_.int get largeCount {
+    final _$$selfRef = reference;
+    return _get$largeCount(
+      _$$selfRef.pointer,
+      _id_get$largeCount.pointer,
+    ).integer;
+  }
+
+  static final _id_get$lastSnapshotAtMs = WidgetStatusJniSnapshot._class
+      .instanceMethodId(r'getLastSnapshotAtMs', r'()J');
+
+  static final _get$lastSnapshotAtMs =
+      jni$_.ProtectedJniExtensions.lookup<
+            jni$_.NativeFunction<
+              jni$_.JniResult Function(
+                jni$_.Pointer<jni$_.Void>,
+                jni$_.JMethodIDPtr,
+              )
+            >
+          >('globalEnv_CallLongMethod')
+          .asFunction<
+            jni$_.JniResult Function(
+              jni$_.Pointer<jni$_.Void>,
+              jni$_.JMethodIDPtr,
+            )
+          >();
+
+  /// from: `public final long getLastSnapshotAtMs()`
+  core$_.int get lastSnapshotAtMs {
+    final _$$selfRef = reference;
+    return _get$lastSnapshotAtMs(
+      _$$selfRef.pointer,
+      _id_get$lastSnapshotAtMs.pointer,
+    ).long;
+  }
+}
+
+final class $WidgetStatusJniSnapshot$Type$
+    extends jni$_.JType<WidgetStatusJniSnapshot> {
+  @jni$_.internal
+  const $WidgetStatusJniSnapshot$Type$();
+
+  @jni$_.internal
+  @core$_.override
+  String get signature =>
+      r'Ledu/zjxu/jxucampushub/platform/widget/WidgetStatusJniSnapshot;';
+}
+
 /// from: `android.app.Activity`
 ///
 /// WARNING: Activity is a stub. To generate bindings for this class, include
@@ -880,25 +1643,6 @@ final class $Activity$Type$ extends jni$_.JType<Activity> {
   @jni$_.internal
   @core$_.override
   String get signature => r'Landroid/app/Activity;';
-}
-
-/// from: `io.flutter.plugin.common.BinaryMessenger`
-///
-/// WARNING: BinaryMessenger is a stub. To generate bindings for this class, include
-/// io.flutter.plugin.common.BinaryMessenger in your config's classes list.
-///
-extension type BinaryMessenger._(jni$_.JObject _$this)
-    implements jni$_.JObject {
-  static const jni$_.JType<BinaryMessenger> type = $BinaryMessenger$Type$();
-}
-
-final class $BinaryMessenger$Type$ extends jni$_.JType<BinaryMessenger> {
-  @jni$_.internal
-  const $BinaryMessenger$Type$();
-
-  @jni$_.internal
-  @core$_.override
-  String get signature => r'Lio/flutter/plugin/common/BinaryMessenger;';
 }
 
 /// from: `kotlin.jvm.internal.DefaultConstructorMarker`

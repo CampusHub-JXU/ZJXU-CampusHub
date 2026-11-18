@@ -17,120 +17,97 @@ import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.RemoteViews
 import android.widget.TextView
+import androidx.annotation.Keep
 import edu.zjxu.jxucampushub.R
 import edu.zjxu.jxucampushub.widget.CampusWidgetTheme
 import java.io.ByteArrayOutputStream
 import edu.zjxu.jxucampushub.platform.MiuiShortcutPermission
 import edu.zjxu.jxucampushub.platform.PinRequestResult
-import edu.zjxu.jxucampushub.platform.invalidArgs
 import edu.zjxu.jxucampushub.widget.CampusWidgetKind
 import edu.zjxu.jxucampushub.widget.CampusWidgetPinReceiver
 import edu.zjxu.jxucampushub.widget.CampusWidgetStore
-import io.flutter.plugin.common.BinaryMessenger
-import io.flutter.plugin.common.MethodChannel
-import org.json.JSONObject
 import java.util.concurrent.Executors
 
+@Keep
+class WidgetStatusJniSnapshot(
+    val pinSupported: Boolean,
+    val smallCount: Int,
+    val mediumCount: Int,
+    val largeCount: Int,
+    val lastSnapshotAtMs: Long,
+)
+
 /**
- * 桌面组件通道：只接收无凭据快照并请求固定组件。
+ * 桌面组件原生服务（由 Dart 经 JNIgen 直调）：接收无凭据快照、请求固定组件、读取状态与渲染预览。
  *
  * `requestPin` 参数 `size` ∈ small / medium / large，返回
  * `requested` / `unsupported` / `rejected` / `error`。`requested` 只表示请求已交给
  * launcher；组件落在哪一页 / 哪个格子由 launcher 决定，本 App 无法控制。
  */
+@Keep
 class WidgetChannelHandler(private val activity: Activity) {
     companion object {
-        private const val CHANNEL = "edu.zjxu.jxucampushub/widget"
         private const val TAG = "WidgetChannel"
+        // 单线程串行：pushSnapshot（SharedPreferences + 全部实例 RemoteViews 渲染 + 闹钟重排）
+        // 不占主线程；保持提交顺序。
+        private val ioExecutor = Executors.newSingleThreadExecutor { r ->
+            Thread(r, "widget-channel-io").apply { isDaemon = true }
+        }
     }
 
-    // 单线程串行：pushSnapshot（SharedPreferences + 全部实例 RemoteViews 渲染 + 闹钟重排）与
-    // getStatus（AppWidgetManager IPC）不占主线程；保持提交顺序，回复回主线程。
-    private val ioExecutor = Executors.newSingleThreadExecutor { r ->
-        Thread(r, "widget-channel-io").apply { isDaemon = true }
-    }
-
-    private fun runOffMain(result: MethodChannel.Result, work: () -> Any?) {
+    @Keep
+    fun pushSnapshot(snapshotJson: String) {
+        if (snapshotJson.isBlank()) return
+        val appContext = activity.applicationContext
         ioExecutor.execute {
-            val outcome = runCatching(work)
-            activity.runOnUiThread {
-                outcome.fold(
-                    onSuccess = { result.success(it) },
-                    onFailure = { error ->
-                        android.util.Log.w(TAG, "channel work failed: ${error.javaClass.simpleName}")
-                        result.error("native_error", error.javaClass.simpleName, null)
-                    },
-                )
-            }
+            runCatching { CampusWidgetStore.store(appContext, snapshotJson) }
+                .onFailure { error ->
+                    android.util.Log.w(TAG, "pushSnapshot failed: ${error.javaClass.simpleName}")
+                }
         }
     }
 
-    fun register(messenger: BinaryMessenger) {
-        MethodChannel(messenger, CHANNEL).setMethodCallHandler { call, result ->
-            when (call.method) {
-                "pushSnapshot" -> {
-                    val snapshot = call.argument<Map<String, Any?>>("snapshot")
-                    if (snapshot == null) {
-                        result.invalidArgs("snapshot is required")
-                        return@setMethodCallHandler
-                    }
-                    val json = JSONObject(snapshot).toString()
-                    runOffMain(result) { CampusWidgetStore.store(activity, json); null }
-                }
+    @Keep
+    fun requestPin(size: String): String {
+        val kind = CampusWidgetKind.fromCode(size) ?: return PinRequestResult.ERROR.code
+        return requestCampusWidgetPin(kind).code
+    }
 
-                "requestPin" -> {
-                    val kind = CampusWidgetKind.fromCode(call.argument<String>("size"))
-                    if (kind == null) {
-                        result.invalidArgs("size must be small, medium or large")
-                        return@setMethodCallHandler
-                    }
-                    result.success(requestCampusWidgetPin(kind).code)
-                }
-
-                "isSupported" -> {
-                    result.success(
-                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-                            AppWidgetManager.getInstance(activity)
-                                .isRequestPinAppWidgetSupported,
-                    )
-                }
-
-                "getStatus" -> runOffMain(result) { readStatus() }
-
-                "getPreview" -> {
-                    val kind = CampusWidgetKind.fromCode(call.argument<String>("size"))
-                    val widthPx = call.argument<Int>("widthPx")
-                    if (kind == null || widthPx == null || widthPx <= 0) {
-                        result.invalidArgs("size must be small, medium or large; widthPx > 0")
-                        return@setMethodCallHandler
-                    }
-                    runOffMain(result) { renderPreviewPng(kind, widthPx) }
-                }
-
-                else -> result.notImplemented()
-            }
-        }
+    @Keep
+    fun isSupported(): Boolean {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            runCatching {
+                AppWidgetManager.getInstance(activity).isRequestPinAppWidgetSupported
+            }.getOrDefault(false)
     }
 
     /**
      * 设置页用的只读状态：是否支持一键固定、每种尺寸已放置的实例数、原生最近一次
-     * 收到快照的时间（毫秒；从未收到为 null）。读取失败的项按 0 / null 兜底。
+     * 收到快照的时间（毫秒；从未收到为 0）。读取失败的项按 0 兜底。
      */
-    private fun readStatus(): Map<String, Any?> {
+    @Keep
+    fun readStatusSnapshot(): WidgetStatusJniSnapshot {
         val manager = AppWidgetManager.getInstance(activity)
-        val installed = CampusWidgetKind.values().associate { kind ->
-            kind.code to runCatching {
-                manager.getAppWidgetIds(ComponentName(activity, kind.providerClass)).size
-            }.getOrDefault(0)
-        }
+        fun countFor(kind: CampusWidgetKind): Int = runCatching {
+            manager.getAppWidgetIds(ComponentName(activity, kind.providerClass)).size
+        }.getOrDefault(0)
         val pinSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             runCatching { manager.isRequestPinAppWidgetSupported }.getOrDefault(false)
-        val lastSnapshotAt = CampusWidgetStore.lastSnapshotAtMs(activity)
-        return mapOf(
-            "pinSupported" to pinSupported,
-            "installed" to installed,
-            "lastSnapshotAtMs" to lastSnapshotAt,
+        val lastSnapshotAt = CampusWidgetStore.lastSnapshotAtMs(activity) ?: 0L
+        return WidgetStatusJniSnapshot(
+            pinSupported = pinSupported,
+            smallCount = countFor(CampusWidgetKind.SMALL),
+            mediumCount = countFor(CampusWidgetKind.MEDIUM),
+            largeCount = countFor(CampusWidgetKind.LARGE),
+            lastSnapshotAtMs = lastSnapshotAt,
         )
+    }
+
+    @Keep
+    fun getPreview(size: String, widthPx: Int): ByteArray? {
+        val kind = CampusWidgetKind.fromCode(size) ?: return null
+        if (widthPx <= 0) return null
+        return renderPreviewPng(kind, widthPx)
     }
 
     /**

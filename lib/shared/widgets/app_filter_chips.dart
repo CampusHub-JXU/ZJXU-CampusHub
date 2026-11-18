@@ -14,9 +14,11 @@ class AppFilterOption<T> {
 /// 一行横向可滑的单选 chip（docs/ui-unification-plan.md §4.5）：
 /// 最常用的那个筛选维度平铺在这里（学期、分类、通知类型）。
 ///
-/// 样式与成绩页学期 chip 一致：选中 `secondaryContainer`、不显示对勾、
-/// stadium 形状、未选中细描边、`secondary` 字（13）。更多维度收进
-/// 「筛选」弹层，不要把多个下拉横排在一行；弹层里用 [wrap] 换行排列。
+/// 外观与 `SegmentedButton` 同属一档（`AppRadius.control` 圆角矩形、中性容器
+/// 填充、无描边），避免胶囊与分段控件在同屏出现两套轮廓：选中
+/// `secondaryContainer`、不显示对勾、未选中 `surfaceContainerHighest`、
+/// `secondary` 字（13）。更多维度收进「筛选」弹层，不要把多个下拉横排在
+/// 一行；弹层里用 [wrap] 换行排列。
 class AppFilterChips<T> extends StatelessWidget {
   const AppFilterChips({
     super.key,
@@ -65,15 +67,14 @@ class AppFilterChips<T> extends StatelessWidget {
           onSelected: (_) => onSelected(option.value),
           showCheckmark: false,
           selectedColor: cs.secondaryContainer,
+          backgroundColor: cs.surfaceContainerHighest,
           labelStyle: labelStyle.copyWith(
             color: isSelected(option.value)
                 ? cs.onSecondaryContainer
                 : cs.onSurfaceVariant,
           ),
-          side: isSelected(option.value)
-              ? BorderSide.none
-              : BorderSide(color: cs.outlineVariant),
-          shape: const StadiumBorder(),
+          side: BorderSide.none,
+          shape: RoundedRectangleBorder(borderRadius: AppRadius.chipBorder),
           visualDensity: VisualDensity.compact,
           materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
         ),

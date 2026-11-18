@@ -7,13 +7,10 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.os.Build
-import edu.zjxu.jxucampushub.platform.invalidArgs
-import edu.zjxu.jxucampushub.platform.requireStringArg
-import io.flutter.plugin.common.BinaryMessenger
-import io.flutter.plugin.common.MethodChannel
+import androidx.annotation.Keep
 
 /**
- * 动态切换 Android 桌面图标（`<activity-alias>`）。
+ * 动态切换 Android 桌面图标（`<activity-alias>`，由 Dart 经 JNIgen 直调）。
  *
  * 原则：
  * 1. 只允许白名单内的已知 alias；
@@ -25,11 +22,14 @@ import io.flutter.plugin.common.MethodChannel
  * 5. 深浅款靠 `drawable-night`/`values-night` 资源随系统夜间模式渲染，运行时
  *    不随主题模式翻转 alias。
  */
+@Keep
 class AppIconChannelHandler(private val activity: Activity) {
     companion object {
-        private const val CHANNEL = "edu.zjxu.jxucampushub/app_icon"
         private const val COMPONENT_PREFIX = "edu.zjxu.jxucampushub."
         private const val DEFAULT_ALIAS = "LauncherCeladon"
+
+        @Volatile
+        private var pendingAlias: String? = null
 
         private val ALL_ALIASES: List<String> = buildList {
             add("LauncherCeladon")
@@ -45,33 +45,22 @@ class AppIconChannelHandler(private val activity: Activity) {
         private val VALID_ALIASES = ALL_ALIASES.toSet()
     }
 
-    @Volatile
-    private var pendingAlias: String? = null
-
-    fun register(messenger: BinaryMessenger) {
-        MethodChannel(messenger, CHANNEL).setMethodCallHandler { call, result ->
-            when (call.method) {
-                "setIconAlias" -> {
-                    val alias = call.requireStringArg("alias", result) ?: return@setMethodCallHandler
-                    if (alias !in VALID_ALIASES) {
-                        result.invalidArgs("Unknown icon alias: $alias")
-                        return@setMethodCallHandler
-                    }
-                    // 只排队，真正生效在 onActivityStopped；Dart 侧已持久化偏好，
-                    // 即便进程在下次 onStop 前被杀，下次启动会重新同步。
-                    // 同时立即同步 TaskDescription，让后台多任务卡片图标与所选桌面图标一致。
-                    pendingAlias = alias
-                    syncTaskDescription(alias)
-                    result.success(true)
-                }
-
-                "getIconAlias" -> {
-                    result.success(pendingAlias ?: currentEnabledAlias())
-                }
-
-                else -> result.notImplemented()
-            }
+    @Keep
+    fun setIconAlias(alias: String): Boolean {
+        if (alias !in VALID_ALIASES) {
+            return false
         }
+        // 只排队，真正生效在 onActivityStopped；Dart 侧已持久化偏好，
+        // 即便进程在下次 onStop 前被杀，下次启动会重新同步。
+        // 同时立即同步 TaskDescription，让后台多任务卡片图标与所选桌面图标一致。
+        pendingAlias = alias
+        syncTaskDescription(alias)
+        return true
+    }
+
+    @Keep
+    fun getIconAlias(): String {
+        return pendingAlias ?: currentEnabledAlias()
     }
 
     /** MainActivity.onStop 调用：应用退到后台后应用挂起的 alias 切换。 */

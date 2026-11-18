@@ -113,12 +113,49 @@ void main() {
     matching: find.text(label),
   );
 
-  String previewText(WidgetTester tester) => tester
-      .widget<SelectableText>(find.byKey(const Key('ai_export_preview')))
-      .data!;
+  // 预览是真·Markdown 渲染（flutter_markdown_plus）。注意包用的是
+  // package:flutter/material.dart 的 SelectableText，而本页 import 的
+  // package:material_ui 是同名不同类——不能 `is SelectableText` 断言。
+  // 它的每个文本块内部是 EditableText（controller 即纯文本），
+  // 列表符号 / 表格单元格等不可选块则是 Text / RichText，按树序收集。
+  String previewText(WidgetTester tester) {
+    final widgets = tester.widgetList(
+      find.descendant(
+        of: find.byKey(const Key('ai_export_preview')),
+        matching: find.byWidgetPredicate(
+          (w) => w is EditableText || w is Text || w is RichText,
+        ),
+      ),
+    );
+    return [
+      for (final w in widgets)
+        switch (w) {
+          EditableText e => e.controller.text,
+          Text t => t.data ?? t.textSpan?.toPlainText() ?? '',
+          RichText r => r.text.toPlainText(),
+          _ => '',
+        },
+    ].join('\n');
+  }
 
   String status(WidgetTester tester, ExportModule m) =>
       tester.widget<Text>(find.byKey(Key('ai_export_status_${m.key}'))).data!;
+
+  Finder checkbox(ExportModule m) =>
+      find.byKey(Key('ai_export_check_${m.key}'));
+
+  bool isChecked(WidgetTester tester, ExportModule m) =>
+      tester.widget<Checkbox>(checkbox(m)).value!;
+
+  Future<void> setChecked(
+    WidgetTester tester,
+    ExportModule m, {
+    required bool to,
+  }) async {
+    if (isChecked(tester, m) == to) return;
+    await tester.tap(checkbox(m));
+    await tester.pump();
+  }
 
   Finder action(ExportModule m) => find.byKey(Key('ai_export_action_${m.key}'));
 
@@ -148,88 +185,109 @@ void main() {
     return calls;
   }
 
-  group('用途预设', () {
-    testWidgets('默认「学业规划」：学业进度 + 成绩，预览是带背景说明的 Markdown', (tester) async {
+  group('勾选清单', () {
+    testWidgets('默认全勾：所有模块行都有勾选框，预览渲染成富文本', (tester) async {
       await pumpPage(tester);
 
       expect(find.text('导出给 AI'), findsOneWidget);
-      expect(find.byKey(const Key('ai_export_row_progress')), findsOneWidget);
-      expect(find.byKey(const Key('ai_export_row_grades')), findsOneWidget);
-      expect(find.byKey(const Key('ai_export_row_exams')), findsNothing);
-      expect(status(tester, ExportModule.grades), '已获取 · 5 条');
-
-      final md = previewText(tester);
-      expect(md, contains('## 给 AI 的背景说明'));
-      expect(md, contains('## 学业进度'));
-      expect(md, contains('## 成绩'));
-      expect(md, isNot(contains('## 考试安排')));
-      expect(actionEnabled(tester, '复制'), isTrue);
-    });
-
-    testWidgets('切换预设改变所选模块与预览', (tester) async {
-      await pumpPage(tester);
-
-      await tester.tap(preset('近期安排'));
-      await tester.pump();
-      for (final m in ExportPreset.upcoming.modules) {
-        expect(
-          find.byKey(Key('ai_export_row_${m.key}')),
-          findsOneWidget,
-          reason: m.key,
-        );
-      }
-      expect(find.byKey(const Key('ai_export_row_grades')), findsNothing);
-      expect(find.byKey(const Key('ai_export_row_physicalTest')), findsNothing);
-      expect(previewText(tester), isNot(contains('## 成绩')));
-
-      await tester.tap(preset('全部'));
-      await tester.pump();
       for (final m in ExportModule.values) {
         expect(
           find.byKey(Key('ai_export_row_${m.key}')),
           findsOneWidget,
           reason: m.key,
         );
+        expect(isChecked(tester, m), isTrue, reason: '${m.key} 默认勾选');
       }
+      expect(status(tester, ExportModule.grades), '已获取 · 5 条');
 
-      await tester.tap(preset('学业规划'));
-      await tester.pump();
-      expect(find.byKey(const Key('ai_export_row_schedule')), findsNothing);
+      // 渲染态不再出现 Markdown 标记，标题段落以样式呈现。
+      final md = previewText(tester);
+      expect(md, isNot(contains('## ')));
+      expect(md, contains('学业数据导出'));
+      expect(md, contains('给 AI 的背景说明'));
+      expect(md, contains('高等数学A'));
+      expect(actionEnabled(tester, '复制'), isTrue);
     });
 
-    testWidgets('「调整内容」展开后可微调模块，预设变为自定义；至少保留一项', (tester) async {
+    testWidgets('预览卡右上角放大按钮打开全屏只读预览并可返回', (tester) async {
       await pumpPage(tester);
-      expect(find.byKey(const Key('ai_export_modules')), findsNothing);
 
-      await tester.tap(find.byKey(const Key('ai_export_adjust')));
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('ai_export_preview_expand')),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(find.byKey(const Key('ai_export_preview_expand')));
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-      final chips = find.byKey(const Key('ai_export_modules'));
-      expect(chips, findsOneWidget);
+      await tester.pump();
 
-      await tester.tap(find.descendant(of: chips, matching: find.text('考试安排')));
+      expect(
+        find.byKey(const Key('ai_export_preview_fullscreen')),
+        findsOneWidget,
+      );
+      expect(find.text('学业数据导出'), findsWidgets);
+      expect(find.text('高等数学A'), findsWidgets);
+
+      await tester.pageBack();
       await tester.pump();
-      expect(find.byKey(const Key('ai_export_row_exams')), findsOneWidget);
+      await tester.pump();
+      expect(
+        find.byKey(const Key('ai_export_preview_fullscreen')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('取消勾选即从导出剔除，预览实时联动', (tester) async {
+      await pumpPage(tester);
+      await tester.tap(preset('近期安排'));
+      await tester.pump();
+
+      for (final m in ExportPreset.upcoming.modules) {
+        expect(isChecked(tester, m), isTrue, reason: m.key);
+      }
+      expect(isChecked(tester, ExportModule.grades), isFalse);
+      expect(isChecked(tester, ExportModule.physicalTest), isFalse);
+
+      // 取消勾选的模块不再写进导出文档。
+      fakes[ExportModule.exams]!.outcome = () async =>
+          ExportFetched(examsData());
+      await setChecked(tester, ExportModule.exams, to: true);
+      await tester.tap(action(ExportModule.exams));
+      await tester.pump();
+      await tester.pump();
+      expect(previewText(tester), contains('线性代数'));
+
+      await setChecked(tester, ExportModule.exams, to: false);
+      expect(previewText(tester), isNot(contains('线性代数')));
+    });
+
+    testWidgets('取消勾选某模块后预设变为自定义；至少保留一项', (tester) async {
+      await pumpPage(tester);
+      await setChecked(tester, ExportModule.grades, to: false);
+
       final segmented = tester.widget<SegmentedButton<ExportPreset>>(
         find.byKey(const Key('ai_export_presets')),
       );
       expect(segmented.selected, isEmpty, reason: '手动微调后不再属于任何预设');
 
-      // 取消到只剩一项后，最后一项取消无效。
-      for (final label in ['学业进度', '成绩']) {
-        await tester.tap(
-          find.descendant(of: chips, matching: find.text(label)),
-        );
-        await tester.pump();
+      // 取消到只剩一项后，最后一项的勾选框禁用、行不可点。
+      for (final m in ExportModule.values) {
+        if (m == ExportModule.progress) continue;
+        await setChecked(tester, m, to: false);
       }
-      expect(find.byKey(const Key('ai_export_row_exams')), findsOneWidget);
-      await tester.tap(find.descendant(of: chips, matching: find.text('考试安排')));
+      expect(isChecked(tester, ExportModule.progress), isTrue);
+      expect(
+        tester.widget<Checkbox>(checkbox(ExportModule.progress)).onChanged,
+        isNull,
+        reason: '最后一个不能取消',
+      );
+      await tester.tap(find.byKey(const Key('ai_export_row_progress')));
       await tester.pump();
-      expect(find.byKey(const Key('ai_export_row_exams')), findsOneWidget);
+      expect(isChecked(tester, ExportModule.progress), isTrue);
     });
   });
 
-  testWidgets('360x640 + 1.5 倍字号下无溢出（全部预设 + 展开调整）', (tester) async {
+  testWidgets('360x640 + 1.5 倍字号下无溢出（全部勾选 + 预览）', (tester) async {
     tester.view.physicalSize = const Size(360, 640);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -243,16 +301,12 @@ void main() {
     );
     await tester.pump();
     await tester.pump();
-    await tester.tap(preset('全部'));
-    await tester.pump();
     await tester.scrollUntilVisible(
-      find.byKey(const Key('ai_export_adjust')),
+      find.byKey(const Key('ai_export_preview')),
       200,
       scrollable: find.byType(Scrollable).first,
     );
-    await tester.tap(find.byKey(const Key('ai_export_adjust')));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
     expect(tester.takeException(), isNull);
   });
 
@@ -335,7 +389,7 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(previewText(tester), contains('## 成绩'));
+      expect(previewText(tester), contains('高等数学A'));
     });
 
     testWidgets('获取中显示进度，不可重复点按', (tester) async {
@@ -436,7 +490,7 @@ void main() {
       expect(find.byKey(const Key('ai_export_csv_module')), findsNothing);
       expect(find.text('JSON'), findsNothing);
       expect(find.text('CSV'), findsNothing);
-      expect(previewText(tester), startsWith('# 学业数据导出'));
+      expect(previewText(tester), startsWith('学业数据导出'));
     });
 
     testWidgets('保存调用文件保存器；用户取消不提示成功', (tester) async {

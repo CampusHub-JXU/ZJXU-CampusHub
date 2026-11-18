@@ -150,6 +150,7 @@ class DetailAction {
     required this.title,
     required this.subtitle,
     required this.onTap,
+    this.onLongPress,
     this.primary = false,
   });
 
@@ -159,6 +160,7 @@ class DetailAction {
   /// 当前状态或去向（「微信」「低于 20 度」），不写空话。
   final String subtitle;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   /// 页面主动作：`primary` 实底 / `onPrimary` 字；其余格走 [AppTileSurface]。
   final bool primary;
@@ -241,11 +243,16 @@ class DetailActionGrid extends StatelessWidget {
               borderRadius: BorderRadius.circular(AppRadius.tile),
             ),
             clipBehavior: Clip.antiAlias,
-            child: InkWell(onTap: action.onTap, child: content),
+            child: InkWell(
+              onTap: action.onTap,
+              onLongPress: action.onLongPress,
+              child: content,
+            ),
           )
         : AppTileSurface(
             padding: EdgeInsets.zero,
             onTap: action.onTap,
+            onLongPress: action.onLongPress,
             child: content,
           );
     return Semantics(

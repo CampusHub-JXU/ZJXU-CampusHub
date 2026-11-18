@@ -91,7 +91,7 @@ class _AutomaticLoginFlight {
 ///
 /// 验证码位数按域固定：CAS（统一认证）= 4 位，教务（正方）= 6 位。每张
 /// challenge 只调用一次 OCR、只提交一次；未识别或被服务端判验证码错误时，
-/// 同一自动事务内最多换一张新验证码重试（见 [maxCaptchaChallenges]），
+/// 同一自动事务内有界地更换验证码重试（见 [maxCaptchaChallenges]），
 /// 仍失败才按瞬时失败退避。绝不对同一张图做第二次长度尝试。
 ///
 /// 后台由 BackgroundAuthContext 绑定申领与让位取消；跨 isolate CookieJar 竞争仍未消除。
@@ -149,8 +149,9 @@ class AutomaticLoginService {
   /// **每个 challenge 仍然只 OCR 一次、只提交一次**，绝不复用旧 challenge，
   /// 也不对同一张图做第二次长度尝试。只有「OCR 未识别」或服务端明确判验证码
   /// 错误时，才换一张**全新**验证码重试；密码错误、网络/协议失败一律不重试。
-  /// 上限 2 防止无界循环，整个事务仍受交换 deadline 与调用方取消约束。
-  static const int maxCaptchaChallenges = 2;
+  /// 默认 4 次兼顾识别成功机会与登录耗时；整个事务仍受交换 deadline 和
+  /// 调用方取消约束，因此不保证每次都能用完全部次数。
+  static const int maxCaptchaChallenges = 4;
 
   /// 尝试一次静默自动登录，只返回结果枚举（兼容既有调用方）。
   ///

@@ -2,9 +2,6 @@ package edu.zjxu.jxucampushub.platform.wechat
 
 import android.app.Activity
 import androidx.annotation.Keep
-import io.flutter.plugin.common.BinaryMessenger
-import edu.zjxu.jxucampushub.platform.requireStringArg
-import io.flutter.plugin.common.MethodChannel
 
 @Keep
 class WeChatJniResult(
@@ -14,37 +11,15 @@ class WeChatJniResult(
 )
 
 /**
- * 微信跳转通道：结果以 Map 返回（status/route/detail）。
+ * 微信跳转原生服务（由 Dart 经 JNIgen 直调）。
  * status == launched 仅表示 intent 已发出，不代表页面加载成功。
  */
 @Keep
 class WeChatChannelHandler(private val activity: Activity) {
     private val planner = WeChatLaunchPlanner(AndroidWeChatLaunchGateway(activity))
 
-    companion object {
-        private const val CHANNEL = "edu.zjxu.jxucampushub/wechat"
-    }
-
-    fun register(messenger: BinaryMessenger) {
-        MethodChannel(messenger, CHANNEL).setMethodCallHandler { call, result ->
-            when (call.method) {
-                "openUrlInWeChat" -> {
-                    val url = call.requireStringArg("url", result)
-                        ?: return@setMethodCallHandler
-                    result.success(openUrlInWeChat(url))
-                }
-
-                "openWeChatApp" -> {
-                    result.success(openWeChatApp())
-                }
-
-                else -> result.notImplemented()
-            }
-        }
-    }
-
     @Keep
-    fun openUrlInWeChatJni(url: String): WeChatJniResult {
+    fun openUrlInWeChat(url: String): WeChatJniResult {
         val result = planner.openUrlInWeChat(url)
         return WeChatJniResult(
             status = result.status,
@@ -54,20 +29,12 @@ class WeChatChannelHandler(private val activity: Activity) {
     }
 
     @Keep
-    fun openWeChatAppJni(): WeChatJniResult {
+    fun openWeChatApp(): WeChatJniResult {
         val result = planner.openWeChatApp()
         return WeChatJniResult(
             status = result.status,
             route = result.route,
             detail = result.detail,
         )
-    }
-
-    internal fun openUrlInWeChat(url: String): Map<String, Any?> {
-        return planner.openUrlInWeChat(url).toChannelMap()
-    }
-
-    internal fun openWeChatApp(): Map<String, Any?> {
-        return planner.openWeChatApp().toChannelMap()
     }
 }

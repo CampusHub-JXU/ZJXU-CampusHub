@@ -1,4 +1,3 @@
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/core/system_surface/system_settings_launcher.dart';
@@ -6,24 +5,14 @@ import 'package:jxu_campus_hub/core/system_surface/system_settings_launcher.dart
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  const channel = MethodChannel('edu.zjxu.jxucampushub/system_settings');
-
-  void mockChannel(Future<Object?> Function(MethodCall call) handler) {
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, handler);
-  }
-
   tearDown(() {
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, null);
+    SystemSettingsLauncher.instance.setGatewayForTesting(null);
   });
 
-  test('每个目标都以 target.name 传给原生并映射 target 结果', () async {
-    final calls = <MethodCall>[];
-    mockChannel((call) async {
-      calls.add(call);
-      return 'target';
-    });
+  test('每个目标都以枚举透传给 gateway 并原样返回结果', () async {
+    final gateway = _FakeSystemSettingsGateway()
+      ..openResult = SystemSettingsOpenResult.target;
+    SystemSettingsLauncher.instance.setGatewayForTesting(gateway);
 
     for (final target in SystemSettingsTarget.values) {
       final result = await SystemSettingsLauncher.instance.open(target);
@@ -31,55 +20,63 @@ void main() {
       expect(result, SystemSettingsOpenResult.target, reason: target.name);
     }
 
-    expect(calls, hasLength(SystemSettingsTarget.values.length));
-    for (var i = 0; i < calls.length; i++) {
-      expect(calls[i].method, 'open');
-      expect(calls[i].arguments, {
-        'target': SystemSettingsTarget.values[i].name,
-      });
+    expect(gateway.opens, hasLength(SystemSettingsTarget.values.length));
+    for (var i = 0; i < gateway.opens.length; i++) {
+      expect(gateway.opens[i].target, SystemSettingsTarget.values[i]);
+      expect(gateway.opens[i].channelId, isNull);
     }
   });
 
-  test('原生返回小写字符串逐值映射到结果枚举', () async {
-    const expected = <String, SystemSettingsOpenResult>{
-      'target': SystemSettingsOpenResult.target,
-      'appDetails': SystemSettingsOpenResult.appDetails,
-      'settings': SystemSettingsOpenResult.settings,
-      'unavailable': SystemSettingsOpenResult.unavailable,
-    };
+  test('gateway 的降级结果原样透传', () async {
+    final gateway = _FakeSystemSettingsGateway();
+    SystemSettingsLauncher.instance.setGatewayForTesting(gateway);
 
-    for (final entry in expected.entries) {
-      mockChannel((call) async => entry.key);
+    for (final expected in SystemSettingsOpenResult.values) {
+      gateway.openResult = expected;
 
       final result = await SystemSettingsLauncher.instance.open(
         SystemSettingsTarget.notifications,
       );
 
-      expect(result, entry.value, reason: entry.key);
+      expect(result, expected, reason: expected.name);
     }
   });
 
-  test('未知原生返回值降级为 unavailable', () async {
-    mockChannel((call) async => 'unexpected');
+  group('parseOpenResult', () {
+    test('原生小写字符串逐值映射到结果枚举', () {
+      const expected = <String, SystemSettingsOpenResult>{
+        'target': SystemSettingsOpenResult.target,
+        'appDetails': SystemSettingsOpenResult.appDetails,
+        'settings': SystemSettingsOpenResult.settings,
+        'unavailable': SystemSettingsOpenResult.unavailable,
+      };
 
-    final result = await SystemSettingsLauncher.instance.open(
-      SystemSettingsTarget.exactAlarms,
-    );
+      for (final entry in expected.entries) {
+        expect(
+          SystemSettingsLauncher.parseOpenResult(entry.key),
+          entry.value,
+          reason: entry.key,
+        );
+      }
+    });
 
-    expect(result, SystemSettingsOpenResult.unavailable);
+    test('未知字符串与 null 都降级为 unavailable', () {
+      expect(
+        SystemSettingsLauncher.parseOpenResult('unexpected'),
+        SystemSettingsOpenResult.unavailable,
+      );
+      expect(
+        SystemSettingsLauncher.parseOpenResult(null),
+        SystemSettingsOpenResult.unavailable,
+      );
+      expect(
+        SystemSettingsLauncher.parseOpenResult(''),
+        SystemSettingsOpenResult.unavailable,
+      );
+    });
   });
 
-  test('null 返回值降级为 unavailable', () async {
-    mockChannel((call) async => null);
-
-    final result = await SystemSettingsLauncher.instance.open(
-      SystemSettingsTarget.batteryOptimization,
-    );
-
-    expect(result, SystemSettingsOpenResult.unavailable);
-  });
-
-  test('通道缺失（MissingPluginException）返回 unavailable', () async {
+  test('默认未注入 gateway 时（非 Android）open 返回 unavailable', () async {
     final result = await SystemSettingsLauncher.instance.open(
       SystemSettingsTarget.autostart,
     );
@@ -87,24 +84,10 @@ void main() {
     expect(result, SystemSettingsOpenResult.unavailable);
   });
 
-  test('PlatformException 返回 unavailable 且不抛出', () async {
-    mockChannel((call) async {
-      throw PlatformException(code: 'open_failed', message: 'no activity');
-    });
-
-    final result = await SystemSettingsLauncher.instance.open(
-      SystemSettingsTarget.appDetails,
-    );
-
-    expect(result, SystemSettingsOpenResult.unavailable);
-  });
-
-  test('通知渠道目标把 channelId 透传给原生', () async {
-    final calls = <MethodCall>[];
-    mockChannel((call) async {
-      calls.add(call);
-      return 'target';
-    });
+  test('通知渠道目标把 trim 后的 channelId 透传给 gateway', () async {
+    final gateway = _FakeSystemSettingsGateway()
+      ..openResult = SystemSettingsOpenResult.target;
+    SystemSettingsLauncher.instance.setGatewayForTesting(gateway);
 
     final result = await SystemSettingsLauncher.instance.open(
       SystemSettingsTarget.notificationChannel,
@@ -112,19 +95,20 @@ void main() {
     );
 
     expect(result, SystemSettingsOpenResult.target);
-    expect(calls.single.method, 'open');
-    expect(calls.single.arguments, <String, Object?>{
-      'target': 'notificationChannel',
-      'channelId': 'second_classroom_activity_reminder',
-    });
+    expect(
+      gateway.opens.single.target,
+      SystemSettingsTarget.notificationChannel,
+    );
+    expect(
+      gateway.opens.single.channelId,
+      'second_classroom_activity_reminder',
+    );
   });
 
-  test('channelId 缺失 / 空白时不带 channelId 参数', () async {
-    final calls = <MethodCall>[];
-    mockChannel((call) async {
-      calls.add(call);
-      return 'appDetails';
-    });
+  test('channelId 缺失 / 空白时归一化为 null', () async {
+    final gateway = _FakeSystemSettingsGateway()
+      ..openResult = SystemSettingsOpenResult.appDetails;
+    SystemSettingsLauncher.instance.setGatewayForTesting(gateway);
 
     await SystemSettingsLauncher.instance.open(
       SystemSettingsTarget.notificationChannel,
@@ -133,44 +117,65 @@ void main() {
       SystemSettingsTarget.notificationChannel,
       channelId: '   ',
     );
+    await SystemSettingsLauncher.instance.open(
+      SystemSettingsTarget.notificationChannel,
+      channelId: '',
+    );
 
-    expect(calls, hasLength(2));
-    for (final call in calls) {
-      expect(call.arguments, <String, Object?>{
-        'target': 'notificationChannel',
-      });
+    expect(gateway.opens, hasLength(3));
+    for (final open in gateway.opens) {
+      expect(open.target, SystemSettingsTarget.notificationChannel);
+      expect(open.channelId, isNull);
     }
   });
 
   group('getStatus', () {
-    tearDown(
-      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(channel, null),
-    );
+    test('委派给 gateway 并原样返回状态', () async {
+      final gateway = _FakeSystemSettingsGateway()
+        ..status = const SystemBackgroundStatus(
+          notificationsEnabled: true,
+          ignoringBatteryOptimizations: false,
+          isXiaomiFamily: true,
+        );
+      SystemSettingsLauncher.instance.setGatewayForTesting(gateway);
 
-    test('解析各项状态，类型不符的项按不可查询', () async {
-      mockChannel((call) async {
-        expect(call.method, 'getStatus');
-        return <String, Object?>{
-          'notificationsEnabled': true,
-          'exactAlarmsAllowed': null,
-          'ignoringBatteryOptimizations': 'yes',
-          'isXiaomiFamily': true,
-        };
-      });
       final status = await SystemSettingsLauncher.instance.getStatus();
+      expect(gateway.getStatusCalls, 1);
       expect(status.available, isTrue);
       expect(status.notificationsEnabled, isTrue);
       expect(status.exactAlarmsAllowed, isNull);
-      expect(status.ignoringBatteryOptimizations, isNull);
+      expect(status.ignoringBatteryOptimizations, isFalse);
       expect(status.isXiaomiFamily, isTrue);
     });
 
-    test('原生异常时整体未知，不抛出', () async {
-      mockChannel((_) async => throw PlatformException(code: 'boom'));
+    test('默认未注入 gateway 时（非 Android）返回 unknown', () async {
       final status = await SystemSettingsLauncher.instance.getStatus();
       expect(status.available, isFalse);
       expect(status.isXiaomiFamily, isFalse);
     });
   });
+}
+
+/// 记录式 SystemSettingsGateway 替身。
+class _FakeSystemSettingsGateway implements SystemSettingsGateway {
+  final opens = <({SystemSettingsTarget target, String? channelId})>[];
+  int getStatusCalls = 0;
+
+  SystemSettingsOpenResult openResult = SystemSettingsOpenResult.target;
+  SystemBackgroundStatus status = const SystemBackgroundStatus();
+
+  @override
+  Future<SystemSettingsOpenResult> open(
+    SystemSettingsTarget target, {
+    String? channelId,
+  }) async {
+    opens.add((target: target, channelId: channelId));
+    return openResult;
+  }
+
+  @override
+  Future<SystemBackgroundStatus> getStatus() async {
+    getStatusCalls++;
+    return status;
+  }
 }

@@ -1,6 +1,16 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
+enum AppNotificationPriority { high, normal, low }
+
+enum AppNotificationChannel {
+  auth,
+  secondClassroom,
+  dormElectricity,
+  notice,
+  low,
+}
+
 class AppNotificationService {
   AppNotificationService._();
   static final AppNotificationService instance = AppNotificationService._();
@@ -8,7 +18,7 @@ class AppNotificationService {
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
 
-  static const _channelId = 'dorm_electricity_alert';
+  static const dormElectricityChannelId = 'dorm_electricity_alert_v2';
   static const _channelName = '寝室电费提醒';
   static const _channelDescription = '当寝室剩余电量低于设定阈值时发送提醒';
 
@@ -19,9 +29,13 @@ class AppNotificationService {
   static const secondClassroomChannelId = 'second_classroom_activity_reminder';
   static const _secondClassroomChannelName = '第二课堂活动提醒';
   static const _secondClassroomChannelDescription = '订阅活动名后，同名活动开始招募时提醒';
-  static const _noticeUpdateChannelId = 'jwc_notice';
+  @Deprecated('已由 noticeUpdateChannelId 取代；旧渠道不可降级')
+  static const legacyNoticeUpdateChannelId = 'jwc_notice';
+  static const noticeUpdateChannelId = 'jwc_notice_v2';
   static const _noticeUpdateChannelName = '教务处通知';
   static const _noticeUpdateChannelDescription = '教务处通知公告有新增时提醒';
+  static const authChannelId = 'auth_alert';
+  static const lowChannelId = 'jxu_low';
 
   bool _initialized = false;
   Future<void>? _initializing;
@@ -156,74 +170,125 @@ class AppNotificationService {
     required String title,
     required String body,
     required String payload,
-  }) async {
-    if (!_initialized) {
-      await initialize(requestNotificationPermission: false);
-    }
-
-    await _plugin.show(
-      id,
-      title,
-      body,
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
-          _noticeUpdateChannelId,
-          _noticeUpdateChannelName,
-          channelDescription: _noticeUpdateChannelDescription,
-          importance: Importance.high,
-          priority: Priority.high,
-          icon: '@mipmap/ic_launcher',
-        ),
-      ),
-      payload: payload,
-    );
-  }
+  }) => showAppNotification(
+    id: id,
+    title: title,
+    body: body,
+    payload: payload,
+    priority: AppNotificationPriority.normal,
+    channel: AppNotificationChannel.notice,
+  );
 
   Future<void> showNotification({
     required int id,
     required String title,
     required String body,
     String? payload,
-  }) async {
-    if (!_initialized) {
-      await initialize(requestNotificationPermission: false);
-    }
-
-    const details = NotificationDetails(
-      android: AndroidNotificationDetails(
-        _channelId,
-        _channelName,
-        channelDescription: _channelDescription,
-        importance: Importance.high,
-        priority: Priority.high,
-        icon: '@mipmap/ic_launcher',
-      ),
-    );
-
-    await _plugin.show(id, title, body, details, payload: payload);
-  }
+  }) => showAppNotification(
+    id: id,
+    title: title,
+    body: body,
+    payload: payload,
+    priority: AppNotificationPriority.normal,
+    channel: AppNotificationChannel.dormElectricity,
+  );
 
   Future<void> showSecondClassroomRecruitingNotification({
     required int id,
     required String title,
     required String body,
     required String payload,
+  }) => showAppNotification(
+    id: id,
+    title: title,
+    body: body,
+    payload: payload,
+    priority: AppNotificationPriority.high,
+    channel: AppNotificationChannel.secondClassroom,
+  );
+
+  /// 业务渠道独立保留；priority 与指定渠道的重要性必须一致。
+  Future<void> showAppNotification({
+    required int id,
+    required String title,
+    required String body,
+    required AppNotificationPriority priority,
+    String? payload,
+    AppNotificationChannel? channel,
   }) async {
     if (!_initialized) {
       await initialize(requestNotificationPermission: false);
     }
-
+    final selected =
+        channel ??
+        switch (priority) {
+          AppNotificationPriority.high => AppNotificationChannel.auth,
+          AppNotificationPriority.normal => AppNotificationChannel.notice,
+          AppNotificationPriority.low => AppNotificationChannel.low,
+        };
+    final (
+      channelId,
+      name,
+      description,
+      importance,
+      androidPriority,
+      expectedPriority,
+    ) = switch (selected) {
+      AppNotificationChannel.auth => (
+        authChannelId,
+        '登录状态提醒',
+        '登录失效时提醒',
+        Importance.high,
+        Priority.high,
+        AppNotificationPriority.high,
+      ),
+      AppNotificationChannel.secondClassroom => (
+        secondClassroomChannelId,
+        _secondClassroomChannelName,
+        _secondClassroomChannelDescription,
+        Importance.high,
+        Priority.high,
+        AppNotificationPriority.high,
+      ),
+      AppNotificationChannel.dormElectricity => (
+        dormElectricityChannelId,
+        _channelName,
+        _channelDescription,
+        Importance.defaultImportance,
+        Priority.defaultPriority,
+        AppNotificationPriority.normal,
+      ),
+      AppNotificationChannel.notice => (
+        noticeUpdateChannelId,
+        _noticeUpdateChannelName,
+        _noticeUpdateChannelDescription,
+        Importance.defaultImportance,
+        Priority.defaultPriority,
+        AppNotificationPriority.normal,
+      ),
+      AppNotificationChannel.low => (
+        lowChannelId,
+        '后台提示',
+        '后台任务提示',
+        Importance.low,
+        Priority.low,
+        AppNotificationPriority.low,
+      ),
+    };
+    if (priority != expectedPriority) {
+      throw ArgumentError('通知优先级与业务渠道不匹配');
+    }
     await _plugin.show(
       id,
       title,
       body,
-      const NotificationDetails(
+      NotificationDetails(
         android: AndroidNotificationDetails(
-          secondClassroomChannelId,
-          _secondClassroomChannelName,
-          channelDescription: _secondClassroomChannelDescription,
-          importance: Importance.high,
-          priority: Priority.high,
+          channelId,
+          name,
+          channelDescription: description,
+          importance: importance,
+          priority: androidPriority,
           icon: '@mipmap/ic_launcher',
         ),
       ),
@@ -240,10 +305,10 @@ class AppNotificationService {
 
     await android.createNotificationChannel(
       const AndroidNotificationChannel(
-        _channelId,
+        dormElectricityChannelId,
         _channelName,
         description: _channelDescription,
-        importance: Importance.high,
+        importance: Importance.defaultImportance,
       ),
     );
     await android.createNotificationChannel(
@@ -256,10 +321,26 @@ class AppNotificationService {
     );
     await android.createNotificationChannel(
       const AndroidNotificationChannel(
-        _noticeUpdateChannelId,
+        noticeUpdateChannelId,
         _noticeUpdateChannelName,
         description: _noticeUpdateChannelDescription,
+        importance: Importance.defaultImportance,
+      ),
+    );
+    await android.createNotificationChannel(
+      const AndroidNotificationChannel(
+        authChannelId,
+        '登录状态提醒',
+        description: '登录失效时提醒',
         importance: Importance.high,
+      ),
+    );
+    await android.createNotificationChannel(
+      const AndroidNotificationChannel(
+        lowChannelId,
+        '后台提示',
+        description: '后台任务提示',
+        importance: Importance.low,
       ),
     );
   }

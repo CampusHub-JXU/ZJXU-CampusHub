@@ -12,7 +12,6 @@ import '../../core/auth/unified_auth.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/theme/app_design_tokens.dart';
-import '../../core/theme/app_typography.dart';
 import '../../core/theme/page_transition_activity.dart';
 import '../../core/theme/widgets/app_wallpaper_backdrop.dart';
 import '../../shared/widgets/app_feedback.dart';
@@ -687,7 +686,7 @@ Future<bool> _fingerprintUnchanged(
   return await _readPersistedEpochSafe(domain) == capturedEpoch;
 }
 
-/// 顶部：大标题「我的」+ 学校名灰色小字（不显示任何身份数字）；
+/// 顶部：大标题「我的」；
 /// 有登录时行尾放低调的登出入口。
 class _MyHeader extends StatelessWidget {
   const _MyHeader({required this.onLogout});
@@ -708,15 +707,6 @@ class _MyHeader extends StatelessWidget {
                 '我的',
                 style: Theme.of(context).textTheme.headlineMedium!
                     .copyWith(color: cs.onSurface),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                '嘉兴大学',
-                key: const Key('my_identity'),
-                style: context.appText.secondary.copyWith(
-                  height: 1.4,
-                  letterSpacing: 0.2,
-                ),
               ),
             ],
           ),

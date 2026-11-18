@@ -388,7 +388,7 @@ void main() {
     expect(result.receipt, isNull, reason: '无真实提交不得携带 receipt');
   });
 
-  test('OCR 返回 null：每张验证码只识别一次，换新验证码重试一次后瞬时退避', () async {
+  test('OCR 返回 null：每张验证码只识别一次，耗尽次数后瞬时退避', () async {
     final adapter = _FakeCasAdapter();
     DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
     recognizer = _FakeRecognizer(answer: null);
@@ -399,12 +399,9 @@ void main() {
     final outcome = await service.attempt(AuthRecoveryDomain.cas);
 
     expect(outcome, AutomaticLoginOutcome.failed);
-    expect(recognizer.lengths, <int>[
-      4,
-      4,
-    ], reason: '每张图固定 4 位、只识别一次；未识别时换新图重试一次');
+    expect(recognizer.lengths, <int>[4, 4, 4, 4], reason: '每张图固定 4 位、只识别一次');
     expect(adapter.loginPosts, 0, reason: '未识别不得提交登录');
-    expect(adapter.captchaGets, 2, reason: '重试必须换一张全新验证码');
+    expect(adapter.captchaGets, 4, reason: '每次重试必须换一张全新验证码');
     final record = await AuthRecoveryStateStore.instance.read(
       AuthRecoveryDomain.cas,
     );
@@ -412,9 +409,11 @@ void main() {
     expect(record.cooldownUntil, isNotNull, reason: '瞬时失败必须退避');
   });
 
-  test('验证码被服务端拒绝后换新验证码重试，第二次提交成功', () async {
+  test('验证码被服务端拒绝后换新验证码重试，第四次提交成功', () async {
     final adapter = _FakeCasAdapter(
       loginBodies: <String>[
+        '<html><div id="msg">验证码错误!</div></html>',
+        '<html><div id="msg">验证码错误!</div></html>',
         '<html><div id="msg">验证码错误!</div></html>',
         '<html>登录中</html>',
       ],
@@ -429,16 +428,16 @@ void main() {
 
     expect(result.outcome, AutomaticLoginOutcome.committed);
     expect(result.receipt, isNotNull);
-    expect(adapter.loginPosts, 2, reason: '第一张验证码被拒后只再提交一次');
-    expect(adapter.captchaGets, 2, reason: '重试使用全新验证码');
-    expect(recognizer.lengths, <int>[4, 4]);
+    expect(adapter.loginPosts, 4, reason: '前三张验证码被拒后继续尝试');
+    expect(adapter.captchaGets, 4, reason: '重试使用全新验证码');
+    expect(recognizer.lengths, <int>[4, 4, 4, 4]);
     final record = await AuthRecoveryStateStore.instance.read(
       AuthRecoveryDomain.cas,
     );
     expect(record.failureCount, 0, reason: '验证码拒绝不是身份失败');
   });
 
-  test('教务域使用固定 6 位；未识别时换新验证码重试一次', () async {
+  test('教务域使用固定 6 位；未识别时换新验证码直到耗尽次数', () async {
     DioClient.instance.dio.httpClientAdapter = _FakeAcademicAdapter();
     recognizer = _FakeRecognizer(answer: null);
     service = AutomaticLoginService.debugNew(recognizer: recognizer);
@@ -448,10 +447,7 @@ void main() {
     final outcome = await service.attempt(AuthRecoveryDomain.academic);
 
     expect(outcome, AutomaticLoginOutcome.failed);
-    expect(recognizer.lengths, <int>[
-      6,
-      6,
-    ], reason: '教务固定 6 位，每张图只识别一次；未识别时换新图重试一次');
+    expect(recognizer.lengths, <int>[6, 6, 6, 6], reason: '教务固定 6 位，每张图只识别一次');
     final record = await AuthRecoveryStateStore.instance.read(
       AuthRecoveryDomain.academic,
     );
