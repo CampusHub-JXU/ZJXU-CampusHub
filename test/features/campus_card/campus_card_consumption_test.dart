@@ -183,14 +183,8 @@ CampusCardBillRawPayload _rawPayload() {
       'REPORT0': _recentWidget(),
     },
     charts: {
-      'CHART0': {
-        'source': '{}',
-        'data': _pieChart(),
-      },
-      'CHART1': {
-        'source': '{}',
-        'data': _columnChart(),
-      },
+      'CHART0': {'source': '{}', 'data': _pieChart()},
+      'CHART1': {'source': '{}', 'data': _columnChart()},
     },
   );
 }
@@ -316,10 +310,7 @@ void main() {
       expect(first, isNotNull);
       expect(calls, 1);
       expect(CampusCardService.instance.cachedConsumption, isNotNull);
-      expect(
-        CampusCardService.instance.cachedConsumptionPreview,
-        hasLength(3),
-      );
+      expect(CampusCardService.instance.cachedConsumptionPreview, hasLength(3));
 
       final second = await CampusCardService.instance.fetchConsumption();
       expect(second, isNotNull);
@@ -348,8 +339,7 @@ void main() {
       CampusCardService.instance.debugBillRawFetcher = () async =>
           _rawPayload();
 
-      final summary = await CampusCardService.instance
-          .fetchConsumptionRemote();
+      final summary = await CampusCardService.instance.fetchConsumptionRemote();
       expect(summary.monthSpend, 34.6);
       expect(summary.recent, hasLength(3));
     });
