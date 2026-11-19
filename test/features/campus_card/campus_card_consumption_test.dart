@@ -26,7 +26,13 @@ String _statWidget(String label, String value) {
               {
                 'row': 0,
                 'cells': [
-                  {'row': 0, 'col': 0, 'rowSpan': 1, 'colSpan': 3, 'text': label},
+                  {
+                    'row': 0,
+                    'col': 0,
+                    'rowSpan': 1,
+                    'colSpan': 3,
+                    'text': label,
+                  },
                 ],
               },
               {
@@ -212,7 +218,11 @@ void main() {
       expect(summary.mealPeak, 64.5);
 
       // 单日统计按日期升序，次数取 line 系列。
-      expect(summary.dailyTrend.map((d) => d.label), ['11-12', '11-14', '11-16']);
+      expect(summary.dailyTrend.map((d) => d.label), [
+        '11-12',
+        '11-14',
+        '11-16',
+      ]);
       expect(summary.dailyTrend[1].amount, 20);
       expect(summary.dailyTrend[1].count, 2);
       expect(summary.dayPeak, 20);
@@ -233,7 +243,8 @@ void main() {
     test('throws when every widget returns an html error page', () {
       final raw = CampusCardBillRawPayload(
         widgets: {
-          'ZTXF1': '<!DOCTYPE html><html><body>Dec-Session_Timeout</body></html>',
+          'ZTXF1':
+              '<!DOCTYPE html><html><body>Dec-Session_Timeout</body></html>',
           'REPORT0': '<!DOCTYPE html><html><body>error</body></html>',
         },
         charts: const {},
