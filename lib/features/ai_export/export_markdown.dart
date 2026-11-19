@@ -23,38 +23,35 @@ String _weekday(int d) => d >= 1 && d <= 7 ? '周${_weekdayShort[d - 1]}' : _das
 
 String _yesNo(bool v) => v ? '是' : '否';
 
-/// 把整份文档渲染成 Markdown：说明头 + 给 AI 的背景说明 + 各模块。
+/// 把整份文档渲染成高信息熵纯文本：说明头 + 给 AI 的背景说明 + 各模块。
+/// 不含 Markdown 标题/引用/列表/表格分隔符等格式噪音。
 String renderExportMarkdown(AiExportDocument doc) {
   final b = StringBuffer()
-    ..writeln('# 学业数据导出')
+    ..writeln('[学业数据导出]')
+    ..writeln(_disclaimer)
+    ..writeln(_privacyNote)
+    ..writeln('导出时间: ${_T.formatDateTime(doc.exportedAt)}')
     ..writeln()
-    ..writeln('> $_disclaimer')
-    ..writeln('>')
-    ..writeln('> $_privacyNote')
-    ..writeln('> 导出时间：${_T.formatDateTime(doc.exportedAt)}')
-    ..writeln()
-    ..writeln(ExportBackground.from(doc).toMarkdown());
+    ..writeln(ExportBackground.from(doc).toPlainText());
   for (final m in doc.modules) {
     b
       ..writeln()
-      ..writeln('## ${m.module.label}')
-      ..writeln();
+      ..writeln('[${m.module.label}]');
     if (!m.status.hasData) {
-      b.writeln('> 未获取：本机暂无该模块数据，未导出，也未推测。');
+      b.writeln('未获取: 本机暂无该模块数据，未导出，也未推测。');
       continue;
     }
     b.writeln(
-      '> ${m.status.label} · ${m.itemCount ?? 0} 条 · ${m.scopeLabel}'
-      ' · 更新 ${_T.formatDateTime(m.lastUpdatedAt)}'
-      ' · 来源 ${m.dataSource ?? '未知'}',
+      '状态: ${m.status.label} | 条数: ${m.itemCount ?? 0} | 范围: ${m.scopeLabel}'
+      ' | 更新: ${_T.formatDateTime(m.lastUpdatedAt)}'
+      ' | 来源: ${m.dataSource ?? '未知'}',
     );
     if (m.status == ExportModuleStatus.stale) {
-      b.writeln('> 已过期：缓存超过有效期，可能不是最新数据。');
+      b.writeln('过期提示: 缓存超过有效期，可能不是最新数据。');
     }
     if (m.partialNote != null) {
-      b.writeln('> 部分结果：${m.partialNote}');
+      b.writeln('部分结果: ${m.partialNote}');
     }
-    b.writeln();
     switch (m) {
       case MissingModuleData():
         break;
@@ -79,55 +76,46 @@ String renderExportMarkdown(AiExportDocument doc) {
 
 void _grades(StringBuffer b, GradesModuleData m) {
   final s = m.summary;
-  b
-    ..writeln('### 汇总（应用口径）')
-    ..writeln();
+  b.writeln('汇总（应用口径）:');
   if (m.isPartial) {
-    b
-      ..writeln('- 注意：以下汇总只覆盖已取到的 ${m.records.length} 条记录，不是全部成绩。')
-      ..writeln();
+    b.writeln('注意: 以下汇总只覆盖已取到的 ${m.records.length} 条记录，不是全部成绩。');
   }
   b
     ..writeln(
-      '- 记录 ${m.records.length} 条，学分合计 ${_T.formatCredits(m.totalCredits)}',
+      '记录 ${m.records.length} 条，学分合计 ${_T.formatCredits(m.totalCredits)}',
     )
     ..writeln(
-      '- 加权绩点：${s.gpa == null ? _dash : _T.formatPoints(s.gpa!)}'
+      '加权绩点: ${s.gpa == null ? _dash : _T.formatPoints(s.gpa!)}'
       '（计入 ${s.countedCourses} 条 / ${_T.formatCredits(s.countedCredits)} 学分）',
     )
     ..writeln(
-      '- 未计入绩点（绩点为 0）：${s.excludedCourses} 条 / '
+      '未计入绩点（绩点为 0）: ${s.excludedCourses} 条 / '
       '${_T.formatCredits(s.excludedCredits)} 学分',
     )
-    ..writeln()
-    ..writeln('| 学期 | 记录数 | 学分 | 加权绩点 | 未计入绩点 |')
-    ..writeln('| --- | --- | --- | --- | --- |');
+    ..writeln('学期 | 记录数 | 学分 | 加权绩点 | 未计入绩点');
   for (final t in m.terms) {
     b.writeln(
-      '| ${_T.mdCell(t.label)} | ${t.courseCount} '
-      '| ${_T.formatCredits(t.credits)} '
-      '| ${t.summary.gpa == null ? _dash : _T.formatPoints(t.summary.gpa!)} '
-      '| ${t.summary.excludedCourses} |',
+      '${_T.cell(t.label)} | ${t.courseCount} | '
+      '${_T.formatCredits(t.credits)} | '
+      '${t.summary.gpa == null ? _dash : _T.formatPoints(t.summary.gpa!)} | '
+      '${t.summary.excludedCourses}',
     );
   }
   b
-    ..writeln()
-    ..writeln('### 成绩明细')
-    ..writeln()
-    ..writeln('| 课程 | 成绩 | 百分制 | 绩点 | 学分 | 学年 | 学期 | 考试性质 | 考核方式 | 课程性质 |')
-    ..writeln('| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |');
+    ..writeln('成绩明细:')
+    ..writeln('课程 | 成绩 | 百分制 | 绩点 | 学分 | 学年 | 学期 | 考试性质 | 考核方式 | 课程性质');
   for (final r in m.records) {
     b.writeln(
-      '| ${_T.mdCell(r.courseName)} '
-      '| ${_T.mdCell(r.grade)} '
-      '| ${_T.mdCell(r.percentageScore)} '
-      '| ${_T.formatPoints(r.gpaPoints)} '
-      '| ${_T.formatCredits(r.credits)} '
-      '| ${_T.mdCell(r.academicYear)} '
-      '| ${_T.mdCell(r.semester)} '
-      '| ${_T.mdCell(r.examType)} '
-      '| ${_T.mdCell(r.assessmentMethod)} '
-      '| ${_T.mdCell(r.courseRequirement)} |',
+      '${_T.cell(r.courseName)} | '
+      '${_T.cell(r.grade)} | '
+      '${_T.cell(r.percentageScore)} | '
+      '${_T.formatPoints(r.gpaPoints)} | '
+      '${_T.formatCredits(r.credits)} | '
+      '${_T.cell(r.academicYear)} | '
+      '${_T.cell(r.semester)} | '
+      '${_T.cell(r.examType)} | '
+      '${_T.cell(r.assessmentMethod)} | '
+      '${_T.cell(r.courseRequirement)}',
     );
   }
 }
@@ -136,70 +124,57 @@ void _progress(StringBuffer b, ProgressModuleData m) {
   final s = m.summary;
   if (s != null) {
     b
-      ..writeln('### 统计')
-      ..writeln()
-      ..writeln('- 统计时间：${_T.mdCell(s.statTime)}')
-      ..writeln('- 绩点（教务学业情况页）：${_T.mdCell(s.gpa)}')
+      ..writeln('统计时间: ${_T.cell(s.statTime)}')
+      ..writeln('绩点（教务学业情况页）: ${_T.cell(s.gpa)}')
       ..writeln(
-        '- 计划内课程：${_n(s.planTotal)}（通过 ${_n(s.planPassed)}，未过 '
+        '计划内课程: ${_n(s.planTotal)}（通过 ${_n(s.planPassed)}，未过 '
         '${_n(s.planFailed)}，未修 ${_n(s.planNotTaken)}，在修 ${_n(s.studying)}）',
       )
-      ..writeln('- 计划外：通过 ${_n(s.outsidePassed)}，未过 ${_n(s.outsideFailed)}')
-      ..writeln();
+      ..writeln('计划外: 通过 ${_n(s.outsidePassed)}，未过 ${_n(s.outsideFailed)}');
   }
   b
-    ..writeln('### 学分要求')
-    ..writeln()
-    ..writeln('| 节点 | 要求学分 | 已获学分 | 缺口 | 门次（满足/要求） | 状态 | 子节点关系 |')
-    ..writeln('| --- | --- | --- | --- | --- | --- | --- |');
+    ..writeln('学分要求:')
+    ..writeln('节点 | 要求学分 | 已获学分 | 缺口 | 门次（满足/要求） | 状态 | 子节点关系');
   for (final (path, n) in m.flatNodes) {
     final count = (n.requiredCount == null && n.metCount == null)
         ? _dash
         : '${_n(n.metCount)}/${_n(n.requiredCount)}';
     b.writeln(
-      '| ${_T.mdCell(path)} '
-      '| ${_cr(n.requiredCredits)} '
-      '| ${_cr(n.earnedCredits)} '
-      '| ${_cr(n.missingCredits)} '
-      '| $count '
-      '| ${creditStatusLabel(n.creditStatus)} '
-      '| ${n.children.isEmpty ? _dash : _T.mdCell(n.relation)} |',
+      '${_T.cell(path)} | '
+      '${_cr(n.requiredCredits)} | '
+      '${_cr(n.earnedCredits)} | '
+      '${_cr(n.missingCredits)} | '
+      '$count | '
+      '${creditStatusLabel(n.creditStatus)} | '
+      '${n.children.isEmpty ? _dash : _T.cell(n.relation)}',
     );
   }
-  b
-    ..writeln()
-    ..writeln('### 课程明细')
-    ..writeln();
+  b.writeln('课程明细:');
   final courses = m.flatCourses;
   if (courses.isEmpty) {
     b.writeln('来源未包含课程明细。');
     return;
   }
-  b
-    ..writeln(
-      '| 所属节点 | 课程号 | 课程 | 修读状态 | 学分 | 性质 | 类别 | 计划内 '
-      '| 成绩学期 | 成绩 | 绩点 | 补考成绩 | 重修成绩 | 建议修读学期 |',
-    )
-    ..writeln(
-      '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- '
-      '| --- | --- | --- |',
-    );
+  b.writeln(
+    '所属节点 | 课程号 | 课程 | 修读状态 | 学分 | 性质 | 类别 | 计划内 | '
+    '成绩学期 | 成绩 | 绩点 | 补考成绩 | 重修成绩 | 建议修读学期',
+  );
   for (final (path, c) in courses) {
     b.writeln(
-      '| ${_T.mdCell(path)} '
-      '| ${_T.mdCell(c.courseCode)} '
-      '| ${_T.mdCell(c.courseName)} '
-      '| ${c.status} '
-      '| ${_T.formatCredits(c.credits)} '
-      '| ${_T.mdCell(c.nature)} '
-      '| ${_T.mdCell(c.category)} '
-      '| ${_yesNo(c.inPlan)} '
-      '| ${_T.mdCell(c.scoreTerm)} '
-      '| ${_T.mdCell(c.score)} '
-      '| ${c.gradePoint == null ? _dash : _T.formatPoints(c.gradePoint!)} '
-      '| ${_T.mdCell(c.makeupScore)} '
-      '| ${_T.mdCell(c.retakeScore)} '
-      '| ${_T.mdCell(c.suggestedTerm)} |',
+      '${_T.cell(path)} | '
+      '${_T.cell(c.courseCode)} | '
+      '${_T.cell(c.courseName)} | '
+      '${c.status} | '
+      '${_T.formatCredits(c.credits)} | '
+      '${_T.cell(c.nature)} | '
+      '${_T.cell(c.category)} | '
+      '${_yesNo(c.inPlan)} | '
+      '${_T.cell(c.scoreTerm)} | '
+      '${_T.cell(c.score)} | '
+      '${c.gradePoint == null ? _dash : _T.formatPoints(c.gradePoint!)} | '
+      '${_T.cell(c.makeupScore)} | '
+      '${_T.cell(c.retakeScore)} | '
+      '${_T.cell(c.suggestedTerm)}',
     );
   }
 }
@@ -212,42 +187,34 @@ String creditStatusLabel(String name) => switch (name) {
 };
 
 void _scheduleTable(StringBuffer b, List<ScheduleCourseRecord> rows) {
-  b
-    ..writeln('| 星期 | 节次 | 时间 | 课程 | 教师 | 地点 | 校区 | 类型 | 周次 | 教务标记调课 |')
-    ..writeln('| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |');
+  b.writeln('星期 | 节次 | 时间 | 课程 | 教师 | 地点 | 校区 | 类型 | 周次 | 教务标记调课');
   for (final c in rows) {
     b.writeln(
-      '| ${_weekday(c.weekday)} '
-      '| ${c.startLesson}-${c.endLesson} '
-      '| ${c.startTime}-${c.endTime} '
-      '| ${_T.mdCell(c.courseName)} '
-      '| ${_T.mdCell(c.teacher)} '
-      '| ${_T.mdCell(c.location)} '
-      '| ${_T.mdCell(c.campus)} '
-      '| ${_T.mdCell(c.courseType)} '
-      '| ${_T.mdCell(c.weekRange)} '
-      '| ${_yesNo(c.hasScheduleChange)} |',
+      '${_weekday(c.weekday)} | '
+      '${c.startLesson}-${c.endLesson} | '
+      '${c.startTime}-${c.endTime} | '
+      '${_T.cell(c.courseName)} | '
+      '${_T.cell(c.teacher)} | '
+      '${_T.cell(c.location)} | '
+      '${_T.cell(c.campus)} | '
+      '${_T.cell(c.courseType)} | '
+      '${_T.cell(c.weekRange)} | '
+      '${_yesNo(c.hasScheduleChange)}',
     );
   }
 }
 
 void _schedule(StringBuffer b, ScheduleModuleData m) {
-  b.writeln('- 课表所属学期：${m.termLabel}；已纳入调课通知 ${m.changeRuleCount} 条');
+  b.writeln('课表所属学期: ${m.termLabel}；已纳入调课通知 ${m.changeRuleCount} 条');
   for (final w in m.weeks) {
-    b
-      ..writeln()
-      ..writeln('### 第 ${w.week} 周有效课表（已应用调课）')
-      ..writeln();
+    b.writeln('第 ${w.week} 周有效课表（已应用调课）:');
     if (w.courses.isEmpty) {
       b.writeln('该周没有课程。');
     } else {
       _scheduleTable(b, w.courses);
     }
   }
-  b
-    ..writeln()
-    ..writeln('### 整学期课表底稿（未应用调课通知）')
-    ..writeln();
+  b.writeln('整学期课表底稿（未应用调课通知）:');
   if (m.courses.isEmpty) {
     b.writeln('来源返回 0 门课程。');
   } else {
@@ -260,48 +227,38 @@ void _exams(StringBuffer b, ExamsModuleData m) {
     b.writeln('来源返回 0 条考试安排。');
     return;
   }
-  b
-    ..writeln('| 课程 | 课程号 | 考试名称 | 日期 | 时间 | 地点 | 校区 | 座位号 | 重修 | 学年 | 学期 |')
-    ..writeln(
-      '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
-    );
+  b.writeln('课程 | 课程号 | 考试名称 | 日期 | 时间 | 地点 | 校区 | 座位号 | 重修 | 学年 | 学期');
   var anyUnparsed = false;
   var anyUnscheduled = false;
   for (final r in m.records) {
     final parsedTime = (r.startTime != null && r.endTime != null)
         ? '${r.startTime}-${r.endTime}'
         : null;
-    // 教务给了时间原文就绝不丢：解析不全时在「时间」列保留原文；
-    // 完全没有时间信息才是「时间待定」（尚未安排）。
     final raw = r.timeText;
     final unparsed = raw != null && (r.date == null || parsedTime == null);
     if (unparsed) anyUnparsed = true;
     if (r.date == null && raw == null) anyUnscheduled = true;
     final dateCell = r.date ?? (raw == null ? '时间待定' : '未解析');
-    final time = unparsed ? '原文：$raw' : parsedTime;
+    final time = unparsed ? '原文: $raw' : parsedTime;
     b.writeln(
-      '| ${_T.mdCell(r.courseName)} '
-      '| ${_T.mdCell(r.courseCode)} '
-      '| ${_T.mdCell(r.examName)} '
-      '| $dateCell '
-      '| ${_T.mdCell(time)} '
-      '| ${_T.mdCell(r.location)} '
-      '| ${_T.mdCell(r.campus)} '
-      '| ${_T.mdCell(r.seatNumber)} '
-      '| ${_yesNo(r.isRetake)} '
-      '| ${_T.mdCell(r.academicYear)} '
-      '| ${_T.mdCell(r.semester)} |',
+      '${_T.cell(r.courseName)} | '
+      '${_T.cell(r.courseCode)} | '
+      '${_T.cell(r.examName)} | '
+      '$dateCell | '
+      '${_T.cell(time)} | '
+      '${_T.cell(r.location)} | '
+      '${_T.cell(r.campus)} | '
+      '${_T.cell(r.seatNumber)} | '
+      '${_yesNo(r.isRetake)} | '
+      '${_T.cell(r.academicYear)} | '
+      '${_T.cell(r.semester)}',
     );
   }
   if (anyUnscheduled) {
-    b
-      ..writeln()
-      ..writeln('「时间待定」= 教务尚未给出考试时间（未安排）。');
+    b.writeln('「时间待定」= 教务尚未给出考试时间（未安排）。');
   }
   if (anyUnparsed) {
-    b
-      ..writeln()
-      ..writeln('「未解析」「原文：…」= 教务给出了时间文案，但应用未能完整解析出日期 / 起止时间，已原样保留。');
+    b.writeln('「未解析」「原文: …」= 教务给出了时间文案，但应用未能完整解析出日期 / 起止时间，已原样保留。');
   }
 }
 
@@ -309,29 +266,26 @@ String _dt(DateTime? d) => d == null ? _dash : _T.formatDateTime(d);
 
 void _secondClassroom(StringBuffer b, SecondClassroomModuleData m) {
   b
-    ..writeln('- 已报名 ${m.enrolled.length} 项，其中已签到 ${m.checkedInCount} 项')
+    ..writeln('已报名 ${m.enrolled.length} 项，其中已签到 ${m.checkedInCount} 项')
     ..writeln(
-      '- 已签到活动的标称学时合计 ${_T.formatCredits(m.checkedInNominalHours)}'
+      '已签到活动的标称学时合计 ${_T.formatCredits(m.checkedInNominalHours)}'
       '（活动标称值，不是学校认定学时；认定结果本应用未获取）',
-    )
-    ..writeln();
+    );
   if (m.enrolled.isEmpty) {
     b.writeln('未结束的活动中没有已报名的项目。');
     return;
   }
-  b
-    ..writeln('| 活动 | 类别 | 主办 | 开始 | 结束 | 地点 | 标称学时 | 已签到 |')
-    ..writeln('| --- | --- | --- | --- | --- | --- | --- | --- |');
+  b.writeln('活动 | 类别 | 主办 | 开始 | 结束 | 地点 | 标称学时 | 已签到');
   for (final r in m.enrolled) {
     b.writeln(
-      '| ${_T.mdCell(r.title)} '
-      '| ${_T.mdCell(r.category)} '
-      '| ${_T.mdCell(r.organizer)} '
-      '| ${_dt(r.activityStart)} '
-      '| ${_dt(r.activityEnd)} '
-      '| ${_T.mdCell(r.location)} '
-      '| ${_T.formatCredits(r.creditHours)} '
-      '| ${_yesNo(r.checkedIn)} |',
+      '${_T.cell(r.title)} | '
+      '${_T.cell(r.category)} | '
+      '${_T.cell(r.organizer)} | '
+      '${_dt(r.activityStart)} | '
+      '${_dt(r.activityEnd)} | '
+      '${_T.cell(r.location)} | '
+      '${_T.formatCredits(r.creditHours)} | '
+      '${_yesNo(r.checkedIn)}',
     );
   }
 }
@@ -346,13 +300,11 @@ void _notices(StringBuffer b, NoticesModuleData m) {
     );
     return;
   }
-  b
-    ..writeln('| 日期 | 栏目 | 标题 | 链接 |')
-    ..writeln('| --- | --- | --- | --- |');
+  b.writeln('日期 | 栏目 | 标题 | 链接');
   for (final r in m.records) {
     b.writeln(
-      '| ${_T.mdCell(r.date)} | ${_T.mdCell(r.category)} '
-      '| ${_T.mdCell(r.title)} | ${_T.mdCell(r.url)} |',
+      '${_T.cell(r.date)} | ${_T.cell(r.category)} | '
+      '${_T.cell(r.title)} | ${_T.cell(r.url)}',
     );
   }
 }
@@ -363,25 +315,19 @@ void _physicalTest(StringBuffer b, PhysicalTestModuleData m) {
     return;
   }
   for (final r in m.records) {
-    b
-      ..writeln(
-        '### ${_T.mdCell(r.academicYear)}'
-        '（总分 ${_T.mdCell(r.totalScore)}，等级 ${_T.mdCell(r.grade)}）',
-      )
-      ..writeln();
+    b.writeln(
+      '${_T.cell(r.academicYear)}（总分 ${_T.cell(r.totalScore)}，等级 ${_T.cell(r.grade)}）:',
+    );
     if (r.items.isEmpty) {
       b.writeln('该学年没有分项成绩。');
     } else {
-      b
-        ..writeln('| 项目 | 成绩 | 得分 | 等级 |')
-        ..writeln('| --- | --- | --- | --- |');
+      b.writeln('项目 | 成绩 | 得分 | 等级');
       for (final i in r.items) {
         b.writeln(
-          '| ${_T.mdCell(i.name)} | ${_T.mdCell(i.result)} '
-          '| ${_T.mdCell(i.score)} | ${_T.mdCell(i.level)} |',
+          '${_T.cell(i.name)} | ${_T.cell(i.result)} | '
+          '${_T.cell(i.score)} | ${_T.cell(i.level)}',
         );
       }
     }
-    b.writeln();
   }
 }

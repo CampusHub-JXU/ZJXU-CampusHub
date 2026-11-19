@@ -285,7 +285,7 @@ void main() {
         modules: [data],
       );
       final md = ExportBuilder.markdown(doc);
-      expect(md, contains('| 活动 | 类别 | 主办 | 开始 | 结束 | 地点 | 标称学时 | 已签到 |'));
+      expect(md, contains('活动 | 类别 | 主办 | 开始 | 结束 | 地点 | 标称学时 | 已签到'));
       expect(md, contains('不是学校认定学时'));
     });
   });

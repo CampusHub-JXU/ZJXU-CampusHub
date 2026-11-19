@@ -3,7 +3,6 @@ import 'dart:convert';
 
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/logging/app_logger.dart';
@@ -125,7 +124,7 @@ class _AiExportPageState extends State<AiExportPage> {
       copied = false;
     }
     if (messenger == null) return;
-    AppFeedback.toastOn(messenger, copied ? '已复制Markdown' : '复制失败');
+    AppFeedback.toastOn(messenger, copied ? '已复制纯文本' : '复制失败');
   }
 
   Future<void> _save() async {
@@ -205,7 +204,7 @@ class _AiExportPageState extends State<AiExportPage> {
               ),
               children: [
                 Text(
-                  '勾选的内容会写进同一份 Markdown，仅含本机已加载或刚获取的数据，'
+                  '勾选的内容会写进同一份纯文本，仅含本机已加载或刚获取的数据，'
                   '不含学号、姓名等身份信息。',
                   style: context.appText.meta,
                 ),
@@ -327,8 +326,8 @@ class _AiExportPageState extends State<AiExportPage> {
 
   // ── 预览 ────────────────────────────────────────────────────────────────
 
-  /// 预览卡片：真·Markdown 渲染（`flutter_markdown_plus`，表格 / 标题 /
-  /// 列表真渲染），整块可选中复制；右上角全屏按钮打开只读放大页。
+  /// 预览卡片：零 Markdown 解析的高信息熵纯文本展示，整块可选中复制；
+  /// 右上角全屏按钮打开只读放大页。
   Widget _buildPreview(ColorScheme cs) {
     return Container(
       key: const Key('ai_export_preview'),
@@ -340,7 +339,7 @@ class _AiExportPageState extends State<AiExportPage> {
       child: Stack(
         children: [
           Positioned.fill(
-            child: _ExportMarkdown(
+            child: _ExportPlainText(
               data: _content,
               padding: const EdgeInsets.fromLTRB(
                 AppSpacing.md,
@@ -367,7 +366,7 @@ class _AiExportPageState extends State<AiExportPage> {
                 Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (context) =>
-                        _ExportMarkdownFullscreenPage(content: _content),
+                        _ExportPlainTextFullscreenPage(content: _content),
                   ),
                 ),
               ),
@@ -421,33 +420,33 @@ class _AiExportPageState extends State<AiExportPage> {
   }
 }
 
-/// 「导出给 AI」预览的 Markdown 渲染体：样式接 AppTypography / 主题色。
-/// 用 `MarkdownBody`（一次构建全部块）而非 `Markdown`（懒加载 ListView），
-/// 保证全文都在树里、可被整体选中复制；滚动由外层提供。
-class _ExportMarkdown extends StatelessWidget {
-  const _ExportMarkdown({required this.data, this.padding});
+/// 「导出给 AI」预览的纯文本渲染体：不做 Markdown AST 解析，避免大文本
+/// 渲染卡顿；整块可选中复制，滚动由外层提供。
+class _ExportPlainText extends StatelessWidget {
+  const _ExportPlainText({required this.data, this.padding});
 
   final String data;
   final EdgeInsets? padding;
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final text = context.appText;
     return SingleChildScrollView(
       padding: padding ?? const EdgeInsets.all(AppSpacing.md),
-      child: MarkdownBody(
-        data: data,
-        selectable: true,
-        styleSheet: _exportMarkdownStyleSheet(cs, text),
+      child: SelectableText(
+        data,
+        style: text.meta.copyWith(
+          color: Theme.of(context).colorScheme.onSurface,
+          height: 1.5,
+        ),
       ),
     );
   }
 }
 
-/// 全屏只读预览：与卡片内同一份 Markdown、同一套样式。
-class _ExportMarkdownFullscreenPage extends StatelessWidget {
-  const _ExportMarkdownFullscreenPage({required this.content});
+/// 全屏只读预览：与卡片内同一份纯文本。
+class _ExportPlainTextFullscreenPage extends StatelessWidget {
+  const _ExportPlainTextFullscreenPage({required this.content});
 
   final String content;
 
@@ -458,7 +457,7 @@ class _ExportMarkdownFullscreenPage extends StatelessWidget {
       appBar: AppAppBar(title: const Text('预览')),
       body: SafeArea(
         top: false,
-        child: _ExportMarkdown(
+        child: _ExportPlainText(
           data: content,
           padding: const EdgeInsets.fromLTRB(
             AppSpacing.pageMargin,
@@ -470,45 +469,4 @@ class _ExportMarkdownFullscreenPage extends StatelessWidget {
       ),
     );
   }
-}
-
-MarkdownStyleSheet _exportMarkdownStyleSheet(
-  ColorScheme cs,
-  AppTypography text,
-) {
-  return MarkdownStyleSheet(
-    p: text.body,
-    a: text.body.copyWith(color: cs.primary),
-    h1: text.section,
-    h2: text.rowTitleStrong,
-    h3: text.group.copyWith(color: cs.onSurface),
-    h4: text.rowTitleStrong,
-    h5: text.body.copyWith(fontWeight: FontWeight.w600),
-    h6: text.body,
-    listBullet: text.body,
-    blockquote: text.body.copyWith(color: cs.onSurfaceVariant),
-    blockquoteDecoration: BoxDecoration(
-      border: Border(left: BorderSide(color: cs.outlineVariant, width: 3)),
-    ),
-    code: text.body.copyWith(
-      fontFamily: 'monospace',
-      color: cs.onSurface,
-      backgroundColor: cs.surfaceContainerLowest,
-    ),
-    codeblockDecoration: BoxDecoration(
-      color: cs.surfaceContainerLowest,
-      borderRadius: BorderRadius.circular(AppRadius.control),
-    ),
-    tableHead: text.meta.copyWith(
-      fontWeight: FontWeight.w600,
-      color: cs.onSurface,
-    ),
-    tableBody: text.meta.copyWith(color: cs.onSurface),
-    tableBorder: TableBorder.all(color: cs.outlineVariant, width: 0.5),
-    tableColumnWidth: const IntrinsicColumnWidth(),
-    tableCellsPadding: const EdgeInsets.symmetric(
-      horizontal: AppSpacing.sm,
-      vertical: AppSpacing.xs,
-    ),
-  );
 }

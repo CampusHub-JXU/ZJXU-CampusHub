@@ -1,15 +1,18 @@
 import 'export_document.dart';
 import 'export_markdown.dart';
 
-/// 导出文件的扩展名与 MIME 类型：导出只有 Markdown 一种格式。
-const String kExportExtension = 'md';
-const String kExportMimeType = 'text/markdown';
+/// 导出文件的扩展名与 MIME 类型：默认导出高信息熵紧凑纯文本（无 Markdown 噪音）。
+const String kExportExtension = 'txt';
+const String kExportMimeType = 'text/plain';
 
-/// 纯函数序列化：导出只输出 Markdown（正文见 `export_markdown.dart`）。
+/// 纯函数序列化：输出紧凑纯文本（正文见 `export_markdown.dart`）。
 abstract final class ExportBuilder {
-  static String markdown(AiExportDocument doc) => renderExportMarkdown(doc);
+  static String plainText(AiExportDocument doc) => renderExportMarkdown(doc);
 
-  /// 文件名：学业数据导出_20261013_1030.md
+  /// 兼容旧调用名，实际输出紧凑纯文本。
+  static String markdown(AiExportDocument doc) => plainText(doc);
+
+  /// 文件名：学业数据导出_20261013_1030.txt
   static String fileName(AiExportDocument doc) {
     final t = doc.exportedAt;
     String two(int n) => n.toString().padLeft(2, '0');

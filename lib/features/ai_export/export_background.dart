@@ -234,72 +234,68 @@ class ExportBackground {
 
   // ── 输出 ────────────────────────────────────────────────────────────────
 
-  /// Markdown 形态：紧凑的要点清单，供放在文档最前面。
-  String toMarkdown() {
+  /// 高信息熵纯文本形态：无 Markdown 符号噪音，放在文档最前面。
+  String toMarkdown() => toPlainText();
+
+  String toPlainText() {
     final b = StringBuffer()
-      ..writeln('## 给 AI 的背景说明')
-      ..writeln()
-      ..writeln('- 学校：$kExportSchool（学生本人从校园 App 整理导出，仅供参考）')
-      ..writeln('- 导出日期：${exportDate(exportedAt)}（$weekdayLabel）')
-      ..writeln('- 当前学期：$termLine');
+      ..writeln('[给 AI 的背景说明]')
+      ..writeln('学校: $kExportSchool（学生本人从校园 App 整理导出，仅供参考）')
+      ..writeln('导出日期: ${exportDate(exportedAt)}（$weekdayLabel）')
+      ..writeln('当前学期: $termLine');
     if (gpaRules.isNotEmpty) {
       b
         ..writeln()
-        ..writeln('### 绩点与学分口径')
-        ..writeln();
+        ..writeln('[绩点与学分口径]');
       for (final rule in gpaRules) {
-        b.writeln('- $rule');
+        b.writeln(rule);
       }
       if (letterGrades.isNotEmpty) {
         b.writeln(
-          '- 本次数据中等级制成绩与绩点的对应（观测值，非官方换算表）：'
+          '本次数据中等级制成绩与绩点的对应（观测值，非官方换算表）：'
           '${letterGrades.map(_letterText).join('；')}。未出现的等级无法得知其绩点。',
         );
       } else if (hasGradesData) {
-        b.writeln('- 本次数据中没有等级制成绩。');
+        b.writeln('本次数据中没有等级制成绩。');
       }
     }
     if (gradeNatures.isNotEmpty || progressNatures.isNotEmpty) {
       b
         ..writeln()
-        ..writeln('### 课程性质与考试性质')
-        ..writeln()
-        ..writeln('- 课程性质原文取自教务，含义以学校培养方案为准，本应用不做归类或解释。');
+        ..writeln('[课程性质与考试性质]')
+        ..writeln('课程性质原文取自教务，含义以学校培养方案为准，本应用不做归类或解释。');
       if (gradeNatures.isNotEmpty) {
-        b.writeln('- 成绩中的课程性质：${gradeNatures.map(_countText).join('、')}');
+        b.writeln('成绩中的课程性质: ${gradeNatures.map(_countText).join('、')}');
       }
       if (progressNatures.isNotEmpty) {
-        b.writeln('- 学业进度中的课程性质：${progressNatures.map(_countText).join('、')}');
+        b.writeln('学业进度中的课程性质: ${progressNatures.map(_countText).join('、')}');
       }
     }
     if (examTypes.isNotEmpty) {
       b.writeln(
-        '- 成绩的「考试性质」（补考 / 重修以此区分）：'
+        '成绩的「考试性质」（补考 / 重修以此区分）: '
         '${examTypes.map(_countText).join('、')}',
       );
     }
     if (notes.isNotEmpty) {
       b
         ..writeln()
-        ..writeln('### 模块说明')
-        ..writeln();
+        ..writeln('[模块说明]');
       for (final n in notes) {
-        b.writeln('- $n');
+        b.writeln(n);
       }
     }
     b
       ..writeln()
-      ..writeln('### 数据时效')
-      ..writeln()
-      ..writeln('| 模块 | 状态 | 最后更新 | 数据来源 |')
-      ..writeln('| --- | --- | --- | --- |');
+      ..writeln('[数据时效]')
+      ..writeln('模块 | 状态 | 最后更新 | 数据来源');
     for (final f in freshness) {
       final has = f.status.hasData;
       b.writeln(
-        '| ${f.module.label} '
-        '| ${f.status.label}${f.partialNote == null ? '' : '（部分）'} '
-        '| ${has ? ExportText.formatDateTime(f.lastUpdatedAt) : '—'} '
-        '| ${has ? ExportText.mdCell(f.dataSource ?? '未知') : '—'} |',
+        '${f.module.label} | '
+        '${f.status.label}${f.partialNote == null ? '' : '（部分）'} | '
+        '${has ? ExportText.formatDateTime(f.lastUpdatedAt) : '—'} | '
+        '${has ? ExportText.cell(f.dataSource ?? '未知') : '—'}',
       );
     }
     final partial = freshness.where((f) => f.partialNote != null).toList();
@@ -307,7 +303,7 @@ class ExportBackground {
       b
         ..writeln()
         ..writeln(
-          '> 以下模块只是部分结果，不要当作完整数据：'
+          '部分结果提示: 以下模块只是部分结果，不要当作完整数据：'
           '${partial.map((f) => '${f.module.label}（${f.partialNote}）').join('；')}。',
         );
     }
@@ -315,7 +311,7 @@ class ExportBackground {
       b
         ..writeln()
         ..writeln(
-          '> 以下模块未获取，本文件不含其数据，请勿推测：'
+          '未获取提示: 以下模块未获取，本文件不含其数据，请勿推测：'
           '${missing.map((m) => m.label).join('、')}。',
         );
     }

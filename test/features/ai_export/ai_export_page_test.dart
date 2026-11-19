@@ -225,8 +225,8 @@ void main() {
         find.byKey(const Key('ai_export_preview_fullscreen')),
         findsOneWidget,
       );
-      expect(find.text('学业数据导出'), findsWidgets);
-      expect(find.text('高等数学A'), findsWidgets);
+      expect(find.textContaining('[学业数据导出]'), findsWidgets);
+      expect(find.textContaining('高等数学A'), findsWidgets);
 
       await tester.pageBack();
       await tester.pump();
@@ -327,7 +327,7 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(previewText(tester), contains('未获取：本机暂无该模块数据'));
+      expect(previewText(tester), contains('未获取: 本机暂无该模块数据'));
 
       await tester.tap(action(ExportModule.exams));
       await tester.pump();
@@ -365,7 +365,7 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(previewText(tester), contains('部分结果：第 2 页获取失败'));
+      expect(previewText(tester), contains('部分结果: 第 2 页获取失败'));
       expect(previewText(tester), contains('不能据此判断没有通知'));
     });
 
@@ -478,19 +478,19 @@ void main() {
 
       final copied = clip.where((c) => c.method == 'Clipboard.setData').single;
       final text = (copied.arguments as Map)['text'] as String;
-      expect(text, contains('## 给 AI 的背景说明'));
+      expect(text, contains('[给 AI 的背景说明]'));
       expect(text, contains('高等数学A'));
       expect(text, isNot(contains('20250001')));
-      expect(find.text('已复制Markdown'), findsOneWidget);
+      expect(find.text('已复制纯文本'), findsOneWidget);
     });
 
-    testWidgets('页面没有格式选择与 CSV 模块选择，预览就是 Markdown', (tester) async {
+    testWidgets('页面没有格式选择与 CSV 模块选择，预览就是纯文本', (tester) async {
       await pumpPage(tester);
       expect(find.byKey(const Key('ai_export_format')), findsNothing);
       expect(find.byKey(const Key('ai_export_csv_module')), findsNothing);
       expect(find.text('JSON'), findsNothing);
       expect(find.text('CSV'), findsNothing);
-      expect(previewText(tester), startsWith('学业数据导出'));
+      expect(previewText(tester), startsWith('[学业数据导出]'));
     });
 
     testWidgets('保存调用文件保存器；用户取消不提示成功', (tester) async {
@@ -503,7 +503,7 @@ void main() {
       await tester.tap(find.text('保存'));
       await tester.pump();
       expect(savedName, startsWith('学业数据导出_'));
-      expect(savedName, endsWith('.md'));
+      expect(savedName, endsWith('.txt'));
       expect(find.textContaining('已保存到 /tmp/'), findsOneWidget);
 
       exportFileSaver = (name, extension, bytes) async => null;
@@ -526,9 +526,9 @@ void main() {
 
       await tester.tap(find.text('分享'));
       await tester.pump();
-      expect(payload!.mimeType, 'text/markdown');
-      expect(payload!.fileName, endsWith('.md'));
-      expect(payload!.text, contains('## 给 AI 的背景说明'));
+      expect(payload!.mimeType, 'text/plain');
+      expect(payload!.fileName, endsWith('.txt'));
+      expect(payload!.text, contains('[给 AI 的背景说明]'));
       expect(find.textContaining('已交给所选应用'), findsNothing);
 
       outcome = ExportShareOutcome.shared;

@@ -56,12 +56,12 @@ void main() {
       final md = ExportBuilder.markdown(
         fullDocument(modules: ExportPreset.planning.modules),
       );
-      expect(md, contains('## 给 AI 的背景说明'));
+      expect(md, contains('[给 AI 的背景说明]'));
       expect(md, contains('嘉兴大学'));
-      expect(md, contains('导出日期：2026-10-13（周二）'));
+      expect(md, contains('导出日期: 2026-10-13（周二）'));
       expect(md, contains('2026-2027 学年第一学期（教务系统识别）；第 7 周'));
       // 说明在模块内容之前。
-      expect(md.indexOf('给 AI 的背景说明'), lessThan(md.indexOf('## 成绩')));
+      expect(md.indexOf('给 AI 的背景说明'), lessThan(md.indexOf('[成绩]')));
     });
 
     test('绩点口径：只陈述应用逻辑与观测值，不编造换算表', () {
@@ -152,9 +152,9 @@ void main() {
       );
 
       final md = ExportBuilder.markdown(doc);
-      expect(md, contains('| 教务处通知 | 未获取 | — | — |'));
+      expect(md, contains('教务处通知 | 未获取 | — | —'));
       expect(md, contains('以下模块未获取，本文件不含其数据，请勿推测：教务处通知'));
-      expect(md, contains('| 成绩 | 已过期 |'));
+      expect(md, contains('成绩 | 已过期 |'));
     });
 
     test('周次缺失时写明原因；学期来源如实标注', () {
@@ -226,11 +226,11 @@ void main() {
       final md = ExportBuilder.markdown(
         fullDocument(modules: {ExportModule.grades}),
       );
-      expect(md, contains('加权绩点：3.51（计入 4 条 / 15.0 学分）'));
-      expect(md, contains('未计入绩点（绩点为 0）：1 条 / 2.0 学分'));
+      expect(md, contains('加权绩点: 3.51（计入 4 条 / 15.0 学分）'));
+      expect(md, contains('未计入绩点（绩点为 0）: 1 条 / 2.0 学分'));
       expect(
         md,
-        contains('| 线性代数 | 65 | 65 | 1.50 | 3.0 | 2024-2025 | 第二学期 | 补考 |'),
+        contains('线性代数 | 65 | 65 | 1.50 | 3.0 | 2024-2025 | 第二学期 | 补考 |'),
       );
     });
 
@@ -284,9 +284,9 @@ void main() {
           overrides: {ExportModule.grades: g},
         ),
       );
-      expect(md, contains('> 部分结果：仅前 1000 条，可能不全'));
+      expect(md, contains('部分结果: 仅前 1000 条，可能不全'));
       expect(md, contains('以下汇总只覆盖已取到的 1 条记录，不是全部成绩'));
-      expect(md, contains('| 成绩 | 已获取（部分） |'));
+      expect(md, contains('成绩 | 已获取（部分） |'));
       expect(md, contains('以下模块只是部分结果，不要当作完整数据：成绩（仅前 1000 条，可能不全）'));
     });
 
@@ -302,7 +302,7 @@ void main() {
             overrides: {ExportModule.grades: g},
           ),
         ),
-        contains('加权绩点：—'),
+        contains('加权绩点: —'),
       );
     });
   });
@@ -312,12 +312,9 @@ void main() {
       final md = ExportBuilder.markdown(
         fullDocument(modules: {ExportModule.progress}),
       );
-      expect(md, contains('绩点（教务学业情况页）：3.52'));
-      expect(
-        md,
-        contains('| 培养方案 / 专业必修 | 40.0 | 30.0 | 10.0 | 7/10 | 未满足 | — |'),
-      );
-      expect(md, contains('| 培养方案 | 160.0 | 90.0 | 70.0 | — | 未满足 | 并且 |'));
+      expect(md, contains('绩点（教务学业情况页）: 3.52'));
+      expect(md, contains('培养方案 / 专业必修 | 40.0 | 30.0 | 10.0 | 7/10 | 未满足 | —'));
+      expect(md, contains('培养方案 | 160.0 | 90.0 | 70.0 | — | 未满足 | 并且'));
       expect(md, contains('操作系统'));
       final m = fullDocument(modules: {ExportModule.progress})
           .moduleOf<ProgressModuleData>()!;
@@ -343,11 +340,11 @@ void main() {
     test('Markdown 含节次时间、教室、教务调课标记；学号不外泄', () {
       final doc = fullDocument(modules: {ExportModule.schedule});
       final md = ExportBuilder.markdown(doc);
-      expect(md, contains('### 第 7 周有效课表（已应用调课）'));
+      expect(md, contains('第 7 周有效课表（已应用调课）:'));
       expect(
         md,
         contains(
-          '| 周三 | 3-4 | 09:45-11:10 | 大学英语 | 李老师 | 教学楼B202 | 南湖校区 | 理论 | 1-16周 | 是 |',
+          '周三 | 3-4 | 09:45-11:10 | 大学英语 | 李老师 | 教学楼B202 | 南湖校区 | 理论 | 1-16周 | 是',
         ),
       );
       expect(md, isNot(contains('SHOULD-NOT-LEAK')));
@@ -402,14 +399,14 @@ void main() {
 
     test('时间文案解析不出日期 / 起止时间：保留教务原文，不写成「时间待定」', () {
       final md = examMd(examsFrom('2027年1月10日 上午第二场'));
-      expect(md, contains('| 未解析 | 原文：2027年1月10日 上午第二场 |'));
+      expect(md, contains('未解析 | 原文: 2027年1月10日 上午第二场 |'));
       expect(md, isNot(contains('时间待定 |')));
       expect(md, contains('已原样保留'));
     });
 
     test('只解析出日期、没有起止时间：日期照写，时间列保留原文', () {
       final md = examMd(examsFrom('第20周 周六(2027-01-10) 上午'));
-      expect(md, contains('| 2027-01-10 | 原文：第20周 周六(2027-01-10) 上午 |'));
+      expect(md, contains('2027-01-10 | 原文: 第20周 周六(2027-01-10) 上午 |'));
     });
 
     test('教务没有给出任何时间文案：才是「时间待定」（未安排）', () {
@@ -422,7 +419,7 @@ void main() {
     test('完整可解析时不重复输出原文', () {
       final md = examMd(examsFrom('第20周 周六(2027-01-10) 09:00-11:00'));
       expect(md, contains('| 2027-01-10 | 09:00-11:00 |'));
-      expect(md, isNot(contains('原文：')));
+      expect(md, isNot(contains('原文:')));
     });
   });
 
@@ -438,7 +435,7 @@ void main() {
       expect(md, contains('已报名 2 项，其中已签到 1 项'));
       expect(md, contains('不是学校认定学时'));
       expect(md, contains('「已报名」「已签到」「已认定学时」是三件事'));
-      expect(md, contains('| 活动 | 类别 | 主办 | 开始 | 结束 | 地点 | 标称学时 | 已签到 |'));
+      expect(md, contains('活动 | 类别 | 主办 | 开始 | 结束 | 地点 | 标称学时 | 已签到'));
     });
   });
 
@@ -468,7 +465,7 @@ void main() {
       expect(md(build()), contains('近 30 天内没有教务处通知。'));
 
       final partial = md(build(partial: '第 2 页获取失败，仅含前 1 页'));
-      expect(partial, contains('> 部分结果：第 2 页获取失败，仅含前 1 页'));
+      expect(partial, contains('部分结果: 第 2 页获取失败，仅含前 1 页'));
       expect(partial, contains('不能据此判断没有通知'));
       expect(partial, isNot(contains('近 30 天内没有教务处通知。')));
     });
@@ -476,7 +473,7 @@ void main() {
     test('只有标题 / 日期 / 栏目 / 链接，不含正文', () {
       final doc = fullDocument(modules: {ExportModule.notices});
       final md = ExportBuilder.markdown(doc);
-      expect(md, contains('| 日期 | 栏目 | 标题 | 链接 |'));
+      expect(md, contains('日期 | 栏目 | 标题 | 链接'));
       expect(md, contains('仅标题、日期、栏目与链接，不含正文'));
       expect(md, contains('关于期末考试安排的通知'));
       expect(md, isNot(contains('去年的旧通知')));
@@ -487,15 +484,15 @@ void main() {
     test('学年合计与分项', () {
       final doc = fullDocument(modules: {ExportModule.physicalTest});
       final md = ExportBuilder.markdown(doc);
-      expect(md, contains('### 2025-2026（总分 82.5，等级 良好）'));
-      expect(md, contains('| 50 米跑 | 7.2 秒 | 85 | 良好 |'));
+      expect(md, contains('2025-2026（总分 82.5，等级 良好）:'));
+      expect(md, contains('50 米跑 | 7.2 秒 | 85 | 良好'));
       final m = doc.moduleOf<PhysicalTestModuleData>()!;
       expect(m.records.single.items, hasLength(1));
     });
   });
 
   group('未获取的模块', () {
-    test('占位模块：Markdown 明确标注未获取，绝不用空表伪装', () {
+    test('占位模块：明确标注未获取，绝不用空表伪装', () {
       final doc = fullDocument(
         modules: {ExportModule.exams, ExportModule.grades},
         overrides: {
@@ -506,7 +503,7 @@ void main() {
       );
       expect(doc.hasAnyData, isTrue);
       final md = ExportBuilder.markdown(doc);
-      expect(md, contains('未获取：本机暂无该模块数据，未导出，也未推测。'));
+      expect(md, contains('未获取: 本机暂无该模块数据，未导出，也未推测。'));
       final m = doc.modules.whereType<MissingModuleData>().single;
       expect(m.module, ExportModule.exams);
       expect(m.status, ExportModuleStatus.missing);
@@ -525,7 +522,7 @@ void main() {
   });
 
   group('隐私', () {
-    test('全部模块的 Markdown 不含学号 / 姓名 / 账号字符串', () {
+    test('全部模块的纯文本不含学号 / 姓名 / 账号字符串', () {
       final md = ExportBuilder.markdown(fullDocument());
       expect(md, isNot(contains('SHOULD-NOT-LEAK')));
       expect(md, isNot(contains('20250001')));
@@ -534,13 +531,13 @@ void main() {
   });
 
   group('文件名与格式', () {
-    test('固定 Markdown：.md 扩展名、text/markdown', () {
+    test('固定纯文本：.txt 扩展名、text/plain', () {
       final doc = fullDocument(
         modules: {ExportModule.exams, ExportModule.grades},
       );
-      expect(ExportBuilder.fileName(doc), '学业数据导出_20261013_1030.md');
-      expect(kExportExtension, 'md');
-      expect(kExportMimeType, 'text/markdown');
+      expect(ExportBuilder.fileName(doc), '学业数据导出_20261013_1030.txt');
+      expect(kExportExtension, 'txt');
+      expect(kExportMimeType, 'text/plain');
     });
   });
 
