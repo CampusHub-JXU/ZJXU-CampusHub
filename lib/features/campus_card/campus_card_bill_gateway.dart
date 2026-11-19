@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../../core/auth/cas_auth_broker.dart';
+import '../../core/auth/unified_auth.dart';
 import '../../core/logging/app_logger.dart';
 import 'campus_card_service.dart';
 
@@ -66,7 +67,39 @@ class CampusCardBillGateway {
     final controller = await _ensureReady();
     final base = _proxyBase;
     if (base == null) throw const CampusCardBillException('账单页面地址不可用');
-    await controller.evaluateJavascript(source: _script(base));
+    final rawPayload = await _evaluateBillFetch(controller, base);
+    final firstBody = rawPayload.widgets.values.isEmpty
+        ? ''
+        : rawPayload.widgets.values.first;
+    if (firstBody.trimLeft().startsWith('<')) {
+      final preview = firstBody.replaceAll(RegExp(r'\s+'), ' ').trim();
+      final snippet = preview.length > 160
+          ? preview.substring(0, 160)
+          : preview;
+      AppLogger.instance.network(LogLevel.warn, '校园卡账单响应异常 | snippet=$snippet');
+    }
+    return rawPayload;
+  }
+
+  Future<CampusCardBillRawPayload> _evaluateBillFetch(
+    InAppWebViewController controller,
+    String base,
+  ) async {
+    var fallbackSid = '';
+    try {
+      final cookies = await CookieManager.instance().getCookies(
+        url: WebUri('$base/webroot/decision/view/form'),
+      );
+      for (final c in cookies) {
+        if (c.name == 'sessionID' && c.value != null) {
+          fallbackSid = c.value.toString();
+          break;
+        }
+      }
+    } catch (_) {}
+    await controller.evaluateJavascript(
+      source: _script(base, fallbackSid: fallbackSid),
+    );
     final deadline = DateTime.now().add(_rpcTimeout);
     while (true) {
       if (DateTime.now().isAfter(deadline)) {
@@ -91,6 +124,13 @@ class CampusCardBillGateway {
       final error = decoded['err'];
       if (error != null) {
         throw CampusCardBillException('账单数据加载失败：$error');
+      }
+      if (decoded['hasSid'] != true) {
+        AppLogger.instance.network(
+          LogLevel.warn,
+          '校园卡账单未取到 sessionID | href=${decoded['href']} '
+          'hasFr=${decoded['hasFr']} fallbackSid=${fallbackSid.isNotEmpty}',
+        );
       }
       return CampusCardBillRawPayload.fromJson(decoded);
     }
@@ -144,10 +184,8 @@ class CampusCardBillGateway {
     final String url;
     try {
       url =
-          (await (debugUrlPreparer ??
-                  CampusCardService.instance.prepareStatusPage)())
-              .split('#')
-              .first;
+          await (debugUrlPreparer ??
+              CampusCardService.instance.prepareStatusPage)();
     } on CasAuthExpiredException {
       throw const CampusCardBillAuthException();
     } on TimeoutException {
@@ -155,6 +193,12 @@ class CampusCardBillGateway {
     }
     final index = url.indexOf('/webroot/decision');
     _proxyBase = index <= 0 ? null : url.substring(0, index);
+    // prepareStatusPage(..., syncWebViewCookies: false) 只把 CAS/mobilehall
+    // 会话写进了 dio CookieJar；HeadlessWebView 加载前必须把 cookie 同步进
+    // Android CookieManager，否则请求被打回登录页。
+    try {
+      await UnifiedAuthService.instance.syncCookiesToWebViewForUrl(url);
+    } catch (_) {}
     AppLogger.instance.network(LogLevel.info, '校园卡账单：加载移动大厅页面');
 
     final ready = Completer<void>();
@@ -226,9 +270,10 @@ class CampusCardBillGateway {
   /// `load_content_mobile` 必须带 `sessionID`（FineReport 报表会话句柄，取自
   /// 页面 `document.cookie` 的 `sessionID`），否则服务端一律回「会话超时」
   /// 错误页（实测 2026-11-19）。缺它时 fetch 能通但拿不到数据。
-  static String _script(String base) {
+  static String _script(String base, {String fallbackSid = ''}) {
     final config = jsonEncode({
       'base': base,
+      'fallbackSid': fallbackSid,
       'widgets': [...statWidgets, recentWidget],
       'charts': chartWidgets,
     });
@@ -236,14 +281,37 @@ class CampusCardBillGateway {
 (function(){
   window.__jxuBillRpc = '';
   var cfg = $config;
-  var sidMatch = /(?:^|;\\s*)sessionID=([^;]+)/.exec(document.cookie || '');
-  var sid = sidMatch ? sidMatch[1] : '';
+  function readSid(){
+    try {
+      if (window.FR && FR.SessionMgr && typeof FR.SessionMgr.get === 'function') {
+        var frSid = FR.SessionMgr.get();
+        if (frSid) return String(frSid);
+      }
+      if (window.FR && FR.currentSessionID) {
+        return String(FR.currentSessionID);
+      }
+    } catch (_) {}
+    var m = /(?:^|;\\s*)sessionID=([^;]+)/.exec(document.cookie || '');
+    if (m && m[1]) return m[1];
+    return cfg.fallbackSid || '';
+  }
+  function sleep(ms){
+    return new Promise(function(resolve){ setTimeout(resolve, ms); });
+  }
+  async function waitForSid(){
+    var sid = readSid();
+    for (var i = 0; i < 34 && !sid; i++) {
+      await sleep(150);
+      sid = readSid();
+    }
+    return sid;
+  }
   function qs(obj){
     return Object.keys(obj).map(function(k){
       return encodeURIComponent(k) + '=' + encodeURIComponent(obj[k]);
     }).join('&');
   }
-  function widgetBody(name){
+  function widgetBody(name, sid){
     return qs({
       op: 'fr_form',
       cmd: 'load_content_mobile',
@@ -265,13 +333,22 @@ class CampusCardBillGateway {
   }
   (async function(){
     try {
-      var out = {base: cfg.base, cookie: document.cookie, widgets: {}, charts: {}, errors: {}};
+      var sid = await waitForSid();
+      var out = {
+        base: cfg.base,
+        href: String(window.location && window.location.href || ''),
+        hasSid: Boolean(sid),
+        hasFr: Boolean(window.FR),
+        widgets: {},
+        charts: {},
+        errors: {}
+      };
       var widgetUrls = cfg.widgets.map(function(name){
         return text(cfg.base + '/webroot/decision/view/form', {
           method: 'POST',
           credentials: 'include',
           headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
-          body: widgetBody(name)
+          body: widgetBody(name, sid)
         }).then(function(t){ out.widgets[name] = t; },
                 function(e){ out.errors[name] = String(e); });
       });

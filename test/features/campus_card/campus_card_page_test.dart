@@ -14,10 +14,13 @@ import 'package:jxu_campus_hub/core/cache/private_cache_store.dart';
 import 'package:jxu_campus_hub/core/epay100/epay100_gateway.dart';
 import 'package:jxu_campus_hub/core/theme/app_theme_builder.dart';
 import 'package:jxu_campus_hub/core/wechat/wechat_launcher.dart';
+import 'package:jxu_campus_hub/features/campus_card/campus_card_bill_page.dart';
+import 'package:jxu_campus_hub/features/campus_card/campus_card_consumption.dart';
 import 'package:jxu_campus_hub/features/campus_card/campus_card_page.dart';
 import 'package:jxu_campus_hub/features/campus_card/campus_card_service.dart';
 import 'package:jxu_campus_hub/shared/widgets/auth_required_view.dart';
 import 'package:jxu_campus_hub/shared/widgets/login_shell.dart';
+import 'package:jxu_campus_hub/shared/widgets/skeleton_box.dart';
 import 'package:jxu_campus_hub/shared/widgets/unified_auth_protected_webview_page.dart';
 
 import '../../helpers/credential_store_test_ext.dart';
@@ -167,27 +170,58 @@ void main() {
     expect(find.text('添加付款码到桌面'), findsNothing);
   });
 
-  testWidgets('opens campus card inside webvpn protected webview', (
-    tester,
-  ) async {
-    await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'bill tile opens native bill page and its H5 fallback opens protected webview',
+    (tester) async {
+      CampusCardService.instance.debugConsumptionFetcher = () async =>
+          CampusCardConsumptionSummary(
+            todaySpend: 11,
+            cardBalance: 23.5,
+            weekSpend: 35,
+            monthSpend: 120,
+            recent: [
+              CampusCardConsumptionEntry(
+                date: DateTime(2026, 11, 16),
+                location: '梅园餐厅二楼',
+                amount: 11,
+              ),
+            ],
+            meals: const [
+              CampusCardMealSpend(label: '早餐', amount: 3.6),
+              CampusCardMealSpend(label: '午餐', amount: 15),
+              CampusCardMealSpend(label: '晚餐', amount: 64.5),
+            ],
+            dailyTrend: const [
+              CampusCardDaySpend(label: '11-16', amount: 11, count: 1),
+            ],
+            fetchedAt: DateTime(2026, 11, 19, 10, 0),
+          );
 
-    await tester.tap(find.text('账单'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
+      await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+      await tester.pumpAndSettle();
 
-    expect(find.byType(UnifiedAuthProtectedWebViewPage), findsOneWidget);
-    final page = tester.widget<UnifiedAuthProtectedWebViewPage>(
-      find.byType(UnifiedAuthProtectedWebViewPage),
-    );
-    expect(page.prepareAuthenticatedUrl, isNotNull);
-    expect(page.loginDescription, contains('WebVPN'));
-    // 受保护业务页绝不进入 CAS H5 登录页，也不提供一键填充。
-    expect(page.url, isNot(contains('/cas/login')));
-    expect(find.text('一键填充'), findsNothing);
-    expect(find.text('一卡通快速填充'), findsNothing);
-  });
+      await tester.tap(find.text('账单'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CampusCardBillPage), findsOneWidget);
+      expect(find.text('校园卡账单'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('官方原页'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.byType(UnifiedAuthProtectedWebViewPage), findsOneWidget);
+      final page = tester.widget<UnifiedAuthProtectedWebViewPage>(
+        find.byType(UnifiedAuthProtectedWebViewPage),
+      );
+      expect(page.prepareAuthenticatedUrl, isNotNull);
+      expect(page.loginDescription, contains('WebVPN'));
+      // 受保护业务页绝不进入 CAS H5 登录页，也不提供一键填充。
+      expect(page.url, isNot(contains('/cas/login')));
+      expect(find.text('一键填充'), findsNothing);
+      expect(find.text('一卡通快速填充'), findsNothing);
+    },
+  );
 
   testWidgets('recharge tile opens xiaofubao page in WeChat', (tester) async {
     final gateway = _FakeWechatGateway();
@@ -1464,6 +1498,144 @@ void main() {
     expect(find.text('重新登录'), findsNothing);
     expect(find.byType(AuthRequiredView), findsNothing);
     expect(find.byType(LoginShell), findsNothing);
+  });
+
+  group('consumption preview section', () {
+    CampusCardConsumptionSummary sampleSummary({
+      List<CampusCardConsumptionEntry>? recent,
+    }) {
+      return CampusCardConsumptionSummary(
+        todaySpend: 14.6,
+        cardBalance: 23.5,
+        weekSpend: 42.1,
+        monthSpend: 185.0,
+        recent:
+            recent ??
+            [
+              CampusCardConsumptionEntry(
+                date: DateTime(2026, 11, 18),
+                location: '梅园餐厅二楼',
+                amount: 11,
+              ),
+              CampusCardConsumptionEntry(
+                date: DateTime(2026, 11, 17),
+                location: '梅园餐厅一楼',
+                amount: 3.6,
+              ),
+              CampusCardConsumptionEntry(
+                date: DateTime(2026, 11, 16),
+                location: '教育超市',
+                amount: 9.5,
+              ),
+              CampusCardConsumptionEntry(
+                date: DateTime(2026, 11, 15),
+                location: '桃园餐厅',
+                amount: 12.0,
+              ),
+              CampusCardConsumptionEntry(
+                date: DateTime(2026, 11, 14),
+                location: '不会被预览截取',
+                amount: 8.0,
+              ),
+            ],
+        meals: const [
+          CampusCardMealSpend(label: '早餐', amount: 3.6),
+          CampusCardMealSpend(label: '午餐', amount: 15),
+          CampusCardMealSpend(label: '晚餐', amount: 64.5),
+        ],
+        dailyTrend: const [
+          CampusCardDaySpend(label: '11-18', amount: 11, count: 1),
+        ],
+        fetchedAt: DateTime(2026, 11, 19, 10, 0),
+      );
+    }
+
+    testWidgets(
+      'renders up to 4 recent consumption entries and opens bill page',
+      (tester) async {
+        CampusCardService.instance.debugConsumptionFetcher = () async =>
+            sampleSummary();
+
+        await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+        await tester.pumpAndSettle();
+
+        expect(find.text('最近消费'), findsOneWidget);
+        expect(find.text('完整账单'), findsOneWidget);
+        expect(find.text('梅园餐厅二楼'), findsOneWidget);
+        expect(find.text('11.00'), findsOneWidget);
+        expect(find.text('11-18'), findsOneWidget);
+        expect(find.text('桃园餐厅'), findsOneWidget);
+        expect(find.text('不会被预览截取'), findsNothing);
+
+        await tester.tap(find.text('完整账单'));
+        await tester.pumpAndSettle();
+        expect(find.byType(CampusCardBillPage), findsOneWidget);
+      },
+    );
+
+    testWidgets('empty consumption list shows empty message', (tester) async {
+      CampusCardService.instance.debugConsumptionFetcher = () async =>
+          sampleSummary(recent: const []);
+
+      await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+      await tester.pumpAndSettle();
+
+      expect(find.text('近七日暂无消费记录'), findsOneWidget);
+      expect(find.text('消费明细加载失败'), findsNothing);
+    });
+
+    testWidgets('failure shows retry and H5 fallback, then recovers', (
+      tester,
+    ) async {
+      var calls = 0;
+      CampusCardService.instance.debugConsumptionFetcher = () async {
+        calls++;
+        if (calls == 1) return null;
+        return sampleSummary(
+          recent: [
+            CampusCardConsumptionEntry(
+              date: DateTime(2026, 11, 18),
+              location: '咖啡吧',
+              amount: 9.9,
+            ),
+          ],
+        );
+      };
+
+      await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+      await tester.pumpAndSettle();
+
+      expect(find.text('消费明细加载失败'), findsOneWidget);
+      expect(find.text('重试'), findsOneWidget);
+      expect(find.text('去 H5 查看'), findsOneWidget);
+      // 失败不升格为登录问题，也不污染余额。
+      expect(find.byType(AuthRequiredView), findsNothing);
+      expect(find.text('23.50'), findsOneWidget);
+
+      await tester.tap(find.text('重试'));
+      await tester.pumpAndSettle();
+
+      expect(calls, 2);
+      expect(find.text('咖啡吧'), findsOneWidget);
+      expect(find.text('消费明细加载失败'), findsNothing);
+    });
+
+    testWidgets('loading shows skeleton rows while request is in flight', (
+      tester,
+    ) async {
+      final pending = Completer<CampusCardConsumptionSummary?>();
+      CampusCardService.instance.debugConsumptionFetcher = () => pending.future;
+
+      await tester.pumpWidget(const MaterialApp(home: CampusCardPage()));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byType(SkeletonBox), findsWidgets);
+      pending.complete(sampleSummary(recent: const []));
+      await tester.pumpAndSettle();
+      expect(find.byType(SkeletonBox), findsNothing);
+      expect(find.text('近七日暂无消费记录'), findsOneWidget);
+    });
   });
 }
 

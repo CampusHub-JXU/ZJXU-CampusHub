@@ -10,6 +10,7 @@ import '../features/home/home_page.dart';
 import '../features/my/my_page.dart';
 import '../features/schedule/schedule_page.dart';
 import '../features/grades/grades_page.dart';
+import '../features/campus_card/campus_card_bill_page.dart';
 import '../features/campus_card/campus_card_page.dart';
 import '../features/campus_card/campus_card_payment_page.dart';
 import '../features/library/library_book_page.dart';
@@ -155,6 +156,11 @@ final GoRouter appRouter = GoRouter(
       path: '/campus-card-payment',
       name: 'campus-card-payment',
       builder: (context, state) => const CampusCardPaymentPage(),
+    ),
+    _appRoute(
+      path: '/campus-card-bill',
+      name: 'campus-card-bill',
+      builder: (context, state) => const CampusCardBillPage(),
     ),
     _appRoute(
       path: '/service-hall',

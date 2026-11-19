@@ -14,8 +14,12 @@ import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/auth_required_view.dart';
 import '../../shared/widgets/detail_readout.dart';
 import '../../shared/widgets/login_shell.dart';
+import '../../shared/widgets/plain_list.dart';
 import '../../shared/widgets/refresh_status_line.dart';
+import '../../shared/widgets/skeleton_box.dart';
 import '../../shared/widgets/unified_auth_protected_webview_page.dart';
+import 'campus_card_bill_page.dart';
+import 'campus_card_consumption.dart';
 import 'campus_card_service.dart';
 import '../../core/theme/app_typography.dart';
 import '../../shared/widgets/app_feedback.dart';
@@ -66,20 +70,32 @@ class _CampusCardPageState extends State<CampusCardPage> {
   /// 认证通知会作废在途请求，过早发出的拉取既白费触网又让余额悬空。
   int _loginModalDepth = 0;
 
-  // ── Bill preview state ──────────────────────────────────────────────────
-  // 「最近账单」内嵌区块已从页面挂起（v0.12.3）：既有实现展示的是 epay100
-  // 渠道充值流水（getBillList），并非卡内消费；真实消费端点已确认为
-  // mobilehall FineReport ykt.frm（service 层 fetchConsumption 已就绪，
-  // 见 docs/dorm-electricity-epay100-api.md 账单端点一节）。原生账单页
-  // 恢复时重建本区块与下方状态机。
+  // ── Consumption preview state ──────────────────────────────────────────
+  // 「最近消费」内嵌区块的页面局部状态（真实消费来自 FineReport 账单快照，
+  // 与「校园卡账单」原生页共享 [CampusCardService.cachedConsumption]）。
+
+  _ConsumptionPreviewStatus _consumptionStatus =
+      _ConsumptionPreviewStatus.loading;
+  List<CampusCardConsumptionEntry> _consumptionEntries = const [];
+
+  /// 消费预览请求在途标记：同一身份重复触发共享同一请求（在途去重）。
+  bool _consumptionRequestInFlight = false;
+
+  /// 在途请求捕获的身份：完成时据此判定迟到结果是否过期。
+  ({String? account, int revision})? _consumptionRequestIdentity;
+
+  /// 页面侧序号：发起后身份 / 通知到达时递增，旧请求的迟到结果一律作废。
+  int _consumptionRequestSeq = 0;
 
   @override
   void initState() {
     super.initState();
     _lastAuthIdentity = _currentIdentity();
+    _seedConsumptionStateFromCache();
     UnifiedAuthService.instance.addListener(_onAuthChanged);
     _scheduleAutoRefreshIfNeeded();
     _scheduleInitialLoginPrompt();
+    _ensureConsumptionPreview();
   }
 
   @override
@@ -119,6 +135,85 @@ class _CampusCardPageState extends State<CampusCardPage> {
     // 收敛已欠下的登录拉取：同 revision 的重复通知不新欠、不重拉；登录
     // 弹窗进行中一律推迟到弹窗结算；账号未就绪继续等下一次认证通知。
     _settlePendingLoginPull();
+    _syncConsumptionSectionAfterAuthChange();
+  }
+
+  /// 入场 / 从原生账单页返回时同步服务端内存缓存的最近消费预览。
+  void _seedConsumptionStateFromCache() {
+    final cached = CampusCardService.instance.cachedConsumptionPreview;
+    if (cached == null) {
+      _consumptionEntries = const [];
+      _consumptionStatus = _ConsumptionPreviewStatus.loading;
+    } else if (cached.isEmpty) {
+      _consumptionEntries = const [];
+      _consumptionStatus = _ConsumptionPreviewStatus.empty;
+    } else {
+      _consumptionEntries = cached;
+      _consumptionStatus = _ConsumptionPreviewStatus.data;
+    }
+  }
+
+  /// 认证通知后把消费区块拉回当前身份的可信状态。
+  void _syncConsumptionSectionAfterAuthChange() {
+    if (UnifiedAuthService.instance.isLoggedIn &&
+        _consumptionRequestInFlight &&
+        _consumptionRequestIdentity == _currentIdentity()) {
+      return;
+    }
+    _consumptionRequestSeq++;
+    if (!UnifiedAuthService.instance.isLoggedIn) {
+      _consumptionRequestInFlight = false;
+      _consumptionRequestIdentity = null;
+      _consumptionEntries = const [];
+      _consumptionStatus = _ConsumptionPreviewStatus.loading;
+      return;
+    }
+    _seedConsumptionStateFromCache();
+    _ensureConsumptionPreview();
+  }
+
+  /// 拉起一次消费预览抓取（无 force 时缓存未过期直接命中）；同身份在途
+  /// 自动去重，失败保留已有缓存态或切失败态（不伪装为登录失效）。
+  void _ensureConsumptionPreview({bool force = false}) {
+    if (!UnifiedAuthService.instance.isLoggedIn) return;
+    final requestIdentity = _currentIdentity();
+    if (requestIdentity.account == null) return;
+    if (!force &&
+        _consumptionRequestInFlight &&
+        _consumptionRequestIdentity == requestIdentity) {
+      return;
+    }
+    final seq = ++_consumptionRequestSeq;
+    _consumptionRequestInFlight = true;
+    _consumptionRequestIdentity = requestIdentity;
+    unawaited(() async {
+      final summary = await CampusCardService.instance.fetchConsumption(
+        forceRefresh: force,
+      );
+      if (!mounted) return;
+      _consumptionRequestInFlight = false;
+      if (_consumptionRequestSeq != seq) return;
+      if (_currentIdentity() != requestIdentity) return;
+      _consumptionRequestIdentity = null;
+      setState(() {
+        if (summary == null) {
+          if (_consumptionEntries.isEmpty) {
+            _consumptionStatus = _ConsumptionPreviewStatus.failure;
+          }
+        } else {
+          final preview = summary.recent
+              .take(CampusCardService.consumptionPreviewLimit)
+              .toList(growable: false);
+          if (preview.isEmpty) {
+            _consumptionEntries = const [];
+            _consumptionStatus = _ConsumptionPreviewStatus.empty;
+          } else {
+            _consumptionEntries = preview;
+            _consumptionStatus = _ConsumptionPreviewStatus.data;
+          }
+        }
+      });
+    }());
   }
 
   /// 落实登录欠下的拉取：排定恰好一次。弹窗进行中推迟（弹窗内的重复认证
@@ -288,7 +383,8 @@ class _CampusCardPageState extends State<CampusCardPage> {
     final lastUpdated = service.lastUpdated;
     return RefreshIndicator(
       onRefresh: () {
-        // 下拉一次即余额刷新（账单内嵌区块已挂起，见类内注释）。
+        // 下拉一次即余额 + 消费预览同刷；账单走独立失败态，失败不拖累余额。
+        _ensureConsumptionPreview(force: true);
         return _refreshBalance(showFeedback: false);
       },
       child: ListView(
@@ -303,6 +399,8 @@ class _CampusCardPageState extends State<CampusCardPage> {
           _buildReadout(context, balance, lastUpdated),
           const SizedBox(height: AppSpacing.lg),
           _buildActionGrid(context),
+          const SizedBox(height: AppSpacing.lg),
+          _buildConsumptionSection(context),
           const SizedBox(height: AppSpacing.lg),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
@@ -454,6 +552,217 @@ class _CampusCardPageState extends State<CampusCardPage> {
     );
   }
 
+  // ── Consumption Preview ─────────────────────────────────────────────────
+
+  /// 「最近消费」内嵌区块：分组小标题 + 「完整账单 ›」跳转原生账单页，
+  /// 卡片体复用 [PlainListGroup] 与 [PlainListRow]。
+  Widget _buildConsumptionSection(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final text = context.appText;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.sm,
+            0,
+            2,
+            AppSpacing.sm,
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Semantics(
+                  header: true,
+                  child: Text('最近消费', style: text.group),
+                ),
+              ),
+              InkWell(
+                onTap: _openBillPage,
+                borderRadius: AppRadius.chipBorder,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 4,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '完整账单',
+                        style: text.meta.copyWith(color: cs.primary),
+                      ),
+                      Icon(Icons.chevron_right, size: 16, color: cs.primary),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        PlainListGroup(children: _consumptionCardChildren(context)),
+      ],
+    );
+  }
+
+  List<Widget> _consumptionCardChildren(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final text = context.appText;
+    switch (_consumptionStatus) {
+      case _ConsumptionPreviewStatus.loading:
+        return [
+          for (var i = 0; i < 2; i++)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                kPlainListRowInset,
+                14,
+                kPlainListRowInset,
+                14,
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SkeletonBox(width: 96, height: 14, radius: 4),
+                        SizedBox(height: 6),
+                        SkeletonBox(width: 64, height: 11, radius: 4),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  SkeletonBox(width: 56, height: 14, radius: 4),
+                ],
+              ),
+            ),
+        ];
+      case _ConsumptionPreviewStatus.empty:
+        return [
+          SizedBox(
+            height: 52,
+            child: Center(child: Text('近七日暂无消费记录', style: text.meta)),
+          ),
+        ];
+      case _ConsumptionPreviewStatus.failure:
+        return [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              kPlainListRowInset,
+              10,
+              kPlainListRowInset,
+              10,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.receipt_long_outlined,
+                      size: 14,
+                      color: cs.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: Text(
+                        '消费明细加载失败',
+                        style: text.meta.copyWith(
+                          color: cs.onSurfaceVariant,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    _consumptionTextLink(
+                      context,
+                      '重试',
+                      onTap: () => _ensureConsumptionPreview(force: true),
+                    ),
+                    const SizedBox(width: AppSpacing.lg),
+                    _consumptionTextLink(
+                      context,
+                      '去 H5 查看',
+                      onTap: () => _openCampusCardWebView(title: '校园卡账单'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ];
+      case _ConsumptionPreviewStatus.data:
+        return [
+          for (final entry in _consumptionEntries)
+            _consumptionEntryRow(context, entry),
+        ];
+    }
+  }
+
+  Widget _consumptionEntryRow(
+    BuildContext context,
+    CampusCardConsumptionEntry entry,
+  ) {
+    final text = context.appText;
+    final dateText = _formatConsumptionDate(entry.date);
+    final amountText = entry.amount.toStringAsFixed(2);
+    return Semantics(
+      label:
+          '${entry.location}${dateText.isEmpty ? '' : '，$dateText'}，'
+          '$amountText 元',
+      child: PlainListRow(
+        title: entry.location,
+        subtitle: dateText.isEmpty ? null : dateText,
+        onTap: _openBillPage,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Text(
+              amountText,
+              style: text.body.copyWith(
+                fontFeatures: const [FontFeature.tabularFigures()],
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(width: 2),
+            Text('元', style: text.numUnitCompact),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _consumptionTextLink(
+    BuildContext context,
+    String label, {
+    required VoidCallback onTap,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: AppRadius.chipBorder,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+        child: Text(
+          label,
+          style: context.appText.meta.copyWith(color: cs.primary),
+        ),
+      ),
+    );
+  }
+
+  static String _formatConsumptionDate(DateTime? date) {
+    if (date == null) return '';
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${two(date.month)}-${two(date.day)}';
+  }
+
   // ── Action Grid ─────────────────────────────────────────────────────────
 
   /// 付款码 / 账单 / 充值 三等宽格：付款码是主动作（primary 实底），其余
@@ -472,7 +781,7 @@ class _CampusCardPageState extends State<CampusCardPage> {
           icon: Icons.receipt_long_outlined,
           title: '账单',
           subtitle: '消费明细',
-          onTap: () => _openCampusCardWebView(title: '校园卡账单'),
+          onTap: _openBillPage,
         ),
         DetailAction(
           icon: Icons.add_card_outlined,
@@ -488,6 +797,19 @@ class _CampusCardPageState extends State<CampusCardPage> {
 
   Future<void> _openPaymentCodePage() async {
     await context.pushNamed('campus-card-payment');
+  }
+
+  Future<void> _openBillPage() async {
+    final router = GoRouter.maybeOf(context);
+    if (router != null) {
+      await router.pushNamed('campus-card-bill');
+    } else {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(builder: (_) => const CampusCardBillPage()),
+      );
+    }
+    if (!mounted) return;
+    setState(_seedConsumptionStateFromCache);
   }
 
   Future<void> _openCampusCardWebView({required String title}) async {
@@ -657,3 +979,5 @@ class _CampusCardPageState extends State<CampusCardPage> {
 // ── Campus Card Action ──────────────────────────────────────────────────────
 
 enum _CampusCardMenuAction { refresh, addShortcut }
+
+enum _ConsumptionPreviewStatus { loading, data, empty, failure }

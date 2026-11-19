@@ -109,7 +109,8 @@ class CampusCardBillEntry {
 }
 
 class CampusCardService {
-  CampusCardService._() {    UnifiedAuthService.instance.addListener(_onUnifiedAuthChanged);
+  CampusCardService._() {
+    UnifiedAuthService.instance.addListener(_onUnifiedAuthChanged);
   }
 
   static final CampusCardService instance = CampusCardService._();
@@ -807,9 +808,7 @@ class CampusCardService {
   List<CampusCardConsumptionEntry>? get cachedConsumptionPreview {
     final summary = cachedConsumption;
     if (summary == null) return null;
-    return summary.recent
-        .take(consumptionPreviewLimit)
-        .toList(growable: false);
+    return summary.recent.take(consumptionPreviewLimit).toList(growable: false);
   }
 
   /// 抓一次账单快照（四格统计 + 近期消费 + 三餐 / 单日统计）。
@@ -839,8 +838,8 @@ class CampusCardService {
     final fetchId = ++_latestConsumptionFetch;
 
     try {
-      final summary = await (debugConsumptionFetcher ??
-          fetchConsumptionRemote)();
+      final summary =
+          await (debugConsumptionFetcher ?? fetchConsumptionRemote)();
       if (summary == null) return null;
       if (_latestConsumptionFetch != fetchId) return null;
       if (_currentAccount != owner) return null;
@@ -864,9 +863,18 @@ class CampusCardService {
   /// 网关抓取 + 解析：`CampusCardBillGateway` 负责页面上下文取数，
   /// [CampusCardConsumptionSummary.parse] 做纯函数解析。
   Future<CampusCardConsumptionSummary> fetchConsumptionRemote() async {
-    final raw = await (debugBillRawFetcher ??
-        CampusCardBillGateway.instance.fetch)();
-    return CampusCardConsumptionSummary.parse(raw);
+    final raw =
+        await (debugBillRawFetcher ?? CampusCardBillGateway.instance.fetch)();
+    try {
+      return CampusCardConsumptionSummary.parse(raw);
+    } on CampusCardBillException {
+      // 返回 HTML 错误页 / 空页多半是网关底层 WebView 会话失效或尚未登录，
+      // 丢弃当前网关会话以便下次重试重建，避免卡死在错误页上。
+      if (debugBillRawFetcher == null) {
+        await invalidateBillGateway();
+      }
+      rethrow;
+    }
   }
 
   /// 丢弃账单页网关会话（登录态变化 / 手动重试连不上时调用）。
