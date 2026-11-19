@@ -1,0 +1,60 @@
+name: Release v0.12.4 Kickoff (one-time)
+
+on:
+  workflow_run:
+    workflows:
+      - CI Test
+    types:
+      - completed
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  kickoff:
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'master' && github.event.workflow_run.head_repository.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout tested commit
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
+      - name: Tag tested v0.12.4 commit and dispatch signed release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          # Only the single intended version-bump commit may publish a release.
+          if ! grep -Fxq 'version: 0.12.4+60' pubspec.yaml; then
+            echo 'Not v0.12.4+60; skipping one-time release.'
+            exit 0
+          fi
+          if [ "$(git log -1 --pretty=%s)" != 'chore(release): v0.12.4+60' ]; then
+            echo 'Not the release commit; skipping one-time release.'
+            exit 0
+          fi
+          if existing="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/v0.12.4" --jq '.object.sha' 2>/dev/null)"; then
+            if [ "${existing}" != "${RELEASE_SHA}" ]; then
+              echo 'v0.12.4 tag points to a different commit; refusing to overwrite.' >&2
+              exit 1
+            fi
+            echo 'Release tag already points to this commit.'
+          else
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref='refs/tags/v0.12.4' \
+              -f sha="${RELEASE_SHA}" >/dev/null
+            echo 'Created private v0.12.4 tag.'
+          fi
+          # Tag creation by GITHUB_TOKEN does not trigger tag-push workflows.
+          # An explicit workflow_dispatch does trigger the existing release pipeline.
+          gh workflow run release-to-public-github.yml \
+            --repo "${GITHUB_REPOSITORY}" --ref master \
+            -f tag=v0.12.4 -f dry_run=false
+          echo 'Dispatched signed v0.12.4 release.'
