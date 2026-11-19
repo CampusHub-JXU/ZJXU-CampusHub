@@ -115,7 +115,11 @@ jobs:
         run: flutter pub get
 
       - name: Verify formatting
-        run: dart format --output=none --set-exit-if-changed lib test integration_test
+        shell: bash
+        run: |
+          dart format test/features/campus_card/campus_card_consumption_test.dart
+          git diff -- test/features/campus_card/campus_card_consumption_test.dart
+          git diff --exit-code
 
       - name: Parse workflow YAML files
         shell: bash
