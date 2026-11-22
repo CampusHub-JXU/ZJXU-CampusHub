@@ -368,8 +368,7 @@ class HomeFluidBackgroundState extends State<HomeFluidBackground>
       _stopDriver();
       return;
     }
-    // 页面转场期间让路：转场帧预算留给转场本身（外壳此时已快照，重绘壁纸也看
-    // 不到）。不再请求帧，改用低频轮询等待结束（看门狗过期也能恢复）。
+    // 页面转场期间暂停壁纸时钟，不再请求帧。等待活动信号结束，定时器兜底。
     if (PageTransitionActivity.instance.isBusy) {
       _lastStamp = null;
       _nextDue = null;

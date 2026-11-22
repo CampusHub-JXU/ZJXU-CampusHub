@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../../core/auth/zhengfang_auth.dart';
 import '../../../core/theme/app_design_tokens.dart';
+import '../../../core/theme/app_surface_tokens.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../shared/widgets/app_empty_view.dart';
 import '../../../shared/widgets/app_error_view.dart';
@@ -11,7 +12,6 @@ import '../../../shared/widgets/app_feedback.dart';
 import '../../../shared/widgets/app_list_tile.dart';
 import '../../../shared/widgets/app_status_tag.dart';
 import '../../../shared/widgets/auth_required_view.dart';
-import '../../../shared/widgets/detail_readout.dart';
 import '../../../shared/widgets/login_shell.dart';
 import '../../../shared/widgets/network_error_toast.dart';
 import '../../../shared/widgets/plain_list.dart';
@@ -326,22 +326,17 @@ class AcademicProgressViewState extends State<AcademicProgressView> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.pageMargin,
-                AppSpacing.sm,
-                AppSpacing.pageMargin,
-                AppSpacing.sm,
-              ),
-              child: AcademicProgressOverview(
-                summary: report.summary,
-                compact: compact,
-                statusLine: RefreshStatusLine(
-                  updatedAt: _updatedAt,
-                  refreshing: _refreshing,
-                  failed: _refreshFailed,
-                  loadingLabel: '正在获取学业情况…',
-                ),
+            AcademicProgressOverview(
+              summary: report.summary,
+              compact: compact,
+              statusLine: RefreshStatusLine(
+                updatedAt: _updatedAt,
+                refreshing: _refreshing,
+                failed: _refreshFailed,
+                prefix: report.summary.statTime.isNotEmpty
+                    ? '统计截至 ${report.summary.statTime}'
+                    : null,
+                loadingLabel: '正在获取学业情况…',
               ),
             ),
             Expanded(
@@ -425,29 +420,21 @@ class AcademicProgressViewState extends State<AcademicProgressView> {
   }
 
   Widget _buildSkeleton() {
-    return Column(
+    return const Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(
-            AppSpacing.pageMargin,
-            AppSpacing.sm,
-            AppSpacing.pageMargin,
-            AppSpacing.sm,
-          ),
-          child: AcademicProgressOverview(
-            summary: null,
-            statusLine: RefreshStatusLine(
-              refreshing: true,
-              loadingLabel: '正在获取学业情况…',
-            ),
+        AcademicProgressOverview(
+          summary: null,
+          statusLine: RefreshStatusLine(
+            refreshing: true,
+            loadingLabel: '正在获取学业情况…',
           ),
         ),
-        const Expanded(
+        Expanded(
           child: Padding(
             padding: EdgeInsets.fromLTRB(
               AppSpacing.pageMargin,
-              0,
+              AppSpacing.md,
               AppSpacing.pageMargin,
               AppSpacing.xl,
             ),
@@ -471,8 +458,8 @@ AppStatusTone _statusTone(CourseStudyStatus status) => switch (status) {
   _ => AppStatusTone.positive,
 };
 
-/// 顶部概览：教务培养方案口径的主修 GPA 读数（[DetailReadout]）+ 刷新状态行
-/// + 一行说明两个分段的 GPA 口径不同。无平铺列表 / 门数瓦片 / 状态筛选。
+/// 顶部概览：教务培养方案口径的主修 GPA 紧凑读数 + 刷新状态 / 统计截至时间行
+/// + 底部 0.7dp 分割线把头部与培养方案画布分开。无平铺列表 / 门数瓦片 / 视图切换。
 ///
 /// [summary] 为 null（骨架）时数字显示 `--`，不猜算也不填 0。
 class AcademicProgressOverview extends StatelessWidget {
@@ -490,6 +477,16 @@ class AcademicProgressOverview extends StatelessWidget {
 
   /// 矮视口（横屏 / 大字号）下的单行紧凑读数，把高度让给培养方案画布。
   final bool compact;
+
+  /// 成绩页「课程成绩」与「学业进度」两分段共用的 GPA 主读数样式。
+  static TextStyle gpaTextStyle(BuildContext context, {Color? color}) {
+    return context.appText.numValue.copyWith(
+      fontSize: 32,
+      height: 1.05,
+      letterSpacing: -0.8,
+      color: color,
+    );
+  }
 
   /// 说明本读数与「课程成绩」分段的计算口径差异，避免把两个不同来源的值
   /// 当成同一个 GPA。常态不铺说明文字，收进读数行尾的 ⓘ 按需查看。
@@ -520,8 +517,12 @@ class AcademicProgressOverview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final surfaces = context.appSurfaces;
+    final text = context.appText;
     final s = summary;
     final gpa = s?.gpa;
+    final gpaColor = gpa == null ? cs.outlineVariant : cs.primary;
     final statTime = s != null && s.statTime.isNotEmpty
         ? '统计截至 ${s.statTime}'
         : '';
@@ -529,35 +530,45 @@ class AcademicProgressOverview extends StatelessWidget {
         ? null
         : IconButton(
             tooltip: 'GPA 口径说明',
-            icon: const Icon(Icons.info_outline, size: 20),
+            icon: const Icon(Icons.info_outline, size: 18),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            visualDensity: VisualDensity.compact,
+            style: IconButton.styleFrom(
+              foregroundColor: cs.onSurfaceVariant,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
             onPressed: () => _showSourceNote(context),
           );
+
+    final Widget content;
     if (compact) {
-      final cs = Theme.of(context).colorScheme;
-      final text = context.appText;
-      return Padding(
-        padding: const EdgeInsets.only(left: AppSpacing.sm),
+      content = Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.pageMargin,
+          vertical: AppSpacing.xs,
+        ),
         child: Row(
           children: [
             Flexible(
+              flex: 3,
               child: Text(
                 '主修平均学分绩点',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: text.label.copyWith(color: cs.onSurfaceVariant),
+                style: text.meta,
               ),
             ),
             const SizedBox(width: AppSpacing.sm),
             Expanded(
+              flex: 2,
               child: FittedBox(
                 fit: BoxFit.scaleDown,
                 alignment: Alignment.centerLeft,
                 child: Text(
                   gpa ?? '--',
                   maxLines: 1,
-                  style: text.rowValue.copyWith(
-                    color: gpa == null ? cs.outlineVariant : cs.onSurface,
-                  ),
+                  style: gpaTextStyle(context, color: gpaColor),
                 ),
               ),
             ),
@@ -565,29 +576,97 @@ class AcademicProgressOverview extends StatelessWidget {
           ],
         ),
       );
+    } else {
+      final hasPrefixInStatus =
+          statusLine is RefreshStatusLine &&
+          ((statusLine as RefreshStatusLine).prefix?.isNotEmpty ?? false);
+      final showSeparateStatTime = statTime.isNotEmpty && !hasPrefixInStatus;
+      content = Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.pageMargin,
+          10,
+          AppSpacing.pageMargin,
+          10,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Flexible(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            gpa ?? '--',
+                            maxLines: 1,
+                            style: gpaTextStyle(context, color: gpaColor),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Flexible(
+                        child: Padding(
+                          padding: const EdgeInsets.only(bottom: 3),
+                          child: Text(
+                            '主修平均学分绩点',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: text.meta,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                ?info,
+              ],
+            ),
+            if (statusLine != null || showSeparateStatTime) ...[
+              const SizedBox(height: AppSpacing.xs),
+              if (statusLine != null && showSeparateStatTime)
+                Row(
+                  children: [
+                    Expanded(child: statusLine!),
+                    const SizedBox(width: AppSpacing.sm),
+                    Flexible(
+                      child: Text(
+                        statTime,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.end,
+                        style: text.meta,
+                      ),
+                    ),
+                  ],
+                )
+              else if (statusLine != null)
+                statusLine!
+              else
+                Text(
+                  statTime,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: text.meta,
+                ),
+            ],
+          ],
+        ),
+      );
     }
-    return Padding(
-      // 与校园卡读数一致：比页边距多缩进 8。
-      padding: const EdgeInsets.only(left: AppSpacing.sm, top: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          DetailReadout(
-            label: '主修平均学分绩点',
-            valueText: gpa ?? '--',
-            muted: gpa == null,
-            trailing: info,
-          ),
-          if (statusLine != null) ...[
-            const SizedBox(height: AppSpacing.xs),
-            statusLine!,
-          ],
-          if (statTime.isNotEmpty) ...[
-            const SizedBox(height: AppSpacing.xs),
-            Text(statTime, style: context.appText.meta),
-          ],
-        ],
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: surfaces.matrixLine, width: 0.7),
+        ),
       ),
+      child: content,
     );
   }
 }

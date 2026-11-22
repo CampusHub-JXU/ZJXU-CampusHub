@@ -1,12 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 
 /// 全局「页面转场进行中」信号。
 ///
-/// 应用统一的页面转场（`app_theme_builder.dart` 的 `_SharedAxisPageTransition`）
+/// Android 横向页面转场
 /// 在每次 push / pop 动画期间持有一次 [acquire]，动画结束或页面销毁时
-/// [release]。下面几处据此在转场的 ~450ms 内让路，避免与转场抢帧：
+/// [release]。下面几处据此在转场期间让路，避免与转场抢帧：
 ///
 /// * 首页壁纸 Shader 暂停推进（转场帧预算留给转场本身）；
 /// * 首页 / 我的把返回后的刷新 / 数据变更重建推迟到转场结束之后（[whenIdle]）。
@@ -22,7 +23,7 @@ class PageTransitionActivity {
 
   static final PageTransitionActivity instance = PageTransitionActivity._();
 
-  /// 单次转场约 450ms；留足余量，仍远小于用户可感知的「卡死」。
+  /// 给重叠转场预留余量，避免遗漏登记导致长时间等待。
   static const Duration defaultMaxHold = Duration(seconds: 2);
 
   Duration _maxHold = defaultMaxHold;
@@ -31,11 +32,21 @@ class PageTransitionActivity {
   /// 消费方判断「要不要让路」请用 [isBusy]，等待请用 [whenIdle]。
   final ValueNotifier<bool> active = ValueNotifier<bool>(false);
 
+  final _surfaceActive = _SurfaceActivity();
+
+  /// 转场材质信号。路由在构建或销毁期间改变登记时，通知延至帧末，避免触发同级背景重建。
+  ValueListenable<bool> get surfaceActive => _surfaceActive;
+
   final Stopwatch _clock = Stopwatch()..start();
   Duration _lastActivity = Duration.zero;
   int _holds = 0;
 
   void _touch() => _lastActivity = _clock.elapsed;
+
+  void _setActive(bool value) {
+    _surfaceActive.value = value;
+    active.value = value;
+  }
 
   bool get _isStale => _holds > 0 && _clock.elapsed - _lastActivity > _maxHold;
 
@@ -46,7 +57,7 @@ class PageTransitionActivity {
   void _expireIfStale() {
     if (!_isStale) return;
     _holds = 0;
-    active.value = false;
+    _setActive(false);
   }
 
   /// 声明一次转场开始，返回前须配对 [release]。
@@ -54,7 +65,7 @@ class PageTransitionActivity {
     _expireIfStale();
     _touch();
     _holds++;
-    if (_holds == 1) active.value = true;
+    if (_holds == 1) _setActive(true);
   }
 
   /// 声明一次转场结束；多余的 release 被忽略。
@@ -62,7 +73,7 @@ class PageTransitionActivity {
     if (_holds == 0) return;
     _touch();
     _holds--;
-    if (_holds == 0) active.value = false;
+    if (_holds == 0) _setActive(false);
   }
 
   /// 转场空闲时完成：当前没有转场则立即完成，否则等到最后一个转场结束；
@@ -99,6 +110,27 @@ class PageTransitionActivity {
     _holds = 0;
     _maxHold = defaultMaxHold;
     _lastActivity = _clock.elapsed;
-    active.value = false;
+    _setActive(false);
+  }
+}
+
+class _SurfaceActivity extends ValueNotifier<bool> {
+  _SurfaceActivity() : super(false);
+
+  bool _notificationPending = false;
+
+  @override
+  void notifyListeners() {
+    if (!hasListeners || _notificationPending) return;
+    final scheduler = SchedulerBinding.instance;
+    if (scheduler.schedulerPhase != SchedulerPhase.persistentCallbacks) {
+      super.notifyListeners();
+      return;
+    }
+    _notificationPending = true;
+    scheduler.addPostFrameCallback((_) {
+      _notificationPending = false;
+      super.notifyListeners();
+    });
   }
 }

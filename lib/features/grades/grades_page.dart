@@ -549,13 +549,13 @@ class _GradesPageState extends State<GradesPage>
           SliverToBoxAdapter(child: _buildTermChips()),
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
               child: _buildOverview(summary),
             ),
           ),
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
               child: GradesDistributionBar(bandCounts: summary.bandCounts),
             ),
           ),
@@ -673,7 +673,7 @@ class _GradesPageState extends State<GradesPage>
     );
   }
 
-  /// 无卡片概览：左 GPA 大字，右 学分 / 均分 / 课程 三列。
+  /// 无卡片概览：左 GPA 大字（与学业进度页统一 32dp），右 学分 / 均分 / 课程 三列。
   /// [summary] 为 null 时（无缓存首次加载）数字显示 `--`。
   Widget _buildOverview(GradesSummary? summary) {
     final cs = Theme.of(context).colorScheme;
@@ -683,7 +683,7 @@ class _GradesPageState extends State<GradesPage>
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         Expanded(
-          flex: 5,
+          flex: 2,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -691,12 +691,14 @@ class _GradesPageState extends State<GradesPage>
                 _allTermsSelected ? '总绩点' : '学期绩点',
                 style: context.appText.meta,
               ),
+              const SizedBox(height: 2),
               FittedBox(
                 fit: BoxFit.scaleDown,
                 alignment: Alignment.centerLeft,
                 child: Text(
                   hasGpa ? summary.gpa.toStringAsFixed(2) : '--',
-                  style: context.appText.overview.copyWith(
+                  style: AcademicProgressOverview.gpaTextStyle(
+                    context,
                     color: hasGpa ? cs.primary : cs.outlineVariant,
                   ),
                 ),
@@ -705,9 +707,9 @@ class _GradesPageState extends State<GradesPage>
           ),
         ),
         Expanded(
-          flex: 6,
+          flex: 3,
           child: Padding(
-            padding: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.only(bottom: 2),
             child: Row(
               children: [
                 _OverviewStat(
@@ -737,10 +739,10 @@ class _GradesPageState extends State<GradesPage>
   /// 无缓存首次加载：概览 `--` + 分布骨架 + 3 条骨架行，替代整页 spinner。
   Widget _buildSkeleton() {
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
       children: [
         _buildOverview(null),
-        const SizedBox(height: 14),
+        const SizedBox(height: 12),
         const SkeletonBox(height: 8, radius: 4),
         const SizedBox(height: 8),
         const RefreshStatusLine(refreshing: true, loadingLabel: '正在获取成绩…'),

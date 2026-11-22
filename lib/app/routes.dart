@@ -87,7 +87,7 @@ final GoRouter appRouter = GoRouter(
   initialLocation: '/',
   observers: [appRouteObserver],
   routes: [
-    // 自定义分支容器：交叉淡化切换，避免整体淡入时透出底色闪黑。
+    // 固定分支槽位，切换时保留各自的导航栈。
     StatefulShellRoute(
       builder: (context, state, navigationShell) {
         return AppShellPage(navigationShell: navigationShell);

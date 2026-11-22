@@ -2,14 +2,19 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/core/theme/glass_style_controller.dart';
+import 'package:jxu_campus_hub/core/theme/page_transition_activity.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_app_bar.dart';
 
 import '../../helpers/test_setup.dart';
 
 void main() {
+  final activity = PageTransitionActivity.instance;
+
   setUp(() async {
+    activity.debugReset();
     await resetTestEnvironment();
   });
+  tearDown(activity.debugReset);
 
   Future<void> pumpBar(WidgetTester tester, {PreferredSizeWidget? bar}) async {
     await tester.pumpWidget(
@@ -56,6 +61,73 @@ void main() {
 
     expect(find.text('标题'), findsOneWidget);
     expect(find.byType(BackdropFilter), findsNothing);
+  });
+
+  testWidgets('转场期间仅顶栏背景切实色，最后一次释放后恢复模糊', (tester) async {
+    var taps = 0;
+    await pumpBar(
+      tester,
+      bar: AppAppBar(
+        title: const Text('标题'),
+        actions: [
+          IconButton(onPressed: () => taps++, icon: const Icon(Icons.add)),
+        ],
+      ),
+    );
+    final appBar = tester.widget<AppBar>(find.byType(AppBar));
+    final action = find.byIcon(Icons.add);
+    final actionRect = tester.getRect(action);
+    final border = appBarFill(tester).border;
+    expect(find.byType(BackdropFilter), findsOneWidget);
+
+    activity.acquire();
+    activity.acquire();
+    await tester.pump();
+    expect(find.byType(BackdropFilter), findsNothing);
+    expect(appBarFill(tester).color!.a, 1.0);
+    expect(appBarFill(tester).border, border);
+    expect(tester.widget<AppBar>(find.byType(AppBar)), same(appBar));
+    expect(tester.getRect(action), actionRect);
+    await tester.tap(action);
+    expect(taps, 1);
+
+    activity.release();
+    await tester.pump();
+    expect(find.byType(BackdropFilter), findsNothing);
+
+    activity.release();
+    await tester.pump();
+    expect(find.byType(BackdropFilter), findsOneWidget);
+  });
+
+  testWidgets('构建期间登记转场时，顶栏在下一帧安全切换材质', (tester) async {
+    final beginTransition = ValueNotifier<bool>(false);
+    addTearDown(beginTransition.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          appBar: const AppAppBar(title: Text('标题')),
+          body: ValueListenableBuilder<bool>(
+            valueListenable: beginTransition,
+            builder: (context, begin, _) {
+              if (begin) activity.acquire();
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+      ),
+    );
+    expect(find.byType(BackdropFilter), findsOneWidget);
+
+    beginTransition.value = true;
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    await tester.pump();
+    expect(find.byType(BackdropFilter), findsNothing);
+
+    activity.release();
+    await tester.pump();
+    expect(find.byType(BackdropFilter), findsOneWidget);
   });
 
   testWidgets('亚克力材质保留有界模糊、半透明填充，不再叠加颗粒', (tester) async {

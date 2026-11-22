@@ -2,6 +2,11 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jxu_campus_hub/app/theme.dart';
 import 'package:jxu_campus_hub/core/theme/app_colors.dart';
+import 'package:jxu_campus_hub/core/theme/app_design_tokens.dart';
+
+ThemeData get _androidTheme =>
+    AppTheme.darkThemeFor(AppColors.primary)
+        .copyWith(platform: TargetPlatform.android);
 
 /// 取子树里「当前位移最大」的 SlideTransition 的 dx。
 ///
@@ -17,15 +22,12 @@ double _maxSlideDx(WidgetTester tester, Finder target) {
 }
 
 void main() {
-  // 回归：AppTheme 的 pageTransitionsTheme 必须让 push 产生真实的
-  // 渐入+位移转场，而不是瞬切。采样点取转场时长的一半，避免把时长硬编码进
-  // 断言（改时长不该改测试）。
-  testWidgets('app theme push transition animates over its duration', (
+  testWidgets('Android push slides in a full-width opaque page', (
     tester,
   ) async {
     await tester.pumpWidget(
       MaterialApp(
-        theme: AppTheme.darkThemeFor(AppColors.primary),
+        theme: _androidTheme,
         home: const Scaffold(body: Center(child: Text('home-page'))),
       ),
     );
@@ -47,29 +49,59 @@ void main() {
     final Duration total = ModalRoute.of(tester.element(find.text('sub-page')))!
         .transitionDuration;
 
-    // 对齐 Android 系统 Activity 转场：上层页只在开头一小段快速淡入。
-    await tester.pump(total * 20 ~/ 100);
-    final earlyFades = tester
-        .widgetList<FadeTransition>(find.byType(FadeTransition))
-        .map((t) => t.opacity.value)
-        .where((v) => v > 0.05 && v < 0.95)
-        .toList();
-    expect(earlyFades, isNotEmpty, reason: '转场前段应有渐变层未完成');
+    final subPage = find.text('sub-page');
+    final homePage = find.text('home-page', skipOffstage: false);
+    expect(total, AppMotion.page);
+    expect(_maxSlideDx(tester, subPage), 1.0);
+    expect(_maxSlideDx(tester, homePage), 0.0);
 
-    await tester.pump(total * 30 ~/ 100);
+    await tester.pump(total ~/ 2);
     expect(
       animation.value,
       allOf(greaterThan(0.1), lessThan(0.9)),
       reason: '转场中段应仍在进行（实测 ${animation.value}），瞬切会直接到 1.0',
     );
+    final easedMidpoint = AppMotion.emphasized.transform(0.5);
+    expect(_maxSlideDx(tester, subPage), closeTo(1 - easedMidpoint, 0.001));
     expect(
-      _maxSlideDx(tester, find.text('sub-page')),
-      greaterThan(0.0),
-      reason: '转场中段新页仍应有横向位移',
+      _maxSlideDx(tester, homePage),
+      closeTo(-0.15 * easedMidpoint, 0.001),
     );
+    expect(find.byType(SnapshotWidget), findsNothing);
+    expect(find.byType(FadeTransition), findsNothing);
 
     await tester.pump(total);
     expect(animation.value, 1.0, reason: '转场结束后新页应完全就位');
+    expect(_maxSlideDx(tester, subPage), 0.0);
+  });
+
+  testWidgets('Android push mirrors the slide and parallax in RTL', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: _androidTheme,
+        builder: (context, child) =>
+            Directionality(textDirection: TextDirection.rtl, child: child!),
+        home: const Scaffold(body: Text('home-page')),
+      ),
+    );
+    tester
+        .state<NavigatorState>(find.byType(Navigator))
+        .push(
+          MaterialPageRoute<void>(
+            builder: (_) => const Scaffold(body: Text('sub-page')),
+          ),
+        );
+    await tester.pump();
+    await tester.pump();
+
+    final subPage = find.text('sub-page');
+    expect(_maxSlideDx(tester, subPage), -1.0);
+    await tester.pump(AppMotion.page ~/ 2);
+    expect(_maxSlideDx(tester, subPage), lessThan(0.0));
+    expect(_maxSlideDx(tester, find.text('home-page')), greaterThan(0.0));
+    await tester.pumpAndSettle();
   });
 
   // 回归：返回（pop）方向的节奏必须先快后慢。
@@ -83,7 +115,7 @@ void main() {
   ) async {
     await tester.pumpWidget(
       MaterialApp(
-        theme: AppTheme.darkThemeFor(AppColors.primary),
+        theme: _androidTheme,
         home: const Scaffold(body: Center(child: Text('home-page'))),
       ),
     );
@@ -131,7 +163,7 @@ void main() {
   ) async {
     await tester.pumpWidget(
       MaterialApp(
-        theme: AppTheme.darkThemeFor(AppColors.primary),
+        theme: _androidTheme,
         builder: (context, child) => MediaQuery(
           data: MediaQuery.of(context).copyWith(disableAnimations: true),
           child: child!,
@@ -158,16 +190,7 @@ void main() {
       ),
       findsNothing,
     );
-    expect(
-      tester
-          .widgetList<FadeTransition>(
-            find.ancestor(
-              of: find.text('sub-page'),
-              matching: find.byType(FadeTransition),
-            ),
-          )
-          .where((t) => t.opacity.value < 1),
-      isEmpty,
-    );
+    expect(find.byType(FadeTransition), findsNothing);
+    expect(find.byType(SnapshotWidget), findsNothing);
   });
 }

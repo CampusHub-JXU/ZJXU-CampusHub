@@ -1,7 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 
-import '../core/theme/app_design_tokens.dart';
 import '../core/theme/glass_style_controller.dart';
 import '../features/home/home_zone_controller.dart';
 import '../shared/widgets/glass_nav_bar.dart';
@@ -75,7 +74,7 @@ class _AppShellPageState extends State<AppShellPage> {
 
   /// 保证落在 branch0 后再执行滚动请求。
   ///
-  /// branch0 的 IndexedStack 保活使 HomePage 始终挂在树上，滚动实现
+  /// 分支容器使 HomePage 保持挂载，滚动实现
   /// 总是可用；先 goBranch 再 postFrame 是为了让路由切换先落地。
   void _ensureHomeBranchThen(Future<void> Function() request) {
     final shell = widget.navigationShell;
@@ -125,25 +124,8 @@ class _AppShellPageState extends State<AppShellPage> {
   }
 }
 
-/// 分支容器：替代 `indexedStack` 的 IndexedStack，切换时新分支在旧分支
-/// **之上**短促淡入（[AppMotion.switchFade]），旧分支保持可见直到被完全
-/// 盖住——两页都自带不透明壁纸背景，因此过渡是页与页的交叉淡化，不会透出
-/// Scaffold 底色（旧实现整体淡入单个 shell，暗色下会闪一下黑）。
-///
-/// 刻意不加位移：底部分支是同级、高频、可来回切的入口，位移在反复切换时
-/// 叠成左右晃动，看久了累；淡入只传达「换了」，不制造运动。过渡未结束又切
-/// 换时直接落到新分支，不重播淡入——重播会让刚盖上的页先闪回透明再淡入。
-///
-/// 非当前、非过渡中的分支 Offstage + TickerMode 关闭，与 IndexedStack
-/// 一样保活状态且不跑动画 / Shader ticker。
-///
-/// 过渡期间旧分支经 [SnapshotWidget] 栅格化为一张静态纹理：它本就静止且
-/// 不可交互，但页面里的亚克力磁贴（BackdropFilter）压在新分支的半透明层
-/// 下面，不快照时每帧都要重跑一遍模糊。新分支不快照——dock「功能」会在
-/// 切换后立刻开始锚点滚动，快照会让滚动先定格再跳变。
-///
-/// 系统开启「移除动画」时直接切换，不播放过渡。
-class AppShellBranchContainer extends StatefulWidget {
+/// 即时切换当前分支。各分支保留固定槽位及导航状态，只有当前分支绘制并运行动画。
+class AppShellBranchContainer extends StatelessWidget {
   const AppShellBranchContainer({
     super.key,
     required this.currentIndex,
@@ -154,91 +136,21 @@ class AppShellBranchContainer extends StatefulWidget {
   final List<Widget> children;
 
   @override
-  State<AppShellBranchContainer> createState() =>
-      _AppShellBranchContainerState();
-}
-
-class _AppShellBranchContainerState extends State<AppShellBranchContainer>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: AppMotion.switchFade,
-    value: 1,
-  )..addStatusListener(_onStatus);
-
-  // CurvedAnimation 会在 parent 上登记状态监听，必须持有并 dispose；放在 build
-  // 里每次重建都新建一个就会一直累积。
-  late final CurvedAnimation _curved = CurvedAnimation(
-    parent: _controller,
-    curve: AppMotion.standard,
-  );
-
-  late int _current = widget.currentIndex;
-  int? _previous;
-
-  /// 旧分支快照开关：仅过渡进行中允许栅格化。
-  final SnapshotController _previousSnapshot = SnapshotController();
-
-  @override
-  void didUpdateWidget(covariant AppShellBranchContainer oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.currentIndex == _current) return;
-    if (AppMotion.reduced(context) || _controller.isAnimating) {
-      _controller.stop();
-      _previousSnapshot.allowSnapshotting = false;
-      _previous = null;
-      _current = widget.currentIndex;
-      _controller.value = 1;
-      return;
-    }
-    _previous = _current;
-    _current = widget.currentIndex;
-    _previousSnapshot.allowSnapshotting = true;
-    _controller.forward(from: 0);
-  }
-
-  void _onStatus(AnimationStatus status) {
-    if (status == AnimationStatus.completed && _previous != null) {
-      _previousSnapshot.allowSnapshotting = false;
-      setState(() => _previous = null);
-    }
-  }
-
-  @override
-  void dispose() {
-    _curved.dispose();
-    _controller.dispose();
-    _previousSnapshot.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final curved = _curved;
-    final previous = _previous;
     return Stack(
       fit: StackFit.expand,
       children: [
-        for (var i = 0; i < widget.children.length; i++)
-          if (i != _current)
-            Offstage(
-              offstage: i != previous,
-              child: TickerMode(
-                enabled: i == previous,
-                child: IgnorePointer(
-                  // 所有非当前分支都包同一层 SnapshotWidget，保证树形稳定；
-                  // 只有 allowSnapshotting 时（过渡中）才真正栅格化。
-                  child: SnapshotWidget(
-                    controller: _previousSnapshot,
-                    mode: SnapshotMode.permissive,
-                    autoresize: true,
-                    child: widget.children[i],
-                  ),
-                ),
+        for (var i = 0; i < children.length; i++)
+          Offstage(
+            offstage: i != currentIndex,
+            child: TickerMode(
+              enabled: i == currentIndex,
+              child: IgnorePointer(
+                ignoring: i != currentIndex,
+                child: children[i],
               ),
             ),
-        // 当前分支最后绘制，盖在过渡中的旧分支之上。
-        FadeTransition(opacity: curved, child: widget.children[_current]),
+          ),
       ],
     );
   }

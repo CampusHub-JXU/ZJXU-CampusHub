@@ -41,9 +41,10 @@ void main() {
       ..updateZone(0);
   });
 
-  Future<void> pumpShell(
+  Future<GoRouter> pumpShell(
     WidgetTester tester, {
     bool reduceMotion = false,
+    ScrollController? homeScrollController,
   }) async {
     final router = GoRouter(
       initialLocation: '/',
@@ -63,8 +64,12 @@ void main() {
                 GoRoute(
                   path: '/',
                   name: 'home',
-                  builder: (context, state) =>
-                      const Scaffold(body: Text('首页页面')),
+                  builder: (context, state) => Scaffold(
+                    body: ListView(
+                      controller: homeScrollController,
+                      children: const [Text('首页页面'), SizedBox(height: 1600)],
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -75,6 +80,13 @@ void main() {
                   name: 'my',
                   builder: (context, state) =>
                       const Scaffold(body: Text('我的页面')),
+                  routes: [
+                    GoRoute(
+                      path: 'detail',
+                      builder: (context, state) =>
+                          const Scaffold(body: Text('我的详情')),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -105,6 +117,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    return router;
   }
 
   /// 当前选中（显示 selectedIcon）的 dock 项对应的 icon 集合。
@@ -221,50 +234,96 @@ void main() {
     expect(functionScrollCalls, 0);
   });
 
-  testWidgets('切换分支时旧页留在下层交叉淡化，结束后才下台', (tester) async {
+  testWidgets('跨分支在首帧换页，旧页保持挂载但停止绘制与动画', (tester) async {
     await pumpShell(tester);
+    final mountedHome = find.text('首页页面', skipOffstage: false);
+    final homeElement = tester.element(mountedHome);
+
     await tester.tap(find.text('我的'));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 80));
-    // 过渡中两页都在台上：新页盖在旧页之上淡入，不透出底色。
+    expect(find.text('首页页面'), findsNothing);
+    expect(find.text('我的页面'), findsOneWidget);
+    expect(tester.element(mountedHome), same(homeElement));
+    expect(selectedDockItems(tester), {'我的'});
+
+    List<Offstage> branchSlots() => tester
+        .widget<Stack>(
+          find
+              .descendant(
+                of: find.byType(AppShellBranchContainer),
+                matching: find.byType(Stack),
+              )
+              .first,
+        )
+        .children
+        .cast<Offstage>();
+
+    void expectBranchStates(List<bool> offstage) {
+      final slots = branchSlots();
+      expect(slots.map((slot) => slot.offstage), offstage);
+      final tickerModes = slots.map((slot) => slot.child! as TickerMode);
+      expect(tickerModes.map((mode) => mode.enabled), offstage.map((v) => !v));
+      expect(
+        tickerModes.map((mode) => (mode.child as IgnorePointer).ignoring),
+        offstage,
+      );
+    }
+
+    expectBranchStates([true, false]);
+    for (final transitionType in [
+      SnapshotWidget,
+      FadeTransition,
+      SlideTransition,
+    ]) {
+      expect(
+        find.descendant(
+          of: find.byType(AppShellBranchContainer),
+          matching: find.byType(transitionType, skipOffstage: false),
+          skipOffstage: false,
+        ),
+        findsNothing,
+      );
+    }
+
+    // 在底栏反馈动画结束前反切，内容仍当帧落位。
+    await tester.tap(find.text('主页'));
+    await tester.pump();
+    expect(tester.element(mountedHome), same(homeElement));
     expect(find.text('首页页面'), findsOneWidget);
-    expect(find.text('我的页面'), findsOneWidget);
+    expect(find.text('我的页面'), findsNothing);
+    expectBranchStates([false, true]);
     await tester.pumpAndSettle();
-    expect(find.text('首页页面'), findsNothing);
-    expect(find.text('我的页面'), findsOneWidget);
   });
 
-  testWidgets('过渡中旧分支被快照栅格化，结束后释放快照', (tester) async {
-    await pumpShell(tester);
-    await tester.tap(find.text('我的'));
+  testWidgets('跨分支保留首页滚动位置和我的导航栈', (tester) async {
+    final controller = ScrollController();
+    addTearDown(controller.dispose);
+    final router = await pumpShell(tester, homeScrollController: controller);
+    controller.jumpTo(320);
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 80));
 
-    SnapshotWidget snapshotOf(String text) => tester.widget<SnapshotWidget>(
-      find.ancestor(of: find.text(text), matching: find.byType(SnapshotWidget)),
-    );
-    expect(snapshotOf('首页页面').controller.allowSnapshotting, isTrue);
-    // 新分支不包快照：切换后立刻开始的锚点滚动不能被定格。
-    expect(
-      find.ancestor(
-        of: find.text('我的页面'),
-        matching: find.byType(SnapshotWidget),
-      ),
-      findsNothing,
-    );
-
+    await tester.tap(find.text('我的'));
     await tester.pumpAndSettle();
-    expect(find.text('首页页面'), findsNothing);
-    final hidden = tester.widget<SnapshotWidget>(
-      find.ancestor(
-        of: find.text('首页页面', skipOffstage: false),
-        matching: find.byType(SnapshotWidget, skipOffstage: false),
-      ),
-    );
-    expect(hidden.controller.allowSnapshotting, isFalse);
+    router.push<void>('/my/detail');
+    await tester.pumpAndSettle();
+    expect(find.text('我的详情'), findsOneWidget);
+
+    // 测试夹具的锚点回调只记录调用次数，可独立检查分支恢复的滚动位置。
+    await tester.tap(find.text('功能'));
+    await tester.pumpAndSettle();
+    expect(functionScrollCalls, 1);
+    expect(controller.offset, 320);
+    expect(find.text('我的详情'), findsNothing);
+
+    await tester.tap(find.text('我的'));
+    await tester.pumpAndSettle();
+    expect(find.text('我的详情'), findsOneWidget);
+    router.pop();
+    await tester.pumpAndSettle();
+    expect(find.text('我的页面'), findsOneWidget);
   });
 
-  testWidgets('系统移除动画时分支直接切换，不留过渡帧', (tester) async {
+  testWidgets('系统移除动画时分支仍在首帧切换', (tester) async {
     await pumpShell(tester, reduceMotion: true);
     await tester.tap(find.text('我的'));
     await tester.pump();
@@ -272,37 +331,6 @@ void main() {
     expect(find.text('首页页面'), findsNothing);
     expect(find.text('我的页面'), findsOneWidget);
     expect(selectedDockItems(tester), {'我的'});
-  });
-
-  testWidgets('分支切换只淡入不位移；过渡中再切换直接落位不重播', (tester) async {
-    await pumpShell(tester);
-    await tester.tap(find.text('我的'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 60));
-
-    // 同级高频切换不做位移，反复切不会左右晃。
-    expect(
-      find.descendant(
-        of: find.byType(AppShellBranchContainer),
-        matching: find.byType(SlideTransition),
-      ),
-      findsNothing,
-    );
-
-    // 淡入未结束就切回主页：直接落位，旧页不再留在台上。
-    await tester.tap(find.text('主页'));
-    await tester.pump();
-    expect(find.text('首页页面'), findsOneWidget);
-    expect(find.text('我的页面'), findsNothing);
-    final fade = tester.widget<FadeTransition>(
-      find
-          .ancestor(
-            of: find.text('首页页面'),
-            matching: find.byType(FadeTransition),
-          )
-          .first,
-    );
-    expect(fade.opacity.value, 1.0);
   });
 }
 

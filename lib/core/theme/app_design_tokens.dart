@@ -186,22 +186,19 @@ class AppBadgeSize {
 
 /// 动效节奏（Motion）单一来源。
 ///
-/// 原则：高频、可来回切换的交互（底部分支、dock 指示器）只做短促的淡入，
-/// 不加位移——反复切换时位移会叠成「晃」，看久了累；一次性的层级跳转
-/// （push / pop）才保留方向感的位移。所有动效统一减速曲线收尾，并尊重
-/// 系统「移除动画」（[reduced]）。
+/// 底部分支即时换页，dock 指示器提供局部动效。页面 push / pop 用有方向的位移
+/// 表达层级。动效采用减速曲线收尾，并尊重系统「移除动画」（[reduced]）。
 class AppMotion {
   AppMotion._();
 
   /// 微反馈：dock 选中指示器、图标切换。
   static const Duration quick = Duration(milliseconds: 150);
 
-  /// 同级切换：底部分支交叉淡化。
+  /// 同级切换：欢迎页内容交叉淡化。
   static const Duration switchFade = Duration(milliseconds: 180);
 
-  /// 层级跳转：页面 push / pop（对齐 Android 14 系统 Activity 转场的 450ms，
-  /// 位移曲线 [emphasized] 前段已走完大部分行程，尾段只是收尾减速）。
-  static const Duration page = Duration(milliseconds: 450);
+  /// 层级跳转：全宽横向滑入和返回，按 [emphasized] 曲线减速落位。
+  static const Duration page = Duration(milliseconds: 260);
 
   /// 页内自动滚动（dock 主页 / 功能锚点）。
   static const Duration scroll = Duration(milliseconds: 360);

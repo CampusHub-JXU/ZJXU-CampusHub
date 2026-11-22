@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/theme/glass_style_controller.dart';
+import '../../core/theme/page_transition_activity.dart';
 import '../../core/theme/surface_material.dart';
 import 'app_surface_style.dart';
 import 'frost_grain.dart';
@@ -84,8 +85,7 @@ class AppAppBar extends StatelessWidget implements PreferredSizeWidget {
 /// 材质由统一 [MaterialRecipe] 驱动（与 [GlassContainer] 同一套配方），不再
 /// 自持 BackdropFilter / tint / border 常量：
 /// * 亚克力 —— 裁剪后 bounded 背景模糊 + 半透明 tint + 底部发丝线；
-/// * 实色 / 总开关关闭 / 显式 [fallbackColor] —— 回退实色填充，
-///   不创建 BackdropFilter，保证低端机流畅。
+/// * 实色、显式 [fallbackColor] 或页面转场期间使用实色填充。
 ///
 /// 注意：裁剪必须放在 BackdropFilter 的祖先位置。BackdropFilter 作用于
 /// 整个父层 backdrop 而非自身 bounds，不先裁剪会把整屏内容糊掉；模糊经
@@ -111,9 +111,8 @@ class GlassAppBarSpace extends StatelessWidget {
             ? cs.surfaceContainerLow
             : cs.surfaceContainerLowest;
         final tintColor = fallbackColor ?? baseTint;
-        final useGlass = fallbackColor == null && recipe.usesBackdropBlur;
-        final sigma = (recipe.blurSigma * 1.2).clamp(0.0, 44.0);
-        final borderColor = useGlass
+        final allowsGlass = fallbackColor == null && recipe.usesBackdropBlur;
+        final borderColor = allowsGlass
             ? (isDark
                   ? Colors.white.withValues(
                       alpha: (recipe.borderOpacity * 0.15).clamp(0.0, 1.0),
@@ -122,26 +121,38 @@ class GlassAppBarSpace extends StatelessWidget {
                       alpha: (recipe.borderOpacity * 0.64).clamp(0.0, 1.0),
                     ))
             : Colors.transparent;
-        final fill = _AppBarFill(
-          tintColor: useGlass
-              ? frostedFillColor(base: tintColor, isDark: isDark, alpha: 1.0)
-              : tintColor,
-          // 顶栏 tint 策略：低到能看清模糊，高到标题仍满足 WCAG AA。
-          tintAlpha: useGlass ? (isDark ? 0.42 : 0.50) : 1.0,
+        final solidFill = _AppBarFill(
+          tintColor: tintColor,
+          tintAlpha: 1.0,
           borderColor: borderColor,
-          grain: useGlass && style.frostGrainEnabled.value,
+          grain: false,
         );
-        return ClipRect(
-          child: useGlass
-              ? BackdropFilter(
-                  filterConfig: acrylicBackdropFilter(
-                    recipe,
-                    sigma: sigma,
-                    bounded: true,
+        if (!allowsGlass) return ClipRect(child: solidFill);
+
+        return ValueListenableBuilder<bool>(
+          valueListenable: PageTransitionActivity.instance.surfaceActive,
+          child: solidFill,
+          builder: (context, transitioning, solidFill) => ClipRect(
+            child: transitioning
+                ? solidFill
+                : BackdropFilter(
+                    filterConfig: acrylicBackdropFilter(
+                      recipe,
+                      sigma: (recipe.blurSigma * 1.2).clamp(0.0, 44.0),
+                      bounded: true,
+                    ),
+                    child: _AppBarFill(
+                      tintColor: frostedFillColor(
+                        base: tintColor,
+                        isDark: isDark,
+                        alpha: 1.0,
+                      ),
+                      tintAlpha: isDark ? 0.42 : 0.50,
+                      borderColor: borderColor,
+                      grain: style.frostGrainEnabled.value,
+                    ),
                   ),
-                  child: fill,
-                )
-              : fill,
+          ),
         );
       },
     );

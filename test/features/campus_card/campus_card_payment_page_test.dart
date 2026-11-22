@@ -146,7 +146,7 @@ void main() {
       // 扫码设备提示
       expect(find.text('请将二维码对准扫码设备'), findsOneWidget);
 
-      // 防御性安全提示已归档到仓库根目录《免责声明.txt》，页面不再展示
+      // 防御性安全提示已移除，页面不再展示
       expect(find.text('需要支付密码确认时，请使用官方付款页。此页面不显示支付结果。'), findsNothing);
 
       // 不能宣称支付成功

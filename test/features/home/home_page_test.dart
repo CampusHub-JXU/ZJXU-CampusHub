@@ -220,7 +220,7 @@ void main() {
     // 今天无课：Hero 以课程大字承接明天第一节课（kicker「今天没课 下一节」，
     // 日期并入时间行）；明天仅此一门，Today 段落整段消失、不重复 Hero 信息；
     // 全屏仅保留今日段落头一处「查看课表」入口。
-    expect(find.text('今天没课 下一节'), findsOneWidget);
+    expect(find.text('今天没课，下一节'), findsOneWidget);
     expect(find.text('查看课表'), findsOneWidget);
     expect(find.text('明天 08:00'), findsOneWidget);
     expect(find.text('线性代数'), findsOneWidget);
@@ -359,7 +359,7 @@ void main() {
 
     // Hero 保留给课表状态（今天没课时下一节课仍以课程大字展示），
     // 低电量升级为事件横幅；资产行数值同步告警。
-    expect(find.text('今天没课 下一节'), findsOneWidget);
+    expect(find.text('今天没课，下一节'), findsOneWidget);
     expect(find.text('查看课表'), findsOneWidget);
     expect(find.textContaining('电量偏低'), findsOneWidget);
     expect(find.text('3.20 度'), findsOneWidget);
@@ -1159,7 +1159,7 @@ void main() {
     expect(find.text('明天考试'), findsNothing);
     expect(find.text('线性代数'), findsNothing);
     expect(find.text('高等数学 B'), findsOneWidget);
-    expect(find.text('今天没课 下一节'), findsOneWidget);
+    expect(find.text('今天没课，下一节'), findsOneWidget);
     expect(find.text('查看课表'), findsOneWidget);
   });
 

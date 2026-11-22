@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../../core/theme/app_design_tokens.dart';
+import '../../core/theme/page_transition_activity.dart';
 import 'glass_container.dart';
 
 /// 贴底通栏液态玻璃底栏（flush bottom bar）。
@@ -8,7 +9,7 @@ import 'glass_container.dart';
 /// 贴边、贴底通栏铺满并将背景自然延伸至系统底部手势区；保留克制的
 /// 液态玻璃折射与上缘细分割线，选中态以顶部居中短指示线与字重/实体图标
 /// 表达，不再使用悬浮药丸或圆角底块。
-/// 整屏仅此一个 BackdropFilter 层。
+/// 页面转场期间底栏背景暂用实色。
 class GlassNavBar extends StatelessWidget {
   const GlassNavBar({
     super.key,
@@ -28,25 +29,39 @@ class GlassNavBar extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final bottomInset = MediaQuery.paddingOf(context).bottom;
 
-    return GlassContainer(
-      tier: GlassTier.nav,
-      borderRadius: BorderRadius.zero,
-      padding: EdgeInsets.only(bottom: bottomInset),
-      child: SizedBox(
-        height: _barHeight,
-        child: Row(
-          children: [
-            for (var i = 0; i < destinations.length; i++)
-              Expanded(
-                child: _NavDestination(
-                  destination: destinations[i],
-                  selected: i == currentIndex,
-                  accent: cs.primary,
-                  onTap: () => onDestinationSelected(i),
-                ),
+    return SizedBox(
+      height: _barHeight + bottomInset,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          IgnorePointer(
+            child: ValueListenableBuilder<bool>(
+              valueListenable: PageTransitionActivity.instance.surfaceActive,
+              builder: (context, transitioning, _) => GlassContainer(
+                tier: GlassTier.nav,
+                borderRadius: BorderRadius.zero,
+                blurred: !transitioning,
+                child: const SizedBox.expand(),
               ),
-          ],
-        ),
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.only(bottom: bottomInset),
+            child: Row(
+              children: [
+                for (var i = 0; i < destinations.length; i++)
+                  Expanded(
+                    child: _NavDestination(
+                      destination: destinations[i],
+                      selected: i == currentIndex,
+                      accent: cs.primary,
+                      onTap: () => onDestinationSelected(i),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
