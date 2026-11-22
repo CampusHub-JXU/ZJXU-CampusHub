@@ -105,8 +105,10 @@ class CampusCardConsumptionSummary {
       monthSpend == 0;
 
   /// 近七日三餐最大值，用于条形图归一（全为 0 时返回 0，由展示层兜底）。
-  double get mealPeak =>
-      meals.fold<double>(0, (max, meal) => meal.amount > max ? meal.amount : max);
+  double get mealPeak => meals.fold<double>(
+    0,
+    (max, meal) => meal.amount > max ? meal.amount : max,
+  );
 
   /// 今日最大单日消费，用于条形图归一。
   double get dayPeak => dailyTrend.fold<double>(
@@ -138,9 +140,15 @@ class CampusCardConsumptionSummary {
       parsedAny = true;
     }
 
-    final recent = _parseRecent(raw.widgets[CampusCardBillGateway.recentWidget]);
-    final meals = _parseMeals(raw.charts[CampusCardBillGateway.chartWidgets[0]]);
-    final trend = _parseDaily(raw.charts[CampusCardBillGateway.chartWidgets[1]]);
+    final recent = _parseRecent(
+      raw.widgets[CampusCardBillGateway.recentWidget],
+    );
+    final meals = _parseMeals(
+      raw.charts[CampusCardBillGateway.chartWidgets[0]],
+    );
+    final trend = _parseDaily(
+      raw.charts[CampusCardBillGateway.chartWidgets[1]],
+    );
 
     if (!parsedAny && recent.isEmpty && meals.isEmpty && trend.isEmpty) {
       final looksLikeHtml = raw.widgets.values.any(
@@ -261,7 +269,8 @@ class CampusCardConsumptionSummary {
       final data = _seriesData(item);
       final isCount = name.contains('次数') || type == 'line';
       for (final point in data) {
-        final label = (point['x'] ?? point['originalCategory'] ?? '').toString();
+        final label = (point['x'] ?? point['originalCategory'] ?? '')
+            .toString();
         if (label.isEmpty) continue;
         final value = _toDouble(point['y']);
         if (value == null) continue;

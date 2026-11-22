@@ -26,7 +26,13 @@ String _statWidget(String label, String value) {
               {
                 'row': 0,
                 'cells': [
-                  {'row': 0, 'col': 0, 'rowSpan': 1, 'colSpan': 3, 'text': label},
+                  {
+                    'row': 0,
+                    'col': 0,
+                    'rowSpan': 1,
+                    'colSpan': 3,
+                    'text': label,
+                  },
                 ],
               },
               {
@@ -177,14 +183,8 @@ CampusCardBillRawPayload _rawPayload() {
       'REPORT0': _recentWidget(),
     },
     charts: {
-      'CHART0': {
-        'source': '{}',
-        'data': _pieChart(),
-      },
-      'CHART1': {
-        'source': '{}',
-        'data': _columnChart(),
-      },
+      'CHART0': {'source': '{}', 'data': _pieChart()},
+      'CHART1': {'source': '{}', 'data': _columnChart()},
     },
   );
 }
@@ -212,7 +212,11 @@ void main() {
       expect(summary.mealPeak, 64.5);
 
       // 单日统计按日期升序，次数取 line 系列。
-      expect(summary.dailyTrend.map((d) => d.label), ['11-12', '11-14', '11-16']);
+      expect(summary.dailyTrend.map((d) => d.label), [
+        '11-12',
+        '11-14',
+        '11-16',
+      ]);
       expect(summary.dailyTrend[1].amount, 20);
       expect(summary.dailyTrend[1].count, 2);
       expect(summary.dayPeak, 20);
@@ -233,7 +237,8 @@ void main() {
     test('throws when every widget returns an html error page', () {
       final raw = CampusCardBillRawPayload(
         widgets: {
-          'ZTXF1': '<!DOCTYPE html><html><body>Dec-Session_Timeout</body></html>',
+          'ZTXF1':
+              '<!DOCTYPE html><html><body>Dec-Session_Timeout</body></html>',
           'REPORT0': '<!DOCTYPE html><html><body>error</body></html>',
         },
         charts: const {},
@@ -305,10 +310,7 @@ void main() {
       expect(first, isNotNull);
       expect(calls, 1);
       expect(CampusCardService.instance.cachedConsumption, isNotNull);
-      expect(
-        CampusCardService.instance.cachedConsumptionPreview,
-        hasLength(3),
-      );
+      expect(CampusCardService.instance.cachedConsumptionPreview, hasLength(3));
 
       final second = await CampusCardService.instance.fetchConsumption();
       expect(second, isNotNull);
@@ -337,8 +339,7 @@ void main() {
       CampusCardService.instance.debugBillRawFetcher = () async =>
           _rawPayload();
 
-      final summary = await CampusCardService.instance
-          .fetchConsumptionRemote();
+      final summary = await CampusCardService.instance.fetchConsumptionRemote();
       expect(summary.monthSpend, 34.6);
       expect(summary.recent, hasLength(3));
     });
