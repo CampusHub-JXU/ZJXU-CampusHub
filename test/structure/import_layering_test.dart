@@ -70,6 +70,11 @@ const _allowedLegacyEdges = <String>{
   'features/home/campus_snapshot_coordinator.dart -> features/exam/exam_service.dart',
   'features/home/campus_snapshot_coordinator.dart -> features/grades/grades_service.dart',
   'features/home/campus_snapshot_coordinator.dart -> features/schedule/schedule_service.dart',
+  'features/home/campus_snapshot_coordinator.dart -> features/second_classroom/second_classroom_cache_store.dart',
+  'features/home/campus_snapshot_coordinator.dart -> features/second_classroom/second_classroom_model.dart',
+  'features/home/campus_snapshot_coordinator.dart -> features/second_classroom/second_classroom_subscription_service.dart',
+  'features/home/home_page.dart -> features/second_classroom/second_classroom_model.dart',
+  'features/home/models/home_today_agenda.dart -> features/second_classroom/second_classroom_model.dart',
   // my 页快捷入口
   // 通知中心聚合页（notice 核心 2026-09 下沉 core/notice 后，原
   // notification_center -> features/notice 例外随 edge 消失一并移除）

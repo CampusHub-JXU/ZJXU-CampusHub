@@ -483,19 +483,19 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
                 ),
               ),
             ),
-          if (unread.isNotEmpty) ..._buildNoticeGroupSlivers(
-            title: '未读',
-            trailing: '${unread.length} 条',
-            notices: unread,
-          ),
-          if (read.isNotEmpty) ..._buildNoticeGroupSlivers(
-            title: unread.isEmpty ? '最近' : '已读',
-            notices: read,
-          ),
-          if (_older.isNotEmpty) ..._buildNoticeGroupSlivers(
-            title: '更早',
-            notices: _older,
-          ),
+          if (unread.isNotEmpty)
+            ..._buildNoticeGroupSlivers(
+              title: '未读',
+              trailing: '${unread.length} 条',
+              notices: unread,
+            ),
+          if (read.isNotEmpty)
+            ..._buildNoticeGroupSlivers(
+              title: unread.isEmpty ? '最近' : '已读',
+              notices: read,
+            ),
+          if (_older.isNotEmpty)
+            ..._buildNoticeGroupSlivers(title: '更早', notices: _older),
           if (showFooter) SliverToBoxAdapter(child: _buildLoadMoreFooter()),
           const SliverToBoxAdapter(child: SizedBox(height: 24)),
         ],

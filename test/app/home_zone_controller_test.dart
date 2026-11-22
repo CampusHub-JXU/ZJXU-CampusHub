@@ -54,19 +54,22 @@ void main() {
       expect(functionCalls, 1);
     });
 
-    test('未注入滚动实现时 requestHome/requestToday/requestFunction 安全 no-op', () async {
-      final controller = HomeZoneController.instance;
-      controller
-        ..scrollToTop = null
-        ..scrollToToday = null
-        ..scrollToFunction = null;
+    test(
+      '未注入滚动实现时 requestHome/requestToday/requestFunction 安全 no-op',
+      () async {
+        final controller = HomeZoneController.instance;
+        controller
+          ..scrollToTop = null
+          ..scrollToToday = null
+          ..scrollToFunction = null;
 
-      // 不抛异常即通过。
-      await controller.requestHome();
-      await controller.requestToday();
-      await controller.requestFunction();
+        // 不抛异常即通过。
+        await controller.requestHome();
+        await controller.requestToday();
+        await controller.requestFunction();
 
-      expect(controller.zoneIndex, 0);
-    });
+        expect(controller.zoneIndex, 0);
+      },
+    );
   });
 }
