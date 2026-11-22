@@ -1,0 +1,3262 @@
+{
+ "textParse": [
+  {
+   "name": "standard",
+   "result": [
+    {
+     "question": "以下哪个是正确的____",
+     "answer": [
+      "A"
+     ],
+     "options": {
+      "A": "选项A",
+      "B": "选项B",
+      "C": "选项C",
+      "D": "选项D"
+     }
+    }
+   ]
+  },
+  {
+   "name": "第N题",
+   "result": [
+    {
+     "question": "、题目内容",
+     "answer": [
+      "B"
+     ],
+     "options": {
+      "A": "选项A",
+      "B": "选项B"
+     }
+    }
+   ]
+  },
+  {
+   "name": "inline-answer-options",
+   "result": [
+    {
+     "question": "以下哪个是正确的",
+     "answer": [
+      "A",
+      "B",
+      "C",
+      "D"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "tab",
+   "result": [
+    {
+     "question": "题目内容",
+     "answer": [
+      "B"
+     ],
+     "options": {
+      "A": "选项A",
+      "B": "选项B"
+     }
+    }
+   ]
+  },
+  {
+   "name": "inline-options",
+   "result": [
+    {
+     "question": "题目内容",
+     "answer": [
+      "C"
+     ],
+     "options": {
+      "A": "选项A B、选项B C、选项C"
+     }
+    }
+   ]
+  },
+  {
+   "name": "explanation-line",
+   "result": [
+    {
+     "question": "题目内容",
+     "answer": [
+      "A"
+     ],
+     "options": {
+      "A": "选项A",
+      "B": "选项B"
+     },
+     "explanation": "因为A是对的"
+    }
+   ]
+  },
+  {
+   "name": "explanation-inline",
+   "result": [
+    {
+     "question": "题目内容",
+     "answer": [
+      "A",
+      "B"
+     ],
+     "explanation": "这是解析"
+    }
+   ]
+  },
+  {
+   "name": "option-explanations-fixture",
+   "result": [
+    {
+     "question": "以下哪个是离线优先 PWA 的核心能力？",
+     "answer": [
+      "B"
+     ],
+     "options": {
+      "A": "所有数据只能存储在服务器",
+      "B": "Service Worker 可以缓存资源以支持离线访问",
+      "C": "必须每次打开都重新下载安装包",
+      "D": "IndexedDB 只能保存字符串"
+     },
+     "explanation": "离线优先应用通常结合 Service Worker 缓存静态资源，并用 IndexedDB 保存本地数据。",
+     "optionExplanations": {
+      "A": "这与离线优先相反，离线优先应尽量减少对服务器的即时依赖。",
+      "B": "这是正确项，Service Worker 可以拦截请求并返回缓存资源。",
+      "C": "PWA 安装后不需要每次重新下载安装包。",
+      "D": "IndexedDB 可以保存结构化数据，不只限于字符串。"
+     }
+    }
+   ]
+  },
+  {
+   "name": "option-explanation-trailing-key",
+   "result": [
+    {
+     "question": "判断这个说法是否成立",
+     "answer": [
+      "true"
+     ],
+     "optionExplanations": {
+      "true": "因为成立",
+      "false": "因为不成立"
+     }
+    }
+   ]
+  },
+  {
+   "name": "judge-对",
+   "result": [
+    {
+     "question": "这是一道判断题",
+     "answer": [
+      "true"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "judge-正确",
+   "result": [
+    {
+     "question": "这是一道判断题",
+     "answer": [
+      "true"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "judge-√",
+   "result": [
+    {
+     "question": "这是一道判断题",
+     "answer": [
+      "true"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "judge-True",
+   "result": [
+    {
+     "question": "这是一道判断题",
+     "answer": [
+      "true"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "judge-T",
+   "result": [
+    {
+     "question": "这是一道判断题",
+     "answer": [
+      "true"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "judge-是",
+   "result": [
+    {
+     "question": "这是一道判断题",
+     "answer": [
+      "true"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "judge-错",
+   "result": [
+    {
+     "question": "这是一道判断题",
+     "answer": [
+      "false"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "judge-错误",
+   "result": [
+    {
+     "question": "这是一道判断题",
+     "answer": [
+      "false"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "judge-不正确",
+   "result": [
+    {
+     "question": "这是一道判断题",
+     "answer": [
+      "false"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "judge-×",
+   "result": [
+    {
+     "question": "这是一道判断题",
+     "answer": [
+      "false"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "judge-False",
+   "result": [
+    {
+     "question": "这是一道判断题",
+     "answer": [
+      "false"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "judge-F",
+   "result": [
+    {
+     "question": "这是一道判断题",
+     "answer": [
+      "false"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "judge-否",
+   "result": [
+    {
+     "question": "这是一道判断题",
+     "answer": [
+      "false"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "judge-t",
+   "result": [
+    {
+     "question": "这是一道判断题",
+     "answer": [
+      "true"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "judge-f",
+   "result": [
+    {
+     "question": "这是一道判断题",
+     "answer": [
+      "false"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "judge-TRUE",
+   "result": [
+    {
+     "question": "这是一道判断题",
+     "answer": [
+      "true"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "judge-yes",
+   "result": [
+    {
+     "question": "这是一道判断题",
+     "answer": [
+      "yes"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "multi-AC",
+   "result": [
+    {
+     "question": "题目内容",
+     "answer": [
+      "A",
+      "C"
+     ],
+     "options": {
+      "A": "甲",
+      "B": "乙",
+      "C": "丙",
+      "D": "丁"
+     }
+    }
+   ]
+  },
+  {
+   "name": "multi-A,C",
+   "result": [
+    {
+     "question": "题目内容",
+     "answer": [
+      "A",
+      "C"
+     ],
+     "options": {
+      "A": "甲",
+      "B": "乙",
+      "C": "丙",
+      "D": "丁"
+     }
+    }
+   ]
+  },
+  {
+   "name": "multi-A C",
+   "result": [
+    {
+     "question": "题目内容",
+     "answer": [
+      "A",
+      "C"
+     ],
+     "options": {
+      "A": "甲",
+      "B": "乙",
+      "C": "丙",
+      "D": "丁"
+     }
+    }
+   ]
+  },
+  {
+   "name": "multi-A、C",
+   "result": [
+    {
+     "question": "题目内容",
+     "answer": [
+      "A",
+      "C"
+     ],
+     "options": {
+      "A": "甲",
+      "B": "乙",
+      "C": "丙",
+      "D": "丁"
+     }
+    }
+   ]
+  },
+  {
+   "name": "multi-A，C",
+   "result": [
+    {
+     "question": "题目内容",
+     "answer": [
+      "A",
+      "C"
+     ],
+     "options": {
+      "A": "甲",
+      "B": "乙",
+      "C": "丙",
+      "D": "丁"
+     }
+    }
+   ]
+  },
+  {
+   "name": "multi-ABC",
+   "result": [
+    {
+     "question": "题目内容",
+     "answer": [
+      "A",
+      "B",
+      "C"
+     ],
+     "options": {
+      "A": "甲",
+      "B": "乙",
+      "C": "丙",
+      "D": "丁"
+     }
+    }
+   ]
+  },
+  {
+   "name": "multi-ABCD",
+   "result": [
+    {
+     "question": "题目内容",
+     "answer": [
+      "A",
+      "B",
+      "C",
+      "D"
+     ],
+     "options": {
+      "A": "甲",
+      "B": "乙",
+      "C": "丙",
+      "D": "丁"
+     }
+    }
+   ]
+  },
+  {
+   "name": "multi-a,c",
+   "result": [
+    {
+     "question": "题目内容",
+     "answer": [
+      "A",
+      "C"
+     ],
+     "options": {
+      "A": "甲",
+      "B": "乙",
+      "C": "丙",
+      "D": "丁"
+     }
+    }
+   ]
+  },
+  {
+   "name": "multi-C A",
+   "result": [
+    {
+     "question": "题目内容",
+     "answer": [
+      "A",
+      "C"
+     ],
+     "options": {
+      "A": "甲",
+      "B": "乙",
+      "C": "丙",
+      "D": "丁"
+     }
+    }
+   ]
+  },
+  {
+   "name": "multi-A;C",
+   "result": [
+    {
+     "question": "题目内容",
+     "answer": [
+      "A;C"
+     ],
+     "options": {
+      "A": "甲",
+      "B": "乙",
+      "C": "丙",
+      "D": "丁"
+     }
+    }
+   ]
+  },
+  {
+   "name": "multi-A.",
+   "result": [
+    {
+     "question": "题目内容",
+     "answer": [
+      "A"
+     ],
+     "options": {
+      "A": "甲",
+      "B": "乙",
+      "C": "丙",
+      "D": "丁"
+     }
+    }
+   ]
+  },
+  {
+   "name": "multi-a",
+   "result": [
+    {
+     "question": "题目内容",
+     "answer": [
+      "A"
+     ],
+     "options": {
+      "A": "甲",
+      "B": "乙",
+      "C": "丙",
+      "D": "丁"
+     }
+    }
+   ]
+  },
+  {
+   "name": "answer-正确答案",
+   "result": [
+    {
+     "question": "题目内容",
+     "answer": [
+      "A"
+     ],
+     "options": {
+      "A": "选项A",
+      "B": "选项B"
+     }
+    }
+   ]
+  },
+  {
+   "name": "answer-answer",
+   "result": [
+    {
+     "question": "题目内容",
+     "answer": [
+      "A"
+     ],
+     "options": {
+      "A": "选项A",
+      "B": "选项B"
+     }
+    }
+   ]
+  },
+  {
+   "name": "answer-答",
+   "result": [
+    {
+     "question": "题目内容",
+     "answer": [
+      "A"
+     ],
+     "options": {
+      "A": "选项A",
+      "B": "选项B"
+     }
+    }
+   ]
+  },
+  {
+   "name": "answer-paren",
+   "result": [
+    {
+     "question": "题目内容",
+     "answer": [
+      "B"
+     ],
+     "options": {
+      "A": "选项A",
+      "B": "选项B"
+     }
+    }
+   ]
+  },
+  {
+   "name": "answer-fullwidth-colon",
+   "result": [
+    {
+     "question": "题目内容是什么",
+     "answer": [
+      "B"
+     ],
+     "options": {
+      "A": "选项A",
+      "B": "选项B"
+     }
+    }
+   ]
+  },
+  {
+   "name": "answer-no-colon",
+   "result": []
+  },
+  {
+   "name": "chapters",
+   "result": [
+    {
+     "question": "以下哪个是正确的",
+     "answer": [
+      "A"
+     ],
+     "options": {
+      "A": "选项A"
+     }
+    },
+    {
+     "question": "这是一道判断题目",
+     "answer": [
+      "true"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "chapter-with-title",
+   "result": [
+    {
+     "question": "以下哪个是正确的",
+     "answer": [
+      "A"
+     ],
+     "options": {
+      "A": "选项A"
+     }
+    }
+   ]
+  },
+  {
+   "name": "empty",
+   "result": []
+  },
+  {
+   "name": "blank-only",
+   "result": []
+  },
+  {
+   "name": "short-question",
+   "result": []
+  },
+  {
+   "name": "missing-answer",
+   "result": []
+  },
+  {
+   "name": "multi-questions",
+   "result": [
+    {
+     "question": "第一道题目内容",
+     "answer": [
+      "A"
+     ],
+     "options": {
+      "A": "选项A"
+     }
+    },
+    {
+     "question": "第二道题目内容",
+     "answer": [
+      "B"
+     ],
+     "options": {
+      "B": "选项B"
+     }
+    },
+    {
+     "question": "第三道题目内容",
+     "answer": [
+      "true"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "paren-normalize",
+   "result": [
+    {
+     "question": "以下正确的是____",
+     "answer": [
+      "A"
+     ],
+     "options": {
+      "A": "选项A"
+     }
+    }
+   ]
+  },
+  {
+   "name": "paren-ascii",
+   "result": [
+    {
+     "question": "以下正确的是____",
+     "answer": [
+      "A"
+     ],
+     "options": {
+      "A": "选项A"
+     }
+    }
+   ]
+  },
+  {
+   "name": "paren-trailing",
+   "result": [
+    {
+     "question": "以下正确的是",
+     "answer": [
+      "A"
+     ],
+     "options": {
+      "A": "选项A"
+     }
+    }
+   ]
+  },
+  {
+   "name": "underscores",
+   "result": [
+    {
+     "question": "填入____内容",
+     "answer": [
+      "hello"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "underscores-short",
+   "result": [
+    {
+     "question": "填入__内容题目",
+     "answer": [
+      "hello"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "entities",
+   "result": [
+    {
+     "question": "什么是 & 符号 <a> \"x\"",
+     "answer": [
+      "A"
+     ],
+     "options": {
+      "A": "选项A"
+     }
+    }
+   ]
+  },
+  {
+   "name": "crlf",
+   "result": [
+    {
+     "question": "以下哪个是正确的",
+     "answer": [
+      "A"
+     ],
+     "options": {
+      "A": "选项A",
+      "B": "选项B"
+     }
+    },
+    {
+     "question": "第二道题目内容",
+     "answer": [
+      "false"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "lowercase-options",
+   "result": [
+    {
+     "question": "题目内容在这里",
+     "answer": [
+      "B"
+     ],
+     "options": {
+      "A": "选项A",
+      "B": "选项B"
+     }
+    }
+   ]
+  },
+  {
+   "name": "option-colon",
+   "result": [
+    {
+     "question": "题目内容在这里",
+     "answer": [
+      "A"
+     ],
+     "options": {
+      "A": "选项A",
+      "B": "选项B"
+     }
+    }
+   ]
+  },
+  {
+   "name": "option-dot",
+   "result": [
+    {
+     "question": "题目内容在这里",
+     "answer": [
+      "A"
+     ],
+     "options": {
+      "A": "选项A",
+      "B": "选项B"
+     }
+    }
+   ]
+  },
+  {
+   "name": "number-paren",
+   "result": [
+    {
+     "question": "题目内容在这里",
+     "answer": [
+      "A"
+     ],
+     "options": {
+      "A": "选项A"
+     }
+    }
+   ]
+  },
+  {
+   "name": "number-fullwidth-dot",
+   "result": [
+    {
+     "question": "题目内容在这里",
+     "answer": [
+      "A"
+     ],
+     "options": {
+      "A": "选项A"
+     }
+    }
+   ]
+  },
+  {
+   "name": "number-paren-full",
+   "result": [
+    {
+     "question": "题目内容在这里",
+     "answer": [
+      "A"
+     ],
+     "options": {
+      "A": "选项A"
+     }
+    }
+   ]
+  },
+  {
+   "name": "leading-spaces",
+   "result": [
+    {
+     "question": "题目内容在这里",
+     "answer": [
+      "A"
+     ],
+     "options": {
+      "A": "选项A"
+     }
+    }
+   ]
+  },
+  {
+   "name": "nbsp",
+   "result": [
+    {
+     "question": "题目 内容在这里",
+     "answer": [
+      "A"
+     ],
+     "options": {
+      "A": "选项 A"
+     }
+    }
+   ]
+  },
+  {
+   "name": "blank-answer-text",
+   "result": [
+    {
+     "question": "中国的首都是____",
+     "answer": [
+      "北京"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "answer-text-with-letters",
+   "result": [
+    {
+     "question": "简述下面的概念内容",
+     "answer": [
+      "Apple is fruit"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "explanation-multiline",
+   "result": [
+    {
+     "question": "题目内容在这里",
+     "answer": [
+      "A"
+     ],
+     "options": {
+      "A": "选项A",
+      "B": "选项B"
+     },
+     "explanation": "第二行覆盖"
+    }
+   ]
+  },
+  {
+   "name": "answer-after-options-inline",
+   "result": [
+    {
+     "question": "题目内容在这里",
+     "answer": [
+      "A",
+      "C",
+      "D"
+     ],
+     "options": {
+      "A": "甲 B、乙 C、丙 D、丁"
+     },
+     "explanation": "因为所以"
+    }
+   ]
+  },
+  {
+   "name": "tab-answer-first-line-explanation",
+   "result": [
+    {
+     "question": "题目内容在这里",
+     "answer": [
+      "B"
+     ],
+     "options": {
+      "A": "选项A",
+      "B": "选项B"
+     }
+    }
+   ]
+  },
+  {
+   "name": "option-inline-multi",
+   "result": [
+    {
+     "question": "判断下列选项",
+     "answer": [
+      "C"
+     ],
+     "options": {
+      "A": "甲 B、乙",
+      "C": "丙"
+     }
+    }
+   ]
+  },
+  {
+   "name": "question-only-number",
+   "result": []
+  },
+  {
+   "name": "zh-numbering-1",
+   "result": [
+    {
+     "question": "题目内容在这里____",
+     "answer": [
+      "B"
+     ],
+     "options": {
+      "A": "选项A",
+      "B": "选项B"
+     }
+    }
+   ]
+  },
+  {
+   "name": "answer-with-spaces",
+   "result": [
+    {
+     "question": "题目内容在这里",
+     "answer": [
+      "A"
+     ],
+     "options": {
+      "A": "选项A",
+      "B": "选项B"
+     }
+    }
+   ]
+  },
+  {
+   "name": "answer-uppercase-key",
+   "result": [
+    {
+     "question": "题目内容在这里",
+     "answer": [
+      "A"
+     ],
+     "options": {
+      "A": "选项A"
+     }
+    }
+   ]
+  },
+  {
+   "name": "mixed-newlines-blank-lines",
+   "result": [
+    {
+     "question": "题目内容在这里",
+     "answer": [
+      "B"
+     ],
+     "options": {
+      "A": "选项A",
+      "B": "选项B"
+     }
+    }
+   ]
+  },
+  {
+   "name": "answer-in-question-and-line",
+   "result": [
+    {
+     "question": "题目内容在这里",
+     "answer": [
+      "A"
+     ],
+     "options": {
+      "A": "选项A",
+      "B": "选项B"
+     }
+    }
+   ]
+  },
+  {
+   "name": "long-option-text",
+   "result": [
+    {
+     "question": "题目内容在这里",
+     "answer": [
+      "A"
+     ],
+     "options": {
+      "A": "很长的选项很长的选项很长的选项很长的选项很长的选项很长的选项很长的选项很长的选项很长的选项很长的选项很长的选项很长的选项很长的选项很长的选项很长的选项很长的选项很长的选项很长的选项很长的选项很长的选项很长的选项很长的选项很长的选项很长的选项很长的选项很长的选项很长的选项很长的选项很长的选项很长的选项",
+      "B": "短"
+     }
+    }
+   ]
+  },
+  {
+   "name": "emoji",
+   "result": [
+    {
+     "question": "带表情😀的题目内容",
+     "answer": [
+      "A"
+     ],
+     "options": {
+      "A": "选项😀"
+     }
+    }
+   ]
+  },
+  {
+   "name": "only-judge-no-options",
+   "result": [
+    {
+     "question": "地球是圆的，对还是错",
+     "answer": [
+      "true"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "section-heading-with-text",
+   "result": [
+    {
+     "question": "题目内容在这里",
+     "answer": [
+      "A"
+     ],
+     "options": {
+      "A": "甲"
+     }
+    }
+   ]
+  },
+  {
+   "name": "answer-then-explanation-same-line",
+   "result": [
+    {
+     "question": "题目内容在这里",
+     "answer": [
+      "A"
+     ],
+     "options": {
+      "A": "甲",
+      "B": "乙"
+     },
+     "explanation": "因为"
+    }
+   ]
+  },
+  {
+   "name": "explanation-before-answer",
+   "result": [
+    {
+     "question": "题目内容在这里",
+     "answer": [
+      "A"
+     ],
+     "options": {
+      "A": "甲",
+      "B": "乙"
+     },
+     "explanation": "因为"
+    }
+   ]
+  }
+ ],
+ "csvRows": [
+  {
+   "name": "header-cn",
+   "rows": [
+    [
+     "题目",
+     "A",
+     "B",
+     "C",
+     "D",
+     "答案",
+     "解析"
+    ],
+    [
+     "1+1=?",
+     "1",
+     "2",
+     "3",
+     "4",
+     "B",
+     "因为1+1=2"
+    ],
+    [
+     "2+2=?",
+     "2",
+     "3",
+     "4",
+     "5",
+     "C",
+     ""
+    ]
+   ]
+  },
+  {
+   "name": "header-en",
+   "rows": [
+    [
+     "question",
+     "A",
+     "B",
+     "C",
+     "D",
+     "answer",
+     "explanation"
+    ],
+    [
+     "What is 1+1",
+     "1",
+     "2",
+     "3",
+     "4",
+     "B",
+     "easy"
+    ]
+   ]
+  },
+  {
+   "name": "header-option-prefix",
+   "rows": [
+    [
+     "题干",
+     "选项A",
+     "选项B",
+     "答案"
+    ],
+    [
+     "问题一是什么",
+     "甲",
+     "乙",
+     "A"
+    ]
+   ]
+  },
+  {
+   "name": "header-type",
+   "rows": [
+    [
+     "题目",
+     "题型",
+     "答案"
+    ],
+    [
+     "地球是圆的",
+     "judge",
+     "对"
+    ],
+    [
+     "填空____",
+     "blank",
+     "答案文本"
+    ]
+   ]
+  },
+  {
+   "name": "header-option-explanation",
+   "rows": [
+    [
+     "题目",
+     "A",
+     "B",
+     "答案",
+     "解析",
+     "A解析",
+     "B解析"
+    ],
+    [
+     "选哪个",
+     "甲",
+     "乙",
+     "A",
+     "总解析",
+     "甲对",
+     "乙错"
+    ]
+   ]
+  },
+  {
+   "name": "header-en-option-explanation",
+   "rows": [
+    [
+     "question",
+     "A",
+     "B",
+     "answer",
+     "option A explanation",
+     "explanation B"
+    ],
+    [
+     "选哪个",
+     "甲",
+     "乙",
+     "A",
+     "甲对",
+     "乙错"
+    ]
+   ]
+  },
+  {
+   "name": "no-header-6col",
+   "rows": [
+    [
+     "1+1=?",
+     "1",
+     "2",
+     "3",
+     "B",
+     "解析文本"
+    ],
+    [
+     "2+2=?",
+     "2",
+     "3",
+     "4",
+     "C",
+     ""
+    ]
+   ]
+  },
+  {
+   "name": "no-header-judge",
+   "rows": [
+    [
+     "地球是圆的",
+     "对",
+     "解析"
+    ],
+    [
+     "天是绿的",
+     "错",
+     ""
+    ]
+   ]
+  },
+  {
+   "name": "quotes",
+   "rows": [
+    [
+     "题目",
+     "A",
+     "B",
+     "答案"
+    ],
+    [
+     "含,逗号的题目",
+     "甲",
+     "乙\"引号\"",
+     "A"
+    ]
+   ]
+  },
+  {
+   "name": "multiline-cell",
+   "rows": [
+    [
+     "题目",
+     "答案"
+    ],
+    [
+     "第一行\n第二行",
+     "对"
+    ]
+   ]
+  },
+  {
+   "name": "crlf",
+   "rows": [
+    [
+     "题目",
+     "A",
+     "B",
+     "答案"
+    ],
+    [
+     "问题一是什么",
+     "甲",
+     "乙",
+     "A"
+    ],
+    [
+     "问题二是什么",
+     "丙",
+     "丁",
+     "B"
+    ]
+   ]
+  },
+  {
+   "name": "blank-lines",
+   "rows": [
+    [
+     "题目",
+     "A",
+     "B",
+     "答案"
+    ],
+    [
+     ""
+    ],
+    [
+     "问题一是什么",
+     "甲",
+     "乙",
+     "A"
+    ],
+    [
+     "",
+     "",
+     "",
+     ""
+    ],
+    [
+     "问题二是什么",
+     "丙",
+     "丁",
+     "B"
+    ],
+    [
+     ""
+    ]
+   ]
+  },
+  {
+   "name": "short-rows",
+   "rows": [
+    [
+     "题目",
+     "A",
+     "B",
+     "答案"
+    ],
+    [
+     "只有一列"
+    ],
+    [
+     "问题二是什么",
+     "丙",
+     "丁",
+     "B"
+    ]
+   ]
+  },
+  {
+   "name": "multi-answer",
+   "rows": [
+    [
+     "题目",
+     "A",
+     "B",
+     "C",
+     "答案"
+    ],
+    [
+     "选两个",
+     "甲",
+     "乙",
+     "丙",
+     "A, C"
+    ],
+    [
+     "选两个二",
+     "甲",
+     "乙",
+     "丙",
+     "AB"
+    ]
+   ]
+  },
+  {
+   "name": "unknown-type-header",
+   "rows": [
+    [
+     "题目",
+     "题型",
+     "答案"
+    ],
+    [
+     "地球是圆的",
+     "fill",
+     "对"
+    ]
+   ]
+  },
+  {
+   "name": "whitespace-cells",
+   "rows": [
+    [
+     "题目 ",
+     " A ",
+     " B ",
+     " 答案"
+    ],
+    [
+     "  问题一是什么  ",
+     "  甲 ",
+     " 乙 ",
+     " a "
+    ]
+   ]
+  },
+  {
+   "name": "only-header",
+   "rows": [
+    [
+     "题目",
+     "A",
+     "B",
+     "答案"
+    ]
+   ]
+  },
+  {
+   "name": "empty",
+   "rows": []
+  },
+  {
+   "name": "question-col-not-first",
+   "rows": [
+    [
+     "A",
+     "B",
+     "题目",
+     "答案"
+    ],
+    [
+     "甲",
+     "乙",
+     "问题一是什么",
+     "A"
+    ]
+   ]
+  },
+  {
+   "name": "answer-col-header-only",
+   "rows": [
+    [
+     "题目",
+     "答案"
+    ],
+    [
+     "简答题内容",
+     "这是一段很长的答案文本"
+    ]
+   ]
+  },
+  {
+   "name": "explanation-header-variants",
+   "rows": [
+    [
+     "题目",
+     "答案",
+     "解释"
+    ],
+    [
+     "问题一",
+     "对",
+     "因为解释"
+    ]
+   ]
+  },
+  {
+   "name": "fullwidth-comma-answer",
+   "rows": [
+    [
+     "题目",
+     "A",
+     "B",
+     "C",
+     "答案"
+    ],
+    [
+     "选多个",
+     "甲",
+     "乙",
+     "丙",
+     "A、B"
+    ]
+   ]
+  },
+  {
+   "name": "trailing-empty-cols",
+   "rows": [
+    [
+     "题目",
+     "A",
+     "B",
+     "答案",
+     "解析"
+    ],
+    [
+     "问题",
+     "甲",
+     "乙",
+     "A",
+     ""
+    ]
+   ]
+  },
+  {
+   "name": "unicode",
+   "rows": [
+    [
+     "题目",
+     "答案"
+    ],
+    [
+     "中文😀题目",
+     "对"
+    ]
+   ]
+  },
+  {
+   "name": "unterminated-quote",
+   "rows": [
+    [
+     "题目",
+     "答案"
+    ],
+    [
+     "没有结束的引号,对\n下一行,错\n"
+    ]
+   ]
+  },
+  {
+   "name": "quote-in-middle",
+   "rows": [
+    [
+     "题目",
+     "答案"
+    ],
+    [
+     "中间引号文本",
+     "对"
+    ]
+   ]
+  },
+  {
+   "name": "only-commas",
+   "rows": [
+    [
+     "",
+     "",
+     "",
+     ""
+    ],
+    [
+     "",
+     "",
+     "",
+     ""
+    ]
+   ]
+  },
+  {
+   "name": "cr-only",
+   "rows": [
+    [
+     "题目",
+     "答案问题一",
+     "对"
+    ]
+   ]
+  }
+ ],
+ "csv": [
+  {
+   "name": "header-cn",
+   "result": [
+    {
+     "question": "1+1=?",
+     "options": {
+      "A": "1",
+      "B": "2",
+      "C": "3",
+      "D": "4"
+     },
+     "answer": [
+      "B"
+     ],
+     "explanation": "因为1+1=2",
+     "type": "single"
+    },
+    {
+     "question": "2+2=?",
+     "options": {
+      "A": "2",
+      "B": "3",
+      "C": "4",
+      "D": "5"
+     },
+     "answer": [
+      "C"
+     ],
+     "type": "single"
+    }
+   ]
+  },
+  {
+   "name": "header-en",
+   "result": [
+    {
+     "question": "What is 1+1",
+     "options": {
+      "A": "1",
+      "B": "2",
+      "C": "3",
+      "D": "4"
+     },
+     "answer": [
+      "B"
+     ],
+     "explanation": "easy",
+     "type": "single"
+    }
+   ]
+  },
+  {
+   "name": "header-option-prefix",
+   "result": [
+    {
+     "question": "问题一是什么",
+     "options": {
+      "A": "甲",
+      "B": "乙"
+     },
+     "answer": [
+      "A"
+     ],
+     "explanation": "A",
+     "type": "single"
+    }
+   ]
+  },
+  {
+   "name": "header-type",
+   "result": [
+    {
+     "question": "地球是圆的",
+     "options": {
+      "A": "judge"
+     },
+     "answer": [
+      "true"
+     ],
+     "explanation": "对",
+     "type": "judge"
+    },
+    {
+     "question": "填空____",
+     "options": {
+      "A": "blank"
+     },
+     "answer": [
+      ""
+     ],
+     "explanation": "答案文本",
+     "type": "blank"
+    }
+   ]
+  },
+  {
+   "name": "header-option-explanation",
+   "result": [
+    {
+     "question": "选哪个",
+     "options": {
+      "A": "甲",
+      "B": "乙"
+     },
+     "answer": [
+      "A"
+     ],
+     "explanation": "总解析",
+     "optionExplanations": {
+      "A": "甲对",
+      "B": "乙错"
+     },
+     "type": "single"
+    }
+   ]
+  },
+  {
+   "name": "header-en-option-explanation",
+   "result": [
+    {
+     "question": "选哪个",
+     "options": {
+      "A": "甲",
+      "B": "乙"
+     },
+     "answer": [
+      "A"
+     ],
+     "explanation": "甲对",
+     "optionExplanations": {
+      "A": "甲对",
+      "B": "乙错"
+     },
+     "type": "single"
+    }
+   ]
+  },
+  {
+   "name": "no-header-6col",
+   "result": [
+    {
+     "question": "1+1=?",
+     "options": {
+      "A": "1",
+      "B": "2",
+      "C": "3"
+     },
+     "answer": [
+      "B"
+     ],
+     "explanation": "解析文本",
+     "type": "single"
+    },
+    {
+     "question": "2+2=?",
+     "options": {
+      "A": "2",
+      "B": "3",
+      "C": "4"
+     },
+     "answer": [
+      "C"
+     ],
+     "type": "single"
+    }
+   ]
+  },
+  {
+   "name": "no-header-judge",
+   "result": [
+    {
+     "question": "地球是圆的",
+     "answer": [
+      "true"
+     ],
+     "explanation": "解析",
+     "type": "judge"
+    },
+    {
+     "question": "天是绿的",
+     "answer": [
+      "false"
+     ],
+     "type": "judge"
+    }
+   ]
+  },
+  {
+   "name": "quotes",
+   "result": [
+    {
+     "question": "含,逗号的题目",
+     "options": {
+      "A": "甲",
+      "B": "乙\"引号\""
+     },
+     "answer": [
+      "A"
+     ],
+     "explanation": "A",
+     "type": "single"
+    }
+   ]
+  },
+  {
+   "name": "multiline-cell",
+   "result": [
+    {
+     "question": "第一行\n第二行",
+     "answer": [
+      "true"
+     ],
+     "explanation": "对",
+     "type": "judge"
+    }
+   ]
+  },
+  {
+   "name": "crlf",
+   "result": [
+    {
+     "question": "问题一是什么",
+     "options": {
+      "A": "甲",
+      "B": "乙"
+     },
+     "answer": [
+      "A"
+     ],
+     "explanation": "A",
+     "type": "single"
+    },
+    {
+     "question": "问题二是什么",
+     "options": {
+      "A": "丙",
+      "B": "丁"
+     },
+     "answer": [
+      "B"
+     ],
+     "explanation": "B",
+     "type": "single"
+    }
+   ]
+  },
+  {
+   "name": "blank-lines",
+   "result": [
+    {
+     "question": "问题一是什么",
+     "options": {
+      "A": "甲",
+      "B": "乙"
+     },
+     "answer": [
+      "A"
+     ],
+     "explanation": "A",
+     "type": "single"
+    },
+    {
+     "question": "问题二是什么",
+     "options": {
+      "A": "丙",
+      "B": "丁"
+     },
+     "answer": [
+      "B"
+     ],
+     "explanation": "B",
+     "type": "single"
+    }
+   ]
+  },
+  {
+   "name": "short-rows",
+   "result": [
+    {
+     "question": "问题二是什么",
+     "options": {
+      "A": "丙",
+      "B": "丁"
+     },
+     "answer": [
+      "B"
+     ],
+     "explanation": "B",
+     "type": "single"
+    }
+   ]
+  },
+  {
+   "name": "multi-answer",
+   "result": [
+    {
+     "question": "选两个",
+     "options": {
+      "A": "甲",
+      "B": "乙",
+      "C": "丙"
+     },
+     "answer": [
+      "A",
+      "C"
+     ],
+     "explanation": "A, C",
+     "type": "multiple"
+    },
+    {
+     "question": "选两个二",
+     "options": {
+      "A": "甲",
+      "B": "乙",
+      "C": "丙"
+     },
+     "answer": [
+      "A",
+      "B"
+     ],
+     "explanation": "AB",
+     "type": "multiple"
+    }
+   ]
+  },
+  {
+   "name": "unknown-type-header",
+   "result": [
+    {
+     "question": "地球是圆的",
+     "options": {
+      "A": "fill"
+     },
+     "answer": [
+      "true"
+     ],
+     "explanation": "对",
+     "type": "judge"
+    }
+   ]
+  },
+  {
+   "name": "whitespace-cells",
+   "result": [
+    {
+     "question": "问题一是什么",
+     "options": {
+      "A": "甲",
+      "B": "乙"
+     },
+     "answer": [
+      "A"
+     ],
+     "explanation": "a",
+     "type": "single"
+    }
+   ]
+  },
+  {
+   "name": "only-header",
+   "result": []
+  },
+  {
+   "name": "empty",
+   "result": []
+  },
+  {
+   "name": "question-col-not-first",
+   "result": [
+    {
+     "question": "问题一是什么",
+     "options": {
+      "A": "甲",
+      "B": "乙"
+     },
+     "answer": [
+      "A"
+     ],
+     "explanation": "A",
+     "type": "single"
+    }
+   ]
+  },
+  {
+   "name": "answer-col-header-only",
+   "result": [
+    {
+     "question": "简答题内容",
+     "answer": [
+      "这是一段很长的答案文本"
+     ],
+     "explanation": "这是一段很长的答案文本",
+     "type": "short"
+    }
+   ]
+  },
+  {
+   "name": "explanation-header-variants",
+   "result": [
+    {
+     "question": "问题一",
+     "answer": [
+      "true"
+     ],
+     "explanation": "因为解释",
+     "type": "judge"
+    }
+   ]
+  },
+  {
+   "name": "fullwidth-comma-answer",
+   "result": [
+    {
+     "question": "选多个",
+     "options": {
+      "A": "甲",
+      "B": "乙",
+      "C": "丙"
+     },
+     "answer": [
+      "A",
+      "B"
+     ],
+     "explanation": "A、B",
+     "type": "multiple"
+    }
+   ]
+  },
+  {
+   "name": "trailing-empty-cols",
+   "result": [
+    {
+     "question": "问题",
+     "options": {
+      "A": "甲",
+      "B": "乙"
+     },
+     "answer": [
+      "A"
+     ],
+     "type": "single"
+    }
+   ]
+  },
+  {
+   "name": "unicode",
+   "result": [
+    {
+     "question": "中文😀题目",
+     "answer": [
+      "true"
+     ],
+     "explanation": "对",
+     "type": "judge"
+    }
+   ]
+  },
+  {
+   "name": "unterminated-quote",
+   "result": []
+  },
+  {
+   "name": "quote-in-middle",
+   "result": [
+    {
+     "question": "中间引号文本",
+     "answer": [
+      "true"
+     ],
+     "explanation": "对",
+     "type": "judge"
+    }
+   ]
+  },
+  {
+   "name": "only-commas",
+   "result": []
+  },
+  {
+   "name": "cr-only",
+   "result": []
+  }
+ ],
+ "legacyText": [
+  {
+   "name": "basic",
+   "result": [
+    {
+     "question": "题目内容在这里",
+     "answer": [
+      "B"
+     ],
+     "explanation": "因为",
+     "type": "single",
+     "options": {
+      "A": "选项A",
+      "B": "选项B"
+     }
+    }
+   ]
+  },
+  {
+   "name": "judge",
+   "result": [
+    {
+     "question": "地球是圆的",
+     "answer": [
+      "true"
+     ],
+     "type": "judge"
+    }
+   ]
+  },
+  {
+   "name": "blank-no-options",
+   "result": [
+    {
+     "question": "填空题目内容",
+     "answer": [
+      "北京"
+     ],
+     "type": "blank"
+    }
+   ]
+  },
+  {
+   "name": "short-no-answer",
+   "result": [
+    {
+     "question": "简答题目内容",
+     "answer": [
+      ""
+     ],
+     "explanation": "这是补充说明",
+     "type": "short"
+    }
+   ]
+  },
+  {
+   "name": "multi",
+   "result": [
+    {
+     "question": "多选题目",
+     "answer": [
+      "A",
+      "C"
+     ],
+     "type": "multiple",
+     "options": {
+      "A": "甲",
+      "B": "乙",
+      "C": "丙"
+     }
+    }
+   ]
+  },
+  {
+   "name": "option-explanations",
+   "result": [
+    {
+     "question": "题目",
+     "answer": [
+      "A"
+     ],
+     "explanation": "总解析",
+     "type": "single",
+     "options": {
+      "A": "甲",
+      "B": "乙"
+     },
+     "optionExplanations": {
+      "A": "甲的解析"
+     }
+    }
+   ]
+  },
+  {
+   "name": "two-questions",
+   "result": [
+    {
+     "question": "第一题",
+     "answer": [
+      "B"
+     ],
+     "explanation": "2、第二题",
+     "type": "single",
+     "options": {
+      "A": "甲",
+      "B": "乙"
+     }
+    }
+   ]
+  },
+  {
+   "name": "paren-numbers",
+   "result": [
+    {
+     "question": "题目内容",
+     "answer": [
+      "A"
+     ],
+     "type": "single",
+     "options": {
+      "A": "甲"
+     }
+    }
+   ]
+  },
+  {
+   "name": "other-lines-explanation",
+   "result": [
+    {
+     "question": "题目内容",
+     "answer": [
+      "A"
+     ],
+     "explanation": "随便一行说明\n再一行",
+     "type": "single",
+     "options": {
+      "A": "甲",
+      "B": "乙"
+     }
+    }
+   ]
+  },
+  {
+   "name": "answer-with-prefix",
+   "result": [
+    {
+     "question": "题目内容",
+     "answer": [
+      "B"
+     ],
+     "type": "single",
+     "options": {
+      "A": "甲",
+      "B": "乙"
+     }
+    }
+   ]
+  },
+  {
+   "name": "no-number",
+   "result": [
+    {
+     "question": "题目没有题号",
+     "answer": [
+      "A"
+     ],
+     "type": "single",
+     "options": {
+      "A": "甲"
+     }
+    }
+   ]
+  },
+  {
+   "name": "empty",
+   "result": []
+  },
+  {
+   "name": "lowercase-opts",
+   "result": [
+    {
+     "question": "题目内容",
+     "answer": [
+      "B"
+     ],
+     "type": "single",
+     "options": {
+      "A": "甲",
+      "B": "乙"
+     }
+    }
+   ]
+  },
+  {
+   "name": "space-option-sep",
+   "result": [
+    {
+     "question": "题目内容",
+     "answer": [
+      "A"
+     ],
+     "type": "single",
+     "options": {
+      "A": "甲",
+      "B": "乙"
+     }
+    }
+   ]
+  },
+  {
+   "name": "crlf",
+   "result": [
+    {
+     "question": "题目内容",
+     "answer": [
+      "B"
+     ],
+     "type": "single",
+     "options": {
+      "A": "甲",
+      "B": "乙"
+     }
+    }
+   ]
+  },
+  {
+   "name": "answer-colon-fullwidth",
+   "result": [
+    {
+     "question": "题目内容",
+     "answer": [
+      "A",
+      "B"
+     ],
+     "type": "multiple",
+     "options": {
+      "A": "甲",
+      "B": "乙"
+     }
+    }
+   ]
+  }
+ ],
+ "normalize": [
+  {
+   "name": "single-obj-options",
+   "result": {
+    "id": "GEN-1",
+    "bankId": "BANK",
+    "type": "single",
+    "question": "题",
+    "options": {
+     "A": "甲",
+     "B": "乙"
+    },
+    "answer": [
+     "B"
+    ],
+    "tags": [],
+    "contentHash": "f8432932290dd317b8a488bd7256279bd67ed8ba42f6a91397963eda29c5f6db",
+    "answerHash": "df7e70e5021544f4834bbee64a9e3789febc4be81470df629cad6ddb03320a5c"
+   }
+  },
+  {
+   "name": "single-list-options-prefixed",
+   "result": {
+    "id": "GEN-1",
+    "bankId": "BANK",
+    "type": "single",
+    "question": "题",
+    "options": {
+     "A": "甲",
+     "B": "乙",
+     "C": "丙",
+     "D": "丁"
+    },
+    "answer": [
+     "A"
+    ],
+    "tags": [],
+    "contentHash": "e29d4bf47f737eb8994f6e1c9b2cb17c9ee0d9ff56da1ef76a6f3ae4b08f8afe",
+    "answerHash": "559aead08264d5795d3909718cdd05abd49572e84fe55590eef31a88a08fdffd"
+   }
+  },
+  {
+   "name": "list-options-unprefixed",
+   "result": {
+    "id": "GEN-1",
+    "bankId": "BANK",
+    "type": "single",
+    "question": "题",
+    "options": {
+     "A": "甲",
+     "B": "乙",
+     "C": "丙"
+    },
+    "answer": [
+     "C"
+    ],
+    "tags": [],
+    "contentHash": "7ef643cd20baabe32cecdeecdd8bc53afcd515c6ba7b7d4b2495da3bd4e069cb",
+    "answerHash": "6b23c0d5f35d1b11f9b683f0b0a617355deb11277d91ae091d399c655b87940d"
+   }
+  },
+  {
+   "name": "list-options-mixed",
+   "result": {
+    "id": "GEN-1",
+    "bankId": "BANK",
+    "type": "single",
+    "question": "题",
+    "options": {
+     "A": "甲",
+     "B": "乙",
+     "C": "丙"
+    },
+    "answer": [
+     "C"
+    ],
+    "tags": [],
+    "contentHash": "7ef643cd20baabe32cecdeecdd8bc53afcd515c6ba7b7d4b2495da3bd4e069cb",
+    "answerHash": "6b23c0d5f35d1b11f9b683f0b0a617355deb11277d91ae091d399c655b87940d"
+   }
+  },
+  {
+   "name": "multi",
+   "result": {
+    "id": "GEN-1",
+    "bankId": "BANK",
+    "type": "multiple",
+    "question": "多选题",
+    "options": {
+     "A": "甲",
+     "B": "乙",
+     "C": "丙"
+    },
+    "answer": [
+     "C",
+     "A"
+    ],
+    "tags": [],
+    "contentHash": "73695cc7b57d0101b0825ee1b31ed17047d0854bd78b84153f238f7ef847b7c7",
+    "answerHash": "01b97bbb6e943606d41bc1eae00bb90e76d1f722f5d45e8a5191c22809819707"
+   }
+  },
+  {
+   "name": "judge-cn",
+   "result": {
+    "id": "GEN-1",
+    "bankId": "BANK",
+    "type": "short",
+    "question": "判断题",
+    "answer": [
+     "对"
+    ],
+    "tags": [],
+    "contentHash": "7a62ef9309decd8e6c4bd95c470c7f4881dd0bb4d93d7ea71afa1d4444f430c4",
+    "answerHash": "74570c72706a38b1dcaef58d6236a48457feee467acf65acae3604fa64c02a89"
+   }
+  },
+  {
+   "name": "judge-explicit",
+   "result": {
+    "id": "GEN-1",
+    "bankId": "BANK",
+    "type": "judge",
+    "question": "判断题",
+    "answer": [
+     "false"
+    ],
+    "tags": [],
+    "contentHash": "dbeb1515b4f4494dc2032dad4bcb30e6c4732e1c1a8d7d31936737f01857b9de",
+    "answerHash": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa"
+   }
+  },
+  {
+   "name": "judge-answer-prefix",
+   "result": {
+    "id": "GEN-1",
+    "bankId": "BANK",
+    "type": "judge",
+    "question": "判断题",
+    "answer": [
+     "true"
+    ],
+    "tags": [],
+    "contentHash": "dbeb1515b4f4494dc2032dad4bcb30e6c4732e1c1a8d7d31936737f01857b9de",
+    "answerHash": "b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b"
+   }
+  },
+  {
+   "name": "judge-unknown",
+   "result": {
+    "id": "GEN-1",
+    "bankId": "BANK",
+    "type": "judge",
+    "question": "判断题",
+    "answer": [
+     "maybe"
+    ],
+    "tags": [],
+    "contentHash": "dbeb1515b4f4494dc2032dad4bcb30e6c4732e1c1a8d7d31936737f01857b9de",
+    "answerHash": "dcfff5eb40423f055a4cd0a8d7ed39ff6cb9816868f5766b4088b9e9906961b9"
+   }
+  },
+  {
+   "name": "blank-infer",
+   "result": {
+    "id": "GEN-1",
+    "bankId": "BANK",
+    "type": "blank",
+    "question": "填入____",
+    "answer": [
+     "x"
+    ],
+    "tags": [],
+    "contentHash": "19e142605f636861f5b4d4ff6de35b4b6a27b6ec18676bc320207f2fe0e525e1",
+    "answerHash": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
+   }
+  },
+  {
+   "name": "blank-paren",
+   "result": {
+    "id": "GEN-1",
+    "bankId": "BANK",
+    "type": "blank",
+    "question": "填入（  ）内容",
+    "answer": [
+     "x"
+    ],
+    "tags": [],
+    "contentHash": "8745da28e9d2ffac22801858072fc4abf3d6e71ce57aa8107353331ac7d2a78b",
+    "answerHash": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
+   }
+  },
+  {
+   "name": "short-infer",
+   "result": {
+    "id": "GEN-1",
+    "bankId": "BANK",
+    "type": "short",
+    "question": "简述概念",
+    "answer": [
+     "一段话"
+    ],
+    "tags": [],
+    "contentHash": "2d744e4511340714137ee0383c45c3bff6f843b7de2a19c7ba6b546f423727c2",
+    "answerHash": "f69c0a505c9c6773d7c7eb264010c6966e4d5fbdcdf42e12f5c3f278ac1908d0"
+   }
+  },
+  {
+   "name": "alias-fill",
+   "result": {
+    "id": "GEN-1",
+    "bankId": "BANK",
+    "type": "short",
+    "question": "填入内容",
+    "answer": [
+     "x"
+    ],
+    "tags": [],
+    "contentHash": "6d81b94d97326391f23a8afce6835ed845b952b8bf7fc9ba7ba86214318adcee",
+    "answerHash": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
+   }
+  },
+  {
+   "name": "alias-text",
+   "result": {
+    "id": "GEN-1",
+    "bankId": "BANK",
+    "type": "short",
+    "question": "简述概念",
+    "answer": [
+     "x"
+    ],
+    "tags": [],
+    "contentHash": "2d744e4511340714137ee0383c45c3bff6f843b7de2a19c7ba6b546f423727c2",
+    "answerHash": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
+   }
+  },
+  {
+   "name": "alias-fill-with-blank",
+   "result": {
+    "id": "GEN-1",
+    "bankId": "BANK",
+    "type": "blank",
+    "question": "填入____内容",
+    "answer": [
+     "x"
+    ],
+    "tags": [],
+    "contentHash": "a8961eaa94a32d2cc9dc0c9883f4f8b8231f4d91fe53fce310b9757944f8f97b",
+    "answerHash": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
+   }
+  },
+  {
+   "name": "type-uppercase",
+   "result": {
+    "id": "GEN-1",
+    "bankId": "BANK",
+    "type": "single",
+    "question": "题",
+    "options": {
+     "A": "甲"
+    },
+    "answer": [
+     "A"
+    ],
+    "tags": [],
+    "contentHash": "6ee6c7457396e9e0d4e1414a3fcf0170973b02df7702ff9b47cf20069d5e8967",
+    "answerHash": "559aead08264d5795d3909718cdd05abd49572e84fe55590eef31a88a08fdffd"
+   }
+  },
+  {
+   "name": "explicit-type-short-with-options",
+   "result": {
+    "id": "GEN-1",
+    "bankId": "BANK",
+    "type": "short",
+    "question": "题",
+    "options": {
+     "A": "甲"
+    },
+    "answer": [
+     "a"
+    ],
+    "tags": [],
+    "contentHash": "bdbedd40087bf9682f8183b6228ec0cf68c2f6525ab1063a0fe8a00785372a8e",
+    "answerHash": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"
+   }
+  },
+  {
+   "name": "id-kept",
+   "result": {
+    "id": "my-id",
+    "bankId": "BANK",
+    "type": "single",
+    "question": "题",
+    "options": {
+     "A": "甲"
+    },
+    "answer": [
+     "A"
+    ],
+    "tags": [],
+    "contentHash": "6ee6c7457396e9e0d4e1414a3fcf0170973b02df7702ff9b47cf20069d5e8967",
+    "answerHash": "559aead08264d5795d3909718cdd05abd49572e84fe55590eef31a88a08fdffd"
+   }
+  },
+  {
+   "name": "id-empty",
+   "result": {
+    "id": "GEN-1",
+    "bankId": "BANK",
+    "type": "single",
+    "question": "题",
+    "options": {
+     "A": "甲"
+    },
+    "answer": [
+     "A"
+    ],
+    "tags": [],
+    "contentHash": "6ee6c7457396e9e0d4e1414a3fcf0170973b02df7702ff9b47cf20069d5e8967",
+    "answerHash": "559aead08264d5795d3909718cdd05abd49572e84fe55590eef31a88a08fdffd"
+   }
+  },
+  {
+   "name": "tags",
+   "result": {
+    "id": "GEN-1",
+    "bankId": "BANK",
+    "type": "single",
+    "question": "题",
+    "options": {
+     "A": "甲"
+    },
+    "answer": [
+     "A"
+    ],
+    "tags": [
+     "t1",
+     "t2"
+    ],
+    "contentHash": "6ee6c7457396e9e0d4e1414a3fcf0170973b02df7702ff9b47cf20069d5e8967",
+    "answerHash": "559aead08264d5795d3909718cdd05abd49572e84fe55590eef31a88a08fdffd"
+   }
+  },
+  {
+   "name": "explanation",
+   "result": {
+    "id": "GEN-1",
+    "bankId": "BANK",
+    "type": "single",
+    "question": "题",
+    "options": {
+     "A": "甲"
+    },
+    "answer": [
+     "A"
+    ],
+    "explanation": "  解析文本  ",
+    "tags": [],
+    "contentHash": "6ee6c7457396e9e0d4e1414a3fcf0170973b02df7702ff9b47cf20069d5e8967",
+    "answerHash": "559aead08264d5795d3909718cdd05abd49572e84fe55590eef31a88a08fdffd"
+   }
+  },
+  {
+   "name": "opt-expl-map",
+   "result": {
+    "id": "GEN-1",
+    "bankId": "BANK",
+    "type": "single",
+    "question": "题",
+    "options": {
+     "A": "甲",
+     "B": "乙"
+    },
+    "answer": [
+     "A"
+    ],
+    "optionExplanations": {
+     "A": "甲对",
+     "true": "t"
+    },
+    "tags": [],
+    "contentHash": "f8432932290dd317b8a488bd7256279bd67ed8ba42f6a91397963eda29c5f6db",
+    "answerHash": "559aead08264d5795d3909718cdd05abd49572e84fe55590eef31a88a08fdffd"
+   }
+  },
+  {
+   "name": "opt-expl-list",
+   "result": {
+    "id": "GEN-1",
+    "bankId": "BANK",
+    "type": "single",
+    "question": "题",
+    "options": {
+     "A": "甲",
+     "B": "乙"
+    },
+    "answer": [
+     "A"
+    ],
+    "optionExplanations": {
+     "A": "甲对",
+     "C": "丙"
+    },
+    "tags": [],
+    "contentHash": "f8432932290dd317b8a488bd7256279bd67ed8ba42f6a91397963eda29c5f6db",
+    "answerHash": "559aead08264d5795d3909718cdd05abd49572e84fe55590eef31a88a08fdffd"
+   }
+  },
+  {
+   "name": "opt-expl-alias",
+   "result": {
+    "id": "GEN-1",
+    "bankId": "BANK",
+    "type": "single",
+    "question": "题",
+    "options": {
+     "A": "甲",
+     "B": "乙"
+    },
+    "answer": [
+     "A"
+    ],
+    "optionExplanations": {
+     "A": "别名解析"
+    },
+    "tags": [],
+    "contentHash": "f8432932290dd317b8a488bd7256279bd67ed8ba42f6a91397963eda29c5f6db",
+    "answerHash": "559aead08264d5795d3909718cdd05abd49572e84fe55590eef31a88a08fdffd"
+   }
+  },
+  {
+   "name": "opt-expl-all-empty",
+   "result": {
+    "id": "GEN-1",
+    "bankId": "BANK",
+    "type": "single",
+    "question": "题",
+    "options": {
+     "A": "甲"
+    },
+    "answer": [
+     "A"
+    ],
+    "tags": [],
+    "contentHash": "6ee6c7457396e9e0d4e1414a3fcf0170973b02df7702ff9b47cf20069d5e8967",
+    "answerHash": "559aead08264d5795d3909718cdd05abd49572e84fe55590eef31a88a08fdffd"
+   }
+  },
+  {
+   "name": "answer-empty-strings",
+   "result": {
+    "id": "GEN-1",
+    "bankId": "BANK",
+    "type": "single",
+    "question": "题",
+    "options": {
+     "A": "甲"
+    },
+    "answer": [],
+    "tags": [],
+    "contentHash": "6ee6c7457396e9e0d4e1414a3fcf0170973b02df7702ff9b47cf20069d5e8967",
+    "answerHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+   }
+  },
+  {
+   "name": "answer-spaces",
+   "result": {
+    "id": "GEN-1",
+    "bankId": "BANK",
+    "type": "multiple",
+    "question": "题",
+    "options": {
+     "A": "甲",
+     "B": "乙"
+    },
+    "answer": [
+     "A",
+     "B"
+    ],
+    "tags": [],
+    "contentHash": "66dc28ed94cd3f2a9ac2e46c254c38599f4f438dfafbd079908fb396ff89ee91",
+    "answerHash": "b17c8419f544abd0648345006bbe975b43acf9fc878712a1116312f3e1e24b2e"
+   }
+  },
+  {
+   "name": "question-with-spaces",
+   "result": {
+    "id": "GEN-1",
+    "bankId": "BANK",
+    "type": "single",
+    "question": "  题  目  ",
+    "options": {
+     "A": "甲"
+    },
+    "answer": [
+     "A"
+    ],
+    "tags": [],
+    "contentHash": "51238f76f20d0d1724b86eafc6389d2d42216ffb05e8375044e839c3d53356ff",
+    "answerHash": "559aead08264d5795d3909718cdd05abd49572e84fe55590eef31a88a08fdffd"
+   }
+  },
+  {
+   "name": "options-whitespace-values",
+   "result": {
+    "id": "GEN-1",
+    "bankId": "BANK",
+    "type": "single",
+    "question": "题",
+    "options": {
+     "A": " 甲  乙 ",
+     "B": "，。；："
+    },
+    "answer": [
+     "A"
+    ],
+    "tags": [],
+    "contentHash": "e73b1fd80486ab95c9958f68cdb18bd68ce4c9309cdcd8840b9f432aa0115ef8",
+    "answerHash": "559aead08264d5795d3909718cdd05abd49572e84fe55590eef31a88a08fdffd"
+   }
+  },
+  {
+   "name": "empty-options-obj",
+   "result": {
+    "id": "GEN-1",
+    "bankId": "BANK",
+    "type": "blank",
+    "question": "题填空____",
+    "options": {},
+    "answer": [
+     "x"
+    ],
+    "tags": [],
+    "contentHash": "18fbe5cdc953ae79a0f131188287e2eb419ec13ea16d31de1e83a7fbb46f6203",
+    "answerHash": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
+   }
+  },
+  {
+   "name": "multi-answer-no-options",
+   "result": {
+    "id": "GEN-1",
+    "bankId": "BANK",
+    "type": "short",
+    "question": "题目内容",
+    "answer": [
+     "x",
+     "y"
+    ],
+    "tags": [],
+    "contentHash": "ea1302d5a4cd2bf864ede948cdb84350be7965ebc1176a99a64503c9ba5f679c",
+    "answerHash": "968e772cf168b7f17f3fbd00e6e1c8b4afb8db2f0c1548d9928f3c3d7a758a75"
+   }
+  },
+  {
+   "name": "judge-by-infer-true",
+   "result": {
+    "id": "GEN-1",
+    "bankId": "BANK",
+    "type": "judge",
+    "question": "题",
+    "options": {
+     "A": "甲"
+    },
+    "answer": [
+     "true"
+    ],
+    "tags": [],
+    "contentHash": "e429f14cc521e0a2a133286420040c2b8aabeee32404b27c01eacb379615d5e6",
+    "answerHash": "b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b"
+   }
+  },
+  {
+   "name": "multiple-explicit",
+   "result": {
+    "id": "GEN-1",
+    "bankId": "BANK",
+    "type": "multiple",
+    "question": "题",
+    "options": {
+     "A": "甲",
+     "B": "乙"
+    },
+    "answer": [
+     "B",
+     "A"
+    ],
+    "tags": [],
+    "contentHash": "66dc28ed94cd3f2a9ac2e46c254c38599f4f438dfafbd079908fb396ff89ee91",
+    "answerHash": "b17c8419f544abd0648345006bbe975b43acf9fc878712a1116312f3e1e24b2e"
+   }
+  },
+  {
+   "name": "judge-with-spaces",
+   "result": {
+    "id": "GEN-1",
+    "bankId": "BANK",
+    "type": "judge",
+    "question": "判断",
+    "answer": [
+     "true"
+    ],
+    "tags": [],
+    "contentHash": "f691ccbbc6f1e6f0349655cd2e3e9b9729054c7b402db7cd06bd57280ab27566",
+    "answerHash": "b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b"
+   }
+  }
+ ],
+ "judge": [
+  {
+   "name": "same",
+   "result": "correct"
+  },
+  {
+   "name": "diff",
+   "result": "wrong"
+  },
+  {
+   "name": "case",
+   "result": "correct"
+  },
+  {
+   "name": "case2",
+   "result": "correct"
+  },
+  {
+   "name": "multi-order",
+   "result": "correct"
+  },
+  {
+   "name": "multi-miss",
+   "result": "wrong"
+  },
+  {
+   "name": "multi-extra",
+   "result": "wrong"
+  },
+  {
+   "name": "empty-user",
+   "result": "unanswered"
+  },
+  {
+   "name": "blank-items",
+   "result": "unanswered"
+  },
+  {
+   "name": "trim-answer",
+   "result": "correct"
+  },
+  {
+   "name": "judge-true",
+   "result": "correct"
+  },
+  {
+   "name": "judge-mismatch",
+   "result": "wrong"
+  },
+  {
+   "name": "blank-case",
+   "result": "correct"
+  },
+  {
+   "name": "blank-inner-space",
+   "result": "wrong"
+  },
+  {
+   "name": "empty-correct",
+   "result": "wrong"
+  },
+  {
+   "name": "unicode-case",
+   "result": "correct"
+  },
+  {
+   "name": "sort-mixed",
+   "result": "correct"
+  },
+  {
+   "name": "cjk",
+   "result": "correct"
+  }
+ ],
+ "wrongIds": [
+  {
+   "name": "none",
+   "result": []
+  },
+  {
+   "name": "latest-correct",
+   "result": []
+  },
+  {
+   "name": "latest-wrong",
+   "result": [
+    "q1"
+   ]
+  },
+  {
+   "name": "mixed",
+   "result": [
+    "q2",
+    "q3"
+   ]
+  },
+  {
+   "name": "unanswered-ignored",
+   "result": []
+  },
+  {
+   "name": "same-ts-id",
+   "result": []
+  },
+  {
+   "name": "order-of-first-seen",
+   "result": [
+    "q1",
+    "q9"
+   ]
+  }
+ ],
+ "fingerprint": [
+  {
+   "name": "plain",
+   "contentKey": "single\n测试题目\nA:选项A|B:选项B",
+   "answerKey": "A",
+   "contentHash": "0e8612b2cdea5c30ec8cb0bbf93f7cb5b8a6e6b5982b04a86d34adbce14301f5",
+   "answerHash": "559aead08264d5795d3909718cdd05abd49572e84fe55590eef31a88a08fdffd"
+  },
+  {
+   "name": "cjk-punct",
+   "contentKey": "single\n测试,题目.内容;标题:副标题\n",
+   "answerKey": "A",
+   "contentHash": "573b6de1c857753cff364263281c4134f6c19bb3bbdf181caa30a1f02f617201",
+   "answerHash": "559aead08264d5795d3909718cdd05abd49572e84fe55590eef31a88a08fdffd"
+  },
+  {
+   "name": "whitespace",
+   "contentKey": "single\n测试 题目 内容 换行 再来\n",
+   "answerKey": "A",
+   "contentHash": "c94b5e456e866fde55af508c8f1503e42ed185a2aa073df904983c0842b4cb36",
+   "answerHash": "559aead08264d5795d3909718cdd05abd49572e84fe55590eef31a88a08fdffd"
+  },
+  {
+   "name": "nbsp-bom",
+   "contentKey": "single\n简述 一下 概念 吗\n",
+   "answerKey": "A",
+   "contentHash": "1d1ef8525ffb795dcf8c9ce56b4bd36cf2d797fdb84d188db4c17f007f0e4e4e",
+   "answerHash": "559aead08264d5795d3909718cdd05abd49572e84fe55590eef31a88a08fdffd"
+  },
+  {
+   "name": "option-order",
+   "contentKey": "single\n测试题目\nA:甲|B:乙|C:丙",
+   "answerKey": "A,C",
+   "contentHash": "f8250ea660876ee70cd24aedcc86f81b090848e9ac4ebb39d8bef38752c7659c",
+   "answerHash": "01b97bbb6e943606d41bc1eae00bb90e76d1f722f5d45e8a5191c22809819707"
+  },
+  {
+   "name": "mixed-case-keys",
+   "contentKey": "multiple\n测试题目\n1:one|a:小写|B:大写|true:t|z:zz|Z:z",
+   "answerKey": "A,B,D",
+   "contentHash": "63d032363521a77a115117001c8e10d5b73f1186bc37286fa89a8e47679b9291",
+   "answerHash": "ae4cb965597dfce6441b7f5adabbda668a1110f10bb07af95c4d7d5825ed4f23"
+  },
+  {
+   "name": "no-options",
+   "contentKey": "blank\n填入____内容\n",
+   "answerKey": "Hello World",
+   "contentHash": "a8961eaa94a32d2cc9dc0c9883f4f8b8231f4d91fe53fce310b9757944f8f97b",
+   "answerHash": "a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e"
+  },
+  {
+   "name": "empty-options",
+   "contentKey": "single\n测试题目\n",
+   "answerKey": "",
+   "contentHash": "1921939450babaad11f7ef3ca7d4fa95fea670d611b4dfd8d65733bf04942b03",
+   "answerHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+   "name": "answer-not-trimmed",
+   "contentKey": "single\n测试题目\n",
+   "answerKey": " b,A ",
+   "contentHash": "1921939450babaad11f7ef3ca7d4fa95fea670d611b4dfd8d65733bf04942b03",
+   "answerHash": "56a7fffab5b9aab0b7574adbce80a6c84186861eb5a8f5188a9bf59397e1c83e"
+  },
+  {
+   "name": "option-values-punct",
+   "contentKey": "single\n测试题目\nA:,.;:|B:a b",
+   "answerKey": "A",
+   "contentHash": "c22c8543d9141e62f2e7136c701c0f1c87f12fb13e45e04129c6e72dc3a7e0d5",
+   "answerHash": "559aead08264d5795d3909718cdd05abd49572e84fe55590eef31a88a08fdffd"
+  },
+  {
+   "name": "ideographic-space",
+   "contentKey": "single\n全角 空格 和 窄空格\n",
+   "answerKey": "A",
+   "contentHash": "9424fab9b00e3d773ff74c10fa12a2475e0fe029f18d2b621b7ac6d4499a8948",
+   "answerHash": "559aead08264d5795d3909718cdd05abd49572e84fe55590eef31a88a08fdffd"
+  },
+  {
+   "name": "line-sep",
+   "contentKey": "single\n行 分隔 符\n",
+   "answerKey": "A",
+   "contentHash": "6cf956cf3b334ed582337bf435e07227b657a0374579b6d8e4ac3bbddc915b71",
+   "answerHash": "559aead08264d5795d3909718cdd05abd49572e84fe55590eef31a88a08fdffd"
+  }
+ ],
+ "infer": [
+  {
+   "name": "judge-true",
+   "result": "judge"
+  },
+  {
+   "name": "judge-false",
+   "result": "judge"
+  },
+  {
+   "name": "single",
+   "result": "single"
+  },
+  {
+   "name": "multiple",
+   "result": "multiple"
+  },
+  {
+   "name": "blank-underscore",
+   "result": "blank"
+  },
+  {
+   "name": "blank-paren2",
+   "result": "blank"
+  },
+  {
+   "name": "blank-paren0",
+   "result": "blank"
+  },
+  {
+   "name": "blank-paren1",
+   "result": "short"
+  },
+  {
+   "name": "short",
+   "result": "short"
+  },
+  {
+   "name": "empty-options-short",
+   "result": "short"
+  },
+  {
+   "name": "two-true",
+   "result": "short"
+  },
+  {
+   "name": "judge-with-options",
+   "result": "judge"
+  },
+  {
+   "name": "empty-answer-options",
+   "result": "single"
+  }
+ ]
+}
