@@ -14,11 +14,11 @@ void main() {
   });
 
   group('液态玻璃几何量', () {
-    test('折射带 28dp、位移 18dp、色散 ~0.8dp、纵向镜面折叠 ~14dp', () {
-      expect(LiquidGlass.band, 28);
-      expect(LiquidGlass.displacement, inInclusiveRange(16, 20));
-      expect(LiquidGlass.chroma, inInclusiveRange(0.5, 1.2));
-      expect(LiquidGlass.mirror, inInclusiveRange(10, 20));
+    test('折射带 16dp、位移 8dp、色散 ~0.35dp、纵向镜面折叠 ~5dp', () {
+      expect(LiquidGlass.band, 16);
+      expect(LiquidGlass.displacement, inInclusiveRange(6, 10));
+      expect(LiquidGlass.chroma, inInclusiveRange(0.2, 0.5));
+      expect(LiquidGlass.mirror, inInclusiveRange(3, 8));
     });
 
     test('位移小于带宽，透镜剖面才不会把背景折叠成重影', () {

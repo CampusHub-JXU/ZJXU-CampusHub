@@ -603,7 +603,14 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
   Widget _buildActivityList() {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
-    return ListView(
+    final hasActivities = _activities.isNotEmpty;
+    final showFooter = hasActivities && !_refreshing;
+    // 0: 顶部搜索/筛选栏；空态时 1 为空态占位；非空时 1..N 为活动卡，末尾为页脚。
+    final itemCount = hasActivities
+        ? 1 + _activities.length + (showFooter ? 1 : 0)
+        : 2;
+
+    return ListView.builder(
       controller: _scrollController,
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(
@@ -612,73 +619,87 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
         AppSpacing.pageMargin,
         28,
       ),
-      children: [
-        AppSearchField(
-          controller: _searchController,
-          hintText: '搜索活动名称、地点或组织',
-          onChanged: (_) {},
-          onSubmitted: (keyword) {
-            _applyQuery(_query.copyWith(keyword: keyword.trim()));
-          },
-          onClear: () {
-            _searchController.clear();
-            if (_query.keyword.isNotEmpty) {
-              _applyQuery(_query.copyWith(keyword: ''));
-            }
-          },
-        ),
-        if (_authChecked &&
-            _authState != SecondClassroomAuthState.authenticated) ...[
-          const SizedBox(height: AppSpacing.md),
-          _SecondClassroomAuthBanner(
-            state: _authState,
-            onLogin: _handleSecondClassroomLogin,
-            onRetry: _retrySecondClassroomAuth,
-          ),
-          const SizedBox(height: AppSpacing.sm),
-        ],
-        const SizedBox(height: AppSpacing.md),
-        AppFilterChips<SecondClassroomActivityStatus>(
-          padding: EdgeInsets.zero,
-          options: [
-            for (final status in _statusChipValues)
-              AppFilterOption(
-                status,
-                status == SecondClassroomActivityStatus.all
-                    ? '全部'
-                    : status.label,
+      itemCount: itemCount,
+      itemBuilder: (context, index) {
+        if (index == 0) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              AppSearchField(
+                controller: _searchController,
+                hintText: '搜索活动名称、地点或组织',
+                onChanged: (_) {},
+                onSubmitted: (keyword) {
+                  _applyQuery(_query.copyWith(keyword: keyword.trim()));
+                },
+                onClear: () {
+                  _searchController.clear();
+                  if (_query.keyword.isNotEmpty) {
+                    _applyQuery(_query.copyWith(keyword: ''));
+                  }
+                },
               ),
-          ],
-          selected: _query.status,
-          onSelected: (status) {
-            if (status == _query.status) return;
-            _applyQuery(_query.copyWith(status: status));
-          },
-        ),
-        const SizedBox(height: AppSpacing.xs),
-        _ListToolbar(
-          activityCount: _activities.length,
-          sort: _query.sort,
-          activeFilterCount: _activeFilterCount(_query),
-          onSortChanged: (sort) {
-            if (sort == _query.sort) return;
-            _applyQuery(_query.copyWith(sort: sort));
-          },
-          onOpenFilters: _openFilterSheet,
-        ),
-        RefreshStatusLine(
-          updatedAt: _cacheUpdatedAt,
-          refreshing: _refreshing,
-          failed: _refreshFailed,
-          prefix: _showingCache ? '本地缓存' : null,
-          loadingLabel: '正在同步活动…',
-        ),
-        const SizedBox(height: AppSpacing.md),
-        if (_activities.isEmpty)
-          const _EmptyActivityState()
-        else ...[
-          for (final activity in _activities) ...[
-            _ActivityCard(
+              if (_authChecked &&
+                  _authState != SecondClassroomAuthState.authenticated) ...[
+                const SizedBox(height: AppSpacing.md),
+                _SecondClassroomAuthBanner(
+                  state: _authState,
+                  onLogin: _handleSecondClassroomLogin,
+                  onRetry: _retrySecondClassroomAuth,
+                ),
+                const SizedBox(height: AppSpacing.sm),
+              ],
+              const SizedBox(height: AppSpacing.md),
+              AppFilterChips<SecondClassroomActivityStatus>(
+                padding: EdgeInsets.zero,
+                options: [
+                  for (final status in _statusChipValues)
+                    AppFilterOption(
+                      status,
+                      status == SecondClassroomActivityStatus.all
+                          ? '全部'
+                          : status.label,
+                    ),
+                ],
+                selected: _query.status,
+                onSelected: (status) {
+                  if (status == _query.status) return;
+                  _applyQuery(_query.copyWith(status: status));
+                },
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              _ListToolbar(
+                activityCount: _activities.length,
+                sort: _query.sort,
+                activeFilterCount: _activeFilterCount(_query),
+                onSortChanged: (sort) {
+                  if (sort == _query.sort) return;
+                  _applyQuery(_query.copyWith(sort: sort));
+                },
+                onOpenFilters: _openFilterSheet,
+              ),
+              RefreshStatusLine(
+                updatedAt: _cacheUpdatedAt,
+                refreshing: _refreshing,
+                failed: _refreshFailed,
+                prefix: _showingCache ? '本地缓存' : null,
+                loadingLabel: '正在同步活动…',
+              ),
+              const SizedBox(height: AppSpacing.md),
+            ],
+          );
+        }
+
+        if (!hasActivities) {
+          return const _EmptyActivityState();
+        }
+
+        final activityIndex = index - 1;
+        if (activityIndex < _activities.length) {
+          final activity = _activities[activityIndex];
+          return Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.md),
+            child: _ActivityCard(
               activity: activity,
               imageUrl: _service.imageUrl(activity.coverId),
               subscribed: _isActivitySubscribed(activity),
@@ -686,22 +707,19 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
               onTap: () => _openActivityDetail(activity),
               onSubscribe: () => _toggleSubscription(activity),
             ),
-            const SizedBox(height: AppSpacing.md),
-          ],
-          if (!_refreshing)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Center(
-                child: Text(
-                  '已加载全部活动',
-                  style: context.appText.meta.copyWith(
-                    color: cs.onSurfaceVariant,
-                  ),
-                ),
-              ),
+          );
+        }
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Center(
+            child: Text(
+              '已加载全部活动',
+              style: context.appText.meta.copyWith(color: cs.onSurfaceVariant),
             ),
-        ],
-      ],
+          ),
+        );
+      },
     );
   }
 

@@ -129,8 +129,10 @@ class GlassContainer extends StatelessWidget {
       cs,
       liquidGlass: liquidGlass,
     );
-    // 液态玻璃面（acrylic）沿轮廓画方向性液态玻璃边缘高光描边，此时收起
-    // ShapeDecoration 的整圈 hairline，避免双框；solid 退化仍走普通描边。
+    // 液态玻璃面（acrylic）沿轮廓画边缘高光描边（方正贴底通栏只画顶部细分割线，
+    // 悬浮圆角面画方向性液态玻璃整圈高光），此时收起 ShapeDecoration 的整圈
+    // hairline，避免双框；solid 退化仍走普通描边。
+    final isFlushRect = radius == BorderRadius.zero;
     final liquidEdgeStroke =
         wantsLiquid && useBlur && recipe.style == SurfaceMaterialStyle.acrylic;
 
@@ -148,6 +150,23 @@ class GlassContainer extends StatelessWidget {
             ),
           );
 
+    final topDividerColor = isDark
+        ? Colors.white.withValues(alpha: 0.12)
+        : cs.outlineVariant.withValues(alpha: 0.55);
+
+    final ShapeBorder surfaceShape = isFlushRect
+        ? Border(
+            top: liquidEdgeStroke
+                ? BorderSide.none
+                : BorderSide(color: topDividerColor, width: 0.75),
+          )
+        : RoundedSuperellipseBorder(
+            borderRadius: radius,
+            side: liquidEdgeStroke
+                ? BorderSide.none
+                : BorderSide(color: borderColor, width: isDark ? 0.8 : 1.0),
+          );
+
     final content = Container(
       width: width,
       height: height,
@@ -157,13 +176,10 @@ class GlassContainer extends StatelessWidget {
         image: grain && useBlur && recipe.style == SurfaceMaterialStyle.acrylic
             ? frostGrainImage(isDark: isDark)
             : null,
-        shadows: useBlur && !liquidEdgeStroke ? _shadows(isDark, recipe) : null,
-        shape: RoundedSuperellipseBorder(
-          borderRadius: radius,
-          side: liquidEdgeStroke
-              ? BorderSide.none
-              : BorderSide(color: borderColor, width: isDark ? 0.8 : 1.0),
-        ),
+        shadows: useBlur && !liquidEdgeStroke && !isFlushRect
+            ? _shadows(isDark, recipe)
+            : null,
+        shape: surfaceShape,
       ),
       child: innerContent,
     );
@@ -196,8 +212,8 @@ class GlassContainer extends StatelessWidget {
               child: content,
             );
       layer = liquidEdgeStroke
-          // 高光描边与 BackdropFilter 同级（同在 ClipRRect 内），保证
-          // BackdropFilter 内部没有任何 CustomPaint（防噪点回归守卫）。
+          // 高光描边 / 顶部分割线与 BackdropFilter 同级（同在 ClipRRect 内），
+          // 保证 BackdropFilter 内部没有任何 CustomPaint（防噪点回归守卫）。
           ? Stack(
               fit: StackFit.passthrough,
               children: [
@@ -205,10 +221,12 @@ class GlassContainer extends StatelessWidget {
                 Positioned.fill(
                   child: IgnorePointer(
                     child: CustomPaint(
-                      foregroundPainter: _NavLiquidEdgePainter(
-                        borderRadius: radius,
-                        isDark: isDark,
-                      ),
+                      foregroundPainter: isFlushRect
+                          ? _NavTopDividerPainter(color: topDividerColor)
+                          : _NavLiquidEdgePainter(
+                              borderRadius: radius,
+                              isDark: isDark,
+                            ),
                     ),
                   ),
                 ),
@@ -219,8 +237,8 @@ class GlassContainer extends StatelessWidget {
     Widget clipped = ClipRRect(borderRadius: radius, child: layer);
     // 液态玻璃悬浮影必须画在 ClipRRect 外层：写在被裁层内部会被整圈裁掉，
     // 白底上没有「浮起」的底影，亮高光描边也失去反差底。
-    // 用 CustomPaint + evenOdd 挖空玻璃轮廓，阴影只落在轮廓外围环带。
-    if (liquidEdgeStroke) {
+    // 方正贴底通栏（radius == BorderRadius.zero）不做四边外扩悬浮影。
+    if (liquidEdgeStroke && !isFlushRect) {
       clipped = CustomPaint(
         painter: _NavOuterShadowPainter(
           borderRadius: radius,
@@ -238,9 +256,9 @@ class GlassContainer extends StatelessWidget {
   /// 模糊强度：按配方再乘档位系数，保证 nav/overlay 仍略重于卡片。
   ///
   /// 液态玻璃分两条路径：
-  /// * shader 就绪时系数收到 0.15（σ≈2.8）：折射只弯折「已经模糊过」的背景，
-  ///   σ 越大位移后的色块与红蓝边带对比越平。σ≈2.8 既保住玻璃的柔化感，
-  ///   又让背后的文字与彩色边缘在边带里保有清晰弯折与色散。
+  /// * shader 就绪时，nav 档系数收在 0.35（σ≈6.6）：比极低模糊（0.15）
+  ///   更稳重，文字滚过贴底栏时不杂乱，同时仍保留边缘折射与微弱色散；
+  ///   其余液态玻璃卡片保留 0.15（σ≈2.8）；
   /// * shader 未就绪退回纯磨砂时仍是 1.0（σ≈18.8）：没有折射层，磨砂自己
   ///   得撑起材质感，再压 σ 会显得单薄发涩。
   double _blurSigma(
@@ -249,12 +267,12 @@ class GlassContainer extends StatelessWidget {
     bool liquidGlass = false,
   }) {
     if (wantsLiquid) {
-      final factor = liquidGlass ? 0.15 : 1.0;
+      final factor = liquidGlass ? (tier == GlassTier.nav ? 0.35 : 0.15) : 1.0;
       return (recipe.blurSigma * factor).clamp(0.0, 44.0);
     }
     final factor = switch (tier) {
       GlassTier.card => 1.0,
-      GlassTier.nav => liquidGlass ? 0.15 : 1.0,
+      GlassTier.nav => liquidGlass ? 0.35 : 1.0,
       GlassTier.overlay => 1.4,
     };
     return (recipe.blurSigma * factor).clamp(0.0, 44.0);
@@ -262,9 +280,8 @@ class GlassContainer extends StatelessWidget {
 
   /// 填充不透明度：配方值并按档位加一点保底，避免底栏/弹层过透。
   ///
-  /// 液态玻璃面反而要更透：材质感来自折射 + 边缘色散 + 高光描边，高遮罩
-  /// 会把弯曲与色散吃掉退回塑料片。浅色收在 0.18–0.26（清亮不发灰）、
-  /// 深色收在 0.10–0.18（深琉璃不泛白雾）。
+  /// nav 档适当抬高半透明基底（浅色 ~0.34、深色 ~0.26），让正文滚动
+  /// 穿过贴底栏时保持清晰对比，同时留出液态玻璃边缘折射与通透感。
   double _fillAlpha(
     MaterialRecipe recipe, {
     required bool wantsLiquid,
@@ -273,6 +290,16 @@ class GlassContainer extends StatelessWidget {
   }) {
     final base = recipe.surfaceOpacity;
     if (wantsLiquid) {
+      if (tier == GlassTier.nav) {
+        if (liquidGlass) {
+          return isDark
+              ? (base * 0.62).clamp(0.22, 0.32)
+              : (base * 0.80).clamp(0.30, 0.40);
+        }
+        return isDark
+            ? (base * 0.65).clamp(0.22, 0.32)
+            : (base * 0.80).clamp(0.30, 0.40);
+      }
       if (liquidGlass) {
         return isDark
             ? (base * 0.32).clamp(0.10, 0.18)
@@ -419,6 +446,28 @@ class _NavLiquidEdgePainter extends CustomPainter {
   @override
   bool shouldRepaint(_NavLiquidEdgePainter old) =>
       old.borderRadius != borderRadius || old.isDark != isDark;
+}
+
+/// 方正贴底通栏的顶缘细分割线：只沿顶部边界绘制 0.75dp hairline，
+/// 避免四边描边与悬浮高光框在贴底通栏上显得冗重。
+class _NavTopDividerPainter extends CustomPainter {
+  _NavTopDividerPainter({required this.color});
+
+  final Color color;
+  static const double _strokeWidth = 0.75;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final y = _strokeWidth * 0.5;
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = _strokeWidth
+      ..color = color;
+    canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+  }
+
+  @override
+  bool shouldRepaint(_NavTopDividerPainter old) => old.color != color;
 }
 
 /// 持有液态玻璃容器的屏幕矩形槽，包一层 [LiquidGlassBoundsTracker] 并在

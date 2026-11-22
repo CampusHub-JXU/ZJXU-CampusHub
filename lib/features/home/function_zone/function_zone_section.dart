@@ -9,24 +9,26 @@ import '../../../core/config/feature_entry_catalog.dart';
 import '../../../core/theme/app_design_tokens.dart';
 import '../../../core/theme/app_theme_controller.dart';
 import '../../../core/config/service_hub_usage_store.dart';
-import '../../../shared/widgets/app_icon_badge.dart';
+import '../../../shared/widgets/app_surface_style.dart';
 import '../../../shared/widgets/app_tile_surface.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../shared/widgets/app_feedback.dart';
 import '../../../shared/widgets/app_search_field.dart';
 
-/// 首页单滚动页底部的「功能」锚点段落：圆润磁贴网格（有主次层级）。
+/// 首页单滚动页底部的「功能」锚点段落：硬朗 Win10 马赛克磁贴网格（有主次层级）。
 ///
-/// 结构：标题 → 搜索框 → 「常用」分组 → 按 [FeatureEntryCategory] 固定分类。
+/// 结构：标题 → 搜索框 → 「常用」马赛克分组 → 按 [FeatureEntryCategory] 固定分类。
 /// 输入关键词时分组收起，只显示匹配结果（标题 / 副标题 / 别名）。
 ///
-/// 视觉与交互参考 Win10 磁贴设计并圆润化：
-/// - 主次分明（PRD §25）：仅「常用」排序 rank #1 的入口升级为唯一的 Primary（宽）磁贴，
-///   其余入口都是 Compact 磁贴网格（手机 2 列 / 宽屏 3-4 列）；不再出现多个
-///   宽磁贴连续，也不再因奇数项把最后一个自动升级。
-/// - 淡淡圆角毛玻璃：使用现有表面机制 [AppTileSurface]（平色填充 / 半透明 tint +
-///   柔和落底阴影 + squircle 圆角），零 BackdropFilter，避免每格重叠滤镜导致 GPU 开销。
-/// - 非语义图标统一主题色：入口徽标统一跟随主题主色，保持沉稳内敛的视觉节奏。
+/// 视觉与交互参考 Win10 开始屏幕马赛克设计：
+/// - 主次分明（PRD §25）：仅「常用」排序 rank #1 的入口升级为唯一的 2×2 大磁贴，
+///   其右侧由标准小磁贴填满两行；其余入口按 3 列（宽屏 4–5 列）基准网格
+///   以 2×1 宽条（实时数据 / 置顶 / 补位）与 1×1 小方块混排，动态消除断行空洞。
+/// - 高对比硬朗卡面：通过共享 [AppHardTileShell] 为 [AppTileSurface] 外套中性实底 +
+///   浅色模式 `outline`/`onSurface` 1dp 细描边与轻微落底影（[AppRadius.control] 8dp squircle），
+///   在 `#F3F4F6` 浅灰底上保持明确边界；零 BackdropFilter，避免重叠滤镜开销。
+/// - 裸色图标：去掉圆角方块底座避免「框套框」，图标直接取主题主色（深色微提亮），
+///   保持沉稳内敛的视觉节奏。
 class FunctionZoneSection extends StatefulWidget {
   const FunctionZoneSection({
     super.key,
@@ -185,47 +187,276 @@ class _FunctionZoneSectionState extends State<FunctionZoneSection> {
     }
   }
 
-  Widget _buildGrid(
+  /// 按 [columns] 列基准网格把 [entries] 编排为 2×1 宽条与 1×1 小方块混排：
+  /// - [preferWideIds] 优先升级为 2×1；
+  /// - 若末尾行存在空位则自动补升/降级 2×1 数量并局部重排，保证行满无断行空洞。
+  List<({FeatureEntryDefinition entry, int span})> _planMosaicItems(
     List<FeatureEntryDefinition> entries, {
+    required int columns,
+    required Set<String> preferWideIds,
+  }) {
+    final n = entries.length;
+    if (n == 0) return const [];
+    if (n == 1) {
+      final span = preferWideIds.contains(entries.first.id) && columns >= 2
+          ? 2
+          : 1;
+      return [(entry: entries.first, span: span)];
+    }
+
+    final maxWidePerRow = columns ~/ 2;
+    final preferredIndices = <int>[
+      for (var i = 0; i < n; i++)
+        if (preferWideIds.contains(entries[i].id)) i,
+    ];
+    final desiredWide = preferredIndices.length;
+
+    // 寻找最接近 desiredWide 且能整除 columns（每行不超过 maxWidePerRow 个 2×1）的宽条数量。
+    int? targetWide;
+    var bestDiff = 1 << 30;
+    for (var w = 0; w <= n; w++) {
+      final totalCells = n + w;
+      if (totalCells % columns != 0) continue;
+      final rows = totalCells ~/ columns;
+      if (w > rows * maxWidePerRow) continue;
+      final diff = (w - desiredWide).abs();
+      if (diff < bestDiff || (diff == bestDiff && w > (targetWide ?? -1))) {
+        bestDiff = diff;
+        targetWide = w;
+      }
+    }
+
+    if (targetWide == null) {
+      // 极少数无法整除的退化场景（例如 5 列下仅 2 项）：克制取偏好项并保序。
+      var used = 0;
+      return [
+        for (final entry in entries)
+          (
+            entry: entry,
+            span: preferWideIds.contains(entry.id) && used++ < maxWidePerRow
+                ? 2
+                : 1,
+          ),
+      ];
+    }
+
+    final wideIndexSet = <int>{};
+    for (final idx in preferredIndices) {
+      if (wideIndexSet.length >= targetWide) break;
+      wideIndexSet.add(idx);
+    }
+    for (var i = 0; i < n && wideIndexSet.length < targetWide; i++) {
+      wideIndexSet.add(i);
+    }
+
+    final queue = <({FeatureEntryDefinition entry, int span})>[
+      for (var i = 0; i < n; i++)
+        (entry: entries[i], span: wideIndexSet.contains(i) ? 2 : 1),
+    ];
+
+    var remWide = targetWide;
+    var remSmall = n - targetWide;
+    final planned = <({FeatureEntryDefinition entry, int span})>[];
+
+    while (queue.isNotEmpty) {
+      final remRows = (remSmall + 2 * remWide) ~/ columns;
+      final minWideThisRow = math.max(
+        0,
+        remWide - (remRows - 1) * maxWidePerRow,
+      );
+      final maxWideThisRow = math.min(remWide, maxWidePerRow);
+      final minWideBySmall = math.max(0, (columns - remSmall + 1) ~/ 2);
+      final lowerWide = math.max(minWideThisRow, minWideBySmall);
+
+      var prefixWide = 0;
+      var prefixCells = 0;
+      for (final item in queue) {
+        if (prefixCells + item.span > columns) break;
+        prefixCells += item.span;
+        if (item.span == 2) prefixWide++;
+      }
+
+      final rowWide = prefixWide.clamp(lowerWide, maxWideThisRow);
+      final rowSmall = columns - 2 * rowWide;
+
+      var pickedWide = 0;
+      var pickedSmall = 0;
+      final remaining = <({FeatureEntryDefinition entry, int span})>[];
+      for (final item in queue) {
+        if (item.span == 2 && pickedWide < rowWide) {
+          planned.add(item);
+          pickedWide++;
+        } else if (item.span == 1 && pickedSmall < rowSmall) {
+          planned.add(item);
+          pickedSmall++;
+        } else {
+          remaining.add(item);
+        }
+      }
+
+      remWide -= rowWide;
+      remSmall -= rowSmall;
+      queue
+        ..clear()
+        ..addAll(remaining);
+    }
+
+    return planned;
+  }
+
+  Widget _buildMosaicTile(
+    FeatureEntryDefinition entry, {
+    required int span,
     required double itemWidth,
+    required double unitHeight,
     required double gap,
   }) {
     final snapshot = _usageStore.snapshot;
+    final pinned = snapshot.isPinned(entry.id);
+    if (span == 2) {
+      return SizedBox(
+        width: 2 * itemWidth + gap,
+        height: unitHeight,
+        child: _WideFunctionTile(
+          entry: entry,
+          pinned: pinned,
+          statsText: _resolveStats(entry),
+          onTap: () => unawaited(_openEntry(entry)),
+          onLongPress: () => unawaited(_togglePinned(entry)),
+        ),
+      );
+    }
+    return SizedBox(
+      width: itemWidth,
+      height: unitHeight,
+      child: _SmallFunctionTile(
+        entry: entry,
+        pinned: pinned,
+        onTap: () => unawaited(_openEntry(entry)),
+        onLongPress: () => unawaited(_togglePinned(entry)),
+      ),
+    );
+  }
+
+  Widget _buildMosaicGrid(
+    List<FeatureEntryDefinition> entries, {
+    required int columns,
+    required double itemWidth,
+    required double unitHeight,
+    required double gap,
+    required Set<String> preferWideIds,
+  }) {
+    final items = _planMosaicItems(
+      entries,
+      columns: columns,
+      preferWideIds: preferWideIds,
+    );
     return Wrap(
       spacing: gap,
       runSpacing: gap,
       children: [
-        for (final entry in entries)
-          SizedBox(
-            width: itemWidth,
-            child: _SmallFunctionTile(
-              entry: entry,
-              pinned: snapshot.isPinned(entry.id),
-              onTap: () => unawaited(_openEntry(entry)),
-              onLongPress: () => unawaited(_togglePinned(entry)),
-            ),
+        for (final item in items)
+          _buildMosaicTile(
+            item.entry,
+            span: item.span,
+            itemWidth: itemWidth,
+            unitHeight: unitHeight,
+            gap: gap,
           ),
       ],
     );
   }
 
-  List<Widget> _buildGroups({required double itemWidth, required double gap}) {
+  Set<String> _defaultPreferWideIds(List<FeatureEntryDefinition> entries) {
+    final snapshot = _usageStore.snapshot;
+    return {
+      for (final entry in entries)
+        if (_resolveStats(entry) != null || snapshot.isPinned(entry.id))
+          entry.id,
+    };
+  }
+
+  List<Widget> _buildGroups({
+    required int columns,
+    required double itemWidth,
+    required double unitHeight,
+    required double gap,
+  }) {
     final snapshot = _usageStore.snapshot;
     final common = _commonEntries();
     final primaryEntry = common.first;
+    final rightColumns = math.max(1, columns - 2);
+    // 右侧与 2×2 大磁贴并排的两行区容量：3 列时 2 个 1×1，4 列时 4 个，5 列时可混排至 6 格。
+    final sideTargetCount = rightColumns == 1
+        ? 2
+        : rightColumns == 2
+        ? 4
+        : math.min(common.length - 1, 6);
+    final sideEntries = common.skip(1).take(sideTargetCount).toList();
+    final tailEntries = common.skip(1 + sideEntries.length).toList();
+    final sideWidth =
+        rightColumns * itemWidth + math.max(0, rightColumns - 1) * gap;
+    final sidePreferWide = rightColumns >= 3 && sideEntries.length < 6
+        ? _defaultPreferWideIds(sideEntries)
+        : const <String>{};
 
     return [
       const _FunctionGroupLabel('常用'),
-      _WideFunctionTile(
-        entry: primaryEntry,
-        pinned: snapshot.isPinned(primaryEntry.id),
-        statsText: _resolveStats(primaryEntry) ?? primaryEntry.subtitle,
-        onTap: () => unawaited(_openEntry(primaryEntry)),
-        onLongPress: () => unawaited(_togglePinned(primaryEntry)),
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 2 * itemWidth + gap,
+            height: 2 * unitHeight + gap,
+            child: _LargeFunctionTile(
+              entry: primaryEntry,
+              pinned: snapshot.isPinned(primaryEntry.id),
+              statsText: _resolveStats(primaryEntry) ?? primaryEntry.subtitle,
+              onTap: () => unawaited(_openEntry(primaryEntry)),
+              onLongPress: () => unawaited(_togglePinned(primaryEntry)),
+            ),
+          ),
+          if (sideEntries.isNotEmpty) ...[
+            SizedBox(width: gap),
+            SizedBox(
+              width: sideWidth,
+              child: rightColumns >= 3
+                  ? _buildMosaicGrid(
+                      sideEntries,
+                      columns: rightColumns,
+                      itemWidth: itemWidth,
+                      unitHeight: unitHeight,
+                      gap: gap,
+                      preferWideIds: sidePreferWide,
+                    )
+                  : Wrap(
+                      spacing: gap,
+                      runSpacing: gap,
+                      children: [
+                        for (final entry in sideEntries)
+                          _buildMosaicTile(
+                            entry,
+                            span: 1,
+                            itemWidth: itemWidth,
+                            unitHeight: unitHeight,
+                            gap: gap,
+                          ),
+                      ],
+                    ),
+            ),
+          ],
+        ],
       ),
-      if (common.length > 1) ...[
+      if (tailEntries.isNotEmpty) ...[
         SizedBox(height: gap),
-        _buildGrid(common.skip(1).toList(), itemWidth: itemWidth, gap: gap),
+        _buildMosaicGrid(
+          tailEntries,
+          columns: columns,
+          itemWidth: itemWidth,
+          unitHeight: unitHeight,
+          gap: gap,
+          preferWideIds: _defaultPreferWideIds(tailEntries),
+        ),
       ],
       // 「常用」只是快捷方式：入口本体仍完整留在各自分类里。
       for (final category in FeatureEntryCategory.values)
@@ -234,7 +465,9 @@ class _FunctionZoneSectionState extends State<FunctionZoneSection> {
           AppFeaturesConfig.entries
               .where((entry) => entry.category == category)
               .toList(),
+          columns: columns,
           itemWidth: itemWidth,
+          unitHeight: unitHeight,
           gap: gap,
         ),
     ];
@@ -243,20 +476,32 @@ class _FunctionZoneSectionState extends State<FunctionZoneSection> {
   List<Widget> _buildCategory(
     FeatureEntryCategory category,
     List<FeatureEntryDefinition> entries, {
+    required int columns,
     required double itemWidth,
+    required double unitHeight,
     required double gap,
   }) {
     if (entries.isEmpty) return const [];
     entries.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    final preferWide = {..._defaultPreferWideIds(entries), entries.first.id};
     return [
-      const SizedBox(height: AppSpacing.lg),
+      const SizedBox(height: AppSpacing.md),
       _FunctionGroupLabel(category.label),
-      _buildGrid(entries, itemWidth: itemWidth, gap: gap),
+      _buildMosaicGrid(
+        entries,
+        columns: columns,
+        itemWidth: itemWidth,
+        unitHeight: unitHeight,
+        gap: gap,
+        preferWideIds: preferWide,
+      ),
     ];
   }
 
   List<Widget> _buildSearchResults({
+    required int columns,
     required double itemWidth,
+    required double unitHeight,
     required double gap,
   }) {
     final results = _searchResults(_query);
@@ -272,7 +517,14 @@ class _FunctionZoneSectionState extends State<FunctionZoneSection> {
     }
     return [
       _FunctionGroupLabel('搜索结果 · ${results.length}'),
-      _buildGrid(results, itemWidth: itemWidth, gap: gap),
+      _buildMosaicGrid(
+        results,
+        columns: columns,
+        itemWidth: itemWidth,
+        unitHeight: unitHeight,
+        gap: gap,
+        preferWideIds: _defaultPreferWideIds(results),
+      ),
     ];
   }
 
@@ -287,15 +539,19 @@ class _FunctionZoneSectionState extends State<FunctionZoneSection> {
           final maxWidth = constraints.maxWidth;
           if (maxWidth <= 0) return const SizedBox.shrink();
 
-          const gap = 10.0;
+          const gap = 6.0;
           final columns = maxWidth >= 840
-              ? 4
+              ? 5
               : maxWidth >= 600
-              ? 3
-              : 2;
+              ? 4
+              : 3;
           final itemWidth = math.max(
             0.0,
             (maxWidth - (columns - 1) * gap) / columns,
+          );
+          final unitHeight = math.min(
+            82.0,
+            math.max(itemWidth * 0.76, math.min(76.0, itemWidth)),
           );
           final searching = _query.trim().isNotEmpty;
 
@@ -303,7 +559,7 @@ class _FunctionZoneSectionState extends State<FunctionZoneSection> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const _FunctionZoneHeader(),
-              const SizedBox(height: AppSpacing.md),
+              const SizedBox(height: AppSpacing.sm),
               _FunctionSearchTile(
                 controller: _searchController,
                 onChanged: _onQueryChanged,
@@ -311,9 +567,19 @@ class _FunctionZoneSectionState extends State<FunctionZoneSection> {
               ),
               const SizedBox(height: AppSpacing.md),
               if (searching)
-                ..._buildSearchResults(itemWidth: itemWidth, gap: gap)
+                ..._buildSearchResults(
+                  columns: columns,
+                  itemWidth: itemWidth,
+                  unitHeight: unitHeight,
+                  gap: gap,
+                )
               else
-                ..._buildGroups(itemWidth: itemWidth, gap: gap),
+                ..._buildGroups(
+                  columns: columns,
+                  itemWidth: itemWidth,
+                  unitHeight: unitHeight,
+                  gap: gap,
+                ),
             ],
           );
         },
@@ -384,7 +650,7 @@ class _FunctionSearchTileState extends State<_FunctionSearchTile> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final radius = BorderRadius.circular(AppRadius.tileBorder.topLeft.x);
+    final radius = BorderRadius.circular(AppRadius.control);
     final focused = _focusNode.hasFocus;
     return TapRegion(
       // 把整张搜索卡面当成「输入框内部」：点击卡面内的图标 / 内边距 / 清除按钮
@@ -403,18 +669,22 @@ class _FunctionSearchTileState extends State<_FunctionSearchTile> {
                 : BorderSide.none,
           ),
         ),
-        child: AppTileSurface(
-          borderRadius: radius,
-          // 水平内边距与 _SmallFunctionTile 一致（徽标 / 标题左缘对齐）；
-          // 垂直收窄成 48dp 细条，避免比磁贴还高显得臃肿。
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-          child: AppSearchField(
-            controller: widget.controller,
-            focusNode: _focusNode,
-            hintText: '搜索功能，如 成绩、电费、请假',
-            onChanged: widget.onChanged,
-            onClear: widget.onClear,
-            borderless: true,
+        child: AppHardTileShell(
+          radius: AppRadius.control,
+          child: AppTileSurface(
+            borderRadius: radius,
+            blurred: false,
+            // 水平内边距与 _WideFunctionTile 一致（图标左缘对齐）；
+            // 垂直收窄成细条，避免比磁贴还高显得臃肿。
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            child: AppSearchField(
+              controller: widget.controller,
+              focusNode: _focusNode,
+              hintText: '搜索功能，如 成绩、电费、请假',
+              onChanged: widget.onChanged,
+              onClear: widget.onClear,
+              borderless: true,
+            ),
           ),
         ),
       ),
@@ -431,7 +701,7 @@ class _FunctionGroupLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(left: 2, bottom: AppSpacing.sm),
+      padding: const EdgeInsets.only(left: 2, bottom: 6),
       child: Text(text, style: context.appText.label),
     );
   }
@@ -466,9 +736,21 @@ const _shortLabelById = <String, String>{
   'campus-card-payment': '付款码',
 };
 
-/// 宽磁贴：Win10 宽版磁贴形态，圆润边角，含中号徽标、标题、状态说明与微箭头。
-class _WideFunctionTile extends StatelessWidget {
-  const _WideFunctionTile({
+/// 功能磁贴裸图标色：跟随主题主色（深色模式下微提亮 15% 以保证对比度）。
+Color _resolveTileIconColor(BuildContext context, ColorScheme cs) {
+  final base = AppThemeController.instance.resolveIconColor(
+    context,
+    cs.primary,
+  );
+  if (Theme.of(context).brightness == Brightness.dark) {
+    return Color.lerp(base, Colors.white, 0.15) ?? base;
+  }
+  return base;
+}
+
+/// 2×2 大磁贴：Win10 常用主入口（rank #1），裸大号主色图标 + 底部标题与多行状态/说明。
+class _LargeFunctionTile extends StatelessWidget {
+  const _LargeFunctionTile({
     required this.entry,
     required this.pinned,
     required this.statsText,
@@ -485,79 +767,157 @@ class _WideFunctionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final primaryIconColor = AppThemeController.instance.resolveIconColor(
-      context,
-      cs.primary,
-    );
+    final iconColor = _resolveTileIconColor(context, cs);
     final label = _shortLabelById[entry.id] ?? entry.title;
+    final radius = BorderRadius.circular(AppRadius.control);
 
     return Semantics(
       button: true,
       label: label,
       hint: entry.subtitle,
-      child: AppTileSurface(
-        borderRadius: BorderRadius.circular(AppRadius.tileBorder.topLeft.x),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-        onTap: onTap,
-        onLongPress: onLongPress,
-        child: Row(
-          children: [
-            AppIconBadge(
-              icon: entry.icon,
-              accentColor: primaryIconColor,
-              size: AppIconBadgeSize.medium,
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+      child: AppHardTileShell(
+        radius: AppRadius.control,
+        child: AppTileSurface(
+          borderRadius: radius,
+          padding: const EdgeInsets.all(12),
+          blurred: false,
+          onTap: onTap,
+          onLongPress: onLongPress,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Flexible(
-                        child: Text(
-                          label,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: context.appText.rowTitle.copyWith(height: 1.2),
-                        ),
-                      ),
-                      if (pinned) ...[
-                        const SizedBox(width: 5),
-                        Icon(
-                          Icons.push_pin_rounded,
-                          size: 12,
-                          color: cs.primary,
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    statsText,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: context.appText.meta.copyWith(height: 1.25),
+                  Icon(entry.icon, size: 34, color: iconColor),
+                  const Spacer(),
+                  if (pinned) ...[
+                    Icon(Icons.push_pin_rounded, size: 13, color: cs.primary),
+                    const SizedBox(width: 4),
+                  ],
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 18,
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.45),
                   ),
                 ],
               ),
-            ),
-            const SizedBox(width: 8),
-            Icon(
-              Icons.chevron_right_rounded,
-              size: 20,
-              color: cs.onSurfaceVariant.withValues(alpha: 0.45),
-            ),
-          ],
+              const Spacer(),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: context.appText.rowTitleStrong.copyWith(height: 1.15),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                statsText,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: context.appText.meta.copyWith(height: 1.2),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-/// 标准磁贴：Win10 正方/横扁小磁贴圆润形态，小号徽标 + 标题垂直居中。
+/// 2×1 宽磁贴：Win10 宽版磁贴形态（[AppRadius.control]），裸图标 + 标题、可选实时状态与微箭头。
+class _WideFunctionTile extends StatelessWidget {
+  const _WideFunctionTile({
+    required this.entry,
+    required this.pinned,
+    required this.statsText,
+    required this.onTap,
+    required this.onLongPress,
+  });
+
+  final FeatureEntryDefinition entry;
+  final bool pinned;
+  final String? statsText;
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final iconColor = _resolveTileIconColor(context, cs);
+    final label = _shortLabelById[entry.id] ?? entry.title;
+    final radius = BorderRadius.circular(AppRadius.control);
+
+    return Semantics(
+      button: true,
+      label: label,
+      hint: entry.subtitle,
+      child: AppHardTileShell(
+        radius: AppRadius.control,
+        child: AppTileSurface(
+          borderRadius: radius,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          blurred: false,
+          onTap: onTap,
+          onLongPress: onLongPress,
+          child: Row(
+            children: [
+              Icon(entry.icon, size: 26, color: iconColor),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: context.appText.rowTitle.copyWith(
+                              height: 1.15,
+                            ),
+                          ),
+                        ),
+                        if (pinned) ...[
+                          const SizedBox(width: 4),
+                          Icon(
+                            Icons.push_pin_rounded,
+                            size: 12,
+                            color: cs.primary,
+                          ),
+                        ],
+                      ],
+                    ),
+                    if (statsText != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        statsText!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: context.appText.meta.copyWith(height: 1.15),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 18,
+                color: cs.onSurfaceVariant.withValues(alpha: 0.45),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 1×1 标准磁贴：Win10 紧凑小方块（[AppRadius.control]），裸图标在上、标题在下居中。
 class _SmallFunctionTile extends StatelessWidget {
   const _SmallFunctionTile({
     required this.entry,
@@ -574,50 +934,53 @@ class _SmallFunctionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final primaryIconColor = AppThemeController.instance.resolveIconColor(
-      context,
-      cs.primary,
-    );
+    final iconColor = _resolveTileIconColor(context, cs);
     final label = _shortLabelById[entry.id] ?? entry.title;
+    final radius = BorderRadius.circular(AppRadius.control);
 
     return Semantics(
       button: true,
       label: label,
       hint: entry.subtitle,
-      child: AppTileSurface(
-        borderRadius: BorderRadius.circular(AppRadius.tileBorder.topLeft.x),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        onTap: onTap,
-        onLongPress: onLongPress,
-        child: Row(
-          children: [
-            AppIconBadge(
-              icon: entry.icon,
-              accentColor: primaryIconColor,
-              size: AppIconBadgeSize.small,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Flexible(
-                    child: Text(
+      child: AppHardTileShell(
+        radius: AppRadius.control,
+        child: AppTileSurface(
+          borderRadius: radius,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          blurred: false,
+          onTap: onTap,
+          onLongPress: onLongPress,
+          child: Stack(
+            children: [
+              Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(entry.icon, size: 26, color: iconColor),
+                    const SizedBox(height: 6),
+                    Text(
                       label,
+                      textAlign: TextAlign.center,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.titleSmall!
-                          .copyWith(height: 1.2, color: cs.onSurface),
+                          .copyWith(height: 1.15, color: cs.onSurface),
                     ),
-                  ),
-                  if (pinned) ...[
-                    const SizedBox(width: 4),
-                    Icon(Icons.push_pin_rounded, size: 11, color: cs.primary),
                   ],
-                ],
+                ),
               ),
-            ),
-          ],
+              if (pinned)
+                Positioned(
+                  top: 0,
+                  right: 0,
+                  child: Icon(
+                    Icons.push_pin_rounded,
+                    size: 11,
+                    color: cs.primary,
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );

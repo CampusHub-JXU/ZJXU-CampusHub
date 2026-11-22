@@ -10,6 +10,7 @@ import '../../core/notification/app_notification_service.dart';
 import '../../core/theme/app_design_tokens.dart';
 import 'dorm_electricity_service.dart';
 import '../../shared/widgets/app_app_bar.dart';
+import '../../shared/widgets/app_banner.dart';
 import '../../shared/widgets/app_empty_view.dart';
 import '../../shared/widgets/detail_readout.dart';
 import '../../shared/widgets/login_shell.dart';
@@ -419,7 +420,7 @@ class _DormElectricityPageState extends State<DormElectricityPage> {
                     top: AppSpacing.xs,
                     right: AppSpacing.sm,
                   ),
-                  child: _buildErrorBanner(context, cs),
+                  child: _buildErrorBanner(),
                 ),
             ],
           ),
@@ -497,9 +498,9 @@ class _DormElectricityPageState extends State<DormElectricityPage> {
 
   // ── Error Banner ───────────────────────────────────────────────────────────
 
-  Widget _buildErrorBanner(BuildContext context, ColorScheme cs) {
-    // 登录态缺失时统一提示「电费获取失败」，把动作交给下方登录按钮；
-    // 其余错误保留服务侧的具体原因。
+  Widget _buildErrorBanner() {
+    // 认证失效保留 error 语义并将登录动作收进紧凑 TextButton；
+    // 其余网络/解析错误使用中性底 + 错误色图标承载具体原因。
     final message = _requiresUnifiedAuth
         ? '电费获取失败，登录一卡通后重试'
         : switch (_error) {
@@ -507,42 +508,14 @@ class _DormElectricityPageState extends State<DormElectricityPage> {
             final value? => value,
             _ => '请确认已连接校园网络',
           };
-    // 中性容器 + 错误色图标表达异常；图标、文案、按钮同处一行并垂直居中，
-    // 上下左右使用对称内边距，避免参差的行高与不居中的图标。
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.6)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Icon(Icons.wifi_off_outlined, size: 18, color: cs.error),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              message,
-              style: context.appText.secondary.copyWith(
-                height: 1.35,
-                color: cs.onSurface,
-              ),
-            ),
-          ),
-          if (_requiresUnifiedAuth) ...[
-            const SizedBox(width: 12),
-            FilledButton.tonal(
-              onPressed: _loginAndRetry,
-              style: FilledButton.styleFrom(
-                visualDensity: VisualDensity.compact,
-                padding: const EdgeInsets.symmetric(horizontal: 18),
-              ),
-              child: const Text('登录'),
-            ),
-          ],
-        ],
-      ),
+    return AppBanner(
+      message: message,
+      icon: _requiresUnifiedAuth
+          ? Icons.lock_outline_rounded
+          : Icons.wifi_off_outlined,
+      tone: _requiresUnifiedAuth ? AppBannerTone.error : AppBannerTone.neutral,
+      actionLabel: _requiresUnifiedAuth ? '登录' : null,
+      onAction: _requiresUnifiedAuth ? _loginAndRetry : null,
     );
   }
 

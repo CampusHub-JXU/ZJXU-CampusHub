@@ -42,6 +42,15 @@ dependencies:
   cupertino_ui: ^1.1.7
   jni: ^1.1.2
   jni_flutter: ^1.0.4+1
+  # 刷题助手原生化（Issue #61）：SQLite 持久化 + 题库文件 / 备份解析。
+  # 版本以 pubspec.lock 为准（sqflite 2.4.4+2 / path 1.9.1 / archive 4.5.2 /
+  # crypto 3.0.7 / xml 7.1.0 / uuid 4.6.0）；理由见 docs/shuati-native-parity.md §10。
+  sqflite: ^2.4.4+2
+  path: ^1.9.1
+  archive: ^4.5.2
+  crypto: ^3.0.7
+  xml: ^7.1.0
+  uuid: ^4.6.0
 
 dev_dependencies:
   flutter_test:
@@ -53,6 +62,8 @@ dev_dependencies:
   vm_service: 15.3.0
   flutter_secure_storage_platform_interface: ^1.1.2
   jnigen: ^1.0.1
+  # 刷题助手测试用内存 SQLite（桌面 ffi，不进 App 包）。
+  sqflite_common_ffi: ^2.4.4
 
 # 应用图标生成：母版与自适应前景由 tools/brand/make_icons.py 产出，
 # 修改设计后先跑该脚本，再执行 `dart run flutter_launcher_icons`。

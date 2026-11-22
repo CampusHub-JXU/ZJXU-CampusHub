@@ -132,7 +132,7 @@ class AppSearchField extends StatelessWidget {
 
   Widget _buildCompact(BuildContext context, ColorScheme cs) {
     final pill = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(999),
+      borderRadius: AppRadius.inputBorder,
       borderSide: BorderSide.none,
     );
     return SizedBox(

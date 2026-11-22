@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/rendering.dart';
 
+import '../../core/theme/app_design_tokens.dart';
 import '../../core/theme/glass_refraction.dart';
 import '../../core/theme/surface_material.dart';
 
@@ -61,6 +62,92 @@ List<BoxShadow> appSurfaceShadows({required bool isDark}) {
     ];
   }
   return const [];
+}
+
+/// 硬质磁贴浅色模式描边色：取 11% `onSurface`（与课表线 `matrixLine` 同色系
+/// 的柔和浅灰中性线，在浅灰 scaffold 上刚好托住白卡而不黑不硬）。
+Color appHardTileBorderColor(ColorScheme cs) =>
+    cs.onSurface.withValues(alpha: 0.11);
+
+/// 硬质磁贴背景装饰：浅色模式下给出实色 `surfaceContainerLowest` 衬底与
+/// 极克制落底影（`alpha: 0.04, blurRadius: 3, offset: (0, 1)`），深色模式保持透明透传。
+ShapeDecoration appHardTileDecoration({
+  required ColorScheme cs,
+  required bool isDark,
+  double radius = AppRadius.control,
+}) {
+  final borderRadius = BorderRadius.circular(radius);
+  if (isDark) {
+    return ShapeDecoration(
+      shape: RoundedSuperellipseBorder(borderRadius: borderRadius),
+    );
+  }
+  return ShapeDecoration(
+    color: cs.surfaceContainerLowest,
+    shape: RoundedSuperellipseBorder(borderRadius: borderRadius),
+    shadows: [
+      BoxShadow(
+        color: cs.shadow.withValues(alpha: 0.04),
+        blurRadius: 3,
+        offset: const Offset(0, 1),
+      ),
+    ],
+  );
+}
+
+/// 硬质磁贴前景描边装饰：浅色模式下绘制 `0.8dp` [appHardTileBorderColor] 柔和细边，
+/// 深色模式为 `BorderSide.none`。
+ShapeDecoration appHardTileForegroundDecoration({
+  required ColorScheme cs,
+  required bool isDark,
+  double radius = AppRadius.control,
+}) {
+  final borderRadius = BorderRadius.circular(radius);
+  return ShapeDecoration(
+    shape: RoundedSuperellipseBorder(
+      borderRadius: borderRadius,
+      side: isDark
+          ? BorderSide.none
+          : BorderSide(color: appHardTileBorderColor(cs), width: 0.8),
+    ),
+  );
+}
+
+/// 硬质磁贴 / 首页卡片通用外框壳层：
+/// * 浅色模式：实色白底 + 极克制落底影 + `0.8dp` 柔和中性细描边，各调用方按需传入 [radius]。
+/// * 深色模式：直接透传 [child]，维持原有平色/半透质感。
+///
+/// 使用双层 `DecoratedBox` 而非 `AnimatedContainer`，避免干扰聚焦环查找。
+class AppHardTileShell extends StatelessWidget {
+  const AppHardTileShell({
+    super.key,
+    this.radius = AppRadius.control,
+    required this.child,
+  });
+
+  final double radius;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    if (isDark) return child;
+
+    final cs = theme.colorScheme;
+    return DecoratedBox(
+      decoration: appHardTileDecoration(cs: cs, isDark: isDark, radius: radius),
+      child: DecoratedBox(
+        position: DecorationPosition.foreground,
+        decoration: appHardTileForegroundDecoration(
+          cs: cs,
+          isDark: isDark,
+          radius: radius,
+        ),
+        child: child,
+      ),
+    );
+  }
 }
 
 /// 磨砂填充：在表面底色上叠一层乳白「雾」再按 [alpha] 半透明，

@@ -7,6 +7,7 @@ void main() {
     // 控制器为单例：复位分区并清空注入的滚动实现，避免跨用例串扰。
     HomeZoneController.instance
       ..scrollToTop = null
+      ..scrollToToday = null
       ..scrollToFunction = null
       ..updateZone(0);
   });
@@ -26,33 +27,43 @@ void main() {
       controller.updateZone(1);
       expect(notifyCount, 1, reason: '重复设置同一分区不应触发通知');
 
+      controller.updateZone(2);
+      expect(controller.zoneIndex, 2);
+      expect(notifyCount, 2);
+
       controller.updateZone(0);
       expect(controller.zoneIndex, 0);
-      expect(notifyCount, 2);
+      expect(notifyCount, 3);
     });
 
-    test('requestHome/requestFunction 调用注入的滚动实现', () async {
+    test('requestHome/requestToday/requestFunction 调用注入的滚动实现', () async {
       final controller = HomeZoneController.instance;
       var homeCalls = 0;
+      var todayCalls = 0;
       var functionCalls = 0;
       controller.scrollToTop = () async => homeCalls++;
+      controller.scrollToToday = () async => todayCalls++;
       controller.scrollToFunction = () async => functionCalls++;
 
       await controller.requestHome();
+      await controller.requestToday();
       await controller.requestFunction();
 
       expect(homeCalls, 1);
+      expect(todayCalls, 1);
       expect(functionCalls, 1);
     });
 
-    test('未注入滚动实现时 requestHome/requestFunction 安全 no-op', () async {
+    test('未注入滚动实现时 requestHome/requestToday/requestFunction 安全 no-op', () async {
       final controller = HomeZoneController.instance;
       controller
         ..scrollToTop = null
+        ..scrollToToday = null
         ..scrollToFunction = null;
 
       // 不抛异常即通过。
       await controller.requestHome();
+      await controller.requestToday();
       await controller.requestFunction();
 
       expect(controller.zoneIndex, 0);

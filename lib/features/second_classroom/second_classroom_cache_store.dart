@@ -98,6 +98,37 @@ class SecondClassroomCacheStore {
     );
   }
 
+  /// 读取本地所有查询桶中缓存的二课活动并按 id 去重（零网络，首页「今日」聚合用）。
+  Future<List<SecondClassroomActivity>> loadAllCachedActivities() async {
+    final cache = await _loadActivityCache();
+    if (cache.isEmpty) return const [];
+
+    final byId = <int, SecondClassroomActivity>{};
+    for (final bucket in cache.values) {
+      if (bucket is! Map) continue;
+      final rawItems = bucket['items'];
+      if (rawItems is! List) continue;
+      for (final raw in rawItems) {
+        if (raw is! Map) continue;
+        try {
+          final activity = SecondClassroomActivity.fromStoredJson(
+            Map<String, dynamic>.from(raw),
+          );
+          if (activity.id <= 0) continue;
+          final existing = byId[activity.id];
+          // 已报名状态优先保留，避免旧查询桶覆盖最新报名态。
+          if (existing == null ||
+              (!existing.isRegistered && activity.isRegistered)) {
+            byId[activity.id] = activity;
+          }
+        } catch (_) {
+          continue;
+        }
+      }
+    }
+    return byId.values.toList(growable: false);
+  }
+
   Future<void> saveActivities(
     SecondClassroomActivityQuery query,
     List<SecondClassroomActivity> activities,

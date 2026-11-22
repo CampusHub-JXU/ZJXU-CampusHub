@@ -183,7 +183,7 @@ void main() {
     expect(filter, isNot(contains('28.2')));
   });
 
-  testWidgets('液态玻璃就绪后 Dock 模糊压到 σ≈2.8（折射与色散不被糊平）', (tester) async {
+  testWidgets('液态玻璃就绪后 Dock 模糊收敛到 σ≈6.58（兼顾折射感与滚过文字可读性）', (tester) async {
     LiquidGlass.debugForceReady = true;
     await pumpSurface(
       tester,
@@ -194,30 +194,30 @@ void main() {
         .widget<BackdropFilter>(find.byType(BackdropFilter))
         .filterConfig
         .toString();
-    expect(filter, contains('2.82'));
+    expect(filter, contains('6.58'));
     expect(filter, isNot(contains('18.8')));
   });
 
-  testWidgets('shader 未就绪时 Dock 底色仍是普通磨砂档（0.18~0.26）', (tester) async {
+  testWidgets('shader 未就绪时 Dock 底色保持稳健磨砂基底（0.30~0.40）', (tester) async {
     await pumpSurface(
       tester,
       const GlassContainer(tier: GlassTier.nav, child: Text('底栏')),
     );
 
-    expect(surfaceDecoration(tester).color!.a, inInclusiveRange(0.18, 0.26));
+    expect(surfaceDecoration(tester).color!.a, inInclusiveRange(0.30, 0.40));
   });
 
-  testWidgets('液态玻璃就绪后浅色 Dock 是清亮白玻璃（0.18~0.26，不发灰）', (tester) async {
+  testWidgets('液态玻璃就绪后浅色 Dock 保持通透且对比稳健（0.30~0.40）', (tester) async {
     LiquidGlass.debugForceReady = true;
     await pumpSurface(
       tester,
       const GlassContainer(tier: GlassTier.nav, child: Text('底栏')),
     );
 
-    expect(surfaceDecoration(tester).color!.a, inInclusiveRange(0.18, 0.26));
+    expect(surfaceDecoration(tester).color!.a, inInclusiveRange(0.30, 0.40));
   });
 
-  testWidgets('液态玻璃就绪后深色 Dock 是通透深琉璃（0.10~0.18，不泛白雾）', (tester) async {
+  testWidgets('液态玻璃就绪后深色 Dock 保持通透深琉璃且文字清晰（0.22~0.32）', (tester) async {
     LiquidGlass.debugForceReady = true;
     await pumpSurface(
       tester,
@@ -225,7 +225,34 @@ void main() {
       dark: true,
     );
 
-    expect(surfaceDecoration(tester).color!.a, inInclusiveRange(0.10, 0.18));
+    expect(surfaceDecoration(tester).color!.a, inInclusiveRange(0.22, 0.32));
+  });
+
+  testWidgets('nav 档贴底通栏（BorderRadius.zero）无外扩悬浮影与四边高光框，仅绘顶缘细分割线', (
+    tester,
+  ) async {
+    LiquidGlass.debugForceReady = true;
+    await pumpSurface(
+      tester,
+      const GlassContainer(
+        tier: GlassTier.nav,
+        borderRadius: BorderRadius.zero,
+        child: Text('贴底通栏'),
+      ),
+    );
+
+    expect(find.byType(LiquidGlassBoundsTracker), findsOneWidget);
+    expect(outerShadowPaint(tester), isNull);
+    final edgePaint = tester.widget<CustomPaint>(
+      find.descendant(
+        of: find.byType(ClipRRect),
+        matching: liquidEdgePainterFinder(),
+      ),
+    );
+    expect(
+      edgePaint.foregroundPainter.runtimeType.toString(),
+      '_NavTopDividerPainter',
+    );
   });
 
   testWidgets('card 档显式 liquid=true 走与 nav 同款液态玻璃链路且支持点击', (tester) async {

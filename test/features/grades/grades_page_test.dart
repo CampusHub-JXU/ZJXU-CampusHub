@@ -9,6 +9,7 @@ import 'package:jxu_campus_hub/features/grades/grades_page.dart';
 import 'package:jxu_campus_hub/features/grades/progress/academic_progress_model.dart';
 import 'package:jxu_campus_hub/features/grades/widgets/grades_course_row.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_error_view.dart';
+import 'package:jxu_campus_hub/shared/widgets/app_filter_chips.dart';
 import 'package:jxu_campus_hub/shared/widgets/skeleton_box.dart';
 
 import '../../helpers/test_setup.dart';
@@ -46,13 +47,13 @@ void main() {
     for (
       var elapsed = Duration.zero;
       elapsed < const Duration(seconds: 5) &&
-          find.byType(ChoiceChip).evaluate().isEmpty;
+          find.byWidgetPredicate((w) => w is AppFilterChips).evaluate().isEmpty;
       elapsed += const Duration(milliseconds: 50)
     ) {
       await tester.pump(const Duration(milliseconds: 50));
     }
     expect(
-      find.byType(ChoiceChip),
+      find.byWidgetPredicate((w) => w is AppFilterChips),
       findsWidgets,
       reason: '成绩请求应在 5 秒测试时间内完成并渲染学期 chip',
     );
@@ -74,13 +75,36 @@ void main() {
     'xqmmc': semester,
   };
 
+  /// 学期筛选条（原 `ChoiceChip` 行已改为 `AppFilterChips` 渲染的自定义
+  /// `InkWell` tab，选中项以 `Semantics(selected: …)` 标记）。
+  Finder termChips() => find.byWidgetPredicate((w) => w is AppFilterChips);
+
+  /// 学期筛选条内名为 [label] 的 chip 文字（限定筛选条内，避免同名片段）。
+  Finder termChipText(String label) =>
+      find.descendant(of: termChips(), matching: find.text(label));
+
+  /// 学期筛选条内的选中态 tab：自定义 chip 通过 `Semantics(selected: true)`
+  /// 标记选中项。
+  Finder selectedTermTabs() => find.descendant(
+    of: termChips(),
+    matching: find.byWidgetPredicate(
+      (w) => w is Semantics && (w.properties.selected ?? false),
+    ),
+  );
+
   String? selectedTermLabel(WidgetTester tester) {
-    final selected = tester
-        .widgetList<ChoiceChip>(find.byType(ChoiceChip))
-        .where((chip) => chip.selected)
-        .toList();
+    final selected = selectedTermTabs().evaluate();
     if (selected.length != 1) return null;
-    return (selected.single.label as Text).data;
+    return (find
+                .descendant(
+                  of: find.byWidget(selected.single.widget),
+                  matching: find.byType(Text),
+                )
+                .evaluate()
+                .first
+                .widget
+            as Text)
+        .data;
   }
 
   testWidgets(
@@ -178,13 +202,15 @@ void main() {
     );
 
     final labels = tester
-        .widgetList<ChoiceChip>(find.byType(ChoiceChip))
-        .map((chip) => (chip.label as Text).data)
+        .widgetList<Text>(
+          find.descendant(of: termChips(), matching: find.byType(Text)),
+        )
+        .map((t) => t.data)
         .toList();
     // 最新在前，「全部」固定末尾。
     expect(labels, ['2025–26 春', '2024–25 春', '全部']);
 
-    await tester.tap(find.widgetWithText(ChoiceChip, '全部'));
+    await tester.tap(termChipText('全部'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
@@ -332,8 +358,8 @@ void main() {
     expect(find.byType(GradesCourseRow), findsWidgets);
     expect(tester.takeException(), isNull);
 
-    await tester.ensureVisible(find.widgetWithText(ChoiceChip, '全部'));
-    await tester.tap(find.widgetWithText(ChoiceChip, '全部'));
+    await tester.ensureVisible(termChipText('全部'));
+    await tester.tap(termChipText('全部'));
     await tester.pump(const Duration(milliseconds: 300));
     expect(tester.takeException(), isNull);
   });

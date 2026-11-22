@@ -13,6 +13,7 @@ import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_settin
 import 'package:jxu_campus_hub/core/epay100/epay100_gateway.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_dropdown.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_error_view.dart';
+import 'package:jxu_campus_hub/shared/widgets/app_filter_chips.dart';
 import 'package:jxu_campus_hub/shared/widgets/auth_required_view.dart';
 import 'package:jxu_campus_hub/shared/widgets/login_shell.dart';
 import 'package:jxu_campus_hub/shared/widgets/plain_list.dart';
@@ -245,11 +246,12 @@ Future<void> _openPicker(WidgetTester tester) async {
   await _settleCatalog(tester, rounds: 6);
 }
 
-/// 点弹层里的列表行 / chip（面包屑里可能有同名文字，故限定 ListTile / chip）并
+/// 点弹层里的列表行 / chip（面包屑里可能有同名文字，故限定 ListTile /
+/// AppFilterChips；原 ChoiceChip 已改为自定义 chip，文字在其 InkWell 内）并
 /// 放行目录请求（房间列表经 JsonCacheStore 文件 I/O）。
 Future<void> _tapPickerItem(WidgetTester tester, String text) async {
   final target = find.descendant(
-    of: find.byWidgetPredicate((w) => w is ListTile || w is ChoiceChip),
+    of: find.byWidgetPredicate((w) => w is ListTile || w is AppFilterChips),
     matching: find.text(text),
   );
   await tester.tap(target);

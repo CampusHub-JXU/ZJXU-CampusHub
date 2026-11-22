@@ -2,8 +2,10 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../../core/theme/app_design_tokens.dart';
 import '../../../core/theme/app_theme_controller.dart';
-import '../models/home_presentation.dart';
 import '../../../core/theme/app_typography.dart';
+import '../../../shared/widgets/app_surface_style.dart';
+import '../../../shared/widgets/app_tile_surface.dart';
+import '../models/home_presentation.dart';
 
 /// Today Section：当天剩余课程 + 今日考试的紧凑纯文字列表；今天没有
 /// 剩余安排时由 resolver 降级为次日预览形态（标题变为「开学首日 · …」
@@ -70,16 +72,28 @@ class HomeTodaySection extends StatelessWidget {
       );
     }
 
-    // 整段可点进课表（含标题与全部行）；有回调时才包手势层。
-    if (onOpenSchedule == null) return section;
+    final card = AppHardTileShell(
+      radius: AppRadius.card,
+      child: AppTileSurface(
+        blurred: false,
+        borderRadius: AppRadius.cardBorder,
+        padding: EdgeInsets.fromLTRB(
+          14,
+          today.isCollapsed ? 2 : 12,
+          14,
+          today.isCollapsed ? 2 : 4,
+        ),
+        onTap: onOpenSchedule,
+        child: section,
+      ),
+    );
+
+    // 整段可点进课表（含标题与全部行）；有回调时才补充按钮语义。
+    if (onOpenSchedule == null) return card;
     return Semantics(
       button: true,
       label: '${today.isCollapsed ? '后续课程' : today.title} · 查看课表',
-      child: InkWell(
-        onTap: onOpenSchedule,
-        borderRadius: BorderRadius.circular(12),
-        child: section,
-      ),
+      child: card,
     );
   }
 
@@ -270,7 +284,9 @@ class HomeTodaySection extends StatelessWidget {
                     ),
                     decoration: ShapeDecoration(
                       color: cs.primary.withValues(alpha: 0.10),
-                      shape: const StadiumBorder(),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppRadius.tag),
+                      ),
                     ),
                     child: Text(
                       '进行中',

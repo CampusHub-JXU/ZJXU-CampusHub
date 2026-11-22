@@ -70,10 +70,11 @@ class LibraryLoginHelpSheet extends StatelessWidget {
         const SizedBox(height: AppSpacing.md),
         const _HelpNote(LibraryLoginHelp.notFailureHint),
         const SizedBox(height: AppSpacing.xl),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton.tonal(
+        Align(
+          alignment: Alignment.centerRight,
+          child: FilledButton(
             onPressed: () => Navigator.of(context).pop(),
+            style: FilledButton.styleFrom(minimumSize: const Size(88, 48)),
             child: const Text('知道了'),
           ),
         ),

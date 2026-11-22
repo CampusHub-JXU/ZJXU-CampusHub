@@ -7,6 +7,7 @@ import 'package:jxu_campus_hub/app/theme.dart';
 import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_models.dart';
 import 'package:jxu_campus_hub/features/dorm_electricity/dorm_room_picker_sheet.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_banner.dart';
+import 'package:jxu_campus_hub/shared/widgets/app_filter_chips.dart';
 
 DormRoom _room(
   String id,
@@ -175,10 +176,11 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    /// 点列表行 / chip；面包屑里可能有同名文字，所以限定在 ListTile / ChoiceChip。
+    /// 点列表行 / chip；面包屑里可能有同名文字，所以限定在 ListTile /
+    /// AppFilterChips 里（原 ChoiceChip 已改为自定义 chip，文字在其 InkWell 内）。
     Future<void> tapText(WidgetTester tester, String text) async {
       final target = find.descendant(
-        of: find.byWidgetPredicate((w) => w is ListTile || w is ChoiceChip),
+        of: find.byWidgetPredicate((w) => w is ListTile || w is AppFilterChips),
         matching: find.text(text),
       );
       await tester.tap(target);

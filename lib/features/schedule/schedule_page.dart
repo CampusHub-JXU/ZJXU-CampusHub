@@ -316,39 +316,66 @@ class _SchedulePageState extends State<SchedulePage>
     );
   }
 
-  /// 编辑模式提示条：说明交互方式 +「完成」退出。主色微弱底色 +
-  /// 1px 淡边框，与纯信息横幅（中性 tint 卡）区分开。
+  /// 编辑模式提示条：说明交互方式 +「完成」退出。采用与表头一致的中性底面
+  /// 与细分隔线，避免彩色边框卡片在课表顶部显得突兀。
   Widget _buildEditModeBar() {
     final surfaces = context.appSurfaces;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: surfaces.brand.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(AppRadius.input),
-          border: Border.all(color: surfaces.brand.withValues(alpha: 0.18)),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: surfaces.card,
+        border: Border(
+          bottom: BorderSide(color: surfaces.matrixLine, width: 0.7),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.pageMargin,
+          4,
+          AppSpacing.xs,
+          4,
         ),
         child: Row(
           children: [
-            Icon(Icons.edit_calendar_outlined, size: 16, color: surfaces.brand),
+            Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(
+                color: surfaces.brand,
+                shape: BoxShape.circle,
+              ),
+            ),
             const SizedBox(width: AppSpacing.sm),
             Expanded(
-              child: Text(
-                '按住拖动课程块调整时间，轻触编辑地点与老师',
-                style: context.appText.meta.copyWith(
-                  color: surfaces.brand,
-                  height: 1.35,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Text(
+                  '按住拖动课程块调整时间，轻触编辑地点与老师',
+                  style: context.appText.meta.copyWith(
+                    color: surfaces.ink2,
+                    height: 1.35,
+                  ),
                 ),
               ),
             ),
-            FilledButton.tonal(
+            const SizedBox(width: AppSpacing.xs),
+            TextButton(
               key: const ValueKey('schedule-edit-done'),
               onPressed: _exitEditMode,
-              style: FilledButton.styleFrom(
+              style: TextButton.styleFrom(
+                foregroundColor: surfaces.brand,
                 visualDensity: VisualDensity.compact,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                minimumSize: const Size(48, 36),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.md,
+                  vertical: 6,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppRadius.tag),
+                ),
+                textStyle: context.appText.meta.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               child: const Text('完成'),
             ),

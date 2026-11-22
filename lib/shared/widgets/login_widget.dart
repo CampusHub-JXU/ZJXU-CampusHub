@@ -13,6 +13,8 @@ import '../../core/auth/credential_store.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/network/cancel_token_x.dart';
+import '../../core/theme/app_design_tokens.dart';
+import '../../core/theme/app_typography.dart';
 import 'app_banner.dart';
 import 'login_parts.dart';
 import 'unified_auth_login_widget.dart';
@@ -738,11 +740,7 @@ class _LoginWidgetState extends State<LoginWidget> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _buildStepLabel(
-          colorScheme,
-          icon: Icons.vpn_key_outlined,
-          label: '第 1 步：一卡通认证',
-        ),
+        _buildStepLabel(colorScheme, label: '第 1 步：一卡通认证'),
         const SizedBox(height: 12),
         if (builder != null)
           builder(context, _handleUnifiedAuthSuccess)
@@ -765,11 +763,7 @@ class _LoginWidgetState extends State<LoginWidget> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (_mode == ZhengfangMode.webVpn) ...[
-          _buildStepLabel(
-            colorScheme,
-            icon: Icons.school_outlined,
-            label: '第 2 步：教务系统登录',
-          ),
+          _buildStepLabel(colorScheme, label: '第 2 步：教务系统登录'),
           const SizedBox(height: 16),
         ],
         TextField(
@@ -862,34 +856,25 @@ class _LoginWidgetState extends State<LoginWidget> {
     );
   }
 
-  Widget _buildStepLabel(
-    ColorScheme colorScheme, {
-    required IconData icon,
-    required String label,
-  }) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: colorScheme.primary.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(999),
+  Widget _buildStepLabel(ColorScheme colorScheme, {required String label}) {
+    return Row(
+      children: [
+        Container(
+          width: 6,
+          height: 6,
+          decoration: BoxDecoration(
+            color: colorScheme.primary,
+            shape: BoxShape.circle,
+          ),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 16, color: colorScheme.primary),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: colorScheme.primary,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
+        const SizedBox(width: AppSpacing.sm),
+        Expanded(
+          child: Text(
+            label,
+            style: context.appText.group.copyWith(color: colorScheme.onSurface),
+          ),
         ),
-      ),
+      ],
     );
   }
 }

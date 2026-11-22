@@ -82,6 +82,7 @@ void main() {
     // 单例注入点在页面 dispose 时置空；这里兜底防止失败用例泄漏。
     HomeZoneController.instance
       ..scrollToTop = null
+      ..scrollToToday = null
       ..scrollToFunction = null;
   });
 
@@ -216,9 +217,11 @@ void main() {
 
     expect(find.text('¥23.5'), findsOneWidget);
     expect(find.text('42 度'), findsOneWidget);
-    // 今天无课：Hero 以课程大字承接明天第一节课（kicker「今天没课 · 下一节」，
-    // 日期并入时间行）；明天仅此一门，Today 段落整段消失、不重复 Hero 信息。
-    expect(find.text('今天没课 · 下一节'), findsOneWidget);
+    // 今天无课：Hero 以课程大字承接明天第一节课（kicker「今天没课 下一节」，
+    // 日期并入时间行）；明天仅此一门，Today 段落整段消失、不重复 Hero 信息；
+    // 全屏仅保留今日段落头一处「查看课表」入口。
+    expect(find.text('今天没课 下一节'), findsOneWidget);
+    expect(find.text('查看课表'), findsOneWidget);
     expect(find.text('明天 08:00'), findsOneWidget);
     expect(find.text('线性代数'), findsOneWidget);
     expect(find.text('明天'), findsNothing);
@@ -356,7 +359,8 @@ void main() {
 
     // Hero 保留给课表状态（今天没课时下一节课仍以课程大字展示），
     // 低电量升级为事件横幅；资产行数值同步告警。
-    expect(find.text('今天没课 · 下一节'), findsOneWidget);
+    expect(find.text('今天没课 下一节'), findsOneWidget);
+    expect(find.text('查看课表'), findsOneWidget);
     expect(find.textContaining('电量偏低'), findsOneWidget);
     expect(find.text('3.20 度'), findsOneWidget);
   });
@@ -510,10 +514,18 @@ void main() {
 
     // 滚动动画的 Future 需要 pump 推进时钟才能完成，测试里不能直接
     // await（会死锁），fire-and-forget 后用 pumpAndSettle 等待落地。
+    unawaited(HomeZoneController.instance.requestToday());
+    await tester.pumpAndSettle();
+
+    // 今日锚点位于公告与功能区之间：滚出首屏，但仍在功能区上方。
+    final todayOffset = _scrollOffset(tester);
+    expect(todayOffset, greaterThan(0));
+
     unawaited(HomeZoneController.instance.requestFunction());
     await tester.pumpAndSettle();
 
-    expect(_scrollOffset(tester), greaterThan(0));
+    final functionOffset = _scrollOffset(tester);
+    expect(functionOffset, greaterThan(todayOffset));
 
     unawaited(HomeZoneController.instance.requestHome());
     await tester.pumpAndSettle();
@@ -536,7 +548,8 @@ void main() {
       const Offset(0, -600),
     );
     await tester.pumpAndSettle();
-    expect(HomeZoneController.instance.zoneIndex, 1);
+    // 滚到最底部：功能区（zone 2）越过判定线，今日区在它与首屏之间。
+    expect(HomeZoneController.instance.zoneIndex, 2);
 
     await tester.drag(find.byType(SingleChildScrollView), const Offset(0, 600));
     await tester.pumpAndSettle();
@@ -1146,7 +1159,8 @@ void main() {
     expect(find.text('明天考试'), findsNothing);
     expect(find.text('线性代数'), findsNothing);
     expect(find.text('高等数学 B'), findsOneWidget);
-    expect(find.text('今天没课 · 下一节'), findsOneWidget);
+    expect(find.text('今天没课 下一节'), findsOneWidget);
+    expect(find.text('查看课表'), findsOneWidget);
   });
 
   testWidgets('same-account unified relogin notify drops cached balance', (

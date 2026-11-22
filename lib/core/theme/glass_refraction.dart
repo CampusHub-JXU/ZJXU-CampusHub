@@ -23,21 +23,22 @@ import '../logging/app_logger.dart';
 class LiquidGlass {
   LiquidGlass._();
 
-  /// 折射带宽度（dp）：只在轮廓内侧这么宽的一条边带里弯折背景。
-  static const double band = 28;
+  /// 折射带宽度（dp）：只在轮廓内侧这么宽的一条边带里弯折背景，克制收紧
+  /// 以贴合方正通栏底栏。
+  static const double band = 16;
 
   /// 最大背景位移（dp）。必须保持 `displacement < band / 1.5`，否则
   /// 透镜剖面最陡处采样点导数转负，最外圈背景被折成重影。
-  static const double displacement = 18;
+  static const double displacement = 8;
 
   /// RGB 通道位移差（dp）：三个通道沿位移向量微弱错开（红偏移最大、
-  /// 蓝最小），贴合镜面边缘折射而不拉出彩虹边、久看晃眼。
-  static const double chroma = 0.8;
+  /// 蓝最小），保持极微弱色散质感而不拉出彩虹边、久看晃眼。
+  static const double chroma = 0.35;
 
-  /// 纵向镜面折叠强度（dp）：上下缘采样点沿纵轴向控件内侧深处折叠的
+  /// 纵向镜面折叠强度（dp）：上下缘采样点沿纵轴向控件内侧微幅折叠的
   /// 附加位移（与 [displacement] 一起，全部被严格夹在控件自身纹理内
-  /// 不越界），让上下缘映出靠里一截模糊背景，模拟曲面镜面反射感。
-  static const double mirror = 14;
+  /// 不越界），让上下缘映出轻微玻璃折边感而不过度变形。
+  static const double mirror = 5;
 
   /// shader 就绪状态。
   ///

@@ -39,9 +39,7 @@ void main() {
     expect(find.byType(TextButton), findsNothing);
   });
 
-  testWidgets('AppFilterChips 单选：点击回调选中值，选中项用 secondaryContainer', (
-    tester,
-  ) async {
+  testWidgets('AppFilterChips 单选：点击回调选中值，选中项带 primary 下划线', (tester) async {
     String? selected = 'a';
     await tester.pumpWidget(
       _host(
@@ -58,19 +56,50 @@ void main() {
         ),
       ),
     );
-    ChoiceChip chip(String label) => tester.widget<ChoiceChip>(
-      find.ancestor(of: find.text(label), matching: find.byType(ChoiceChip)),
+    // 每个选项是 Semantics(selected: …) 包裹的自定义 tab（不再是 ChoiceChip）。
+    Finder tabOf(String label) => find.ancestor(
+      of: find.text(label),
+      matching: find.byWidgetPredicate(
+        (w) => w is Semantics && w.properties.selected != null,
+      ),
     );
-    expect(chip('教学').selected, isTrue);
-    expect(chip('全部').selected, isFalse);
+    bool chipSelected(String label) =>
+        tester.widget<Semantics>(tabOf(label)).properties.selected ?? false;
+    expect(chipSelected('教学'), isTrue);
+    expect(chipSelected('全部'), isFalse);
     final cs = Theme.of(tester.element(find.text('教学'))).colorScheme;
-    expect(chip('教学').selectedColor, cs.secondaryContainer);
-    expect(chip('教学').showCheckmark, isFalse);
+    // 选中态：透明底 + cs.primary 下划线完全可见；未选中下划线透明。
+    expect(
+      tester
+          .widget<AnimatedOpacity>(
+            find.descendant(
+              of: tabOf('教学'),
+              matching: find.byType(AnimatedOpacity),
+            ),
+          )
+          .opacity,
+      1,
+    );
+    expect(
+      tester
+          .widget<AnimatedOpacity>(
+            find.descendant(
+              of: tabOf('全部'),
+              matching: find.byType(AnimatedOpacity),
+            ),
+          )
+          .opacity,
+      0,
+    );
+    final underline = tester.widget<Container>(
+      find.descendant(of: tabOf('教学'), matching: find.byType(Container)),
+    );
+    expect((underline.decoration! as BoxDecoration).color, cs.primary);
 
     await tester.tap(find.text('全部'));
     await tester.pump();
     expect(selected, isNull);
-    expect(chip('全部').selected, isTrue);
+    expect(chipSelected('全部'), isTrue);
   });
 
   testWidgets('AppFilterChips wrap 模式换行排列，不横向滚动', (tester) async {

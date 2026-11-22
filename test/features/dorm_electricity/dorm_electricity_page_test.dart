@@ -464,7 +464,7 @@ void main() {
 
     // 错误横幅正文收敛为一句「电费获取失败，登录一卡通后重试」，动作交给短按钮。
     expect(find.text('电费获取失败，登录一卡通后重试'), findsOneWidget);
-    expect(find.widgetWithText(FilledButton, '登录'), findsOneWidget);
+    expect(find.widgetWithText(TextButton, '登录'), findsOneWidget);
     expect(find.text('请先登录统一认证后重试'), findsNothing);
 
     await tester.pumpWidget(const SizedBox.shrink());

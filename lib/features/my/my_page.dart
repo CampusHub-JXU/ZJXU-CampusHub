@@ -12,19 +12,20 @@ import '../../core/auth/unified_auth.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/theme/app_design_tokens.dart';
+import '../../core/theme/app_typography.dart';
 import '../../core/theme/page_transition_activity.dart';
-import '../../core/theme/widgets/app_wallpaper_backdrop.dart';
 import '../../shared/widgets/app_feedback.dart';
 import '../../shared/widgets/app_icon_badge.dart';
-import '../../shared/widgets/glass_container.dart';
+import '../../shared/widgets/app_surface_style.dart';
+import '../../shared/widgets/app_tile_surface.dart';
 import '../../shared/widgets/login_shell.dart';
 import '../../shared/widgets/plain_list.dart';
 
-/// 版本号签名到悬浮导航条上缘的留白（底部 inset 已含导航条高度）。
+/// 版本号签名到底栏上缘的留白（底部 inset 已含 58dp `GlassNavBar` 高度）。
 const double _footerDockGap = 12;
 
 /// 磁贴之间的间距，与功能页磁贴网格同值。
-const double _tileGap = 10;
+const double _tileGap = 8;
 
 /// 状态未知时静默重试的延迟：「未知」不外露，只在后台再测一次。
 const Duration _silentRetryDelay = Duration(seconds: 5);
@@ -72,9 +73,6 @@ class MyPage extends StatefulWidget {
 }
 
 class _MyPageState extends State<MyPage> {
-  /// 透传给流体背景：滚动 / 惯性滑行期间暂停出帧（省电 + 让路 raster）。
-  final _scrollController = ScrollController();
-
   bool _campusLoggedIn = false;
   bool _academicLoggedIn = false;
   int _statusRefreshVersion = 0;
@@ -107,7 +105,6 @@ class _MyPageState extends State<MyPage> {
   @override
   void dispose() {
     _silentRetryTimer?.cancel();
-    _scrollController.dispose();
     UnifiedAuthService.instance.removeListener(_onAuthChanged);
     ZhengfangAuth.instance.removeListener(_onAuthChanged);
     super.dispose();
@@ -472,102 +469,82 @@ class _MyPageState extends State<MyPage> {
     final cs = Theme.of(context).colorScheme;
     final loggedIn = _campusLoggedIn || _academicLoggedIn;
     return Scaffold(
-      // 账号 / 设置磁贴的亚克力模糊共用一次背景读取（见 AppTileSurface）。
-      body: BackdropGroup(
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            // 与主页 / 功能页同一层壁纸与 Shader 背景，三个 tab 视觉连续。
-            AppWallpaperBackdrop(scrollController: _scrollController),
-            SafeArea(
-              bottom: false,
-              child: LayoutBuilder(
-                builder: (context, constraints) => SingleChildScrollView(
-                  controller: _scrollController,
-                  // 内容不满一屏时撑到视口高度，让 [Spacer] 把底部版本号锚到
-                  // 页面底缘；大字号/内容超屏时自然回退为普通滚动。
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(
-                      minHeight: constraints.maxHeight,
+      body: SafeArea(
+        bottom: false,
+        child: CustomScrollView(
+          slivers: [
+            // 内容不满一屏时撑到视口高度，让 [Spacer] 把底部版本号锚到
+            // 页面底缘；大字号/内容超屏时自然回退为普通滚动，避免外层
+            // IntrinsicHeight 每帧触发整页内在尺寸测量。
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  kPlainListGutter,
+                  AppSpacing.xl,
+                  kPlainListGutter,
+                  0,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _MyHeader(
+                      onLogout: loggedIn
+                          ? () => unawaited(_promptLogout())
+                          : null,
                     ),
-                    child: IntrinsicHeight(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(
-                          kPlainListGutter,
-                          AppSpacing.xl,
-                          kPlainListGutter,
-                          0,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _MyHeader(
-                              onLogout: loggedIn
-                                  ? () => unawaited(_promptLogout())
-                                  : null,
+                    const SizedBox(height: AppSpacing.xl),
+                    // 两块等高：按较高一块的内容撑齐。
+                    IntrinsicHeight(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            child: _MyAccountTile(
+                              icon: Icons.badge_outlined,
+                              title: '统一认证',
+                              loggedIn: _campusLoggedIn,
+                              status: _statusLabel(_campusLoggedIn),
+                              statusKey: const Key('my_campus_status'),
+                              // 已登录进一卡通；未登录先弹统一认证登录。
+                              onTap: () => unawaited(_openCampusCardAction()),
                             ),
-                            const SizedBox(height: AppSpacing.xxl),
-                            const _MySectionHeader(),
-                            const SizedBox(height: AppSpacing.md),
-                            // 两块等高：按较高一块的内容撑齐。
-                            IntrinsicHeight(
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  Expanded(
-                                    child: _MyAccountTile(
-                                      icon: Icons.badge_outlined,
-                                      title: '统一认证',
-                                      loggedIn: _campusLoggedIn,
-                                      status: _statusLabel(_campusLoggedIn),
-                                      statusKey: const Key('my_campus_status'),
-                                      // 已登录进一卡通；未登录先弹统一认证登录。
-                                      onTap: () =>
-                                          unawaited(_openCampusCardAction()),
-                                    ),
-                                  ),
-                                  const SizedBox(width: _tileGap),
-                                  Expanded(
-                                    child: _MyAccountTile(
-                                      icon: Icons.school_outlined,
-                                      title: '教务系统',
-                                      loggedIn: _academicLoggedIn,
-                                      status: _statusLabel(_academicLoggedIn),
-                                      statusKey: const Key(
-                                        'my_academic_status',
-                                      ),
-                                      // 已登录直达教务 H5；未登录先弹教务登录。
-                                      onTap: () =>
-                                          unawaited(_openAcademicAction()),
-                                    ),
-                                  ),
-                                ],
-                              ),
+                          ),
+                          const SizedBox(width: _tileGap),
+                          Expanded(
+                            child: _MyAccountTile(
+                              icon: Icons.school_outlined,
+                              title: '教务系统',
+                              loggedIn: _academicLoggedIn,
+                              status: _statusLabel(_academicLoggedIn),
+                              statusKey: const Key('my_academic_status'),
+                              // 已登录直达教务 H5；未登录先弹教务登录。
+                              onTap: () => unawaited(_openAcademicAction()),
                             ),
-                            const SizedBox(height: _tileGap),
-                            _MyTile(
-                              icon: Icons.settings_outlined,
-                              title: '设置',
-                              status: '主题、学期、网络与关于',
-                              onTap: () async {
-                                await context.pushNamed('settings');
-                                await _refreshAfterReturn();
-                              },
-                            ),
-                            const SizedBox(height: _tileGap),
-                            _MyTile(
-                              icon: Icons.auto_awesome_outlined,
-                              title: '导出给 AI',
-                              status: '整理学业数据，交给 AI 助手',
-                              onTap: () => context.pushNamed('ai-export'),
-                            ),
-                            const Spacer(),
-                            _buildFooter(context, cs),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
+                    const SizedBox(height: _tileGap),
+                    _MyTile(
+                      icon: Icons.settings_outlined,
+                      title: '设置',
+                      status: '主题、学期、网络与关于',
+                      onTap: () async {
+                        await context.pushNamed('settings');
+                        await _refreshAfterReturn();
+                      },
+                    ),
+                    const SizedBox(height: _tileGap),
+                    _MyTile(
+                      icon: Icons.auto_awesome_outlined,
+                      title: '导出给 AI',
+                      status: '整理学业数据，交给 AI 助手',
+                      onTap: () => context.pushNamed('ai-export'),
+                    ),
+                    const Spacer(),
+                    _buildFooter(context, cs),
+                  ],
                 ),
               ),
             ),
@@ -700,22 +677,17 @@ class _MyHeader extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '我的',
-                style: Theme.of(context).textTheme.headlineMedium!
-                    .copyWith(color: cs.onSurface),
-              ),
-            ],
+          child: Text(
+            '我的',
+            style: Theme.of(context).textTheme.headlineMedium!
+                .copyWith(color: cs.onSurface),
           ),
         ),
         if (onLogout != null)
           IconButton(
             key: const Key('my_logout'),
             onPressed: onLogout,
-            icon: const Icon(Icons.logout_rounded),
+            icon: const Icon(Icons.logout_rounded, size: 20),
             tooltip: '退出登录',
             style: IconButton.styleFrom(
               foregroundColor: cs.onSurfaceVariant,
@@ -728,36 +700,8 @@ class _MyHeader extends StatelessWidget {
   }
 }
 
-/// 「账号」分组标题：与功能页「功能 · 长按置顶」同一排版。
-class _MySectionHeader extends StatelessWidget {
-  const _MySectionHeader();
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Row(
-      children: [
-        Text(
-          '账号',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-            height: 1.2,
-          ),
-        ),
-        const Spacer(),
-        Text(
-          '点按进入对应服务',
-          style: Theme.of(context).textTheme.bodySmall
-              ?.copyWith(fontSize: 12, color: cs.onSurfaceVariant),
-        ),
-      ],
-    );
-  }
-}
-
-/// 账号方磁贴：并排两块，上徽标、下标题 + 登录状态。已登录带主色圆点，
-/// 未登录把「去登录」染主色作为行动提示。
+/// 账号方磁贴：并排两块，左上裸图标 + 右上淡色微箭头、下标题 + 登录状态。
+/// 已登录带主色圆点，未登录把「去登录」染主色作为行动提示。
 class _MyAccountTile extends StatelessWidget {
   const _MyAccountTile({
     required this.icon,
@@ -778,74 +722,83 @@ class _MyAccountTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final radius = BorderRadius.circular(AppRadius.control);
     return Semantics(
       button: true,
       label: title,
-      child: GlassContainer(
-        borderRadius: AppRadius.tileBorder,
-        padding: const EdgeInsets.all(16),
-        liquid: true,
-        onTap: onTap,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AppIconBadge(
-              icon: icon,
-              accentColor: cs.primary,
-              size: AppIconBadgeSize.medium,
-            ),
-            const SizedBox(height: AppSpacing.xl),
-            Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                height: 1.2,
-                color: cs.onSurface,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.xs),
-            Row(
-              children: [
-                if (loggedIn) ...[
-                  Container(
-                    width: 6,
-                    height: 6,
-                    decoration: BoxDecoration(
-                      color: cs.primary,
-                      shape: BoxShape.circle,
-                    ),
+      child: AppHardTileShell(
+        radius: AppRadius.control,
+        child: AppTileSurface(
+          borderRadius: radius,
+          padding: const EdgeInsets.all(14),
+          blurred: false,
+          onTap: onTap,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  AppIconBadge(
+                    icon: icon,
+                    accentColor: cs.primary,
+                    size: AppIconBadgeSize.medium,
                   ),
-                  const SizedBox(width: 6),
+                  const Spacer(),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 18,
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.45),
+                  ),
                 ],
-                Flexible(
-                  child: Text(
-                    status,
-                    key: statusKey,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12,
-                      height: 1.25,
-                      fontWeight: loggedIn ? null : FontWeight.w600,
-                      color: loggedIn ? cs.onSurfaceVariant : cs.primary,
+              ),
+              const SizedBox(height: 14),
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: context.appText.rowTitleStrong.copyWith(height: 1.2),
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              Row(
+                children: [
+                  if (loggedIn) ...[
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: cs.primary,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
+                  Flexible(
+                    child: Text(
+                      status,
+                      key: statusKey,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.appText.meta.copyWith(
+                        fontSize: 12,
+                        height: 1.25,
+                        fontWeight: loggedIn ? null : FontWeight.w600,
+                        color: loggedIn ? cs.onSurfaceVariant : cs.primary,
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
-          ],
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-/// 独立磁贴：与功能页宽磁贴同一配方（AppTileSurface + 中号徽标 +
-/// 标题/状态两行 + 淡色微箭头），只是去掉置顶等交互。
+/// 独立磁贴：与首页功能区宽磁贴同一配方（[AppHardTileShell] + [AppTileSurface]
+/// 实底无模糊 + 裸图标 + 标题/状态两行 + 淡色微箭头）。
 class _MyTile extends StatelessWidget {
   const _MyTile({
     required this.icon,
@@ -862,59 +815,59 @@ class _MyTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final radius = BorderRadius.circular(AppRadius.control);
     return Semantics(
       button: true,
       label: title,
-      child: GlassContainer(
-        borderRadius: AppRadius.tileBorder,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        liquid: true,
-        onTap: onTap,
-        child: Row(
-          children: [
-            AppIconBadge(
-              icon: icon,
-              accentColor: cs.primary,
-              size: AppIconBadgeSize.medium,
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      height: 1.2,
-                      color: cs.onSurface,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    status,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12,
-                      height: 1.25,
-                      color: cs.onSurfaceVariant,
-                    ),
-                  ),
-                ],
+      child: AppHardTileShell(
+        radius: AppRadius.control,
+        child: AppTileSurface(
+          borderRadius: radius,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          blurred: false,
+          onTap: onTap,
+          child: Row(
+            children: [
+              AppIconBadge(
+                icon: icon,
+                accentColor: cs.primary,
+                size: AppIconBadgeSize.medium,
               ),
-            ),
-            const SizedBox(width: 8),
-            Icon(
-              Icons.chevron_right_rounded,
-              size: 20,
-              color: cs.onSurfaceVariant.withValues(alpha: 0.45),
-            ),
-          ],
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.appText.rowTitleStrong.copyWith(
+                        height: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      status,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.appText.meta.copyWith(
+                        fontSize: 12,
+                        height: 1.25,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 18,
+                color: cs.onSurfaceVariant.withValues(alpha: 0.45),
+              ),
+            ],
+          ),
         ),
       ),
     );

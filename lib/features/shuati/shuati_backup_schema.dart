@@ -2,7 +2,7 @@
 ///
 /// 只读 JSON，不写库 / 不迁移 / 不发网络 / 不落盘；只接受 PWA `importFullBackup`
 /// 承认的版本（1/2/3，缺省按 `data.version ?? 1` 视为 1），其余 fail closed。
-/// 证据（源代码，非猜测）见 `docs/shuati-native-draft.md`。
+/// 证据（源代码，非猜测）见 `docs/shuati-native-draft.md` 与 `docs/shuati-native-parity.md`。
 library;
 
 import 'dart:convert';
@@ -95,6 +95,24 @@ abstract final class ShuatiBackupSchema {
 
   /// 原 PWA 恢复整库时丢弃的 AI 设置 key 前缀。
   static const String aiSettingKeyPrefix = 'ai_';
+
+  /// 原生**拒绝保存**的设置 key：AI 配置（端点 / 模型 / 密钥）与任何看起来像凭据的 key。
+  ///
+  /// 比 PWA 更严格（PWA 只丢 `ai_` 前缀）：除 `ai_` / `ai-` / `ai.` 前缀外，
+  /// 含 `apikey` / `api_key` / `api-key` / `secret` / `token` / `password` 的 key
+  /// 一律视为凭据。备份导入时丢弃并计数，设置仓库写入时直接抛错。
+  static bool isAiOrSecretSettingKey(String key) {
+    final k = key.toLowerCase();
+    if (k.startsWith('ai_') || k.startsWith('ai-') || k.startsWith('ai.')) {
+      return true;
+    }
+    return k.contains('apikey') ||
+        k.contains('api_key') ||
+        k.contains('api-key') ||
+        k.contains('secret') ||
+        k.contains('token') ||
+        k.contains('password');
+  }
 
   /// 单份 JSON 的 UTF-8 大小上限。
   static const int maxJsonBytes = 10 * 1024 * 1024;
@@ -335,7 +353,7 @@ abstract final class ShuatiBackupSchema {
   static bool _isAiSetting(Object? setting) {
     if (setting is! Map) return false;
     final key = setting['key'];
-    return key is String && key.startsWith(aiSettingKeyPrefix);
+    return key is String && isAiOrSecretSettingKey(key);
   }
 
   static List<Object?> _readList(Map<String, Object?> map, String field) {

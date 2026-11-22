@@ -157,7 +157,7 @@ void main() {
     expect(ServiceHubUsageStore.instance.snapshot.isPinned('library'), isFalse);
   });
 
-  testWidgets('unifies non-semantic icon badges to theme primary color', (
+  testWidgets('unifies tile icons to theme primary color without badge', (
     tester,
   ) async {
     const testSeedColor = Color(0xFF8B1D2C); // JXU Wine Red
@@ -176,17 +176,20 @@ void main() {
     );
     await tester.pump();
 
-    // Verify that all AppIconBadge widgets on the page receive theme primary accentColor
-    final badges = tester
-        .widgetList<AppIconBadge>(find.byType(AppIconBadge))
-        .toList();
-    expect(badges.isNotEmpty, isTrue);
+    // 磁贴不再使用 AppIconBadge 底座，改为裸 Icon 并统一主题主色。
+    expect(find.byType(AppIconBadge), findsNothing);
 
     final expectedPrimary = Theme.of(
       tester.element(find.byType(FunctionZoneSection)),
     ).colorScheme.primary;
-    for (final badge in badges) {
-      expect(badge.accentColor, expectedPrimary);
+    // 磁贴图标尺寸为 26（1×1 / 2×1）或 34（2×2）；搜索图标 20 除外。
+    final tileIcons = tester
+        .widgetList<Icon>(find.byType(Icon))
+        .where((icon) => icon.size == 26 || icon.size == 34)
+        .toList();
+    expect(tileIcons.isNotEmpty, isTrue);
+    for (final icon in tileIcons) {
+      expect(icon.color, expectedPrimary);
     }
   });
 

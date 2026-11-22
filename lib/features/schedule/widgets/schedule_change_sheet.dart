@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../../core/academic/schedule_change_rule.dart';
 import '../../../core/academic/schedule_constants.dart';
+import '../../../core/theme/app_design_tokens.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../shared/widgets/app_status_tag.dart';
 
@@ -31,7 +32,7 @@ bool _sameSlot(CourseLessonSlot a, CourseLessonSlot b) =>
 /// - 卡片：类型 tag + 课程名 + 教师；调课/补课为「原 / 改」对照，
 ///   换教室单行「时段 旧教室 → 新教室」，停课单行删除线 +「停课」；
 ///   原文默认收起在「查看原文」里。
-/// - 待确认卡为 `outlineVariant` 描边无填充，副行说明原因
+/// - 待确认卡与已显示卡共用中性底面，由 [AppStatusTag] 区分状态，副行说明原因
 ///   （学期未标注 / 课表未显示）。
 /// - 颜色全部来自 [ColorScheme]，无硬编码色。
 class ScheduleChangeSheet extends StatefulWidget {
@@ -235,9 +236,8 @@ class _ScheduleChangeSheetState extends State<ScheduleChangeSheet> {
       key: ObjectKey(notice),
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
       decoration: BoxDecoration(
-        color: pending ? null : cs.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(18),
-        border: pending ? Border.all(color: cs.outlineVariant) : null,
+        color: cs.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

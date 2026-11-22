@@ -1,5 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 
+import '../../core/theme/app_design_tokens.dart';
 import '../../core/theme/app_typography.dart';
 
 /// 状态标签的语义色调，只映射 ColorScheme 角色（design-guidelines §4.6：
@@ -18,7 +19,7 @@ enum AppStatusTone {
   danger,
 }
 
-/// 统一的状态标签：pill 形状 + `tag` 字体（11 w600）。
+/// 统一的状态标签：6dp 瑞士方标（[AppRadius.tag]）+ `tag` 字体（11 w600）。
 ///
 /// 取代各页自写的 `_InfoChip` / `_TinyBadge` / 倒计时 chip 等（圆角 4 / 6 /
 /// 8 / 10 / 999 并存的那一批，docs/ui-unification-plan.md §2.3）。
@@ -50,10 +51,12 @@ class AppStatusTag extends StatelessWidget {
     return DecoratedBox(
       decoration: ShapeDecoration(
         color: background,
-        shape: const StadiumBorder(),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.tag),
+        ),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
         child: Text(
           label,
           maxLines: 1,

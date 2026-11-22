@@ -12,6 +12,7 @@ import 'package:jxu_campus_hub/features/second_classroom/second_classroom_model.
 import 'package:jxu_campus_hub/features/second_classroom/second_classroom_page.dart';
 import 'package:jxu_campus_hub/features/second_classroom/second_classroom_service.dart';
 import 'package:jxu_campus_hub/features/second_classroom/second_classroom_subscription_service.dart';
+import 'package:jxu_campus_hub/shared/widgets/app_filter_chips.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_status_tag.dart';
 
 void main() {
@@ -30,6 +31,13 @@ void main() {
     WechatLauncher.instance.setGatewayForTesting(null);
     SystemSettingsLauncher.instance.setGatewayForTesting(null);
   });
+
+  /// 筛选条（`AppFilterChips`，原 `ChoiceChip` 已改为自定义 InkWell tab）内
+  /// 名为 [label] 的 chip 文字；点击时命中其 `InkWell`。
+  Finder chipText(String label) => find.descendant(
+    of: find.byWidgetPredicate((w) => w is AppFilterChips),
+    matching: find.text(label),
+  );
 
   test('detects second classroom auth provider entry urls', () {
     expect(
@@ -103,8 +111,8 @@ void main() {
     expect(find.byTooltip('订阅管理'), findsOneWidget);
     expect(find.byTooltip('更多操作'), findsOneWidget);
     // 状态 chip 行 + 排序 + 筛选入口，不再横排多个下拉（ui-unification-plan §4.5）。
-    expect(find.widgetWithText(ChoiceChip, '全部'), findsOneWidget);
-    expect(find.widgetWithText(ChoiceChip, '正在招募'), findsOneWidget);
+    expect(chipText('全部'), findsOneWidget);
+    expect(chipText('正在招募'), findsOneWidget);
     expect(find.text('即将开始'), findsOneWidget);
     expect(find.widgetWithText(TextButton, '筛选'), findsOneWidget);
     expect(find.text('共 1 个活动'), findsOneWidget);
@@ -149,7 +157,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.widgetWithText(ChoiceChip, '正在招募'));
+    await tester.tap(chipText('正在招募'));
     await tester.pumpAndSettle();
     expect(
       service.queries.last.status,
@@ -162,7 +170,7 @@ void main() {
     expect(find.text('所属学院'), findsOneWidget);
     expect(find.text('全部活动（含未开放）'), findsOneWidget);
 
-    await tester.tap(find.widgetWithText(ChoiceChip, '建筑工程学院'));
+    await tester.tap(chipText('建筑工程学院'));
     await tester.pump();
     await tester.tap(find.widgetWithText(FilledButton, '完成'));
     await tester.pumpAndSettle();
@@ -505,6 +513,21 @@ class _MemoryCacheStore implements SecondClassroomCacheStore {
       activities: activities,
       updatedAt: DateTime.now(),
     );
+  }
+
+  @override
+  Future<List<SecondClassroomActivity>> loadAllCachedActivities() async {
+    final byId = <int, SecondClassroomActivity>{};
+    for (final snapshot in _activities.values) {
+      for (final activity in snapshot.activities) {
+        final existing = byId[activity.id];
+        if (existing == null ||
+            (!existing.isRegistered && activity.isRegistered)) {
+          byId[activity.id] = activity;
+        }
+      }
+    }
+    return byId.values.toList(growable: false);
   }
 
   @override

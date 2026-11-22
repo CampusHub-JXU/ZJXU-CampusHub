@@ -33,6 +33,10 @@ class SettingsPage extends StatelessWidget {
   /// 宽屏（平板 / 折叠屏展开）下内容列限宽居中；手机宽度不受影响。
   static const double _contentMaxWidth = 640;
 
+  /// 缓存平台包信息 Future，避免 build 重建时重复经 MethodChannel 查询。
+  static final Future<PackageInfo> _packageInfoFuture =
+      PackageInfo.fromPlatform();
+
   String _formatMonthDay(DateTime date) => '${date.month}月${date.day}日';
 
   Future<void> _pickSemesterStartDate(
@@ -212,7 +216,7 @@ class SettingsPage extends StatelessWidget {
                         valueListenable: UpdateChecker.instance.isChecking,
                         builder: (context, isChecking, _) {
                           return FutureBuilder<PackageInfo>(
-                            future: PackageInfo.fromPlatform(),
+                            future: _packageInfoFuture,
                             builder: (context, snapshot) {
                               final String? value;
                               if (release != null) {

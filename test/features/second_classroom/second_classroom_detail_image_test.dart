@@ -451,6 +451,21 @@ class _MemoryCacheStore implements SecondClassroomCacheStore {
   }
 
   @override
+  Future<List<SecondClassroomActivity>> loadAllCachedActivities() async {
+    final byId = <int, SecondClassroomActivity>{};
+    for (final snapshot in _activities.values) {
+      for (final activity in snapshot.activities) {
+        final existing = byId[activity.id];
+        if (existing == null ||
+            (!existing.isRegistered && activity.isRegistered)) {
+          byId[activity.id] = activity;
+        }
+      }
+    }
+    return byId.values.toList(growable: false);
+  }
+
+  @override
   Future<void> debugClear() async {
     _catalog = null;
     _activities.clear();

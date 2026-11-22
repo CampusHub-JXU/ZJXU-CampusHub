@@ -239,6 +239,9 @@ class AppThemeBuilder {
       colorScheme: colorScheme,
       fontFamily: 'Inter',
       textTheme: _appleTextTheme,
+      splashFactory: NoSplash.splashFactory,
+      splashColor: Colors.transparent,
+      highlightColor: colorScheme.onSurface.withValues(alpha: 0.05),
       extensions: [
         AppTypography.fromScheme(colorScheme),
         AppSurfaces.resolve(colorScheme),
@@ -274,7 +277,9 @@ class AppThemeBuilder {
         style: FilledButton.styleFrom(
           backgroundColor: colorScheme.primary,
           foregroundColor: colorScheme.onPrimary,
-          shape: const StadiumBorder(),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.control),
+          ),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
           textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
         ),
@@ -283,7 +288,9 @@ class AppThemeBuilder {
         style: OutlinedButton.styleFrom(
           foregroundColor: colorScheme.primary,
           side: BorderSide(color: colorScheme.primary),
-          shape: const StadiumBorder(),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.control),
+          ),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
         ),
       ),
@@ -460,6 +467,9 @@ class AppThemeBuilder {
       colorScheme: colorScheme,
       fontFamily: 'Inter',
       textTheme: _appleTextTheme,
+      splashFactory: NoSplash.splashFactory,
+      splashColor: Colors.transparent,
+      highlightColor: colorScheme.onSurface.withValues(alpha: 0.07),
       extensions: [
         AppTypography.fromScheme(colorScheme),
         AppSurfaces.resolve(colorScheme, amoled: pureBlack),
@@ -498,7 +508,9 @@ class AppThemeBuilder {
         style: FilledButton.styleFrom(
           backgroundColor: colorScheme.primary,
           foregroundColor: colorScheme.onPrimary,
-          shape: const StadiumBorder(),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.control),
+          ),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
           textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
         ),
@@ -507,7 +519,9 @@ class AppThemeBuilder {
         style: OutlinedButton.styleFrom(
           foregroundColor: colorScheme.primary,
           side: BorderSide(color: colorScheme.primary),
-          shape: const StadiumBorder(),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.control),
+          ),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
         ),
       ),

@@ -295,16 +295,22 @@ class _ActivityDetailSheet extends StatelessWidget {
                 Tooltip(
                   message: '微信版',
                   child: Material(
-                    color: cs.secondaryContainer.withValues(alpha: 0.85),
-                    shape: const CircleBorder(),
+                    color: cs.surfaceContainerHighest,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.control),
+                    ),
                     clipBehavior: Clip.antiAlias,
                     child: InkWell(
                       splashFactory: InkRipple.splashFactory,
                       onTap: onOpenInWeChat,
-                      child: const SizedBox(
+                      child: SizedBox(
                         width: 48,
                         height: 48,
-                        child: Icon(Icons.open_in_new_rounded),
+                        child: Icon(
+                          Icons.open_in_new_rounded,
+                          size: 20,
+                          color: cs.onSurfaceVariant,
+                        ),
                       ),
                     ),
                   ),
@@ -921,19 +927,24 @@ class _EnrollmentBar extends StatelessWidget {
             ),
             const Spacer(),
             if (creditHours > 0)
-              AppStatusTag('${_formatCreditHours(creditHours)} 学时'),
+              Text(
+                '${_formatCreditHours(creditHours)} 学时',
+                style: context.appText.secondary.copyWith(
+                  color: cs.onSurfaceVariant,
+                  fontWeight: FontWeight.w500,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
           ],
         ),
         if (capacity > 0) ...[
           const SizedBox(height: 6),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: 6,
-              backgroundColor: cs.surfaceContainerHighest,
-              valueColor: AlwaysStoppedAnimation(barColor),
-            ),
+          LinearProgressIndicator(
+            value: progress,
+            minHeight: 6,
+            borderRadius: BorderRadius.circular(3),
+            backgroundColor: cs.surfaceContainerHighest,
+            valueColor: AlwaysStoppedAnimation(barColor),
           ),
         ],
       ],

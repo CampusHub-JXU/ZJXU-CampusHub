@@ -7,6 +7,9 @@ import '../exam/exam_service.dart';
 import '../grades/grades_service.dart';
 import '../../core/academic/schedule_cache_snapshot.dart';
 import '../schedule/schedule_service.dart';
+import '../second_classroom/second_classroom_cache_store.dart';
+import '../second_classroom/second_classroom_model.dart';
+import '../second_classroom/second_classroom_subscription_service.dart';
 
 /// Home 首屏恢复数据（快照协调器的输出之一）。
 class HomeRestoreData {
@@ -159,5 +162,27 @@ class CampusSnapshotCoordinator {
   Future<void> warmGrades() async {
     final studentId = ZhengfangAuth.instance.currentStudentId ?? '';
     await GradesService.instance.fetchGrades(studentId);
+  }
+
+  /// 读取本地二课订阅与已缓存活动（零网络，首页「今日」聚合用）。
+  Future<
+    ({
+      List<SecondClassroomActivity> subscribed,
+      List<SecondClassroomActivity> cached,
+    })
+  >
+  loadLocalSecondClassroomActivities() async {
+    try {
+      final results = await Future.wait<List<SecondClassroomActivity>>([
+        SecondClassroomSubscriptionService.instance.loadSubscriptions(),
+        SecondClassroomCacheStore.instance.loadAllCachedActivities(),
+      ]);
+      return (subscribed: results[0], cached: results[1]);
+    } catch (_) {
+      return (
+        subscribed: const <SecondClassroomActivity>[],
+        cached: const <SecondClassroomActivity>[],
+      );
+    }
   }
 }

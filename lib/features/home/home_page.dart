@@ -14,15 +14,20 @@ import '../../core/semester/semester_calendar.dart';
 import '../../core/system_surface/campus_data_change_bus.dart';
 import '../../core/theme/app_design_tokens.dart';
 import '../../core/theme/app_theme_controller.dart';
+import '../../core/theme/app_typography.dart';
 import '../../core/theme/page_transition_activity.dart';
 import '../../core/theme/personalization_controller.dart';
 import '../../core/theme/widgets/app_wallpaper_backdrop.dart';
 import '../../core/update/update_checker.dart';
+import '../../shared/widgets/app_icon_badge.dart';
+import '../../shared/widgets/app_surface_style.dart';
+import '../../shared/widgets/app_tile_surface.dart';
 import '../../shared/widgets/login_shell.dart';
 import '../../shared/widgets/network_error_toast.dart';
 import '../../shared/widgets/update_dialog.dart';
 import '../../core/academic/exam_model.dart';
 import '../../core/academic/schedule_cache_snapshot.dart';
+import '../second_classroom/second_classroom_model.dart';
 import 'campus_snapshot_coordinator.dart';
 import 'function_zone/function_zone_section.dart';
 import 'home_presentation_resolver.dart';
@@ -30,21 +35,23 @@ import 'home_zone_controller.dart';
 import 'models/home_asset_state.dart';
 import 'models/home_presentation.dart';
 import 'models/home_snapshot.dart';
+import 'models/home_today_agenda.dart';
 import 'widgets/home_asset_strip.dart';
 import 'widgets/home_campus_notice_section.dart';
 import 'widgets/home_event_banner.dart';
 import 'widgets/home_primary_status_hero.dart';
+import 'widgets/home_today_agenda_cards.dart';
 import 'widgets/home_today_section.dart';
 import 'widget/campus_widget_sync.dart';
 
 /// 首页：天气 App 式的单一纵向连续滚动页。
 ///
 /// 第一屏只回答「今天什么状态」：环境行 → 无框 Hero（下一节课/当前
-/// 状态）→（可选）事件横幅 → 紧凑「今天」列表 → 资产行（校园卡 +
-/// 电费）→「校园公告」简化预览（紧随资产行，不再压到首屏底部）→
+/// 状态）→（可选）事件横幅 → 资产行（校园卡 + 电费）→（可选）「校园公告」
+/// 简化预览 →「今日」锚点段落（紧凑今日课程/考试列表或空态）→
 /// 「功能」锚点段落（全部入口的轻量小按钮工具条，含课表——原快捷
 /// 入口行已并入）。底部 dock 通过 [HomeZoneController] 做 ScrollSpy，
-/// 在 首页/功能 之间自动切换高亮。数据获取与刷新行为与旧版一致，
+/// 在 首页/今日/功能 之间自动切换高亮。数据获取与刷新行为与旧版一致，
 /// 展示层由 [resolveHomePresentation]（纯函数）从 [HomeSnapshot] 派生。
 /// 教务登录弹层的呈现函数：返回 true 表示弹层内登录成功。
 typedef HomeLoginPromptPresenter = Future<bool> Function(BuildContext context);
@@ -65,6 +72,9 @@ class _HomePageState extends State<HomePage> {
   final _bootstrapController = AppBootstrapController.instance;
   final _snapshotCoordinator = CampusSnapshotCoordinator.instance;
   final _scrollController = ScrollController();
+
+  /// 今日区锚点：dock「今日」点击的滚动定位与 ScrollSpy 判定都基于它。
+  final _todaySectionKey = GlobalKey();
 
   /// 功能区锚点：dock「功能」点击的滚动定位与 ScrollSpy 判定都基于它。
   final _functionSectionKey = GlobalKey();
@@ -99,6 +109,10 @@ class _HomePageState extends State<HomePage> {
   /// 教务处通知载荷：Hero 角标、校园公告区块共用（后台 isolate 写盘后
   /// 由 store.reload 经此 ValueNotifier 回流刷新）。
   NoticeInboxHead _noticeHead = NoticeInboxHead.empty;
+
+  /// 「今日」板块本地二课活动缓存（订阅 + 已报名缓存，零网络读取）。
+  List<SecondClassroomActivity> _subscribedActivities = const [];
+  List<SecondClassroomActivity> _cachedActivities = const [];
 
   /// 浮动底栏（约 74 高）+ 12 间距 + 24 呼吸空间；SafeArea(bottom: false)
   /// 之下还需叠加真实底部安全区。
@@ -138,6 +152,7 @@ class _HomePageState extends State<HomePage> {
     _scrollController.addListener(_onScrollChanged);
     HomeZoneController.instance
       ..scrollToTop = _scrollToTop
+      ..scrollToToday = _scrollToToday
       ..scrollToFunction = _scrollToFunction;
     _onBootstrapPhaseChanged();
   }
@@ -158,6 +173,7 @@ class _HomePageState extends State<HomePage> {
     _scrollController.removeListener(_onScrollChanged);
     HomeZoneController.instance
       ..scrollToTop = null
+      ..scrollToToday = null
       ..scrollToFunction = null;
     _scrollController.dispose();
     super.dispose();
@@ -295,7 +311,18 @@ class _HomePageState extends State<HomePage> {
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      unawaited(_refreshLocalSecondClassroomAgenda());
       unawaited(_refreshDeferredContent());
+    });
+  }
+
+  Future<void> _refreshLocalSecondClassroomAgenda() async {
+    final loaded = await _snapshotCoordinator
+        .loadLocalSecondClassroomActivities();
+    if (!mounted) return;
+    setState(() {
+      _subscribedActivities = loaded.subscribed;
+      _cachedActivities = loaded.cached;
     });
   }
 
@@ -518,6 +545,8 @@ class _HomePageState extends State<HomePage> {
         await _refreshCampusCardBalance();
       case 'dorm-electricity':
         await _refreshDormElectricity();
+      case 'second-classroom':
+        await _refreshLocalSecondClassroomAgenda();
     }
   }
 
@@ -538,8 +567,12 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Future<void> _scrollToFunction() async {
-    final sectionContext = _functionSectionKey.currentContext;
+  Future<void> _scrollToToday() => _scrollToSection(_todaySectionKey);
+
+  Future<void> _scrollToFunction() => _scrollToSection(_functionSectionKey);
+
+  Future<void> _scrollToSection(GlobalKey sectionKey) async {
+    final sectionContext = sectionKey.currentContext;
     final viewportContext = _scrollViewportKey.currentContext;
     if (sectionContext == null || viewportContext == null) return;
     if (!_scrollController.hasClients) return;
@@ -549,7 +582,7 @@ class _HomePageState extends State<HomePage> {
     if (viewportBox == null || sectionBox == null) return;
 
     // 直接算目标偏移，而不是先 ensureVisible 再回拉：两段动画会顿一下。
-    // 留出状态栏高度 + 8dp，让「功能」两个字落在实色区而不是渐隐羽化区里
+    // 留出状态栏高度 + 8dp，让区块标题落在实色区而不是渐隐羽化区里
     // （状态栏透明后，区块顶对齐屏幕顶 = 标题被羽化洗掉）。
     final topInset = MediaQuery.paddingOf(context).top;
     final sectionTop = sectionBox
@@ -566,32 +599,45 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// ScrollSpy：功能区锚点顶部越过视口 45% 线且页面已发生滚动时，
-  /// 才视为进入功能区。
+  /// ScrollSpy：按自下而上优先级判定当前可视分区（0 = 主页，1 = 今日，
+  /// 2 = 功能）。
   ///
   /// 锚点顶部坐标相对滚动视口（而非屏幕）计算，保证状态栏/SafeArea
-  /// 差异不影响判定；`offset > 0` 护栏确保空状态（首屏内容很矮、锚点
-  /// 天然高于该线）时刚打开页面 dock 仍高亮「首页」。分区实际变化时
+  /// 差异不影响判定；`offset <= 0` 护栏确保空状态（首屏内容很矮、锚点
+  /// 天然高于判定线）时刚打开页面 dock 仍高亮「主页」。分区实际变化时
   /// 才通知（[HomeZoneController] 内部去重），滚动过程中不产生多余重建。
   void _onScrollChanged() {
     final viewportBox =
         _scrollViewportKey.currentContext?.findRenderObject() as RenderBox?;
-    final sectionBox =
+    final todayBox =
+        _todaySectionKey.currentContext?.findRenderObject() as RenderBox?;
+    final functionBox =
         _functionSectionKey.currentContext?.findRenderObject() as RenderBox?;
     if (viewportBox == null ||
-        sectionBox == null ||
+        todayBox == null ||
+        functionBox == null ||
         !viewportBox.attached ||
-        !sectionBox.attached ||
+        !todayBox.attached ||
+        !functionBox.attached ||
         !_scrollController.hasClients) {
       return;
     }
-    final sectionTop = sectionBox
+    if (_scrollController.offset <= 0) {
+      HomeZoneController.instance.updateZone(0);
+      return;
+    }
+    final trigger = viewportBox.size.height * _zoneTriggerViewportFraction;
+    final functionTop = functionBox
         .localToGlobal(Offset.zero, ancestor: viewportBox)
         .dy;
-    final trigger = viewportBox.size.height * _zoneTriggerViewportFraction;
-    final inFunctionZone =
-        sectionTop <= trigger && _scrollController.offset > 0;
-    HomeZoneController.instance.updateZone(inFunctionZone ? 1 : 0);
+    if (functionTop <= trigger) {
+      HomeZoneController.instance.updateZone(2);
+      return;
+    }
+    final todayTop = todayBox
+        .localToGlobal(Offset.zero, ancestor: viewportBox)
+        .dy;
+    HomeZoneController.instance.updateZone(todayTop <= trigger ? 1 : 0);
   }
 
   /// 校园卡余额展示状态（纯函数派生，见 [resolveHomeAssetState]）。
@@ -763,6 +809,16 @@ class _HomePageState extends State<HomePage> {
       },
     );
 
+    final todayAgenda = resolveHomeTodayAgenda(
+      now: now,
+      exams: _snapshotCoordinator.cachedExams ?? const [],
+      subscribedActivities: _subscribedActivities,
+      cachedActivities: _cachedActivities,
+      excludeExamCourseName: presentation.hero.kind == HomeHeroKind.examSoon
+          ? presentation.hero.courseName
+          : null,
+    );
+
     final assetWidget = HomeAssetStrip(
       status: presentation.status,
       onCampusCardTap: () => _pushFeatureRoute(context, 'campus-card'),
@@ -818,22 +874,13 @@ class _HomePageState extends State<HomePage> {
                         },
                       ),
                     ],
-                    // 今天列表（含次日预览与「Hero 大字首课 + 单行折叠摘要」
-                    // 形态）优先于资产行：课程安排是第一屏价值最高的状态信息,
-                    // 余额/电费次之。
-                    // Today 段落为空（如假期）时只留一段间距，避免 Hero 与资产行
-                    // 之间空出两倍段距。
-                    if (!presentation.today.isEmpty) ...[
-                      const SizedBox(height: _sectionGap),
-                      todayWidget,
-                    ],
+                    // 资产行紧随 Hero / 事件横幅下方（校园公告紧随资产行）。
                     const SizedBox(height: _sectionGap),
                     assetWidget,
                   ],
                 ),
               ),
-              // 公告 + 功能区尾段：公告开关变化时整段重建。公告紧随资产行
-              //（用户可不经滚动直达完整公告列表），其后是功能区小按钮段落。
+              // 公告 + 今日区 + 功能区尾段：公告开关变化时整段重建。
               ValueListenableBuilder<bool>(
                 valueListenable:
                     PersonalizationController.instance.homeCampusNoticeEnabled,
@@ -857,20 +904,62 @@ class _HomePageState extends State<HomePage> {
                             AppSpacing.sectionBreak,
                           ),
                           child: noticeWidget,
+                        )
+                      else
+                        const SizedBox(height: AppSpacing.sectionBreak),
+                      // 今日区锚点：始终留在树中，供 dock「今日」滚动定位与 ScrollSpy 判定。
+                      Container(
+                        key: _todaySectionKey,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: _pageGutter,
                         ),
-                      // 功能区锚点：key 挂在容器上，ensureVisible 滚动到位后
-                      // 标题不贴视口顶；公告关闭时顶距退回普通段落间距。
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _TodayZoneHeader(
+                              onOpenSchedule: () => unawaited(
+                                _pushFeatureRoute(context, 'schedule'),
+                              ),
+                            ),
+                            const SizedBox(height: AppSpacing.md),
+                            if (!presentation.today.isEmpty)
+                              todayWidget
+                            else if (!todayAgenda.hasExtras)
+                              _TodayEmptyState(
+                                onOpenSchedule: () => unawaited(
+                                  _pushFeatureRoute(context, 'schedule'),
+                                ),
+                              ),
+                            if (todayAgenda.hasExtras) ...[
+                              if (!presentation.today.isEmpty)
+                                const SizedBox(height: AppSpacing.lg),
+                              HomeTodayAgendaCards(
+                                agenda: todayAgenda,
+                                onOpenExam: () => unawaited(
+                                  _pushFeatureRoute(context, 'exam'),
+                                ),
+                                onOpenSecondClassroom: () => unawaited(
+                                  _pushFeatureRoute(
+                                    context,
+                                    'second-classroom',
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.sectionBreak),
+                      // 功能区锚点：key 挂在容器上，顶距由上一段落的 sectionBreak 承担，
+                      // 滚动到位后标题落在实色区而不是状态栏羽化区。
                       Container(
                         key: _functionSectionKey,
-                        padding: EdgeInsets.only(
-                          top: noticeVisible ? 0 : AppSpacing.sectionBreak,
-                          bottom: bottomClearance,
-                        ),
+                        padding: EdgeInsets.only(bottom: bottomClearance),
                         child: FunctionZoneSection(
                           campusCardBalance:
                               presentation.status.campusCardBalance,
                           dormElectricity: presentation.status.dormElectricity,
-                          padding: EdgeInsets.fromLTRB(
+                          padding: const EdgeInsets.fromLTRB(
                             _pageGutter,
                             0,
                             _pageGutter,
@@ -885,6 +974,119 @@ class _HomePageState extends State<HomePage> {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 今日段落头：与 `_FunctionZoneHeader` 视觉一致，左「今日」标题、右「查看课表」入口。
+class _TodayZoneHeader extends StatelessWidget {
+  const _TodayZoneHeader({required this.onOpenSchedule});
+
+  final VoidCallback onOpenSchedule;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Text(
+          '今日',
+          style: Theme.of(context).textTheme.titleLarge
+              ?.copyWith(fontWeight: FontWeight.w700, height: 1.2),
+        ),
+        const Spacer(),
+        Semantics(
+          button: true,
+          label: '查看课表',
+          child: InkWell(
+            onTap: onOpenSchedule,
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '查看课表',
+                    style: context.appText.meta.copyWith(
+                      color: cs.primary,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 16,
+                    color: cs.primary,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 今日区空态：无课程与考试安排时以轻量瓦片承接，整块可点进完整课表。
+class _TodayEmptyState extends StatelessWidget {
+  const _TodayEmptyState({required this.onOpenSchedule});
+
+  final VoidCallback onOpenSchedule;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Semantics(
+      button: true,
+      label: '今日暂无课程与考试安排，浏览本周与全学期课程',
+      child: AppHardTileShell(
+        radius: AppRadius.tile,
+        child: AppTileSurface(
+          borderRadius: AppRadius.tileBorder,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          blurred: false,
+          onTap: onOpenSchedule,
+          child: Row(
+            children: [
+              AppIconBadge(
+                icon: Icons.calendar_today_outlined,
+                accentColor: cs.primary,
+                size: AppIconBadgeSize.medium,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '今日暂无课程与考试安排',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.appText.rowTitle.copyWith(height: 1.25),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '浏览本周与全学期课程',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.appText.meta.copyWith(height: 1.25),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 20,
+                color: cs.onSurfaceVariant.withValues(alpha: 0.45),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

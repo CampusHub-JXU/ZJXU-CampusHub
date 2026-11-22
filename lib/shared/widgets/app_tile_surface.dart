@@ -26,6 +26,7 @@ class AppTileSurface extends StatelessWidget {
     this.padding,
     this.onTap,
     this.onLongPress,
+    this.blurred = true,
   });
 
   final Widget child;
@@ -35,6 +36,10 @@ class AppTileSurface extends StatelessWidget {
   final EdgeInsetsGeometry? padding;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
+
+  /// 是否允许启用亚克力背景模糊；位于纯色纸面之上（如首页功能区）时传
+  /// `false`，跳过 `BackdropFilter.grouped` 重采样以降低滚动光栅开销。
+  final bool blurred;
 
   @override
   Widget build(BuildContext context) {
@@ -54,7 +59,9 @@ class AppTileSurface extends StatelessWidget {
 
     final recipe = MaterialRecipe.resolve(style.materialStyle);
     final useAcrylic =
-        recipe.style == SurfaceMaterialStyle.acrylic && recipe.usesBackdropBlur;
+        blurred &&
+        recipe.style == SurfaceMaterialStyle.acrylic &&
+        recipe.usesBackdropBlur;
 
     final shape = RoundedSuperellipseBorder(borderRadius: radius);
     final content = Padding(padding: padding ?? EdgeInsets.zero, child: child);

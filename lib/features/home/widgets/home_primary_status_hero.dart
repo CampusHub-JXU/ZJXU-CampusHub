@@ -8,7 +8,7 @@ import '../../../core/theme/app_typography.dart';
 /// Primary Status Hero：首页唯一的最强视觉焦点（无框纯排版）。
 ///
 /// 顶部环境行「周次 · 日期」+ 通知铃 / 更新入口；
-/// 主体按 kicker → 大字 → 时间 → 地点元信息 → 「查看课表」的
+/// 主体按 kicker → 大字 → 时间 → 地点元信息的
 /// 纯文字层级直接坐在页面背景上，靠 typography + spacing 建立层级，
 /// 不使用任何卡片容器 / 玻璃 / 底纹。文字颜色统一走
 /// [AppThemeController] 的 system 透传路径，兼容自定义背景图模式。
@@ -39,8 +39,8 @@ class HomePrimaryStatusHero extends StatelessWidget {
   final String envStatusText;
   final bool canShowUpdateAction;
 
-  /// 打开课表回调；仅课程类 Hero 显示「查看课表」入口，
-  /// 其余 kind 传 null 且不渲染该入口。
+  /// 打开课表回调；课程类 Hero 与未开学态主体块整体可点跳转课表，
+  /// 可见的「查看课表」文字入口统一放在今日段落头。
   final VoidCallback? onOpenSchedule;
   final VoidCallback onNotificationTap;
 
@@ -76,7 +76,7 @@ class HomePrimaryStatusHero extends StatelessWidget {
     );
     final secondaryTextColor = AppThemeController.instance
         .resolveHomeSecondaryTextColor(context, cs.onSurfaceVariant);
-    // kicker / 「查看课表」强调色：system 模式透传主题酒红，
+    // kicker / 「去登录」强调色：system 模式透传主题酒红，
     // 强制文字色模式（自定义背景图）下跟随可读文字色。
     final accentColor = AppThemeController.instance.resolveHomeTextColor(
       context,
@@ -92,7 +92,7 @@ class HomePrimaryStatusHero extends StatelessWidget {
       HomeHeroKind.beforeSemester => '未开学',
       HomeHeroKind.semesterOver => '本学期已结束',
       HomeHeroKind.noCourseToday => '今天',
-      HomeHeroKind.nextCourseUpcoming => '今天没课 · 下一节',
+      HomeHeroKind.nextCourseUpcoming => '今天没课 下一节',
       HomeHeroKind.holiday => hero.kicker ?? '放假中',
       HomeHeroKind.loggedOut => '未登录',
     };
@@ -130,7 +130,6 @@ class HomePrimaryStatusHero extends StatelessWidget {
                   if (_isCourseKind)
                     _buildCourseHero(
                       context,
-                      accentColor: accentColor,
                       primaryTextColor: primaryTextColor,
                       secondaryTextColor: secondaryTextColor,
                     )
@@ -301,11 +300,10 @@ class HomePrimaryStatusHero extends StatelessWidget {
   }
 
   /// 课程类 Hero（正在上课 / 下一节课今天 / 下一节课今天没课）：
-  /// 课程名（`O4` 自适应 34/28/22）→ 时间 → 地点/节次 → 查看课表。
-  /// 课程信息主体整体可点跳转课表（课表双入口：hero 主体 + 功能区瓦片）。
+  /// 课程名（`O4` 自适应 34/28/22）→ 时间 → 地点/节次。
+  /// 课程信息主体整体可点跳转课表，避免与今日段落头的「查看课表」重复。
   Widget _buildCourseHero(
     BuildContext context, {
-    required Color accentColor,
     required Color primaryTextColor,
     required Color secondaryTextColor,
   }) {
@@ -359,49 +357,15 @@ class HomePrimaryStatusHero extends StatelessWidget {
       ],
     );
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (onOpenSchedule != null)
-          Semantics(
-            button: true,
-            label: '查看课表 ${hero.courseName ?? ''}',
-            child: InkWell(
-              borderRadius: BorderRadius.circular(12),
-              onTap: onOpenSchedule,
-              child: courseInfo,
-            ),
-          )
-        else
-          courseInfo,
-        if (onOpenSchedule != null) ...[
-          const SizedBox(height: 10),
-          Semantics(
-            button: true,
-            label: '查看课表 ${hero.courseName ?? ''}',
-            child: InkWell(
-              borderRadius: BorderRadius.circular(8),
-              onTap: onOpenSchedule,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      '查看课表',
-                      style: context.appText.rowTitle.copyWith(
-                        color: accentColor,
-                      ),
-                    ),
-                    const SizedBox(width: 2),
-                    Icon(Icons.chevron_right, size: 16, color: accentColor),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ],
+    if (onOpenSchedule == null) return courseInfo;
+    return Semantics(
+      button: true,
+      label: '查看课表 ${hero.courseName ?? ''}',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onOpenSchedule,
+        child: courseInfo,
+      ),
     );
   }
 

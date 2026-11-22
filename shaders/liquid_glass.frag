@@ -70,7 +70,14 @@ void main() {
   // 折射带最多覆盖短边的 45%，控件中心一段保持位移为 0、内容不变形
   // （同 OpenDesign 位移贴图的中性中心区）。
   float band = clamp(u_shape.y, 2.0, min_half * 0.9);
-  float dist = sd_round_rect(local, half_size, radius);
+
+  // 方正贴底通栏（radius == 0）：左/右/下三边贴屏幕外框，只有顶缘是暴露的
+  // 玻璃切边。若仍套四边矩形 SDF，左上/右上角会出现 45° 法线跳变，把卡边
+  // 与背景阴影折成灰三角脏污。因此贴底通栏仅沿顶缘做纯竖直柔和微折射。
+  bool flush_top_only = u_shape.x <= 0.5;
+  float dist = flush_top_only
+      ? -(local.y + half_size.y)
+      : sd_round_rect(local, half_size, radius);
 
   // t：0 在玻璃轮廓上，1 在折射带内缘；带外与中心恒为 1。
   float t = clamp(-dist / band, 0.0, 1.0);
@@ -83,24 +90,31 @@ void main() {
   float max_shift = max(min_half - 1.0, 0.0);
   float displace = min(lens * u_strength.x, max_shift);
 
-  // 法线朝外、采样点朝内：
-  // 1) 水平方向只在左右圆弧带内做温柔的向内弯折（直边区 normal.x == 0，
-  //    中心更完全不变形）；
-  // 2) 竖直方向把法线折射 + 纵向镜面折叠合进同一个平滑单调的采样曲线，
-  //    并用连续过零的 `y_norm = local.y / half_size.y` 替代阶跃的 `sign`，
-  //    彻底消除左右圆弧中线 `local.y = 0` 处的横切接缝；同时总竖直位移
-  //    严格控在带内（<= displace + mirror 合理分配），不折返成三层重影。
-  vec2 normal = normal_round_rect(local, half_size, radius);
-  vec2 inward = -normal;
-  float y_norm = clamp(local.y / max(half_size.y, 1.0), -1.0, 1.0);
+  vec2 total_off;
+  if (flush_top_only) {
+    // 贴底通栏：无水平弯折，仅顶缘窄带内向下（内侧）做极克制的竖直折射。
+    float top_pull = displace * 0.45 + u_strength.z * lens * 0.35;
+    total_off = vec2(0.0, top_pull);
+  } else {
+    // 法线朝外、采样点朝内：
+    // 1) 水平方向只在左右圆弧带内做温柔的向内弯折（直边区 normal.x == 0，
+    //    中心更完全不变形）；
+    // 2) 竖直方向把法线折射 + 纵向镜面折叠合进同一个平滑单调的采样曲线，
+    //    并用连续过零的 `y_norm = local.y / half_size.y` 替代阶跃的 `sign`，
+    //    彻底消除左右圆弧中线 `local.y = 0` 处的横切接缝；同时总竖直位移
+    //    严格控在带内（<= displace + mirror 合理分配），不折返成三层重影。
+    vec2 normal = normal_round_rect(local, half_size, radius);
+    vec2 inward = -normal;
+    float y_norm = clamp(local.y / max(half_size.y, 1.0), -1.0, 1.0);
 
-  // 竖直方向的连续透镜剖面：中心缓慢缩放（0.08 * local.y），靠近上下轮廓
-  // 时在镜面带里平滑加力把采样点往中心折进（最高 ~displacement），但绝不
-  // 在圆弧中线处突变、也绝不过度折叠产生三层重影。
-  float vertical_pull = -local.y * 0.08
-      + inward.y * displace * 0.55
-      - y_norm * (u_strength.z * lens * 0.5);
-  vec2 total_off = vec2(inward.x * displace * 0.7, vertical_pull);
+    // 竖直方向的连续透镜剖面：中心缓慢缩放（0.08 * local.y），靠近上下轮廓
+    // 时在镜面带里平滑加力把采样点往中心折进（最高 ~displacement），但绝不
+    // 在圆弧中线处突变、也绝不过度折叠产生三层重影。
+    float vertical_pull = -local.y * 0.08
+        + inward.y * displace * 0.55
+        - y_norm * (u_strength.z * lens * 0.5);
+    total_off = vec2(inward.x * displace * 0.7, vertical_pull);
+  }
   vec2 base_px = p + total_off;
 
   // 不同波长等效 IOR 略异：三个通道沿着实际位移方向微弱错开

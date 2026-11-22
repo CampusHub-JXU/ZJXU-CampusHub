@@ -57,16 +57,20 @@ PhysicalTestRecord _record({
   );
 }
 
-/// 历年选择器里第 [index] 个 chip（共享 `AppFilterChips` 渲染的 `ChoiceChip`）。
+/// 历年选择器里第 [index] 个 chip（共享 `AppFilterChips` 渲染的自定义 tab，
+/// 原 `ChoiceChip` 已移除；每个 tab 是 `Semantics(selected: …)` 包裹的
+/// `InkWell`）。
 Finder _yearChip(int index) => find
     .descendant(
       of: find.byKey(const Key('physical_test_year_chips')),
-      matching: find.byType(ChoiceChip),
+      matching: find.byWidgetPredicate(
+        (w) => w is Semantics && w.properties.selected != null,
+      ),
     )
     .at(index);
 
 bool _chipSelected(WidgetTester tester, int index) =>
-    tester.widget<ChoiceChip>(_yearChip(index)).selected;
+    tester.widget<Semantics>(_yearChip(index)).properties.selected ?? false;
 
 PhysicalTestSnapshot _multiYearSnapshot() {
   return PhysicalTestSnapshot(

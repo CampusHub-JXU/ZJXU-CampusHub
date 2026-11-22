@@ -11,6 +11,7 @@ import '../../core/logging/app_logger.dart';
 import '../../core/shortcut/app_shortcut_service.dart';
 import '../../core/theme/app_design_tokens.dart';
 import '../../shared/widgets/app_app_bar.dart';
+import '../../shared/widgets/app_banner.dart';
 import '../../shared/widgets/auth_required_view.dart';
 import '../../shared/widgets/detail_readout.dart';
 import '../../shared/widgets/login_shell.dart';
@@ -443,13 +444,6 @@ class _CampusCardPageState extends State<CampusCardPage> {
       BalanceFailureKind.network => ('网络不可用，请检查网络后重试', Icons.wifi_off_rounded),
       BalanceFailureKind.none => (null, null),
     };
-    // 只有「明确认证失效」用警示底色；网络 / 服务不可用保持中性提示，
-    // 不得把可重试的故障渲染成需要重新登录。
-    final failureIsSerious = failure == BalanceFailureKind.authExpired;
-    final failureTone = failureIsSerious ? cs.onErrorContainer : cs.onSurface;
-    final failureBackground = failureIsSerious
-        ? cs.errorContainer
-        : cs.surfaceContainerHigh;
 
     return Padding(
       // 比瓦片多缩进 8；眼睛按钮自带 44 点按区，右侧不再缩进。
@@ -480,65 +474,28 @@ class _CampusCardPageState extends State<CampusCardPage> {
             ),
           ),
           if (balance == null) ...[
-            const SizedBox(height: AppSpacing.md),
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: Column(
-                children: [
-                  if (failureMessage != null && failureIcon != null) ...[
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: failureBackground,
-                        borderRadius: AppRadius.chipBorder,
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(failureIcon, size: 14, color: failureTone),
-                          const SizedBox(width: AppSpacing.sm),
-                          Expanded(
-                            child: Text(
-                              failureMessage,
-                              style: context.appText.meta.copyWith(
-                                height: 1.4,
-                                color: failureTone,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.sm),
-                  ],
-                  SizedBox(
-                    width: double.infinity,
-                    child: switch (failure) {
-                      BalanceFailureKind.authRequired => FilledButton.icon(
-                        onPressed: _balanceLoading ? null : _handleLogin,
-                        icon: const Icon(Icons.login_rounded, size: 18),
-                        label: const Text('登录统一认证'),
-                      ),
-                      BalanceFailureKind.authExpired => FilledButton.icon(
-                        onPressed: _balanceLoading ? null : _handleLogin,
-                        icon: const Icon(Icons.login_rounded, size: 18),
-                        label: const Text('重新登录'),
-                      ),
-                      _ => FilledButton.icon(
-                        onPressed: _balanceLoading ? null : _refreshBalance,
-                        icon: const Icon(Icons.touch_app_outlined, size: 18),
-                        label: Text(_balanceLoading ? '正在查询余额' : '点击查询余额'),
-                      ),
-                    },
-                  ),
-                ],
+            if (failureMessage != null && failureIcon != null) ...[
+              const SizedBox(height: AppSpacing.md),
+              Padding(
+                padding: const EdgeInsets.only(right: AppSpacing.sm),
+                child: _buildBalanceFailureBanner(
+                  failure,
+                  failureMessage,
+                  failureIcon,
+                ),
               ),
-            ),
-            const SizedBox(height: AppSpacing.sm),
+              const SizedBox(height: AppSpacing.sm),
+            ] else ...[
+              const SizedBox(height: AppSpacing.sm),
+              RefreshStatusLine(
+                updatedAt: lastUpdated,
+                refreshing: _balanceLoading,
+                failed: false,
+                loadingLabel: '正在查询余额',
+                onRefresh: _balanceLoading ? null : _refreshBalance,
+                refreshTooltip: '查询余额',
+              ),
+            ],
           ] else ...[
             const SizedBox(height: AppSpacing.sm),
             RefreshStatusLine(
@@ -549,6 +506,37 @@ class _CampusCardPageState extends State<CampusCardPage> {
           ],
         ],
       ),
+    );
+  }
+
+  /// 无余额且存在失败原因时，由单层 [AppBanner] 承载失败说明与紧凑恢复动作，
+  /// 避免「说明盒 + 通栏 FilledButton」双层堆叠。
+  Widget _buildBalanceFailureBanner(
+    BalanceFailureKind failure,
+    String message,
+    IconData icon,
+  ) {
+    final isAuth =
+        failure == BalanceFailureKind.authRequired ||
+        failure == BalanceFailureKind.authExpired;
+    final actionLabel = switch (failure) {
+      BalanceFailureKind.authRequired => '登录统一认证',
+      BalanceFailureKind.authExpired => '重新登录',
+      _ => _balanceLoading ? '正在查询余额' : '点击查询余额',
+    };
+    return AppBanner(
+      message: message,
+      icon: icon,
+      // 只有「明确认证失效」用警示底色；网络 / 服务不可用保持中性提示，
+      // 不得把可重试的故障渲染成需要重新登录。
+      tone: failure == BalanceFailureKind.authExpired
+          ? AppBannerTone.error
+          : AppBannerTone.neutral,
+      actionLabel: actionLabel,
+      onAction: () {
+        if (_balanceLoading) return;
+        unawaited(isAuth ? _handleLogin() : _refreshBalance());
+      },
     );
   }
 

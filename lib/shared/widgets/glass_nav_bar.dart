@@ -3,10 +3,11 @@ import 'package:material_ui/material_ui.dart';
 import '../../core/theme/app_design_tokens.dart';
 import 'glass_container.dart';
 
-/// 悬浮矩形玻璃底栏（dock）。
+/// 贴底通栏液态玻璃底栏（flush bottom bar）。
 ///
-/// Apple 风格的 floating dock：整宽毛玻璃圆角矩形悬浮于内容之上，圆角
-/// 刻意收紧（[AppRadius.dock]）保持矩形倾向；选中项为圆角矩形指示器。
+/// 贴边、贴底通栏铺满并将背景自然延伸至系统底部手势区；保留克制的
+/// 液态玻璃折射与上缘细分割线，选中态以顶部居中短指示线与字重/实体图标
+/// 表达，不再使用悬浮药丸或圆角底块。
 /// 整屏仅此一个 BackdropFilter 层。
 class GlassNavBar extends StatelessWidget {
   const GlassNavBar({
@@ -20,15 +21,19 @@ class GlassNavBar extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onDestinationSelected;
 
+  static const double _barHeight = 58;
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
 
     return GlassContainer(
       tier: GlassTier.nav,
-      borderRadius: BorderRadius.circular(AppRadius.dock),
+      borderRadius: BorderRadius.zero,
+      padding: EdgeInsets.only(bottom: bottomInset),
       child: SizedBox(
-        height: 68,
+        height: _barHeight,
         child: Row(
           children: [
             for (var i = 0; i < destinations.length; i++)
@@ -59,7 +64,7 @@ class GlassNavBarDestination {
   final String label;
 }
 
-class _NavDestination extends StatelessWidget {
+class _NavDestination extends StatefulWidget {
   const _NavDestination({
     required this.destination,
     required this.selected,
@@ -73,51 +78,87 @@ class _NavDestination extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
+  State<_NavDestination> createState() => _NavDestinationState();
+}
+
+class _NavDestinationState extends State<_NavDestination> {
+  bool _pressed = false;
+
+  void _setPressed(bool value) {
+    if (_pressed == value) return;
+    setState(() => _pressed = value);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final selected = widget.selected;
+    final accent = widget.accent;
     final color = selected ? accent : cs.onSurfaceVariant;
     // 系统「移除动画」时指示器与图标直接切换。
     final reduceMotion = AppMotion.reduced(context);
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Center(
-        child: AnimatedContainer(
-          duration: reduceMotion ? Duration.zero : AppMotion.quick,
-          curve: AppMotion.standard,
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-          decoration: ShapeDecoration(
-            color: selected ? accent.withValues(alpha: 0.16) : null,
-            shape: RoundedSuperellipseBorder(
-              borderRadius: BorderRadius.circular(12),
+      onTapDown: (_) => _setPressed(true),
+      onTapUp: (_) => _setPressed(false),
+      onTapCancel: () => _setPressed(false),
+      onTap: widget.onTap,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: AnimatedContainer(
+                duration: reduceMotion ? Duration.zero : AppMotion.quick,
+                curve: AppMotion.standard,
+                width: 20,
+                height: 2,
+                decoration: BoxDecoration(
+                  color: selected ? accent : accent.withValues(alpha: 0),
+                  borderRadius: const BorderRadius.vertical(
+                    bottom: Radius.circular(1),
+                  ),
+                ),
+              ),
             ),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AnimatedSwitcher(
-                duration: reduceMotion ? Duration.zero : AppMotion.quick,
-                child: Icon(
-                  selected ? destination.selectedIcon : destination.icon,
-                  key: ValueKey(selected),
-                  size: 24,
-                  color: color,
-                ),
+          Center(
+            child: AnimatedScale(
+              scale: (!reduceMotion && _pressed) ? 0.94 : 1.0,
+              duration: reduceMotion
+                  ? Duration.zero
+                  : const Duration(milliseconds: 90),
+              curve: AppMotion.standard,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    selected
+                        ? widget.destination.selectedIcon
+                        : widget.destination.icon,
+                    size: 22,
+                    color: color,
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    widget.destination.label,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      height: 1.1,
+                      letterSpacing: 0.1,
+                      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                      color: color,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 4),
-              Text(
-                destination.label,
-                style: TextStyle(
-                  fontSize: 12,
-                  height: 1.0,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                  color: color,
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

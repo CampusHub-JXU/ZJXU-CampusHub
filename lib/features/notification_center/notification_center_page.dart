@@ -462,45 +462,83 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
     final showFooter = _hasMore || _loadMoreFailed;
     return RefreshIndicator(
       onRefresh: _refresh,
-      child: ListView(
-        padding: const EdgeInsets.only(top: 4, bottom: 24),
-        children: [
+      child: CustomScrollView(
+        slivers: [
+          const SliverToBoxAdapter(child: SizedBox(height: 4)),
           if (_authRequired)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.pageMargin,
-                4,
-                AppSpacing.pageMargin,
-                4,
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.pageMargin,
+                  4,
+                  AppSpacing.pageMargin,
+                  4,
+                ),
+                child: AppBanner(
+                  icon: Icons.lock_outline,
+                  tone: AppBannerTone.error,
+                  message: '统一认证已失效，以下为缓存内容，登录后恢复同步',
+                  actionLabel: '登录',
+                  onAction: _presentLoginPrompt,
+                ),
               ),
-              child: AppBanner(
-                icon: Icons.lock_outline,
-                tone: AppBannerTone.error,
-                message: '统一认证已失效，以下为缓存内容，登录后恢复同步',
-                actionLabel: '登录',
-                onAction: _presentLoginPrompt,
-              ),
             ),
-          if (unread.isNotEmpty)
-            NoticeGroupSection(
-              title: '未读',
-              trailing: '${unread.length} 条',
-              children: [for (final n in unread) _tileFor(n)],
-            ),
-          if (read.isNotEmpty)
-            NoticeGroupSection(
-              title: unread.isEmpty ? '最近' : '已读',
-              children: [for (final n in read) _tileFor(n)],
-            ),
-          if (_older.isNotEmpty)
-            NoticeGroupSection(
-              title: '更早',
-              children: [for (final n in _older) _tileFor(n)],
-            ),
-          if (showFooter) _buildLoadMoreFooter(),
+          if (unread.isNotEmpty) ..._buildNoticeGroupSlivers(
+            title: '未读',
+            trailing: '${unread.length} 条',
+            notices: unread,
+          ),
+          if (read.isNotEmpty) ..._buildNoticeGroupSlivers(
+            title: unread.isEmpty ? '最近' : '已读',
+            notices: read,
+          ),
+          if (_older.isNotEmpty) ..._buildNoticeGroupSlivers(
+            title: '更早',
+            notices: _older,
+          ),
+          if (showFooter) SliverToBoxAdapter(child: _buildLoadMoreFooter()),
+          const SliverToBoxAdapter(child: SizedBox(height: 24)),
         ],
       ),
     );
+  }
+
+  /// 惰性分组 Sliver：与 [NoticeGroupSection] 保持完全一致的边距与表头，
+  /// 但每条通知行由 [SliverList.builder] 按可视区域按需构建。
+  List<Widget> _buildNoticeGroupSlivers({
+    required String title,
+    String? trailing,
+    required List<Notice> notices,
+  }) {
+    return [
+      SliverPadding(
+        padding: const EdgeInsets.fromLTRB(
+          NoticeListMetrics.pageMargin,
+          AppSpacing.listGroupGap / 2,
+          NoticeListMetrics.pageMargin,
+          0,
+        ),
+        sliver: SliverToBoxAdapter(
+          child: NoticeGroupHeader(
+            title,
+            trailing: trailing,
+            leadingGap: NoticeListMetrics.markerWidth,
+          ),
+        ),
+      ),
+      SliverPadding(
+        padding: const EdgeInsets.fromLTRB(
+          NoticeListMetrics.pageMargin,
+          0,
+          NoticeListMetrics.pageMargin,
+          AppSpacing.listGroupGap / 2,
+        ),
+        sliver: SliverList.builder(
+          itemCount: notices.length,
+          itemBuilder: (context, index) => _tileFor(notices[index]),
+        ),
+      ),
+    ];
   }
 
   /// 列表页脚：惰性构建即「滚到底部」，此时自动拉下一页；失败后停止自动

@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../core/auth/unified_auth.dart';
 import '../../core/theme/app_design_tokens.dart';
+import '../../core/theme/app_typography.dart';
 import 'app_surface_style.dart';
 import 'login_widget.dart';
 import 'unified_auth_login_widget.dart';
@@ -171,41 +172,36 @@ class LoginShell extends StatelessWidget {
                                 Row(
                                   children: [
                                     if (badgeText != null)
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 12,
-                                          vertical: 7,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: colorScheme.primary.withValues(
-                                            alpha: isDark ? 0.18 : 0.08,
-                                          ),
-                                          borderRadius: BorderRadius.circular(
-                                            999,
-                                          ),
-                                        ),
+                                      Expanded(
                                         child: Row(
-                                          mainAxisSize: MainAxisSize.min,
                                           children: [
                                             Icon(
                                               _badgeIcon,
-                                              size: 14,
+                                              size: 15,
                                               color: colorScheme.primary,
                                             ),
-                                            const SizedBox(width: 5),
-                                            Text(
-                                              badgeText!,
-                                              style: theme.textTheme.labelLarge
-                                                  ?.copyWith(
-                                                    color: colorScheme.primary,
-                                                    fontWeight: FontWeight.w700,
-                                                  ),
+                                            const SizedBox(width: 6),
+                                            Flexible(
+                                              child: Text(
+                                                badgeText!,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: context.appText.group
+                                                    .copyWith(
+                                                      color: colorScheme
+                                                          .onSurfaceVariant,
+                                                      letterSpacing: 0.3,
+                                                    ),
+                                              ),
                                             ),
                                           ],
                                         ),
-                                      ),
-                                    const Spacer(),
-                                    if (onClose != null)
+                                      )
+                                    else
+                                      const Spacer(),
+                                    if (onClose != null) ...[
+                                      if (badgeText != null)
+                                        const SizedBox(width: AppSpacing.sm),
                                       IconButton(
                                         onPressed: onClose,
                                         tooltip: '关闭',
@@ -217,10 +213,11 @@ class LoginShell extends StatelessWidget {
                                         ),
                                         icon: const Icon(Icons.close, size: 20),
                                       ),
+                                    ],
                                   ],
                                 ),
                               if (badgeText != null || onClose != null)
-                                const SizedBox(height: 20),
+                                const SizedBox(height: AppSpacing.lg),
                               Text(
                                 title,
                                 style: theme.textTheme.headlineSmall?.copyWith(

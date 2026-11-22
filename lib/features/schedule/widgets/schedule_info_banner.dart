@@ -1,7 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../../../core/theme/app_design_tokens.dart';
-import '../../../shared/widgets/glass_container.dart';
+import '../../../core/theme/app_surface_tokens.dart';
 import '../../../core/theme/app_typography.dart';
 
 class ScheduleInfoBanner extends StatelessWidget {
@@ -18,7 +18,7 @@ class ScheduleInfoBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    final surfaces = context.appSurfaces;
     final parts = <String>[
       if ((message ?? '').isNotEmpty) message!,
       if (updatedAt != null) '最近更新 ${_formatDateTime(updatedAt!)}',
@@ -27,28 +27,39 @@ class ScheduleInfoBanner extends StatelessWidget {
 
     if (parts.isEmpty) return const SizedBox.shrink();
 
-    // 课表页模糊预算已满（顶栏 + 底栏），信息横幅使用纯 tint 卡（无模糊）。
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-      child: GlassContainer(
-        tier: GlassTier.card,
-        blurred: false,
-        width: double.infinity,
-        borderRadius: BorderRadius.circular(AppRadius.input),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    // 与课表编辑条一致的克制秩序条：全宽中性底面 + 细分割线衔接，
+    // 不再用外层留白的圆角提示岛。课表页模糊预算已满（顶栏 + 底栏）。
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: surfaces.card,
+        border: Border(
+          bottom: BorderSide(color: surfaces.matrixLine, width: 0.7),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.pageMargin,
+          vertical: 10,
+        ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(
-              Icons.info_outline_rounded,
-              size: 15,
-              color: cs.onSurfaceVariant,
+            Padding(
+              padding: const EdgeInsets.only(top: 1),
+              child: Icon(
+                Icons.info_outline_rounded,
+                size: 15,
+                color: surfaces.ink2,
+              ),
             ),
             const SizedBox(width: AppSpacing.sm),
             Expanded(
               child: Text(
                 parts.join(' · '),
-                style: context.appText.meta.copyWith(height: 1.4),
+                style: context.appText.meta.copyWith(
+                  color: surfaces.ink2,
+                  height: 1.4,
+                ),
               ),
             ),
           ],

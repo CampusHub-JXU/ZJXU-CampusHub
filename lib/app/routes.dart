@@ -23,7 +23,13 @@ import '../features/service_hall/service_hall_page.dart';
 import '../features/notification_center/notification_center_page.dart';
 import '../features/exam/exam_page.dart';
 import '../features/ai_export/ai_export_page.dart';
+import '../features/shuati/domain/shuati_models.dart';
 import '../features/shuati/shuati_webview_page.dart';
+import '../features/shuati/ui/shuati_native_home_page.dart';
+import '../features/shuati/ui/shuati_native_import_page.dart';
+import '../features/shuati/ui/shuati_native_practice_page.dart';
+import '../features/shuati/ui/shuati_native_settings_page.dart';
+import '../features/shuati/ui/shuati_native_wrong_page.dart';
 import '../features/settings/settings_page.dart';
 import '../features/settings/about_page.dart';
 import '../features/settings/performance_diagnostics_page.dart';
@@ -145,6 +151,44 @@ final GoRouter appRouter = GoRouter(
     _appRoute(
       path: '/shuati-practice',
       name: 'shuati-practice',
+      builder: (context, state) => const ShuatiNativeHomePage(),
+    ),
+    _appRoute(
+      path: '/shuati-practice/import',
+      name: 'shuati-import',
+      builder: (context, state) => const ShuatiNativeImportPage(),
+    ),
+    _appRoute(
+      path: '/shuati-practice/settings',
+      name: 'shuati-settings',
+      builder: (context, state) => const ShuatiNativeSettingsPage(),
+    ),
+    _appRoute(
+      path: '/shuati-practice/wrong/:bankId',
+      name: 'shuati-wrong',
+      builder: (context, state) =>
+          ShuatiNativeWrongPage(bankId: state.pathParameters['bankId'] ?? ''),
+    ),
+    _appRoute(
+      path: '/shuati-practice/practice/:bankId/:mode',
+      name: 'shuati-practice-session',
+      builder: (context, state) {
+        final query = state.uri.queryParameters;
+        return ShuatiNativePracticePage(
+          bankId: state.pathParameters['bankId'] ?? '',
+          mode:
+              PracticeMode.tryParse(state.pathParameters['mode']) ??
+              PracticeMode.sequential,
+          typeFilter: QuestionType.tryParse(query['type']),
+          examCount: int.tryParse(query['examCount'] ?? ''),
+          randomCount: int.tryParse(query['randomCount'] ?? ''),
+          resume: query['resume'] == '1',
+        );
+      },
+    ),
+    _appRoute(
+      path: '/shuati-legacy',
+      name: 'shuati-legacy',
       builder: (context, state) => const ShuatiWebViewPage(),
     ),
     _appRoute(
