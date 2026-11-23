@@ -390,7 +390,7 @@ void main() {
     expect(find.byType(MyPage), findsNothing);
   });
 
-  testWidgets('「导出给 AI」入口跳转到独立页面，且登出状态下也可进入', (tester) async {
+  testWidgets('「AI 助手」入口跳转到独立页面，且登出状态下也可进入', (tester) async {
     final router = GoRouter(
       routes: [
         GoRoute(
@@ -399,9 +399,9 @@ void main() {
           builder: (context, state) => const MyPage(),
         ),
         GoRoute(
-          path: '/ai-export',
-          name: 'ai-export',
-          builder: (context, state) => const Scaffold(body: Text('导出给 AI 页')),
+          path: '/ai-chat',
+          name: 'ai-chat',
+          builder: (context, state) => const Scaffold(body: Text('AI 助手页')),
         ),
       ],
     );
@@ -409,11 +409,11 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(find.text('导出给 AI'), findsOneWidget);
-    await tester.tap(find.text('导出给 AI'));
+    expect(find.text('AI 助手'), findsOneWidget);
+    await tester.tap(find.text('AI 助手'));
     await tester.pumpAndSettle();
 
-    expect(find.text('导出给 AI 页'), findsOneWidget);
+    expect(find.text('AI 助手页'), findsOneWidget);
     expect(find.byType(MyPage), findsNothing);
   });
 

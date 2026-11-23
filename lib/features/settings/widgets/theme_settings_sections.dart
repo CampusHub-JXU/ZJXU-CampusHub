@@ -50,7 +50,7 @@ class _ThemeSettingsSectionsState extends State<ThemeSettingsSections> {
               children: [
                 PlainSwitchRow(
                   title: '纯黑模式',
-                  subtitle: '深色主题使用纯黑背景，适合 OLED 屏幕省电',
+                  subtitle: '深色主题使用纯黑背景',
                   value: prefs.pureBlack,
                   onChanged: _ctrl.setPureBlack,
                 ),
@@ -143,9 +143,7 @@ class _ThemeSettingsSectionsState extends State<ThemeSettingsSections> {
     return [
       PlainSwitchRow(
         title: '文本缩放',
-        subtitle: _textScaleEnabled
-            ? '在系统字体大小基础上叠加调整 · 默认 $defaultLabel'
-            : '在系统字体大小基础上叠加调整 · 当前使用默认缩放 $defaultLabel',
+        subtitle: _textScaleEnabled ? '默认 $defaultLabel' : null,
         value: _textScaleEnabled,
         onChanged: (value) {
           setState(() => _textScaleEnabled = value);

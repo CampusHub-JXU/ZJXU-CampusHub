@@ -9,7 +9,6 @@ import '../../core/shortcut/app_shortcut_service.dart';
 import '../../core/system_surface/campus_widget_bridge.dart';
 import '../../core/system_surface/system_settings_launcher.dart';
 import '../../core/system_surface/widget_refresh_state.dart';
-import '../../core/theme/app_typography.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_feedback.dart';
 import '../../shared/widgets/plain_list.dart';
@@ -138,20 +137,12 @@ class _DesktopBackgroundPageState extends State<DesktopBackgroundPage>
         children: [
           const PlainSectionHeader('桌面组件'),
           PlainListGroup(children: _widgetRows(context)),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: Text(
-              '点按对应行请求添加到桌面；预览为示意数据，组件外观随系统深/浅色换色。',
-              style: context.appText.meta,
-            ),
-          ),
           const SizedBox(height: kPlainListGroupGap),
           const PlainSectionHeader('快捷方式'),
           PlainListGroup(
             children: [
               PlainListRow(
                 title: '今日课表快捷方式',
-                subtitle: '固定到桌面，一键打开今日课表',
                 onTap: () => _addShortcut(context),
               ),
               PlainListRow(
@@ -164,10 +155,6 @@ class _DesktopBackgroundPageState extends State<DesktopBackgroundPage>
           const SizedBox(height: kPlainListGroupGap),
           const PlainSectionHeader('后台运行'),
           PlainListGroup(children: _backgroundRows(context)),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: Text('点按行前往系统设置，返回后自动刷新状态。', style: context.appText.meta),
-          ),
         ],
       ),
     );

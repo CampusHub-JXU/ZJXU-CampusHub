@@ -467,7 +467,7 @@ HomeHeroPresentation _resolveHero({
     return HomeHeroPresentation(
       kind: HomeHeroKind.holiday,
       kicker: holiday.name == null ? '放假中' : '${holiday.name} · 放假中',
-      headline: _holidayHeadline(holiday, today),
+      headline: _holidayHeadline(holiday),
     );
   }
 
@@ -598,28 +598,20 @@ _HolidayState? _resolveHoliday({
 }
 
 const _holidayGreetings = {
-  '元旦': '新年快乐，享受假期吧～',
-  '春节': '过年好，享受假期吧～',
-  '劳动节': '劳动节快乐，好好歇歇～',
-  '端午节': '端午安康，记得吃粽子～',
-  '中秋节': '中秋快乐，记得吃月饼～',
-  '国庆节': '国庆快乐，享受假期吧～',
+  '元旦': '新年快乐',
+  '春节': '过年好',
+  '劳动节': '劳动节快乐',
+  '端午节': '端午安康',
+  '中秋节': '中秋快乐',
+  '国庆节': '国庆快乐',
 };
 
-const _holidayHeadlines = [
-  '放假啦，享受假期吧～',
-  '今天不用上课，好好放松～',
-  '没有早八，多睡一会儿～',
-  '假期愉快，出去走走吧～',
-  '充好电，假期也要开心～',
-];
-
-/// 假期大字：法定假期首日用节日问候，其余日子按日期轮换（同一天稳定）。
-String _holidayHeadline(_HolidayState holiday, DateTime today) {
+/// 假期大字：法定假期首日用节日问候，其余日子只陈述「今天没课」；
+/// kicker 已带「放假中」，不再叠加鼓励/情绪化文案。
+String _holidayHeadline(_HolidayState holiday) {
   final greeting = _holidayGreetings[holiday.name];
   if (holiday.isFirstDay && greeting != null) return greeting;
-  final dayOfYear = today.difference(DateTime(today.year)).inDays;
-  return _holidayHeadlines[dayOfYear % _holidayHeadlines.length];
+  return '今天没课';
 }
 
 // ---------------------------------------------------------------------------

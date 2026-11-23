@@ -29,14 +29,14 @@ class PersonalizationHomeSection extends StatelessWidget {
               key: const Key('personalization_full_day'),
               listenable: controller.fullDayCoursesEnabled,
               title: '今日全部课程',
-              subtitle: '已结束的课不显示；开启最多 6 条，关闭最多 3 条',
+              subtitle: '开启最多 6 条，关闭最多 3 条',
               onChanged: controller.setFullDayCoursesEnabled,
             ),
             _switch(
               key: const Key('personalization_campus_notice'),
               listenable: controller.homeCampusNoticeEnabled,
               title: '校园公告',
-              subtitle: '不影响通知中心与提醒',
+
               onChanged: controller.setHomeCampusNoticeEnabled,
             ),
           ],
@@ -49,7 +49,7 @@ class PersonalizationHomeSection extends StatelessWidget {
     required Key key,
     required ValueNotifier<bool> listenable,
     required String title,
-    required String subtitle,
+    String? subtitle,
     required ValueChanged<bool> onChanged,
   }) {
     return ValueListenableBuilder<bool>(

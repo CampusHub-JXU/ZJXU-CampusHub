@@ -201,6 +201,7 @@ class HomeTodaySection extends StatelessWidget {
             entry,
             isFirst: index == 0,
             isLast: index == entries.length - 1,
+            isSingle: entries.length == 1,
             timeColumnWidth: timeColumnWidth,
             primaryTextColor: primaryTextColor,
             secondaryTextColor: secondaryTextColor,
@@ -268,6 +269,7 @@ class HomeTodaySection extends StatelessWidget {
     _TimelineEntry entry, {
     required bool isFirst,
     required bool isLast,
+    required bool isSingle,
     required double timeColumnWidth,
     required Color primaryTextColor,
     required Color secondaryTextColor,
@@ -352,22 +354,14 @@ class HomeTodaySection extends StatelessWidget {
     );
     final doneDotColor = secondaryTextColor.withValues(alpha: 0.35);
 
-    final Widget? statusTag;
-    if (isExam) {
-      statusTag = _TimelineStatusTag(
-        label: '今天考试',
-        backgroundColor: cs.error.withValues(alpha: isDark ? 0.18 : 0.10),
-        foregroundColor: cs.error,
-      );
-    } else if (isOngoing) {
-      statusTag = _TimelineStatusTag(
-        label: '进行中',
-        backgroundColor: cs.primary.withValues(alpha: isDark ? 0.20 : 0.10),
-        foregroundColor: cs.primary,
-      );
-    } else {
-      statusTag = null;
-    }
+    // 「进行中」不打胶囊：强调色时间 + 实心节点已足够表达状态。
+    final Widget? statusTag = isExam
+        ? _TimelineStatusTag(
+            label: '今天考试',
+            backgroundColor: cs.error.withValues(alpha: isDark ? 0.18 : 0.10),
+            foregroundColor: cs.error,
+          )
+        : null;
 
     return IntrinsicHeight(
       child: Row(
@@ -415,24 +409,29 @@ class HomeTodaySection extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(width: 6),
-          SizedBox(
-            width: _railColumnWidth,
-            child: CustomPaint(
-              painter: _TimelineRailPainter(
-                isFirst: isFirst,
-                isLast: isLast,
-                nodeKind: nodeKind,
-                nodeCenterY: verticalPad + firstLineHeight / 2,
-                railColor: railColor,
-                primaryColor: cs.primary,
-                errorColor: cs.error,
-                upcomingRingColor: upcomingRingColor,
-                doneDotColor: doneDotColor,
+          // 单条时不渲染时间轴：孤立的节点圆点没有意义，直接用留白分隔。
+          if (isSingle)
+            const SizedBox(width: 12)
+          else ...[
+            const SizedBox(width: 6),
+            SizedBox(
+              width: _railColumnWidth,
+              child: CustomPaint(
+                painter: _TimelineRailPainter(
+                  isFirst: isFirst,
+                  isLast: isLast,
+                  nodeKind: nodeKind,
+                  nodeCenterY: verticalPad + firstLineHeight / 2,
+                  railColor: railColor,
+                  primaryColor: cs.primary,
+                  errorColor: cs.error,
+                  upcomingRingColor: upcomingRingColor,
+                  doneDotColor: doneDotColor,
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 8),
+            const SizedBox(width: 8),
+          ],
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,

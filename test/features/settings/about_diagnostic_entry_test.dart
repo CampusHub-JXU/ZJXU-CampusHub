@@ -38,7 +38,7 @@ void main() {
     }
     await pumpPage(tester, const AboutPage());
     expect(find.text('性能诊断'), findsNothing);
-    expect(find.text('内部工具，离线采集帧时'), findsNothing);
+    expect(find.text('离线采集帧时'), findsNothing);
   });
 
   test('入口接线到命名路由，且由编译期开关把守', () {

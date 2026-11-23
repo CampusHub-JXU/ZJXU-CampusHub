@@ -547,7 +547,7 @@ void main() {
 
       expect(presentation.hero.kind, HomeHeroKind.holiday);
       expect(presentation.hero.kicker, '国庆节 · 放假中');
-      expect(presentation.hero.headline, isNotEmpty);
+      expect(presentation.hero.headline, '今天没课');
       expect(presentation.hero.timeText, isNull);
       expect(presentation.hero.courseName, isNull);
       expect(presentation.today.isPreview, isFalse);
@@ -564,7 +564,7 @@ void main() {
       final presentation = resolveHomePresentation(snapshot);
 
       expect(presentation.hero.kind, HomeHeroKind.holiday);
-      expect(presentation.hero.headline, '国庆快乐，享受假期吧～');
+      expect(presentation.hero.headline, '国庆快乐');
     });
 
     test('假期当天课表上的课不算「正在上课」', () {

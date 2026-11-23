@@ -407,7 +407,7 @@ class _AboutPageState extends State<AboutPage> {
               if (kPerfDiagnosticsEnabled)
                 PlainListRow(
                   title: '性能诊断',
-                  subtitle: '内部工具，离线采集帧时',
+                  subtitle: '离线采集帧时',
                   titleBadge: '内部',
                   onTap: () => context.pushNamed('performance-diagnostics'),
                 ),

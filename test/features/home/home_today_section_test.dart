@@ -77,9 +77,28 @@ void main() {
       expect(find.text('梁林校区 外B-305'), findsNWidgets(2));
       expect(find.text('11-12节'), findsNWidgets(2));
       expect(find.text('查看全部'), findsNothing);
+      // 多条时渲染时间轴导轨列。
       expect(find.byType(CustomPaint), findsAtLeastNWidgets(2));
     },
   );
+
+  testWidgets('single entry omits the timeline rail column', (tester) async {
+    await pumpSection(
+      tester,
+      today: HomeTodayPresentation(courses: [row('高等数学 B')], exams: const []),
+    );
+
+    expect(find.text('高等数学 B'), findsOneWidget);
+    // 单条时不画时间轴（无 _TimelineRailPainter 的 CustomPaint）。
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is CustomPaint &&
+            '${widget.painter.runtimeType}' == '_TimelineRailPainter',
+      ),
+      findsNothing,
+    );
+  });
 
   testWidgets(
     'omits internal 今天 title and caps at 3 rows with overflow footer',
@@ -156,7 +175,7 @@ void main() {
     expect(find.text('查看全部'), findsOneWidget);
   });
 
-  testWidgets('renders ongoing badge and exam rows first with 今天考试 tag', (
+  testWidgets('renders exam rows first with 今天考试 tag, no 进行中 badge', (
     tester,
   ) async {
     await pumpSection(
@@ -178,7 +197,7 @@ void main() {
     expect(find.text('09:00'), findsOneWidget);
     expect(find.text('–11:00'), findsOneWidget);
     expect(find.text('梁林校区 1教302'), findsOneWidget);
-    expect(find.text('进行中'), findsOneWidget);
+    expect(find.text('进行中'), findsNothing);
     // 考试行在前、课程行在后。
     expect(
       tester.getTopLeft(find.text('微观经济学')).dy,

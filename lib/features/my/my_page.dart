@@ -529,7 +529,6 @@ class _MyPageState extends State<MyPage> {
                     _MyTile(
                       icon: Icons.settings_outlined,
                       title: '设置',
-                      status: '主题、学期、网络与关于',
                       onTap: () async {
                         await context.pushNamed('settings');
                         await _refreshAfterReturn();
@@ -538,9 +537,8 @@ class _MyPageState extends State<MyPage> {
                     const SizedBox(height: _tileGap),
                     _MyTile(
                       icon: Icons.auto_awesome_outlined,
-                      title: '导出给 AI',
-                      status: '整理学业数据，交给 AI 助手',
-                      onTap: () => context.pushNamed('ai-export'),
+                      title: 'AI 助手',
+                      onTap: () => context.pushNamed('ai-chat'),
                     ),
                     const Spacer(),
                     _buildFooter(context, cs),
@@ -798,18 +796,16 @@ class _MyAccountTile extends StatelessWidget {
 }
 
 /// 独立磁贴：与首页功能区宽磁贴同一配方（[AppHardTileShell] + [AppTileSurface]
-/// 实底无模糊 + 裸图标 + 标题/状态两行 + 淡色微箭头）。
+/// 实底无模糊 + 裸图标 + 标题 + 淡色微箭头）。
 class _MyTile extends StatelessWidget {
   const _MyTile({
     required this.icon,
     required this.title,
-    required this.status,
     required this.onTap,
   });
 
   final IconData icon;
   final String title;
-  final String status;
   final VoidCallback onTap;
 
   @override
@@ -845,16 +841,6 @@ class _MyTile extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: context.appText.rowTitleStrong.copyWith(
                         height: 1.2,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      status,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: context.appText.meta.copyWith(
-                        fontSize: 12,
-                        height: 1.25,
                       ),
                     ),
                   ],
