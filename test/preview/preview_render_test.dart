@@ -492,10 +492,18 @@ Notice _previewNotice(String newsId, String title, String date) => Notice(
   date: date,
 );
 
-/// 预览收件箱头：3 条公告（前两条未读），与线上解析的 id 规则一致。
+String _todayIsoDate() {
+  final now = DateTime.now();
+  return '${now.year}-'
+      '${now.month.toString().padLeft(2, '0')}-'
+      '${now.day.toString().padLeft(2, '0')}';
+}
+
+/// 预览收件箱头：1 条今日新增（卡片仅展示当日公告）+ 2 条历史公告，
+/// 与线上解析的 id 规则一致；今日日期动态生成，保证「今日公告」卡片始终渲染。
 NoticeInboxHead _previewNoticeHead() => NoticeInboxHead(
   latest: [
-    _previewNotice('n1', '关于开展2026年秋季学期教材征订工作的通知', '2026-09-04'),
+    _previewNotice('n1', '关于开展2026年秋季学期教材征订工作的通知', _todayIsoDate()),
     _previewNotice('n2', '2025、2026级学生2026-2027学年第一学期备考提醒', '2026-08-30'),
     _previewNotice('n3', '关于图书馆调整暑期开放时间的通知', '2026-07-13'),
   ],

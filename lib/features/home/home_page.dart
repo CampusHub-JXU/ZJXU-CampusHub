@@ -737,32 +737,40 @@ class _HomePageState extends State<HomePage> {
                       ),
                 ),
               ),
-              // 状态栏微羽化：内容从下面滚过时系统图标仍可读。
-              // 强度按明度分开——浅色下 shader 本来就亮，压太狠会拉出一条
-              // 灰白横带；深色下才需要接近实色。
+              // 状态栏滚动微羽化：静止于首屏时为全透明（克制流体底自身已保证图标与文字可读，
+              // 不在顶部叠加发白横带）；仅在页面上滚、内容将穿过状态栏时平滑淡入柔和底色保护。
               if (MediaQuery.paddingOf(context).top > 0)
                 Positioned(
                   top: 0,
                   left: 0,
                   right: 0,
-                  height: MediaQuery.paddingOf(context).top + 10,
+                  height: MediaQuery.paddingOf(context).top + 18,
                   child: IgnorePointer(
-                    child: Builder(
-                      builder: (context) {
+                    child: ListenableBuilder(
+                      listenable: _scrollController,
+                      builder: (context, _) {
+                        final offset = _scrollController.hasClients
+                            ? _scrollController.offset
+                            : 0.0;
+                        final t = (offset / 36.0).clamp(0.0, 1.0);
+                        final eased = t * t * (3.0 - 2.0 * t);
+                        if (eased <= 0.001) return const SizedBox.shrink();
                         final isDark =
                             Theme.of(context).brightness == Brightness.dark;
                         final tint = Theme.of(context).scaffoldBackgroundColor;
-                        final base = isDark ? 0.42 : 0.22;
+                        final peak = (isDark ? 0.72 : 0.78) * eased;
                         return DecoratedBox(
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
                               begin: Alignment.topCenter,
                               end: Alignment.bottomCenter,
-                              stops: const [0.0, 0.6, 1.0],
+                              stops: const [0.0, 0.36, 0.64, 0.84, 1.0],
                               colors: [
-                                tint.withValues(alpha: base),
-                                tint.withValues(alpha: base),
-                                tint.withValues(alpha: 0),
+                                tint.withValues(alpha: peak),
+                                tint.withValues(alpha: peak * 0.88),
+                                tint.withValues(alpha: peak * 0.54),
+                                tint.withValues(alpha: peak * 0.18),
+                                tint.withValues(alpha: 0.0),
                               ],
                             ),
                           ),
@@ -880,7 +888,7 @@ class _HomePageState extends State<HomePage> {
                   ],
                 ),
               ),
-              // 公告 + 今天区 + 功能区尾段：公告开关变化时整段重建。
+              // 今天区（含今日公告）+ 功能区尾段：公告开关变化时整段重建。
               ValueListenableBuilder<bool>(
                 valueListenable:
                     PersonalizationController.instance.homeCampusNoticeEnabled,
@@ -895,18 +903,7 @@ class _HomePageState extends State<HomePage> {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      if (noticeVisible)
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(
-                            _pageGutter,
-                            _sectionGap,
-                            _pageGutter,
-                            AppSpacing.sectionBreak,
-                          ),
-                          child: noticeWidget,
-                        )
-                      else
-                        const SizedBox(height: AppSpacing.sectionBreak),
+                      const SizedBox(height: AppSpacing.sectionBreak),
                       // 今天区锚点：始终留在树中，供 dock「今天」滚动定位与 ScrollSpy 判定。
                       Container(
                         key: _todaySectionKey,
@@ -951,6 +948,12 @@ class _HomePageState extends State<HomePage> {
                                   ),
                                 ),
                               ),
+                            ],
+                            // 今日公告并入「今天」区收尾：与议程卡片同卡面配方，
+                            // 无当日新增公告时卡片自身收起不占位。
+                            if (noticeVisible) ...[
+                              const SizedBox(height: 10),
+                              noticeWidget,
                             ],
                           ],
                         ),

@@ -556,18 +556,21 @@ void main() {
     expect(HomeZoneController.instance.zoneIndex, 0);
   });
 
-  testWidgets('campus notice follows asset strip and precedes function zone', (
-    tester,
-  ) async {
+  testWidgets('今日公告并入今天区且仅展示当日新增条目', (tester) async {
     usePhoneSurface(tester);
     PersonalizationController.instance.homeCampusNoticeEnabled.value = true;
     addTearDown(NoticeSyncStore.instance.debugReset);
     NoticeSyncStore.instance.debugReset();
     // 直接注入收件箱头（纯内存）：commitSync 涉及真实文件锁，在
     // testWidgets 的假异步区里无法完成；本测试只关心布局结果。
+    final now = DateTime.now();
+    final todayText =
+        '${now.year}-'
+        '${now.month.toString().padLeft(2, '0')}-'
+        '${now.day.toString().padLeft(2, '0')}';
     NoticeSyncStore.instance.inboxHead.value = NoticeInboxHead(
       latest: [
-        _notice('1', date: '2026-09-04'),
+        _notice('1', date: todayText),
         _notice('2', date: '2026-08-30'),
         _notice('3', date: '2026-07-13'),
       ],
@@ -579,15 +582,15 @@ void main() {
     await tester.pump();
     await tester.pumpAndSettle();
 
-    // 公告紧随资产行（仅隔一个段落间距），不再被弹性留白压到首屏底部；
-    // 功能区段落仍在公告之后。
-    final assetBottom = tester.getBottomRight(find.byType(HomeAssetStrip)).dy;
-    // 「校园公告」在公告区块头与功能区按钮中各出现一次，取树序第一份。
-    final noticeTop = tester.getTopLeft(find.text('校园公告').first).dy;
+    // 「今日公告」卡片并排在今天段内：位于「今天」标题下方、功能区之前；
+    // 仅当日新增公告成行，历史公告被过滤。
+    final todayTop = tester.getTopLeft(find.text('今天')).dy;
+    final noticeTop = tester.getTopLeft(find.text('今日公告')).dy;
     final functionTop = tester.getTopLeft(find.text('功能')).dy;
-    expect(noticeTop, greaterThan(assetBottom));
-    expect(noticeTop - assetBottom, lessThan(60));
+    expect(noticeTop, greaterThan(todayTop));
     expect(functionTop, greaterThan(noticeTop));
+    expect(find.text('通知1'), findsOneWidget);
+    expect(find.text('通知2'), findsNothing);
   });
 
   testWidgets('exam function button navigates to dedicated exam entry', (
@@ -1761,7 +1764,9 @@ bool _hasHeroFadeScrim(WidgetTester tester) {
     final decoration = box.decoration;
     if (decoration is! BoxDecoration) return false;
     final gradient = decoration.gradient;
-    return gradient is LinearGradient && gradient.stops?.length == 5;
+    // Hero Fade Scrim 为 9 点 smootherstep 缓动梯度（起止斜率均为 0），
+    // 与状态栏微羽化（5 点梯度）区分。
+    return gradient is LinearGradient && gradient.stops?.length == 9;
   });
 }
 

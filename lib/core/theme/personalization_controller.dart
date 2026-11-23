@@ -404,6 +404,10 @@ class PersonalizationController {
     fullDayCoursesEnabled.value = prefs.getBool(_keyFullDayCourses) ?? true;
     homeCampusNoticeEnabled.value =
         prefs.getBool(_keyHomeCampusNotice) ?? false;
+
+    if (backgroundImagePath.value != null) {
+      unawaited(getMonetColors());
+    }
   }
 
   Future<void> setBackgroundImagePath(String? path) async {

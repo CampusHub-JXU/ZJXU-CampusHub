@@ -3,11 +3,11 @@ import 'package:material_ui/material_ui.dart';
 import '../../../core/theme/app_design_tokens.dart';
 import '../models/home_presentation.dart';
 
-/// 高优先级事件横幅：无框 tinted 轻量行（圆点 + 文案 + 尾部 chevron）。
+/// 高优先级事件横幅：通透轻量提醒条（2.5px 竖向强调条 + 文案 + 尾部箭头）。
 ///
 /// 仅在真正需要用户处理时出现（临近考试 / 低电量 / 低余额），
-/// 无事件时整块不渲染，不做常驻占位。视觉上以 errorContainer 低透明
-/// 着色 + 8px 圆点达意，替代旧的图标条样式。
+/// 无事件时整块不渲染，不做常驻占位。以低对比半透明底色与细腻描边融入
+/// Hero 流体背景，避免厚重实体色块破坏首屏排版呼吸感。
 class HomeEventBanner extends StatelessWidget {
   const HomeEventBanner({super.key, required this.alert, this.onTap});
 
@@ -16,63 +16,81 @@ class HomeEventBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    // 浅色直接压低 errorContainer 透明度；深色按 alphaBlend 叠
-    // surfaceContainerLow，避免横幅视觉权重压过 Hero。
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
     final bannerColor = isDark
         ? Color.alphaBlend(
-            cs.errorContainer.withValues(alpha: 0.70),
-            cs.surfaceContainerLow,
+            cs.error.withValues(alpha: 0.06),
+            cs.surfaceContainerHigh.withValues(alpha: 0.56),
           )
-        : cs.errorContainer.withValues(alpha: 0.45);
-    // 圆角与内容面同档（AppRadius.card），跟随全局统一半径。
+        : Color.alphaBlend(
+            cs.error.withValues(alpha: 0.05),
+            cs.surface.withValues(alpha: 0.72),
+          );
+    final borderColor = isDark
+        ? cs.outlineVariant.withValues(alpha: 0.42)
+        : cs.error.withValues(alpha: 0.18);
     final bannerShape = RoundedSuperellipseBorder(
-      borderRadius: AppRadius.cardBorder,
+      borderRadius: BorderRadius.circular(AppRadius.badge),
+      side: BorderSide(color: borderColor, width: 1),
     );
-    final content = Container(
-      constraints: const BoxConstraints(minHeight: 44),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: ShapeDecoration(color: bannerColor, shape: bannerShape),
-      child: Row(
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(color: cs.error, shape: BoxShape.circle),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              alert.message,
-              style: Theme.of(context).textTheme.bodyMedium!.copyWith(
-                fontWeight: FontWeight.w500,
-                color: cs.onErrorContainer,
+    final decoration = ShapeDecoration(color: bannerColor, shape: bannerShape);
+
+    final inner = ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 38),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        child: Row(
+          children: [
+            Container(
+              width: 2.5,
+              height: 14,
+              decoration: BoxDecoration(
+                color: cs.error,
+                borderRadius: BorderRadius.circular(2),
               ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
             ),
-          ),
-          if (onTap != null) ...[
-            const SizedBox(width: 8),
-            Icon(
-              Icons.chevron_right,
-              size: 16,
-              color: cs.onErrorContainer.withValues(alpha: 0.7),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                alert.message,
+                style: theme.textTheme.bodyMedium!.copyWith(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w500,
+                  height: 1.32,
+                  color: cs.onSurface,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
+            if (onTap != null) ...[
+              const SizedBox(width: 8),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 16,
+                color: cs.onSurfaceVariant,
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
 
-    if (onTap == null) return content;
+    if (onTap == null) {
+      return DecoratedBox(decoration: decoration, child: inner);
+    }
 
     return Semantics(
       button: true,
       label: alert.message,
       child: Material(
         color: Colors.transparent,
-        child: InkWell(customBorder: bannerShape, onTap: onTap, child: content),
+        child: Ink(
+          decoration: decoration,
+          child: InkWell(customBorder: bannerShape, onTap: onTap, child: inner),
+        ),
       ),
     );
   }

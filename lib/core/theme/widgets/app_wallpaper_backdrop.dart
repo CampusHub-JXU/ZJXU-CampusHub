@@ -68,7 +68,6 @@ class AppWallpaperBackdrop extends StatelessWidget {
 
   List<Widget> _overlays(BuildContext context, {required bool shaderEnabled}) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     final scaffold = theme.scaffoldBackgroundColor;
     final surface = theme.colorScheme.surface;
     final topInset = MediaQuery.paddingOf(context).top;
@@ -89,9 +88,9 @@ class AppWallpaperBackdrop extends StatelessWidget {
     }
     return [
       // Hero 舞台氛围渐隐遮罩（Hero Fade Scrim）：
-      // 顶部保留 Shader / 背景微光氛围并附带柔和 tint 保护，
-      // 向下平滑过渡到纯净主题表面（scaffoldBackgroundColor），
-      // 保证正文直接坐在稳定主题底色上。
+      // 顶部保持 0 遮罩，让克制的丝绸微光无断层延伸至状态栏；
+      // 向下按 9 点五次 smootherstep 缓动曲线（起止斜率均为 0）无缝融进
+      // scaffoldBackgroundColor，彻底消除折线阶梯感与顶部发白横带。
       Positioned.fill(
         child: IgnorePointer(
           child: DecoratedBox(
@@ -99,11 +98,25 @@ class AppWallpaperBackdrop extends StatelessWidget {
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                stops: const [0.0, 0.18, 0.36, 0.52, 1.0],
+                stops: const [
+                  0.0,
+                  0.08,
+                  0.16,
+                  0.24,
+                  0.33,
+                  0.42,
+                  0.51,
+                  0.60,
+                  1.0,
+                ],
                 colors: [
-                  scaffold.withValues(alpha: isDark ? 0.45 : 0.32),
-                  scaffold.withValues(alpha: isDark ? 0.52 : 0.40),
-                  scaffold.withValues(alpha: isDark ? 0.82 : 0.76),
+                  scaffold.withValues(alpha: 0.0),
+                  scaffold.withValues(alpha: 0.01),
+                  scaffold.withValues(alpha: 0.07),
+                  scaffold.withValues(alpha: 0.24),
+                  scaffold.withValues(alpha: 0.52),
+                  scaffold.withValues(alpha: 0.79),
+                  scaffold.withValues(alpha: 0.95),
                   scaffold,
                   scaffold,
                 ],
@@ -112,28 +125,6 @@ class AppWallpaperBackdrop extends StatelessWidget {
           ),
         ),
       ),
-      // 状态栏顶部柔和微羽化，保障极端高光壁纸下系统状态图标清晰可读
-      if (topInset > 0)
-        Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          height: topInset + 8,
-          child: IgnorePointer(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    surface.withValues(alpha: isDark ? 0.38 : 0.28),
-                    surface.withValues(alpha: 0.0),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
     ];
   }
 }
