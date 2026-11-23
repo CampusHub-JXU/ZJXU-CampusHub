@@ -22,6 +22,7 @@ import '../../core/update/apk_update_controller.dart';
 import '../../core/update/update_checker.dart';
 import '../../core/update/update_model.dart';
 import '../../shared/widgets/app_app_bar.dart';
+import '../../shared/widgets/app_brand_icon.dart';
 import '../../shared/widgets/app_dropdown.dart';
 import '../../shared/widgets/app_feedback.dart';
 import '../../shared/widgets/app_icon_badge.dart';
@@ -176,7 +177,7 @@ class SettingsPage extends StatelessWidget {
                 onPickSemesterStartDate: _pickSemesterStartDate,
               ),
               const SizedBox(height: kPlainListGroupGap),
-              PlainListGroup(
+              _SettingsListGroup(
                 children: [
                   PlainListRow(
                     title: '桌面组件与后台',
@@ -189,7 +190,7 @@ class SettingsPage extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: AppSpacing.md),
-              PlainListGroup(
+              _SettingsListGroup(
                 children: [
                   ValueListenableBuilder<AppRelease?>(
                     valueListenable: UpdateChecker.instance.availableRelease,
@@ -485,7 +486,7 @@ class _ThemeBentoTile extends StatelessWidget {
   }
 }
 
-/// 右外观磁贴：首页个性化。
+/// 右外观磁贴：首页个性化（恢复顶部实时微缩 [AppBrandIcon]，保留精简无副标题结构）。
 class _PersonalizationBentoTile extends StatelessWidget {
   const _PersonalizationBentoTile({required this.onTap});
 
@@ -494,39 +495,51 @@ class _PersonalizationBentoTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return ListenableBuilder(
-      listenable: AppPreferencesController.instance,
-      builder: (context, _) {
-        return _SettingsBentoTile(
-          semanticsLabel: '首页个性化',
-          onTap: onTap,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
+    return _SettingsBentoTile(
+      semanticsLabel: '首页个性化',
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
             children: [
-              SizedBox(
-                height: 28,
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: Icon(
-                    Icons.chevron_right_rounded,
-                    size: 18,
-                    color: cs.onSurfaceVariant.withValues(alpha: 0.45),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
+              const AppBrandIcon(size: 28),
               const Spacer(),
-              Text(
-                '首页个性化',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: context.appText.rowTitleStrong.copyWith(height: 1.2),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 18,
+                color: cs.onSurfaceVariant.withValues(alpha: 0.45),
               ),
             ],
           ),
-        );
-      },
+          const SizedBox(height: 14),
+          Text(
+            '首页个性化',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: context.appText.rowTitleStrong.copyWith(height: 1.2),
+          ),
+          const Spacer(),
+        ],
+      ),
+    );
+  }
+}
+
+/// 普通设置分组外壳：复用 [AppHardTileShell]（浅色模式下为实色衬底 + `0.8dp`
+/// 中性细描边 + 轻落底影，深色模式下透传维持平色质感），仅作用于设置页内分组，
+/// 不全局修改 [PlainListGroup] 默认样式。
+class _SettingsListGroup extends StatelessWidget {
+  const _SettingsListGroup({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppHardTileShell(
+      radius: AppRadius.card,
+      child: PlainListGroup(children: children),
     );
   }
 }
@@ -684,7 +697,7 @@ class _SemesterAndCalendarSectionState
         ),
         if (isAndroid) ...[
           SizedBox(height: widget.gap),
-          PlainListGroup(
+          _SettingsListGroup(
             children: [
               PlainListRow(
                 title: '课前提醒',
