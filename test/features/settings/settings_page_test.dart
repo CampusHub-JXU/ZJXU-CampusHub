@@ -54,34 +54,39 @@ void main() {
     expect(await ApkDownloadRoutePreference.load(), ApkDownloadRoute.edgeone);
   });
 
-  testWidgets('按 外观/学期/课表与后台/其他 分组', (tester) async {
+  testWidgets('按 外观/学期与课表/AI 与系统 分组', (tester) async {
     await pumpPage(tester, const SettingsPage());
 
     expect(find.text('外观'), findsOneWidget);
-    expect(find.text('学期'), findsOneWidget);
+    expect(find.text('学期与课表'), findsOneWidget);
 
-    await tester.scrollUntilVisible(find.text('课表与后台'), 300);
-    expect(find.text('课表与后台'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('AI 与系统'), 300);
+    expect(find.text('AI 与系统'), findsOneWidget);
+    // 旧分组名已并入新分组，不再存在。
+    expect(find.text('课表与后台'), findsNothing);
+    expect(find.text('其他'), findsNothing);
     // 账号入口只在「我的」页，设置页不重复承载。
     expect(find.text('教务系统'), findsNothing);
     expect(find.text('统一认证'), findsNothing);
 
-    await tester.scrollUntilVisible(find.text('其他'), 300);
-    expect(find.text('其他'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('关于与诊断'), 300);
     expect(find.text('关于与诊断'), findsOneWidget);
   });
 
-  testWidgets('学期分组展示当前学期', (tester) async {
+  testWidgets('学期磁贴展示开学日与当前学期', (tester) async {
     await pumpPage(tester, const SettingsPage());
 
-    await tester.scrollUntilVisible(find.text('当前学期'), 300);
-    expect(find.text('当前学期'), findsOneWidget);
+    // 开学日与当前学期合并为同一 Bento 磁贴：大号日期 + 精简学期串。
+    await tester.scrollUntilVisible(find.text('开学日'), 300);
+    expect(find.text('开学日'), findsOneWidget);
+    expect(
+      find.textContaining(RegExp(r'\d{2}-\d{2} · 第[一二]学期')),
+      findsOneWidget,
+    );
 
     // 未登录教务时无法在线识别，应回退为日期推算并明确标注来源。
     await tester.pumpAndSettle();
     expect(find.textContaining('按日期推算'), findsOneWidget);
-    expect(find.textContaining('学年'), findsWidgets);
   });
 
   testWidgets('真实 push 转场期间学期异步结果延后到转场结束', (tester) async {
@@ -114,9 +119,9 @@ void main() {
     await tester.tap(find.text('打开设置'));
     await tester.pump();
     await tester.pump();
-    expect(find.text('当前学期'), findsOneWidget);
+    expect(find.text('开学日'), findsOneWidget);
 
-    final route = ModalRoute.of(tester.element(find.text('当前学期')))!;
+    final route = ModalRoute.of(tester.element(find.text('开学日')))!;
     expect(route.animation!.isAnimating, isTrue);
     expect(transitions.isBusy, isTrue);
 
@@ -169,7 +174,7 @@ void main() {
       await tester.tap(find.text('打开设置'));
       await tester.pump();
       await tester.pump();
-      expect(find.text('当前学期'), findsOneWidget);
+      expect(find.text('开学日'), findsOneWidget);
       expect(transitions.isBusy, isTrue);
 
       await tester.pumpAndSettle();
@@ -224,14 +229,15 @@ void main() {
     }
   });
 
-  testWidgets('学期分组不再提供手动年级，保留当前学期与开学日', (tester) async {
+  testWidgets('学期分组不再提供手动年级，保留开学日与当前学期磁贴', (tester) async {
     await pumpPage(tester, const SettingsPage());
 
     // 手动「年级」下拉已移除，学期分组只剩自动识别与日期相关条目。
-    await tester.scrollUntilVisible(find.text('当前学期'), 300);
+    await tester.scrollUntilVisible(find.text('开学日'), 300);
     expect(find.text('年级'), findsNothing);
-    expect(find.text('当前学期'), findsOneWidget);
+    expect(find.text('当前学期'), findsNothing);
     expect(find.text('开学日'), findsOneWidget);
+    expect(find.textContaining(RegExp(r'· 第[一二]学期')), findsOneWidget);
   });
 
   /// 文案节点可能不带动作/标记，向上找到承载该语义的行节点。
@@ -268,25 +274,25 @@ void main() {
     handle.dispose();
   });
 
-  testWidgets('课表日历开关行暴露开关状态语义', (tester) async {
+  testWidgets('课表日历开关磁贴暴露开关状态语义', (tester) async {
     final handle = tester.ensureSemantics();
     await pumpPage(tester, const SettingsPage());
 
-    await tester.scrollUntilVisible(find.text('同步到系统日历'), 300);
+    await tester.scrollUntilVisible(find.text('课表日历'), 300);
 
     final toggleNode = ancestorWith(
       tester,
-      find.text('同步到系统日历'),
+      find.text('课表日历'),
       (data) => data.flagsCollection.isToggled != Tristate.none,
     );
-    expect(toggleNode, isNotNull, reason: '开关行应暴露开/关状态');
+    expect(toggleNode, isNotNull, reason: '开关磁贴应暴露开/关状态');
 
     final tapNode = ancestorWith(
       tester,
-      find.text('同步到系统日历'),
+      find.text('课表日历'),
       (data) => data.hasAction(SemanticsAction.tap),
     );
-    expect(tapNode, isNotNull, reason: '点行即切换，应暴露点击动作');
+    expect(tapNode, isNotNull, reason: '点磁贴即切换，应暴露点击动作');
 
     handle.dispose();
   });
@@ -351,7 +357,7 @@ void main() {
     expect(find.text('通知测试'), findsNothing);
   });
 
-  testWidgets('「其他」分区常驻「重放新手引导」，点按弹出欢迎向导', (tester) async {
+  testWidgets('设置页常驻「重放新手引导」，点按弹出欢迎向导', (tester) async {
     // 重放走注册路由（routes.dart 组合层），测试侧需最小 GoRouter
     // 提供 'welcome' 目标；动作落点行为不在本用例范围。
     final router = GoRouter(

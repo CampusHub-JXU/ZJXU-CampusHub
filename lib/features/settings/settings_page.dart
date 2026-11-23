@@ -11,8 +11,10 @@ import '../../core/calendar/calendar_sync_channel.dart';
 import '../../core/calendar/calendar_sync_control.dart';
 import '../../core/calendar/calendar_sync_models.dart';
 import '../../core/semester/current_term_resolver.dart';
-import '../../core/semester/semester_calendar.dart';
 import '../../core/semester/schedule_term_context.dart';
+import '../../core/semester/semester_calendar.dart';
+import '../../core/theme/app_design_tokens.dart';
+import '../../core/theme/app_preferences_controller.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/theme/page_transition_activity.dart';
 import '../../core/update/apk_download_route.dart';
@@ -20,8 +22,12 @@ import '../../core/update/apk_update_controller.dart';
 import '../../core/update/update_checker.dart';
 import '../../core/update/update_model.dart';
 import '../../shared/widgets/app_app_bar.dart';
+import '../../shared/widgets/app_brand_icon.dart';
 import '../../shared/widgets/app_dropdown.dart';
 import '../../shared/widgets/app_feedback.dart';
+import '../../shared/widgets/app_icon_badge.dart';
+import '../../shared/widgets/app_surface_style.dart';
+import '../../shared/widgets/app_tile_surface.dart';
 import '../../shared/widgets/glass_dialog_route.dart';
 import '../../shared/widgets/plain_list.dart';
 import '../../shared/widgets/update_dialog.dart';
@@ -33,11 +39,12 @@ class SettingsPage extends StatelessWidget {
   /// 宽屏（平板 / 折叠屏展开）下内容列限宽居中；手机宽度不受影响。
   static const double _contentMaxWidth = 640;
 
+  /// Bento 磁贴之间的间距，与「我的」页双列磁贴一致。
+  static const double _bentoGap = AppSpacing.sm;
+
   /// 缓存平台包信息 Future，避免 build 重建时重复经 MethodChannel 查询。
   static final Future<PackageInfo> _packageInfoFuture =
       PackageInfo.fromPlatform();
-
-  String _formatMonthDay(DateTime date) => '${date.month}月${date.day}日';
 
   Future<void> _pickSemesterStartDate(
     BuildContext context,
@@ -120,93 +127,64 @@ class SettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppAppBar(title: const Text('设置')),
+      appBar: const AppAppBar(),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: _contentMaxWidth),
           child: ListView(
             padding: const EdgeInsets.fromLTRB(
               kPlainListGutter,
-              8,
+              AppSpacing.sm,
               kPlainListGutter,
               32,
             ),
             children: [
+              _SettingsHeader(
+                packageInfoFuture: _packageInfoFuture,
+                onCheckUpdate: () => _checkForUpdate(context),
+              ),
+              const SizedBox(height: kPlainListGroupGap),
               const PlainSectionHeader('外观'),
-              PlainListGroup(
-                children: [
-                  PlainListRow(
-                    title: '主题与材质',
-                    onTap: () => context.pushNamed('appearance-theme'),
-                  ),
-                  PlainListRow(
-                    title: '首页个性化',
-                    onTap: () =>
-                        context.pushNamed('appearance-personalization'),
-                  ),
-                ],
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: _ThemeBentoTile(
+                        onTap: () => context.pushNamed('appearance-theme'),
+                      ),
+                    ),
+                    const SizedBox(width: _bentoGap),
+                    Expanded(
+                      child: _PersonalizationBentoTile(
+                        onTap: () =>
+                            context.pushNamed('appearance-personalization'),
+                      ),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: kPlainListGroupGap),
-              const PlainSectionHeader('学期'),
-              PlainListGroup(
-                children: [
-                  const _CurrentTermTile(),
-                  ValueListenableBuilder<DateTime>(
-                    valueListenable:
-                        SemesterCalendar.instance.semesterStartDate,
-                    builder: (context, semesterStartDate, _) {
-                      final defaultStart =
-                          SemesterCalendar.defaultSemesterStartFor(
-                            DateTime.now(),
-                          );
-                      return Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          PlainListRow(
-                            title: '开学日',
-                            value: _formatMonthDay(semesterStartDate),
-                            showChevron: true,
-                            onTap: () async {
-                              await _pickSemesterStartDate(
-                                context,
-                                semesterStartDate,
-                              );
-                            },
-                          ),
-                          // 只在改过开学日时出现，避免常驻一个没用的按钮。
-                          if (!DateUtils.isSameDay(
-                            semesterStartDate,
-                            defaultStart,
-                          )) ...[
-                            PlainListRow(
-                              title: '恢复默认开学日',
-                              value: _formatMonthDay(defaultStart),
-                              onTap: () async {
-                                await SemesterCalendar.instance
-                                    .resetSemesterStartDate();
-                              },
-                            ),
-                          ],
-                        ],
-                      );
-                    },
-                  ),
-                ],
+              const PlainSectionHeader('学期与课表'),
+              _SemesterAndCalendarSection(
+                gap: _bentoGap,
+                onPickSemesterStartDate: _pickSemesterStartDate,
               ),
               const SizedBox(height: kPlainListGroupGap),
-              const PlainSectionHeader('课表与后台'),
+              const PlainSectionHeader('AI 与系统'),
               PlainListGroup(
                 children: [
-                  if (Theme.of(context).platform == TargetPlatform.android)
-                    const _CalendarSyncCard(),
                   PlainListRow(
                     title: '桌面组件与后台',
                     onTap: () => context.pushNamed('desktop-background'),
                   ),
+                  PlainListRow(
+                    title: 'AI 模型与接口',
+                    onTap: () => context.pushNamed('ai-settings'),
+                  ),
                 ],
               ),
-              const SizedBox(height: kPlainListGroupGap),
-              const PlainSectionHeader('其他'),
+              const SizedBox(height: AppSpacing.md),
               PlainListGroup(
                 children: [
                   ValueListenableBuilder<AppRelease?>(
@@ -242,9 +220,7 @@ class SettingsPage extends StatelessWidget {
                                 showChevron: false,
                                 onTap: isChecking
                                     ? null
-                                    : () {
-                                        _checkForUpdate(context);
-                                      },
+                                    : () => _checkForUpdate(context),
                               );
                             },
                           );
@@ -259,7 +235,6 @@ class SettingsPage extends StatelessWidget {
                   ),
                   PlainListRow(
                     title: '重放新手引导',
-                    subtitle: '登录、通知与日历同步的设置向导',
                     onTap: () => _replayWelcome(context),
                   ),
                   PlainListRow(
@@ -276,76 +251,322 @@ class SettingsPage extends StatelessWidget {
   }
 }
 
-/// 设置页展示自动识别出的当前学年学期。
-///
-/// 复用 [CurrentTermResolver] 的 TTL 缓存：未过期时零请求，
-/// 过期且已登录教务时才发起一次识别请求。
-class _CurrentTermTile extends StatefulWidget {
-  const _CurrentTermTile();
+/// 顶部大标题 + 右侧紧凑版本胶囊（点击直接触发检查更新）。
+class _SettingsHeader extends StatelessWidget {
+  const _SettingsHeader({
+    required this.packageInfoFuture,
+    required this.onCheckUpdate,
+  });
 
-  @override
-  State<_CurrentTermTile> createState() => _CurrentTermTileState();
-}
-
-class _CurrentTermTileState extends State<_CurrentTermTile> {
-  ScheduleTermContext? _resolved;
-  bool _loading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    unawaited(_resolveTerm());
-  }
-
-  Future<void> _resolveTerm() async {
-    final resolved = await CurrentTermResolver.instance.resolve();
-    // The settings route is snapshot during its push/pop transition. Keep the
-    // async read out of that interval so it cannot invalidate the snapshot.
-    await PageTransitionActivity.instance.whenIdle();
-    if (!mounted) return;
-    setState(() {
-      _resolved = resolved;
-      _loading = false;
-    });
-  }
-
-  String _termLabel(ScheduleTermContext term) {
-    return '${term.academicYear}-${term.academicYear + 1}学年 ${term.termLabel}';
-  }
+  final Future<PackageInfo> packageInfoFuture;
+  final VoidCallback onCheckUpdate;
 
   @override
   Widget build(BuildContext context) {
-    final term = _resolved ?? ScheduleTermContext.current();
-    // 只在无法从教务识别时说明来源；识别成功是常态，不再注明。
-    final subtitle = !_loading && _resolved == null ? '按日期推算' : null;
-
-    // 只读信息行：无点击语义，识别中在行尾给一个轻量进度指示。
-    return PlainListRow(
-      title: '当前学期',
-      value: _termLabel(term),
-      subtitle: subtitle,
-      trailing: _loading
-          ? const SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : null,
+    final cs = Theme.of(context).colorScheme;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Semantics(
+            header: true,
+            child: Text('设置', style: context.appText.title),
+          ),
+        ),
+        const SizedBox(width: AppSpacing.md),
+        ValueListenableBuilder<AppRelease?>(
+          valueListenable: UpdateChecker.instance.availableRelease,
+          builder: (context, release, _) {
+            return ValueListenableBuilder<bool>(
+              valueListenable: UpdateChecker.instance.isChecking,
+              builder: (context, isChecking, _) {
+                return FutureBuilder<PackageInfo>(
+                  future: packageInfoFuture,
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData && release == null && !isChecking) {
+                      return const SizedBox.shrink();
+                    }
+                    final hasUpdate = release != null;
+                    final label = hasUpdate
+                        ? 'v${release.version}'
+                        : (snapshot.hasData
+                              ? 'v${snapshot.data!.version}'
+                              : '检查更新');
+                    final background = hasUpdate
+                        ? cs.primaryContainer
+                        : cs.surfaceContainerHighest;
+                    final foreground = hasUpdate
+                        ? cs.onPrimaryContainer
+                        : cs.onSurfaceVariant;
+                    final radius = BorderRadius.circular(AppRadius.tag);
+                    return Semantics(
+                      button: true,
+                      label: hasUpdate ? '发现新版本 $label' : '版本 $label，点击检查更新',
+                      child: Material(
+                        color: background,
+                        shape: RoundedSuperellipseBorder(borderRadius: radius),
+                        clipBehavior: Clip.antiAlias,
+                        child: InkWell(
+                          onTap: isChecking ? null : onCheckUpdate,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (isChecking) ...[
+                                  SizedBox(
+                                    width: 10,
+                                    height: 10,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 1.6,
+                                      color: foreground,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 5),
+                                ] else if (hasUpdate) ...[
+                                  Container(
+                                    width: 6,
+                                    height: 6,
+                                    decoration: BoxDecoration(
+                                      color: cs.primary,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 5),
+                                ],
+                                Text(
+                                  label,
+                                  style: context.appText.tag.copyWith(
+                                    color: foreground,
+                                    fontFeatures: const [
+                                      FontFeature.tabularFigures(),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            );
+          },
+        ),
+      ],
     );
   }
 }
 
-/// 「课表日历」分组的开关卡片（仅 Android，由调用方按平台隐藏）。
-///
-/// 开关 / 课前提醒 / 目标日历选择 / 遗留扫描预览与确认全部由 core 的
-/// [CalendarSyncControl] / [CalendarSyncChannel] 承担；提醒提前量由
-/// [CalendarReminderSettings] 持久化。本组件不读取课表、不生成事件、
-/// 不展示学号，只呈现 core 聚合好的数量与结果。
-class _CalendarSyncCard extends StatefulWidget {
-  const _CalendarSyncCard();
+/// 统一 Bento 磁贴外壳：与「我的」页双列磁贴同一配方（[AppHardTileShell] +
+/// [AppTileSurface] 实底无模糊 + `AppRadius.card` 12dp 圆角）。
+class _SettingsBentoTile extends StatelessWidget {
+  const _SettingsBentoTile({
+    required this.semanticsLabel,
+    this.semanticsToggled,
+    required this.onTap,
+    required this.child,
+  });
+
+  final String semanticsLabel;
+  final bool? semanticsToggled;
+  final VoidCallback? onTap;
+  final Widget child;
 
   @override
-  State<_CalendarSyncCard> createState() => _CalendarSyncCardState();
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      toggled: semanticsToggled,
+      label: semanticsLabel,
+      child: AppHardTileShell(
+        radius: AppRadius.card,
+        child: AppTileSurface(
+          borderRadius: AppRadius.cardBorder,
+          padding: const EdgeInsets.all(14),
+          blurred: false,
+          onTap: onTap,
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+/// 左外观磁贴：主题与材质（实时展示 primary / secondary / tertiary 三枚色点 + 主题模式）。
+class _ThemeBentoTile extends StatelessWidget {
+  const _ThemeBentoTile({required this.onTap});
+
+  final VoidCallback onTap;
+
+  static String _themeModeLabel(AppThemePreference mode) => switch (mode) {
+    AppThemePreference.system => '跟随系统',
+    AppThemePreference.light => '浅色',
+    AppThemePreference.dark => '深色',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final brightness = Theme.of(context).brightness;
+    return ListenableBuilder(
+      listenable: AppPreferencesController.instance,
+      builder: (context, _) {
+        final prefs = AppPreferencesController.instance.state;
+        final previewScheme = ColorScheme.fromSeed(
+          seedColor: prefs.seedColor,
+          brightness: brightness,
+        );
+        final dots = [
+          previewScheme.primary,
+          previewScheme.secondary,
+          previewScheme.tertiary,
+        ];
+        return _SettingsBentoTile(
+          semanticsLabel: '主题与材质',
+          onTap: onTap,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  SizedBox(
+                    height: 28,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (var i = 0; i < dots.length; i++) ...[
+                          if (i > 0) const SizedBox(width: 5),
+                          Container(
+                            width: 11,
+                            height: 11,
+                            decoration: BoxDecoration(
+                              color: dots[i],
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: cs.onSurface.withValues(alpha: 0.10),
+                                width: 0.6,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const Spacer(),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 18,
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.45),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              const Spacer(),
+              Text(
+                '主题与材质',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: context.appText.rowTitleStrong.copyWith(height: 1.2),
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                _themeModeLabel(prefs.themeMode),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: context.appText.meta.copyWith(
+                  fontSize: 12,
+                  height: 1.25,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// 右外观磁贴：首页个性化（实时微缩 [AppBrandIcon] + 当前图标风格短名）。
+class _PersonalizationBentoTile extends StatelessWidget {
+  const _PersonalizationBentoTile({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return ListenableBuilder(
+      listenable: AppPreferencesController.instance,
+      builder: (context, _) {
+        final prefs = AppPreferencesController.instance.state;
+        return _SettingsBentoTile(
+          semanticsLabel: '首页个性化',
+          onTap: onTap,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  const AppBrandIcon(size: 28),
+                  const Spacer(),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 18,
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.45),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              const Spacer(),
+              Text(
+                '首页个性化',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: context.appText.rowTitleStrong.copyWith(height: 1.2),
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                prefs.appIconStyle.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: context.appText.meta.copyWith(
+                  fontSize: 12,
+                  height: 1.25,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// 第二区「学期与课表」：
+/// - 左侧 Bento 磁贴：开学日（大号等宽 MM.DD）+ 当前精简学期（复用 [CurrentTermResolver]）
+/// - 右侧 Bento 磁贴（仅 Android）：课表日历开关与状态
+/// - 磁贴下方（仅 Android）：课前提醒下拉、异常状态说明与遗留扫描入口
+class _SemesterAndCalendarSection extends StatefulWidget {
+  const _SemesterAndCalendarSection({
+    required this.gap,
+    required this.onPickSemesterStartDate,
+  });
+
+  final double gap;
+  final Future<void> Function(BuildContext context, DateTime currentDate)
+  onPickSemesterStartDate;
+
+  @override
+  State<_SemesterAndCalendarSection> createState() =>
+      _SemesterAndCalendarSectionState();
 }
 
 /// 首次开启时用户选择的目标日历类型。
@@ -357,9 +578,14 @@ enum _CalendarSyncTarget {
   existing,
 }
 
-class _CalendarSyncCardState extends State<_CalendarSyncCard> {
-  CalendarSyncControl get _control => CalendarSyncControl.instance;
+class _SemesterAndCalendarSectionState
+    extends State<_SemesterAndCalendarSection> {
+  // ── 学期识别状态 ──────────────────────────────────────────────────────────
+  ScheduleTermContext? _resolved;
+  bool _termLoading = true;
 
+  // ── 课表日历同步状态 ──────────────────────────────────────────────────────
+  CalendarSyncControl get _control => CalendarSyncControl.instance;
   CalendarReminderSettings get _reminder => CalendarReminderSettings.instance;
 
   /// 有开启 / 扫描 / 清理请求在途：期间忽略重复点击，避免重复原生调用。
@@ -377,6 +603,7 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
   @override
   void initState() {
     super.initState();
+    unawaited(_resolveTerm());
     _control.addListener(_handleControlChanged);
     _reminder.addListener(_handleControlChanged);
     // paused 的副标题取决于当前是否有已验证教务身份，登录 / 登出时需要重绘。
@@ -394,6 +621,18 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
     super.dispose();
   }
 
+  Future<void> _resolveTerm() async {
+    final resolved = await CurrentTermResolver.instance.resolve();
+    // The settings route is snapshot during its push/pop transition. Keep the
+    // async read out of that interval so it cannot invalidate the snapshot.
+    await PageTransitionActivity.instance.whenIdle();
+    if (!mounted) return;
+    setState(() {
+      _resolved = resolved;
+      _termLoading = false;
+    });
+  }
+
   void _handleControlChanged() {
     if (!mounted || _transitionRefreshScheduled) return;
     _transitionRefreshScheduled = true;
@@ -407,7 +646,16 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
     setState(() {});
   }
 
-  String? get _subtitle => switch (_control.state) {
+  static String _formatDotDate(DateTime date) =>
+      '${date.month.toString().padLeft(2, '0')}.${date.day.toString().padLeft(2, '0')}';
+
+  static String _compactTermLabel(ScheduleTermContext term) {
+    final startShort = (term.academicYear % 100).toString().padLeft(2, '0');
+    final endShort = ((term.academicYear + 1) % 100).toString().padLeft(2, '0');
+    return '$startShort-$endShort · ${term.termLabel}';
+  }
+
+  String? get _calendarDetailNotice => switch (_control.state) {
     CalendarSyncControlState.off => null,
     // 教务未登录 / 会话过期 / 冷启动尚未恢复：开关保持开启，绑定与事件都保留，
     // 同一账号重新登录后自动继续（不是换号，不暂停）。
@@ -433,61 +681,301 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
 
   @override
   Widget build(BuildContext context) {
+    final isAndroid = Theme.of(context).platform == TargetPlatform.android;
     final state = _control.state;
     final progress = _progress;
-    // 外层已在「课表与后台」分组卡片里，这里只排行，不再套卡片。
+    final detailNotice = _calendarDetailNotice;
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        PlainSwitchRow(
-          title: '同步到系统日历',
-          subtitle: _subtitle,
-          value: state == CalendarSyncControlState.enabled,
-          // 开启 / 扫描 / 清理请求在途：整行置灰，避免重复触发原生调用。
-          enabled: !_busy,
-          onChanged: (value) {
-            if (_busy) return;
-            unawaited(value ? _requestEnable() : _startScan());
-          },
-        ),
-        PlainListRow(
-          title: '课前提醒',
-          trailing: AppDropdown<int>(
-            key: const Key('calendar_reminder_dropdown'),
-            inline: true,
-            // 历史遗留的非预设值不在列表里：按钮回落显示当前值。
-            hint: _reminderLabel(_reminder.reminderMinutes),
-            value:
-                CalendarReminderSettings.presetMinutes.contains(
-                  _reminder.reminderMinutes,
-                )
-                ? _reminder.reminderMinutes
-                : null,
-            items: <AppDropdownItem<int>>[
-              for (final minutes in CalendarReminderSettings.presetMinutes)
-                AppDropdownItem<int>(
-                  value: minutes,
-                  label: _reminderLabel(minutes),
-                ),
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(child: _buildSemesterBentoTile(context)),
+              if (isAndroid) ...[
+                SizedBox(width: widget.gap),
+                Expanded(child: _buildCalendarBentoTile(context)),
+              ],
             ],
-            onChanged: (value) {
-              if (value == null) return;
-              unawaited(_reminder.setReminderMinutes(value));
-            },
           ),
         ),
-        if (progress != null)
-          _busyRow(progress)
-        else if (_showScanEntry)
-          PlainListRow(
-            title: '扫描遗留日程',
-            subtitle: '只读扫描，不会删除',
-            onTap: () => unawaited(_startScan()),
+        if (isAndroid) ...[
+          SizedBox(height: widget.gap),
+          PlainListGroup(
+            children: [
+              PlainListRow(
+                title: '课前提醒',
+                trailing: AppDropdown<int>(
+                  key: const Key('calendar_reminder_dropdown'),
+                  inline: true,
+                  // 历史遗留的非预设值不在列表里：按钮回落显示当前值。
+                  hint: _reminderLabel(_reminder.reminderMinutes),
+                  value:
+                      CalendarReminderSettings.presetMinutes.contains(
+                        _reminder.reminderMinutes,
+                      )
+                      ? _reminder.reminderMinutes
+                      : null,
+                  items: <AppDropdownItem<int>>[
+                    for (final minutes
+                        in CalendarReminderSettings.presetMinutes)
+                      AppDropdownItem<int>(
+                        value: minutes,
+                        label: _reminderLabel(minutes),
+                      ),
+                  ],
+                  onChanged: (value) {
+                    if (value == null) return;
+                    unawaited(_reminder.setReminderMinutes(value));
+                  },
+                ),
+              ),
+              if (detailNotice != null)
+                PlainListRow(
+                  title: '同步状态',
+                  subtitle: detailNotice,
+                  titleColor: state == CalendarSyncControlState.cleanupPending
+                      ? Theme.of(context).colorScheme.error
+                      : null,
+                ),
+              if (progress != null)
+                _busyRow(progress)
+              else if (_showScanEntry)
+                PlainListRow(
+                  title: '扫描遗留日程',
+                  subtitle: '只读扫描，不会删除',
+                  onTap: () => unawaited(_startScan()),
+                ),
+              if (state == CalendarSyncControlState.cleanupPending &&
+                  _cleanupNote != null)
+                PlainListRow(title: '上次清理结果', subtitle: _cleanupNote),
+            ],
           ),
-        if (state == CalendarSyncControlState.cleanupPending &&
-            _cleanupNote != null)
-          PlainListRow(title: '上次清理结果', subtitle: _cleanupNote),
+        ],
       ],
+    );
+  }
+
+  Widget _buildSemesterBentoTile(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final term = _resolved ?? ScheduleTermContext.current();
+    final termText = _compactTermLabel(term);
+
+    return ValueListenableBuilder<DateTime>(
+      valueListenable: SemesterCalendar.instance.semesterStartDate,
+      builder: (context, semesterStartDate, _) {
+        final defaultStart = SemesterCalendar.defaultSemesterStartFor(
+          DateTime.now(),
+        );
+        final isModified = !DateUtils.isSameDay(
+          semesterStartDate,
+          defaultStart,
+        );
+        return _SettingsBentoTile(
+          semanticsLabel:
+              '开学日 ${semesterStartDate.month}月${semesterStartDate.day}日，$termText',
+          onTap: () =>
+              widget.onPickSemesterStartDate(context, semesterStartDate),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: double.infinity,
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(
+                      '开学日',
+                      style: context.appText.meta.copyWith(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        height: 1.25,
+                      ),
+                    ),
+                    if (isModified)
+                      InkWell(
+                        onTap: () => unawaited(
+                          SemesterCalendar.instance.resetSemesterStartDate(),
+                        ),
+                        borderRadius: BorderRadius.circular(AppRadius.tag),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 2,
+                          ),
+                          child: Text(
+                            '恢复默认',
+                            style: context.appText.tag.copyWith(
+                              color: cs.primary,
+                            ),
+                          ),
+                        ),
+                      )
+                    else
+                      Icon(
+                        Icons.calendar_today_outlined,
+                        size: 15,
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.45),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                _formatDotDate(semesterStartDate),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: context.appText.numValue,
+              ),
+              const SizedBox(height: 6),
+              const Spacer(),
+              Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      termText,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.appText.meta.copyWith(
+                        fontSize: 12,
+                        height: 1.25,
+                      ),
+                    ),
+                  ),
+                  if (_termLoading) ...[
+                    const SizedBox(width: 6),
+                    const SizedBox(
+                      width: 12,
+                      height: 12,
+                      child: CircularProgressIndicator(strokeWidth: 1.8),
+                    ),
+                  ],
+                ],
+              ),
+              if (!_termLoading && _resolved == null) ...[
+                const SizedBox(height: 2),
+                Text(
+                  '按日期推算',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.appText.tag.copyWith(
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.78),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildCalendarBentoTile(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final state = _control.state;
+    final isEnabled = state == CalendarSyncControlState.enabled;
+
+    final (
+      String statusText,
+      Color statusColor,
+      bool showDot,
+    ) = switch (state) {
+      CalendarSyncControlState.enabled =>
+        _control.isWaitingForIdentity
+            ? ('需重新登录', cs.tertiary, true)
+            : (_reminderLabel(_reminder.reminderMinutes), cs.primary, true),
+      CalendarSyncControlState.off => ('未开启', cs.onSurfaceVariant, false),
+      CalendarSyncControlState.paused => (
+        ZhengfangAuth.instance.verifiedStudentId == null
+            ? '已暂停 · 待登录'
+            : '已暂停 · 账号不符',
+        cs.tertiary,
+        true,
+      ),
+      CalendarSyncControlState.cleanupPending => ('待清理遗留日程', cs.error, true),
+    };
+
+    void handleToggle(bool nextValue) {
+      if (_busy) return;
+      unawaited(nextValue ? _requestEnable() : _startScan());
+    }
+
+    return _SettingsBentoTile(
+      semanticsLabel: '课表日历',
+      semanticsToggled: isEnabled,
+      onTap: _busy ? null : () => handleToggle(!isEnabled),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              AppIconBadge(
+                icon: Icons.event_repeat_outlined,
+                accentColor: isEnabled ? cs.primary : cs.onSurfaceVariant,
+                semantic: !isEnabled,
+                size: AppIconBadgeSize.small,
+              ),
+              const Spacer(),
+              SizedBox(
+                height: 28,
+                child: Transform.scale(
+                  scale: 0.84,
+                  alignment: Alignment.centerRight,
+                  child: Switch.adaptive(
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    value: isEnabled,
+                    onChanged: _busy ? null : handleToggle,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          const Spacer(),
+          Text(
+            '课表日历',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: context.appText.rowTitleStrong.copyWith(height: 1.2),
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Row(
+            children: [
+              if (showDot) ...[
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: statusColor,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 6),
+              ],
+              Flexible(
+                child: Text(
+                  statusText,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.appText.meta.copyWith(
+                    fontSize: 12,
+                    height: 1.25,
+                    fontWeight: showDot ? FontWeight.w600 : null,
+                    color: statusColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 

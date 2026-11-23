@@ -92,19 +92,23 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  /// 滚动到「课表日历」分组：先滚到小节标题，再把**标题**对齐到视口顶部，
-  /// 让标题与开关卡片整体可见。
+  /// 滚动到「学期与课表」分组：先滚到小节标题，再把**标题**对齐到视口顶部，
+  /// 让标题与开关磁贴整体可见。
   ///
-  /// 不要对开关行做 `ensureVisible`：它会把开关行顶到视口顶部，标题随即滚出
-  /// 可视范围并被 ListView 回收（`find.text('课表与后台')` 会变成 0）。
+  /// 不要对开关磁贴做 `ensureVisible`：它会把磁贴顶到视口顶部，标题随即滚出
+  /// 可视范围并被 ListView 回收（`find.text('学期与课表')` 会变成 0）。
   Future<void> revealSyncRow(WidgetTester tester) async {
-    await tester.scrollUntilVisible(find.text('课表与后台'), 200);
-    await tester.ensureVisible(find.text('课表与后台'));
+    await tester.scrollUntilVisible(find.text('学期与课表'), 200);
+    await tester.ensureVisible(find.text('学期与课表'));
     await tester.pumpAndSettle();
   }
 
+  /// 课表日历开关：Bento 磁贴内，`课表日历` 文本与 `Switch.adaptive` 同属一个
+  /// `Semantics(label: '课表日历')` 磁贴，经该磁贴定位到开关。
   Finder syncSwitch() => find.descendant(
-    of: find.ancestor(of: find.text('同步到系统日历'), matching: find.byType(Row)),
+    of: find.byWidgetPredicate(
+      (w) => w is Semantics && w.properties.label == '课表日历',
+    ),
     matching: find.byType(Switch),
   );
 
@@ -171,8 +175,8 @@ void main() {
     await pumpSettingsPage(tester);
     await revealSyncRow(tester);
 
-    expect(find.text('课表与后台'), findsOneWidget);
-    expect(find.text('同步到系统日历'), findsOneWidget);
+    expect(find.text('学期与课表'), findsOneWidget);
+    expect(find.text('课表日历'), findsOneWidget);
     expect(syncSwitchValue(tester), isFalse);
     expect(CalendarSyncControl.instance.state, CalendarSyncControlState.off);
     expect(native.calls, isEmpty);
@@ -182,7 +186,7 @@ void main() {
     await pumpSettingsPage(tester, platform: TargetPlatform.iOS);
 
     expect(find.text('外观'), findsOneWidget);
-    expect(find.text('同步到系统日历'), findsNothing);
+    expect(find.text('课表日历'), findsNothing);
     expect(native.calls, isEmpty);
   }, timeout: perTestTimeout);
 
@@ -190,7 +194,7 @@ void main() {
     await pumpSettingsPage(tester);
     await revealSyncRow(tester);
 
-    await tester.tap(find.text('同步到系统日历'));
+    await tester.tap(find.text('课表日历'));
     await tester.pump();
 
     expect(find.text('请先登录教务系统，再开启课表日历同步'), findsOneWidget);
@@ -206,7 +210,7 @@ void main() {
     logIn('20230001');
     await revealSyncRow(tester);
 
-    await tester.tap(find.text('同步到系统日历'));
+    await tester.tap(find.text('课表日历'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('使用专属本地日历'));
     await tester.pumpAndSettle();
@@ -222,7 +226,7 @@ void main() {
     logIn('20230001');
     await revealSyncRow(tester);
 
-    await tester.tap(find.text('同步到系统日历'));
+    await tester.tap(find.text('课表日历'));
     await tester.pumpAndSettle();
 
     expect(find.text('开启课表日历同步'), findsOneWidget);
@@ -257,7 +261,7 @@ void main() {
     logIn('20230001');
     await revealSyncRow(tester);
 
-    await tester.tap(find.text('同步到系统日历'));
+    await tester.tap(find.text('课表日历'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('选择其他日历'));
     await tester.pumpAndSettle();
@@ -281,7 +285,7 @@ void main() {
     logIn('20230001');
     await revealSyncRow(tester);
 
-    await tester.tap(find.text('同步到系统日历'));
+    await tester.tap(find.text('课表日历'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('选择其他日历'));
     await tester.pumpAndSettle();
@@ -293,7 +297,7 @@ void main() {
     native.calendars = const <CalendarSyncWritableCalendar>[
       CalendarSyncWritableCalendar(id: 7, displayName: '工作日程'),
     ];
-    await tester.tap(find.text('同步到系统日历'));
+    await tester.tap(find.text('课表日历'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('选择其他日历'));
     await tester.pumpAndSettle();
@@ -320,7 +324,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(syncSwitchValue(tester), isFalse);
-    expect(find.textContaining('已暂停'), findsOneWidget);
+    // paused 提示分两处：磁贴状态短文案 + 状态行完整说明。
+    expect(find.textContaining('已暂停 · 账号不符'), findsOneWidget);
     expect(find.textContaining('账号不一致'), findsOneWidget);
     // 暂停状态不会自动写入任何事件。
     expect(
@@ -332,7 +337,7 @@ void main() {
     );
 
     // 显式重新开启：绑定当前登录账号，而不是默默沿用旧账号。
-    await tester.tap(find.text('同步到系统日历'));
+    await tester.tap(find.text('课表日历'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('使用专属本地日历'));
     await tester.pumpAndSettle();
@@ -356,6 +361,7 @@ void main() {
     await revealSyncRow(tester);
 
     expect(syncSwitchValue(tester), isFalse);
+    expect(find.textContaining('已暂停 · 待登录'), findsOneWidget);
     expect(find.textContaining('登录教务系统后将自动恢复（同一账号）'), findsOneWidget);
     expect(find.textContaining('账号不一致'), findsNothing);
 
@@ -412,7 +418,7 @@ void main() {
     await revealSyncRow(tester);
 
     expect(syncSwitchValue(tester), isTrue);
-    await tester.tap(find.text('同步到系统日历'));
+    await tester.tap(find.text('课表日历'));
     await tester.pumpAndSettle();
 
     expect(find.text('关闭课表日历同步'), findsOneWidget);
@@ -460,7 +466,7 @@ void main() {
     logIn('20230001');
     await revealSyncRow(tester);
 
-    await tester.tap(find.text('同步到系统日历'));
+    await tester.tap(find.text('课表日历'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('关闭并扫描'));
     await tester.pumpAndSettle();
@@ -486,8 +492,8 @@ void main() {
     await waitForSnackBar(tester);
 
     // cleanupPending 期间开关不能重新开启（不覆盖残留账本）。
-    await tester.ensureVisible(find.text('同步到系统日历'));
-    await tester.tap(find.text('同步到系统日历'));
+    await tester.ensureVisible(find.text('课表日历'));
+    await tester.tap(find.text('课表日历'));
     await tester.pump();
     expect(find.text('存在未完成的清理，请先点击「扫描遗留日程」'), findsOneWidget);
     expect(
@@ -527,8 +533,8 @@ void main() {
     expect(find.text('提前 30 分钟'), findsOneWidget);
 
     logIn('20230001');
-    await tester.ensureVisible(find.text('同步到系统日历'));
-    await tester.tap(find.text('同步到系统日历'));
+    await tester.ensureVisible(find.text('课表日历'));
+    await tester.tap(find.text('课表日历'));
     await tester.pumpAndSettle();
     expect(find.textContaining('课前 30 分钟由系统日历提醒'), findsOneWidget);
     await tester.tap(find.text('取消'));
@@ -540,7 +546,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(CalendarReminderSettings.instance.reminderMinutes, 60);
 
-    await tester.tap(find.text('同步到系统日历'));
+    await tester.tap(find.text('课表日历'));
     await tester.pumpAndSettle();
     expect(find.textContaining('课前 60 分钟由系统日历提醒'), findsOneWidget);
     await tester.tap(find.text('取消'));
@@ -574,8 +580,8 @@ void main() {
     await tester.tap(find.text('课程开始时提醒'));
     await tester.pumpAndSettle();
     logIn('20230001');
-    await tester.ensureVisible(find.text('同步到系统日历'));
-    await tester.tap(find.text('同步到系统日历'));
+    await tester.ensureVisible(find.text('课表日历'));
+    await tester.tap(find.text('课表日历'));
     await tester.pumpAndSettle();
     expect(find.textContaining('开始时由系统日历提醒'), findsOneWidget);
   }, timeout: perTestTimeout);
@@ -589,17 +595,17 @@ void main() {
     pendingCreateGate = gate;
     native.createGate = gate.future;
 
-    await tester.tap(find.text('同步到系统日历'));
+    await tester.tap(find.text('课表日历'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('使用专属本地日历'));
     await tester.pump();
     // 等对话框完全退场，此时 enable 仍被 gate 阻塞。
     await tester.pump(const Duration(milliseconds: 300));
 
-    await tester.ensureVisible(find.text('同步到系统日历'));
-    await tester.tap(find.text('同步到系统日历'));
+    await tester.ensureVisible(find.text('课表日历'));
+    await tester.tap(find.text('课表日历'));
     await tester.pump();
-    await tester.tap(find.text('同步到系统日历'));
+    await tester.tap(find.text('课表日历'));
     await tester.pump();
 
     gate.complete();
