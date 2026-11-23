@@ -15,10 +15,10 @@ void main() {
     await resetTestEnvironment();
   });
 
-  test('resolveAppIconLauncherAlias 四款固定风格各自映射到固定 alias', () {
+  test('resolveAppIconLauncherAlias 三款风格各自映射到支持深浅自动切换的 alias', () {
     expect(
       resolveAppIconLauncherAlias(
-        style: AppIconStyle.celadonSlate,
+        style: AppIconStyle.monochromeAuto,
         seedColor: themePalettes[0].primary,
         presetPaletteIndex: 0,
       ),
@@ -31,14 +31,6 @@ void main() {
         presetPaletteIndex: 1,
       ),
       'LauncherCrimson',
-    );
-    expect(
-      resolveAppIconLauncherAlias(
-        style: AppIconStyle.themeInverted,
-        seedColor: themePalettes[1].primary,
-        presetPaletteIndex: 1,
-      ),
-      'LauncherRedBlack',
     );
     // 跟随主题色用 Auto 资源限定符款，运行时不再随主题模式翻转 alias
     expect(
@@ -90,34 +82,38 @@ void main() {
     expect(light.sail, seed);
   });
 
-  test('AppIconColors 固定风格不随明暗变化', () {
+  test('AppIconColors 三款风格均随系统明暗模式自动互换', () {
     final seed = themePalettes[1].primary;
-    // 「深色反色 · 红黑」是固定风格：深浅模式下都红黑底
-    for (final isDark in [true, false]) {
-      final colors = AppIconColors.resolve(
-        style: AppIconStyle.themeInverted,
-        seed: seed,
-        isDark: isDark,
-      );
-      expect(colors.top, AppIconColors.redBlack, reason: 'isDark=$isDark');
-    }
-    // 青瓷浅色/黛瓦深色随资源限定符对应
-    expect(
-      AppIconColors.resolve(
-        style: AppIconStyle.celadonSlate,
-        seed: seed,
-        isDark: false,
-      ).top,
-      AppIconColors.celadon.top,
+    // 默认「黑白 · 互换」：浅色白底黑帆，深色黑底白帆
+    final monoLight = AppIconColors.resolve(
+      style: AppIconStyle.monochromeAuto,
+      seed: seed,
+      isDark: false,
     );
-    expect(
-      AppIconColors.resolve(
-        style: AppIconStyle.celadonSlate,
-        seed: seed,
-        isDark: true,
-      ).top,
-      AppIconColors.slate.top,
+    final monoDark = AppIconColors.resolve(
+      style: AppIconStyle.monochromeAuto,
+      seed: seed,
+      isDark: true,
     );
+    expect(monoLight.top, Colors.white);
+    expect(monoLight.sail, AppIconColors.inkBlack);
+    expect(monoDark.top, AppIconColors.inkBlack);
+    expect(monoDark.sail, AppIconColors.ivory);
+
+    // 「嘉大红」：浅色嘉大红底白帆，深色红黑底亮红帆
+    final crimsonLight = AppIconColors.resolve(
+      style: AppIconStyle.crimsonClassic,
+      seed: seed,
+      isDark: false,
+    );
+    final crimsonDark = AppIconColors.resolve(
+      style: AppIconStyle.crimsonClassic,
+      seed: seed,
+      isDark: true,
+    );
+    expect(crimsonLight.sail, AppIconColors.ivory);
+    expect(crimsonDark.top, AppIconColors.redBlack);
+    expect(crimsonDark.sail, AppIconColors.crimsonBright);
   });
 
   test('nearestIconPaletteIndex 为自定义色选出最近预设', () {

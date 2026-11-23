@@ -4,9 +4,8 @@ import 'app_colors.dart';
 import 'app_theme_palette.dart';
 
 enum AppIconStyle {
-  celadonSlate('青瓷 · 黛瓦'),
+  monochromeAuto('黑白 · 互换'),
   followTheme('跟随主题色'),
-  themeInverted('深色反色 · 红黑'),
   crimsonClassic('嘉大红');
 
   const AppIconStyle(this.label);
@@ -49,9 +48,6 @@ String resolveAppIconLauncherAlias({
   if (style == AppIconStyle.crimsonClassic) {
     return 'LauncherCrimson';
   }
-  if (style == AppIconStyle.themeInverted) {
-    return 'LauncherRedBlack';
-  }
   if (style == AppIconStyle.followTheme) {
     final index = _resolvePaletteIndex(seedColor, presetPaletteIndex);
     return 'LauncherTheme${index}Auto';
@@ -88,46 +84,58 @@ class AppIconColors {
   final List<Color> waves;
 
   static const ivory = Color(0xFFF3F2EE);
+  static const inkBlack = Color(0xFF111317);
   static const redBlack = Color(0xFF160609);
-  static const celadon = AppIconColors(
-    Color(0xFFDDE5E9),
-    Color(0xFFC7D3DA),
-    Color(0xFF18262F),
-    [Color(0xFF283C48), Color(0xFF4E6573), Color(0xFF7A919E)],
+  static const crimsonBright = Color(0xFFE25B69);
+
+  static final monochromeLight = AppIconColors(
+    Colors.white,
+    Colors.white,
+    inkBlack,
+    [
+      inkBlack,
+      Color.lerp(inkBlack, Colors.white, 0.24)!,
+      Color.lerp(inkBlack, Colors.white, 0.48)!,
+    ],
   );
-  static const slate = AppIconColors(
-    Color(0xFF293138),
-    Color(0xFF1C2227),
+  static final monochromeDark = AppIconColors(
+    inkBlack,
+    inkBlack,
     ivory,
-    [Color(0xFFCFD5D9), Color(0xFF929CA4), Color(0xFF5C666E)],
+    [
+      ivory,
+      Color.lerp(ivory, inkBlack, 0.24)!,
+      Color.lerp(ivory, inkBlack, 0.48)!,
+    ],
   );
 
-  /// 与 alias 资源逐款对应：深色只取资源限定符那套（青瓷→05a 黛瓦、
-  /// 跟随主题色→种子调暗面），「深色反色 · 红黑」是固定风格不随模式变化。
+  /// 与 alias 资源逐款对应：3 种图标全部随系统深/浅模式自动互换。
   static AppIconColors resolve({
     required AppIconStyle style,
     required Color seed,
     required bool isDark,
   }) {
     return switch (style) {
-      AppIconStyle.celadonSlate => isDark ? slate : celadon,
-      AppIconStyle.crimsonClassic => _crimson(),
-      AppIconStyle.themeInverted => _redBlack(),
+      AppIconStyle.monochromeAuto =>
+        isDark ? monochromeDark : monochromeLight,
+      AppIconStyle.crimsonClassic =>
+        isDark ? _crimsonDark() : _crimsonLight(),
       AppIconStyle.followTheme => isDark ? _themeDark(seed) : _themeLight(seed),
     };
   }
 
-  static AppIconColors _redBlack() => AppIconColors(redBlack, redBlack, ivory, [
-    ivory,
-    Color.lerp(ivory, redBlack, 0.24)!,
-    Color.lerp(ivory, redBlack, 0.48)!,
-  ]);
-
-  static AppIconColors _crimson() =>
+  static AppIconColors _crimsonLight() =>
       AppIconColors(AppColors.primary, AppColors.primary, ivory, [
         ivory,
         Color.lerp(ivory, AppColors.primary, 0.24)!,
         Color.lerp(ivory, AppColors.primary, 0.48)!,
+      ]);
+
+  static AppIconColors _crimsonDark() =>
+      AppIconColors(redBlack, redBlack, crimsonBright, [
+        crimsonBright,
+        Color.lerp(crimsonBright, redBlack, 0.24)!,
+        Color.lerp(crimsonBright, redBlack, 0.48)!,
       ]);
 
   static AppIconColors _themeLight(Color seed) {

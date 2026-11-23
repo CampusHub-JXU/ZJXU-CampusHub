@@ -88,24 +88,24 @@ WAVE3_PATH = (
     "C 310 763, 315 752, 326 752 Z"
 )
 
-# 04b 汝窑天青 · 铁胎墨（nanhu-04b-ruyao-sky.svg）
+# 默认「黑白 · 互换」浅色款（白底黑帆）
 PALETTE_DAY = {
-    "bg_top": (221, 229, 233),  # #DDE5E9
-    "bg_bottom": (199, 211, 218),  # #C7D3DA
-    "sail": (24, 38, 47),  # #18262F
-    "wave1": (40, 60, 72),  # #283C48
-    "wave2": (78, 101, 115),  # #4E6573
-    "wave3": (122, 145, 158),  # #7A919E
-    "launcher_bg": "#CFDADF",
+    "bg_top": (255, 255, 255),  # #FFFFFF
+    "bg_bottom": (244, 245, 247),  # #F4F5F7
+    "sail": (17, 19, 23),  # #111317
+    "wave1": (17, 19, 23),
+    "wave2": (74, 78, 86),
+    "wave3": (136, 140, 148),
+    "launcher_bg": "#FFFFFF",
 }
 
-# 05a 烟雨黛瓦 · 粉墙白（nanhu-05-yanyu-slate.svg）
+# 默认「黑白 · 互换」深色款（黑底象牙白帆）
 PALETTE_NIGHT = {
     "sail": (243, 242, 238),  # #F3F2EE
-    "wave1": (207, 213, 217),  # #CFD5D9
-    "wave2": (146, 156, 164),  # #929CA4
-    "wave3": (92, 102, 110),  # #5C666E
-    "launcher_bg": "#1C2227",
+    "wave1": (243, 242, 238),
+    "wave2": (187, 187, 185),
+    "wave3": (132, 132, 134),
+    "launcher_bg": "#111317",
 }
 
 # 与 lib/core/theme/app_theme_palette.dart 完全一致的 8 套预设主题色
@@ -123,6 +123,7 @@ THEME_PALETTES = [
 IVORY = (243, 242, 238)  # #F3F2EE
 RED_BLACK = (22, 6, 9)  # #160609
 CRIMSON = (139, 26, 45)  # #8B1A2D
+CRIMSON_BRIGHT = (226, 91, 105)  # #E25B69
 
 PATHS = {
     "sail": SAIL_PATH,
@@ -432,7 +433,17 @@ def _write_alias_resources(res_dir: Path, day_fills: dict[str, tuple[int, int, i
             },
         ),
     }
-    variants_night: dict[str, tuple[tuple[int, int, int], dict[str, tuple[int, int, int]]]] = {}
+    variants_night: dict[str, tuple[tuple[int, int, int], dict[str, tuple[int, int, int]]]] = {
+        "crimson": (
+            RED_BLACK,
+            {
+                "sail": CRIMSON_BRIGHT,
+                "wave1": CRIMSON_BRIGHT,
+                "wave2": _lerp_rgb(CRIMSON_BRIGHT, RED_BLACK, 0.24),
+                "wave3": _lerp_rgb(CRIMSON_BRIGHT, RED_BLACK, 0.48),
+            },
+        ),
+    }
 
     for idx, primary in enumerate(THEME_PALETTES):
         light_bg, light_fg = _palette_light_spec(primary)
@@ -521,8 +532,10 @@ def main():
         d.mkdir(parents=True, exist_ok=True)
         fg_night.resize((px, px), Image.LANCZOS).save(d / "ic_launcher_foreground.png")
 
-    # 7) 夜间自适应底色（values-night 只覆盖 ic_launcher_background，
-    #    不合并既有 values-night/campus_widget_colors.xml）
+    # 7) 浅色与夜间自适应底色（只覆盖 ic_launcher_background）
+    upsert_launcher_color(
+        res_dir / "values" / "colors.xml", PALETTE_DAY["launcher_bg"]
+    )
     upsert_launcher_color(
         res_dir / "values-night" / "colors.xml", PALETTE_NIGHT["launcher_bg"]
     )

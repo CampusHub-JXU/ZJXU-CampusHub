@@ -33,7 +33,7 @@ class AppPreferences {
     this.pureBlack = false,
     this.textScale = 0.9,
     this.homeTextColor = HomeTextColorPreference.system,
-    this.appIconStyle = AppIconStyle.celadonSlate,
+    this.appIconStyle = AppIconStyle.monochromeAuto,
   });
 
   AppPreferences copyWith({

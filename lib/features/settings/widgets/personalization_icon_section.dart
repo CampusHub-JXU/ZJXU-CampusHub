@@ -51,7 +51,7 @@ class PersonalizationIconSection extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
               child: Text(
-                '「青瓷 · 黛瓦」与「跟随主题色」的深色款会随系统深/浅模式自动换色；切换后系统桌面可能需要几秒刷新，自定义主题色会匹配最接近的预设色。',
+                '三款图标均随系统深/浅模式自动互换；自定义主题色会匹配最接近的预设色。',
                 style: context.appText.meta,
               ),
             ),

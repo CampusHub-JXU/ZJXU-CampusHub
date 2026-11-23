@@ -81,7 +81,7 @@ class AppPreferencesStore {
       homeTextColor: homeTextColor,
       appIconStyle: AppIconStyle.values.firstWhere(
         (style) => style.name == prefs.getString(_appIconStyleKey),
-        orElse: () => AppIconStyle.celadonSlate,
+        orElse: () => AppIconStyle.monochromeAuto,
       ),
     );
   }
