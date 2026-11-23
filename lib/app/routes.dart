@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 
+import 'ai_export_chat_adapter.dart';
 import 'ai_export_sources.dart';
 import 'app_route_observer.dart';
 import 'app_shell_page.dart';
@@ -22,6 +23,7 @@ import '../features/sjjx_notice/sjjx_notice_list_page.dart';
 import '../features/service_hall/service_hall_page.dart';
 import '../features/notification_center/notification_center_page.dart';
 import '../features/exam/exam_page.dart';
+import '../features/ai_chat/ai_chat_page.dart';
 import '../features/ai_export/ai_export_page.dart';
 import '../features/shuati/domain/shuati_models.dart';
 import '../features/shuati/shuati_webview_page.dart';
@@ -31,6 +33,7 @@ import '../features/shuati/ui/shuati_native_practice_page.dart';
 import '../features/shuati/ui/shuati_native_settings_page.dart';
 import '../features/shuati/ui/shuati_native_wrong_page.dart';
 import '../features/settings/settings_page.dart';
+import '../features/settings/ai_settings_page.dart';
 import '../features/settings/about_page.dart';
 import '../features/settings/performance_diagnostics_page.dart';
 import '../features/settings/theme_material_page.dart';
@@ -128,6 +131,17 @@ final GoRouter appRouter = GoRouter(
       path: '/grades',
       name: 'grades',
       builder: (context, state) => const GradesPage(),
+    ),
+    _appRoute(
+      path: '/ai-chat',
+      name: 'ai-chat',
+      builder: (context, state) => AiChatPage(
+        contextProvider: AiExportChatContextProvider(
+          sources: buildAiExportSources,
+        ),
+        onOpenSettings: () => unawaited(context.pushNamed('ai-settings')),
+        onOpenExport: () => unawaited(context.pushNamed('ai-export')),
+      ),
     ),
     _appRoute(
       path: '/ai-export',
@@ -244,6 +258,11 @@ final GoRouter appRouter = GoRouter(
       path: '/settings',
       name: 'settings',
       builder: (context, state) => const SettingsPage(),
+    ),
+    _appRoute(
+      path: '/settings/ai',
+      name: 'ai-settings',
+      builder: (context, state) => const AiSettingsPage(),
     ),
     _appRoute(
       path: '/welcome',
