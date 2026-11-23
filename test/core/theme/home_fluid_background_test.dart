@@ -260,33 +260,41 @@ void main() {
     expect(stateOf(tester).debugShaderTimeSeconds, muted);
   });
 
-  group('帧率档位的实际出帧节拍（屏幕 60Hz）', () {
+  group('交互帧率档位的实际出帧节拍', () {
     testWidgets('60 fps：每个 vsync 一帧', (tester) async {
       await tester.pumpWidget(background(targetFps: 60));
+      final gesture = await tester.startGesture(const Offset(100, 100));
       await tester.pump();
       await advance(tester, const Duration(milliseconds: 100));
       expect(await framesPerSecond(tester), inInclusiveRange(58, 62));
+      await gesture.up();
     });
 
     testWidgets('90 / 120 fps 超过屏幕刷新率：同样每个 vsync 一帧', (tester) async {
       await tester.pumpWidget(background(targetFps: 120));
+      final gesture = await tester.startGesture(const Offset(100, 100));
       await tester.pump();
       await advance(tester, const Duration(milliseconds: 100));
       expect(await framesPerSecond(tester), inInclusiveRange(58, 62));
+      await gesture.up();
     });
 
     testWidgets('30 fps：约一半的帧', (tester) async {
       await tester.pumpWidget(background(targetFps: 30));
+      final gesture = await tester.startGesture(const Offset(100, 100));
       await tester.pump();
       await advance(tester, const Duration(milliseconds: 100));
       expect(await framesPerSecond(tester), inInclusiveRange(27, 34));
+      await gesture.up();
     });
 
     testWidgets('45 fps：介于 30 与 60 之间', (tester) async {
       await tester.pumpWidget(background(targetFps: 45));
+      final gesture = await tester.startGesture(const Offset(100, 100));
       await tester.pump();
       await advance(tester, const Duration(milliseconds: 100));
       expect(await framesPerSecond(tester), inInclusiveRange(40, 50));
+      await gesture.up();
     });
 
     testWidgets('运行中切换帧率立即生效', (tester) async {
@@ -300,6 +308,7 @@ void main() {
           },
         ),
       );
+      final gesture = await tester.startGesture(const Offset(100, 100));
       await tester.pump();
       await advance(tester, const Duration(milliseconds: 100));
       expect(await framesPerSecond(tester), inInclusiveRange(58, 62));
@@ -311,11 +320,13 @@ void main() {
       localSetState(() => fps = 60);
       await tester.pump();
       expect(await framesPerSecond(tester), inInclusiveRange(58, 62));
+      await gesture.up();
     });
 
     testWidgets('120Hz 屏幕上 60 fps 档位按 1/60 节流', (tester) async {
       HomeFluidBackground.debugRefreshRate = 120;
       await tester.pumpWidget(background(targetFps: 60));
+      final gesture = await tester.startGesture(const Offset(100, 100));
       await tester.pump();
       // 测试里 8ms 一帧模拟 120Hz。
       const step = Duration(milliseconds: 8);
@@ -330,10 +341,12 @@ void main() {
         stateOf(tester).debugRenderedFrames - before,
         inInclusiveRange(57, 63),
       );
+      await gesture.up();
     });
 
     testWidgets('节流时节拍之间不请求任何帧（定时器而非 Ticker）', (tester) async {
       await tester.pumpWidget(background(targetFps: 30));
+      final gesture = await tester.startGesture(const Offset(100, 100));
       await tester.pump();
       // 先等到一次出帧刚刚完成。
       final start = stateOf(tester).debugRenderedFrames;
@@ -344,6 +357,7 @@ void main() {
       // 触发的 Ticker，这里恒为 true，整屏每个 vsync 都在重绘。
       await tester.pump(const Duration(milliseconds: 4));
       expect(tester.binding.hasScheduledFrame, isFalse);
+      await gesture.up();
     });
   });
 
@@ -467,7 +481,7 @@ void main() {
     expect(states[1].debugShaderTimeSeconds, both);
   });
 
-  testWidgets('滚动 / 惯性期间暂停出帧，停止后恢复且不补时间', (tester) async {
+  testWidgets('无指针的滚动期间按交互帧率出帧', (tester) async {
     final controller = ScrollController();
     addTearDown(controller.dispose);
     await tester.pumpWidget(
@@ -499,30 +513,23 @@ void main() {
     final state = stateOf(tester);
     expect(state.debugRenderedFrames, greaterThan(0));
 
-    // 拖住不松手：isScrolling = true，驱动停帧。
-    final gesture = await tester.startGesture(const Offset(200, 400));
-    await gesture.moveBy(const Offset(0, -120));
+    // 程序滚动与惯性共用 isScrollingNotifier，可独立覆盖滚动提帧。
+    final scroll = controller.animateTo(
+      120,
+      duration: const Duration(milliseconds: 1200),
+      curve: Curves.linear,
+    );
     await tester.pump();
     expect(controller.position.isScrollingNotifier.value, isTrue);
-    final beforeFrames = state.debugRenderedFrames;
-    final beforeTime = state.debugShaderTimeSeconds;
-    await advance(tester, const Duration(milliseconds: 400));
-    expect(state.debugRenderedFrames, beforeFrames);
-    expect(state.debugShaderTimeSeconds, beforeTime);
+    expect(await framesPerSecond(tester), inInclusiveRange(58, 62));
 
-    // 松手无速度：滚动很快结束，出帧恢复；暂停的时间不补算。
-    await gesture.up();
-    for (var i = 0; i < 50; i++) {
-      await tester.pump(const Duration(milliseconds: 16));
-      if (!controller.position.isScrollingNotifier.value) break;
-    }
-    expect(controller.position.isScrollingNotifier.value, isFalse);
-    final afterFrames = state.debugRenderedFrames;
     await advance(tester, const Duration(milliseconds: 300));
-    expect(state.debugRenderedFrames, greaterThan(afterFrames));
+    await scroll;
+    expect(controller.position.isScrollingNotifier.value, isFalse);
+    expect(await framesPerSecond(tester), inInclusiveRange(12, 18));
   });
 
-  testWidgets('挂控制器闲置时按 scrollBoostFps 降频出帧', (tester) async {
+  testWidgets('挂控制器闲置时按 idleFps 降频出帧', (tester) async {
     final controller = ScrollController();
     addTearDown(controller.dispose);
     await tester.pumpWidget(
@@ -541,7 +548,7 @@ void main() {
                 opacity: 1,
                 animationSpeed: 1,
                 targetFps: 60,
-                scrollBoostFps: 30,
+                idleFps: 30,
                 scrollController: controller,
                 fallback: const Text('wallpaper-fallback'),
               ),
@@ -559,37 +566,35 @@ void main() {
     expect(frames, inInclusiveRange(24, 40));
   });
 
-  testWidgets('scrollBoostFps 默认 15：闲置一秒约 15 帧', (tester) async {
-    final controller = ScrollController();
-    addTearDown(controller.dispose);
-    await tester.pumpWidget(
-      Directionality(
-        textDirection: TextDirection.ltr,
-        child: ListView(
-          controller: controller,
-          children: [
-            SizedBox(
-              height: 200,
-              child: HomeFluidBackground(
-                intensity: 0.4,
-                themeColor: const Color(0xFF8B1A2D),
-                monetColors: null,
-                isDarkMode: false,
-                opacity: 1,
-                animationSpeed: 1,
-                scrollController: controller,
-                fallback: const Text('wallpaper-fallback'),
-              ),
-            ),
-            const SizedBox(height: 2000),
-          ],
-        ),
-      ),
-    );
+  testWidgets('无滚动控制器时，触摸提帧，最后一根指针结束后延迟降频', (tester) async {
+    await tester.pumpWidget(background());
     await tester.pump();
-    await advance(tester, const Duration(seconds: 2));
+    expect(await framesPerSecond(tester), inInclusiveRange(12, 18));
+
+    final first = await tester.startGesture(const Offset(100, 100));
     final state = stateOf(tester);
-    // 15fps 档（构造默认）：2 秒约 30 帧。
-    expect(state.debugRenderedFrames, inInclusiveRange(20, 42));
+    final beforeTouch = state.debugRenderedFrames;
+    await tester.pump(const Duration(milliseconds: 1));
+    expect(state.debugRenderedFrames, beforeTouch + 1);
+
+    final second = await tester.startGesture(const Offset(120, 120));
+    await first.up();
+    expect(await framesPerSecond(tester), inInclusiveRange(58, 62));
+
+    await second.cancel();
+    final beforeHold = state.debugRenderedFrames;
+    await advance(tester, const Duration(milliseconds: 320));
+    expect(state.debugRenderedFrames - beforeHold, 20);
+    await advance(tester, const Duration(milliseconds: 100));
+    expect(await framesPerSecond(tester), inInclusiveRange(12, 18));
+  });
+
+  testWidgets('Shader 时间连续跨过 60 秒', (tester) async {
+    await tester.pumpWidget(background(animationSpeed: 2));
+    await tester.pump();
+    for (var i = 0; i < 301; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(stateOf(tester).debugShaderTimeSeconds, closeTo(60.2, 0.05));
   });
 }

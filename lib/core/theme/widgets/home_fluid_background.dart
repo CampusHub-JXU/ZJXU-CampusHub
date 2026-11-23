@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/scheduler.dart';
 
@@ -17,20 +19,15 @@ import '../page_transition_activity.dart';
 /// * 着色器作为普通 `Paint.shader` 画进一个 [renderScale] 倍尺寸的子树（像素
 ///   数不到 1/10），再用 `ImageFilter.matrix` 双线性放大铺满整屏；着色器本身也裁掉了
 ///   最高频的几层噪声（见 `home_collage_background.frag` 顶部注释）；
-/// * 帧率可配置（设置 → 个性化 → 流体 Shader → 帧率）：[targetFps] 达到屏幕刷新率
-///   就每个 vsync 一帧，低于刷新率就用 `Timer` 把「下一帧」排到该到的 vsync，
+/// * 触摸、滚动（含惯性）和最后一根指针抬起后的 400ms 按 [targetFps] 出帧，
+///   最高跟随屏幕刷新率；空闲时收紧到 [idleFps]，减少磁贴背景模糊的重算。
+///   低于刷新率时用 `Timer` 把「下一帧」排到该到的 vsync，
 ///   **不用 `Ticker`**——Ticker 每个 vsync 都会让框架提交整屏帧并让 raster 线程
 ///   重绘（含首页磁贴的背景模糊），回调里自己节流并不能减少帧数；
 /// * 按下列条件让路（全部不依赖原生通道）：
 ///   - 不可见分支 / 被不透明路由盖住（`TickerMode`）、App 非 resumed；
 ///   - 页面转场期间（[PageTransitionActivity.isBusy]，带看门狗）；
-///   - 列表滚动 / 惯性滑行期间（[scrollController] 的 `isScrolling`）；背景
-///     自身完全滚出视口时同样停帧（背景随内容上滚的布局里，停在功能区底部
-///     时它已不可见，继续出帧只是空烧 GPU）；
-/// * 空闲降频：挂了 [scrollController] 时，停止滚动后的出帧节拍收紧到
-///   [scrollBoostFps]——滚动期间本来就不出帧（让路给磁贴模糊重采样），而停下
-///   后每个新画面都会让屏幕上十几块磁贴的 grouped 背景模糊跟着重算一次
-///   （实测 120Hz 闲置 raster p95 ≈9ms 的最大来源）。
+///   - 背景自身完全滚出视口；
 ///   - 系统「减弱动画」（`MediaQuery.disableAnimations`）：只画静态一帧；
 ///   - 动画速度滑条为 0。
 ///
@@ -47,7 +44,7 @@ class HomeFluidBackground extends StatefulWidget {
     required this.fallback,
     this.targetFps = 60,
     this.scrollController,
-    this.scrollBoostFps = 15,
+    this.idleFps = 15,
   });
 
   /// 着色器渲染尺寸相对逻辑尺寸的缩放（0.3 ≈ 像素数 9%，低频液态渐变双线性放大无损）。
@@ -56,18 +53,14 @@ class HomeFluidBackground extends StatefulWidget {
   /// 单帧时间步长上限：超过视为暂停 / 卡顿后的恢复，丢弃这次增量避免动画跳变。
   static const Duration maxFrameDelta = Duration(milliseconds: 120);
 
-  /// 目标帧率；达到屏幕刷新率时不节流（每个 vsync 一帧）。
+  /// 交互时的目标帧率；达到屏幕刷新率时每个 vsync 一帧。
   final int targetFps;
 
-  /// 宿主页面的滚动控制器（可选）：挂上后，滚动 / 惯性滑行期间暂停出帧，
-  /// 且背景完全滚出视口时不再出帧。为空时不做滚动感知（行为同旧版本）。
+  /// 宿主页面的滚动控制器（可选），用于感知滚动及惯性滑行。
   final ScrollController? scrollController;
 
-  /// 空闲降频：停止滚动后的出帧上限（仅当挂了 [scrollController] 才有意义；
-  /// 滚动期间不出帧）。默认 15：实测 30fps 下闲置 raster p95 仍 ≈9ms（每个
-  /// 新画面都触发磁贴 grouped 模糊重算 + backdrop 回读），15fps 仍保住动画感
-  /// 但把烧预算的帧率再砍半。
-  final int scrollBoostFps;
+  /// 空闲时的帧率上限，默认 15 fps，且受 [targetFps] 限制。
+  final int idleFps;
 
   final double intensity;
   final Color themeColor;
@@ -124,6 +117,7 @@ class HomeFluidBackgroundState extends State<HomeFluidBackground>
   /// 转场让路期间的兜底唤醒间隔：正常由 [PageTransitionActivity.active] 的
   /// 变化立即唤醒；看门狗判定陈旧登记时 `active` 不会翻转，靠这个兜底恢复。
   static const _busyFallbackInterval = Duration(milliseconds: 500);
+  static const _interactionHold = Duration(milliseconds: 400);
 
   /// 是否正挂在 [PageTransitionActivity.active] 上等转场结束。
   bool _waitingForTransition = false;
@@ -143,12 +137,19 @@ class HomeFluidBackgroundState extends State<HomeFluidBackground>
   /// 滚动感知：当前挂着的 `ScrollPosition.isScrolling` 监听（position 会随
   /// 滚动视图 attach / detach 更换，懒绑定见 [_syncScrollPosition]）。
   ValueNotifier<bool>? _scrollingListened;
+  final Set<int> _activePointers = {};
+  Timer? _interactionHoldTimer;
+  Duration _boostUntil = Duration.zero;
+  bool _interacting = false;
 
   // 出帧驱动：一次只持有一个待处理的帧回调或唤醒定时器。
   int? _frameCallbackId;
   Timer? _wakeTimer;
   Duration? _lastStamp;
   Duration? _nextDue;
+  late final _driverClock = GestureBinding.instance.samplingClock.stopwatch()
+    ..start();
+  Duration _lastFrameAt = Duration.zero;
   int _renderedFrames = 0;
 
   /// 全局共享的 Shader 时钟：主页 / 我的各有一个实例，若各自计时，切 tab
@@ -189,6 +190,8 @@ class HomeFluidBackgroundState extends State<HomeFluidBackground>
     _lifecycleState =
         WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this);
+    GestureBinding.instance.pointerRouter.addGlobalRoute(_onPointerEvent);
+    widget.scrollController?.addListener(_onScrollOffsetChanged);
     _loadShader();
   }
 
@@ -218,10 +221,13 @@ class HomeFluidBackgroundState extends State<HomeFluidBackground>
     super.didUpdateWidget(oldWidget);
     // 颜色 / 强度 / 不透明度 / 深浅色变化要重绘；帧率变化重排出帧计划（立即生效）。
     _signal.bump();
-    if (oldWidget.targetFps != widget.targetFps) {
+    if (oldWidget.targetFps != widget.targetFps ||
+        oldWidget.idleFps != widget.idleFps) {
       _stopDriver();
     }
     if (oldWidget.scrollController != widget.scrollController) {
+      oldWidget.scrollController?.removeListener(_onScrollOffsetChanged);
+      widget.scrollController?.addListener(_onScrollOffsetChanged);
       _bindScrolling(null);
     }
     _syncScrollPosition();
@@ -242,6 +248,9 @@ class HomeFluidBackgroundState extends State<HomeFluidBackground>
   void dispose() {
     _loadGeneration++;
     WidgetsBinding.instance.removeObserver(this);
+    GestureBinding.instance.pointerRouter.removeGlobalRoute(_onPointerEvent);
+    widget.scrollController?.removeListener(_onScrollOffsetChanged);
+    _interactionHoldTimer?.cancel();
     _bindScrolling(null);
     _stopDriver();
     _maskImage?.dispose();
@@ -252,10 +261,29 @@ class HomeFluidBackgroundState extends State<HomeFluidBackground>
     super.dispose();
   }
 
-  /// 滚动 / 惯性滑行期间暂停：滚动时磁贴的 grouped 背景模糊本来就要逐帧重新
-  /// 采样，shader 再每帧产新画面等于翻倍 raster 工作量；背景在滚动的内容里
-  /// 也几乎不可辨，暂停无感。
   bool get _scrollBusy => _scrollingListened?.value ?? false;
+
+  bool get _isInteracting =>
+      _activePointers.isNotEmpty ||
+      _scrollBusy ||
+      _driverClock.elapsed < _boostUntil;
+
+  void _onPointerEvent(PointerEvent event) {
+    if (event is PointerDownEvent) {
+      _activePointers.add(event.pointer);
+      _interactionHoldTimer?.cancel();
+      _interactionHoldTimer = null;
+      if (_activePointers.length == 1) _syncDriver();
+    } else if ((event is PointerUpEvent || event is PointerCancelEvent) &&
+        _activePointers.remove(event.pointer) &&
+        _activePointers.isEmpty) {
+      _boostUntil = _driverClock.elapsed + _interactionHold;
+      _interactionHoldTimer = Timer(_interactionHold, () {
+        _interactionHoldTimer = null;
+        _syncDriver();
+      });
+    }
+  }
 
   /// 背景自身完全滚出视口：首页把背景放进随内容上滚的 Positioned，滚到功能
   /// 区底部后它已不可见，继续出帧只是白烧 GPU。
@@ -280,7 +308,6 @@ class HomeFluidBackgroundState extends State<HomeFluidBackground>
       widget.animationSpeed > 0 &&
       _tickerModeEnabled &&
       _lifecycleState == AppLifecycleState.resumed &&
-      !_scrollBusy &&
       !_offScreen;
 
   /// 懒绑定 `ScrollPosition.isScrolling`：position 在滚动视图 attach 后才存
@@ -308,14 +335,36 @@ class HomeFluidBackgroundState extends State<HomeFluidBackground>
     _syncDriver();
   }
 
+  void _onScrollOffsetChanged() {
+    // 滚回视口时可能仍在同一次滚动中，isScrolling 不一定会再次通知。
+    if (!_driverActive) _onScrollActivity();
+  }
+
   bool get _driverActive => _frameCallbackId != null || _wakeTimer != null;
 
   void _syncDriver() {
-    if (_canRun) {
-      if (!_driverActive) _requestFrame();
+    final wasInteracting = _interacting;
+    _interacting = _isInteracting;
+    if (!_canRun) {
+      _stopDriver();
       return;
     }
-    _stopDriver();
+    if (_waitingForTransition && _driverActive) return;
+    if (!_driverActive) {
+      _requestFrame();
+    } else if (wasInteracting != _interacting) {
+      _cancelScheduledFrame();
+      _nextDue = null;
+      final last = _lastStamp;
+      if (_interacting || last == null) {
+        _requestFrame();
+      } else {
+        _scheduleNext(
+          last,
+          elapsedSinceFrame: _driverClock.elapsed - _lastFrameAt,
+        );
+      }
+    }
   }
 
   void _waitForTransitionEnd() {
@@ -341,6 +390,13 @@ class HomeFluidBackgroundState extends State<HomeFluidBackground>
 
   void _stopDriver() {
     _stopWaitingForTransition();
+    _cancelScheduledFrame();
+    // 暂停期间的时间不补算，恢复后不跳变。
+    _lastStamp = null;
+    _nextDue = null;
+  }
+
+  void _cancelScheduledFrame() {
     final id = _frameCallbackId;
     if (id != null) {
       SchedulerBinding.instance.cancelFrameCallbackWithId(id);
@@ -348,9 +404,6 @@ class HomeFluidBackgroundState extends State<HomeFluidBackground>
     }
     _wakeTimer?.cancel();
     _wakeTimer = null;
-    // 暂停期间的时间不补算，恢复后不跳变。
-    _lastStamp = null;
-    _nextDue = null;
   }
 
   void _requestFrame() {
@@ -386,6 +439,7 @@ class HomeFluidBackgroundState extends State<HomeFluidBackground>
 
     final last = _lastStamp;
     _lastStamp = stamp;
+    _lastFrameAt = _driverClock.elapsed;
     // 同一帧已由别的实例推进过共享时钟时跳过；暂停后首帧（last 为空或
     // 间隔过大）不补算，恢复后不跳变。
     if (last != null && _sharedStamp != stamp) {
@@ -396,26 +450,28 @@ class HomeFluidBackgroundState extends State<HomeFluidBackground>
         final step = sharedLast != null && stamp > sharedLast
             ? (stamp - sharedLast < delta ? stamp - sharedLast : delta)
             : delta;
-        _sharedTimeSeconds =
-            (_sharedTimeSeconds +
-                step.inMicroseconds /
-                    1000000.0 *
-                    widget.animationSpeed.clamp(0.0, 2.0)) %
-            60.0;
+        _sharedTimeSeconds +=
+            step.inMicroseconds /
+            1000000.0 *
+            widget.animationSpeed.clamp(0.0, 2.0);
       }
     }
     _sharedStamp = stamp;
     _renderedFrames++;
     _signal.bump();
+    _interacting = _isInteracting;
     _scheduleNext(stamp);
   }
 
-  /// 本帧生效的出帧上限：不滚动时收紧到 [scrollBoostFps]（挂控制器才生效）。
-  int get _effectiveFps => widget.scrollController != null && !_scrollBusy
-      ? widget.scrollBoostFps
-      : widget.targetFps;
+  /// 当前档位的帧率上限，屏幕刷新率由 [HomeFluidBackground.frameIntervalFor] 限制。
+  int get _effectiveFps => _interacting
+      ? widget.targetFps
+      : math.min(widget.idleFps, widget.targetFps);
 
-  void _scheduleNext(Duration stamp) {
+  void _scheduleNext(
+    Duration stamp, {
+    Duration elapsedSinceFrame = Duration.zero,
+  }) {
     final interval = HomeFluidBackground.frameIntervalFor(
       _effectiveFps,
       _refreshRate,
@@ -432,14 +488,18 @@ class HomeFluidBackgroundState extends State<HomeFluidBackground>
     }
     _nextDue = due;
     final vsyncMicros = (1000000 / _refreshRate).round();
-    final wait = due - stamp - Duration(microseconds: vsyncMicros ~/ 2);
+    final wait =
+        due -
+        stamp -
+        elapsedSinceFrame -
+        Duration(microseconds: vsyncMicros ~/ 2);
     if (wait <= Duration.zero) {
       _requestFrame();
       return;
     }
     _wakeTimer = Timer(wait, () {
       _wakeTimer = null;
-      if (mounted && _canRun) _requestFrame();
+      if (mounted) _syncDriver();
     });
   }
 

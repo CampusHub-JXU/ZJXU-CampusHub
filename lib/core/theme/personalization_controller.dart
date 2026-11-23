@@ -65,7 +65,7 @@ class PersonalizationController {
   final ValueNotifier<double> shaderOpacity = ValueNotifier(1.0);
   final ValueNotifier<double> shaderAnimationSpeed = ValueNotifier(1.0);
 
-  /// 流体 Shader 帧率档位（fps）。高于屏幕刷新率的档位等同「每个 vsync 一帧」。
+  /// 流体 Shader 交互帧率档位（fps）。达到屏幕刷新率时每个 vsync 一帧。
   static const List<int> kShaderFpsSteps = [30, 45, 60, 90, 120];
   static const int kShaderFpsDefault = 60;
 

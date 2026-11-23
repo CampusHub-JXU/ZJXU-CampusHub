@@ -121,7 +121,7 @@ void main() {
   // 在颜色之间留出大块明暗（Apple 动态壁纸那种呼吸感）。
   vec3 neutral = mix(vec3(0.035, 0.04, 0.07), vec3(0.97, 0.98, 1.0), light_mode);
   float neutral_field = 0.6 * n + 0.4 * (1.0 - fold2);
-  color = mix(color, neutral, smoothstep(0.42, 0.78, neutral_field) * 0.62);
+  color = mix(color, neutral, smoothstep(0.32, 0.68, neutral_field) * 0.62);
 
   // 褶皱明暗：谷暗峰亮，给出曲面的体积感；浅色模式下收一点对比。
   float shade = mix(0.76, 1.07, smoothstep(0.0, 1.0, fold * 0.75 + fold2 * 0.25));
