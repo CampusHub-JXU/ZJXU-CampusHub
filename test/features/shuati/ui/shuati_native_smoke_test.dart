@@ -7,6 +7,8 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:jxu_campus_hub/features/shuati/ai/shuati_ai_models.dart';
+import 'package:jxu_campus_hub/features/shuati/ai/shuati_ai_service.dart';
 import 'package:jxu_campus_hub/features/shuati/domain/shuati_models.dart';
 import 'package:jxu_campus_hub/features/shuati/persistence/shuati_store.dart';
 import 'package:jxu_campus_hub/features/shuati/ui/shuati_native_home_page.dart';
@@ -31,6 +33,18 @@ class _FakeIo implements ShuatiFileIo {
 
   @override
   Future<void> shareFile(String fileName, Uint8List bytes) async {}
+}
+
+/// 依次返回排队响应的 LLM fake（widget 测试用，不触网络 / AI 配置）。
+class _FakeRunner implements ShuatiAiLlmRunner {
+  _FakeRunner(this._texts);
+
+  final List<String> _texts;
+
+  @override
+  Future<ShuatiAiCompletion> complete(ShuatiAiRequest request) async {
+    return ShuatiAiCompletion(text: _texts.removeAt(0), model: 'fake-model');
+  }
 }
 
 /// 让真实异步（sqflite_ffi / isolate）跑完，再推进几帧。
@@ -164,12 +178,79 @@ void main() {
     await tester.tap(find.text('选择文件'));
     await settle(tester);
 
+    // 两步向导：先看到解析预览，确认后才落库
+    expect(find.text('解析预览'), findsWidgets);
+    expect(find.text('识别题目'), findsOneWidget);
+    expect(find.text('无效 · 缺少题干'), findsOneWidget);
+    var banks = (await tester.runAsync(store.banks.getAllBanks))!;
+    expect(banks, isEmpty);
+
+    await tester.tap(find.text('确认导入'));
+    await settle(tester);
+
     expect(find.text('新增题目'), findsOneWidget);
     expect(find.text('无效条目'), findsOneWidget);
     expect(find.text('无效 · 缺少题干'), findsOneWidget);
     expect(find.text('开始练习'), findsOneWidget);
-    final banks = (await tester.runAsync(store.banks.getAllBanks))!;
+    banks = (await tester.runAsync(store.banks.getAllBanks))!;
     expect(banks.single.questionCount, 1);
+  });
+
+  testWidgets('import wizard offers AI enrichment for missing answers', (
+    tester,
+  ) async {
+    final store = await setUpStore(tester, io);
+    io.next = PickedShuatiFile(
+      'missing.json',
+      Uint8List.fromList(
+        utf8.encode(
+          jsonEncode([
+            {
+              'question': '有答案题？',
+              'options': {'A': '1', 'B': '2'},
+              'answer': 'B',
+            },
+            {
+              'question': '缺答案题？',
+              'options': {'A': '1', 'B': '2'},
+            },
+          ]),
+        ),
+      ),
+    );
+    final runner = _FakeRunner([
+      jsonEncode([
+        {'answer': 'A', 'explanation': 'AI 给的解析'},
+      ]),
+    ]);
+    ShuatiServices.instance.debugUse(
+      store,
+      io: io,
+      aiServiceFactory: (explanations) => ShuatiAiService(explanations, runner),
+    );
+
+    await pump(tester, const ShuatiNativeImportPage());
+    await tester.tap(find.text('选择文件'));
+    await settle(tester);
+
+    expect(find.text('缺答案'), findsOneWidget);
+    await tester.tap(find.text('AI 补全缺失答案（1 题）'));
+    await settle(tester);
+
+    expect(find.textContaining('AI 补全建议'), findsOneWidget);
+    expect(find.text('建议：A'), findsOneWidget);
+    expect(find.text('AI 给的解析'), findsOneWidget);
+
+    await tester.tap(find.text('确认导入'));
+    await settle(tester);
+    final banks = (await tester.runAsync(store.banks.getAllBanks))!;
+    expect(banks.single.questionCount, 2);
+    final questions = (await tester.runAsync(
+      () => store.questions.getByBank(banks.single.id),
+    ))!;
+    expect(questions.firstWhere((q) => q.question.contains('缺答案题')).answer, [
+      'A',
+    ]);
   });
 
   testWidgets(

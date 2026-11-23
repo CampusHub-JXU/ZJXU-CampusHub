@@ -165,3 +165,90 @@ class ShuatiImportReport {
   final int updatedQuestions;
   final int removedQuestions;
 }
+
+// ============ 两段式导入（解析预览 → 确认落库） ============
+
+/// 预览页对已解析题目的单条修正（例如勾选 AI 建议的答案 / 解析）。
+///
+/// [index] 对应 [ShuatiImportPreview.questions] 的下标；`answer` / `explanation`
+/// 为 `null` 的字段不改。改动答案会重算 `answerHash` 并计入去重统计。
+class ParsedQuestionOverride {
+  const ParsedQuestionOverride({
+    required this.index,
+    this.answer,
+    this.explanation,
+  });
+
+  final int index;
+  final List<String>? answer;
+  final String? explanation;
+}
+
+/// 解析 + 去重的预演结果（Issue #117 预览接口）。
+///
+/// 只读快照，可以来回展示多次；落库走 [ShuatiImportService.commitPreview]，
+/// 提交时才真正查库去重 / 重生成 id / 单事务写入。
+class ShuatiImportPreview {
+  const ShuatiImportPreview({
+    required this.format,
+    required this.fileName,
+    required this.extension,
+    required this.bankName,
+    required this.bankId,
+    required this.existingBankId,
+    required this.existingBankName,
+    required this.questions,
+    required this.parsedCount,
+    required this.invalid,
+    required this.rejections,
+    required this.rejectionCounts,
+    required this.missingAnswerIndexes,
+    required this.duplicates,
+    required this.conflicts,
+    required this.newQuestionCount,
+    required this.warnings,
+  });
+
+  /// 识别出的文件格式与原始文件名 / 扩展名（不含点、已小写）。
+  final ShuatiImportFormat format;
+  final String fileName;
+  final String extension;
+
+  /// 默认题库名（文件名去扩展 / JSON `name`）；commit 时可用 `bankName` 覆盖。
+  final String bankName;
+
+  /// 解析时分配给题目的 `bankId`：新建题库时就是新库 id，
+  /// 命中同源既有题库时为该库 id（commit 必须沿用，不能重新生成）。
+  final String bankId;
+
+  /// 同源覆盖更新命中的既有题库；非同源格式 / 无命中时为 `null`。
+  final String? existingBankId;
+  final String? existingBankName;
+
+  /// 更新既有题库（[existingBankId] 非空）时为 `true`。
+  bool get updatesExisting => existingBankId != null;
+
+  /// 规范化并带 hash 的原始解析题目（未应用任何用户修正）。
+  final List<Question> questions;
+
+  /// 解析阶段得到的条目总数（含被拒绝的）。
+  final int parsedCount;
+
+  /// 解析阶段被拒绝的条目数 / 样例 / 分原因计数。
+  final int invalid;
+  final List<ImportRejection> rejections;
+  final Map<ImportRejectionReason, int> rejectionCounts;
+
+  /// `questions` 里缺答案题的下标（供预览页做 AI 补全入口）。
+  final List<int> missingAnswerIndexes;
+
+  /// 去重预演：与既有题库（或批内首条）重复的题数 / 同内容不同答案的冲突数。
+  final int duplicates;
+  final int conflicts;
+
+  /// 去重后预计写入的题数。
+  final int newQuestionCount;
+
+  /// 解析阶段的非致命提示（编码、缺答案等；id 重生成只在 commit 后才知道）。
+  final List<ImportWarning> warnings;
+}

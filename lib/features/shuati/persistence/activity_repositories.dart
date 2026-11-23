@@ -333,12 +333,13 @@ class AiExplanationRepository {
 
   final DatabaseExecutor db;
 
+  /// 取该题最新一条缓存解析（同一题可能有多次「重新生成」的历史行，取 id 最大者）。
   Future<AiExplanationRow?> getCached(String questionId) async {
     final rows = await db.query(
       ShuatiSchema.tableAiExplanations,
       where: 'question_id = ?',
       whereArgs: [questionId],
-      orderBy: 'id',
+      orderBy: 'id DESC',
       limit: 1,
     );
     return rows.isEmpty ? null : aiFromRow(rows.first);
@@ -350,6 +351,17 @@ class AiExplanationRepository {
       orderBy: 'id',
     );
     return rows.map(aiFromRow).toList();
+  }
+
+  /// 一题只保留最新解析：先删同 `question_id` 旧行再插入。
+  /// 调用方在事务里调用以保证「删 + 插」原子。
+  Future<int> upsertForQuestion(AiExplanationRow row) async {
+    await db.delete(
+      ShuatiSchema.tableAiExplanations,
+      where: 'question_id = ?',
+      whereArgs: [row.questionId],
+    );
+    return insertRaw(row);
   }
 
   Future<int> insertRaw(AiExplanationRow row) =>

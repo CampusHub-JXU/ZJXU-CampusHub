@@ -11,6 +11,9 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../ai/shuati_ai_runner.dart';
+import '../ai/shuati_ai_service.dart';
+import '../persistence/activity_repositories.dart';
 import '../persistence/shuati_store.dart';
 
 /// 用户选中的文件。
@@ -77,6 +80,16 @@ class ShuatiServices {
 
   ShuatiFileIo io = const DefaultShuatiFileIo();
 
+  /// AI 服务的可注入点：默认走 `CoreAiShuatiRunner`（全局 AI 配置 →
+  /// OpenAI 兼容端点）；测试注入假 runner / fake service。
+  ShuatiAiService Function(AiExplanationRepository) aiServiceFactory = (
+    explanations,
+  ) => ShuatiAiService(explanations, CoreAiShuatiRunner());
+
+  /// 创建 AI 服务（解析缓存写当前打开的库）。
+  ShuatiAiService createAiService(ShuatiStore store) =>
+      aiServiceFactory(store.aiExplanations);
+
   /// 打开（或复用）默认数据库；打开失败时下次调用会重试。
   Future<ShuatiStore> store() => _store ??= _open();
 
@@ -90,14 +103,21 @@ class ShuatiServices {
   }
 
   @visibleForTesting
-  void debugUse(ShuatiStore store, {ShuatiFileIo? io}) {
+  void debugUse(
+    ShuatiStore store, {
+    ShuatiFileIo? io,
+    ShuatiAiService Function(AiExplanationRepository)? aiServiceFactory,
+  }) {
     _store = Future<ShuatiStore>.value(store);
     if (io != null) this.io = io;
+    if (aiServiceFactory != null) this.aiServiceFactory = aiServiceFactory;
   }
 
   @visibleForTesting
   void debugReset() {
     _store = null;
     io = const DefaultShuatiFileIo();
+    aiServiceFactory = (explanations) =>
+        ShuatiAiService(explanations, CoreAiShuatiRunner());
   }
 }

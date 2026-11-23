@@ -18,6 +18,7 @@ import '../../../shared/widgets/app_status_tag.dart';
 import '../../../shared/widgets/plain_list.dart';
 import '../domain/shuati_models.dart';
 import '../domain/wrong_question.dart';
+import 'shuati_ai_section.dart';
 import 'shuati_services.dart';
 
 class ShuatiNativeWrongPage extends StatefulWidget {
@@ -143,6 +144,8 @@ class _ShuatiNativeWrongPageState extends State<ShuatiNativeWrongPage> {
                     const SizedBox(height: AppSpacing.xs),
                     Text(explanation, style: text.secondary),
                   ],
+                  const SizedBox(height: AppSpacing.md),
+                  ShuatiAiSection(question: q),
                   const SizedBox(height: AppSpacing.lg),
                   Row(
                     children: [

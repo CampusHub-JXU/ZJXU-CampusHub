@@ -20,6 +20,7 @@ import '../domain/practice_selection.dart';
 import '../domain/practice_session.dart';
 import '../domain/shuati_models.dart';
 import '../persistence/shuati_store.dart';
+import 'shuati_ai_section.dart';
 import 'shuati_services.dart';
 
 enum _SheetFilter {
@@ -733,6 +734,27 @@ class _ShuatiNativePracticePageState extends State<ShuatiNativePracticePage> {
         ..add(const SizedBox(height: AppSpacing.xs))
         ..add(Text(explanation, style: text.secondary));
     }
+
+    if (revealed) {
+      children
+        ..add(const SizedBox(height: AppSpacing.lg))
+        ..add(
+          ShuatiAiSection(
+            key: ValueKey('ai-${q.id}'),
+            question: q,
+            userAnswer: _userAnswerText(q, state),
+          ),
+        );
+    }
     return children;
+  }
+
+  /// 传给「追问 AI」的作答文本：填空 / 简答取输入框内容，其余取已选项。
+  String? _userAnswerText(Question q, QuestionState state) {
+    if (q.type.isSelfGraded) {
+      final text = state.blankInput.trim();
+      if (text.isNotEmpty) return text;
+    }
+    return state.userAnswer.isEmpty ? null : state.userAnswer.join('、');
   }
 }
