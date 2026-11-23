@@ -33,8 +33,8 @@ import 'package:jxu_campus_hub/features/home/widget/campus_widget_projection.dar
 import 'package:jxu_campus_hub/features/home/widget/campus_widget_sync.dart';
 import 'package:jxu_campus_hub/features/home/models/home_presentation.dart';
 import 'package:jxu_campus_hub/core/theme/widgets/home_ambient_background.dart';
-import 'package:jxu_campus_hub/features/home/widgets/home_asset_strip.dart';
 import 'package:jxu_campus_hub/features/home/widgets/home_event_banner.dart';
+import 'package:jxu_campus_hub/shared/widgets/glass_container.dart';
 import 'package:jxu_campus_hub/core/academic/schedule_cache_snapshot.dart';
 import 'package:jxu_campus_hub/core/academic/schedule_model.dart';
 import 'package:jxu_campus_hub/features/schedule/schedule_service.dart';
@@ -467,6 +467,10 @@ void main() {
     );
 
     expect(find.text('宿舍剩余 5 度，电量偏低，建议及时充值'), findsOneWidget);
+    // 横幅底是手写半透明 ShapeDecoration（Ink），不是毛玻璃面。
+    expect(find.byType(GlassContainer), findsNothing);
+    final ink = tester.widget<Ink>(find.byType(Ink));
+    expect(ink.decoration, isA<ShapeDecoration>());
     await tester.tap(find.text('宿舍剩余 5 度，电量偏低，建议及时充值'));
     await tester.pump();
     expect(tapped, 1);
