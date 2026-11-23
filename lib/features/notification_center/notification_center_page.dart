@@ -177,7 +177,7 @@ class _NoticeTabPills extends StatelessWidget {
           options: [
             AppFilterOption(
               0,
-              unreadCount > 0 ? '校园公告 · $unreadCount' : '校园公告',
+              unreadCount > 0 ? '教务处公告 · $unreadCount' : '教务处公告',
             ),
             const AppFilterOption(1, '实践通知'),
           ],
@@ -444,7 +444,10 @@ class _CampusNoticeTabState extends State<_CampusNoticeTab>
         child: ListView(
           children: const [
             SizedBox(height: 120),
-            AppEmptyView(title: '暂无校园公告\n下拉刷新拉取', icon: Icons.article_outlined),
+            AppEmptyView(
+              title: '暂无教务处公告\n下拉刷新拉取',
+              icon: Icons.article_outlined,
+            ),
           ],
         ),
       );

@@ -35,7 +35,7 @@ class PersonalizationHomeSection extends StatelessWidget {
             _switch(
               key: const Key('personalization_campus_notice'),
               listenable: controller.homeCampusNoticeEnabled,
-              title: '校园公告',
+              title: '教务处公告',
 
               onChanged: controller.setHomeCampusNoticeEnabled,
             ),

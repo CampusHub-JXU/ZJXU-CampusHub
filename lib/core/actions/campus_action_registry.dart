@@ -132,7 +132,7 @@ class CampusActionRegistry {
     ),
     const CampusAction(
       id: CampusActionIds.noticeInbox,
-      title: '校园公告',
+      title: '教务处公告',
       target: RouteActionTarget('notification-center'),
     ),
     const CampusAction(

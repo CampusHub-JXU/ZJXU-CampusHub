@@ -226,7 +226,7 @@ void main() {
     final baselineRows = find.byType(PracticeNoticeRow).evaluate().length;
 
     for (var i = 0; i < 3; i++) {
-      await tester.tap(find.text('校园公告'));
+      await tester.tap(find.text('教务处公告'));
       await tester.pumpAndSettle();
       await openPracticeTab(tester);
     }
