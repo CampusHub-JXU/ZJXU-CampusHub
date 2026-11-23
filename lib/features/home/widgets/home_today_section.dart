@@ -7,19 +7,34 @@ import '../../../shared/widgets/app_surface_style.dart';
 import '../../../shared/widgets/app_tile_surface.dart';
 import '../models/home_presentation.dart';
 
-/// Today Section：当天剩余课程 + 今日考试的紧凑纯文字列表；今天没有
-/// 剩余安排时由 resolver 降级为次日预览形态（标题变为「开学首日 · …」
-/// 或「明天」）。首页个性化「今日全部课程」开启时为全天形态
-///（[HomeTodayPresentation.isFullDay]）：列出今天一整天的课程，
-/// 已结束的课不显示、进行中带胶囊，行数上限放宽到 6。
+/// 精简节次文本：去掉「第」字与多余空格（例如 `第 3-5 节` → `3-5节`）。
+@visibleForTesting
+String formatTodayLesson(String raw) {
+  final compact = raw.replaceAll(RegExp(r'\s+'), '');
+  if (compact.startsWith('第') && compact.length > 1) {
+    return compact.substring(1);
+  }
+  return compact;
+}
+
+/// 地点文本与 Hero 保持同一格式：`校区 楼栋教室` 原样展示（如
+/// `梁林校区 博学楼(8号楼)501`），只做首尾空白清理；截断容差交给
+/// 两行渲染解决，不重排顺序。
+@visibleForTesting
+String formatTodayLocation(String raw) => raw.trim();
+
+/// Today Section（方案 A · 瑞士时间轴主卡）：当天剩余课程 + 今天考试；
+/// 今天没有剩余安排时由 resolver 降级为次日预览形态（标题变为「开学首日 · …」
+/// 或「明天」）。首页个性化「今天全部课程」开启时为全天形态
+/// （[HomeTodayPresentation.isFullDay]），行数上限放宽到 6。
 ///
-/// 标题 + 约 44 行高的单行条目（时间 / 课程名 / 地点），行间以留白节奏
-/// 分组、不画分隔线，无卡片容器；无内容时整块不渲染。总行数超限时截断
-/// 并在尾部展示「查看全部」（跳课表）。
+/// 当 `today.title == '今天'` 时卡片内部不再重复渲染「今天」标题（由外层
+/// `_TodayZoneHeader` 承接「今天」）；次日预览形态则在卡片顶部以紧凑小标
+/// 标示预览日期。无内容时整块不渲染；总行数超限时截断并在尾部展示「查看全部」。
 ///
 /// 折叠形态（[HomeTodayPresentation.isCollapsed]）：Hero 已用课程大字
 /// 展示命中日首课时，整段只剩单行「之后还有 N 门课 · 下一门 …」摘要，
-/// 不渲染标题与课程行——次日列表不得与 Hero 抢视觉权重。
+/// 不渲染标题与课程行。
 class HomeTodaySection extends StatelessWidget {
   const HomeTodaySection({super.key, required this.today, this.onOpenSchedule});
 
@@ -28,21 +43,16 @@ class HomeTodaySection extends StatelessWidget {
   /// 「查看全部」点击回调（跳课表）；为空时不渲染截断尾行。
   final VoidCallback? onOpenSchedule;
 
-  /// 时间列最小宽度，分隔线左缩进与其对齐。
-  static const double _timeColumnWidth = 46;
-  static const double _rowGap = 12;
+  /// 时间列基准宽度，随系统字号倍率适度放大以维持等宽对齐。
+  static const double _baseTimeColumnWidth = 50;
+  static const double _railColumnWidth = 16;
 
   /// 最多展示的行数（考试 + 课程合计），超出部分折叠进「查看全部」。
-  /// 全天模式行数上限放宽——同学要的就是一整天的安排。
   static const int _maxRows = 3;
   static const int _maxRowsFullDay = 6;
 
-  /// 时间 / 地点列：实时列表 13（`secondary`），次日预览降一档到 12（`meta`）。
-  static TextStyle _small(BuildContext context, bool compact) =>
-      compact ? context.appText.meta : context.appText.secondary;
-
-  /// 课程名：实时列表 15（`rowTitle`），次日预览降一档到 14（`titleSmall`）。
-  static TextStyle _name(BuildContext context, bool compact) => compact
+  /// 课程名：实时列表 16（`rowTitle`），次日预览降一档到 14（`titleSmall`）。
+  static TextStyle _nameStyle(BuildContext context, bool compact) => compact
       ? Theme.of(context).textTheme.titleSmall!
       : context.appText.rowTitle;
 
@@ -65,7 +75,7 @@ class HomeTodaySection extends StatelessWidget {
         secondaryTextColor: secondaryTextColor,
       );
     } else {
-      section = _buildFullList(
+      section = _buildTimelineCard(
         context,
         primaryTextColor: primaryTextColor,
         secondaryTextColor: secondaryTextColor,
@@ -79,7 +89,7 @@ class HomeTodaySection extends StatelessWidget {
         borderRadius: AppRadius.cardBorder,
         padding: EdgeInsets.fromLTRB(
           14,
-          today.isCollapsed ? 2 : 12,
+          today.isCollapsed ? 2 : (today.title != '今天' ? 10 : 4),
           14,
           today.isCollapsed ? 2 : 4,
         ),
@@ -88,7 +98,7 @@ class HomeTodaySection extends StatelessWidget {
       ),
     );
 
-    // 整段可点进课表（含标题与全部行）；有回调时才补充按钮语义。
+    // 整段可点进课表；有回调时才补充按钮语义。
     if (onOpenSchedule == null) return card;
     return Semantics(
       button: true,
@@ -97,8 +107,7 @@ class HomeTodaySection extends StatelessWidget {
     );
   }
 
-  /// 折叠摘要单行：「之后还有 N 门课」+「下一门 时间 课程名」+ chevron，
-  /// 品牌色计数与「查看全部」尾行同一强调语言，整行由外层 InkWell 承接。
+  /// 折叠摘要单行：「之后还有 N 门课」+「下一门 时间 课程名」+ chevron。
   Widget _buildCollapsedSummary(
     BuildContext context, {
     required Color secondaryTextColor,
@@ -110,19 +119,23 @@ class HomeTodaySection extends StatelessWidget {
         ? '${next.timeText} ${next.courseName}'
         : '下一门 ${next.timeText} ${next.courseName}';
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 11),
+      padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
         children: [
           Text(
             '之后还有 $count 门课',
-            style: context.appText.label.copyWith(color: cs.primary),
+            style: context.appText.group.copyWith(
+              color: cs.primary,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
           ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               detailText,
-              style: context.appText.secondary.copyWith(
+              style: context.appText.meta.copyWith(
                 color: secondaryTextColor,
+                fontFeatures: const [FontFeature.tabularFigures()],
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -135,13 +148,12 @@ class HomeTodaySection extends StatelessWidget {
     );
   }
 
-  /// 完整列表形态：标题 + 行（考试在前）+ 截断尾行。
-  Widget _buildFullList(
+  /// 完整时间轴列表形态：可选预览日期小标 + 瑞士时间轴条目 + 截断尾行。
+  Widget _buildTimelineCard(
     BuildContext context, {
     required Color primaryTextColor,
     required Color secondaryTextColor,
   }) {
-    // 考试行在前、课程行在后（模型即分开存储）；合计超过上限截断。
     final maxRows = today.isFullDay ? _maxRowsFullDay : _maxRows;
     final visibleExams = today.exams.take(maxRows).toList();
     final visibleCourses = today.courses
@@ -152,164 +164,324 @@ class HomeTodaySection extends StatelessWidget {
         today.courses.length -
         visibleExams.length -
         visibleCourses.length;
-    final rows = <Widget>[
-      for (final exam in visibleExams)
-        _buildExamRow(
-          context,
-          exam,
-          primaryTextColor: primaryTextColor,
-          secondaryTextColor: secondaryTextColor,
-        ),
-      for (final course in visibleCourses)
-        _buildCourseRow(
-          context,
-          course,
-          primaryTextColor: primaryTextColor,
-          secondaryTextColor: secondaryTextColor,
-        ),
+
+    final entries = <_TimelineEntry>[
+      for (final exam in visibleExams) _TimelineEntry.exam(exam),
+      for (final course in visibleCourses) _TimelineEntry.course(course),
     ];
 
+    final showPreviewHeader = today.title != '今天';
+    final textScale = MediaQuery.textScalerOf(context)
+        .scale(1.0)
+        .clamp(1.0, 1.8);
+    final timeColumnWidth = _baseTimeColumnWidth * textScale;
+
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          today.title,
-          style: context.appText.rowTitle.copyWith(
-            fontWeight: FontWeight.w700,
-            color: primaryTextColor,
+        if (showPreviewHeader) ...[
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              today.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: context.appText.group.copyWith(
+                color: secondaryTextColor,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
           ),
-        ),
-        for (final (index, row) in rows.indexed) ...[
-          if (index > 0) const SizedBox(height: AppSpacing.xs),
-          row,
+          _buildHairline(context),
         ],
+        for (final (index, entry) in entries.indexed)
+          _buildTimelineRow(
+            context,
+            entry,
+            isFirst: index == 0,
+            isLast: index == entries.length - 1,
+            timeColumnWidth: timeColumnWidth,
+            primaryTextColor: primaryTextColor,
+            secondaryTextColor: secondaryTextColor,
+          ),
         if (hiddenCount > 0 && onOpenSchedule != null) ...[
-          const SizedBox(height: AppSpacing.sm),
-          _buildMoreRow(context, hiddenCount),
+          _buildHairline(context),
+          _buildMoreRow(
+            context,
+            hiddenCount,
+            secondaryTextColor: secondaryTextColor,
+          ),
         ],
       ],
     );
   }
 
-  /// 「查看全部」截断尾行：品牌色文字 + chevron（点击由整段的
-  /// InkWell 承接，这里不再单独包手势层）。
-  Widget _buildMoreRow(BuildContext context, int hiddenCount) {
+  Widget _buildHairline(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    return Divider(
+      height: 0.5,
+      thickness: 0.5,
+      color: theme.colorScheme.outlineVariant.withValues(
+        alpha: isDark ? 0.28 : 0.45,
+      ),
+    );
+  }
+
+  /// 「查看全部」截断尾行：品牌色文字 + chevron。
+  Widget _buildMoreRow(
+    BuildContext context,
+    int hiddenCount, {
+    required Color secondaryTextColor,
+  }) {
     final cs = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 11),
+      padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
         children: [
           Text(
             '查看全部',
-            style: context.appText.label.copyWith(color: cs.primary),
+            style: context.appText.group.copyWith(color: cs.primary),
           ),
           Icon(Icons.chevron_right_rounded, size: 16, color: cs.primary),
-          const Spacer(),
-          Text('还有 $hiddenCount 条 · 见课表', style: context.appText.meta),
-        ],
-      ),
-    );
-  }
-
-  /// 课程行：时间 + 课程名（进行中加圆点与胶囊，全天模式已结束灰显）
-  /// + 右对齐地点。
-  Widget _buildCourseRow(
-    BuildContext context,
-    HomeTodayCourseRow course, {
-    required Color primaryTextColor,
-    required Color secondaryTextColor,
-  }) {
-    final cs = Theme.of(context).colorScheme;
-    // 次日预览形态整体降一档（14/12 字号 + 更紧行距），与实时的
-    // 「今天」列表拉开层级——它是未来安排的轻量提示。
-    final compact = today.isPreview;
-    // 全天模式已结束的课：整行降为次要色，不与剩余课程抢视觉。
-    final done = course.isDone;
-    final nameColor = done ? secondaryTextColor : primaryTextColor;
-    final timeColor = done
-        ? secondaryTextColor.withValues(alpha: 0.6)
-        : secondaryTextColor;
-    return Padding(
-      // 竖向 padding 撑起约 44 行高（预览 38），随 textScaler 自然缩放。
-      padding: EdgeInsets.symmetric(vertical: compact ? 9 : 11),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          ConstrainedBox(
-            constraints: const BoxConstraints(minWidth: _timeColumnWidth),
+          const SizedBox(width: 8),
+          Expanded(
             child: Text(
-              course.timeText,
-              style: _small(context, compact).copyWith(
-                fontWeight: FontWeight.w500,
-                color: timeColor,
+              '还有 $hiddenCount 条 · 见课表',
+              textAlign: TextAlign.right,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: context.appText.meta.copyWith(
+                color: secondaryTextColor,
                 fontFeatures: const [FontFeature.tabularFigures()],
               ),
             ),
           ),
-          const SizedBox(width: _rowGap),
-          Expanded(
-            flex: 3,
-            child: Row(
-              children: [
-                if (course.isOngoing) ...[
-                  Container(
-                    width: 6,
-                    height: 6,
-                    decoration: BoxDecoration(
-                      color: cs.primary,
-                      shape: BoxShape.circle,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTimelineRow(
+    BuildContext context,
+    _TimelineEntry entry, {
+    required bool isFirst,
+    required bool isLast,
+    required double timeColumnWidth,
+    required Color primaryTextColor,
+    required Color secondaryTextColor,
+  }) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final compact = today.isPreview;
+    final verticalPad = compact ? 9.0 : 11.0;
+
+    final isExam = entry.exam != null;
+    final course = entry.course;
+    final exam = entry.exam;
+    final isOngoing = course?.isOngoing ?? false;
+    final isDone = course?.isDone ?? false;
+
+    final nameStyle = _nameStyle(context, compact);
+    final textScaler = MediaQuery.textScalerOf(context);
+    final firstLineHeight =
+        textScaler.scale(nameStyle.fontSize ?? 16) * (nameStyle.height ?? 1.35);
+
+    final timeStyle = context.appText.meta.copyWith(
+      fontWeight: isDone || compact ? FontWeight.w500 : FontWeight.w600,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    final timeLineHeight =
+        textScaler.scale(timeStyle.fontSize ?? 13) * (timeStyle.height ?? 1.42);
+    final timeTopOffset = ((firstLineHeight - timeLineHeight) / 2).clamp(
+      0.0,
+      8.0,
+    );
+
+    final Color timePrimaryColor;
+    final Color timeSecondaryColor;
+    final Color titleColor;
+    final Color locationColor;
+    if (isExam) {
+      timePrimaryColor = cs.error;
+      timeSecondaryColor = secondaryTextColor;
+      titleColor = primaryTextColor;
+      locationColor = secondaryTextColor;
+    } else if (isOngoing) {
+      timePrimaryColor = cs.primary;
+      timeSecondaryColor = secondaryTextColor;
+      titleColor = primaryTextColor;
+      locationColor = secondaryTextColor;
+    } else if (isDone) {
+      timePrimaryColor = secondaryTextColor.withValues(alpha: 0.58);
+      timeSecondaryColor = secondaryTextColor.withValues(alpha: 0.48);
+      titleColor = secondaryTextColor.withValues(alpha: 0.72);
+      locationColor = secondaryTextColor.withValues(alpha: 0.52);
+    } else {
+      timePrimaryColor = primaryTextColor;
+      timeSecondaryColor = secondaryTextColor;
+      titleColor = primaryTextColor;
+      locationColor = secondaryTextColor;
+    }
+
+    final (String primaryTime, String secondaryTime) = isExam
+        ? _splitExamTime(exam!.timeText)
+        : (course!.timeText, formatTodayLesson(course.lessonText));
+
+    final String rawTitle = isExam ? exam!.courseName : course!.courseName;
+    final String formattedLocation = formatTodayLocation(
+      isExam ? exam!.locationText : course!.locationText,
+    );
+
+    final _TimelineNodeKind nodeKind;
+    if (isExam) {
+      nodeKind = _TimelineNodeKind.exam;
+    } else if (isOngoing) {
+      nodeKind = _TimelineNodeKind.ongoing;
+    } else if (isDone) {
+      nodeKind = _TimelineNodeKind.done;
+    } else {
+      nodeKind = _TimelineNodeKind.upcoming;
+    }
+
+    final railColor = cs.outlineVariant.withValues(alpha: isDark ? 0.45 : 0.78);
+    final upcomingRingColor = cs.outline.withValues(
+      alpha: isDark ? 0.75 : 0.85,
+    );
+    final doneDotColor = secondaryTextColor.withValues(alpha: 0.35);
+
+    final Widget? statusTag;
+    if (isExam) {
+      statusTag = _TimelineStatusTag(
+        label: '今天考试',
+        backgroundColor: cs.error.withValues(alpha: isDark ? 0.18 : 0.10),
+        foregroundColor: cs.error,
+      );
+    } else if (isOngoing) {
+      statusTag = _TimelineStatusTag(
+        label: '进行中',
+        backgroundColor: cs.primary.withValues(alpha: isDark ? 0.20 : 0.10),
+        foregroundColor: cs.primary,
+      );
+    } else {
+      statusTag = null;
+    }
+
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: timeColumnWidth,
+            child: Padding(
+              padding: EdgeInsets.only(
+                top: verticalPad + timeTopOffset,
+                bottom: verticalPad,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      primaryTime,
+                      maxLines: 1,
+                      style: timeStyle.copyWith(color: timePrimaryColor),
                     ),
                   ),
-                  const SizedBox(width: 6),
-                ],
-                Flexible(
-                  child: Text(
-                    course.courseName,
-                    style: _name(context, compact).copyWith(
-                      fontWeight: done || compact
-                          ? FontWeight.w500
-                          : FontWeight.w600,
-                      color: nameColor,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                if (course.isOngoing) ...[
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
-                    ),
-                    decoration: ShapeDecoration(
-                      color: cs.primary.withValues(alpha: 0.10),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(AppRadius.tag),
+                  if (secondaryTime.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        secondaryTime,
+                        maxLines: 1,
+                        style: context.appText.tag.copyWith(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w400,
+                          letterSpacing: 0,
+                          color: timeSecondaryColor,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
                       ),
                     ),
-                    child: Text(
-                      '进行中',
-                      style: context.appText.tag.copyWith(color: cs.primary),
-                    ),
-                  ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            flex: 2,
-            child: Text(
-              course.locationText,
-              style: _small(context, compact).copyWith(
-                color: done
-                    ? secondaryTextColor.withValues(alpha: 0.6)
-                    : secondaryTextColor,
+          const SizedBox(width: 6),
+          SizedBox(
+            width: _railColumnWidth,
+            child: CustomPaint(
+              painter: _TimelineRailPainter(
+                isFirst: isFirst,
+                isLast: isLast,
+                nodeKind: nodeKind,
+                nodeCenterY: verticalPad + firstLineHeight / 2,
+                railColor: railColor,
+                primaryColor: cs.primary,
+                errorColor: cs.error,
+                upcomingRingColor: upcomingRingColor,
+                doneDotColor: doneDotColor,
               ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.right,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: EdgeInsets.symmetric(vertical: verticalPad),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              rawTitle,
+                              style: nameStyle.copyWith(
+                                fontWeight: isDone || compact
+                                    ? FontWeight.w500
+                                    : FontWeight.w600,
+                                color: titleColor,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (statusTag != null) ...[
+                            const SizedBox(width: 6),
+                            statusTag,
+                          ],
+                        ],
+                      ),
+                      if (formattedLocation.isNotEmpty) ...[
+                        const SizedBox(height: 3),
+                        Text(
+                          formattedLocation,
+                          style: context.appText.meta.copyWith(
+                            color: locationColor,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (!isLast) _buildHairline(context),
+              ],
             ),
           ),
         ],
@@ -317,68 +489,165 @@ class HomeTodaySection extends StatelessWidget {
     );
   }
 
-  /// 考试行：同课程行布局，时间列前以 error 色 event 图标标识。
-  Widget _buildExamRow(
-    BuildContext context,
-    HomeTodayExamRow exam, {
-    required Color primaryTextColor,
-    required Color secondaryTextColor,
-  }) {
-    final cs = Theme.of(context).colorScheme;
-    final compact = today.isPreview;
-    return Padding(
-      padding: EdgeInsets.symmetric(vertical: compact ? 9 : 11),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          ConstrainedBox(
-            constraints: const BoxConstraints(minWidth: _timeColumnWidth),
-            // 外层 Row 的非 flex 子节点宽度无上界，内层不能再套 flex 子节点。
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.event_outlined, size: 14, color: cs.error),
-                const SizedBox(width: 4),
-                Text(
-                  exam.timeText,
-                  style: _small(context, compact).copyWith(
-                    fontWeight: FontWeight.w500,
-                    color: secondaryTextColor,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: _rowGap),
-          Expanded(
-            flex: 3,
-            child: Text(
-              exam.courseName,
-              style: _name(context, compact).copyWith(
-                fontWeight: compact ? FontWeight.w500 : FontWeight.w600,
-                color: primaryTextColor,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            flex: 2,
-            child: Text(
-              exam.locationText,
-              style: _small(
-                context,
-                compact,
-              ).copyWith(color: secondaryTextColor),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.right,
-            ),
-          ),
-        ],
+  static (String, String) _splitExamTime(String raw) {
+    final trimmed = raw.trim();
+    final parts = trimmed.split('-');
+    if (parts.length == 2 &&
+        parts[0].trim().isNotEmpty &&
+        parts[1].trim().isNotEmpty) {
+      return (parts[0].trim(), '–${parts[1].trim()}');
+    }
+    return (trimmed, '考试');
+  }
+}
+
+class _TimelineEntry {
+  const _TimelineEntry.course(this.course) : exam = null;
+  const _TimelineEntry.exam(this.exam) : course = null;
+
+  final HomeTodayCourseRow? course;
+  final HomeTodayExamRow? exam;
+}
+
+enum _TimelineNodeKind { exam, ongoing, upcoming, done }
+
+class _TimelineStatusTag extends StatelessWidget {
+  const _TimelineStatusTag({
+    required this.label,
+    required this.backgroundColor,
+    required this.foregroundColor,
+  });
+
+  final String label;
+  final Color backgroundColor;
+  final Color foregroundColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: ShapeDecoration(
+        color: backgroundColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.tag),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        child: Text(
+          label,
+          maxLines: 1,
+          style: context.appText.tag.copyWith(color: foregroundColor),
+        ),
       ),
     );
+  }
+}
+
+class _TimelineRailPainter extends CustomPainter {
+  const _TimelineRailPainter({
+    required this.isFirst,
+    required this.isLast,
+    required this.nodeKind,
+    required this.nodeCenterY,
+    required this.railColor,
+    required this.primaryColor,
+    required this.errorColor,
+    required this.upcomingRingColor,
+    required this.doneDotColor,
+  });
+
+  final bool isFirst;
+  final bool isLast;
+  final _TimelineNodeKind nodeKind;
+  final double nodeCenterY;
+  final Color railColor;
+  final Color primaryColor;
+  final Color errorColor;
+  final Color upcomingRingColor;
+  final Color doneDotColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cx = size.width / 2;
+    final cy = nodeCenterY.clamp(6.0, size.height - 6.0);
+
+    final nodeRadius = switch (nodeKind) {
+      _TimelineNodeKind.exam => 4.0,
+      _TimelineNodeKind.ongoing => 4.0,
+      _TimelineNodeKind.upcoming => 3.5,
+      _TimelineNodeKind.done => 3.0,
+    };
+
+    final railPaint = Paint()
+      ..color = railColor
+      ..strokeWidth = 1.5
+      ..strokeCap = StrokeCap.butt;
+
+    final topEndY = cy - nodeRadius - 1.5;
+    if (!isFirst && topEndY > 0) {
+      canvas.drawLine(Offset(cx, 0), Offset(cx, topEndY), railPaint);
+    }
+
+    final bottomStartY = cy + nodeRadius + 1.5;
+    if (!isLast && bottomStartY < size.height) {
+      canvas.drawLine(
+        Offset(cx, bottomStartY),
+        Offset(cx, size.height),
+        railPaint,
+      );
+    }
+
+    switch (nodeKind) {
+      case _TimelineNodeKind.exam:
+        canvas.drawCircle(
+          Offset(cx, cy),
+          7.0,
+          Paint()..color = errorColor.withValues(alpha: 0.12),
+        );
+        canvas.drawCircle(
+          Offset(cx, cy),
+          nodeRadius,
+          Paint()..color = errorColor,
+        );
+      case _TimelineNodeKind.ongoing:
+        canvas.drawCircle(
+          Offset(cx, cy),
+          7.5,
+          Paint()..color = primaryColor.withValues(alpha: 0.12),
+        );
+        canvas.drawCircle(
+          Offset(cx, cy),
+          nodeRadius,
+          Paint()..color = primaryColor,
+        );
+      case _TimelineNodeKind.upcoming:
+        canvas.drawCircle(
+          Offset(cx, cy),
+          nodeRadius,
+          Paint()
+            ..color = upcomingRingColor
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.5,
+        );
+      case _TimelineNodeKind.done:
+        canvas.drawCircle(
+          Offset(cx, cy),
+          nodeRadius,
+          Paint()..color = doneDotColor,
+        );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _TimelineRailPainter oldDelegate) {
+    return oldDelegate.isFirst != isFirst ||
+        oldDelegate.isLast != isLast ||
+        oldDelegate.nodeKind != nodeKind ||
+        oldDelegate.nodeCenterY != nodeCenterY ||
+        oldDelegate.railColor != railColor ||
+        oldDelegate.primaryColor != primaryColor ||
+        oldDelegate.errorColor != errorColor ||
+        oldDelegate.upcomingRingColor != upcomingRingColor ||
+        oldDelegate.doneDotColor != doneDotColor;
   }
 }

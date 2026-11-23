@@ -7,7 +7,7 @@ import '../shared/widgets/glass_nav_bar.dart';
 
 /// 底部 dock 的四个 destination 与路由 branch 的对应关系：
 /// - 0「主页」→ branch0 的首屏区（zone 0）；
-/// - 1「今日」→ branch0 的今日区锚点段落（zone 1）；
+/// - 1「今天」→ branch0 的今天区锚点段落（zone 1）；
 /// - 2「功能」→ branch0 的功能区锚点段落（zone 2）；
 /// - 3「我的」→ branch1。
 class AppShellPage extends StatefulWidget {
@@ -41,7 +41,7 @@ class _AppShellPageState extends State<AppShellPage> {
 
   /// dock 当前高亮项：
   /// - 在 branch1（我的）时固定高亮第 3 项；
-  /// - 在 branch0（首页单滚动页）时按 ScrollSpy 分区高亮 主页 / 今日 / 功能。
+  /// - 在 branch0（首页单滚动页）时按 ScrollSpy 分区高亮 主页 / 今天 / 功能。
   int get _highlightIndex {
     if (widget.navigationShell.currentIndex == 1) return 3;
     return HomeZoneController.instance.zoneIndex.clamp(0, 2);
@@ -51,7 +51,7 @@ class _AppShellPageState extends State<AppShellPage> {
   /// - 主页：不在 branch0 → goBranch(0)（不传 initialLocation，保留
   ///   branch0 已有栈与滚动位置），postFrame 滚到页面顶部；
   ///   已在 branch0 → 直接滚到顶部。
-  /// - 今日：不在 branch0 → goBranch(0)，postFrame 滚到今日区锚点；
+  /// - 今天：不在 branch0 → goBranch(0)，postFrame 滚到今天区锚点；
   ///   已在 branch0 → 直接滚到锚点。
   /// - 功能：不在 branch0 → goBranch(0)，postFrame 滚到功能区锚点；
   ///   已在 branch0 → 直接滚到锚点。
@@ -106,7 +106,7 @@ class _AppShellPageState extends State<AppShellPage> {
           GlassNavBarDestination(
             icon: Icons.today_outlined,
             selectedIcon: Icons.today,
-            label: '今日',
+            label: '今天',
           ),
           GlassNavBarDestination(
             icon: Icons.widgets_outlined,

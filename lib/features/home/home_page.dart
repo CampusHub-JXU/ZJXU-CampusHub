@@ -48,10 +48,10 @@ import 'widget/campus_widget_sync.dart';
 ///
 /// 第一屏只回答「今天什么状态」：环境行 → 无框 Hero（下一节课/当前
 /// 状态）→（可选）事件横幅 → 资产行（校园卡 + 电费）→（可选）「校园公告」
-/// 简化预览 →「今日」锚点段落（紧凑今日课程/考试列表或空态）→
+/// 简化预览 →「今天」锚点段落（紧凑今天课程/考试列表或空态）→
 /// 「功能」锚点段落（全部入口的轻量小按钮工具条，含课表——原快捷
 /// 入口行已并入）。底部 dock 通过 [HomeZoneController] 做 ScrollSpy，
-/// 在 首页/今日/功能 之间自动切换高亮。数据获取与刷新行为与旧版一致，
+/// 在 首页/今天/功能 之间自动切换高亮。数据获取与刷新行为与旧版一致，
 /// 展示层由 [resolveHomePresentation]（纯函数）从 [HomeSnapshot] 派生。
 /// 教务登录弹层的呈现函数：返回 true 表示弹层内登录成功。
 typedef HomeLoginPromptPresenter = Future<bool> Function(BuildContext context);
@@ -73,7 +73,7 @@ class _HomePageState extends State<HomePage> {
   final _snapshotCoordinator = CampusSnapshotCoordinator.instance;
   final _scrollController = ScrollController();
 
-  /// 今日区锚点：dock「今日」点击的滚动定位与 ScrollSpy 判定都基于它。
+  /// 今天区锚点：dock「今天」点击的滚动定位与 ScrollSpy 判定都基于它。
   final _todaySectionKey = GlobalKey();
 
   /// 功能区锚点：dock「功能」点击的滚动定位与 ScrollSpy 判定都基于它。
@@ -110,7 +110,7 @@ class _HomePageState extends State<HomePage> {
   /// 由 store.reload 经此 ValueNotifier 回流刷新）。
   NoticeInboxHead _noticeHead = NoticeInboxHead.empty;
 
-  /// 「今日」板块本地二课活动缓存（订阅 + 已报名缓存，零网络读取）。
+  /// 「今天」板块本地二课活动缓存（订阅 + 已报名缓存，零网络读取）。
   List<SecondClassroomActivity> _subscribedActivities = const [];
   List<SecondClassroomActivity> _cachedActivities = const [];
 
@@ -599,7 +599,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// ScrollSpy：按自下而上优先级判定当前可视分区（0 = 主页，1 = 今日，
+  /// ScrollSpy：按自下而上优先级判定当前可视分区（0 = 主页，1 = 今天，
   /// 2 = 功能）。
   ///
   /// 锚点顶部坐标相对滚动视口（而非屏幕）计算，保证状态栏/SafeArea
@@ -727,7 +727,7 @@ class _HomePageState extends State<HomePage> {
                   valueListenable:
                       AppThemeController.instance.homeTextColorMode,
                   builder: (context, _, _) =>
-                      // 「今日全部课程」开关变化时重建滚动内容，Today 段落
+                      // 「今天全部课程」开关变化时重建滚动内容，Today 段落
                       // 在剩余/全天形态间即时切换。
                       ValueListenableBuilder<bool>(
                         valueListenable: PersonalizationController
@@ -880,7 +880,7 @@ class _HomePageState extends State<HomePage> {
                   ],
                 ),
               ),
-              // 公告 + 今日区 + 功能区尾段：公告开关变化时整段重建。
+              // 公告 + 今天区 + 功能区尾段：公告开关变化时整段重建。
               ValueListenableBuilder<bool>(
                 valueListenable:
                     PersonalizationController.instance.homeCampusNoticeEnabled,
@@ -907,7 +907,7 @@ class _HomePageState extends State<HomePage> {
                         )
                       else
                         const SizedBox(height: AppSpacing.sectionBreak),
-                      // 今日区锚点：始终留在树中，供 dock「今日」滚动定位与 ScrollSpy 判定。
+                      // 今天区锚点：始终留在树中，供 dock「今天」滚动定位与 ScrollSpy 判定。
                       Container(
                         key: _todaySectionKey,
                         padding: const EdgeInsets.symmetric(
@@ -917,6 +917,12 @@ class _HomePageState extends State<HomePage> {
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             _TodayZoneHeader(
+                              courseCount:
+                                  !presentation.today.isPreview &&
+                                      !presentation.today.isCollapsed &&
+                                      presentation.today.courses.isNotEmpty
+                                  ? presentation.today.courses.length
+                                  : null,
                               onOpenSchedule: () => unawaited(
                                 _pushFeatureRoute(context, 'schedule'),
                               ),
@@ -932,7 +938,7 @@ class _HomePageState extends State<HomePage> {
                               ),
                             if (todayAgenda.hasExtras) ...[
                               if (!presentation.today.isEmpty)
-                                const SizedBox(height: AppSpacing.lg),
+                                const SizedBox(height: 10),
                               HomeTodayAgendaCards(
                                 agenda: todayAgenda,
                                 onOpenExam: () => unawaited(
@@ -979,21 +985,42 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-/// 今日段落头：与 `_FunctionZoneHeader` 视觉一致，左「今日」标题、右「查看课表」入口。
+/// 今天段落头：与 `_FunctionZoneHeader` 视觉一致，左「今天」标题（可选
+/// 次级课数计数）、右「查看课表」入口。
 class _TodayZoneHeader extends StatelessWidget {
-  const _TodayZoneHeader({required this.onOpenSchedule});
+  const _TodayZoneHeader({this.courseCount, required this.onOpenSchedule});
 
+  final int? courseCount;
   final VoidCallback onOpenSchedule;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final secondaryTextColor = AppThemeController.instance
+        .resolveHomeSecondaryTextColor(context, cs.onSurfaceVariant);
     return Row(
       children: [
-        Text(
-          '今日',
-          style: Theme.of(context).textTheme.titleLarge
-              ?.copyWith(fontWeight: FontWeight.w700, height: 1.2),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Text(
+              '今天',
+              style: Theme.of(context).textTheme.titleLarge
+                  ?.copyWith(fontWeight: FontWeight.w700, height: 1.2),
+            ),
+            if (courseCount != null && courseCount! > 0) ...[
+              const SizedBox(width: 8),
+              Text(
+                '$courseCount 节课',
+                style: context.appText.meta.copyWith(
+                  color: secondaryTextColor,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
+          ],
         ),
         const Spacer(),
         Semantics(
@@ -1030,7 +1057,7 @@ class _TodayZoneHeader extends StatelessWidget {
   }
 }
 
-/// 今日区空态：无课程与考试安排时以轻量瓦片承接，整块可点进完整课表。
+/// 今天区空态：无课程与考试安排时以轻量瓦片承接，整块可点进完整课表。
 class _TodayEmptyState extends StatelessWidget {
   const _TodayEmptyState({required this.onOpenSchedule});
 
@@ -1041,7 +1068,7 @@ class _TodayEmptyState extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     return Semantics(
       button: true,
-      label: '今日暂无课程与考试安排，浏览本周与全学期课程',
+      label: '今天暂无课程与考试安排，浏览本周与全学期课程',
       child: AppHardTileShell(
         radius: AppRadius.tile,
         child: AppTileSurface(
@@ -1063,7 +1090,7 @@ class _TodayEmptyState extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '今日暂无课程与考试安排',
+                      '今天暂无课程与考试安排',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: context.appText.rowTitle.copyWith(height: 1.25),

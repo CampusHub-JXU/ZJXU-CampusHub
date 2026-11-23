@@ -7,7 +7,7 @@ import 'package:jxu_campus_hub/features/home/home_zone_controller.dart';
 
 /// AppShellPage dock 状态机测试（branch0=首页单滚动页 / branch1=我的）。
 ///
-/// dock 四项：主页(branch0, zone0) / 今日(branch0, zone1) / 功能(branch0, zone2) / 我的(branch1)。
+/// dock 四项：主页(branch0, zone0) / 今天(branch0, zone1) / 功能(branch0, zone2) / 我的(branch1)。
 /// 高亮跟随 branch + HomeZoneController 的 ScrollSpy 分区。
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -132,30 +132,30 @@ void main() {
     }
 
     check('主页', Icons.home);
-    check('今日', Icons.today);
+    check('今天', Icons.today);
     check('功能', Icons.widgets);
     check('我的', Icons.person);
     return selected;
   }
 
-  testWidgets('dock 显示四项：主页 / 今日 / 功能 / 我的', (tester) async {
+  testWidgets('dock 显示四项：主页 / 今天 / 功能 / 我的', (tester) async {
     await pumpShell(tester);
 
     expect(find.text('主页'), findsOneWidget);
-    expect(find.text('今日'), findsOneWidget);
+    expect(find.text('今天'), findsOneWidget);
     expect(find.text('功能'), findsOneWidget);
     expect(find.text('我的'), findsOneWidget);
   });
 
-  testWidgets('branch0 初始高亮主页，ScrollSpy 依次切到今日/功能区', (tester) async {
+  testWidgets('branch0 初始高亮主页，ScrollSpy 依次切到今天/功能区', (tester) async {
     await pumpShell(tester);
 
     expect(selectedDockItems(tester), {'主页'});
 
-    // 模拟 HomePage 滚动监听上报：今日区段落越过判定线。
+    // 模拟 HomePage 滚动监听上报：今天区段落越过判定线。
     HomeZoneController.instance.updateZone(1);
     await tester.pumpAndSettle();
-    expect(selectedDockItems(tester), {'今日'});
+    expect(selectedDockItems(tester), {'今天'});
 
     // 继续滚到功能区。
     HomeZoneController.instance.updateZone(2);
@@ -168,10 +168,10 @@ void main() {
     expect(selectedDockItems(tester), {'主页'});
   });
 
-  testWidgets('branch0 内点今日/功能/主页直接触发对应滚动', (tester) async {
+  testWidgets('branch0 内点今天/功能/主页直接触发对应滚动', (tester) async {
     await pumpShell(tester);
 
-    await tester.tap(find.text('今日'));
+    await tester.tap(find.text('今天'));
     await tester.pumpAndSettle();
     expect(todayScrollCalls, 1);
     expect(functionScrollCalls, 0);
@@ -217,17 +217,17 @@ void main() {
     expect(todayScrollCalls, 0);
   });
 
-  testWidgets('在 branch1 点今日：先回 branch0 再触发今日区滚动', (tester) async {
+  testWidgets('在 branch1 点今天：先回 branch0 再触发今天区滚动', (tester) async {
     await pumpShell(tester);
 
     await tester.tap(find.text('我的'));
     await tester.pumpAndSettle();
     expect(find.text('我的页面'), findsOneWidget);
 
-    await tester.tap(find.text('今日'));
+    await tester.tap(find.text('今天'));
     await tester.pumpAndSettle();
 
-    // 回到 branch0 并调用了今日区滚动实现。
+    // 回到 branch0 并调用了今天区滚动实现。
     expect(find.text('首页页面'), findsOneWidget);
     expect(todayScrollCalls, 1);
     expect(homeScrollCalls, 0);
