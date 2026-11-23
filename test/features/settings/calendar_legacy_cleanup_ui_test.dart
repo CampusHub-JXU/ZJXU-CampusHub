@@ -91,8 +91,8 @@ void main() {
   }
 
   Future<void> revealSyncRow(WidgetTester tester) async {
-    await tester.scrollUntilVisible(find.text('学期与课表'), 200);
-    await tester.ensureVisible(find.text('学期与课表'));
+    await tester.scrollUntilVisible(find.text('写入系统日历'), 200);
+    await tester.ensureVisible(find.text('写入系统日历'));
     await tester.pumpAndSettle();
   }
 
@@ -107,11 +107,11 @@ void main() {
     matching: matching,
   );
 
-  /// 课表日历开关：Bento 磁贴内，`课表日历` 文本与 `Switch.adaptive` 同属一个
-  /// `Semantics(label: '课表日历')` 磁贴，经该磁贴定位到开关。
+  /// 写入系统日历开关：Bento 磁贴内，`写入系统日历` 文本与 `Switch.adaptive`
+  /// 同属一个 `Semantics(label: '写入系统日历')` 磁贴，经该磁贴定位到开关。
   Finder syncSwitch() => find.descendant(
     of: find.byWidgetPredicate(
-      (w) => w is Semantics && w.properties.label == '课表日历',
+      (w) => w is Semantics && w.properties.label == '写入系统日历',
     ),
     matching: find.byType(Switch),
   );
@@ -365,7 +365,7 @@ void main() {
     // 在途显示真实进度文案，且扫描入口被进度行替换。
     expect(find.text('正在扫描遗留日程…'), findsOneWidget);
     expect(find.text('扫描遗留日程'), findsNothing);
-    await tester.tap(find.text('课表日历'));
+    await tester.tap(find.text('写入系统日历'));
     await tester.pump();
 
     gate.complete();
@@ -461,8 +461,8 @@ void main() {
     await tester.tap(find.text('取消'));
     await tester.pumpAndSettle();
     expect(syncSwitchValue(tester), isFalse);
-    await tester.ensureVisible(find.text('课表日历'));
-    await tester.tap(find.text('课表日历'));
+    await tester.ensureVisible(find.text('写入系统日历'));
+    await tester.tap(find.text('写入系统日历'));
     await tester.pumpAndSettle();
 
     expect(find.text('存在未完成的清理，请先点击「扫描遗留日程」'), findsOneWidget);

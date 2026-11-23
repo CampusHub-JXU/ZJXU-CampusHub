@@ -29,7 +29,6 @@ void main() {
   testWidgets('显示外观设置链接和学期设置', (tester) async {
     await pumpPage(tester, const SettingsPage());
 
-    expect(find.text('外观'), findsOneWidget);
     expect(find.text('主题与材质'), findsOneWidget);
     expect(find.text('首页个性化'), findsOneWidget);
     expect(find.text('外观与个性化'), findsNothing);
@@ -41,8 +40,13 @@ void main() {
 
   testWidgets('「更新下载线路」默认自动，选择后持久化', (tester) async {
     await pumpPage(tester, const SettingsPage());
-    await tester.scrollUntilVisible(find.text('更新下载线路'), 300);
-
+    // 该下拉在屏外、行文本可能被遮：先对行做滚动定位，再对组件本身 ensureVisible。
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('update_route_dropdown')),
+      300,
+    );
+    await tester.ensureVisible(find.byKey(const Key('update_route_dropdown')));
+    await tester.pumpAndSettle();
     expect(find.text('更新下载线路'), findsOneWidget);
     expect(await ApkDownloadRoutePreference.load(), ApkDownloadRoute.auto);
 
@@ -54,14 +58,21 @@ void main() {
     expect(await ApkDownloadRoutePreference.load(), ApkDownloadRoute.edgeone);
   });
 
-  testWidgets('按 外观/学期与课表/AI 与系统 分组', (tester) async {
+  testWidgets('无小节标题分隔，关键入口齐备', (tester) async {
     await pumpPage(tester, const SettingsPage());
 
-    expect(find.text('外观'), findsOneWidget);
-    expect(find.text('学期与课表'), findsOneWidget);
+    // 分组标题已移除：Bento 磁贴 + PlainListGroup 直接承载入口。
+    expect(find.byType(PlainSectionHeader), findsNothing);
+    expect(find.text('主题与材质'), findsOneWidget);
+    expect(find.text('首页个性化'), findsOneWidget);
 
-    await tester.scrollUntilVisible(find.text('AI 与系统'), 300);
-    expect(find.text('AI 与系统'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('写入系统日历'), 300);
+    expect(find.text('开学日'), findsOneWidget);
+    expect(find.text('写入系统日历'), findsOneWidget);
+    expect(find.text('桌面组件与后台'), findsOneWidget);
+
+    await tester.scrollUntilVisible(find.text('AI 模型与接口'), 300);
+    expect(find.text('AI 模型与接口'), findsOneWidget);
     // 旧分组名已并入新分组，不再存在。
     expect(find.text('课表与后台'), findsNothing);
     expect(find.text('其他'), findsNothing);
@@ -274,22 +285,22 @@ void main() {
     handle.dispose();
   });
 
-  testWidgets('课表日历开关磁贴暴露开关状态语义', (tester) async {
+  testWidgets('写入系统日历开关磁贴暴露开关状态语义', (tester) async {
     final handle = tester.ensureSemantics();
     await pumpPage(tester, const SettingsPage());
 
-    await tester.scrollUntilVisible(find.text('课表日历'), 300);
+    await tester.scrollUntilVisible(find.text('写入系统日历'), 300);
 
     final toggleNode = ancestorWith(
       tester,
-      find.text('课表日历'),
+      find.text('写入系统日历'),
       (data) => data.flagsCollection.isToggled != Tristate.none,
     );
     expect(toggleNode, isNotNull, reason: '开关磁贴应暴露开/关状态');
 
     final tapNode = ancestorWith(
       tester,
-      find.text('课表日历'),
+      find.text('写入系统日历'),
       (data) => data.hasAction(SemanticsAction.tap),
     );
     expect(tapNode, isNotNull, reason: '点磁贴即切换，应暴露点击动作');

@@ -22,7 +22,6 @@ import '../../core/update/apk_update_controller.dart';
 import '../../core/update/update_checker.dart';
 import '../../core/update/update_model.dart';
 import '../../shared/widgets/app_app_bar.dart';
-import '../../shared/widgets/app_brand_icon.dart';
 import '../../shared/widgets/app_dropdown.dart';
 import '../../shared/widgets/app_feedback.dart';
 import '../../shared/widgets/app_icon_badge.dart';
@@ -127,24 +126,31 @@ class SettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: const AppAppBar(),
+      appBar: AppAppBar(
+        title: const Text('设置'),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: AppSpacing.lg),
+            child: Center(
+              child: _VersionCapsule(
+                packageInfoFuture: _packageInfoFuture,
+                onCheckUpdate: () => _checkForUpdate(context),
+              ),
+            ),
+          ),
+        ],
+      ),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: _contentMaxWidth),
           child: ListView(
             padding: const EdgeInsets.fromLTRB(
               kPlainListGutter,
-              AppSpacing.sm,
+              AppSpacing.md,
               kPlainListGutter,
               32,
             ),
             children: [
-              _SettingsHeader(
-                packageInfoFuture: _packageInfoFuture,
-                onCheckUpdate: () => _checkForUpdate(context),
-              ),
-              const SizedBox(height: kPlainListGroupGap),
-              const PlainSectionHeader('外观'),
               IntrinsicHeight(
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -165,13 +171,11 @@ class SettingsPage extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: kPlainListGroupGap),
-              const PlainSectionHeader('学期与课表'),
               _SemesterAndCalendarSection(
                 gap: _bentoGap,
                 onPickSemesterStartDate: _pickSemesterStartDate,
               ),
               const SizedBox(height: kPlainListGroupGap),
-              const PlainSectionHeader('AI 与系统'),
               PlainListGroup(
                 children: [
                   PlainListRow(
@@ -251,9 +255,9 @@ class SettingsPage extends StatelessWidget {
   }
 }
 
-/// 顶部大标题 + 右侧紧凑版本胶囊（点击直接触发检查更新）。
-class _SettingsHeader extends StatelessWidget {
-  const _SettingsHeader({
+/// 顶栏右侧紧凑版本胶囊（点击直接触发检查更新）。
+class _VersionCapsule extends StatelessWidget {
+  const _VersionCapsule({
     required this.packageInfoFuture,
     required this.onCheckUpdate,
   });
@@ -264,101 +268,89 @@ class _SettingsHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Expanded(
-          child: Semantics(
-            header: true,
-            child: Text('设置', style: context.appText.title),
-          ),
-        ),
-        const SizedBox(width: AppSpacing.md),
-        ValueListenableBuilder<AppRelease?>(
-          valueListenable: UpdateChecker.instance.availableRelease,
-          builder: (context, release, _) {
-            return ValueListenableBuilder<bool>(
-              valueListenable: UpdateChecker.instance.isChecking,
-              builder: (context, isChecking, _) {
-                return FutureBuilder<PackageInfo>(
-                  future: packageInfoFuture,
-                  builder: (context, snapshot) {
-                    if (!snapshot.hasData && release == null && !isChecking) {
-                      return const SizedBox.shrink();
-                    }
-                    final hasUpdate = release != null;
-                    final label = hasUpdate
-                        ? 'v${release.version}'
-                        : (snapshot.hasData
-                              ? 'v${snapshot.data!.version}'
-                              : '检查更新');
-                    final background = hasUpdate
-                        ? cs.primaryContainer
-                        : cs.surfaceContainerHighest;
-                    final foreground = hasUpdate
-                        ? cs.onPrimaryContainer
-                        : cs.onSurfaceVariant;
-                    final radius = BorderRadius.circular(AppRadius.tag);
-                    return Semantics(
-                      button: true,
-                      label: hasUpdate ? '发现新版本 $label' : '版本 $label，点击检查更新',
-                      child: Material(
-                        color: background,
-                        shape: RoundedSuperellipseBorder(borderRadius: radius),
-                        clipBehavior: Clip.antiAlias,
-                        child: InkWell(
-                          onTap: isChecking ? null : onCheckUpdate,
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (isChecking) ...[
-                                  SizedBox(
-                                    width: 10,
-                                    height: 10,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 1.6,
-                                      color: foreground,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 5),
-                                ] else if (hasUpdate) ...[
-                                  Container(
-                                    width: 6,
-                                    height: 6,
-                                    decoration: BoxDecoration(
-                                      color: cs.primary,
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 5),
-                                ],
-                                Text(
-                                  label,
-                                  style: context.appText.tag.copyWith(
-                                    color: foreground,
-                                    fontFeatures: const [
-                                      FontFeature.tabularFigures(),
-                                    ],
-                                  ),
+    return ValueListenableBuilder<AppRelease?>(
+      valueListenable: UpdateChecker.instance.availableRelease,
+      builder: (context, release, _) {
+        return ValueListenableBuilder<bool>(
+          valueListenable: UpdateChecker.instance.isChecking,
+          builder: (context, isChecking, _) {
+            return FutureBuilder<PackageInfo>(
+              future: packageInfoFuture,
+              builder: (context, snapshot) {
+                if (!snapshot.hasData && release == null && !isChecking) {
+                  return const SizedBox.shrink();
+                }
+                final hasUpdate = release != null;
+                final label = hasUpdate
+                    ? 'v${release.version}'
+                    : (snapshot.hasData
+                          ? 'v${snapshot.data!.version}'
+                          : '检查更新');
+                final background = hasUpdate
+                    ? cs.primaryContainer
+                    : cs.surfaceContainerHighest;
+                final foreground = hasUpdate
+                    ? cs.onPrimaryContainer
+                    : cs.onSurfaceVariant;
+                final radius = BorderRadius.circular(AppRadius.tag);
+                return Semantics(
+                  button: true,
+                  label: hasUpdate ? '发现新版本 $label' : '版本 $label，点击检查更新',
+                  child: Material(
+                    color: background,
+                    shape: RoundedSuperellipseBorder(borderRadius: radius),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      onTap: isChecking ? null : onCheckUpdate,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (isChecking) ...[
+                              SizedBox(
+                                width: 10,
+                                height: 10,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 1.6,
+                                  color: foreground,
                                 ),
-                              ],
+                              ),
+                              const SizedBox(width: 5),
+                            ] else if (hasUpdate) ...[
+                              Container(
+                                width: 6,
+                                height: 6,
+                                decoration: BoxDecoration(
+                                  color: cs.primary,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 5),
+                            ],
+                            Text(
+                              label,
+                              style: context.appText.tag.copyWith(
+                                color: foreground,
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures(),
+                                ],
+                              ),
                             ),
-                          ),
+                          ],
                         ),
                       ),
-                    );
-                  },
+                    ),
+                  ),
                 );
               },
             );
           },
-        ),
-      ],
+        );
+      },
     );
   }
 }
@@ -493,7 +485,7 @@ class _ThemeBentoTile extends StatelessWidget {
   }
 }
 
-/// 右外观磁贴：首页个性化（实时微缩 [AppBrandIcon] + 当前图标风格短名）。
+/// 右外观磁贴：首页个性化。
 class _PersonalizationBentoTile extends StatelessWidget {
   const _PersonalizationBentoTile({required this.onTap});
 
@@ -505,7 +497,6 @@ class _PersonalizationBentoTile extends StatelessWidget {
     return ListenableBuilder(
       listenable: AppPreferencesController.instance,
       builder: (context, _) {
-        final prefs = AppPreferencesController.instance.state;
         return _SettingsBentoTile(
           semanticsLabel: '首页个性化',
           onTap: onTap,
@@ -513,16 +504,16 @@ class _PersonalizationBentoTile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
-                children: [
-                  const AppBrandIcon(size: 28),
-                  const Spacer(),
-                  Icon(
+              SizedBox(
+                height: 28,
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: Icon(
                     Icons.chevron_right_rounded,
                     size: 18,
                     color: cs.onSurfaceVariant.withValues(alpha: 0.45),
                   ),
-                ],
+                ),
               ),
               const SizedBox(height: 14),
               const Spacer(),
@@ -532,16 +523,6 @@ class _PersonalizationBentoTile extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: context.appText.rowTitleStrong.copyWith(height: 1.2),
               ),
-              const SizedBox(height: AppSpacing.xs),
-              Text(
-                prefs.appIconStyle.label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: context.appText.meta.copyWith(
-                  fontSize: 12,
-                  height: 1.25,
-                ),
-              ),
             ],
           ),
         );
@@ -550,9 +531,9 @@ class _PersonalizationBentoTile extends StatelessWidget {
   }
 }
 
-/// 第二区「学期与课表」：
+/// 第二区「学期与日历」：
 /// - 左侧 Bento 磁贴：开学日（大号等宽 MM.DD）+ 当前精简学期（复用 [CurrentTermResolver]）
-/// - 右侧 Bento 磁贴（仅 Android）：课表日历开关与状态
+/// - 右侧 Bento 磁贴（仅 Android）：写入系统日历开关与状态
 /// - 磁贴下方（仅 Android）：课前提醒下拉、异常状态说明与遗留扫描入口
 class _SemesterAndCalendarSection extends StatefulWidget {
   const _SemesterAndCalendarSection({
@@ -707,6 +688,10 @@ class _SemesterAndCalendarSectionState
             children: [
               PlainListRow(
                 title: '课前提醒',
+                // 同步未开启时提醒提前量不生效：禁用下拉（原生 0.5 透明度）并说明原因。
+                subtitle: state == CalendarSyncControlState.enabled
+                    ? null
+                    : '开启日历同步后可设置',
                 trailing: AppDropdown<int>(
                   key: const Key('calendar_reminder_dropdown'),
                   inline: true,
@@ -726,10 +711,12 @@ class _SemesterAndCalendarSectionState
                         label: _reminderLabel(minutes),
                       ),
                   ],
-                  onChanged: (value) {
-                    if (value == null) return;
-                    unawaited(_reminder.setReminderMinutes(value));
-                  },
+                  onChanged: state == CalendarSyncControlState.enabled
+                      ? (value) {
+                          if (value == null) return;
+                          unawaited(_reminder.setReminderMinutes(value));
+                        }
+                      : null,
                 ),
               ),
               if (detailNotice != null)
@@ -907,7 +894,7 @@ class _SemesterAndCalendarSectionState
     }
 
     return _SettingsBentoTile(
-      semanticsLabel: '课表日历',
+      semanticsLabel: '写入系统日历',
       semanticsToggled: isEnabled,
       onTap: _busy ? null : () => handleToggle(!isEnabled),
       child: Column(
@@ -940,7 +927,7 @@ class _SemesterAndCalendarSectionState
           const SizedBox(height: 14),
           const Spacer(),
           Text(
-            '课表日历',
+            '写入系统日历',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: context.appText.rowTitleStrong.copyWith(height: 1.2),

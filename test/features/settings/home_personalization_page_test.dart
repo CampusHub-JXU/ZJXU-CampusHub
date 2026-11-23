@@ -52,11 +52,16 @@ void main() {
       )
       .first;
 
+  Future<void> openDrawer(WidgetTester tester) async {
+    if (find.byType(DraggableScrollableSheet).evaluate().isEmpty) {
+      await tester.tap(find.byKey(const Key('personalization_drawer_handle')));
+      await tester.pumpAndSettle();
+    }
+  }
+
   Future<void> scrollTo(WidgetTester tester, Finder finder) async {
-    // scrollUntilVisible 的模拟拖拽会与 DraggableScrollableSheet 的
-    // hold/drag 生命周期互相打断（snap 档位间 _hold 断言）；拖拽也常只
-    // 移动 sheet 而不滚列表。改为无手势直跳：先把 sheet 拉到最大档
-    // （jumpTo 自带钳位），再直接跳 ListView position 构建懒加载子项。
+    // 抽屉默认收起：先点底部把手打开，再跳到最大档与目标位置。
+    await openDrawer(tester);
     tester
         .widget<DraggableScrollableSheet>(find.byType(DraggableScrollableSheet))
         .controller
@@ -86,7 +91,11 @@ void main() {
     await pumpPersonalization(tester);
 
     expect(find.text('首页个性化'), findsOneWidget);
-    expect(find.text('实时预览'), findsOneWidget);
+    expect(find.text('实时预览'), findsNothing);
+    expect(
+      find.byKey(const Key('personalization_preview_expand')),
+      findsNothing,
+    );
     // 主题分组已拆到「主题与材质」页。
     expect(find.text('主题模式'), findsNothing);
     await scrollTo(tester, find.text('壁纸'));
@@ -272,13 +281,26 @@ void main() {
     });
   }
 
-  testWidgets('顶部常驻实时预览展示真实首页实体', (tester) async {
+  testWidgets('默认收起抽屉且预览撑满，点击把手滑入、点击遮罩收起', (tester) async {
     await pumpPersonalization(tester);
 
-    // 预览常驻渲染，不再依赖「按住预览」。
+    // 预览默认垂直撑满，无「实时预览」与放大按钮，抽屉默认收起。
     expect(find.text('真实首页场景'), findsOneWidget);
     expect(find.byKey(const Key('appearance_hold_preview')), findsNothing);
-    expect(find.text('实时预览'), findsOneWidget);
+    expect(find.text('实时预览'), findsNothing);
+    expect(
+      find.byKey(const Key('personalization_preview_expand')),
+      findsNothing,
+    );
+    expect(find.byKey(const Key('personalization_scroll')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('personalization_drawer_handle')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('personalization_scroll')), findsOneWidget);
+
+    await tester.tapAt(const Offset(206, 120));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('personalization_scroll')), findsNothing);
   });
 
   testWidgets('复原位置与缩放只在移动过壁纸后出现', (tester) async {
