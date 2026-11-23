@@ -1,21 +1,16 @@
 import 'package:material_ui/material_ui.dart';
 
-import '../../../core/theme/app_design_tokens.dart';
 import '../../../core/theme/app_theme_controller.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/theme/personalization_controller.dart';
-import '../../../shared/widgets/glass_container.dart';
 import '../models/home_presentation.dart';
 
 /// Primary Status Hero：首页唯一的最强视觉焦点（无框纯排版）。
 ///
-/// 顶部环境行「周次 · 日期」与动作胶囊（仅通知铃，或有更新时将更新按钮
-/// 与通知铃融并入同一胶囊）是控件态毛玻璃小胶囊（[GlassContainer] +
-/// [AppRadius.chipBorder]）；Hero 主体按 kicker → 大字 → 时间 →
-/// 地点元信息的纯文字层级直接坐在页面背景上，靠 typography + spacing
-/// 建立层级，不使用任何卡片容器 / 玻璃 / 底纹。文字颜色统一走
-/// [AppThemeController] 路径；壁纸强制文字色模式与主题明暗不一致时，
-/// 环境行玻璃随 [_withEnvSurfaceBrightness] 翻转明暗极性保证对比。
+/// 顶部环境行「周次 · 日期」+ 右侧通知铃 / 更新入口直接坐在页面背景上；
+/// Hero 主体按 kicker → 大字 → 时间 → 地点元信息的纯文字层级建立层级，
+/// 不使用任何卡片容器 / 玻璃 / 底纹。文字颜色统一走
+/// [AppThemeController] 的首页文字色路径，兼容自定义背景图模式。
 class HomePrimaryStatusHero extends StatelessWidget {
   const HomePrimaryStatusHero({
     super.key,
@@ -204,44 +199,7 @@ class HomePrimaryStatusHero extends StatelessWidget {
     );
   }
 
-  /// 玻璃面明暗极性适配：system 模式随主题；壁纸强制文字色模式与主题
-  /// 跨极性（浅色主题强制白字 / 深色主题强制黑字）时，整面玻璃包一层
-  /// 翻转后的 Theme，让材质、描边、角标与图标按目标亮度取色，
-  /// 避免浅底白字或深底黑字失去对比。
-  Widget _withEnvSurfaceBrightness(BuildContext context, Widget child) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final textMode = AppThemeController.instance.homeTextColorMode.value;
-    final targetBrightness = switch (textMode) {
-      HomeTextColorMode.system => theme.brightness,
-      HomeTextColorMode.dark => Brightness.light,
-      HomeTextColorMode.light => Brightness.dark,
-    };
-
-    if ((targetBrightness == Brightness.dark) == isDark) {
-      return child;
-    }
-    return Theme(
-      data: theme.copyWith(
-        brightness: targetBrightness,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: theme.colorScheme.primary,
-          brightness: targetBrightness,
-        ),
-      ),
-      child: child,
-    );
-  }
-
-  Widget _buildEnvPill(BuildContext context, {required Widget child}) {
-    return _withEnvSurfaceBrightness(
-      context,
-      GlassContainer(borderRadius: AppRadius.chipBorder, child: child),
-    );
-  }
-
-  /// 顶部环境行：左「周次 · 日期」（如「第 5 周 · 10月2日 周五」），右动作胶囊
-  /// （无更新时仅通知铃；有更新时更新按钮与通知铃融并入同一毛玻璃胶囊）。
+  /// 顶部环境行：左「周次 · 日期」（如「第 5 周 · 10月2日 周五」），右更新入口 + 通知铃。
   /// 周次状态为空（未开学，语义由 Hero 倒计时承担）时省略该段。
   Widget _buildEnvRow(
     BuildContext context,
@@ -252,24 +210,13 @@ class HomePrimaryStatusHero extends StatelessWidget {
     final envStyle = context.appText.rowTitle;
     final hasStatus = envStatusText.isNotEmpty;
     final showUpdateAction = canShowUpdateAction && onUpdateTap != null;
-    final pillShape = RoundedSuperellipseBorder(
-      borderRadius: AppRadius.chipBorder,
-    );
     final actionButtonStyle = IconButton.styleFrom(
-      backgroundColor: Colors.transparent,
-      shape: pillShape,
-      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      tapTargetSize: MaterialTapTargetSize.padded,
     );
 
-    final datePill = _buildEnvPill(
-      context,
-      child: Center(
-        widthFactor: 1.0,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.md,
-            vertical: AppSpacing.sm,
-          ),
+    return Row(
+      children: [
+        Expanded(
           child: Text.rich(
             TextSpan(
               children: [
@@ -304,41 +251,11 @@ class HomePrimaryStatusHero extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
           ),
         ),
-      ),
-    );
-
-    final actionPill = _buildEnvPill(
-      context,
-      child: Material(
-        type: MaterialType.transparency,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            if (showUpdateAction) ...[
-              _buildUpdateAction(cs, primaryTextColor, actionButtonStyle),
-              const SizedBox(width: AppSpacing.xs),
-            ],
-            _buildNotificationAction(primaryTextColor, actionButtonStyle),
-          ],
-        ),
-      ),
-    );
-
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [Flexible(child: datePill)],
-            ),
-          ),
-          const SizedBox(width: AppSpacing.md),
-          actionPill,
-        ],
-      ),
+        const SizedBox(width: 4),
+        if (showUpdateAction)
+          _buildUpdateAction(cs, primaryTextColor, actionButtonStyle),
+        _buildNotificationAction(primaryTextColor, actionButtonStyle),
+      ],
     );
   }
 
@@ -350,7 +267,7 @@ class HomePrimaryStatusHero extends StatelessWidget {
         child: Icon(Icons.notifications_outlined, color: iconColor, size: 22),
       ),
       onPressed: onNotificationTap,
-      padding: const EdgeInsets.all(AppSpacing.sm),
+      padding: EdgeInsets.zero,
       constraints: const BoxConstraints(),
       style: buttonStyle,
       tooltip: '通知中心',
@@ -383,7 +300,7 @@ class HomePrimaryStatusHero extends StatelessWidget {
         ],
       ),
       onPressed: onUpdateTap,
-      padding: const EdgeInsets.all(AppSpacing.sm),
+      padding: EdgeInsets.zero,
       constraints: const BoxConstraints(),
       style: buttonStyle,
       tooltip: '发现新版本',
