@@ -534,12 +534,6 @@ class _MyPageState extends State<MyPage> {
                         await _refreshAfterReturn();
                       },
                     ),
-                    const SizedBox(height: _tileGap),
-                    _MyTile(
-                      icon: Icons.auto_awesome_outlined,
-                      title: 'AI 助手',
-                      onTap: () => context.pushNamed('ai-chat'),
-                    ),
                     const Spacer(),
                     _buildFooter(context, cs),
                   ],
@@ -798,11 +792,7 @@ class _MyAccountTile extends StatelessWidget {
 /// 独立磁贴：与首页功能区宽磁贴同一配方（[AppHardTileShell] + [AppTileSurface]
 /// 实底无模糊 + 裸图标 + 标题 + 淡色微箭头）。
 class _MyTile extends StatelessWidget {
-  const _MyTile({
-    required this.icon,
-    required this.title,
-    required this.onTap,
-  });
+  const _MyTile({required this.icon, required this.title, required this.onTap});
 
   final IconData icon;
   final String title;

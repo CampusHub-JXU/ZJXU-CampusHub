@@ -390,33 +390,6 @@ void main() {
     expect(find.byType(MyPage), findsNothing);
   });
 
-  testWidgets('「AI 助手」入口跳转到独立页面，且登出状态下也可进入', (tester) async {
-    final router = GoRouter(
-      routes: [
-        GoRoute(
-          path: '/',
-          name: 'my',
-          builder: (context, state) => const MyPage(),
-        ),
-        GoRoute(
-          path: '/ai-chat',
-          name: 'ai-chat',
-          builder: (context, state) => const Scaffold(body: Text('AI 助手页')),
-        ),
-      ],
-    );
-    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
-    await tester.pump();
-    await tester.pump();
-
-    expect(find.text('AI 助手'), findsOneWidget);
-    await tester.tap(find.text('AI 助手'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('AI 助手页'), findsOneWidget);
-    expect(find.byType(MyPage), findsNothing);
-  });
-
   testWidgets(
     'logged-out CAS row prompts unified auth login instead of navigating',
     (tester) async {

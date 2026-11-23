@@ -48,6 +48,7 @@ class JXUCampusHubApp extends StatefulWidget {
       onLoginShortcut: (_) => appRouter.goNamed('my'),
       onNotificationsShortcut: (_) => appRouter.pushNamed('desktop-background'),
       onCalendarShortcut: (_) => appRouter.pushNamed('settings'),
+      onAiShortcut: (_) => unawaited(appRouter.pushNamed('ai-settings')),
     );
   }
 

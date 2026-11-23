@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 
-import 'ai_export_chat_adapter.dart';
 import 'ai_export_sources.dart';
 import 'app_route_observer.dart';
 import 'app_shell_page.dart';
@@ -23,7 +22,6 @@ import '../features/sjjx_notice/sjjx_notice_list_page.dart';
 import '../features/service_hall/service_hall_page.dart';
 import '../features/notification_center/notification_center_page.dart';
 import '../features/exam/exam_page.dart';
-import '../features/ai_chat/ai_chat_page.dart';
 import '../features/ai_export/ai_export_page.dart';
 import '../features/shuati/domain/shuati_models.dart';
 import '../features/shuati/shuati_webview_page.dart';
@@ -131,17 +129,6 @@ final GoRouter appRouter = GoRouter(
       path: '/grades',
       name: 'grades',
       builder: (context, state) => const GradesPage(),
-    ),
-    _appRoute(
-      path: '/ai-chat',
-      name: 'ai-chat',
-      builder: (context, state) => AiChatPage(
-        contextProvider: AiExportChatContextProvider(
-          sources: buildAiExportSources,
-        ),
-        onOpenSettings: () => unawaited(context.pushNamed('ai-settings')),
-        onOpenExport: () => unawaited(context.pushNamed('ai-export')),
-      ),
     ),
     _appRoute(
       path: '/ai-export',
@@ -276,6 +263,7 @@ final GoRouter appRouter = GoRouter(
         // 日历页主动作：向导关闭后自然回到设置页，无需额外导航
         // （与重放调用方原行为一致）。
         onCalendarShortcut: (_) {},
+        onAiShortcut: (_) => unawaited(context.pushNamed('ai-settings')),
       ),
     ),
     _appRoute(

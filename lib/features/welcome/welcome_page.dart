@@ -48,18 +48,21 @@ class WelcomeFlow {
   /// 持有 WelcomePage 与动作落点），本入口保留给需要当前导航栈的调用方；
   /// 首启见 [showOnNavigator]，直接把根导航传进来，避免依赖 overlay 内建
   /// 上下文。[onLoginShortcut] / [onNotificationsShortcut] /
-  /// [onCalendarShortcut] 是各页主动作的落点；不传则该页主动作按钮不显示。
+  /// [onCalendarShortcut] / [onAiShortcut] 是各页主动作的落点。
+  /// 不传则该页主动作按钮不显示。
   static Future<void> show(
     BuildContext context, {
     WelcomeAction? onLoginShortcut,
     WelcomeAction? onNotificationsShortcut,
     WelcomeAction? onCalendarShortcut,
+    WelcomeAction? onAiShortcut,
   }) {
     return showOnNavigator(
       Navigator.of(context),
       onLoginShortcut: onLoginShortcut,
       onNotificationsShortcut: onNotificationsShortcut,
       onCalendarShortcut: onCalendarShortcut,
+      onAiShortcut: onAiShortcut,
     );
   }
 
@@ -69,6 +72,7 @@ class WelcomeFlow {
     WelcomeAction? onLoginShortcut,
     WelcomeAction? onNotificationsShortcut,
     WelcomeAction? onCalendarShortcut,
+    WelcomeAction? onAiShortcut,
   }) {
     final existing = _activeFlow;
     if (existing != null) return existing;
@@ -79,6 +83,7 @@ class WelcomeFlow {
         onLoginShortcut: onLoginShortcut,
         onNotificationsShortcut: onNotificationsShortcut,
         onCalendarShortcut: onCalendarShortcut,
+        onAiShortcut: onAiShortcut,
       ),
     );
     final flow = navigator
@@ -118,9 +123,9 @@ class _WelcomeSlide {
   final WelcomeAction? action;
 }
 
-/// 新手欢迎向导：4 页横滑 + 页码指示器 + 跳过/下一步/动作/开始。
+/// 新手欢迎向导：5 页横滑 + 页码指示器 + 跳过/下一步/动作/开始。
 ///
-/// 主线是「登录 → 通知 → 日历同步」三步设置 + 完成页；每个动作页给一个
+/// 主线是「登录 → 通知 → 日历同步 → AI 配置」四步设置 + 完成页；每个动作页给一个
 /// 主动作（先关向导再去目标页），也可「下一步」先浏览完再自行前往。
 ///
 /// 视觉遵循内容层排版：无框、左中轴居中、字号与字重定层级；装饰只留给
@@ -131,6 +136,7 @@ class WelcomePage extends StatefulWidget {
     this.onLoginShortcut,
     this.onNotificationsShortcut,
     this.onCalendarShortcut,
+    this.onAiShortcut,
   });
 
   /// 第 1 页「去登录」动作：执行后关闭向导，由调用方导航到「我的」页。
@@ -141,6 +147,9 @@ class WelcomePage extends StatefulWidget {
 
   /// 第 3 页「去设置」动作：通常导航到设置页「课表与后台」分区（日历同步开关）。
   final WelcomeAction? onCalendarShortcut;
+
+  /// 第 4 页「去配置」动作：导航到「AI 模型与接口」设置页。
+  final WelcomeAction? onAiShortcut;
 
   @override
   State<WelcomePage> createState() => _WelcomePageState();
@@ -188,6 +197,14 @@ class _WelcomePageState extends State<WelcomePage> {
         action: widget.onCalendarShortcut,
       ),
       _WelcomeSlide(
+        icon: Icons.auto_awesome_outlined,
+        title: '配置 AI 助手',
+        body: '填好 API 密钥后，刷题可用 AI 解析和追问。\n未配置也能导出学业数据给外部 AI。',
+        accent: cs.tertiary,
+        actionLabel: '去配置',
+        action: widget.onAiShortcut,
+      ),
+      _WelcomeSlide(
         icon: Icons.check_circle_outline,
         title: '准备好了',
         body: '首页会列出今天的课、余额和电量。\n这份引导可随时在「设置」里重放。',
@@ -204,9 +221,7 @@ class _WelcomePageState extends State<WelcomePage> {
 
   bool get _isLastPage => _page == _slides.length - 1;
 
-  void _finish() {
-    Navigator.of(context).maybePop();
-  }
+  Future<bool> _finish() => Navigator.of(context).maybePop();
 
   void _next() {
     if (_isLastPage) {
@@ -219,10 +234,11 @@ class _WelcomePageState extends State<WelcomePage> {
     );
   }
 
-  /// 主动作：先关闭向导（复用同一份在途 Future），再在根导航上跳目标页。
-  void _runAction(WelcomeAction action) {
+  /// 主动作：先关闭向导，再在原导航栈上打开目标页。
+  Future<void> _runAction(WelcomeAction action) async {
     final navigator = Navigator.of(context);
-    _finish();
+    await _finish();
+    if (!navigator.mounted) return;
     action(navigator);
   }
 

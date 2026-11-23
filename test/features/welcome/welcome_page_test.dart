@@ -41,7 +41,7 @@ void main() {
     expect(await WelcomeFlow.shouldShow(), isFalse);
   });
 
-  testWidgets('欢迎页四页滑动，翻完写 welcome_completed', (tester) async {
+  testWidgets('欢迎页五页滑动，翻完写 welcome_completed', (tester) async {
     await pumpHost(tester);
 
     final context = tester.element(find.text('宿主页面'));
@@ -53,11 +53,23 @@ void main() {
     expect(find.text('跳过'), findsOneWidget);
     expect(find.text('下一步'), findsOneWidget);
 
-    // 滑到末页。
+    expect(
+      tester
+          .widget<PageView>(find.byType(PageView))
+          .childrenDelegate
+          .estimatedChildCount,
+      5,
+    );
     for (var i = 0; i < 3; i++) {
       await tester.drag(find.byType(PageView), const Offset(-400, 0));
       await tester.pumpAndSettle();
     }
+    expect(find.text('配置 AI 助手'), findsOneWidget);
+    expect(find.text('去配置'), findsNothing);
+    expect(find.text('下一步'), findsOneWidget);
+
+    await tester.drag(find.byType(PageView), const Offset(-400, 0));
+    await tester.pumpAndSettle();
     expect(find.text('准备好了'), findsOneWidget);
     expect(find.text('开始使用'), findsOneWidget);
     expect(find.text('跳过'), findsNothing);
@@ -125,6 +137,42 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('打开通知提醒'), findsOneWidget);
+  });
+
+  testWidgets('「去配置」关闭向导并打开 AI 设置', (tester) async {
+    await pumpHost(tester);
+
+    final context = tester.element(find.text('宿主页面'));
+    final navigator = Navigator.of(context);
+    unawaited(
+      WelcomeFlow.show(
+        context,
+        onAiShortcut: (navigator) => unawaited(
+          navigator.push(
+            MaterialPageRoute<void>(
+              builder: (_) => const Scaffold(body: Text('AI 模型与接口')),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    for (var i = 0; i < 3; i++) {
+      await tester.tap(find.text('下一步'));
+      await tester.pumpAndSettle();
+    }
+    expect(find.text('配置 AI 助手'), findsOneWidget);
+
+    await tester.tap(find.text('去配置'));
+    await tester.pumpAndSettle();
+    expect(find.text('AI 模型与接口'), findsOneWidget);
+    expect(await completedFlag(), isTrue);
+
+    navigator.pop();
+    await tester.pumpAndSettle();
+    expect(find.text('宿主页面'), findsOneWidget);
+    expect(find.byType(WelcomePage), findsNothing);
   });
 
   testWidgets('系统返回键关闭也写完成标记', (tester) async {
