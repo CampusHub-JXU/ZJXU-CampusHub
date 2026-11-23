@@ -69,7 +69,8 @@ void main() {
       devicePixelRatio: 3,
     );
 
-    expect(filter.debugShortDescription, contains('bounded'));
+    expect(filter.debugShortDescription, contains('blur('));
+    expect(filter.debugShortDescription, contains('clamp'));
     expect(filter.debugShortDescription, isNot(contains('shader')));
   });
 }

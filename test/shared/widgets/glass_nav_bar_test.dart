@@ -41,7 +41,7 @@ void main() {
                 GlassNavBarDestination(
                   icon: Icons.today_outlined,
                   selectedIcon: Icons.today,
-                  label: '今日',
+                  label: '今天',
                 ),
                 GlassNavBarDestination(
                   icon: Icons.widgets_outlined,
@@ -66,7 +66,7 @@ void main() {
     for (var i = 0; i < icons.length; i++) {
       iconRects.add(tester.getRect(find.byType(Icon).at(i)));
     }
-    final labels = ['主页', '今日', '功能', '我的'];
+    final labels = ['主页', '今天', '功能', '我的'];
     final labelRects = labels.map((l) => tester.getRect(find.text(l))).toList();
 
     for (var i = 0; i < 4; i++) {

@@ -195,7 +195,12 @@ class GlassContainer extends StatelessWidget {
         wantsLiquid: wantsLiquid,
         liquidGlass: liquidGlass,
       );
-      final filtered = wantsLiquid
+      // 贴底通栏（radius == BorderRadius.zero）不走液态玻璃合成：贴屏三边的
+      // 无界模糊会把屏外透明黑卷进核，在左/右/下边缘形成暗角；bounded 磨砂
+      // 只采样栏内像素、边缘归一化，是 AppTileSurface 同款已验证路径。代价是
+      // 放弃仅顶缘的微折射，顶部 0.75dp 分割线与填充质感由 painter 与配方
+      // 继续保证。
+      final filtered = wantsLiquid && !isFlushRect
           ? _LiquidGlassFilterLayer(
               recipe: recipe,
               sigma: sigma,
@@ -206,7 +211,9 @@ class GlassContainer extends StatelessWidget {
           : BackdropFilter(
               filterConfig: acrylicBackdropFilter(
                 recipe,
-                sigma: sigma,
+                sigma: wantsLiquid
+                    ? _blurSigma(recipe, wantsLiquid: false, liquidGlass: false)
+                    : sigma,
                 bounded: true,
               ),
               child: content,

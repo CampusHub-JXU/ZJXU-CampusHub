@@ -241,7 +241,11 @@ void main() {
       ),
     );
 
-    expect(find.byType(LiquidGlassBoundsTracker), findsOneWidget);
+    // 贴底通栏不走液态玻璃合成：三边贴屏的无界模糊会把屏外透明黑卷进核，
+    // 形成暗角；改走 bounded 磨砂（AppTileSurface 同款路径）。
+    expect(find.byType(LiquidGlassBoundsTracker), findsNothing);
+    final backdrop = tester.widget<BackdropFilter>(find.byType(BackdropFilter));
+    expect(backdrop.filterConfig.toString(), contains('bounded'));
     expect(outerShadowPaint(tester), isNull);
     final edgePaint = tester.widget<CustomPaint>(
       find.descendant(

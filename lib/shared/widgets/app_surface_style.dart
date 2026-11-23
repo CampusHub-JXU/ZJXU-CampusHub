@@ -181,12 +181,13 @@ ImageFilterConfig acrylicBackdropFilter(
   MaterialRecipe recipe, {
   required double sigma,
   required bool bounded,
+  ui.TileMode? tileMode,
 }) {
-  final blur = ImageFilterConfig.blur(
-    sigmaX: sigma,
-    sigmaY: sigma,
-    bounded: bounded,
-  );
+  final blur = tileMode != null
+      ? ImageFilterConfig(
+          ui.ImageFilter.blur(sigmaX: sigma, sigmaY: sigma, tileMode: tileMode),
+        )
+      : ImageFilterConfig.blur(sigmaX: sigma, sigmaY: sigma, bounded: bounded);
   if (bounded || !recipe.adjustsSaturation) return blur;
   return ImageFilterConfig.compose(
     outer: blur,
@@ -227,8 +228,14 @@ ImageFilterConfig liquidGlassBackdropFilter({
 }) {
   // 不用 bounded：Impeller 下 bounded 模糊与外层 ImageFilter（此处为 shader）
   // compose 时会把卡片底部区域裁成黑块；外层已有 ClipRRect 且 shader 自身
-  // 按 u_bounds 夹紧采样范围，不会溢出卡面。
-  final blur = acrylicBackdropFilter(recipe, sigma: sigma, bounded: false);
+  // 按 u_bounds 夹紧采样范围，不会溢出卡面。显式使用 TileMode.clamp 防止
+  // 贴底通栏 Dock 在屏幕左右与底部边缘把屏外透明黑卷入模糊核，消除暗角。
+  final blur = acrylicBackdropFilter(
+    recipe,
+    sigma: sigma,
+    bounded: false,
+    tileMode: ui.TileMode.clamp,
+  );
   if (boundsHolder == null) {
     return composeLiquidGlassLayers(
       blur: blur,
