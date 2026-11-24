@@ -526,7 +526,7 @@ void main() {
     await advance(tester, const Duration(milliseconds: 300));
     await scroll;
     expect(controller.position.isScrollingNotifier.value, isFalse);
-    expect(await framesPerSecond(tester), inInclusiveRange(12, 18));
+    expect(await framesPerSecond(tester), inInclusiveRange(26, 34));
   });
 
   testWidgets('挂控制器闲置时按 idleFps 降频出帧', (tester) async {
@@ -569,7 +569,7 @@ void main() {
   testWidgets('无滚动控制器时，触摸提帧，最后一根指针结束后延迟降频', (tester) async {
     await tester.pumpWidget(background());
     await tester.pump();
-    expect(await framesPerSecond(tester), inInclusiveRange(12, 18));
+    expect(await framesPerSecond(tester), inInclusiveRange(26, 34));
 
     final first = await tester.startGesture(const Offset(100, 100));
     final state = stateOf(tester);
@@ -586,7 +586,7 @@ void main() {
     await advance(tester, const Duration(milliseconds: 320));
     expect(state.debugRenderedFrames - beforeHold, 20);
     await advance(tester, const Duration(milliseconds: 100));
-    expect(await framesPerSecond(tester), inInclusiveRange(12, 18));
+    expect(await framesPerSecond(tester), inInclusiveRange(26, 34));
   });
 
   testWidgets('Shader 时间连续跨过 60 秒', (tester) async {
