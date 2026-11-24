@@ -2,17 +2,13 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter/rendering.dart';
 
 import '../../core/theme/app_design_tokens.dart';
-import 'glass_container.dart';
 
-/// overlay 档玻璃表面外壳。
+/// 弹层表面外壳（对话框 / 底部弹层 / 悬浮菜单）。
 ///
-/// 供玻璃化弹层（对话框/底部弹层/悬浮菜单）复用：内部通过
-/// [GlassContainer]（[GlassTier.overlay]）提供 BackdropFilter 模糊 +
-/// squircle tint 渐变 + 高光描边，裁剪位于 BackdropFilter 祖先位置
-/// （ClipRRect 铁律由 GlassContainer 内部保证）。
-///
-/// [GlassStyleController] 总开关关闭或「模糊强度」拉到 0 时自动降级为
-/// 实色表面，不创建 BackdropFilter，无需调用方分支处理。
+/// 统一提供连续曲率圆角（squircle）与实色高对比表面：大面积弹层下方通常
+/// 叠有半透明黑色 barrier 遮罩，若继续走低透明度毛玻璃会把底层灰暗遮罩透上来
+/// 导致整块弹层灰扑扑；因此弹层统一使用实色卡片，液态玻璃材质仅保留给底部
+/// 悬浮 Dock（[GlassTier.nav]）。
 class GlassOverlaySurface extends StatelessWidget {
   const GlassOverlaySurface({
     super.key,
@@ -30,11 +26,32 @@ class GlassOverlaySurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GlassContainer(
-      tier: GlassTier.overlay,
-      borderRadius: borderRadius ?? BorderRadius.circular(AppRadius.floating),
-      padding: padding,
-      child: Material(type: MaterialType.transparency, child: child),
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final radius = borderRadius ?? BorderRadius.circular(AppRadius.floating);
+    final fillColor = isDark
+        ? cs.surfaceContainerHigh
+        : cs.surfaceContainerLowest;
+    final borderColor = isDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : cs.outlineVariant.withValues(alpha: 0.45);
+    final content = padding == EdgeInsets.zero
+        ? child
+        : Padding(padding: padding, child: child);
+
+    return ClipRRect(
+      borderRadius: radius,
+      child: DecoratedBox(
+        decoration: ShapeDecoration(
+          color: fillColor,
+          shape: RoundedSuperellipseBorder(
+            borderRadius: radius,
+            side: BorderSide(color: borderColor, width: isDark ? 0.8 : 0.75),
+          ),
+        ),
+        child: Material(type: MaterialType.transparency, child: content),
+      ),
     );
   }
 }

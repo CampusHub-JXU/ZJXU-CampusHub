@@ -39,11 +39,12 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('玻璃开启时渲染 overlay 模糊表面与内容', (tester) async {
+    testWidgets('玻璃开启时也渲染实色表面且无 BackdropFilter', (tester) async {
       await openDialog(tester, glassOn: true);
 
       expect(find.text('玻璃对话框内容'), findsOneWidget);
-      expect(find.byType(BackdropFilter), findsOneWidget);
+      expect(find.byType(GlassOverlaySurface), findsOneWidget);
+      expect(find.byType(BackdropFilter), findsNothing);
     });
 
     testWidgets('玻璃关闭时降级实色且无 BackdropFilter', (tester) async {
@@ -79,11 +80,12 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('玻璃开启时渲染 overlay 模糊表面与内容', (tester) async {
+    testWidgets('玻璃开启时也渲染实色表面且无 BackdropFilter', (tester) async {
       await openSheet(tester, glassOn: true);
 
       expect(find.text('玻璃弹层内容'), findsOneWidget);
-      expect(find.byType(BackdropFilter), findsOneWidget);
+      expect(find.byType(GlassOverlaySurface), findsOneWidget);
+      expect(find.byType(BackdropFilter), findsNothing);
     });
 
     testWidgets('玻璃关闭时降级实色且无 BackdropFilter', (tester) async {
