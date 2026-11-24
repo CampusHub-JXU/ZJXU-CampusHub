@@ -44,7 +44,7 @@ class HomeFluidBackground extends StatefulWidget {
     required this.fallback,
     this.targetFps = 60,
     this.scrollController,
-    this.idleFps = 15,
+    this.idleFps = 30,
   });
 
   /// 着色器渲染尺寸相对逻辑尺寸的缩放（0.3 ≈ 像素数 9%，低频液态渐变双线性放大无损）。
@@ -59,7 +59,7 @@ class HomeFluidBackground extends StatefulWidget {
   /// 宿主页面的滚动控制器（可选），用于感知滚动及惯性滑行。
   final ScrollController? scrollController;
 
-  /// 空闲时的帧率上限，默认 15 fps，且受 [targetFps] 限制。
+  /// 空闲时的帧率上限，默认 30 fps，且受 [targetFps] 限制。
   final int idleFps;
 
   final double intensity;

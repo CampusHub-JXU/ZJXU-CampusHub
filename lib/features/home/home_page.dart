@@ -903,7 +903,7 @@ class _HomePageState extends State<HomePage> {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const SizedBox(height: AppSpacing.sectionBreak),
+                      const SizedBox(height: 28),
                       // 今天区锚点：始终留在树中，供 dock「今天」滚动定位与 ScrollSpy 判定。
                       Container(
                         key: _todaySectionKey,
@@ -924,7 +924,7 @@ class _HomePageState extends State<HomePage> {
                                 _pushFeatureRoute(context, 'schedule'),
                               ),
                             ),
-                            const SizedBox(height: AppSpacing.md),
+                            const SizedBox(height: AppSpacing.sm),
                             if (!presentation.today.isEmpty)
                               todayWidget
                             else if (!todayAgenda.hasExtras)
@@ -935,7 +935,7 @@ class _HomePageState extends State<HomePage> {
                               ),
                             if (todayAgenda.hasExtras) ...[
                               if (!presentation.today.isEmpty)
-                                const SizedBox(height: 10),
+                                const SizedBox(height: AppSpacing.sm),
                               HomeTodayAgendaCards(
                                 agenda: todayAgenda,
                                 onOpenExam: () => unawaited(
@@ -952,13 +952,13 @@ class _HomePageState extends State<HomePage> {
                             // 今日公告并入「今天」区收尾：与议程卡片同卡面配方，
                             // 无当日新增公告时卡片自身收起不占位。
                             if (noticeVisible) ...[
-                              const SizedBox(height: 10),
+                              const SizedBox(height: AppSpacing.sm),
                               noticeWidget,
                             ],
                           ],
                         ),
                       ),
-                      const SizedBox(height: AppSpacing.sectionBreak),
+                      const SizedBox(height: 28),
                       // 功能区锚点：key 挂在容器上，顶距由上一段落的 sectionBreak 承担，
                       // 滚动到位后标题落在实色区而不是状态栏羽化区。
                       Container(
@@ -1033,7 +1033,7 @@ class _TodayZoneHeader extends StatelessWidget {
             onTap: onOpenSchedule,
             borderRadius: BorderRadius.circular(8),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -1076,7 +1076,7 @@ class _TodayEmptyState extends StatelessWidget {
         radius: AppRadius.tile,
         child: AppTileSurface(
           borderRadius: AppRadius.tileBorder,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
           blurred: false,
           onTap: onOpenSchedule,
           child: Row(
@@ -1086,7 +1086,7 @@ class _TodayEmptyState extends StatelessWidget {
                 accentColor: cs.primary,
                 size: AppIconBadgeSize.medium,
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -1098,7 +1098,7 @@ class _TodayEmptyState extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: context.appText.rowTitle.copyWith(height: 1.25),
                     ),
-                    const SizedBox(height: 3),
+                    const SizedBox(height: 2),
                     Text(
                       '浏览本周与全学期课程',
                       maxLines: 1,

@@ -44,8 +44,8 @@ class HomeTodaySection extends StatelessWidget {
   final VoidCallback? onOpenSchedule;
 
   /// 时间列基准宽度，随系统字号倍率适度放大以维持等宽对齐。
-  static const double _baseTimeColumnWidth = 50;
-  static const double _railColumnWidth = 16;
+  static const double _baseTimeColumnWidth = 44;
+  static const double _railColumnWidth = 12;
 
   /// 最多展示的行数（考试 + 课程合计），超出部分折叠进「查看全部」。
   static const int _maxRows = 3;
@@ -87,12 +87,9 @@ class HomeTodaySection extends StatelessWidget {
       child: AppTileSurface(
         blurred: false,
         borderRadius: AppRadius.cardBorder,
-        padding: EdgeInsets.fromLTRB(
-          14,
-          today.isCollapsed ? 2 : (today.title != '今天' ? 10 : 4),
-          14,
-          today.isCollapsed ? 2 : 4,
-        ),
+        padding: today.isCollapsed
+            ? const EdgeInsets.symmetric(horizontal: 12, vertical: 9)
+            : EdgeInsets.fromLTRB(12, today.title != '今天' ? 8 : 2, 12, 2),
         onTap: onOpenSchedule,
         child: section,
       ),
@@ -118,33 +115,30 @@ class HomeTodaySection extends StatelessWidget {
     final detailText = count == 1
         ? '${next.timeText} ${next.courseName}'
         : '下一门 ${next.timeText} ${next.courseName}';
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        children: [
-          Text(
-            '之后还有 $count 门课',
-            style: context.appText.group.copyWith(
-              color: cs.primary,
+    return Row(
+      children: [
+        Text(
+          '之后还有 $count 门课',
+          style: context.appText.group.copyWith(
+            color: cs.primary,
+            fontFeatures: const [FontFeature.tabularFigures()],
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            detailText,
+            style: context.appText.meta.copyWith(
+              color: secondaryTextColor,
               fontFeatures: const [FontFeature.tabularFigures()],
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              detailText,
-              style: context.appText.meta.copyWith(
-                color: secondaryTextColor,
-                fontFeatures: const [FontFeature.tabularFigures()],
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          const SizedBox(width: 4),
-          Icon(Icons.chevron_right_rounded, size: 16, color: cs.primary),
-        ],
-      ),
+        ),
+        const SizedBox(width: 4),
+        Icon(Icons.chevron_right_rounded, size: 16, color: cs.primary),
+      ],
     );
   }
 
@@ -182,7 +176,7 @@ class HomeTodaySection extends StatelessWidget {
       children: [
         if (showPreviewHeader) ...[
           Padding(
-            padding: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.only(bottom: 6),
             child: Text(
               today.title,
               maxLines: 1,
@@ -238,7 +232,7 @@ class HomeTodaySection extends StatelessWidget {
   }) {
     final cs = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
+      padding: const EdgeInsets.symmetric(vertical: 7),
       child: Row(
         children: [
           Text(
@@ -278,7 +272,7 @@ class HomeTodaySection extends StatelessWidget {
     final cs = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
     final compact = today.isPreview;
-    final verticalPad = compact ? 9.0 : 11.0;
+    final verticalPad = compact ? 7.0 : 9.0;
 
     final isExam = entry.exam != null;
     final course = entry.course;
@@ -388,7 +382,7 @@ class HomeTodaySection extends StatelessWidget {
                     ),
                   ),
                   if (secondaryTime.isNotEmpty) ...[
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 1),
                     FittedBox(
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
@@ -411,9 +405,9 @@ class HomeTodaySection extends StatelessWidget {
           ),
           // 单条时不渲染时间轴：孤立的节点圆点没有意义，直接用留白分隔。
           if (isSingle)
-            const SizedBox(width: 12)
+            const SizedBox(width: 10)
           else ...[
-            const SizedBox(width: 6),
+            const SizedBox(width: 4),
             SizedBox(
               width: _railColumnWidth,
               child: CustomPaint(
@@ -430,7 +424,7 @@ class HomeTodaySection extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
           ],
           Expanded(
             child: Column(
@@ -466,7 +460,7 @@ class HomeTodaySection extends StatelessWidget {
                         ],
                       ),
                       if (formattedLocation.isNotEmpty) ...[
-                        const SizedBox(height: 3),
+                        const SizedBox(height: 2),
                         Text(
                           formattedLocation,
                           style: context.appText.meta.copyWith(
@@ -571,10 +565,10 @@ class _TimelineRailPainter extends CustomPainter {
     final cy = nodeCenterY.clamp(6.0, size.height - 6.0);
 
     final nodeRadius = switch (nodeKind) {
-      _TimelineNodeKind.exam => 4.0,
-      _TimelineNodeKind.ongoing => 4.0,
-      _TimelineNodeKind.upcoming => 3.5,
-      _TimelineNodeKind.done => 3.0,
+      _TimelineNodeKind.exam => 3.5,
+      _TimelineNodeKind.ongoing => 3.5,
+      _TimelineNodeKind.upcoming => 3.0,
+      _TimelineNodeKind.done => 2.5,
     };
 
     final railPaint = Paint()
@@ -600,7 +594,7 @@ class _TimelineRailPainter extends CustomPainter {
       case _TimelineNodeKind.exam:
         canvas.drawCircle(
           Offset(cx, cy),
-          7.0,
+          6.0,
           Paint()..color = errorColor.withValues(alpha: 0.12),
         );
         canvas.drawCircle(
@@ -611,7 +605,7 @@ class _TimelineRailPainter extends CustomPainter {
       case _TimelineNodeKind.ongoing:
         canvas.drawCircle(
           Offset(cx, cy),
-          7.5,
+          6.0,
           Paint()..color = primaryColor.withValues(alpha: 0.12),
         );
         canvas.drawCircle(

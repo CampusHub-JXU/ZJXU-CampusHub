@@ -64,7 +64,7 @@ class HomeCampusNoticeSection extends StatelessWidget {
       child: AppTileSurface(
         blurred: false,
         borderRadius: AppRadius.cardBorder,
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(10),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -79,7 +79,7 @@ class HomeCampusNoticeSection extends StatelessWidget {
                 excludeFromSemantics: true,
                 borderRadius: BorderRadius.circular(AppRadius.control),
                 child: Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.only(bottom: 6),
                   child: Row(
                     children: [
                       Text(
@@ -139,15 +139,15 @@ class HomeCampusNoticeSection extends StatelessWidget {
               ),
             ),
             Divider(
-              height: 1,
-              thickness: 1,
+              height: 0.5,
+              thickness: 0.5,
               color: cs.outlineVariant.withValues(alpha: 0.35),
             ),
             for (final (index, notice) in notices.indexed) ...[
               if (index > 0)
                 Divider(
-                  height: 1,
-                  thickness: 1,
+                  height: 0.5,
+                  thickness: 0.5,
                   color: cs.outlineVariant.withValues(alpha: 0.35),
                 ),
               _NoticeRow(
@@ -200,7 +200,7 @@ class _NoticeRow extends StatelessWidget {
         excludeFromSemantics: true,
         borderRadius: BorderRadius.circular(AppRadius.control),
         child: Padding(
-          padding: EdgeInsets.only(top: 10, bottom: isLast ? 0 : 10),
+          padding: EdgeInsets.only(top: 7, bottom: isLast ? 0 : 7),
           child: Row(
             children: [
               if (unread) ...[
@@ -212,7 +212,7 @@ class _NoticeRow extends StatelessWidget {
                     shape: BoxShape.circle,
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 7),
               ],
               Expanded(
                 child: Text(

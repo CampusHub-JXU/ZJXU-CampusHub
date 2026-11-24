@@ -1,8 +1,11 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../../core/theme/app_design_tokens.dart';
+import '../../core/theme/personalization_controller.dart';
+import 'models/example_campus_snapshot.dart';
 import 'models/home_presentation.dart';
 import 'widgets/home_asset_strip.dart';
+import 'widgets/home_campus_notice_section.dart';
 import 'widgets/home_event_banner.dart';
 import 'widgets/home_primary_status_hero.dart';
 import 'widgets/home_today_section.dart';
@@ -59,6 +62,24 @@ class HomeSurfaceScene extends StatelessWidget {
           ],
           const SizedBox(height: AppSpacing.md),
           HomeTodaySection(today: presentation.today, onOpenSchedule: () {}),
+          // 「教务处公告」开关预览：与线上首页一致并入「今天」区收尾，
+          // 关闭时收起不占位（卡片自身仅展示当日新增公告）。
+          ValueListenableBuilder<bool>(
+            valueListenable:
+                PersonalizationController.instance.homeCampusNoticeEnabled,
+            builder: (context, noticeEnabled, _) {
+              if (!noticeEnabled) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: HomeCampusNoticeSection(
+                  head: ExampleCampusSnapshot.noticeHead,
+                  now: ExampleCampusSnapshot.previewNoticeDate,
+                  onTapNotice: (_) {},
+                  onTapAll: () {},
+                ),
+              );
+            },
+          ),
           const SizedBox(height: AppSpacing.md),
           HomeAssetStrip(
             status: presentation.status,

@@ -213,7 +213,7 @@ class _AgendaBentoCard extends StatelessWidget {
           blurred: false,
           borderRadius: AppRadius.cardBorder,
           onTap: onTap,
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(10),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.max,
@@ -250,10 +250,10 @@ class _AgendaBentoCard extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Wrap(
-                spacing: 6,
-                runSpacing: 4,
+                spacing: 5,
+                runSpacing: 3,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   _AgendaTag(
@@ -277,7 +277,7 @@ class _AgendaBentoCard extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 4),
               Text(
                 itemTitle,
                 maxLines: 2,
@@ -290,9 +290,9 @@ class _AgendaBentoCard extends StatelessWidget {
               ),
               if (footerSummary != null) ...[
                 const Spacer(),
-                const SizedBox(height: 8),
-                const _AgendaHairlineDivider(indent: 0),
                 const SizedBox(height: 6),
+                const _AgendaHairlineDivider(indent: 0),
+                const SizedBox(height: 4),
                 Text(
                   footerSummary!,
                   maxLines: 1,
@@ -342,7 +342,7 @@ class _SingleAgendaCard<T> extends StatelessWidget {
       child: AppTileSurface(
         blurred: false,
         borderRadius: AppRadius.cardBorder,
-        padding: const EdgeInsets.all(4),
+        padding: const EdgeInsets.all(2),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -357,7 +357,7 @@ class _SingleAgendaCard<T> extends StatelessWidget {
                 excludeFromSemantics: true,
                 borderRadius: BorderRadius.circular(AppRadius.card - 4),
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
+                  padding: const EdgeInsets.fromLTRB(8, 6, 6, 6),
                   child: Row(
                     children: [
                       Text(
@@ -397,9 +397,9 @@ class _SingleAgendaCard<T> extends StatelessWidget {
                 ),
               ),
             ),
-            const _AgendaHairlineDivider(indent: 10),
+            const _AgendaHairlineDivider(indent: 8),
             for (final (index, item) in items.indexed) ...[
-              if (index > 0) const _AgendaHairlineDivider(indent: 10),
+              if (index > 0) const _AgendaHairlineDivider(indent: 8),
               itemBuilder(item),
             ],
           ],
@@ -539,12 +539,12 @@ class _AgendaRowShell extends StatelessWidget {
         excludeFromSemantics: true,
         borderRadius: BorderRadius.circular(AppRadius.card - 4),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               leading,
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -558,7 +558,7 @@ class _AgendaRowShell extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 1),
                     Text(
                       subtitle,
                       style: subtitleStyle,
@@ -568,7 +568,7 @@ class _AgendaRowShell extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               Icon(
                 Icons.chevron_right_rounded,
                 size: 16,
@@ -589,7 +589,7 @@ class _AgendaTag extends StatelessWidget {
     required this.backgroundColor,
     required this.foregroundColor,
     this.tabular = false,
-    this.minWidth = 50,
+    this.minWidth = 46,
   });
 
   final String label;
@@ -615,7 +615,7 @@ class _AgendaTag extends StatelessWidget {
           ),
         ),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
           child: Text(
             label,
             textAlign: TextAlign.center,
