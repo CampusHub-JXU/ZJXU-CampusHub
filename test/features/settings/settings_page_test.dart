@@ -26,6 +26,17 @@ void main() {
     await resetTestEnvironment();
   });
 
+  /// 顶部搜索框的 TextField 内部带横向 Scrollable，裸 scrollUntilVisible
+  /// 会因匹配多个滚动容器而失败；这里显式锁定页面主 ListView（树序第一个
+  /// Scrollable，TextField 的 Scrollable 是其子孙，遍历在其后）。
+  Future<void> scrollSettingsTo(WidgetTester tester, Finder finder) async {
+    await tester.scrollUntilVisible(
+      finder,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+  }
+
   testWidgets('显示外观设置链接和学期设置', (tester) async {
     await pumpPage(tester, const SettingsPage());
 
@@ -34,16 +45,16 @@ void main() {
     expect(find.text('外观与个性化'), findsNothing);
     expect(find.text('主题与色彩'), findsNothing);
 
-    await tester.scrollUntilVisible(find.text('检查更新'), 300);
+    await scrollSettingsTo(tester, find.text('检查更新'));
     expect(find.text('检查更新'), findsOneWidget);
   });
 
   testWidgets('「更新下载线路」默认自动，选择后持久化', (tester) async {
     await pumpPage(tester, const SettingsPage());
     // 该下拉在屏外、行文本可能被遮：先对行做滚动定位，再对组件本身 ensureVisible。
-    await tester.scrollUntilVisible(
+    await scrollSettingsTo(
+      tester,
       find.byKey(const Key('update_route_dropdown')),
-      300,
     );
     await tester.ensureVisible(find.byKey(const Key('update_route_dropdown')));
     await tester.pumpAndSettle();
@@ -61,17 +72,18 @@ void main() {
   testWidgets('无小节标题分隔，关键入口齐备', (tester) async {
     await pumpPage(tester, const SettingsPage());
 
-    // 分组标题已移除：Bento 磁贴 + PlainListGroup 直接承载入口。
+    // 无小节标题：保留顶部搜索框与干净分组间距。
     expect(find.byType(PlainSectionHeader), findsNothing);
+    expect(find.byType(TextField), findsOneWidget);
     expect(find.text('主题与材质'), findsOneWidget);
     expect(find.text('首页个性化'), findsOneWidget);
 
-    await tester.scrollUntilVisible(find.text('写入系统日历'), 300);
+    await scrollSettingsTo(tester, find.text('写入系统日历'));
     expect(find.text('开学日'), findsOneWidget);
     expect(find.text('写入系统日历'), findsOneWidget);
     expect(find.text('桌面组件与后台'), findsOneWidget);
 
-    await tester.scrollUntilVisible(find.text('AI 模型与接口'), 300);
+    await scrollSettingsTo(tester, find.text('AI 模型与接口'));
     expect(find.text('AI 模型与接口'), findsOneWidget);
     // 旧分组名已并入新分组，不再存在。
     expect(find.text('课表与后台'), findsNothing);
@@ -80,24 +92,66 @@ void main() {
     expect(find.text('教务系统'), findsNothing);
     expect(find.text('统一认证'), findsNothing);
 
-    await tester.scrollUntilVisible(find.text('关于与诊断'), 300);
+    await scrollSettingsTo(tester, find.text('关于与诊断'));
     expect(find.text('关于与诊断'), findsOneWidget);
+  });
+
+  testWidgets('顶部搜索框支持过滤设置项并可清空恢复', (tester) async {
+    await pumpPage(tester, const SettingsPage());
+
+    await tester.enterText(find.byType(TextField), '缓存');
+    await tester.pumpAndSettle();
+
+    expect(find.text('清除离线缓存'), findsOneWidget);
+    expect(find.text('主题与材质'), findsNothing);
+
+    await tester.enterText(find.byType(TextField), '');
+    await tester.pumpAndSettle();
+
+    expect(find.text('主题与材质'), findsOneWidget);
+  });
+
+  testWidgets('搜索可命中子页面设置项并显示路径', (tester) async {
+    await pumpPage(tester, const SettingsPage());
+
+    // 「主题与材质 › 显示与排版」下的纯黑模式。
+    await tester.enterText(find.byType(TextField), '纯黑模式');
+    await tester.pumpAndSettle();
+    expect(find.text('纯黑模式'), findsWidgets);
+    expect(find.text('主题与材质 › 显示与排版'), findsOneWidget);
+
+    // 「首页个性化 › 首页内容」下的校徽水印。
+    await tester.enterText(find.byType(TextField), '校徽水印');
+    await tester.pumpAndSettle();
+    expect(find.text('校徽水印'), findsWidgets);
+    expect(find.text('首页个性化 › 首页内容'), findsOneWidget);
+  });
+
+  testWidgets('子页面设置项支持分词与无匹配空态', (tester) async {
+    await pumpPage(tester, const SettingsPage());
+
+    // 空格分词：两个词命中同一子项。
+    await tester.enterText(find.byType(TextField), '壁纸 缩放');
+    await tester.pumpAndSettle();
+    expect(find.text('壁纸'), findsOneWidget);
+    expect(find.text('首页个性化 › 壁纸'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), '不存在的设置项');
+    await tester.pumpAndSettle();
+    expect(find.text('未找到相关设置'), findsOneWidget);
   });
 
   testWidgets('学期磁贴展示开学日与当前学期', (tester) async {
     await pumpPage(tester, const SettingsPage());
 
     // 开学日与当前学期合并为同一 Bento 磁贴：大号日期 + 精简学期串。
-    await tester.scrollUntilVisible(find.text('开学日'), 300);
+    await scrollSettingsTo(tester, find.text('开学日'));
     expect(find.text('开学日'), findsOneWidget);
     expect(
       find.textContaining(RegExp(r'\d{2}-\d{2} · 第[一二]学期')),
       findsOneWidget,
     );
-
-    // 未登录教务时无法在线识别，应回退为日期推算并明确标注来源。
     await tester.pumpAndSettle();
-    expect(find.textContaining('按日期推算'), findsOneWidget);
   });
 
   testWidgets('真实 push 转场期间学期异步结果延后到转场结束', (tester) async {
@@ -144,11 +198,11 @@ void main() {
       }
       expect(route.animation!.isAnimating, isFalse);
       expect(transitions.isBusy, isTrue);
-      expect(find.text('按日期推算'), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
       transitions.release();
       await tester.pumpAndSettle();
-      expect(find.text('按日期推算'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
     } finally {
       if (transitions.isBusy) transitions.release();
     }
@@ -205,7 +259,7 @@ void main() {
   testWidgets('课前提醒连续变更在转场中合并，空闲后显示最新值', (tester) async {
     await pumpPage(tester, const SettingsPage());
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.text('课前提醒'), 300);
+    await scrollSettingsTo(tester, find.text('课前提醒'));
 
     final transitions = PageTransitionActivity.instance;
     transitions.debugMaxHold = const Duration(minutes: 1);
@@ -244,7 +298,7 @@ void main() {
     await pumpPage(tester, const SettingsPage());
 
     // 手动「年级」下拉已移除，学期分组只剩自动识别与日期相关条目。
-    await tester.scrollUntilVisible(find.text('开学日'), 300);
+    await scrollSettingsTo(tester, find.text('开学日'));
     expect(find.text('年级'), findsNothing);
     expect(find.text('当前学期'), findsNothing);
     expect(find.text('开学日'), findsOneWidget);
@@ -289,7 +343,7 @@ void main() {
     final handle = tester.ensureSemantics();
     await pumpPage(tester, const SettingsPage());
 
-    await tester.scrollUntilVisible(find.text('写入系统日历'), 300);
+    await scrollSettingsTo(tester, find.text('写入系统日历'));
 
     final toggleNode = ancestorWith(
       tester,
@@ -325,7 +379,7 @@ void main() {
   testWidgets('清除离线缓存需二次确认，取消不执行', (tester) async {
     await pumpPage(tester, const SettingsPage());
 
-    await tester.scrollUntilVisible(find.text('清除离线缓存'), 300);
+    await scrollSettingsTo(tester, find.text('清除离线缓存'));
     // 学期分组移除「年级」行后内容变短，滚动停位更靠近视口边缘；
     // 显式 ensureVisible + settle 保证行完全可点击（内容与语义不变）。
     await tester.ensureVisible(find.text('清除离线缓存'));
@@ -354,14 +408,14 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
 
-    await tester.scrollUntilVisible(find.text('关于与诊断'), 300);
+    await scrollSettingsTo(tester, find.text('关于与诊断'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
 
   testWidgets('设置页不再直接暴露调试日志分段（已迁往关于页隐藏入口）', (tester) async {
     await pumpPage(tester, const SettingsPage());
-    await tester.scrollUntilVisible(find.text('关于与诊断'), 300);
+    await scrollSettingsTo(tester, find.text('关于与诊断'));
 
     expect(find.text('调试日志'), findsNothing);
     expect(find.text('最低日志级别'), findsNothing);
@@ -395,7 +449,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.scrollUntilVisible(find.text('重放新手引导'), 300);
+    await scrollSettingsTo(tester, find.text('重放新手引导'));
     await tester.ensureVisible(find.text('重放新手引导'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('重放新手引导'));

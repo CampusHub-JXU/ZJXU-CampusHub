@@ -94,8 +94,14 @@ void main() {
   }
 
   /// 滚动到「写入系统日历」磁贴：小节标题已移除，直接以磁贴文本为锚点。
+  /// 顶部搜索框的 TextField 带横向 Scrollable，显式锁定页面主 ListView
+  /// （树序第一个 Scrollable，TextField 的 Scrollable 是其子孙）。
   Future<void> revealSyncRow(WidgetTester tester) async {
-    await tester.scrollUntilVisible(find.text('写入系统日历'), 200);
+    await tester.scrollUntilVisible(
+      find.text('写入系统日历'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.ensureVisible(find.text('写入系统日历'));
     await tester.pumpAndSettle();
   }

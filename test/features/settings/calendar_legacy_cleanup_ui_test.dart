@@ -91,7 +91,11 @@ void main() {
   }
 
   Future<void> revealSyncRow(WidgetTester tester) async {
-    await tester.scrollUntilVisible(find.text('写入系统日历'), 200);
+    await tester.scrollUntilVisible(
+      find.text('写入系统日历'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.ensureVisible(find.text('写入系统日历'));
     await tester.pumpAndSettle();
   }
@@ -138,7 +142,6 @@ void main() {
     await revealSyncRow(tester);
 
     expect(find.text('扫描遗留日程'), findsOneWidget);
-    expect(find.text('只读扫描，不会删除'), findsOneWidget);
 
     await tester.tap(find.text('扫描遗留日程'));
     await tester.pumpAndSettle();

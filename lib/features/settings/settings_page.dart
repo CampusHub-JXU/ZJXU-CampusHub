@@ -17,23 +17,26 @@ import '../../core/theme/app_design_tokens.dart';
 import '../../core/theme/app_preferences_controller.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/theme/page_transition_activity.dart';
+import '../../core/theme/personalization_controller.dart';
 import '../../core/update/apk_download_route.dart';
 import '../../core/update/apk_update_controller.dart';
 import '../../core/update/update_checker.dart';
 import '../../core/update/update_model.dart';
 import '../../shared/widgets/app_app_bar.dart';
-import '../../shared/widgets/app_brand_icon.dart';
 import '../../shared/widgets/app_dropdown.dart';
 import '../../shared/widgets/app_feedback.dart';
 import '../../shared/widgets/app_icon_badge.dart';
+import '../../shared/widgets/app_search_field.dart';
 import '../../shared/widgets/app_surface_style.dart';
 import '../../shared/widgets/app_tile_surface.dart';
 import '../../shared/widgets/glass_dialog_route.dart';
 import '../../shared/widgets/plain_list.dart';
 import '../../shared/widgets/update_dialog.dart';
 import 'calendar_legacy_cleanup_dialog.dart';
+import 'settings_search_index.dart';
+import 'widgets/semester_start_picker_sheet.dart';
 
-class SettingsPage extends StatelessWidget {
+class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
 
   /// 宽屏（平板 / 折叠屏展开）下内容列限宽居中；手机宽度不受影响。
@@ -42,22 +45,137 @@ class SettingsPage extends StatelessWidget {
   /// Bento 磁贴之间的间距，与「我的」页双列磁贴一致。
   static const double _bentoGap = AppSpacing.sm;
 
+  /// 无小标题分组之间的垂直间距。
+  static const double _groupGap = 14;
+
   /// 缓存平台包信息 Future，避免 build 重建时重复经 MethodChannel 查询。
   static final Future<PackageInfo> _packageInfoFuture =
       PackageInfo.fromPlatform();
+
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+/// 首次开启时用户选择的目标日历类型。
+enum _CalendarSyncTarget {
+  /// 本应用专属本地日历（[CalendarSyncControl.enable] 不传 calendarId）。
+  local,
+
+  /// 用户从系统可写日历中显式选择。
+  existing,
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  // ── 学期识别状态 ──────────────────────────────────────────────────────────
+  ScheduleTermContext? _resolved;
+  bool _termLoading = true;
+
+  // ── 课表日历同步状态 ──────────────────────────────────────────────────────
+  CalendarSyncControl get _control => CalendarSyncControl.instance;
+  CalendarReminderSettings get _reminder => CalendarReminderSettings.instance;
+
+  /// 有开启 / 扫描 / 清理请求在途：期间忽略重复点击，避免重复原生调用。
+  bool _busy = false;
+
+  /// Coalesces async store/auth notifications until a route transition is idle.
+  bool _transitionRefreshScheduled = false;
+
+  /// 在途 Future 的真实进度文案；仅请求进行中非 null，空闲时**不**显示任何指示器。
+  String? _progress;
+
+  /// 最近一次清理结果摘要（仅本会话持有，用于 cleanupPending 时说明残留）。
+  String? _cleanupNote;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_resolveTerm());
+    _control.addListener(_handleControlChanged);
+    _reminder.addListener(_handleControlChanged);
+    // paused 的副标题取决于当前是否有已验证教务身份，登录 / 登出时需要重绘。
+    ZhengfangAuth.instance.addListener(_handleControlChanged);
+    unawaited(_control.load().then((_) => _handleControlChanged()));
+    // 持久化提前量在启动时已 load；此处兜底确保设置页拿到磁盘值。
+    unawaited(_reminder.load().then((_) => _handleControlChanged()));
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _control.removeListener(_handleControlChanged);
+    _reminder.removeListener(_handleControlChanged);
+    ZhengfangAuth.instance.removeListener(_handleControlChanged);
+    super.dispose();
+  }
+
+  Future<void> _resolveTerm() async {
+    final resolved = await CurrentTermResolver.instance.resolve();
+    // The settings route is snapshot during its push/pop transition. Keep the
+    // async read out of that interval so it cannot invalidate the snapshot.
+    await PageTransitionActivity.instance.whenIdle();
+    if (!mounted) return;
+    setState(() {
+      _resolved = resolved;
+      _termLoading = false;
+    });
+  }
+
+  void _handleControlChanged() {
+    if (!mounted || _transitionRefreshScheduled) return;
+    _transitionRefreshScheduled = true;
+    unawaited(_refreshAfterTransition());
+  }
+
+  Future<void> _refreshAfterTransition() async {
+    await PageTransitionActivity.instance.whenIdle();
+    if (!mounted) return;
+    _transitionRefreshScheduled = false;
+    setState(() {});
+  }
+
+  static String _formatDotDate(DateTime date) =>
+      '${date.month.toString().padLeft(2, '0')}.${date.day.toString().padLeft(2, '0')}';
+
+  static String _compactTermLabel(ScheduleTermContext term) {
+    final startShort = (term.academicYear % 100).toString().padLeft(2, '0');
+    final endShort = ((term.academicYear + 1) % 100).toString().padLeft(2, '0');
+    return '$startShort-$endShort · ${term.termLabel}';
+  }
+
+  String? get _calendarDetailNotice => switch (_control.state) {
+    CalendarSyncControlState.off => null,
+    // 教务未登录 / 会话过期 / 冷启动尚未恢复：开关保持开启，绑定与事件都保留，
+    // 同一账号重新登录后自动继续（不是换号，不暂停）。
+    CalendarSyncControlState.enabled =>
+      _control.isWaitingForIdentity ? '等待登录教务系统后继续同步，已保留原绑定账号' : null,
+    // 当前确有另一个已验证教务账号时才是「账号不一致」；没有已验证身份时
+    // （含旧版本因登出而落盘的 paused）同一账号登录后会自动恢复，不能提示不一致。
+    CalendarSyncControlState.paused =>
+      ZhengfangAuth.instance.verifiedStudentId == null
+          ? '已暂停：登录教务系统后将自动恢复（同一账号）'
+          : '已暂停：当前教务账号与绑定账号不一致，重新开启将绑定当前账号',
+    CalendarSyncControlState.cleanupPending => '清理未完成，完成清理后才能重新开启',
+  };
+
+  /// 非 enabled 状态才显示「扫描遗留日程」入口；enabled 时由关闭开关的确认触发。
+  bool get _showScanEntry => _control.state != CalendarSyncControlState.enabled;
+
+  /// 0 不是「不提醒」：原生 `CalendarProviderStore` 对每个归属事件固定插入
+  /// 一条 `MINUTES = reminderMinutes` 的 `METHOD_ALERT` 提醒，0 表示**课程
+  /// 开始时**提醒，因此如实标注，不谎称可关闭提醒。
+  static String _reminderLabel(int minutes) =>
+      minutes <= 0 ? '课程开始时提醒' : '提前 $minutes 分钟';
 
   Future<void> _pickSemesterStartDate(
     BuildContext context,
     DateTime currentDate,
   ) async {
-    final picked = await showDatePicker(
-      context: context,
+    final picked = await showSemesterStartPickerSheet(
+      context,
       initialDate: currentDate,
-      firstDate: DateTime(2020, 1, 1),
-      lastDate: DateTime(2100, 12, 31),
-      helpText: '选择开学日',
-      cancelText: '取消',
-      confirmText: '确定',
     );
     if (picked == null) return;
     await SemesterCalendar.instance.setSemesterStartDate(picked);
@@ -124,151 +242,12 @@ class SettingsPage extends StatelessWidget {
   Future<void> _replayWelcome(BuildContext context) =>
       context.pushNamed('welcome');
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppAppBar(
-        title: const Text('设置'),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: AppSpacing.lg),
-            child: Center(
-              child: _VersionCapsule(
-                packageInfoFuture: _packageInfoFuture,
-                onCheckUpdate: () => _checkForUpdate(context),
-              ),
-            ),
-          ),
-        ],
-      ),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: _contentMaxWidth),
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(
-              kPlainListGutter,
-              AppSpacing.md,
-              kPlainListGutter,
-              32,
-            ),
-            children: [
-              IntrinsicHeight(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(
-                      child: _ThemeBentoTile(
-                        onTap: () => context.pushNamed('appearance-theme'),
-                      ),
-                    ),
-                    const SizedBox(width: _bentoGap),
-                    Expanded(
-                      child: _PersonalizationBentoTile(
-                        onTap: () =>
-                            context.pushNamed('appearance-personalization'),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: kPlainListGroupGap),
-              _SemesterAndCalendarSection(
-                gap: _bentoGap,
-                onPickSemesterStartDate: _pickSemesterStartDate,
-              ),
-              const SizedBox(height: kPlainListGroupGap),
-              _SettingsListGroup(
-                children: [
-                  PlainListRow(
-                    title: '桌面组件与后台',
-                    onTap: () => context.pushNamed('desktop-background'),
-                  ),
-                  PlainListRow(
-                    title: 'AI 模型与接口',
-                    onTap: () => context.pushNamed('ai-settings'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.md),
-              _SettingsListGroup(
-                children: [
-                  ValueListenableBuilder<AppRelease?>(
-                    valueListenable: UpdateChecker.instance.availableRelease,
-                    builder: (context, release, _) {
-                      return ValueListenableBuilder<bool>(
-                        valueListenable: UpdateChecker.instance.isChecking,
-                        builder: (context, isChecking, _) {
-                          return FutureBuilder<PackageInfo>(
-                            future: _packageInfoFuture,
-                            builder: (context, snapshot) {
-                              final String? value;
-                              if (release != null) {
-                                value = '新版本 v${release.version}';
-                              } else if (snapshot.hasData) {
-                                value = 'v${snapshot.data!.version}';
-                              } else {
-                                value = null;
-                              }
-                              return PlainListRow(
-                                title: '检查更新',
-                                value: value,
-                                emphasizeValue: release != null,
-                                trailing: isChecking
-                                    ? const SizedBox(
-                                        width: 20,
-                                        height: 20,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
-                                      )
-                                    : null,
-                                showChevron: false,
-                                onTap: isChecking
-                                    ? null
-                                    : () => _checkForUpdate(context),
-                              );
-                            },
-                          );
-                        },
-                      );
-                    },
-                  ),
-                  const _UpdateRouteRow(),
-                  PlainListRow(
-                    title: '清除离线缓存',
-                    onTap: () => _clearOfflineCache(context),
-                  ),
-                  PlainListRow(
-                    title: '重放新手引导',
-                    onTap: () => _replayWelcome(context),
-                  ),
-                  PlainListRow(
-                    title: '关于与诊断',
-                    onTap: () => context.pushNamed('about'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+  void _clearSearch() {
+    _searchController.clear();
+    setState(() => _searchQuery = '');
   }
-}
 
-/// 顶栏右侧紧凑版本胶囊（点击直接触发检查更新）。
-class _VersionCapsule extends StatelessWidget {
-  const _VersionCapsule({
-    required this.packageInfoFuture,
-    required this.onCheckUpdate,
-  });
-
-  final Future<PackageInfo> packageInfoFuture;
-  final VoidCallback onCheckUpdate;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+  Widget _buildCheckUpdateRow(BuildContext context) {
     return ValueListenableBuilder<AppRelease?>(
       valueListenable: UpdateChecker.instance.availableRelease,
       builder: (context, release, _) {
@@ -276,76 +255,29 @@ class _VersionCapsule extends StatelessWidget {
           valueListenable: UpdateChecker.instance.isChecking,
           builder: (context, isChecking, _) {
             return FutureBuilder<PackageInfo>(
-              future: packageInfoFuture,
+              future: SettingsPage._packageInfoFuture,
               builder: (context, snapshot) {
-                if (!snapshot.hasData && release == null && !isChecking) {
-                  return const SizedBox.shrink();
+                final String? value;
+                if (release != null) {
+                  value = '新版本 v${release.version}';
+                } else if (snapshot.hasData) {
+                  value = 'v${snapshot.data!.version}';
+                } else {
+                  value = null;
                 }
-                final hasUpdate = release != null;
-                final label = hasUpdate
-                    ? 'v${release.version}'
-                    : (snapshot.hasData
-                          ? 'v${snapshot.data!.version}'
-                          : '检查更新');
-                final background = hasUpdate
-                    ? cs.primaryContainer
-                    : cs.surfaceContainerHighest;
-                final foreground = hasUpdate
-                    ? cs.onPrimaryContainer
-                    : cs.onSurfaceVariant;
-                final radius = BorderRadius.circular(AppRadius.tag);
-                return Semantics(
-                  button: true,
-                  label: hasUpdate ? '发现新版本 $label' : '版本 $label，点击检查更新',
-                  child: Material(
-                    color: background,
-                    shape: RoundedSuperellipseBorder(borderRadius: radius),
-                    clipBehavior: Clip.antiAlias,
-                    child: InkWell(
-                      onTap: isChecking ? null : onCheckUpdate,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (isChecking) ...[
-                              SizedBox(
-                                width: 10,
-                                height: 10,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 1.6,
-                                  color: foreground,
-                                ),
-                              ),
-                              const SizedBox(width: 5),
-                            ] else if (hasUpdate) ...[
-                              Container(
-                                width: 6,
-                                height: 6,
-                                decoration: BoxDecoration(
-                                  color: cs.primary,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              const SizedBox(width: 5),
-                            ],
-                            Text(
-                              label,
-                              style: context.appText.tag.copyWith(
-                                color: foreground,
-                                fontFeatures: const [
-                                  FontFeature.tabularFigures(),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
+                return PlainListRow(
+                  title: '检查更新',
+                  value: value,
+                  emphasizeValue: release != null,
+                  trailing: isChecking
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : null,
+                  showChevron: false,
+                  onTap: isChecking ? null : () => _checkForUpdate(context),
                 );
               },
             );
@@ -354,328 +286,318 @@ class _VersionCapsule extends StatelessWidget {
       },
     );
   }
-}
 
-/// 统一 Bento 磁贴外壳：与「我的」页双列磁贴同一配方（[AppHardTileShell] +
-/// [AppTileSurface] 实底无模糊 + `AppRadius.card` 12dp 圆角）。
-class _SettingsBentoTile extends StatelessWidget {
-  const _SettingsBentoTile({
-    required this.semanticsLabel,
-    this.semanticsToggled,
-    required this.onTap,
-    required this.child,
-  });
+  Widget _buildReminderRow() {
+    final state = _control.state;
+    return PlainListRow(
+      title: '课前提醒',
+      // 同步未开启时提醒提前量不生效：禁用下拉（原生 0.5 透明度）并说明原因。
+      subtitle: state == CalendarSyncControlState.enabled ? null : '开启日历同步后可设置',
+      trailing: AppDropdown<int>(
+        key: const Key('calendar_reminder_dropdown'),
+        inline: true,
+        // 历史遗留的非预设值不在列表里：按钮回落显示当前值。
+        hint: _reminderLabel(_reminder.reminderMinutes),
+        value:
+            CalendarReminderSettings.presetMinutes.contains(
+              _reminder.reminderMinutes,
+            )
+            ? _reminder.reminderMinutes
+            : null,
+        items: <AppDropdownItem<int>>[
+          for (final minutes in CalendarReminderSettings.presetMinutes)
+            AppDropdownItem<int>(
+              value: minutes,
+              label: _reminderLabel(minutes),
+            ),
+        ],
+        onChanged: state == CalendarSyncControlState.enabled
+            ? (value) {
+                if (value == null) return;
+                unawaited(_reminder.setReminderMinutes(value));
+              }
+            : null,
+      ),
+    );
+  }
 
-  final String semanticsLabel;
-  final bool? semanticsToggled;
-  final VoidCallback? onTap;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      toggled: semanticsToggled,
-      label: semanticsLabel,
-      child: AppHardTileShell(
-        radius: AppRadius.card,
-        child: AppTileSurface(
-          borderRadius: AppRadius.cardBorder,
-          padding: const EdgeInsets.all(14),
-          blurred: false,
-          onTap: onTap,
-          child: child,
+  List<Widget> _buildSearchResults(
+    BuildContext context,
+    String query,
+    bool isAndroid,
+  ) {
+    final tokens = query
+        .toLowerCase()
+        .split(RegExp(r'\s+'))
+        .where((t) => t.isNotEmpty)
+        .toList();
+    final entries = <_SettingsSearchEntry>[
+      _SettingsSearchEntry(
+        keywords: '主题与材质 主题 材质 模式 浅色 深色 跟随系统 色彩 配色 颜色 字体 排版',
+        builder: (context) => ListenableBuilder(
+          listenable: AppPreferencesController.instance,
+          builder: (context, _) => PlainListRow(
+            title: '主题与材质',
+            value: _ThemeBentoTile._themeModeLabel(
+              AppPreferencesController.instance.state.themeMode,
+            ),
+            onTap: () => context.pushNamed('appearance-theme'),
+          ),
         ),
       ),
-    );
-  }
-}
-
-/// 左外观磁贴：主题与材质（实时展示 primary / secondary / tertiary 三枚色点 + 主题模式）。
-class _ThemeBentoTile extends StatelessWidget {
-  const _ThemeBentoTile({required this.onTap});
-
-  final VoidCallback onTap;
-
-  static String _themeModeLabel(AppThemePreference mode) => switch (mode) {
-    AppThemePreference.system => '跟随系统',
-    AppThemePreference.light => '浅色',
-    AppThemePreference.dark => '深色',
-  };
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final brightness = Theme.of(context).brightness;
-    return ListenableBuilder(
-      listenable: AppPreferencesController.instance,
-      builder: (context, _) {
-        final prefs = AppPreferencesController.instance.state;
-        final previewScheme = ColorScheme.fromSeed(
-          seedColor: prefs.seedColor,
-          brightness: brightness,
-        );
-        final dots = [
-          previewScheme.primary,
-          previewScheme.secondary,
-          previewScheme.tertiary,
-        ];
-        return _SettingsBentoTile(
-          semanticsLabel: '主题与材质',
-          onTap: onTap,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  SizedBox(
-                    height: 28,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        for (var i = 0; i < dots.length; i++) ...[
-                          if (i > 0) const SizedBox(width: 5),
-                          Container(
-                            width: 11,
-                            height: 11,
-                            decoration: BoxDecoration(
-                              color: dots[i],
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: cs.onSurface.withValues(alpha: 0.10),
-                                width: 0.6,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  const Spacer(),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    size: 18,
-                    color: cs.onSurfaceVariant.withValues(alpha: 0.45),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              const Spacer(),
-              Text(
-                '主题与材质',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: context.appText.rowTitleStrong.copyWith(height: 1.2),
-              ),
-              const SizedBox(height: AppSpacing.xs),
-              Text(
-                _themeModeLabel(prefs.themeMode),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: context.appText.meta.copyWith(
-                  fontSize: 12,
-                  height: 1.25,
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-/// 右外观磁贴：首页个性化（恢复顶部实时微缩 [AppBrandIcon]，保留精简无副标题结构）。
-class _PersonalizationBentoTile extends StatelessWidget {
-  const _PersonalizationBentoTile({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return _SettingsBentoTile(
-      semanticsLabel: '首页个性化',
-      onTap: onTap,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            children: [
-              const AppBrandIcon(size: 28),
-              const Spacer(),
-              Icon(
-                Icons.chevron_right_rounded,
-                size: 18,
-                color: cs.onSurfaceVariant.withValues(alpha: 0.45),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Text(
-            '首页个性化',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: context.appText.rowTitleStrong.copyWith(height: 1.2),
-          ),
-          const Spacer(),
-        ],
+      _SettingsSearchEntry(
+        keywords: '首页个性化 首页 个性化 壁纸 流体 背景 图标 视效',
+        builder: (context) {
+          final personalization = PersonalizationController.instance;
+          return ListenableBuilder(
+            listenable: Listenable.merge([
+              personalization.shaderEnabled,
+              personalization.backgroundImagePath,
+            ]),
+            builder: (context, _) {
+              final hasWallpaper =
+                  personalization.backgroundImagePath.value?.isNotEmpty ??
+                  false;
+              final statusText = personalization.shaderEnabled.value
+                  ? '流体背景'
+                  : (hasWallpaper ? '自定义壁纸' : '默认背景');
+              return PlainListRow(
+                title: '首页个性化',
+                value: statusText,
+                onTap: () => context.pushNamed('appearance-personalization'),
+              );
+            },
+          );
+        },
       ),
-    );
+      _SettingsSearchEntry(
+        keywords: '开学日 开学 学期 日期 校历 恢复默认',
+        builder: (context) {
+          final term = _resolved ?? ScheduleTermContext.current();
+          return ValueListenableBuilder<DateTime>(
+            valueListenable: SemesterCalendar.instance.semesterStartDate,
+            builder: (context, date, _) => PlainListRow(
+              title: '开学日',
+              value: '${_formatDotDate(date)} · ${_compactTermLabel(term)}',
+              onTap: () => _pickSemesterStartDate(context, date),
+            ),
+          );
+        },
+      ),
+      _SettingsSearchEntry(
+        androidOnly: true,
+        keywords: '写入系统日历 写入 系统 日历 同步 课表',
+        builder: (context) {
+          final state = _control.state;
+          final isEnabled = state == CalendarSyncControlState.enabled;
+          final statusText = switch (state) {
+            CalendarSyncControlState.enabled =>
+              _control.isWaitingForIdentity
+                  ? '需重新登录'
+                  : _reminderLabel(_reminder.reminderMinutes),
+            CalendarSyncControlState.off => null,
+            CalendarSyncControlState.paused =>
+              ZhengfangAuth.instance.verifiedStudentId == null
+                  ? '已暂停 · 待登录'
+                  : '已暂停 · 账号不符',
+            CalendarSyncControlState.cleanupPending => '待清理遗留日程',
+          };
+          return PlainSwitchRow(
+            title: '写入系统日历',
+            subtitle: statusText,
+            value: isEnabled,
+            enabled: !_busy,
+            onChanged: (nextValue) {
+              if (_busy) return;
+              unawaited(nextValue ? _requestEnable() : _startScan());
+            },
+          );
+        },
+      ),
+      _SettingsSearchEntry(
+        androidOnly: true,
+        keywords: '课前提醒 课前 提醒 日历 通知 提前 分钟',
+        builder: (_) => _buildReminderRow(),
+      ),
+      _SettingsSearchEntry(
+        androidOnly: true,
+        visible: _progress != null || _showScanEntry,
+        keywords: '扫描遗留日程 扫描 遗留 日程 清理 日历',
+        builder: (_) => _progress != null
+            ? _busyRow(_progress!)
+            : PlainListRow(
+                title: '扫描遗留日程',
+                onTap: () => unawaited(_startScan()),
+              ),
+      ),
+      _SettingsSearchEntry(
+        keywords: '桌面组件与后台 桌面 组件 小组件 快捷方式 后台 保活 通知',
+        builder: (context) => PlainListRow(
+          title: '桌面组件与后台',
+          onTap: () => context.pushNamed('desktop-background'),
+        ),
+      ),
+      _SettingsSearchEntry(
+        keywords: 'ai 模型与接口 模型 接口 大模型 api 密钥 key',
+        builder: (context) => PlainListRow(
+          title: 'AI 模型与接口',
+          onTap: () => context.pushNamed('ai-settings'),
+        ),
+      ),
+      _SettingsSearchEntry(
+        keywords: '检查更新 检查 更新 版本 升级 新版本',
+        builder: _buildCheckUpdateRow,
+      ),
+      _SettingsSearchEntry(
+        keywords: '更新下载线路 更新 下载 线路 节点 自动 r2 cloudflare edgeone',
+        builder: (_) => const _UpdateRouteRow(),
+      ),
+      _SettingsSearchEntry(
+        keywords: '清除离线缓存 清除 离线 缓存 清理',
+        builder: (context) => PlainListRow(
+          title: '清除离线缓存',
+          onTap: () => _clearOfflineCache(context),
+        ),
+      ),
+      _SettingsSearchEntry(
+        keywords: '重放新手引导 重放 新手 引导 欢迎 向导',
+        builder: (context) =>
+            PlainListRow(title: '重放新手引导', onTap: () => _replayWelcome(context)),
+      ),
+      _SettingsSearchEntry(
+        keywords: '关于与诊断 关于 诊断 日志 反馈 开发者 版本',
+        builder: (context) => PlainListRow(
+          title: '关于与诊断',
+          onTap: () => context.pushNamed('about'),
+        ),
+      ),
+    ];
+
+    return [
+      for (final entry in entries)
+        if ((!entry.androidOnly || isAndroid) &&
+            entry.visible &&
+            tokens.every(entry.keywords.contains))
+          entry.builder(context),
+      // 子页面具体设置项（索引树见 settings_search_index.dart）：命中后
+      // 以「标题 + 路径」行展示，点击直达对应子页面。
+      for (final item in kSettingsSearchIndex)
+        if ((!item.androidOnly || isAndroid) &&
+            item.visible &&
+            tokens.every(item.searchText.contains))
+          PlainListRow(
+            title: item.title,
+            subtitle: item.breadcrumb,
+            onTap: () => context.pushNamed(item.routeName),
+          ),
+    ];
   }
-}
-
-/// 普通设置分组外壳：复用 [AppHardTileShell]（浅色模式下为实色衬底 + `0.8dp`
-/// 中性细描边 + 轻落底影，深色模式下透传维持平色质感），仅作用于设置页内分组，
-/// 不全局修改 [PlainListGroup] 默认样式。
-class _SettingsListGroup extends StatelessWidget {
-  const _SettingsListGroup({required this.children});
-
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    return AppHardTileShell(
-      radius: AppRadius.card,
-      child: PlainListGroup(children: children),
-    );
-  }
-}
-
-/// 第二区「学期与日历」：
-/// - 左侧 Bento 磁贴：开学日（大号等宽 MM.DD）+ 当前精简学期（复用 [CurrentTermResolver]）
-/// - 右侧 Bento 磁贴（仅 Android）：写入系统日历开关与状态
-/// - 磁贴下方（仅 Android）：课前提醒下拉、异常状态说明与遗留扫描入口
-class _SemesterAndCalendarSection extends StatefulWidget {
-  const _SemesterAndCalendarSection({
-    required this.gap,
-    required this.onPickSemesterStartDate,
-  });
-
-  final double gap;
-  final Future<void> Function(BuildContext context, DateTime currentDate)
-  onPickSemesterStartDate;
-
-  @override
-  State<_SemesterAndCalendarSection> createState() =>
-      _SemesterAndCalendarSectionState();
-}
-
-/// 首次开启时用户选择的目标日历类型。
-enum _CalendarSyncTarget {
-  /// 本应用专属本地日历（[CalendarSyncControl.enable] 不传 calendarId）。
-  local,
-
-  /// 用户从系统可写日历中显式选择。
-  existing,
-}
-
-class _SemesterAndCalendarSectionState
-    extends State<_SemesterAndCalendarSection> {
-  // ── 学期识别状态 ──────────────────────────────────────────────────────────
-  ScheduleTermContext? _resolved;
-  bool _termLoading = true;
-
-  // ── 课表日历同步状态 ──────────────────────────────────────────────────────
-  CalendarSyncControl get _control => CalendarSyncControl.instance;
-  CalendarReminderSettings get _reminder => CalendarReminderSettings.instance;
-
-  /// 有开启 / 扫描 / 清理请求在途：期间忽略重复点击，避免重复原生调用。
-  bool _busy = false;
-
-  /// Coalesces async store/auth notifications until a route transition is idle.
-  bool _transitionRefreshScheduled = false;
-
-  /// 在途 Future 的真实进度文案；仅请求进行中非 null，空闲时**不**显示任何指示器。
-  String? _progress;
-
-  /// 最近一次清理结果摘要（仅本会话持有，用于 cleanupPending 时说明残留）。
-  String? _cleanupNote;
-
-  @override
-  void initState() {
-    super.initState();
-    unawaited(_resolveTerm());
-    _control.addListener(_handleControlChanged);
-    _reminder.addListener(_handleControlChanged);
-    // paused 的副标题取决于当前是否有已验证教务身份，登录 / 登出时需要重绘。
-    ZhengfangAuth.instance.addListener(_handleControlChanged);
-    unawaited(_control.load().then((_) => _handleControlChanged()));
-    // 持久化提前量在启动时已 load；此处兜底确保设置页拿到磁盘值。
-    unawaited(_reminder.load().then((_) => _handleControlChanged()));
-  }
-
-  @override
-  void dispose() {
-    _control.removeListener(_handleControlChanged);
-    _reminder.removeListener(_handleControlChanged);
-    ZhengfangAuth.instance.removeListener(_handleControlChanged);
-    super.dispose();
-  }
-
-  Future<void> _resolveTerm() async {
-    final resolved = await CurrentTermResolver.instance.resolve();
-    // The settings route is snapshot during its push/pop transition. Keep the
-    // async read out of that interval so it cannot invalidate the snapshot.
-    await PageTransitionActivity.instance.whenIdle();
-    if (!mounted) return;
-    setState(() {
-      _resolved = resolved;
-      _termLoading = false;
-    });
-  }
-
-  void _handleControlChanged() {
-    if (!mounted || _transitionRefreshScheduled) return;
-    _transitionRefreshScheduled = true;
-    unawaited(_refreshAfterTransition());
-  }
-
-  Future<void> _refreshAfterTransition() async {
-    await PageTransitionActivity.instance.whenIdle();
-    if (!mounted) return;
-    _transitionRefreshScheduled = false;
-    setState(() {});
-  }
-
-  static String _formatDotDate(DateTime date) =>
-      '${date.month.toString().padLeft(2, '0')}.${date.day.toString().padLeft(2, '0')}';
-
-  static String _compactTermLabel(ScheduleTermContext term) {
-    final startShort = (term.academicYear % 100).toString().padLeft(2, '0');
-    final endShort = ((term.academicYear + 1) % 100).toString().padLeft(2, '0');
-    return '$startShort-$endShort · ${term.termLabel}';
-  }
-
-  String? get _calendarDetailNotice => switch (_control.state) {
-    CalendarSyncControlState.off => null,
-    // 教务未登录 / 会话过期 / 冷启动尚未恢复：开关保持开启，绑定与事件都保留，
-    // 同一账号重新登录后自动继续（不是换号，不暂停）。
-    CalendarSyncControlState.enabled =>
-      _control.isWaitingForIdentity ? '等待登录教务系统后继续同步，已保留原绑定账号' : null,
-    // 当前确有另一个已验证教务账号时才是「账号不一致」；没有已验证身份时
-    // （含旧版本因登出而落盘的 paused）同一账号登录后会自动恢复，不能提示不一致。
-    CalendarSyncControlState.paused =>
-      ZhengfangAuth.instance.verifiedStudentId == null
-          ? '已暂停：登录教务系统后将自动恢复（同一账号）'
-          : '已暂停：当前教务账号与绑定账号不一致，重新开启将绑定当前账号',
-    CalendarSyncControlState.cleanupPending => '清理未完成，完成清理后才能重新开启',
-  };
-
-  /// 非 enabled 状态才显示「扫描遗留日程」入口；enabled 时由关闭开关的确认触发。
-  bool get _showScanEntry => _control.state != CalendarSyncControlState.enabled;
-
-  /// 0 不是「不提醒」：原生 `CalendarProviderStore` 对每个归属事件固定插入
-  /// 一条 `MINUTES = reminderMinutes` 的 `METHOD_ALERT` 提醒，0 表示**课程
-  /// 开始时**提醒，因此如实标注，不谎称可关闭提醒。
-  static String _reminderLabel(int minutes) =>
-      minutes <= 0 ? '课程开始时提醒' : '提前 $minutes 分钟';
 
   @override
   Widget build(BuildContext context) {
     final isAndroid = Theme.of(context).platform == TargetPlatform.android;
+    final trimmedQuery = _searchQuery.trim();
+    final searchResults = trimmedQuery.isEmpty
+        ? const <Widget>[]
+        : _buildSearchResults(context, trimmedQuery, isAndroid);
+
+    return Scaffold(
+      appBar: AppAppBar(title: const Text('设置')),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            maxWidth: SettingsPage._contentMaxWidth,
+          ),
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(
+              kPlainListGutter,
+              AppSpacing.md,
+              kPlainListGutter,
+              32,
+            ),
+            children: [
+              _SettingsSearchField(
+                controller: _searchController,
+                onChanged: (value) => setState(() => _searchQuery = value),
+                onClear: _clearSearch,
+              ),
+              const SizedBox(height: SettingsPage._groupGap),
+              if (trimmedQuery.isNotEmpty) ...[
+                if (searchResults.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 48),
+                    child: Center(
+                      child: Text('未找到相关设置', style: context.appText.meta),
+                    ),
+                  )
+                else
+                  _SettingsListGroup(children: searchResults),
+              ] else ...[
+                IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        child: _ThemeBentoTile(
+                          onTap: () => context.pushNamed('appearance-theme'),
+                        ),
+                      ),
+                      const SizedBox(width: SettingsPage._bentoGap),
+                      Expanded(
+                        child: _PersonalizationBentoTile(
+                          onTap: () =>
+                              context.pushNamed('appearance-personalization'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: SettingsPage._groupGap),
+                _buildSemesterAndCalendarSection(context, isAndroid),
+                const SizedBox(height: SettingsPage._groupGap),
+                _SettingsListGroup(
+                  children: [
+                    PlainListRow(
+                      title: '桌面组件与后台',
+                      onTap: () => context.pushNamed('desktop-background'),
+                    ),
+                    PlainListRow(
+                      title: 'AI 模型与接口',
+                      onTap: () => context.pushNamed('ai-settings'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: SettingsPage._groupGap),
+                _SettingsListGroup(
+                  children: [
+                    _buildCheckUpdateRow(context),
+                    const _UpdateRouteRow(),
+                    PlainListRow(
+                      title: '清除离线缓存',
+                      onTap: () => _clearOfflineCache(context),
+                    ),
+                    PlainListRow(
+                      title: '重放新手引导',
+                      onTap: () => _replayWelcome(context),
+                    ),
+                    PlainListRow(
+                      title: '关于与诊断',
+                      onTap: () => context.pushNamed('about'),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSemesterAndCalendarSection(
+    BuildContext context,
+    bool isAndroid,
+  ) {
     final state = _control.state;
     final progress = _progress;
     final detailNotice = _calendarDetailNotice;
@@ -689,49 +611,17 @@ class _SemesterAndCalendarSectionState
             children: [
               Expanded(child: _buildSemesterBentoTile(context)),
               if (isAndroid) ...[
-                SizedBox(width: widget.gap),
+                const SizedBox(width: SettingsPage._bentoGap),
                 Expanded(child: _buildCalendarBentoTile(context)),
               ],
             ],
           ),
         ),
         if (isAndroid) ...[
-          SizedBox(height: widget.gap),
+          const SizedBox(height: SettingsPage._bentoGap),
           _SettingsListGroup(
             children: [
-              PlainListRow(
-                title: '课前提醒',
-                // 同步未开启时提醒提前量不生效：禁用下拉（原生 0.5 透明度）并说明原因。
-                subtitle: state == CalendarSyncControlState.enabled
-                    ? null
-                    : '开启日历同步后可设置',
-                trailing: AppDropdown<int>(
-                  key: const Key('calendar_reminder_dropdown'),
-                  inline: true,
-                  // 历史遗留的非预设值不在列表里：按钮回落显示当前值。
-                  hint: _reminderLabel(_reminder.reminderMinutes),
-                  value:
-                      CalendarReminderSettings.presetMinutes.contains(
-                        _reminder.reminderMinutes,
-                      )
-                      ? _reminder.reminderMinutes
-                      : null,
-                  items: <AppDropdownItem<int>>[
-                    for (final minutes
-                        in CalendarReminderSettings.presetMinutes)
-                      AppDropdownItem<int>(
-                        value: minutes,
-                        label: _reminderLabel(minutes),
-                      ),
-                  ],
-                  onChanged: state == CalendarSyncControlState.enabled
-                      ? (value) {
-                          if (value == null) return;
-                          unawaited(_reminder.setReminderMinutes(value));
-                        }
-                      : null,
-                ),
-              ),
+              _buildReminderRow(),
               if (detailNotice != null)
                 PlainListRow(
                   title: '同步状态',
@@ -745,7 +635,6 @@ class _SemesterAndCalendarSectionState
               else if (_showScanEntry)
                 PlainListRow(
                   title: '扫描遗留日程',
-                  subtitle: '只读扫描，不会删除',
                   onTap: () => unawaited(_startScan()),
                 ),
               if (state == CalendarSyncControlState.cleanupPending &&
@@ -776,8 +665,7 @@ class _SemesterAndCalendarSectionState
         return _SettingsBentoTile(
           semanticsLabel:
               '开学日 ${semesterStartDate.month}月${semesterStartDate.day}日，$termText',
-          onTap: () =>
-              widget.onPickSemesterStartDate(context, semesterStartDate),
+          onTap: () => _pickSemesterStartDate(context, semesterStartDate),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -790,14 +678,7 @@ class _SemesterAndCalendarSectionState
                   alignment: WrapAlignment.spaceBetween,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    Text(
-                      '开学日',
-                      style: context.appText.meta.copyWith(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        height: 1.25,
-                      ),
-                    ),
+                    Text('开学日', style: context.appText.group),
                     if (isModified)
                       InkWell(
                         onTap: () => unawaited(
@@ -842,10 +723,7 @@ class _SemesterAndCalendarSectionState
                       termText,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: context.appText.meta.copyWith(
-                        fontSize: 12,
-                        height: 1.25,
-                      ),
+                      style: context.appText.meta,
                     ),
                   ),
                   if (_termLoading) ...[
@@ -858,17 +736,6 @@ class _SemesterAndCalendarSectionState
                   ],
                 ],
               ),
-              if (!_termLoading && _resolved == null) ...[
-                const SizedBox(height: 2),
-                Text(
-                  '按日期推算',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: context.appText.tag.copyWith(
-                    color: cs.onSurfaceVariant.withValues(alpha: 0.78),
-                  ),
-                ),
-              ],
             ],
           ),
         );
@@ -881,24 +748,19 @@ class _SemesterAndCalendarSectionState
     final state = _control.state;
     final isEnabled = state == CalendarSyncControlState.enabled;
 
-    final (
-      String statusText,
-      Color statusColor,
-      bool showDot,
-    ) = switch (state) {
+    final (String statusText, Color statusColor) = switch (state) {
       CalendarSyncControlState.enabled =>
         _control.isWaitingForIdentity
-            ? ('需重新登录', cs.tertiary, true)
-            : (_reminderLabel(_reminder.reminderMinutes), cs.primary, true),
-      CalendarSyncControlState.off => ('未开启', cs.onSurfaceVariant, false),
+            ? ('需重新登录', cs.tertiary)
+            : (_reminderLabel(_reminder.reminderMinutes), cs.primary),
+      CalendarSyncControlState.off => ('未开启', cs.onSurfaceVariant),
       CalendarSyncControlState.paused => (
         ZhengfangAuth.instance.verifiedStudentId == null
             ? '已暂停 · 待登录'
             : '已暂停 · 账号不符',
         cs.tertiary,
-        true,
       ),
-      CalendarSyncControlState.cleanupPending => ('待清理遗留日程', cs.error, true),
+      CalendarSyncControlState.cleanupPending => ('待清理遗留日程', cs.error),
     };
 
     void handleToggle(bool nextValue) {
@@ -946,33 +808,11 @@ class _SemesterAndCalendarSectionState
             style: context.appText.rowTitleStrong.copyWith(height: 1.2),
           ),
           const SizedBox(height: AppSpacing.xs),
-          Row(
-            children: [
-              if (showDot) ...[
-                Container(
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: statusColor,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 6),
-              ],
-              Flexible(
-                child: Text(
-                  statusText,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: context.appText.meta.copyWith(
-                    fontSize: 12,
-                    height: 1.25,
-                    fontWeight: showDot ? FontWeight.w600 : null,
-                    color: statusColor,
-                  ),
-                ),
-              ),
-            ],
+          Text(
+            statusText,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: context.appText.meta.copyWith(color: statusColor),
           ),
         ],
       ),
@@ -1319,6 +1159,289 @@ class _SemesterAndCalendarSectionState
   }
 
   void _showSnack(String message) => AppFeedback.toast(context, message);
+}
+
+class _SettingsSearchEntry {
+  const _SettingsSearchEntry({
+    required this.keywords,
+    required this.builder,
+    this.androidOnly = false,
+    this.visible = true,
+  });
+
+  final String keywords;
+  final Widget Function(BuildContext context) builder;
+  final bool androidOnly;
+  final bool visible;
+}
+
+class _SettingsSearchField extends StatefulWidget {
+  const _SettingsSearchField({
+    required this.controller,
+    required this.onChanged,
+    required this.onClear,
+  });
+
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClear;
+
+  @override
+  State<_SettingsSearchField> createState() => _SettingsSearchFieldState();
+}
+
+class _SettingsSearchFieldState extends State<_SettingsSearchField> {
+  final FocusNode _focusNode = FocusNode(debugLabel: 'SettingsSearchField');
+  Offset? _outsidePointerDown;
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode.addListener(_onFocusChanged);
+  }
+
+  @override
+  void dispose() {
+    _focusNode.removeListener(_onFocusChanged);
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _onFocusChanged() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  void _handleTapDownOutside(PointerDownEvent event) {
+    _outsidePointerDown = event.position;
+  }
+
+  void _handleTapUpOutside(PointerUpEvent event) {
+    final down = _outsidePointerDown;
+    _outsidePointerDown = null;
+    if (down == null || (event.position - down).distance > 18.0) return;
+    _focusNode.unfocus();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final radius = BorderRadius.circular(AppRadius.control);
+    final focused = _focusNode.hasFocus;
+    return TapRegion(
+      onTapOutside: _handleTapDownOutside,
+      onTapUpOutside: _handleTapUpOutside,
+      child: AnimatedContainer(
+        duration: AppMotion.reduced(context) ? Duration.zero : AppMotion.quick,
+        foregroundDecoration: ShapeDecoration(
+          shape: RoundedSuperellipseBorder(
+            borderRadius: radius,
+            side: focused
+                ? BorderSide(color: cs.primary, width: 1.4)
+                : BorderSide.none,
+          ),
+        ),
+        child: AppHardTileShell(
+          radius: AppRadius.control,
+          child: AppTileSurface(
+            borderRadius: radius,
+            blurred: false,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            child: AppSearchField(
+              controller: widget.controller,
+              focusNode: _focusNode,
+              hintText: '搜索设置',
+              onChanged: widget.onChanged,
+              onClear: widget.onClear,
+              borderless: true,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 统一 Bento 磁贴外壳：与「我的」页双列磁贴同一配方（[AppHardTileShell] +
+/// [AppTileSurface] 实底无模糊 + `AppRadius.card` 12dp 圆角）。
+class _SettingsBentoTile extends StatelessWidget {
+  const _SettingsBentoTile({
+    required this.semanticsLabel,
+    this.semanticsToggled,
+    required this.onTap,
+    required this.child,
+  });
+
+  final String semanticsLabel;
+  final bool? semanticsToggled;
+  final VoidCallback? onTap;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      toggled: semanticsToggled,
+      label: semanticsLabel,
+      child: AppHardTileShell(
+        radius: AppRadius.card,
+        child: AppTileSurface(
+          borderRadius: AppRadius.cardBorder,
+          padding: const EdgeInsets.all(14),
+          blurred: false,
+          onTap: onTap,
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+/// 左外观磁贴：主题与材质（图标 + 标题 + 当前主题模式）。
+class _ThemeBentoTile extends StatelessWidget {
+  const _ThemeBentoTile({required this.onTap});
+
+  final VoidCallback onTap;
+
+  static String _themeModeLabel(AppThemePreference mode) => switch (mode) {
+    AppThemePreference.system => '跟随系统',
+    AppThemePreference.light => '浅色',
+    AppThemePreference.dark => '深色',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return ListenableBuilder(
+      listenable: AppPreferencesController.instance,
+      builder: (context, _) {
+        final prefs = AppPreferencesController.instance.state;
+        return _SettingsBentoTile(
+          semanticsLabel: '主题与材质',
+          onTap: onTap,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  AppIconBadge(
+                    icon: Icons.palette_outlined,
+                    accentColor: cs.primary,
+                    size: AppIconBadgeSize.small,
+                  ),
+                  const Spacer(),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 18,
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.45),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              const Spacer(),
+              Text(
+                '主题与材质',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: context.appText.rowTitleStrong.copyWith(height: 1.2),
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                _themeModeLabel(prefs.themeMode),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: context.appText.meta,
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// 右外观磁贴：首页个性化（图标 + 标题 + 当前背景形态）。
+class _PersonalizationBentoTile extends StatelessWidget {
+  const _PersonalizationBentoTile({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final personalization = PersonalizationController.instance;
+    return ListenableBuilder(
+      listenable: Listenable.merge([
+        personalization.shaderEnabled,
+        personalization.backgroundImagePath,
+      ]),
+      builder: (context, _) {
+        final hasWallpaper =
+            personalization.backgroundImagePath.value?.isNotEmpty ?? false;
+        final statusText = personalization.shaderEnabled.value
+            ? '流体背景'
+            : (hasWallpaper ? '自定义壁纸' : '默认背景');
+        return _SettingsBentoTile(
+          semanticsLabel: '首页个性化',
+          onTap: onTap,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  AppIconBadge(
+                    icon: Icons.wallpaper_outlined,
+                    accentColor: cs.primary,
+                    size: AppIconBadgeSize.small,
+                  ),
+                  const Spacer(),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 18,
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.45),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              const Spacer(),
+              Text(
+                '首页个性化',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: context.appText.rowTitleStrong.copyWith(height: 1.2),
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                statusText,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: context.appText.meta,
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// 普通设置分组外壳：复用 [AppHardTileShell]（浅色模式下为实色衬底 + `0.8dp`
+/// 中性细描边 + 轻落底影，深色模式下透传维持平色质感），仅作用于设置页内分组，
+/// 不全局修改 [PlainListGroup] 默认样式。
+class _SettingsListGroup extends StatelessWidget {
+  const _SettingsListGroup({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppHardTileShell(
+      radius: AppRadius.card,
+      child: PlainListGroup(children: children),
+    );
+  }
 }
 
 /// 「更新下载线路」：自动（默认，先 R2、卡住 / 失败 / 低速时回退 EdgeOne）/

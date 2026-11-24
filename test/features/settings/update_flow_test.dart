@@ -89,7 +89,11 @@ void main() {
     );
 
     await pumpPage(tester, const SettingsPage());
-    await tester.scrollUntilVisible(find.text('检查更新'), 300);
+    await tester.scrollUntilVisible(
+      find.text('检查更新'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
     // 只露出半行时 tap 会落在屏幕外：再把整行滚进视口。
     await tester.ensureVisible(find.text('检查更新'));
     await tester.pump();
@@ -124,7 +128,11 @@ void main() {
     expect(UpdateChecker.instance.availableRelease.value, isNull);
 
     await pumpPage(tester, const SettingsPage());
-    await tester.scrollUntilVisible(find.text('检查更新'), 300);
+    await tester.scrollUntilVisible(
+      find.text('检查更新'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
     // 只露出半行时 tap 会落在屏幕外：再把整行滚进视口。
     await tester.ensureVisible(find.text('检查更新'));
     await tester.pump();
@@ -156,7 +164,11 @@ void main() {
     };
 
     await pumpPage(tester, const SettingsPage());
-    await tester.scrollUntilVisible(find.text('检查更新'), 300);
+    await tester.scrollUntilVisible(
+      find.text('检查更新'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.ensureVisible(find.text('检查更新'));
     await tester.pump();
     await tester.tap(find.text('检查更新'));
@@ -186,7 +198,11 @@ void main() {
     };
 
     await pumpPage(tester, const SettingsPage());
-    await tester.scrollUntilVisible(find.text('检查更新'), 300);
+    await tester.scrollUntilVisible(
+      find.text('检查更新'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
     // 只露出半行时 tap 会落在屏幕外：再把整行滚进视口。
     await tester.ensureVisible(find.text('检查更新'));
     await tester.pump();
