@@ -144,11 +144,15 @@ class AppThemeBuilder {
     final TextStyle labelBase = _appleTextTheme.labelLarge!.copyWith(
       fontFamily: 'Inter',
     );
-    // iOS 式「轨道 + 滑块」：轨道取「未选中控件轨道」面阶（v2 `--surface-mid`），
-    // 选中项是明显更亮的滑块。浅色滑块直接用最亮的 surfaceContainerLowest
-    // （≈白），深色在最高面阶上再叠 16% 前景色提亮。
+    // 浅色轨道略加前景色，保留和 surfaceContainerLowest 滑块的对比。
+    // 深色滑块在最高面阶上叠 16% 前景色提亮。
     final dark = colorScheme.brightness == Brightness.dark;
-    final Color track = colorScheme.surfaceContainerHigh;
+    final Color track = dark
+        ? colorScheme.surfaceContainerHigh
+        : Color.alphaBlend(
+            colorScheme.onSurface.withValues(alpha: 0.04),
+            colorScheme.surfaceContainerHigh,
+          );
     final Color selectedThumb = dark
         ? Color.alphaBlend(
             colorScheme.onSurface.withValues(alpha: 0.16),

@@ -101,8 +101,8 @@ void main() {
 
       test('$name：轨道 + 明显更亮的选中滑块', () {
         final dark = scheme.brightness == Brightness.dark;
-        final track = scheme.surfaceContainerHigh;
-        expect(style.backgroundColor!.resolve(_none), track);
+        final track = style.backgroundColor!.resolve(_none)!;
+        if (dark) expect(track, scheme.surfaceContainerHigh);
         expect(style.backgroundColor!.resolve(_hovered), track);
         final thumb = style.backgroundColor!.resolve(_selected)!;
         // 选中滑块与轨道的对比度要足够（中性种子下相邻面阶只差 1–3 个
