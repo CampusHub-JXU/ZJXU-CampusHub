@@ -230,6 +230,89 @@ void main() {
     );
   });
 
+  test('listModels 解析 data 中的 Map 与 String，去重保序', () async {
+    dio.httpClientAdapter = _StubAdapter((request) {
+      expect(request.method, 'GET');
+      expect(
+        request.uri.toString(),
+        'https://gateway.example/openai/v1/models',
+      );
+      expect(request.headers['authorization'], 'Bearer $_key');
+      expect(request.headers['accept'], 'application/json');
+      expect(request.followRedirects, isFalse);
+      expect(request.data, isNull);
+      return _jsonResponse(
+        '{"data":['
+        '{"id":"auto/deepseek-v4.1-flash","display_name":"DeepSeek V4.1 Flash"},'
+        '{"id":"auto/grok-4.7"},'
+        '"auto/deepseek-v4.1-flash",'
+        '{"other":"no-id"},'
+        '123,'
+        '"plain/model"]}',
+      );
+    });
+
+    final models = await client.listModels(
+      baseUrl: ' ${_profile.baseUrl} ',
+      apiKey: ' $_key ',
+    );
+
+    expect(models.map((option) => option.id).toList(), [
+      'auto/deepseek-v4.1-flash',
+      'auto/grok-4.7',
+      'plain/model',
+    ]);
+    expect(models[0].displayName, 'DeepSeek V4.1 Flash');
+    expect(models[1].displayName, isNull);
+    expect(models[2].displayName, isNull);
+  });
+
+  test('listModels 401 映射为 unauthorized，网络异常映射为 network', () async {
+    dio.httpClientAdapter = _StubAdapter(
+      (_) => _jsonResponse('{"error":"unauthorized"}', 401),
+    );
+    await expectLater(
+      client.listModels(baseUrl: _profile.baseUrl, apiKey: _key),
+      throwsA(_error(LlmErrorKind.unauthorized)),
+    );
+
+    dio.httpClientAdapter = _StubAdapter((request) {
+      throw DioException.connectionError(requestOptions: request, reason: _key);
+    });
+    await expectLater(
+      client.listModels(baseUrl: _profile.baseUrl, apiKey: _key),
+      throwsA(_error(LlmErrorKind.network)),
+    );
+  });
+
+  test(
+    'listModels 缺 URL 或 Key 报告 notConfigured，非法 URL 报告 badRequest',
+    () async {
+      await expectLater(
+        client.listModels(baseUrl: _profile.baseUrl, apiKey: ' '),
+        throwsA(_error(LlmErrorKind.notConfigured)),
+      );
+      await expectLater(
+        client.listModels(baseUrl: ' ', apiKey: _key),
+        throwsA(_error(LlmErrorKind.notConfigured)),
+      );
+      await expectLater(
+        client.listModels(baseUrl: 'not a url', apiKey: _key),
+        throwsA(_error(LlmErrorKind.badRequest)),
+      );
+    },
+  );
+
+  test('listModels 响应缺少 data 列表时报告 invalidResponse', () async {
+    for (final payload in ['{"data":{"x":1}}', '{}', '[1,2]']) {
+      dio.httpClientAdapter = _StubAdapter((_) => _jsonResponse(payload));
+      await expectLater(
+        client.listModels(baseUrl: _profile.baseUrl, apiKey: _key),
+        throwsA(_error(LlmErrorKind.invalidResponse)),
+      );
+    }
+  });
+
   test('非法 JSON 和无有效候选的响应报告 invalidResponse', () async {
     for (final payload in ['{"error":"$_key"', '{"choices":[]}', '{']) {
       dio.httpClientAdapter = _StubAdapter((_) => _jsonResponse(payload));

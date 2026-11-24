@@ -270,6 +270,86 @@ void main() {
     expect(await controller.readApiKey(deepSeek.id), 'test-token-original');
   });
 
+  testWidgets('点击获取模型拉取列表，选中后自动填入模型字段', (tester) async {
+    final controller = newController();
+    await pumpPage(tester, controller: controller);
+
+    await tester.tap(find.byKey(const Key('ai_add_profile_button')));
+    await tester.pumpAndSettle();
+
+    // DeepSeek 预设已带 Base URL；填写 API Key 后才能拉取
+    await tester.enterText(
+      find.byKey(const Key('ai_api_key_field')),
+      'test-token-models',
+    );
+
+    String? requestedPath;
+    String? sentAuthHeader;
+    respond = (req) {
+      requestedPath = req.uri.toString();
+      sentAuthHeader = req.headers['authorization'] as String?;
+      return _jsonResponse(
+        '{"data":['
+        '{"id":"deepseek-chat","display_name":"DeepSeek Chat"},'
+        '{"id":"deepseek-reasoner","display_name":"DeepSeek Reasoner"}'
+        ']}',
+      );
+    };
+
+    await tester.ensureVisible(find.byKey(const Key('ai_fetch_models_button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('ai_fetch_models_button')));
+    await tester.pumpAndSettle();
+
+    expect(requestedPath, 'https://api.deepseek.com/v1/models');
+    expect(sentAuthHeader, 'Bearer test-token-models');
+    expect(find.text('选择模型'), findsOneWidget);
+    expect(find.text('DeepSeek Chat'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('ai_model_option_deepseek-reasoner')),
+        matching: find.text('deepseek-reasoner'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('DeepSeek Reasoner'));
+    await tester.pumpAndSettle();
+
+    final modelField = tester.widget<TextFormField>(
+      find.byKey(const Key('ai_model_field')),
+    );
+    expect(modelField.controller?.text, 'deepseek-reasoner');
+  });
+
+  testWidgets('编辑配置留空密钥时可读取已保存密钥获取模型，空列表有提示', (tester) async {
+    final controller = newController();
+    await controller.init();
+    final deepSeek = controller.activeProfile!;
+    await controller.saveProfile(deepSeek, apiKey: 'test-token-stored');
+
+    await pumpPage(tester, controller: controller);
+
+    await tester.tap(find.byKey(Key('ai_profile_menu_${deepSeek.id}')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('编辑'));
+    await tester.pumpAndSettle();
+
+    String? sentAuthHeader;
+    respond = (req) {
+      sentAuthHeader = req.headers['authorization'] as String?;
+      return _jsonResponse('{"data":[]}');
+    };
+
+    await tester.ensureVisible(find.byKey(const Key('ai_fetch_models_button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('ai_fetch_models_button')));
+    await tester.pumpAndSettle();
+
+    expect(sentAuthHeader, 'Bearer test-token-stored');
+    expect(find.text('该服务未返回可用模型列表'), findsOneWidget);
+  });
+
   testWidgets('删除配置弹出确认框，确认后移除并展示空态', (tester) async {
     final controller = newController();
     await controller.init();

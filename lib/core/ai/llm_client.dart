@@ -51,6 +51,13 @@ class LlmConnectionTestResult {
   String get model => response.model;
 }
 
+class LlmModelOption {
+  const LlmModelOption({required this.id, this.displayName});
+
+  final String id;
+  final String? displayName;
+}
+
 enum LlmErrorKind {
   notConfigured('请先填写 AI 服务地址、模型和 API Key。'),
   unauthorized('AI 服务认证失败，请检查 API Key 和访问权限。'),
@@ -216,6 +223,76 @@ class LlmClient {
       latencyMs: stopwatch.elapsedMilliseconds,
       response: result,
     );
+  }
+
+  /// 拉取 OpenAI 兼容 `/models` 目录，返回去重保序的模型选项。
+  Future<List<LlmModelOption>> listModels({
+    required String baseUrl,
+    required String apiKey,
+    CancelToken? cancelToken,
+  }) async {
+    final key = apiKey.trim();
+    final url = baseUrl.trim();
+    if (key.isEmpty || url.isEmpty) {
+      throw const LlmException(LlmErrorKind.notConfigured);
+    }
+    final baseUri = Uri.tryParse(url);
+    if (baseUri == null ||
+        (baseUri.scheme != 'https' && baseUri.scheme != 'http') ||
+        baseUri.host.isEmpty ||
+        baseUri.userInfo.isNotEmpty ||
+        baseUri.hasFragment ||
+        baseUri.hasQuery) {
+      throw const LlmException(LlmErrorKind.badRequest);
+    }
+    final path = baseUri.path.replaceFirst(RegExp(r'/+$'), '');
+    try {
+      final response = await _dio.getUri<Object?>(
+        baseUri.replace(path: '$path/models'),
+        options: Options(
+          responseType: ResponseType.json,
+          followRedirects: false,
+          receiveDataWhenStatusError: false,
+          headers: {
+            'Authorization': 'Bearer $key',
+            'Accept': Headers.jsonContentType,
+          },
+        ),
+        cancelToken: cancelToken,
+      );
+      final status = response.statusCode;
+      if (status != null && (status < 200 || status >= 300)) {
+        throw LlmException(_statusError(status));
+      }
+      final Object? data = response.data;
+      final payload = _readObject(data is String ? jsonDecode(data) : data);
+      final list = payload['data'];
+      if (list is! List) {
+        throw const LlmException(LlmErrorKind.invalidResponse);
+      }
+      final seen = <String>{};
+      final options = <LlmModelOption>[];
+      for (final entry in list) {
+        String? id;
+        String? displayName;
+        if (entry is String) {
+          id = entry;
+        } else if (entry is Map<String, dynamic>) {
+          id = entry['id'] as String?;
+          displayName = entry['display_name'] as String?;
+        } else if (entry is Map) {
+          final rawId = entry['id'];
+          final rawName = entry['display_name'];
+          id = rawId is String ? rawId : null;
+          displayName = rawName is String ? rawName : null;
+        }
+        if (id == null || id.isEmpty || !seen.add(id)) continue;
+        options.add(LlmModelOption(id: id, displayName: displayName));
+      }
+      return options;
+    } on Object catch (error) {
+      throw _mapError(error);
+    }
   }
 
   Future<Response<T>> _post<T>({

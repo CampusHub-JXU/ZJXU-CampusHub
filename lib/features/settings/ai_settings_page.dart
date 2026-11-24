@@ -441,6 +441,7 @@ class _ProfileEditorSheetState extends State<_ProfileEditorSheet> {
   bool _obscureApiKey = true;
   bool _saving = false;
   bool _testing = false;
+  bool _fetchingModels = false;
   int _testGeneration = 0;
   _ConnectionTestOutcome? _testOutcome;
 
@@ -572,6 +573,90 @@ class _ProfileEditorSheetState extends State<_ProfileEditorSheet> {
     });
   }
 
+  Future<void> _fetchModels() async {
+    if (_fetchingModels || _saving) return;
+
+    final baseUrlError = _validateBaseUrl(_baseUrlController.text);
+    if (baseUrlError != null) {
+      setState(() {
+        _testOutcome = _ConnectionTestOutcome.error(baseUrlError);
+      });
+      return;
+    }
+
+    var apiKey = _apiKeyController.text.trim();
+    if (apiKey.isEmpty && _isEditing) {
+      apiKey = (await widget.controller.readApiKey(widget.profile!.id) ?? '')
+          .trim();
+      if (!mounted) return;
+    }
+    if (apiKey.isEmpty) {
+      setState(() {
+        _testOutcome = const _ConnectionTestOutcome.error(
+          '请先填写 API Key 再获取模型列表',
+        );
+      });
+      return;
+    }
+
+    final generation = ++_testGeneration;
+    setState(() {
+      _fetchingModels = true;
+      _testOutcome = null;
+    });
+
+    List<LlmModelOption> models;
+    try {
+      models = await widget.client.listModels(
+        baseUrl: _baseUrlController.text,
+        apiKey: apiKey,
+      );
+    } on LlmException catch (error) {
+      if (!mounted || generation != _testGeneration) return;
+      setState(() {
+        _fetchingModels = false;
+        _testOutcome = _ConnectionTestOutcome.error(error.message);
+      });
+      return;
+    } catch (_) {
+      if (!mounted || generation != _testGeneration) return;
+      setState(() {
+        _fetchingModels = false;
+        _testOutcome = const _ConnectionTestOutcome.error('获取模型列表失败，请稍后重试');
+      });
+      return;
+    }
+
+    if (!mounted || generation != _testGeneration) return;
+    setState(() => _fetchingModels = false);
+
+    if (models.isEmpty) {
+      setState(() {
+        _testOutcome = const _ConnectionTestOutcome.error('该服务未返回可用模型列表');
+      });
+      return;
+    }
+    await _showModelPicker(models);
+  }
+
+  Future<void> _showModelPicker(List<LlmModelOption> models) async {
+    final selected = await AppFeedback.sheet<LlmModelOption>(
+      context,
+      scrollControlled: true,
+      constraints: const BoxConstraints(
+        maxWidth: _AiSettingsPageState._contentMaxWidth,
+      ),
+      builder: (sheetContext) => _ModelPickerSheet(
+        models: models,
+        currentModel: _modelController.text.trim(),
+      ),
+    );
+    if (selected == null || !mounted) return;
+    setState(() {
+      _modelController.text = selected.id;
+    });
+  }
+
   Future<void> _save() async {
     if (_saving) return;
     if (!(_formKey.currentState?.validate() ?? false)) return;
@@ -663,6 +748,31 @@ class _ProfileEditorSheetState extends State<_ProfileEditorSheet> {
               ),
               const SizedBox(height: AppSpacing.md),
               TextFormField(
+                key: const Key('ai_api_key_field'),
+                controller: _apiKeyController,
+                obscureText: _obscureApiKey,
+                autocorrect: false,
+                enableSuggestions: false,
+                textInputAction: TextInputAction.next,
+                decoration: InputDecoration(
+                  labelText: 'API Key',
+                  hintText: _isEditing ? '留空保持原密钥' : 'sk-...',
+                  suffixIcon: IconButton(
+                    key: const Key('ai_api_key_visibility_button'),
+                    tooltip: _obscureApiKey ? '显示密钥' : '隐藏密钥',
+                    onPressed: () {
+                      setState(() => _obscureApiKey = !_obscureApiKey);
+                    },
+                    icon: Icon(
+                      _obscureApiKey
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              TextFormField(
                 key: const Key('ai_model_field'),
                 controller: _modelController,
                 autocorrect: false,
@@ -673,6 +783,20 @@ class _ProfileEditorSheetState extends State<_ProfileEditorSheet> {
                   hintText: _preset == LlmProviderPreset.deepseek
                       ? LlmProviderPreset.deepseek.defaultModel
                       : '输入模型名称',
+                  suffixIcon: _fetchingModels
+                      ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : TextButton(
+                          key: const Key('ai_fetch_models_button'),
+                          onPressed: () => unawaited(_fetchModels()),
+                          child: const Text('获取模型'),
+                        ),
                 ),
                 validator: (value) => _validateRequired(value, '请输入模型名称'),
               ),
@@ -695,31 +819,6 @@ class _ProfileEditorSheetState extends State<_ProfileEditorSheet> {
                 ),
               ],
               const SizedBox(height: AppSpacing.md),
-              TextFormField(
-                key: const Key('ai_api_key_field'),
-                controller: _apiKeyController,
-                obscureText: _obscureApiKey,
-                autocorrect: false,
-                enableSuggestions: false,
-                textInputAction: TextInputAction.done,
-                decoration: InputDecoration(
-                  labelText: 'API Key',
-                  hintText: _isEditing ? '留空保持原密钥' : 'sk-...',
-                  suffixIcon: IconButton(
-                    key: const Key('ai_api_key_visibility_button'),
-                    tooltip: _obscureApiKey ? '显示密钥' : '隐藏密钥',
-                    onPressed: () {
-                      setState(() => _obscureApiKey = !_obscureApiKey);
-                    },
-                    icon: Icon(
-                      _obscureApiKey
-                          ? Icons.visibility_outlined
-                          : Icons.visibility_off_outlined,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: AppSpacing.lg),
               Row(
                 children: [
                   Expanded(child: Text('温度', style: context.appText.rowTitle)),
@@ -798,6 +897,99 @@ class _ProfileEditorSheetState extends State<_ProfileEditorSheet> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// 从服务端 `/models` 拉取到的模型目录选择面板。
+class _ModelPickerSheet extends StatefulWidget {
+  const _ModelPickerSheet({required this.models, required this.currentModel});
+
+  final List<LlmModelOption> models;
+  final String currentModel;
+
+  @override
+  State<_ModelPickerSheet> createState() => _ModelPickerSheetState();
+}
+
+class _ModelPickerSheetState extends State<_ModelPickerSheet> {
+  final TextEditingController _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final query = _query.trim().toLowerCase();
+    final filtered = query.isEmpty
+        ? widget.models
+        : widget.models.where((option) {
+            final name = option.displayName?.toLowerCase() ?? '';
+            return option.id.toLowerCase().contains(query) ||
+                name.contains(query);
+          }).toList();
+
+    return SafeArea(
+      top: false,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+            child: Text('选择模型', style: Theme.of(context).textTheme.titleLarge),
+          ),
+          if (widget.models.length > 6)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, AppSpacing.md, 20, 0),
+              child: TextField(
+                key: const Key('ai_model_search_field'),
+                controller: _searchController,
+                autocorrect: false,
+                enableSuggestions: false,
+                decoration: const InputDecoration(
+                  hintText: '搜索模型',
+                  prefixIcon: Icon(Icons.search),
+                ),
+                onChanged: (value) => setState(() => _query = value),
+              ),
+            ),
+          const SizedBox(height: AppSpacing.sm),
+          Flexible(
+            child: filtered.isEmpty
+                ? const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Center(child: Text('没有匹配的模型')),
+                  )
+                : ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: filtered.length,
+                    itemBuilder: (context, index) {
+                      final option = filtered[index];
+                      final displayName = option.displayName;
+                      final showSubtitle =
+                          displayName != null && displayName != option.id;
+                      final isCurrent = option.id == widget.currentModel;
+                      return ListTile(
+                        key: Key('ai_model_option_${option.id}'),
+                        title: Text(displayName ?? option.id),
+                        subtitle: showSubtitle ? Text(option.id) : null,
+                        trailing: isCurrent
+                            ? Icon(Icons.check, size: 20, color: cs.primary)
+                            : null,
+                        onTap: () => Navigator.of(context).pop(option),
+                      );
+                    },
+                  ),
+          ),
+          SizedBox(height: MediaQuery.viewInsetsOf(context).bottom + 8),
+        ],
       ),
     );
   }
