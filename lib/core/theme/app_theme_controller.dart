@@ -80,7 +80,12 @@ class AppThemeController {
 
   Color resolveHomeSecondaryTextColor(BuildContext context, Color fallback) {
     return switch (homeTextColorMode.value) {
-      HomeTextColorMode.system => fallback,
+      // 浅色液态 shader 上直接铺冷灰 onSurfaceVariant 太淡，改用与
+      // ForBackground 一致的深暖灰；深色主题下保持主题次级文字色。
+      HomeTextColorMode.system =>
+        Theme.of(context).brightness == Brightness.light
+            ? const Color(0xFF4C4247)
+            : fallback,
       HomeTextColorMode.dark => const Color(0xFF4C4247),
       HomeTextColorMode.light => Colors.white.withValues(alpha: 0.82),
     };

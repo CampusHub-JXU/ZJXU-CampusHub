@@ -87,11 +87,9 @@ class AppTileSurface extends StatelessWidget {
         : appSurfaceDecoration(
             cs: cs,
             isDark: isDark,
-            glassEnabled: glassEnabled,
+            glassEnabled: isDark && glassEnabled,
             borderRadius: radius,
-            tintAlpha: isDark
-                ? kSurfaceTintOpacity * 0.86
-                : kSurfaceTintOpacity,
+            tintAlpha: isDark ? kSurfaceTintOpacity * 0.86 : 1.0,
           );
 
     final surface = Material(

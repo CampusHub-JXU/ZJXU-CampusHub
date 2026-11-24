@@ -64,13 +64,13 @@ List<BoxShadow> appSurfaceShadows({required bool isDark}) {
   return const [];
 }
 
-/// 硬质磁贴浅色模式描边色：取 11% `onSurface`（与课表线 `matrixLine` 同色系
-/// 的柔和浅灰中性线，在浅灰 scaffold 上刚好托住白卡而不黑不硬）。
+/// 硬质磁贴浅色模式描边色：取 6% `onSurface`（轻柔极细的中性边界线，
+/// 密集成群时不产生灰框感）。
 Color appHardTileBorderColor(ColorScheme cs) =>
-    cs.onSurface.withValues(alpha: 0.11);
+    cs.onSurface.withValues(alpha: 0.06);
 
 /// 硬质磁贴背景装饰：浅色模式下给出实色 `surfaceContainerLowest` 衬底与
-/// 极克制落底影（`alpha: 0.04, blurRadius: 3, offset: (0, 1)`），深色模式保持透明透传。
+/// 极轻柔落底影（`alpha: 0.025, blurRadius: 3, offset: (0, 1)`），深色模式保持透明透传。
 ShapeDecoration appHardTileDecoration({
   required ColorScheme cs,
   required bool isDark,
@@ -87,7 +87,7 @@ ShapeDecoration appHardTileDecoration({
     shape: RoundedSuperellipseBorder(borderRadius: borderRadius),
     shadows: [
       BoxShadow(
-        color: cs.shadow.withValues(alpha: 0.04),
+        color: cs.shadow.withValues(alpha: 0.025),
         blurRadius: 3,
         offset: const Offset(0, 1),
       ),

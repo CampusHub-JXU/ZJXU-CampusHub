@@ -216,20 +216,47 @@ class AppThemeBuilder {
       brightness: Brightness.light,
     ).copyWith(primary: seedColor);
 
-    // 中性种子：浅色模式走中性冷灰表面阶梯，阻断种子色粉调渗入
-    // （背景 #FEF8F7、描边 #E2DDDC 之类的粉白观感），卡面纯白、
-    // 描边中性灰，与深色模式的表面策略对偶。
-    // 具体色值取 design system v2 的 `--bg / --surface-lowest / --surface-low`
-    // 三档（docs/design-baseline/DESIGN.md §2.1）。
+    // 中性种子：浅色模式走清透中性冷灰表面阶梯，阻断种子色粉调渗入
+    // （背景 #FEF8F7、描边 #E2DDDC 之类的粉白观感），理顺 M3 递增阶梯，
+    // 显式覆盖中性灰文字/描边色，消除品牌红带来的暖粉灰混杂感。
     if (_isNeutralSeed(seedColor)) {
       colorScheme = colorScheme.copyWith(
-        surface: const Color(0xFFF3F4F6),
-        surfaceContainerLowest: Colors.white,
-        surfaceContainerLow: const Color(0xFFF8F9FA),
-        surfaceContainer: const Color(0xFFF0F2F5),
-        surfaceContainerHigh: const Color(0xFFE2E5EB),
-        surfaceContainerHighest: const Color(0xFFECEEF2),
-        outlineVariant: const Color(0xFFE1E4E9),
+        surface: const Color(0xFFF7F8FA),
+        surfaceContainerLowest: const Color(0xFFFFFFFF),
+        surfaceContainerLow: const Color(0xFFFAFBFC),
+        surfaceContainer: const Color(0xFFF2F4F7),
+        surfaceContainerHigh: const Color(0xFFECEFF3),
+        surfaceContainerHighest: const Color(0xFFE6E9EE),
+        onSurfaceVariant: const Color(0xFF5A6068),
+        outline: const Color(0xFF8C939D),
+        outlineVariant: const Color(0xFFE3E6EC),
+      );
+    } else {
+      // 非中性种子：保留淡淡主题色调的同时适度向清透白灰靠拢，
+      // 避免默认 M3 浅色表面偏灰偏浊。
+      colorScheme = colorScheme.copyWith(
+        surface: _mix(colorScheme.surface, const Color(0xFFF7F8FA), 0.45),
+        surfaceContainerLowest: const Color(0xFFFFFFFF),
+        surfaceContainerLow: _mix(
+          colorScheme.surfaceContainerLow,
+          const Color(0xFFFAFBFC),
+          0.40,
+        ),
+        surfaceContainer: _mix(
+          colorScheme.surfaceContainer,
+          const Color(0xFFF2F4F7),
+          0.35,
+        ),
+        surfaceContainerHigh: _mix(
+          colorScheme.surfaceContainerHigh,
+          const Color(0xFFECEFF3),
+          0.35,
+        ),
+        surfaceContainerHighest: _mix(
+          colorScheme.surfaceContainerHighest,
+          const Color(0xFFE6E9EE),
+          0.35,
+        ),
       );
     }
 

@@ -37,7 +37,7 @@ class PlainListGroup extends StatelessWidget {
           cs: cs,
           isDark: isDark,
           glassEnabled: glassEnabled,
-          tintAlpha: isDark ? kSurfaceTintOpacity * 0.86 : kSurfaceTintOpacity,
+          tintAlpha: isDark ? kSurfaceTintOpacity * 0.86 : 0.96,
         ),
         shape: RoundedSuperellipseBorder(borderRadius: AppRadius.tileBorder),
         clipBehavior: Clip.antiAlias,

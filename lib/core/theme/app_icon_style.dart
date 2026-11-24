@@ -98,16 +98,11 @@ class AppIconColors {
       Color.lerp(inkBlack, Colors.white, 0.48)!,
     ],
   );
-  static final monochromeDark = AppIconColors(
-    inkBlack,
-    inkBlack,
+  static final monochromeDark = AppIconColors(inkBlack, inkBlack, ivory, [
     ivory,
-    [
-      ivory,
-      Color.lerp(ivory, inkBlack, 0.24)!,
-      Color.lerp(ivory, inkBlack, 0.48)!,
-    ],
-  );
+    Color.lerp(ivory, inkBlack, 0.24)!,
+    Color.lerp(ivory, inkBlack, 0.48)!,
+  ]);
 
   /// 与 alias 资源逐款对应：3 种图标全部随系统深/浅模式自动互换。
   static AppIconColors resolve({
@@ -116,10 +111,8 @@ class AppIconColors {
     required bool isDark,
   }) {
     return switch (style) {
-      AppIconStyle.monochromeAuto =>
-        isDark ? monochromeDark : monochromeLight,
-      AppIconStyle.crimsonClassic =>
-        isDark ? _crimsonDark() : _crimsonLight(),
+      AppIconStyle.monochromeAuto => isDark ? monochromeDark : monochromeLight,
+      AppIconStyle.crimsonClassic => isDark ? _crimsonDark() : _crimsonLight(),
       AppIconStyle.followTheme => isDark ? _themeDark(seed) : _themeLight(seed),
     };
   }

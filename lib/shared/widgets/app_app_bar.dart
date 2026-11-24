@@ -147,7 +147,7 @@ class GlassAppBarSpace extends StatelessWidget {
                         isDark: isDark,
                         alpha: 1.0,
                       ),
-                      tintAlpha: isDark ? 0.42 : 0.50,
+                      tintAlpha: isDark ? 0.42 : 0.76,
                       borderColor: borderColor,
                       grain: style.frostGrainEnabled.value,
                     ),
