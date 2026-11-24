@@ -2,6 +2,9 @@ import 'package:dio/dio.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:jxu_campus_hub/core/academic/academic_exceptions.dart';
+import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
+import 'package:jxu_campus_hub/features/changxing_jiada/changxing_jiada_exceptions.dart';
 import 'package:jxu_campus_hub/shared/widgets/network_error_toast.dart';
 
 void main() {
@@ -31,17 +34,24 @@ void main() {
       expect(NetworkErrorToast.classify(err), NetworkErrorKind.proxyConflict);
     });
 
-    test('ExamAuthExpiredException → academicAuthExpired', () {
+    test('AcademicSessionExpired → academicAuthExpired', () {
       expect(
-        NetworkErrorToast.classify(_FakeAuthExpired()),
+        NetworkErrorToast.classify(_SessionFailure()),
         NetworkErrorKind.academicAuthExpired,
       );
     });
 
-    test('NeedUnifiedAuth type → unifiedAuthExpired', () {
+    test('ChangxingNeedUnifiedAuthException → unifiedAuthExpired', () {
       expect(
-        NetworkErrorToast.classify(_FakeNeedUnifiedAuth()),
+        NetworkErrorToast.classify(ChangxingNeedUnifiedAuthException()),
         NetworkErrorKind.unifiedAuthExpired,
+      );
+    });
+
+    test('CaptchaException → academicAuthExpired', () {
+      expect(
+        NetworkErrorToast.classify(CaptchaException('加载失败')),
+        NetworkErrorKind.academicAuthExpired,
       );
     });
 
@@ -96,12 +106,10 @@ void main() {
   });
 }
 
-class _FakeAuthExpired implements Exception {
+class _SessionFailure implements Exception, AcademicSessionExpired {
   @override
-  String toString() => 'ExamAuthExpiredException: 登录已过期';
-}
+  bool get automaticLoginPaused => false;
 
-class _FakeNeedUnifiedAuth implements Exception {
   @override
-  String toString() => 'ChangxingNeedUnifiedAuthException';
+  String toString() => 'session failure';
 }

@@ -1,6 +1,12 @@
 import 'package:dio/dio.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../core/academic/academic_exceptions.dart';
+import '../../core/auth/cas_auth_broker.dart';
+import '../../core/auth/unified_auth.dart';
+import '../../core/auth/zhengfang_auth.dart';
+import '../../features/changxing_jiada/changxing_jiada_exceptions.dart';
+
 /// 统一网络异常 Toast 提示（PRD FR-3）。
 ///
 /// 按 [NetworkErrorKind] 映射文案，5 秒内同类 Toast 去重，避免刷新连击刷屏。
@@ -60,20 +66,23 @@ class NetworkErrorToast {
       }
     }
 
-    final type = error.runtimeType.toString();
+    // Release builds obfuscate Dart type names; use actual types instead.
     final text = error.toString();
-    if (type.contains('AuthExpired') ||
+    if (error is AcademicSessionExpired ||
+        error is CasAuthExpiredException ||
+        error is ChangxingAuthExpiredException ||
         text.contains('WebVPN 认证已过期') ||
-        text.contains('登录已过期')) {
+        text.contains('登录已过期') ||
+        text.contains('登录状态已过期')) {
       return NetworkErrorKind.academicAuthExpired;
     }
-    if (type.contains('NeedUnifiedAuth') || text.contains('一卡通认证')) {
+    if (error is ChangxingNeedUnifiedAuthException || text.contains('一卡通认证')) {
       return NetworkErrorKind.unifiedAuthExpired;
     }
-    if (type.contains('WebVpnGateway') || text.contains('WebVPN 网关不可用')) {
+    if (text.contains('WebVPN 网关不可用')) {
       return NetworkErrorKind.webVpnUnavailable;
     }
-    if (type.contains('Captcha')) {
+    if (error is CaptchaException || error is UnifiedAuthCaptchaException) {
       return NetworkErrorKind.academicAuthExpired;
     }
     return NetworkErrorKind.generic;
