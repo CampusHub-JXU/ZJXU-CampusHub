@@ -22,7 +22,7 @@ import '../../shared/widgets/plain_list.dart';
 
 /// 作者与项目信息（唯一来源）。
 const String kAppAuthor = 'FHfanshu';
-const String kAppAuthorEmail = '3357264605@qq.com';
+const String kAppAuthorEmail = 'fhfanshu@outlook.com';
 const String kAppAuthorProfileUrl = 'https://github.com/FHfanshu';
 const String kAppProjectUrl = 'https://github.com/FHfanshu/ZJXU-CampusHub';
 
