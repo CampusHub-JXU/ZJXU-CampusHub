@@ -10,6 +10,7 @@ import 'package:jxu_campus_hub/core/auth/auth_session_persistence.dart';
 import 'package:jxu_campus_hub/core/auth/connect_mode_resolver.dart';
 import 'package:jxu_campus_hub/core/auth/credential_store.dart';
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
+import 'package:jxu_campus_hub/core/logging/app_logger.dart';
 import 'package:jxu_campus_hub/core/network/dio_client.dart';
 import 'package:jxu_campus_hub/core/network/network_settings.dart';
 
@@ -157,6 +158,54 @@ void main() {
   );
 
   group('validateSession 的 owner/revision 边界', () {
+    test('失效探测记录状态、Cookie 名称和指纹，隐藏所有凭据', () async {
+      await DioClient.instance.ensureInitialized();
+      final uri = Uri.parse(
+        'https://jwzx.zjxu.edu.cn/jwglxt/xtgl/index_initMenu.html',
+      );
+      await DioClient.instance.zhengfangCookieJar.saveFromResponse(uri, [
+        Cookie('JSESSIONID', 'private-request-value')..path = '/jwglxt',
+      ]);
+      DioClient.instance.dio.httpClientAdapter = MockHttpClientAdapter()
+        ..registerText(
+          'GET',
+          uri.path,
+          '',
+          statusCode: 302,
+          headers: {
+            'location': [
+              '/jwglxt/xtgl/login_slogin.html;jsessionid=private-matrix-value'
+                  '?ticket=private-ticket-value',
+            ],
+            'set-cookie': ['route=private-response-value; Path=/'],
+          },
+        );
+      final auth = ZhengfangAuth.instance;
+      auth.debugSetSession(active: true, studentId: 'A');
+
+      expect(
+        await auth.validateSession(
+          revokeOnInvalid: false,
+          caller: 'academic_guard',
+        ),
+        isFalse,
+      );
+      final log = AppLogger.instance.authTrail.last.message;
+      expect(
+        log,
+        contains('caller=academic_guard outcome=invalid reason=redirected'),
+      );
+      expect(
+        log,
+        contains('statusCode=302 locationPath=/jwglxt/xtgl/login_slogin.html'),
+      );
+      expect(log, contains('cookieNames=[JSESSIONID] cookieCount=1'));
+      expect(log, matches(RegExp(r'cookieFingerprint=[0-9a-f]{8} ')));
+      expect(log, contains('setCookieNames=[route]'));
+      expect(log, isNot(contains('private-')));
+      expect(auth.isLoggedIn, isTrue);
+    });
+
     test('探测命中失效且会话未变：返回 false 并登出', () async {
       await DioClient.instance.ensureInitialized();
       final adapter = MockHttpClientAdapter()

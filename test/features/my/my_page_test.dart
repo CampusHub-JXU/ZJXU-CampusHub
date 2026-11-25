@@ -624,10 +624,7 @@ void main() {
       adapter.register(
         'GET',
         '/jwglxt/xtgl/index_initMenu.html',
-        (options) async => ResponseBody.fromString(
-          '<html><a href="/xtgl/index_initMenu.html">教务首页</a></html>',
-          200,
-        ),
+        (options) async => ResponseBody.fromString('', 901),
       );
 
       var loginPromptCount = 0;
@@ -647,12 +644,16 @@ void main() {
                     title: const Text('登录教务系统'),
                     actions: [
                       TextButton(
-                        onPressed: () {
-                          ZhengfangAuth.instance.debugSetSession(
-                            active: true,
-                            studentId: '20250001',
+                        onPressed: () async {
+                          await AuthSessionPersistence.instance.commit(
+                            CredentialSessionDomain.academic,
+                            account: '20250001',
+                            expectedEpoch: 0,
                           );
-                          Navigator.of(dialogContext).pop(true);
+                          await ZhengfangAuth.instance.restoreSession();
+                          if (dialogContext.mounted) {
+                            Navigator.of(dialogContext).pop(true);
+                          }
                         },
                         child: const Text('模拟登录成功'),
                       ),
@@ -694,6 +695,8 @@ void main() {
       expect(find.text('教务系统门户', skipOffstage: false), findsNothing);
       expect(find.text('统一认证'), findsOneWidget);
       expect(loginPromptCount, 1);
+      expect(adapter.requestLog, isEmpty, reason: '登录通知与弹窗返回都只同步本地状态');
+      expect(ZhengfangAuth.instance.isLoggedIn, isTrue);
       // 两行状态已刷新：教务行转为已登录。
       expect(
         tester.widget<Text>(find.byKey(const Key('my_academic_status'))).data,
@@ -705,6 +708,37 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('教务系统门户', skipOffstage: false), findsOneWidget);
       expect(loginPromptCount, 1);
+    },
+  );
+
+  testWidgets(
+    'initial academic probe reflects failure without revoking the session',
+    (tester) async {
+      final adapter = await initAcademicLivenessMock();
+      const path = '/jwglxt/xtgl/index_initMenu.html';
+      adapter.registerText('GET', path, '', statusCode: 901);
+      final committed = await AuthSessionPersistence.instance.commit(
+        CredentialSessionDomain.academic,
+        account: 'restored-student',
+        expectedEpoch: 0,
+      );
+      await ZhengfangAuth.instance.restoreSession();
+
+      await tester.pumpWidget(const MaterialApp(home: MyPage()));
+      await tester.pumpAndSettle();
+
+      expect(adapter.requestLog, ['GET $path']);
+      expect(
+        tester.widget<Text>(find.byKey(const Key('my_academic_status'))).data,
+        '去登录',
+      );
+      expect(ZhengfangAuth.instance.isLoggedIn, isTrue);
+      expect(
+        await AuthSessionPersistence.instance.readEpoch(
+          CredentialSessionDomain.academic,
+        ),
+        committed!.epoch,
+      );
     },
   );
 

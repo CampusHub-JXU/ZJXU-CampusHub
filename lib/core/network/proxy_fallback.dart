@@ -17,7 +17,6 @@ import 'proxy_mode.dart';
 /// - 调用方 [cancelToken] 取消时绝不重试，直接抛取消错误；
 /// - 每次发送都派生独立 token，结束（含 [timeout]）时取消底层传输，避免
 ///   socket 悬挂；
-/// - [onRequestUri] 在每次实际发出请求时回调（隔离会话用它记录触碰过的 URI）；
 /// - 回退 Dio 用完即 `close(force: true)`。
 Future<Response<T>> sendWithSystemProxyFallback<T>({
   required Dio primary,
@@ -26,7 +25,6 @@ Future<Response<T>> sendWithSystemProxyFallback<T>({
   required Future<Response<T>> Function(Dio dio, CancelToken token) request,
   CancelToken? cancelToken,
   Duration? timeout,
-  void Function(Uri uri)? onRequestUri,
 }) async {
   Uri? requestUri;
 
@@ -40,7 +38,6 @@ Future<Response<T>> sendWithSystemProxyFallback<T>({
       onRequest: (options, handler) {
         if (identical(options.cancelToken, token)) {
           requestUri = options.uri;
-          onRequestUri?.call(options.uri);
         }
         handler.next(options);
       },
@@ -105,9 +102,12 @@ Dio createSystemProxyFallbackDio({
   required Dio template,
   required CookieJar jar,
   HttpClientAdapter? adapterOverride,
+  bool responseOriginOnly = false,
 }) {
   final client = Dio(cloneBaseOptions(template));
-  client.interceptors.add(buildCookieInterceptor(jar));
+  client.interceptors.add(
+    buildCookieInterceptor(jar, responseOriginOnly: responseOriginOnly),
+  );
   applyProxyModeToDio(client, ignoreSystemProxy: false);
   if (adapterOverride != null) {
     client.httpClientAdapter.close();

@@ -112,7 +112,12 @@ class _MyPageState extends State<MyPage> {
 
   void _onAuthChanged() {
     if (!mounted) return;
-    unawaited(_refreshStatus());
+    _silentRetryTimer?.cancel();
+    ++_statusRefreshVersion;
+    _applyStatusIfChanged(
+      campusLoggedIn: UnifiedAuthService.instance.isLoggedIn,
+      academicLoggedIn: ZhengfangAuth.instance.isLoggedIn,
+    );
   }
 
   /// 先按本地会话渲染，再测活校正。
@@ -137,7 +142,10 @@ class _MyPageState extends State<MyPage> {
     );
     final academicValidationFuture = _validateSafely(
       academicLoggedIn
-          ? ZhengfangAuth.instance.validateSession()
+          ? ZhengfangAuth.instance.validateSession(
+              revokeOnInvalid: false,
+              caller: 'my_page',
+            )
           : Future<bool?>.value(false),
     );
 
@@ -198,8 +206,7 @@ class _MyPageState extends State<MyPage> {
         title: '登录一卡通',
         description: '登录后可查看一卡通余额与账单',
       );
-      if (!mounted) return;
-      await _refreshStatus();
+      _onAuthChanged();
       return;
     }
     await context.pushNamed('campus-card');
@@ -215,8 +222,7 @@ class _MyPageState extends State<MyPage> {
       // 未登录先弹教务登录；登录成功与否都停留在本页。
       final prompt = widget.academicLoginPrompt ?? showAcademicSystemLoginModal;
       await prompt(context);
-      if (!mounted) return;
-      await _refreshStatus();
+      _onAuthChanged();
       return;
     }
     await _openAcademicH5();

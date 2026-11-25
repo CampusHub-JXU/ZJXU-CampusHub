@@ -601,6 +601,7 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
     _ZhengfangChallengeContext context, {
     CancelToken? cancelToken,
   }) async {
+    const caller = 'post_login_verify';
     final requestUrl = '${context.baseUrl}/xtgl/index_initMenu.html';
     try {
       final response = await context.session.send<String>(
@@ -620,10 +621,10 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
       );
       final status = response.statusCode ?? 0;
       final location = response.headers.value('location') ?? '';
+      final requestUri = response.requestOptions.uri;
       final classified = classifyAcademicEntryResponse(
         mode: context.mode,
-        requestUri: Uri.parse(requestUrl)
-            .replace(queryParameters: {'jsdm': 'xs'}),
+        requestUri: requestUri,
         status: status,
         location: location,
         html: response.data ?? '',
@@ -644,29 +645,46 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
         // 与传输失败同样 fail closed（不能把错误页当作「未发现问题」）。
         verdict = _PostLoginVerdict.networkError;
       }
-      AppLogger.instance.auth(
-        verdict == _PostLoginVerdict.verified ? LogLevel.info : LogLevel.warn,
-        '教务登录后会话校验: ${verdict.name} status=$status '
-        'location=${_locationPathForLog(location)}',
+      final reason = switch (verdict) {
+        _PostLoginVerdict.bounced || _PostLoginVerdict.gatewayExpired =>
+          location.isNotEmpty &&
+                  classifyLoginUrl(requestUri.resolve(location).toString()) !=
+                      null
+              ? 'redirected'
+              : status == 200
+              ? 'loginHtml'
+              : 'status$status',
+        _PostLoginVerdict.networkError => 'httpError',
+        _ => verdict.name,
+      };
+      _logAcademicSessionProbe(
+        caller: caller,
+        reason: reason,
+        outcome: verdict.name,
+        response: response,
+        level: verdict == _PostLoginVerdict.verified
+            ? LogLevel.info
+            : LogLevel.warn,
       );
       return verdict;
     } on DioException catch (e) {
       if (CancelToken.isCancel(e)) rethrow;
-      AppLogger.instance.auth(LogLevel.warn, '教务登录后会话校验失败（网络异常）: ${e.type}');
+      _logAcademicSessionProbe(
+        caller: caller,
+        reason: e.type.name,
+        outcome: 'networkError',
+        response: e.response,
+        request: e.requestOptions,
+      );
       return _PostLoginVerdict.networkError;
     } catch (_) {
-      AppLogger.instance.auth(LogLevel.warn, '教务登录后会话校验失败（未知异常）');
+      _logAcademicSessionProbe(
+        caller: caller,
+        reason: 'exception',
+        outcome: 'networkError',
+      );
       return _PostLoginVerdict.networkError;
     }
-  }
-
-  /// 仅保留 Location 的 path（去掉 query / fragment / `;jsessionid` 路径参数）。
-  String _locationPathForLog(String location) {
-    if (location.isEmpty) return '-';
-    final path = Uri.tryParse(location)?.path ?? '';
-    if (path.isEmpty) return '-';
-    final semicolon = path.indexOf(';');
-    return semicolon < 0 ? path : path.substring(0, semicolon);
   }
 
   Future<SessionCommitResult?> _commitChallengeSession(

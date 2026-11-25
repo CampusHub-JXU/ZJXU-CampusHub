@@ -512,7 +512,11 @@ class AcademicAuthGuard {
       // 无登出副作用探测：撤销留给 guard 的终态条件撤销，探测本身不得先登出，
       // 否则 guard 会因 revision 变化而 fail closed、无法走 OCR。
       final ok =
-          await auth.validateSession(revokeOnInvalid: false, mode: mode) ==
+          await auth.validateSession(
+            revokeOnInvalid: false,
+            mode: mode,
+            caller: 'academic_guard',
+          ) ==
           true;
       if (ok && BackgroundAuthContext.current == null) auth.setMode(mode);
       return ok;

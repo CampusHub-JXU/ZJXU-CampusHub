@@ -125,6 +125,81 @@ AcademicEntrySessionStatus classifyAcademicEntryResponse({
   return AcademicEntrySessionStatus.unknown;
 }
 
+final _cookieNameForLog = RegExp(r"^\s*([!#$%&'*+\-.^_`|~0-9A-Za-z]+)=");
+final _setCookieBoundaryForLog = RegExp(r',(?=\s*[^;,\s=]+=)');
+
+void _logAcademicSessionProbe({
+  required String caller,
+  required String reason,
+  required String outcome,
+  Response<dynamic>? response,
+  RequestOptions? request,
+  LogLevel level = LogLevel.warn,
+}) {
+  final sent = (response?.requestOptions ?? request)
+      ?.headers[io.HttpHeaders.cookieHeader];
+  final cookieHeader = sent is String ? sent : '';
+  List<String> names(Iterable<String> fields) => [
+    for (final field in fields)
+      if (_cookieNameForLog.firstMatch(field)?.group(1) case final String name)
+        name,
+  ];
+  final requestNames = names(cookieHeader.split(';'));
+  final fingerprint = sha256
+      .convert(utf8.encode(cookieHeader))
+      .toString()
+      .substring(0, 8);
+  final setCookieNames = names(
+    (response?.headers[io.HttpHeaders.setCookieHeader] ?? const <String>[])
+        .expand((value) => value.split(_setCookieBoundaryForLog)),
+  );
+  final location =
+      response?.headers[io.HttpHeaders.locationHeader]?.firstOrNull ?? '';
+  AppLogger.instance.auth(
+    level,
+    '教务会话校验 caller=$caller outcome=$outcome reason=$reason '
+    'statusCode=${response?.statusCode ?? '-'} locationPath=${_locationPathForLog(location)} '
+    'cookieNames=$requestNames cookieCount=${requestNames.length} '
+    'cookieFingerprint=$fingerprint setCookieNames=$setCookieNames',
+  );
+}
+
+/// 只保留公开的入口路径段。URL 可能把票据放在 query、路径参数或普通路径段。
+String _locationPathForLog(String location) {
+  final path = Uri.tryParse(location)?.path ?? '';
+  if (path.isEmpty) return '-';
+  final pathParameters = RegExp(
+    r';|%3B',
+    caseSensitive: false,
+  ).firstMatch(path);
+  final clean = path.substring(0, pathParameters?.start ?? path.length);
+  const publicSegments = {
+    '',
+    'cas',
+    'http',
+    'https',
+    'jwglxt',
+    'xtgl',
+    'login',
+    'kaptcha',
+    'm',
+    'portal',
+    'login_slogin.html',
+    'login_logoutaccount.html',
+    'index_initmenu.html',
+    'index_cxyhxxindex.html',
+    'index',
+  };
+  return clean
+      .split('/')
+      .map((segment) {
+        return publicSegments.contains(segment.toLowerCase())
+            ? segment
+            : '[redacted]';
+      })
+      .join('/');
+}
+
 extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
   /// 同步 WebVPN Cookie 到 WebView（按当前全局模式，保留旧调用契约）。
   Future<void> syncWebVpnCookiesToWebView() async {
@@ -395,6 +470,7 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
   Future<bool?> validateSession({
     bool revokeOnInvalid = true,
     ZhengfangMode? mode,
+    String caller = 'unspecified',
   }) async {
     final effectiveMode = mode ?? _mode;
     if (!_sessionActive) return false;
@@ -447,19 +523,28 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
       final loginPageReturned =
           statusCode == 200 && looksLikeZhengfangLoginHtml(html);
 
-      if (redirectedToLogin ||
-          loginPageReturned ||
-          statusCode == 901 ||
-          statusCode == 401) {
-        if (_sessionRevision != revisionAtStart) {
-          AppLogger.instance.auth(LogLevel.warn, '教务会话校验命中失效，但期间会话已变化，跳过登出');
-          return null;
-        }
+      final failure = switch (statusCode) {
+        302 || 303 when redirectedToLogin => 'redirected',
+        200 when loginPageReturned => 'loginHtml',
+        901 => 'status901',
+        401 => 'status401',
+        _ => null,
+      };
+      if (failure != null) {
+        final stale = _sessionRevision != revisionAtStart;
+        _logAcademicSessionProbe(
+          caller: caller,
+          reason: failure,
+          outcome: stale
+              ? 'stale'
+              : (revokeOnInvalid ? 'revoke_if_current' : 'invalid'),
+          response: response,
+        );
+        if (stale) return null;
         if (!revokeOnInvalid) {
           // guard 的无副作用探测：只报告失效，撤销留给 guard 的终态条件撤销。
           return false;
         }
-        AppLogger.instance.auth(LogLevel.warn, '教务会话已失效，条件撤销');
         await revokeExpiredSessionIfCurrent(
           revision: revisionAtStart,
           account: accountAtStart,
@@ -481,13 +566,20 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
       }
       return null;
     } on DioException catch (e) {
-      AppLogger.instance.auth(
-        LogLevel.warn,
-        '教务会话校验失败（网络异常）: ${e.type} ${e.message}',
+      _logAcademicSessionProbe(
+        caller: caller,
+        reason: e.type.name,
+        outcome: 'networkError',
+        response: e.response,
+        request: e.requestOptions,
       );
       return null;
-    } catch (e) {
-      AppLogger.instance.auth(LogLevel.warn, '教务会话校验失败（未知异常）: $e');
+    } catch (_) {
+      _logAcademicSessionProbe(
+        caller: caller,
+        reason: 'exception',
+        outcome: 'unknown',
+      );
       return null;
     }
   }
