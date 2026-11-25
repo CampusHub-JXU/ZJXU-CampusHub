@@ -12,7 +12,9 @@ import 'package:jxu_campus_hub/core/auth/auth_recovery_state_store.dart';
 import 'package:jxu_campus_hub/core/auth/captcha_challenge.dart';
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/core/network/dio_client.dart';
+import 'package:jxu_campus_hub/shared/widgets/external_url_launcher.dart';
 import 'package:jxu_campus_hub/shared/widgets/login_widget.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../helpers/mock_http_client_adapter.dart';
 import '../../helpers/test_setup.dart';
@@ -1032,4 +1034,83 @@ void main() {
     expect(find.text('可手动输入，点击图片可换一张'), findsNothing);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'academic forgot-password link opens official page in external browser',
+    (tester) async {
+      Uri? launchedUri;
+      LaunchMode? launchedMode;
+      debugUrlLauncherOverride =
+          (uri, {mode = LaunchMode.platformDefault}) async {
+            launchedUri = uri;
+            launchedMode = mode;
+            return true;
+          };
+      addTearDown(debugResetExternalUrlLauncher);
+
+      await tester.pumpWidget(
+        buildChallengeSubject(
+          challengeLoader: ({cancelToken}) async =>
+              challenge('challenge-forgot-direct'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final link = find.text('忘记密码？前往学校官方页面找回');
+      expect(link, findsOneWidget);
+      expect(find.byIcon(Icons.open_in_new), findsOneWidget);
+
+      await tester.tap(link);
+      await tester.pump();
+
+      expect(launchedUri, Uri.parse(kAcademicForgotPasswordUrl));
+      expect(launchedMode, LaunchMode.externalApplication);
+    },
+  );
+
+  testWidgets(
+    'webvpn academic stage still displays forgot-password link with official URL',
+    (tester) async {
+      Uri? launchedUri;
+      LaunchMode? launchedMode;
+      debugUrlLauncherOverride =
+          (uri, {mode = LaunchMode.platformDefault}) async {
+            launchedUri = uri;
+            launchedMode = mode;
+            return true;
+          };
+      addTearDown(debugResetExternalUrlLauncher);
+
+      var gatewayChecks = 0;
+      await tester.pumpWidget(
+        buildSubject(
+          directReachabilityChecker: () async => false,
+          webVpnReachabilityChecker: () async => true,
+          gatewaySessionEnsurer: () async {
+            gatewayChecks += 1;
+            return gatewayChecks > 1;
+          },
+          captchaLoader: () async => tinyPng(),
+          loginHandler: (_, _, _) async => LoginFailure('unused'),
+          onLoginSuccess: () {},
+          unifiedAuthStageBuilder: (context, onLoginSuccess) => FilledButton(
+            onPressed: onLoginSuccess,
+            child: const Text('模拟一卡通认证成功'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('模拟一卡通认证成功'));
+      await tester.pumpAndSettle();
+
+      final link = find.text('忘记密码？前往学校官方页面找回');
+      expect(link, findsOneWidget);
+      await tester.tap(link);
+      await tester.pump();
+
+      expect(launchedUri, Uri.parse(kAcademicForgotPasswordUrl));
+      expect(launchedMode, LaunchMode.externalApplication);
+    },
+  );
 }

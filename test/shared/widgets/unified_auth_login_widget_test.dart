@@ -12,7 +12,9 @@ import 'package:jxu_campus_hub/core/auth/auth_recovery_state_store.dart';
 import 'package:jxu_campus_hub/core/auth/captcha_challenge.dart';
 import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/core/network/dio_client.dart';
+import 'package:jxu_campus_hub/shared/widgets/external_url_launcher.dart';
 import 'package:jxu_campus_hub/shared/widgets/unified_auth_login_widget.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../helpers/mock_http_client_adapter.dart';
 import '../../helpers/test_setup.dart';
@@ -1441,4 +1443,53 @@ void main() {
     expect(find.text('可手动输入，点击图片可换一张'), findsNothing);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'unified auth forgot-password link opens CAS reset page and toasts on failure',
+    (tester) async {
+      Uri? launchedUri;
+      LaunchMode? launchedMode;
+      var shouldSucceed = true;
+      debugUrlLauncherOverride =
+          (uri, {mode = LaunchMode.platformDefault}) async {
+            launchedUri = uri;
+            launchedMode = mode;
+            return shouldSucceed;
+          };
+      addTearDown(debugResetExternalUrlLauncher);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: UnifiedAuthLoginWidget(
+              onLoginSuccess: () {},
+              loadSavedCredentials: () async => ('', ''),
+              sessionPreflight: () async => false,
+              captchaLoader: () async => tinyPng(),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final link = find.text('忘记密码？前往学校官方页面找回');
+      expect(link, findsOneWidget);
+      expect(find.byIcon(Icons.open_in_new), findsOneWidget);
+
+      await tester.tap(link);
+      await tester.pump();
+
+      expect(launchedUri, Uri.parse(kUnifiedAuthForgotPasswordUrl));
+      expect(launchedMode, LaunchMode.externalApplication);
+
+      // 唤起失败时给出手动访问提示
+      shouldSucceed = false;
+      await tester.tap(link);
+      await tester.pump();
+      expect(
+        find.text('无法打开浏览器，请手动访问 $kUnifiedAuthForgotPasswordUrl'),
+        findsOneWidget,
+      );
+    },
+  );
 }

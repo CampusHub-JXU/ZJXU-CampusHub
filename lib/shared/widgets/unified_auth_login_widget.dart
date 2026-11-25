@@ -13,8 +13,16 @@ import '../../core/auth/credential_store.dart';
 import '../../core/auth/unified_auth.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/network/cancel_token_x.dart';
+import '../../core/theme/app_design_tokens.dart';
+import '../../core/theme/app_typography.dart';
 import 'app_banner.dart';
+import 'app_feedback.dart';
+import 'external_url_launcher.dart';
 import 'login_parts.dart';
+
+/// 统一认证官方找回密码页面（CAS 登录页「忘记密码?」直达地址）。
+const String kUnifiedAuthForgotPasswordUrl =
+    'https://newca.zjxu.edu.cn/security/start/index.html#/business/security/reset_password';
 
 enum UnifiedAuthMode { direct }
 
@@ -561,23 +569,23 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (widget.showHeader) ...[
-            const SizedBox(height: 24),
-            Icon(Icons.account_balance_outlined, size: 56, color: cs.primary),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
+            Icon(Icons.account_balance_outlined, size: 52, color: cs.primary),
+            const SizedBox(height: 12),
             Text(
               widget.title,
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.titleLarge
                   ?.copyWith(fontWeight: FontWeight.w700, letterSpacing: -0.2),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(
               widget.description,
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium
                   ?.copyWith(color: cs.onSurfaceVariant),
             ),
-            const SizedBox(height: 28),
+            const SizedBox(height: 20),
           ],
 
           TextField(
@@ -662,6 +670,11 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
                   )
                 : const Text('登录'),
           ),
+          const SizedBox(height: AppSpacing.xs),
+          const ForgotPasswordLink(
+            url: kUnifiedAuthForgotPasswordUrl,
+            logPrefix: '统一认证登录',
+          ),
 
           if (_error != null) ...[
             const SizedBox(height: 12),
@@ -672,6 +685,57 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// 登录表单下方的「忘记密码？」外链入口，点击由系统浏览器打开学校官方找回页。
+class ForgotPasswordLink extends StatelessWidget {
+  const ForgotPasswordLink({
+    super.key,
+    required this.url,
+    this.logPrefix = '登录页',
+    this.label = '忘记密码？前往学校官方页面找回',
+  });
+
+  final String url;
+  final String logPrefix;
+  final String label;
+
+  Future<void> _open(BuildContext context) async {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final launched = await openInExternalBrowser(url, logPrefix: logPrefix);
+    if (!launched && messenger != null) {
+      AppFeedback.toastOn(messenger, '无法打开浏览器，请手动访问 $url');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final style = context.appText.meta.copyWith(color: cs.onSurfaceVariant);
+    return Align(
+      alignment: Alignment.center,
+      child: InkWell(
+        onTap: () => _open(context),
+        borderRadius: AppRadius.inputBorder,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.sm,
+            vertical: AppSpacing.xs,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(label, style: style, textAlign: TextAlign.center),
+              ),
+              const SizedBox(width: AppSpacing.xs),
+              Icon(Icons.open_in_new, size: 14, color: cs.onSurfaceVariant),
+            ],
+          ),
+        ),
       ),
     );
   }

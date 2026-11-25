@@ -19,6 +19,10 @@ import 'app_banner.dart';
 import 'login_parts.dart';
 import 'unified_auth_login_widget.dart';
 
+/// 教务系统（正方）官方找回密码页面（教务登录页「忘记密码？」直达地址）。
+const String kAcademicForgotPasswordUrl =
+    'http://jwzx.zjxu.edu.cn/jwglxt/pwdmgr/retake/index.zf';
+
 typedef AcademicReachabilityChecker = Future<bool> Function();
 typedef AcademicGatewaySessionEnsurer = Future<bool?> Function();
 typedef AcademicCaptchaLoader = Future<Uint8List> Function();
@@ -671,22 +675,22 @@ class _LoginWidgetState extends State<LoginWidget> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (widget.showHeader) ...[
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
             Icon(
               _mode == ZhengfangMode.direct
                   ? Icons.school_outlined
                   : Icons.vpn_lock_outlined,
-              size: 56,
+              size: 52,
               color: colorScheme.primary,
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
             Text(
               '登录教务系统',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.titleLarge
                   ?.copyWith(fontWeight: FontWeight.w700, letterSpacing: -0.2),
             ),
-            const SizedBox(height: 28),
+            const SizedBox(height: 20),
           ],
           if (_stage == _AcademicLoginStage.detecting ||
               _stage == _AcademicLoginStage.preparingAcademic)
@@ -851,6 +855,11 @@ class _LoginWidgetState extends State<LoginWidget> {
                   ),
                 )
               : const Text('登录教务系统'),
+        ),
+        const SizedBox(height: AppSpacing.xs),
+        const ForgotPasswordLink(
+          url: kAcademicForgotPasswordUrl,
+          logPrefix: '教务登录',
         ),
       ],
     );
