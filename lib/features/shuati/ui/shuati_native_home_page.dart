@@ -281,8 +281,8 @@ class _ShuatiNativeHomePageState extends State<ShuatiNativeHomePage> {
         title: const Text('刷题助手'),
         actions: [
           IconButton(
-            tooltip: '导入题库',
-            icon: const Icon(Icons.file_upload_outlined),
+            tooltip: '添加题库',
+            icon: const Icon(Icons.add),
             onPressed: () => _open('shuati-import'),
           ),
           IconButton(
