@@ -153,21 +153,17 @@ void main() {
     return route.extra!;
   }
 
-  testWidgets('注册表中的嘉大微生活入口以普通 WebView 打开后勤 H5', (tester) async {
-    final extra = registryExtra(CampusActionIds.microLifeOpen);
-    await pumpRouter(tester);
-    router.pushNamed('external-webview', extra: extra);
-    await tester.pump();
-    await tester.pump();
-
-    final page = tester.widget<WebViewPage>(find.byType(WebViewPage));
-    expect(page.title, '嘉大微生活');
+  test('注册表中的嘉大微生活入口直接拉起微信，不走应用内 WebView', () {
+    final target = CampusActionRegistry.instance
+        .findById(CampusActionIds.microLifeOpen)!
+        .target;
+    expect(target, isA<WechatActionTarget>());
+    final wechat = target as WechatActionTarget;
     expect(
-      page.url,
+      wechat.url,
       'http://jdhq.wap.zjxu.edu.cn/Base/Center/center/account_id/6',
     );
-    expect(page.showWebViewBottomBackButton, isTrue);
-    expect(find.byType(UnifiedAuthProtectedWebViewPage), findsNothing);
+    expect(wechat.searchKeyword, '嘉大微生活');
   });
 
   testWidgets('注册表中的校务服务入口经 WebVPN 资源预热加载', (tester) async {

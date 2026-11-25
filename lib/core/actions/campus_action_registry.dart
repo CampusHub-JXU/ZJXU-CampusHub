@@ -174,15 +174,9 @@ class CampusActionRegistry {
     const CampusAction(
       id: CampusActionIds.microLifeOpen,
       title: '嘉大微生活',
-      // 后勤 H5，应用内普通 WebView 承接。
-      target: RouteActionTarget(
-        'external-webview',
-        extra: <String, Object?>{
-          'title': '嘉大微生活',
-          'url': _microLifeUrl,
-          'showWebViewBottomBackButton': true,
-        },
-      ),
+      // 后勤 H5 属微信生态：直接拉起微信打开，直达失败时复制「嘉大微生活」
+      // 供搜一搜兜底（与电费充值同一模式），不再走应用内 WebView。
+      target: WechatActionTarget(_microLifeUrl, searchKeyword: '嘉大微生活'),
     ),
     const CampusAction(
       id: CampusActionIds.physicalTestOpen,
