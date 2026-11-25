@@ -136,6 +136,13 @@ class CasRoutedAccess {
     }
   }
 
+  /// 业务已证实本次路由 / 网关会话失效（登录 bounce、传输层失败）时丢弃
+  /// [targetUrl] 对应 origin 的租约缓存；下次 [prepare] 重新选路并重建网关
+  /// 会话。供持有自有选路缓存的业务层在丢弃本地缓存时同步传播。
+  static void invalidateRoute(String targetUrl) {
+    RouteGate.instance.invalidateTarget(Uri.parse(targetUrl));
+  }
+
   static Future<void> ensureGateway(
     CancelToken? cancelToken,
     DateTime? deadline,

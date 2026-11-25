@@ -42,7 +42,7 @@ abstract final class ApkUpdateProtocol {
 
   /// 可信公开分发仓库（只信任此仓库的 Release 资产）。
   static const String trustedRepoHost = 'github.com';
-  static const String trustedRepoOwner = 'FHfanshu';
+  static const String trustedRepoOwner = 'CampusHub-JXU';
   static const String trustedRepoName = 'ZJXU-CampusHub';
 
   /// EdgeOne gh-proxy 镜像前缀：`<前缀><规范 GitHub 资产 URL>`（精确、区分大小写）。
@@ -449,7 +449,7 @@ enum ApkDownloadSource { github, edgeone, r2, test }
 /// `AppUpdateContract.parseCanonicalAssetUrl` 等价）。
 ///
 /// 接受三种固定形态（其余一律拒绝）：
-/// 1. GitHub 规范资产：`https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/<tag>/<apk>`
+/// 1. GitHub 规范资产：`https://github.com/CampusHub-JXU/ZJXU-CampusHub/releases/download/<tag>/<apk>`
 ///    （[isCanonicalAssetUrl]，Release 元数据只提供这一种）；
 /// 2. EdgeOne 镜像：`https://edgeone.gh-proxy.org/` + 形态 1（[isMirrorAssetUrl]）；
 /// 3. R2：`https://download.fhfanshu.xyz/<tag>/<apk>`，恰好两段路径

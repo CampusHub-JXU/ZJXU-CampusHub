@@ -60,7 +60,7 @@ $BuiltApk = Join-Path $RepoRoot 'build\app\outputs\flutter-apk\app-debug.apk'
 $Package = 'edu.zjxu.jxucampushub.dev'   # applicationId + debug 的 applicationIdSuffix ".dev"
 $TargetVersionCode = 9999
 $Origin = "http://10.0.2.2:$Port"
-$ReleaseRepo = 'FHfanshu/ZJXU-CampusHub'
+$ReleaseRepo = 'CampusHub-JXU/ZJXU-CampusHub'
 
 . (Join-Path $PSScriptRoot '..\flutter_env.ps1')   # 提供 $FlutterExe
 

@@ -88,6 +88,11 @@ void main() {
     FlutterSecureStorage.setMockInitialValues({});
     NetworkSettings.instance.debugReset();
     DioClient.instance.debugReset();
+    // 恢复探测（`ensureWebVpnGatewaySessionResult`）会初始化共享 Dio；
+    // 测试环境没有 path_provider 实现，必须注入目录提供者，否则初始化
+    // 在探测之前就抛 MissingPluginException，恢复链路钩子根本走不到。
+    DioClient.instance.debugCookieDirectoryPathProvider = (folderName) async =>
+        'jxuc_academic_guard_test/$folderName/';
     ZhengfangAuth.instance.debugReset();
     AuthSessionPersistence.instance.debugReset();
     AcademicAuthGuard.debugAutomaticLoginOverride = null;
@@ -119,6 +124,9 @@ void main() {
       };
       addTearDown(() => CasRoutedAccess.debugGatewayEnsurer = null);
       DioClient.instance.debugUseMemoryCookieStorage = true;
+      DioClient.instance.debugCookieDirectoryPathProvider = (
+        folderName,
+      ) async => 'jxuc_academic_guard_test/$folderName/';
       AuthSessionPersistence.instance.debugDisableFileLock = true;
       await DioClient.instance.ensureInitialized();
       final proxyMenu = Uri.parse(

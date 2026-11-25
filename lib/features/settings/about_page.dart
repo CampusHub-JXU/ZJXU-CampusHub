@@ -24,7 +24,7 @@ import '../../shared/widgets/plain_list.dart';
 const String kAppAuthor = 'FHfanshu';
 const String kAppAuthorEmail = 'fhfanshu@outlook.com';
 const String kAppAuthorProfileUrl = 'https://github.com/FHfanshu';
-const String kAppProjectUrl = 'https://github.com/FHfanshu/ZJXU-CampusHub';
+const String kAppProjectUrl = 'https://github.com/CampusHub-JXU/ZJXU-CampusHub';
 
 /// 关于页头像资源：应用图标（由 `tools/brand/app_icon_master.png` 缩放）与
 /// 作者 GitHub 头像（随包分发，不在运行时联网拉取）。

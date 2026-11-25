@@ -821,9 +821,10 @@ void main() {
       'manualRequired propagates automaticLoginPaused to the expired exception',
       () async {
         await loginAcademic('A');
-        // 会话恢复一律失败，确保 guard 走到自动登录分支并判定 manualRequired。
+        // 路由探测直连可达（请求本身才能发出）；会话恢复探测经由 mock
+        // adapter 一律失败，确保 guard 走到自动登录分支并判定 manualRequired。
         ConnectModeResolver.instance.directReachabilityChecker = () async =>
-            false;
+            true;
         ConnectModeResolver.instance.webVpnReachabilityChecker = () async =>
             false;
         AcademicAuthGuard.debugAutomaticLoginOverride =

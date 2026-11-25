@@ -9,7 +9,7 @@ package edu.zjxu.jxucampushub.platform.update
  * mapped to null) and decodes `pathSegments`, which is what the contract relies on.
  */
 internal fun runContractTests() {
-    val gh = "https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/v1.2.3/app-release.apk"
+    val gh = "https://github.com/CampusHub-JXU/ZJXU-CampusHub/releases/download/v1.2.3/app-release.apk"
     val mirror = "https://edgeone.gh-proxy.org/$gh"
     val r2 = "https://download.fhfanshu.xyz/v1.2.3/app-release.apk"
     val parse: (String?) -> AppUpdateContract.CanonicalAsset? = { AppUpdateContract.parseCanonicalAssetUrl(it) }
@@ -28,7 +28,7 @@ internal fun runContractTests() {
         check(it.source == AppUpdateContract.SOURCE_R2)
     }
     // Host compare stays case-insensitive for the plain shapes (existing behaviour).
-    check(parse("https://GITHUB.com/FHfanshu/ZJXU-CampusHub/releases/download/v1/a.apk") != null)
+    check(parse("https://GITHUB.com/CampusHub-JXU/ZJXU-CampusHub/releases/download/v1/a.apk") != null)
     check(parse("https://Download.FHFanshu.xyz/v1/a.apk") != null)
     // Surrounding whitespace is trimmed; url keeps the trimmed value.
     check(parse("  $r2 ")!!.url == r2)
@@ -36,12 +36,12 @@ internal fun runContractTests() {
     val rejects = listOf(
         "null/blank" to "",
         // wrong host / scheme
-        "wrong host" to "https://example.com/FHfanshu/ZJXU-CampusHub/releases/download/v1/a.apk",
+        "wrong host" to "https://example.com/CampusHub-JXU/ZJXU-CampusHub/releases/download/v1/a.apk",
         "http github" to gh.replaceFirst("https", "http"),
         "http r2" to r2.replaceFirst("https", "http"),
         "http mirror" to mirror.replaceFirst("https://edgeone", "http://edgeone"),
-        "github lookalike suffix" to "https://github.com.evil.com/FHfanshu/ZJXU-CampusHub/releases/download/v1/a.apk",
-        "github lookalike prefix" to "https://evilgithub.com/FHfanshu/ZJXU-CampusHub/releases/download/v1/a.apk",
+        "github lookalike suffix" to "https://github.com.evil.com/CampusHub-JXU/ZJXU-CampusHub/releases/download/v1/a.apk",
+        "github lookalike prefix" to "https://evilgithub.com/CampusHub-JXU/ZJXU-CampusHub/releases/download/v1/a.apk",
         "r2 lookalike suffix" to "https://download.fhfanshu.xyz.evil.com/v1/a.apk",
         "r2 lookalike prefix" to "https://xdownload.fhfanshu.xyz/v1/a.apk",
         "r2 sibling subdomain" to "https://a.download.fhfanshu.xyz/v1/a.apk",
@@ -85,11 +85,11 @@ internal fun runContractTests() {
         "mirror prefix upper scheme" to "HTTPS://edgeone.gh-proxy.org/$gh",
         "mirror double prefix" to "https://edgeone.gh-proxy.org/$mirror",
         "mirror + r2 inner" to "https://edgeone.gh-proxy.org/$r2",
-        "mirror + other inner" to "https://edgeone.gh-proxy.org/https://example.com/FHfanshu/ZJXU-CampusHub/releases/download/v1/a.apk",
-        "mirror + lookalike inner" to "https://edgeone.gh-proxy.org/https://github.com.evil.com/FHfanshu/ZJXU-CampusHub/releases/download/v1/a.apk",
+        "mirror + other inner" to "https://edgeone.gh-proxy.org/https://example.com/CampusHub-JXU/ZJXU-CampusHub/releases/download/v1/a.apk",
+        "mirror + lookalike inner" to "https://edgeone.gh-proxy.org/https://github.com.evil.com/CampusHub-JXU/ZJXU-CampusHub/releases/download/v1/a.apk",
         "mirror + http inner" to "https://edgeone.gh-proxy.org/${gh.replaceFirst("https", "http")}",
-        "mirror + no scheme inner" to "https://edgeone.gh-proxy.org/github.com/FHfanshu/ZJXU-CampusHub/releases/download/v1/a.apk",
-        "mirror + upper inner host" to "https://edgeone.gh-proxy.org/https://GITHUB.com/FHfanshu/ZJXU-CampusHub/releases/download/v1/a.apk",
+        "mirror + no scheme inner" to "https://edgeone.gh-proxy.org/github.com/CampusHub-JXU/ZJXU-CampusHub/releases/download/v1/a.apk",
+        "mirror + upper inner host" to "https://edgeone.gh-proxy.org/https://GITHUB.com/CampusHub-JXU/ZJXU-CampusHub/releases/download/v1/a.apk",
         "mirror + extra path before inner" to "https://edgeone.gh-proxy.org/x/$gh",
         "mirror + inner missing apk" to mirror.removeSuffix(".apk"),
         "mirror no inner" to "https://edgeone.gh-proxy.org/",

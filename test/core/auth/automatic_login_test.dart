@@ -441,6 +441,9 @@ void main() {
     DioClient.instance.dio.httpClientAdapter = _FakeAcademicAdapter();
     recognizer = _FakeRecognizer(answer: null);
     service = AutomaticLoginService.debugNew(recognizer: recognizer);
+    // 教务交换按目标选路：直连可达才进入验证码链路；setUp 里的
+    // 「恢复一律失败」钩子只针对 guard 恢复路径，不覆盖教务探测。
+    ConnectModeResolver.instance.directReachabilityChecker = () async => true;
     await CredentialStore.instance.saveCredentials('2025000001', 'pw');
     await enableAcademicOptIn();
 

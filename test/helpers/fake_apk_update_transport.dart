@@ -134,7 +134,7 @@ ApkUpdateController fakeApkUpdateController(
 
 /// 公开分发仓库的规范资产 URL 样例。
 const String kTestCanonicalAssetUrl =
-    'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/'
+    'https://github.com/CampusHub-JXU/ZJXU-CampusHub/releases/download/'
     'v0.3.0/JXU-CampusHub-v0.3.0-arm64-v8a.apk';
 
 /// 构造一条 release；[canonicalAssetUrl] 传 null 表示版本未提供可信安装包

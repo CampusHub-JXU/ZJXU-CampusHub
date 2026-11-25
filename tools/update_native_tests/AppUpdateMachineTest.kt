@@ -2,7 +2,7 @@ package edu.zjxu.jxucampushub.platform.update
 
 internal fun sampleParams(mode: String = "auto") = StartParams("1.0", "v1.0", "app.apk", "v2:1:unknown:app.apk:nosha", mode,
     listOf(SourceUrl("r2", "https://download.fhfanshu.xyz/v1.0/app.apk"),
-        SourceUrl("edgeone", "https://edgeone.gh-proxy.org/https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/v1.0/app.apk")))
+        SourceUrl("edgeone", "https://edgeone.gh-proxy.org/https://github.com/CampusHub-JXU/ZJXU-CampusHub/releases/download/v1.0/app.apk")))
 internal fun sampleTask(stage: Stage = Stage.DOWNLOADING): Task =
     AppUpdateMachine.reduce(null, Event.Start(sampleParams(), 5)).task!!.copy(stage = stage,
         downloadId = if (stage == Stage.ENQUEUING || stage == Stage.RECONCILE_REQUIRED) 0 else 9,

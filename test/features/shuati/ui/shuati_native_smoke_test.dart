@@ -97,14 +97,37 @@ ShuatiLegacyExtraction _legacyExtractionForUi() => ShuatiLegacyExtraction(
 );
 
 ShuatiLegacyMigrationService Function(ShuatiStore) _migrationFactory(
-  _FakeLegacyExtractor extractor,
-) =>
+  _FakeLegacyExtractor extractor, [
+  _MemoryMigrationPrefs? prefs,
+]) =>
     (store) => ShuatiLegacyMigrationService(
       store: store,
       extractor: extractor,
-      prefs: _MemoryMigrationPrefs(),
+      prefs: prefs ?? _MemoryMigrationPrefs(),
       importerFactory: (s) => ShuatiBackupImporter(s, useIsolate: false),
     );
+
+/// 轮询推进真异步直到迁移完成（偏好标记写入）且目标文本出现在树上：
+/// 导入链有几十段真异步（sqflite 事务），固定 8 轮 settle 在慢机器上不够用；
+/// 仅以完成标记判断又可能早于 `_load` 的 `setState` 落地，故两个条件都要满足。
+Future<void> _settleUntilMigratedTextVisible(
+  WidgetTester tester,
+  _MemoryMigrationPrefs prefs,
+  String text,
+) async {
+  for (var i = 0; i < 60; i++) {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 50)),
+    );
+    await tester.pump();
+    final migrated =
+        prefs.bools[ShuatiLegacyMigrationService.completedKey] == true;
+    if (i >= 2 && migrated && find.text(text).evaluate().isNotEmpty) {
+      await tester.pump();
+      return;
+    }
+  }
+}
 
 /// 依次返回排队响应的 LLM fake（widget 测试用，不触网络 / AI 配置）。
 class _FakeRunner implements ShuatiAiLlmRunner {
@@ -509,12 +532,21 @@ void main() {
       banks = (await tester.runAsync(store.banks.getAllBanks))!;
       expect(banks.map((b) => b.id).toList(), ['bank-1']);
 
-      // 旧版迁移入口可达
+      // 旧版迁移入口可达。不能用 `find.byType(Scrollable).last`：覆盖恢复确认
+      // 弹窗的退场动画残留第二个 Scrollable，`.last` 会命中它而不是设置页自身
+      // 的 ListView；且滚动后必须等退场/滚动动画全停（pumpAndSettle）再 tap，
+      // 否则命中检测被残留弹层拦截或坐标过期。
       await tester.scrollUntilVisible(
         find.text('打开旧版刷题助手（手动导出）'),
         200,
-        scrollable: find.byType(Scrollable).last,
+        scrollable: find
+            .descendant(
+              of: find.byType(ShuatiNativeSettingsPage),
+              matching: find.byType(Scrollable),
+            )
+            .first,
       );
+      await tester.pumpAndSettle();
       await tester.tap(find.text('打开旧版刷题助手（手动导出）'));
       await tester.pumpAndSettle();
       expect(legacyTapped, isTrue);
@@ -524,13 +556,15 @@ void main() {
   testWidgets('home auto-migrates legacy data on first open', (tester) async {
     final store = await setUpStore(tester, io);
     final extractor = _FakeLegacyExtractor(_legacyExtractionForUi());
+    final prefs = _MemoryMigrationPrefs();
     ShuatiServices.instance.debugUse(
       store,
       io: io,
-      legacyMigrationFactory: _migrationFactory(extractor),
+      legacyMigrationFactory: _migrationFactory(extractor, prefs),
     );
 
-    await pump(tester, const ShuatiNativeHomePage());
+    await tester.pumpWidget(const MaterialApp(home: ShuatiNativeHomePage()));
+    await _settleUntilMigratedTextVisible(tester, prefs, '旧版迁移来的题库');
     expect(extractor.calls, 1);
     expect(find.text('旧版迁移来的题库'), findsOneWidget);
 

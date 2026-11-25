@@ -196,6 +196,14 @@ class RouteGate {
     }
   }
 
+  /// 丢弃 [target] 所在 origin 的全部缓存租约（不分 scope）。在途准备不受
+  /// 影响；下次 [acquire] 重新选路并重新执行网关准备。供业务侧在已证实本次
+  /// 路由/网关会话失效（登录 bounce、传输层失败）时传播失效。
+  void invalidateTarget(Uri target) {
+    final origin = target.origin;
+    _leases.removeWhere((key, _) => key.$1 == origin);
+  }
+
   Future<ZhengfangMode> _requireDirect(Uri target) async {
     final verdict = await _resolver.probeDirect(target);
     if (verdict == RouteVerdict.direct) return ZhengfangMode.direct;

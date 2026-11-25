@@ -13,7 +13,7 @@ import android.net.Uri
  * 安全不变量：
  * - 只接受三种固定形态的可信资产 URL，绝不接受任意下载镜像 / 主机 / 仓库：
  *   1. GitHub 规范形态
- *      `https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/<tag>/<apk>`；
+ *      `https://github.com/CampusHub-JXU/ZJXU-CampusHub/releases/download/<tag>/<apk>`；
  *   2. EdgeOne gh-proxy：**精确、区分大小写**的前缀
  *      `https://edgeone.gh-proxy.org/` 后紧跟 1 的完整 URL；
  *   3. Cloudflare R2 自有域名 `https://download.fhfanshu.xyz/<tag>/<apk>`
@@ -36,7 +36,7 @@ internal object AppUpdateContract {
 
     const val TRUSTED_SCHEME = "https"
     const val TRUSTED_HOST = "github.com"
-    const val TRUSTED_OWNER = "FHfanshu"
+    const val TRUSTED_OWNER = "CampusHub-JXU"
     const val TRUSTED_REPO = "ZJXU-CampusHub"
     const val SEGMENT_RELEASES = "releases"
     const val SEGMENT_DOWNLOAD = "download"

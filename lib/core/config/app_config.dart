@@ -10,9 +10,9 @@ abstract final class AppConfig {
   static const updateMode = AppUpdateMode.githubRelease;
   static const updateManifestUrl = '';
   static const updateGithubLatestReleaseApiUrl =
-      'https://api.github.com/repos/FHfanshu/ZJXU-CampusHub/releases/latest';
+      'https://api.github.com/repos/CampusHub-JXU/ZJXU-CampusHub/releases/latest';
   static const updateGithubLatestReleaseFallbackApiUrls = [
-    'https://edgeone.gh-proxy.org/https://api.github.com/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
+    'https://edgeone.gh-proxy.org/https://api.github.com/repos/CampusHub-JXU/ZJXU-CampusHub/releases/latest',
   ];
   static const updateGithubReleaseMirrorPrefix =
       'https://edgeone.gh-proxy.org/';

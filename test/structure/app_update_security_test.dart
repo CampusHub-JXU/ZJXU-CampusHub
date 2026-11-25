@@ -145,7 +145,7 @@ void main() {
       final contract = read('$updateDir/AppUpdateContract.kt');
       // 形态 1：GitHub 规范 Release 资产。
       expect(contract, contains('"github.com"'));
-      expect(contract, contains('"FHfanshu"'));
+      expect(contract, contains('"CampusHub-JXU"'));
       expect(contract, contains('"ZJXU-CampusHub"'));
       expect(contract, contains('"releases"'));
       expect(contract, contains('"download"'));

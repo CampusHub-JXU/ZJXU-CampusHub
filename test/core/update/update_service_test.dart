@@ -90,12 +90,12 @@ void main() {
     expect(AppConfig.updateMode, AppUpdateMode.githubRelease);
     expect(
       AppConfig.updateGithubLatestReleaseApiUrl,
-      'https://api.github.com/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
+      'https://api.github.com/repos/CampusHub-JXU/ZJXU-CampusHub/releases/latest',
     );
     expect(
       AppConfig.updateGithubLatestReleaseFallbackApiUrls,
       contains(
-        'https://edgeone.gh-proxy.org/https://api.github.com/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
+        'https://edgeone.gh-proxy.org/https://api.github.com/repos/CampusHub-JXU/ZJXU-CampusHub/releases/latest',
       ),
     );
     expect(
@@ -112,21 +112,20 @@ void main() {
       dio.httpClientAdapter = adapter;
       adapter.registerJson(
         'GET',
-        '/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
+        '/repos/CampusHub-JXU/ZJXU-CampusHub/releases/latest',
         {
           'tag_name': 'v0.2.5',
           'body': '更新内容',
-          'html_url':
-              'https://github.com/FHfanshu/ZJXU-CampusHub/releases/tag/v0.2.5',
+          'html_url': 'https://github.com/CampusHub-JXU/ZJXU-CampusHub/releases/tag/v0.2.5',
           'published_at': '2026-05-14T10:00:00Z',
           'assets': [
             {
               'name': 'notes.txt',
-              'browser_download_url': 'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/v0.2.5/notes.txt',
+              'browser_download_url': 'https://github.com/CampusHub-JXU/ZJXU-CampusHub/releases/download/v0.2.5/notes.txt',
             },
             {
               'name': 'JXU-CampusHub-v0.2.5.apk',
-              'browser_download_url': 'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/v0.2.5/JXU-CampusHub-v0.2.5.apk',
+              'browser_download_url': 'https://github.com/CampusHub-JXU/ZJXU-CampusHub/releases/download/v0.2.5/JXU-CampusHub-v0.2.5.apk',
             },
           ],
         },
@@ -134,7 +133,7 @@ void main() {
 
       final source = GitHubReleaseUpdateSource(
         dio: dio,
-        latestReleaseApiUrl: 'https://api.github.com/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
+        latestReleaseApiUrl: 'https://api.github.com/repos/CampusHub-JXU/ZJXU-CampusHub/releases/latest',
         releaseMirrorPrefix: 'https://edgeone.gh-proxy.org/',
       );
 
@@ -144,11 +143,11 @@ void main() {
       expect(release.changelog, '更新内容');
       expect(
         release.releaseUrl,
-        'https://edgeone.gh-proxy.org/https://github.com/FHfanshu/ZJXU-CampusHub/releases/tag/v0.2.5',
+        'https://edgeone.gh-proxy.org/https://github.com/CampusHub-JXU/ZJXU-CampusHub/releases/tag/v0.2.5',
       );
       expect(
         release.downloadUrl,
-        'https://edgeone.gh-proxy.org/https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/v0.2.5/JXU-CampusHub-v0.2.5.apk',
+        'https://edgeone.gh-proxy.org/https://github.com/CampusHub-JXU/ZJXU-CampusHub/releases/download/v0.2.5/JXU-CampusHub-v0.2.5.apk',
       );
     },
   );
@@ -161,23 +160,22 @@ void main() {
       dio.httpClientAdapter = adapter;
       adapter.registerJson(
         'GET',
-        '/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
+        '/repos/CampusHub-JXU/ZJXU-CampusHub/releases/latest',
         {'message': 'rate limited'},
         statusCode: 403,
       );
       adapter.registerJson(
         'GET',
-        '/https://api.github.com/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
+        '/https://api.github.com/repos/CampusHub-JXU/ZJXU-CampusHub/releases/latest',
         {
           'tag_name': 'v0.2.6',
           'body': 'fallback ok',
-          'html_url':
-              'https://github.com/FHfanshu/ZJXU-CampusHub/releases/tag/v0.2.6',
+          'html_url': 'https://github.com/CampusHub-JXU/ZJXU-CampusHub/releases/tag/v0.2.6',
           'published_at': '2026-05-14T11:00:00Z',
           'assets': [
             {
               'name': 'JXU-CampusHub-v0.2.6.apk',
-              'browser_download_url': 'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/v0.2.6/JXU-CampusHub-v0.2.6.apk',
+              'browser_download_url': 'https://github.com/CampusHub-JXU/ZJXU-CampusHub/releases/download/v0.2.6/JXU-CampusHub-v0.2.6.apk',
             },
           ],
         },
@@ -185,9 +183,9 @@ void main() {
 
       final source = GitHubReleaseUpdateSource(
         dio: dio,
-        latestReleaseApiUrl: 'https://api.github.com/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
+        latestReleaseApiUrl: 'https://api.github.com/repos/CampusHub-JXU/ZJXU-CampusHub/releases/latest',
         latestReleaseFallbackApiUrls: const [
-          'https://edgeone.gh-proxy.org/https://api.github.com/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
+          'https://edgeone.gh-proxy.org/https://api.github.com/repos/CampusHub-JXU/ZJXU-CampusHub/releases/latest',
         ],
         releaseMirrorPrefix: 'https://edgeone.gh-proxy.org/',
       );
@@ -197,8 +195,8 @@ void main() {
       expect(release.version, '0.2.6');
       expect(release.changelog, 'fallback ok');
       expect(adapter.requestLog, [
-        'GET /repos/FHfanshu/ZJXU-CampusHub/releases/latest',
-        'GET /https://api.github.com/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
+        'GET /repos/CampusHub-JXU/ZJXU-CampusHub/releases/latest',
+        'GET /https://api.github.com/repos/CampusHub-JXU/ZJXU-CampusHub/releases/latest',
       ]);
     },
   );
@@ -209,11 +207,10 @@ void main() {
     dio.httpClientAdapter = adapter;
     adapter.registerJson(
       'GET',
-      '/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
+      '/repos/CampusHub-JXU/ZJXU-CampusHub/releases/latest',
       {
         'tag_name': 'v0.2.7',
-        'html_url':
-            'https://github.com/FHfanshu/ZJXU-CampusHub/releases/tag/v0.2.7',
+        'html_url': 'https://github.com/CampusHub-JXU/ZJXU-CampusHub/releases/tag/v0.2.7',
         'published_at': '2026-05-14T12:00:00Z',
         'assets': [
           {
@@ -229,7 +226,7 @@ void main() {
     );
     final source = GitHubReleaseUpdateSource(
       dio: dio,
-      latestReleaseApiUrl: 'https://api.github.com/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
+      latestReleaseApiUrl: 'https://api.github.com/repos/CampusHub-JXU/ZJXU-CampusHub/releases/latest',
       releaseMirrorPrefix: '',
       deviceAbiProvider: () => 'armeabi-v7a',
     );
@@ -247,14 +244,14 @@ void main() {
       dio.httpClientAdapter = adapter;
       adapter.registerJson(
         'GET',
-        '/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
+        '/repos/CampusHub-JXU/ZJXU-CampusHub/releases/latest',
         {'message': 'not found'},
         statusCode: 404,
       );
 
       final source = GitHubReleaseUpdateSource(
         dio: dio,
-        latestReleaseApiUrl: 'https://api.github.com/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
+        latestReleaseApiUrl: 'https://api.github.com/repos/CampusHub-JXU/ZJXU-CampusHub/releases/latest',
         releaseMirrorPrefix: 'https://edgeone.gh-proxy.org/',
       );
 
@@ -265,105 +262,109 @@ void main() {
     },
   );
 
-  test('extracts canonical asset metadata without altering mirrored urls', () async {
-    final dio = Dio();
-    final adapter = MockHttpClientAdapter();
-    dio.httpClientAdapter = adapter;
-    final hex = 'b' * 64;
-    adapter.registerJson(
-      'GET',
-      '/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
-      {
-        'tag_name': 'v0.2.8',
-        'html_url':
-            'https://github.com/FHfanshu/ZJXU-CampusHub/releases/tag/v0.2.8',
-        'published_at': '2026-05-14T13:00:00Z',
-        'assets': [
-          {
-            'id': 777,
-            'name': 'JXU-CampusHub-v0.2.8-arm64-v8a.apk',
-            'size': 123456,
-            'digest': 'sha256:$hex',
-            'browser_download_url':
-                'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/'
-                'v0.2.8/JXU-CampusHub-v0.2.8-arm64-v8a.apk',
-          },
-          {
-            'id': 778,
-            'name': 'JXU-CampusHub-v0.2.8-armeabi-v7a.apk',
-            'browser_download_url':
-                'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/'
-                'v0.2.8/JXU-CampusHub-v0.2.8-armeabi-v7a.apk',
-          },
-        ],
-      },
-    );
-    final source = GitHubReleaseUpdateSource(
-      dio: dio,
-      latestReleaseApiUrl: 'https://api.github.com/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
-      releaseMirrorPrefix: 'https://edgeone.gh-proxy.org/',
-      deviceAbiProvider: () => 'arm64-v8a',
-    );
+  test(
+    'extracts canonical asset metadata without altering mirrored urls',
+    () async {
+      final dio = Dio();
+      final adapter = MockHttpClientAdapter();
+      dio.httpClientAdapter = adapter;
+      final hex = 'b' * 64;
+      adapter.registerJson(
+        'GET',
+        '/repos/CampusHub-JXU/ZJXU-CampusHub/releases/latest',
+        {
+          'tag_name': 'v0.2.8',
+          'html_url': 'https://github.com/CampusHub-JXU/ZJXU-CampusHub/releases/tag/v0.2.8',
+          'published_at': '2026-05-14T13:00:00Z',
+          'assets': [
+            {
+              'id': 777,
+              'name': 'JXU-CampusHub-v0.2.8-arm64-v8a.apk',
+              'size': 123456,
+              'digest': 'sha256:$hex',
+              'browser_download_url':
+                  'https://github.com/CampusHub-JXU/ZJXU-CampusHub/releases/download/'
+                  'v0.2.8/JXU-CampusHub-v0.2.8-arm64-v8a.apk',
+            },
+            {
+              'id': 778,
+              'name': 'JXU-CampusHub-v0.2.8-armeabi-v7a.apk',
+              'browser_download_url':
+                  'https://github.com/CampusHub-JXU/ZJXU-CampusHub/releases/download/'
+                  'v0.2.8/JXU-CampusHub-v0.2.8-armeabi-v7a.apk',
+            },
+          ],
+        },
+      );
+      final source = GitHubReleaseUpdateSource(
+        dio: dio,
+        latestReleaseApiUrl: 'https://api.github.com/repos/CampusHub-JXU/ZJXU-CampusHub/releases/latest',
+        releaseMirrorPrefix: 'https://edgeone.gh-proxy.org/',
+        deviceAbiProvider: () => 'arm64-v8a',
+      );
 
-    final release = await source.fetchLatestRelease();
+      final release = await source.fetchLatestRelease();
 
-    // 既有镜像行为不变。
-    expect(
-      release.downloadUrl,
-      'https://edgeone.gh-proxy.org/https://github.com/FHfanshu/'
-      'ZJXU-CampusHub/releases/download/v0.2.8/'
-      'JXU-CampusHub-v0.2.8-arm64-v8a.apk',
-    );
-    // 规范官方 URL 不被镜像改写。
-    expect(
-      release.canonicalAssetUrl,
-      'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/'
-      'v0.2.8/JXU-CampusHub-v0.2.8-arm64-v8a.apk',
-    );
-    expect(release.assetId, 777);
-    expect(release.assetFileName, 'JXU-CampusHub-v0.2.8-arm64-v8a.apk');
-    expect(release.assetSizeBytes, 123456);
-    expect(release.assetSha256, hex);
-  });
+      // 既有镜像行为不变。
+      expect(
+        release.downloadUrl,
+        'https://edgeone.gh-proxy.org/https://github.com/CampusHub-JXU/'
+        'ZJXU-CampusHub/releases/download/v0.2.8/'
+        'JXU-CampusHub-v0.2.8-arm64-v8a.apk',
+      );
+      // 规范官方 URL 不被镜像改写。
+      expect(
+        release.canonicalAssetUrl,
+        'https://github.com/CampusHub-JXU/ZJXU-CampusHub/releases/download/'
+        'v0.2.8/JXU-CampusHub-v0.2.8-arm64-v8a.apk',
+      );
+      expect(release.assetId, 777);
+      expect(release.assetFileName, 'JXU-CampusHub-v0.2.8-arm64-v8a.apk');
+      expect(release.assetSizeBytes, 123456);
+      expect(release.assetSha256, hex);
+    },
+  );
 
-  test('ignores malformed asset digest and size, keeps release parseable', () async {
-    final dio = Dio();
-    final adapter = MockHttpClientAdapter();
-    dio.httpClientAdapter = adapter;
-    adapter.registerJson(
-      'GET',
-      '/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
-      {
-        'tag_name': 'v0.2.9',
-        'html_url':
-            'https://github.com/FHfanshu/ZJXU-CampusHub/releases/tag/v0.2.9',
-        'published_at': '2026-05-14T14:00:00Z',
-        'assets': [
-          {
-            'id': 779,
-            'name': 'JXU-CampusHub-v0.2.9-arm64-v8a.apk',
-            'size': 0,
-            'digest': 'sha256:nothex',
-            'browser_download_url':
-                'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/'
-                'v0.2.9/JXU-CampusHub-v0.2.9-arm64-v8a.apk',
-          },
-        ],
-      },
-    );
-    final source = GitHubReleaseUpdateSource(
-      dio: dio,
-      latestReleaseApiUrl: 'https://api.github.com/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
-      releaseMirrorPrefix: '',
-      deviceAbiProvider: () => 'arm64-v8a',
-    );
+  test(
+    'ignores malformed asset digest and size, keeps release parseable',
+    () async {
+      final dio = Dio();
+      final adapter = MockHttpClientAdapter();
+      dio.httpClientAdapter = adapter;
+      adapter.registerJson(
+        'GET',
+        '/repos/CampusHub-JXU/ZJXU-CampusHub/releases/latest',
+        {
+          'tag_name': 'v0.2.9',
+          'html_url': 'https://github.com/CampusHub-JXU/ZJXU-CampusHub/releases/tag/v0.2.9',
+          'published_at': '2026-05-14T14:00:00Z',
+          'assets': [
+            {
+              'id': 779,
+              'name': 'JXU-CampusHub-v0.2.9-arm64-v8a.apk',
+              'size': 0,
+              'digest': 'sha256:nothex',
+              'browser_download_url':
+                  'https://github.com/CampusHub-JXU/ZJXU-CampusHub/releases/download/'
+                  'v0.2.9/JXU-CampusHub-v0.2.9-arm64-v8a.apk',
+            },
+          ],
+        },
+      );
+      final source = GitHubReleaseUpdateSource(
+        dio: dio,
+        latestReleaseApiUrl: 'https://api.github.com/repos/CampusHub-JXU/ZJXU-CampusHub/releases/latest',
+        releaseMirrorPrefix: '',
+        deviceAbiProvider: () => 'arm64-v8a',
+      );
 
-    final release = await source.fetchLatestRelease();
+      final release = await source.fetchLatestRelease();
 
-    expect(release.assetSha256, isNull);
-    expect(release.assetSizeBytes, isNull);
-    expect(release.downloadUrl, isNotEmpty);
-  });
+      expect(release.assetSha256, isNull);
+      expect(release.assetSizeBytes, isNull);
+      expect(release.downloadUrl, isNotEmpty);
+    },
+  );
 
   group('debug 本地测试源', () {
     test('生产配置不受影响：无测试 origin 时仍是官方 GitHub 源', () {
@@ -398,7 +399,7 @@ void main() {
       adapter.registerJson('GET', '/latest.json', {
         'tag_name': tag,
         'html_url':
-            'https://github.com/FHfanshu/ZJXU-CampusHub/releases/tag/$tag',
+            'https://github.com/CampusHub-JXU/ZJXU-CampusHub/releases/tag/$tag',
         'published_at': '2026-10-16T00:00:00Z',
         'assets': [
           {
@@ -408,7 +409,7 @@ void main() {
             'digest': 'sha256:${'d' * 64}',
             // 规范 GitHub URL 只用于身份，不会被下载。
             'browser_download_url':
-                'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/'
+                'https://github.com/CampusHub-JXU/ZJXU-CampusHub/releases/download/'
                 '$tag/$name',
           },
         ],

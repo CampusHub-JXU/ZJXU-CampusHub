@@ -28,7 +28,7 @@ import sys
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
-OWNER, REPO = "FHfanshu", "ZJXU-CampusHub"
+OWNER, REPO = "CampusHub-JXU", "ZJXU-CampusHub"
 SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 
 

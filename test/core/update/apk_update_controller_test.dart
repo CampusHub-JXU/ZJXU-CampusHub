@@ -93,7 +93,7 @@ class _FakeApkUpdateTransport implements ApkUpdateTransport {
 }
 
 const String _goodUrl =
-    'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/'
+    'https://github.com/CampusHub-JXU/ZJXU-CampusHub/releases/download/'
     'v0.2.7/JXU-CampusHub-v0.2.7-arm64-v8a.apk';
 const String _r2Url =
     'https://download.fhfanshu.xyz/v0.2.7/JXU-CampusHub-v0.2.7-arm64-v8a.apk';
@@ -115,7 +115,7 @@ AppRelease _release({
         'https://edgeone.gh-proxy.org/https://github.com/FHfanshu/'
         'ZJXU-CampusHub/releases/download/v0.2.7/JXU-CampusHub-v0.2.7-arm64-v8a.apk',
     releaseUrl:
-        'https://github.com/FHfanshu/ZJXU-CampusHub/releases/tag/v0.2.7',
+        'https://github.com/CampusHub-JXU/ZJXU-CampusHub/releases/tag/v0.2.7',
     publishedAt: DateTime(2026, 5, 14),
     canonicalAssetUrl: canonicalAssetUrl,
     assetId: assetId,
@@ -170,7 +170,7 @@ void main() {
       );
       expect(
         ApkUpdateUrlPolicy.isCanonicalAssetUrl(
-          _goodUrl.replaceFirst('FHfanshu', 'SomeoneElse'),
+          _goodUrl.replaceFirst('CampusHub-JXU', 'SomeoneElse'),
         ),
         isFalse,
       );
@@ -185,7 +185,7 @@ void main() {
     test('rejects encoded path traversal and non-apk files', () {
       expect(
         ApkUpdateUrlPolicy.isCanonicalAssetUrl(
-          'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/'
+          'https://github.com/CampusHub-JXU/ZJXU-CampusHub/releases/download/'
           'v0.2.7/%2e%2e/%2e%2e/evil.apk',
         ),
         isFalse,
@@ -198,7 +198,7 @@ void main() {
       );
       expect(
         ApkUpdateUrlPolicy.isCanonicalAssetUrl(
-          'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/'
+          'https://github.com/CampusHub-JXU/ZJXU-CampusHub/releases/download/'
           'v0.2.7/extra/deep/file.apk',
         ),
         isFalse,
@@ -232,7 +232,7 @@ void main() {
         );
         expect(
           ApkUpdateUrlPolicy.isCanonicalAssetUrl(
-            'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/'
+            'https://github.com/CampusHub-JXU/ZJXU-CampusHub/releases/download/'
             'v0.2.7/a\u0000.apk',
           ),
           isFalse,
@@ -244,7 +244,7 @@ void main() {
       // 编码空格 `%20`：合法资产名（原生解码后安全），不得误杀。
       expect(
         ApkUpdateUrlPolicy.isCanonicalAssetUrl(
-          'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/'
+          'https://github.com/CampusHub-JXU/ZJXU-CampusHub/releases/download/'
           'v0.2.7/JXU%20Campus%20Hub.apk',
         ),
         isTrue,
@@ -252,21 +252,21 @@ void main() {
       // 编码的 `.` / `/` / `\`：解码后才暴露的穿越 / 分隔符向量，拒绝。
       expect(
         ApkUpdateUrlPolicy.isCanonicalAssetUrl(
-          'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/'
+          'https://github.com/CampusHub-JXU/ZJXU-CampusHub/releases/download/'
           'v0.2.7/a%2e%2e.apk',
         ),
         isFalse,
       );
       expect(
         ApkUpdateUrlPolicy.isCanonicalAssetUrl(
-          'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/'
+          'https://github.com/CampusHub-JXU/ZJXU-CampusHub/releases/download/'
           'v0.2.7/a%2Fb.apk',
         ),
         isFalse,
       );
       expect(
         ApkUpdateUrlPolicy.isCanonicalAssetUrl(
-          'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/'
+          'https://github.com/CampusHub-JXU/ZJXU-CampusHub/releases/download/'
           'v0.2.7/a%5cb.apk',
         ),
         isFalse,
@@ -277,7 +277,7 @@ void main() {
       expect(ApkUpdateUrlPolicy.isCanonicalAssetUrl(_goodUrl), isTrue);
       expect(
         ApkUpdateUrlPolicy.isCanonicalAssetUrl(
-          'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/'
+          'https://github.com/CampusHub-JXU/ZJXU-CampusHub/releases/download/'
           'v1.2.3/JXU-CampusHub-v1.2.3-arm64-v8a.apk',
         ),
         isTrue,
@@ -361,7 +361,7 @@ void main() {
         ApkUpdateRequest.tryCreate(
           _release(
             canonicalAssetUrl:
-                'https://evil.example.com/FHfanshu/ZJXU-CampusHub/'
+                'https://evil.example.com/CampusHub-JXU/ZJXU-CampusHub/'
                 'releases/download/v0.2.7/a.apk',
           ),
           route: ApkDownloadRoute.auto,
@@ -880,7 +880,7 @@ void main() {
         await controller.startDownload(
           _release(
             canonicalAssetUrl:
-                'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/'
+                'https://github.com/CampusHub-JXU/ZJXU-CampusHub/releases/download/'
                 'v0.2.7/extra/a.apk',
           ),
           route: ApkDownloadRoute.edgeone,
@@ -1164,10 +1164,7 @@ void main() {
     });
 
     /// 模拟原生已有活动下载并完成一次控制器查询：状态应用后轮询启动。
-    void adoptDownloading(
-      ApkUpdateController controller,
-      FakeAsync async,
-    ) {
+    void adoptDownloading(ApkUpdateController controller, FakeAsync async) {
       transport.queryResult = downloading();
       unawaited(controller.refreshActiveUpdate());
       async.flushMicrotasks();

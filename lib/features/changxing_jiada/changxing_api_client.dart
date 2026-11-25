@@ -79,8 +79,11 @@ class ChangxingApiClient {
   }
 
   /// 丢弃选路缓存（下次重建网关会话）；不动在途 prepare。
+  /// 同时传播到 [CasRoutedAccess] 的共享租约缓存——否则短期内复用已失效
+  /// 的网关准备结果，登录 bounce 会循环重试。
   void invalidateRouteLease() {
     _routeLease = null;
+    CasRoutedAccess.invalidateRoute(casLoginUrl);
   }
 
   void reset() {
@@ -240,6 +243,7 @@ class ChangxingApiClient {
       case DioExceptionType.receiveTimeout:
         _routeLease = null;
         _routeFlight = null;
+        CasRoutedAccess.invalidateRoute(casLoginUrl);
       default:
         break;
     }
@@ -422,7 +426,7 @@ class ChangxingApiClient {
     } on ChangxingApiLoginBounce {
       // 登录页 bounce：只丢弃选路缓存（下次重建网关会话），不清全局 CAS
       // 会话、不 markLoggedOut。
-      _routeLease = null;
+      invalidateRouteLease();
       throw ChangxingAuthExpiredException();
     }
     // 迟到结果守卫：等待期间身份 / token 绑定已变化，响应不属于当前会话，

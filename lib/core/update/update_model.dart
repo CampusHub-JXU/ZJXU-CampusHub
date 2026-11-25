@@ -24,7 +24,7 @@ class AppRelease {
   /// 公开分发仓库 Release 资产的**规范官方 URL**（未经过镜像改写）。
   ///
   /// 仅用于应用内受管下载；使用前必须经 `ApkUpdateUrlPolicy` 校验为可信
-  /// 仓库（`github.com/FHfanshu/ZJXU-CampusHub/releases/download/<tag>/<apk>`）。
+  /// 仓库（`github.com/CampusHub-JXU/ZJXU-CampusHub/releases/download/<tag>/<apk>`）。
   /// 未提供 / 未选中 APK 资产时为 null。
   final String? canonicalAssetUrl;
 

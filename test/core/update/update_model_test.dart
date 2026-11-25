@@ -70,7 +70,7 @@ void main() {
 
   test('parses optional asset metadata and normalizes sha256', () {
     const canonical =
-        'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/'
+        'https://github.com/CampusHub-JXU/ZJXU-CampusHub/releases/download/'
         'v0.2.7/JXU-CampusHub-v0.2.7-arm64-v8a.apk';
     final release = AppRelease.fromJson({
       'version': 'v0.2.7',

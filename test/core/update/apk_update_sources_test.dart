@@ -11,7 +11,7 @@ import '../../helpers/mock_http_client_adapter.dart';
 const String _tag = 'v0.11.4';
 const String _name = 'JXU-CampusHub-v0.11.4-arm64-v8a.apk';
 const String _github =
-    'https://github.com/FHfanshu/ZJXU-CampusHub/releases/download/$_tag/$_name';
+    'https://github.com/CampusHub-JXU/ZJXU-CampusHub/releases/download/$_tag/$_name';
 const String _edgeone = 'https://edgeone.gh-proxy.org/$_github';
 const String _r2 = 'https://download.fhfanshu.xyz/$_tag/$_name';
 
@@ -19,7 +19,8 @@ AppRelease _release({bool r2 = true}) => AppRelease(
   version: '0.11.4',
   changelog: '',
   downloadUrl: '',
-  releaseUrl: 'https://github.com/FHfanshu/ZJXU-CampusHub/releases/tag/$_tag',
+  releaseUrl:
+      'https://github.com/CampusHub-JXU/ZJXU-CampusHub/releases/tag/$_tag',
   publishedAt: DateTime(2026, 10, 16),
   canonicalAssetUrl: _github,
   assetId: 9,
@@ -60,7 +61,7 @@ void main() {
         'https://edgeone.gh-proxy.org/https://edgeone.gh-proxy.org/$_github',
         'https://edgeone.gh-proxy.org/https://evil.example.com/a/b.apk',
         'https://edgeone.gh-proxy.org/$_github?x=1',
-        'https://edgeone.gh-proxy.org/https://GITHUB.com/FHfanshu/ZJXU-CampusHub/'
+        'https://edgeone.gh-proxy.org/https://GITHUB.com/CampusHub-JXU/ZJXU-CampusHub/'
             'releases/download/$_tag/$_name',
         'https://edgeone.gh-proxy.org/',
         'http://edgeone.gh-proxy.org/$_github',
@@ -183,18 +184,18 @@ void main() {
       dio.httpClientAdapter = adapter;
       adapter.registerJson(
         'GET',
-        '/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
+        '/repos/CampusHub-JXU/ZJXU-CampusHub/releases/latest',
         {
           'tag_name': _tag,
           'html_url':
-              'https://github.com/FHfanshu/ZJXU-CampusHub/releases/tag/$_tag',
+              'https://github.com/CampusHub-JXU/ZJXU-CampusHub/releases/tag/$_tag',
           'published_at': '2026-10-16T00:00:00Z',
           'assets': assets,
         },
       );
       return GitHubReleaseUpdateSource(
         dio: dio,
-        latestReleaseApiUrl: 'https://api.github.com/repos/FHfanshu/ZJXU-CampusHub/releases/latest',
+        latestReleaseApiUrl: 'https://api.github.com/repos/CampusHub-JXU/ZJXU-CampusHub/releases/latest',
         releaseMirrorPrefix: 'https://edgeone.gh-proxy.org/',
         deviceAbiProvider: () => 'arm64-v8a',
       ).fetchLatestRelease();
