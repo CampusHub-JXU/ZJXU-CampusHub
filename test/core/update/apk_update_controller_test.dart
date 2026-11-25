@@ -1,6 +1,8 @@
 import 'dart:async';
 
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart' show AppLifecycleState;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/core/config/app_config.dart';
@@ -1131,6 +1133,152 @@ void main() {
     test('isSupported delegates on Android', () async {
       expect(await controller.isSupported(), isTrue);
       expect(transport.supportedCalls, 1);
+    });
+  });
+
+  group('ApkUpdateController foreground polling', () {
+    late _FakeApkUpdateTransport transport;
+    late bool foreground;
+
+    ApkUpdateController pollingController() {
+      return ApkUpdateController(
+        transport: transport,
+        deviceAbiProvider: () => 'arm64-v8a',
+        platformProvider: () => TargetPlatform.android,
+        enableLifecyclePolling: true,
+        foregroundProvider: () => foreground,
+      );
+    }
+
+    ApkUpdateState downloading() => const ApkUpdateState(
+      phase: ApkUpdatePhase.downloading,
+      bytesDownloaded: 10,
+      totalBytes: 100,
+      requestKey: 'k',
+      releaseTag: 'v0.2.7',
+    );
+
+    setUp(() {
+      transport = _FakeApkUpdateTransport();
+      foreground = true;
+    });
+
+    /// 模拟原生已有活动下载并完成一次控制器查询：状态应用后轮询启动。
+    void adoptDownloading(
+      ApkUpdateController controller,
+      FakeAsync async,
+    ) {
+      transport.queryResult = downloading();
+      unawaited(controller.refreshActiveUpdate());
+      async.flushMicrotasks();
+      expect(controller.state.value.phase, ApkUpdatePhase.downloading);
+    }
+
+    test('前台且活动阶段时按 ~1s 轮询原生状态并驱动停滞观察', () async {
+      fakeAsync((async) {
+        final controller = pollingController();
+        adoptDownloading(controller, async);
+
+        final before = transport.queryCalls;
+        async.elapse(const Duration(seconds: 1));
+        async.flushMicrotasks();
+        expect(
+          transport.queryCalls,
+          greaterThan(before),
+          reason: '活动阶段前台应每秒查询一次原生状态',
+        );
+        final afterFirst = transport.queryCalls;
+        async.elapse(const Duration(seconds: 2));
+        async.flushMicrotasks();
+        expect(transport.queryCalls, greaterThan(afterFirst + 1));
+
+        controller.debugReset();
+        async.flushMicrotasks();
+      });
+    });
+
+    test('非活动阶段或后台立即停表，不再查询', () async {
+      fakeAsync((async) {
+        final controller = pollingController();
+        // 非活动阶段（idle）：根本不起表。
+        async.elapse(const Duration(seconds: 3));
+        async.flushMicrotasks();
+        expect(transport.queryCalls, 0);
+
+        // 活动阶段起表后退到后台：立即停止查询。
+        adoptDownloading(controller, async);
+        async.elapse(const Duration(seconds: 1));
+        async.flushMicrotasks();
+        final inForeground = transport.queryCalls;
+        expect(inForeground, greaterThan(0));
+
+        foreground = false;
+        controller.didChangeAppLifecycleState(AppLifecycleState.paused);
+        async.elapse(const Duration(seconds: 3));
+        async.flushMicrotasks();
+        expect(transport.queryCalls, inForeground, reason: '退到后台应立即停表，不空转');
+
+        // 回前台立即查询一次，且轮询恢复。
+        foreground = true;
+        controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
+        async.flushMicrotasks();
+        expect(
+          transport.queryCalls,
+          greaterThan(inForeground),
+          reason: '回前台应立即查询一次原生状态',
+        );
+        final afterResume = transport.queryCalls;
+        async.elapse(const Duration(seconds: 2));
+        async.flushMicrotasks();
+        expect(transport.queryCalls, greaterThan(afterResume));
+
+        controller.debugReset();
+        async.flushMicrotasks();
+      });
+    });
+
+    test('状态转入终态即停表；debugReset 不遗留定时器', () async {
+      fakeAsync((async) {
+        final controller = pollingController();
+        adoptDownloading(controller, async);
+        async.elapse(const Duration(seconds: 1));
+        async.flushMicrotasks();
+        final activeCalls = transport.queryCalls;
+        expect(activeCalls, greaterThan(0));
+
+        // 终态（已取消）：下一次应用状态即停表。
+        transport.queryResult = const ApkUpdateState(
+          phase: ApkUpdatePhase.canceled,
+          retired: true,
+          requestKey: 'k',
+        );
+        unawaited(controller.refreshActiveUpdate());
+        async.flushMicrotasks();
+        expect(controller.state.value.phase, ApkUpdatePhase.canceled);
+        final atTerminal = transport.queryCalls;
+        async.elapse(const Duration(seconds: 3));
+        async.flushMicrotasks();
+        expect(transport.queryCalls, atTerminal, reason: '终态不应继续轮询');
+
+        controller.debugReset();
+        async.flushMicrotasks();
+      });
+    });
+
+    test('未启用轮询的实例（默认）永不创建定时器', () async {
+      fakeAsync((async) {
+        final controller = ApkUpdateController(
+          transport: transport,
+          deviceAbiProvider: () => 'arm64-v8a',
+          platformProvider: () => TargetPlatform.android,
+        );
+        transport.queryResult = downloading();
+        controller.state.value = downloading();
+        async.elapse(const Duration(seconds: 5));
+        async.flushMicrotasks();
+        expect(transport.queryCalls, 0, reason: '测试构造的独立实例默认不做生命周期轮询');
+        controller.debugReset();
+      });
     });
   });
 

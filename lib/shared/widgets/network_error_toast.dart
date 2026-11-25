@@ -6,7 +6,8 @@ import '../../core/auth/cas_auth_broker.dart';
 import '../../core/auth/unified_auth.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/maintenance_window.dart';
-import '../../features/changxing_jiada/changxing_jiada_exceptions.dart';
+import '../../core/network/route_failure.dart';
+import '../../core/changxing/changxing_exceptions.dart';
 
 /// 统一网络异常 Toast 提示（PRD FR-3）。
 ///
@@ -52,13 +53,29 @@ class NetworkErrorToast {
   /// `proxyConflict` 是用户本机环境冲突，与学校系统维护无关，不追加。
   static String resolveMessage(NetworkErrorKind kind, {DateTime? now}) {
     final message = _messageOf(kind);
-    if (kind == NetworkErrorKind.proxyConflict) return message;
+    if (kind == NetworkErrorKind.proxyConflict ||
+        kind == NetworkErrorKind.routeConnectionFailed ||
+        kind == NetworkErrorKind.unknownRedirect) {
+      return message;
+    }
     return appendMaintenanceHint(message, now: now);
   }
 
   /// 将异常分类为 [NetworkErrorKind]，便于测试与复用。
   static NetworkErrorKind classify(Object? error) {
     if (error == null) return NetworkErrorKind.generic;
+
+    if (error is RouteFailure) {
+      return switch (error.reason) {
+        RouteFailureReason.connectionFailed =>
+          NetworkErrorKind.routeConnectionFailed,
+        RouteFailureReason.webVpnGatewayFailed =>
+          NetworkErrorKind.routeWebVpnGatewayFailed,
+        RouteFailureReason.unknownRedirect => NetworkErrorKind.unknownRedirect,
+        RouteFailureReason.schoolBackendError =>
+          NetworkErrorKind.schoolBackendError,
+      };
+    }
 
     if (error is DioException) {
       final message = (error.message ?? '').toLowerCase();
@@ -117,6 +134,14 @@ class NetworkErrorToast {
         return '一卡通认证已过期，请重新登录';
       case NetworkErrorKind.webVpnUnavailable:
         return 'WebVPN 网关不可用，请切换到校园网或检查网络';
+      case NetworkErrorKind.routeConnectionFailed:
+        return RouteFailureReason.connectionFailed.message;
+      case NetworkErrorKind.routeWebVpnGatewayFailed:
+        return RouteFailureReason.webVpnGatewayFailed.message;
+      case NetworkErrorKind.unknownRedirect:
+        return RouteFailureReason.unknownRedirect.message;
+      case NetworkErrorKind.schoolBackendError:
+        return RouteFailureReason.schoolBackendError.message;
       case NetworkErrorKind.generic:
         return '网络异常，请稍后重试';
     }
@@ -142,6 +167,11 @@ enum NetworkErrorKind {
 
   /// WebVPN 网关不可用。
   webVpnUnavailable,
+
+  routeConnectionFailed,
+  routeWebVpnGatewayFailed,
+  unknownRedirect,
+  schoolBackendError,
 
   /// 其他异常。
   generic,

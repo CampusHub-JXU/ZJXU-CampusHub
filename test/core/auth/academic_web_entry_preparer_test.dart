@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:jxu_campus_hub/core/auth/academic_web_entry_preparer.dart';
 import 'package:jxu_campus_hub/core/auth/cas_auth_broker.dart';
 import 'package:jxu_campus_hub/core/auth/connect_mode_resolver.dart';
+import 'package:jxu_campus_hub/core/network/route_failure.dart';
 import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/core/network/dio_client.dart';
@@ -359,6 +360,38 @@ void main() {
       expect(probedUrl, proxied);
       // 页面级准备绝不改全局教务模式。
       expect(ZhengfangAuth.instance.mode, ZhengfangMode.direct);
+    });
+
+    test('WebVPN 网关失败后重新确认直连，再准备直连 H5', () async {
+      ZhengfangAuth.instance.debugSetSession(active: true, studentId: 'A');
+      UnifiedAuthService.instance.debugSetSession(active: true, account: 'U');
+      var directProbes = 0;
+      ConnectModeResolver.instance.directVerdictChecker = (_) async {
+        directProbes++;
+        return RouteVerdict.direct;
+      };
+      final modes = <ZhengfangMode>[];
+      final result = await _preparer(
+        modeResolver: (_) async => ZhengfangMode.webVpn,
+        gatewaySessionEnsurer: (_, _) async =>
+            throw RouteFailure(RouteFailureReason.webVpnGatewayFailed),
+        academicSessionProber: (mode, url, _) async {
+          modes.add(mode);
+          expect(url, _trustedXs);
+          return AcademicEntrySessionStatus.authenticated;
+        },
+      ).prepare();
+
+      expect(
+        result,
+        isA<AcademicWebEntryReady>().having(
+          (ready) => ready.didFallback,
+          'didFallback',
+          isTrue,
+        ),
+      );
+      expect(modes, [ZhengfangMode.direct]);
+      expect(directProbes, 1);
     });
 
     test('forceWebVpn 跳过直连偏好，不再调用解析器', () async {
@@ -773,7 +806,7 @@ void main() {
       expect(result, AcademicEntrySessionStatus.unknown);
     });
 
-    test('302 跳转跨域任意地址 -> unknown，绝不判就绪', () async {
+    test('302 跳转跨域任意地址 -> unknownRedirect，绝不判就绪', () async {
       final adapter = await prepareDirectAdapter();
       adapter.registerText(
         'GET',
@@ -790,7 +823,7 @@ void main() {
         requestUrl: _trustedXs,
       );
 
-      expect(result, AcademicEntrySessionStatus.unknown);
+      expect(result, AcademicEntrySessionStatus.unknownRedirect);
     });
 
     test('302 跳转同源但不可识别路径 -> unknown', () async {
@@ -881,7 +914,7 @@ void main() {
       expect(result, AcademicEntrySessionStatus.unknown);
     });
 
-    test('5xx 服务端错误 -> unknown（未知，不判失效也不判就绪）', () async {
+    test('5xx 服务端错误 -> schoolBackendError', () async {
       final adapter = await prepareDirectAdapter();
       adapter.registerText(
         'GET',
@@ -895,10 +928,10 @@ void main() {
         requestUrl: _trustedXs,
       );
 
-      expect(result, AcademicEntrySessionStatus.unknown);
+      expect(result, AcademicEntrySessionStatus.schoolBackendError);
     });
 
-    test('传输异常 -> unknown，不抛错', () async {
+    test('传输异常 -> connectionFailed', () async {
       final adapter = await prepareDirectAdapter();
       adapter.register('GET', '/jwglxt/xtgl/index_initMenu.html', (
         options,
@@ -914,7 +947,7 @@ void main() {
         requestUrl: _trustedXs,
       );
 
-      expect(result, AcademicEntrySessionStatus.unknown);
+      expect(result, AcademicEntrySessionStatus.connectionFailed);
     });
 
     test('WebVPN 代理回跳网关登录页 -> unifiedLoginRequired', () async {

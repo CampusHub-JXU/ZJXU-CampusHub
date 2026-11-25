@@ -2,6 +2,9 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
 import '../logging/app_logger.dart';
+import '../network/cancel_token_x.dart';
+import '../network/route_failure.dart';
+import '../network/route_gate.dart';
 import 'auth_recovery_state_store.dart';
 import 'auth_session_persistence.dart';
 import 'automatic_login.dart';
@@ -9,6 +12,7 @@ import 'background_auth_context.dart';
 import 'connect_mode_resolver.dart';
 import 'credential_store.dart';
 import 'login_page_detection.dart';
+import 'unified_auth.dart';
 import 'zhengfang_auth.dart';
 
 /// 教务会话过期时由 [AcademicAuthGuard] 抛出的统一异常。
@@ -75,6 +79,92 @@ class AcademicAuthGuard {
   static final _recoveries =
       <(String?, int, int?, bool), Future<_RecoveryLease>>{};
 
+  static Future<RouteLease> acquireRoute({
+    bool tryWebVpn = false,
+    bool recoverSession = true,
+  }) async {
+    final auth = ZhengfangAuth.instance;
+    final owner = auth.verifiedStudentId;
+    final revision = auth.sessionRevision;
+    final unifiedRevision = UnifiedAuthService.instance.sessionRevision;
+    var settledRevision = revision;
+    var settledUnifiedRevision = unifiedRevision;
+    int? settledEpoch;
+    final lease = await RouteGate.instance.acquire(
+      Uri.parse(ZhengfangAuth.directAcademicServiceUrl),
+      scope: ('academic-query', recoverSession),
+      sessionRevision: (owner, revision, unifiedRevision),
+      settledSessionRevision: () =>
+          (owner, settledRevision, settledUnifiedRevision),
+      settledSessionEpoch: () => settledEpoch,
+      preferredMode: tryWebVpn ? ZhengfangMode.webVpn : null,
+      allowReverseFallback: !tryWebVpn,
+      prepareWebVpn: (token, _) async {
+        final gateway = await auth.ensureWebVpnGatewaySessionResult(
+          forceWebVpn: true,
+          updateMode: false,
+          allowReverseFallback: false,
+          syncWebViewCookies: false,
+          cancelToken: token,
+        );
+        if (gateway.failure case final failure?) throw failure;
+        if (!_isSessionCurrent(auth, revision)) {
+          throw const AcademicAuthRecoveryPendingException();
+        }
+        if (gateway.ready == true && auth.mode == ZhengfangMode.webVpn) return;
+        if (gateway.ready == true &&
+            await auth.validateSession(
+                  mode: ZhengfangMode.webVpn,
+                  revokeOnInvalid: false,
+                  caller: 'academic_route',
+                  cancelToken: token,
+                ) ==
+                true) {
+          return;
+        }
+        token.throwIfCancelled();
+        if (!recoverSession ||
+            owner == null ||
+            !_isSessionCurrent(auth, revision)) {
+          throw const AcademicAuthRecoveryPendingException();
+        }
+        final recovery = await _attemptSilentAutomaticLogin(
+          owner,
+          cancelToken: token,
+        );
+        final receipt = recovery.receipt;
+        if (receipt == null ||
+            !await _receiptProvesCurrentSession(
+              receipt,
+              ownerAccount: owner,
+              revisionBeforeCommit: revision,
+            ) ||
+            auth.mode != ZhengfangMode.webVpn) {
+          if (recovery.outcome == AutomaticLoginOutcome.manualRequired) {
+            throw const AcademicAuthManualLoginRequiredException();
+          }
+          throw const AcademicAuthRecoveryPendingException();
+        }
+        settledRevision = auth.sessionRevision;
+        settledUnifiedRevision = UnifiedAuthService.instance.sessionRevision;
+        settledEpoch = receipt.epoch;
+      },
+    );
+    if (!_routeSessionIsCurrent(lease)) {
+      throw const AcademicAuthRecoveryPendingException();
+    }
+    if (BackgroundAuthContext.current == null) auth.setMode(lease.mode);
+    return lease;
+  }
+
+  static bool _routeSessionIsCurrent(RouteLease lease) =>
+      lease.sessionRevision ==
+      (
+        ZhengfangAuth.instance.verifiedStudentId,
+        ZhengfangAuth.instance.sessionRevision,
+        UnifiedAuthService.instance.sessionRevision,
+      );
+
   /// 测试注入：替换静默自动登录动作（默认走 [AutomaticLoginService.instance]）。
   ///
   /// 这是**旧 enum-only 桩**：它没有来源证据。返回
@@ -125,9 +215,6 @@ class AcademicAuthGuard {
     return false;
   }
 
-  static const _webVpnHost = 'webvpn.zjxu.edu.cn';
-  static final _webVpnProxiedPath = RegExp(r'^/https?(-\d+)?/');
-
   /// 判断非 WebVPN 请求是否被 3xx 改道到 WebVPN 代理资源
   /// （`webvpn.zjxu.edu.cn/https/<hex>/…`）。
   ///
@@ -141,28 +228,10 @@ class AcademicAuthGuard {
     final code = response.statusCode ?? 0;
     if (code < 300 || code >= 400) return false;
     final location = response.headers.value('location')?.trim() ?? '';
-    if (location.isEmpty) return false;
-    final requestUri = response.requestOptions.uri;
-    if (requestUri.host.toLowerCase() == _webVpnHost) return false;
-    final target = Uri.tryParse(location);
-    if (target == null || target.host.toLowerCase() != _webVpnHost) {
-      return false;
-    }
-    final targetPath = target.path.toLowerCase();
-    if (!_webVpnProxiedPath.hasMatch(targetPath)) return false;
-    // 只认同一来源的 WebVPN 包装（如 jwzx 的固定前缀），被跳到其它校内站点
-    // 的包装不是本次请求的改道。
-    final expected = Uri.tryParse(
-      ZhengfangAuth.instance.buildWebVpnProxyUrl(
-        '${requestUri.scheme}://${requestUri.authority}/',
-      ),
+    return ConnectModeResolver.isWebVpnRedirectForTarget(
+      response.requestOptions.uri,
+      location,
     );
-    if (expected == null || expected.host.toLowerCase() != _webVpnHost) {
-      return false;
-    }
-    var prefix = expected.path.toLowerCase();
-    if (prefix.endsWith('/')) prefix = prefix.substring(0, prefix.length - 1);
-    return targetPath == prefix || targetPath.startsWith('$prefix/');
   }
 
   /// 执行 [request]，若响应命中认证过期则尝试恢复会话后重试一次。
@@ -192,10 +261,108 @@ class AcademicAuthGuard {
     authExpiredException: authExpiredException,
   )).response;
 
+  /// Read-only academic queries select a ready route before the guard pins the
+  /// request identity. A dropped direct connection may try WebVPN once.
+  static Future<AcademicGuardedResponse<T>> guardRoutedQuery<T>({
+    required String owner,
+    required Future<Response<T>> Function(ZhengfangMode mode) request,
+    required Object authExpiredException,
+  }) async {
+    final auth = ZhengfangAuth.instance;
+    if (auth.verifiedStudentId != owner) throw authExpiredException;
+    var route = await acquireRoute();
+    if (auth.verifiedStudentId != owner) throw authExpiredException;
+    var first = true;
+    var triedOtherRoute = route.didFallback;
+    return guardWithSession<T>(
+      authExpiredException: authExpiredException,
+      canRetry: () => !triedOtherRoute,
+      useRouteGateForMove: true,
+      request: () async {
+        final revision = auth.sessionRevision;
+        final initialAttempt = first;
+        if (!initialAttempt && !triedOtherRoute) {
+          route = await acquireRoute(recoverSession: false);
+        }
+        first = false;
+        if (auth.verifiedStudentId != owner ||
+            auth.sessionRevision != revision ||
+            !_routeSessionIsCurrent(route)) {
+          throw authExpiredException;
+        }
+        try {
+          return await request(route.mode);
+        } on DioException catch (error) {
+          if (!isRouteConnectionFailure(error) ||
+              auth.sessionRevision != revision) {
+            rethrow;
+          }
+          AppLogger.instance.network(
+            LogLevel.warn,
+            '教务请求连接失败 ${error.type} at ${error.requestOptions.uri.host}',
+          );
+          if (!initialAttempt ||
+              route.mode != ZhengfangMode.direct ||
+              triedOtherRoute) {
+            throw RouteFailure(RouteFailureReason.connectionFailed);
+          }
+          triedOtherRoute = true;
+          route = await acquireRoute(tryWebVpn: true, recoverSession: false);
+          if (auth.verifiedStudentId != owner ||
+              auth.sessionRevision != revision) {
+            throw authExpiredException;
+          }
+          try {
+            return await request(route.mode);
+          } on DioException catch (retryError) {
+            if (!isRouteConnectionFailure(retryError)) rethrow;
+            throw RouteFailure(RouteFailureReason.connectionFailed);
+          }
+        }
+      },
+    );
+  }
+
+  static RouteFailure? responseRouteFailure(Response<dynamic> response) {
+    final status = response.statusCode ?? 0;
+    final uri = response.requestOptions.uri;
+    final location = response.headers.value('location') ?? '';
+    if (isRouteMovedResponse(response)) {
+      ConnectModeResolver.instance.markWebVpnRedirected(uri);
+      return RouteFailure(RouteFailureReason.connectionFailed);
+    }
+    final verdict = ConnectModeResolver.classifyDirectReachable(
+      statusCode: status,
+      requestUri: uri,
+      location: location,
+    );
+    if (verdict == RouteVerdict.unknownRedirect ||
+        verdict == RouteVerdict.webVpnRedirected &&
+            uri.host != 'webvpn.zjxu.edu.cn') {
+      AppLogger.instance.network(
+        LogLevel.warn,
+        '教务请求未知重定向 host=${uri.resolveUri(Uri.tryParse(location) ?? Uri()).host}',
+      );
+      return RouteFailure(RouteFailureReason.unknownRedirect);
+    }
+    final data = response.data;
+    final code = data is Map ? data['code']?.toString() : null;
+    if (status >= 500 && status < 600 || code == 'ERR4998') {
+      AppLogger.instance.network(
+        LogLevel.warn,
+        '教务服务错误 status=$status${code == 'ERR4998' ? ' code=$code' : ''} at ${uri.host}',
+      );
+      return RouteFailure(RouteFailureReason.schoolBackendError);
+    }
+    return null;
+  }
+
   /// 只读业务的有界再查询，同时返回可用于私有缓存条件提交的身份版本。
   static Future<AcademicGuardedResponse<T>> guardWithSession<T>({
     required Future<Response<T>> Function() request,
     Object authExpiredException = const AcademicAuthExpiredException(),
+    bool Function()? canRetry,
+    bool useRouteGateForMove = false,
   }) async {
     final auth = ZhengfangAuth.instance;
     final revision = auth.sessionRevision;
@@ -211,16 +378,22 @@ class AcademicAuthGuard {
       final key = (account, revision, epoch, routeMoved);
       if (routeMoved && !_recoveries.containsKey(key)) {
         AppLogger.instance.auth(LogLevel.info, '教务请求被改道到 WebVPN，重新选路后重试');
-        // 缓存里的 direct 已过期：让恢复链路里的 resolve() 重新探测。
-        ConnectModeResolver.instance.invalidate();
+        ConnectModeResolver.instance.markWebVpnRedirected(
+          first.requestOptions.uri,
+        );
+      }
+      if (canRetry?.call() == false) {
+        throw const AcademicAuthRecoveryPendingException();
       }
       final pending = _recoveries.putIfAbsent(
         key,
-        () => _recover(
-          lease,
-          const AcademicAuthExpiredException(),
-          routeOnly: routeMoved,
-        ),
+        () => routeMoved && useRouteGateForMove
+            ? _recoverMovedRoute(lease)
+            : _recover(
+                lease,
+                const AcademicAuthExpiredException(),
+                routeOnly: routeMoved,
+              ),
       );
       try {
         lease = await pending;
@@ -241,10 +414,14 @@ class AcademicAuthGuard {
       final retry = await _safeRequest(request);
       if (!await _leaseIsCurrent(lease)) throw authExpiredException;
       if (isRouteMovedResponse(retry)) {
+        ConnectModeResolver.instance.markWebVpnRedirected(
+          retry.requestOptions.uri,
+        );
         // 重新选路后仍被改道：属于暂时性选路失败，保留会话与旧数据。
         throw const AcademicAuthRecoveryPendingException();
       }
       if (isAuthExpiredResponse(retry)) {
+        if (routeMoved) throw const AcademicAuthRecoveryPendingException();
         await auth.revokeExpiredSessionIfCurrent(
           revision: lease.revision,
           account: lease.account,
@@ -266,6 +443,25 @@ class AcademicAuthGuard {
       revision: revision,
       epoch: epoch,
     );
+  }
+
+  static Future<_RecoveryLease> _recoverMovedRoute(_RecoveryLease start) async {
+    final auth = ZhengfangAuth.instance;
+    if (!await _leaseIsCurrent(start)) {
+      throw const AcademicAuthExpiredException();
+    }
+    final RouteLease route;
+    try {
+      route = await acquireRoute();
+    } on RouteFailure {
+      throw const AcademicAuthRecoveryPendingException();
+    }
+    if (auth.sessionRevision == start.revision) return start;
+    final epoch = route.sessionEpoch;
+    if (epoch == null || auth.verifiedStudentId != start.account) {
+      throw const AcademicAuthExpiredException();
+    }
+    return _RecoveryLease(start.account, auth.sessionRevision, epoch);
   }
 
   static Future<bool> _leaseIsCurrent(_RecoveryLease lease) async {
@@ -419,8 +615,9 @@ class AcademicAuthGuard {
   /// 优先使用带 receipt 的测试桩；旧 enum-only 桩的 committed 无来源证据，
   /// receipt 留空，guard 会据此 fail closed。
   static Future<AutomaticLoginAttemptResult> _attemptSilentAutomaticLogin(
-    String? expectedAccount,
-  ) async {
+    String? expectedAccount, {
+    CancelToken? cancelToken,
+  }) async {
     final domain = AuthRecoveryDomain.academic;
     try {
       final receiptOverride = debugAutomaticLoginReceiptOverride;
@@ -436,6 +633,7 @@ class AcademicAuthGuard {
       return await AutomaticLoginService.instance.attemptWithReceipt(
         domain,
         expectedAccount: expectedAccount,
+        cancelToken: cancelToken,
       );
     } catch (error, stackTrace) {
       AppLogger.instance.auth(
@@ -497,17 +695,13 @@ class AcademicAuthGuard {
   static Future<bool> _attemptRecovery() async {
     try {
       final auth = ZhengfangAuth.instance;
-      final mode = await ConnectModeResolver.instance.resolve();
-      if (mode == null) return false;
-      // 探测与校验都显式带上 [mode]，不先改全局模式：恢复没成功时，并发请求
-      // 仍按发起前的模式（与其 Cookie 所在的 jar 一致）发送，不会被带到一个
-      // 未建成的模式里误判过期。只有校验确认有效才收敛全局模式。
-      if (mode == ZhengfangMode.webVpn) {
-        final ok = await auth.ensureWebVpnGatewaySession(
-          syncWebViewCookies: false,
-        );
-        if (ok != true) return false;
-      }
+      final revision = auth.sessionRevision;
+      final route = await auth.ensureWebVpnGatewaySessionResult(
+        syncWebViewCookies: false,
+        updateMode: false,
+      );
+      final mode = route.selectedMode;
+      if (route.ready != true || mode == null) return false;
       // 网关与教务是不同认证域，网关 ready 不能证明正方 Cookie 有效。
       // 无登出副作用探测：撤销留给 guard 的终态条件撤销，探测本身不得先登出，
       // 否则 guard 会因 revision 变化而 fail closed、无法走 OCR。
@@ -518,8 +712,9 @@ class AcademicAuthGuard {
             caller: 'academic_guard',
           ) ==
           true;
-      if (ok && BackgroundAuthContext.current == null) auth.setMode(mode);
-      return ok;
+      if (!ok || !_isSessionCurrent(auth, revision)) return false;
+      if (BackgroundAuthContext.current == null) auth.setMode(mode);
+      return true;
     } catch (e, s) {
       AppLogger.instance.auth(
         LogLevel.warn,

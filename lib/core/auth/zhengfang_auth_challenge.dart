@@ -635,7 +635,7 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
           _PostLoginVerdict.bounced,
         AcademicEntrySessionStatus.unifiedLoginRequired =>
           _PostLoginVerdict.gatewayExpired,
-        AcademicEntrySessionStatus.unknown => _PostLoginVerdict.unconfirmed,
+        _ => _PostLoginVerdict.unconfirmed,
       };
       // 901 是正方「会话无效」状态码（与 validateSession 一致）。
       if (verdict == _PostLoginVerdict.unconfirmed && status == 901) {

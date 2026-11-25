@@ -5,9 +5,11 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
 import '../logging/app_logger.dart';
+import '../network/route_failure.dart';
+import '../network/route_gate.dart';
 import 'cas_auth_broker.dart';
-import 'connect_mode_resolver.dart';
 import 'login_page_detection.dart';
+import 'unified_auth.dart';
 import 'zhengfang_auth.dart';
 
 /// 一次业务访问选定的路由：直连或 WebVPN，以及据此重建 URL 的方式。
@@ -32,7 +34,7 @@ class CasRoute {
 ///
 /// 业务服务不再各自拼「`CasSession.ensure` → 选路 → 补 WebVPN 网关」：
 /// 1. [prepare]：用注册的 [CasService] 确认统一认证主会话，按**目标 origin**
-///    经 [ConnectModeResolver] 选直连 / WebVPN，WebVPN 时用
+///    经 [RouteGate] 选直连 / WebVPN，WebVPN 时用
 ///    [CasService.webVpnGateway] 的真实逐跳 CAS 回调链补网关会话；
 /// 2. 业务请求用 [CasRoute.url] 重建地址，自行用统一认证 Dio 发送；
 /// 3. 命中登录 bounce 时调 [recover] 重验（调用方负责「至多重试一次」）。
@@ -56,17 +58,20 @@ class CasRoutedAccess {
     DateTime? deadline,
   }) async {
     await _ensureCasSession(service);
-    final mode = await ConnectModeResolver.instance.resolve(
-      targetUrl: targetUrl,
+    final auth = UnifiedAuthService.instance;
+    final identity = (auth.verifiedAccount, auth.sessionRevision);
+    final lease = await RouteGate.instance.acquire(
+      Uri.parse(targetUrl),
+      scope: 'cas-gateway',
+      sessionRevision: identity,
+      prepareWebVpn: ensureGateway,
+      cancelToken: cancelToken,
+      deadline: deadline,
     );
-    if (mode == null) {
-      throw TimeoutException('服务暂时无法连接，请检查网络后重试');
+    if (identity != (auth.verifiedAccount, auth.sessionRevision)) {
+      throw const CasAuthExpiredException();
     }
-    final route = CasRoute(mode);
-    if (route.isWebVpn) {
-      await _ensureGateway(cancelToken, deadline);
-    }
-    return route;
+    return CasRoute(lease.mode);
   }
 
   /// 业务 bounce 后的一次恢复：重建网关会话（WebVPN）并重验 CAS service。
@@ -78,7 +83,7 @@ class CasRoutedAccess {
     DateTime? deadline,
   }) async {
     if (route.isWebVpn) {
-      await _ensureGateway(cancelToken, deadline);
+      await ensureGateway(cancelToken, deadline);
     }
     await _ensureCasSession(service, restoreFromStore: false);
   }
@@ -131,7 +136,7 @@ class CasRoutedAccess {
     }
   }
 
-  static Future<void> _ensureGateway(
+  static Future<void> ensureGateway(
     CancelToken? cancelToken,
     DateTime? deadline,
   ) async {
@@ -153,16 +158,18 @@ class CasRoutedAccess {
       // 逐跳链路异常（重定向超限 / 缺 Location）：网关状态不确定，非登录过期。
       AppLogger.instance.auth(
         LogLevel.warn,
-        'WebVPN 网关会话建立失败（链路异常）: ${error.message}',
+        'WebVPN 网关会话建立失败（链路异常）: ${error.runtimeType}',
       );
-      throw TimeoutException('WebVPN 网关暂时无法连接，请稍后重试');
+      throw RouteFailure(RouteFailureReason.webVpnGatewayFailed);
+    } on TimeoutException {
+      throw RouteFailure(RouteFailureReason.webVpnGatewayFailed);
     } on DioException catch (error) {
       if (CancelToken.isCancel(error)) rethrow;
       AppLogger.instance.auth(
         LogLevel.warn,
         'WebVPN 网关会话建立失败（网络异常）: ${describeGatewayDioFailure(error)}',
       );
-      throw TimeoutException('WebVPN 网关暂时无法连接，请稍后重试');
+      throw RouteFailure(RouteFailureReason.webVpnGatewayFailed);
     }
   }
 }

@@ -7,7 +7,7 @@ import '../../core/auth/cas_routed_access.dart';
 import '../../core/auth/login_page_detection.dart';
 import '../../core/auth/unified_auth.dart';
 import '../../core/network/dio_client.dart';
-import 'changxing_jiada_exceptions.dart';
+import '../../core/changxing/changxing_exceptions.dart';
 import 'changxing_jiada_token_binding.dart';
 
 /// API 响应命中统一认证 / WebVPN 网关登录页（会话或网关 Cookie 缺失）。

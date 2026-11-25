@@ -3,12 +3,15 @@ import 'dart:async';
 import 'package:material_ui/material_ui.dart';
 
 import '../../core/actions/campus_action_executor.dart';
+import '../../core/auth/cas_auth_broker.dart';
+import '../../core/auth/unified_auth.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/notification/app_notification_service.dart';
 import '../../core/system_surface/system_settings_launcher.dart';
 import '../../core/theme/app_design_tokens.dart';
 import '../../core/theme/app_typography.dart';
 import '../../shared/widgets/app_app_bar.dart';
+import '../../shared/widgets/app_banner.dart';
 import '../../shared/widgets/app_card.dart';
 import '../../shared/widgets/app_empty_view.dart';
 import '../../shared/widgets/app_error_view.dart';
@@ -21,6 +24,7 @@ import '../../shared/widgets/login_shell.dart';
 import '../../shared/widgets/plain_list.dart';
 import '../../shared/widgets/refresh_status_line.dart';
 import '../../shared/widgets/skeleton_box.dart';
+import '../../shared/widgets/unified_auth_protected_webview_page.dart';
 import 'second_classroom_auth.dart';
 import 'second_classroom_cache_store.dart';
 import 'second_classroom_model.dart';
@@ -128,6 +132,18 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
   bool _authChecked = false;
   String? _error;
 
+  _SecondClassroomTab _activeTab = _SecondClassroomTab.discover;
+  SecondClassroomMySummary? _mySummary;
+  List<SecondClassroomMyActivityRecord> _myActivities = const [];
+  Map<int, SecondClassroomMyActivityRecord> _myRecordsByActivityId = const {};
+  bool _myDataLoading = false;
+  String? _myDataError;
+
+  /// `my`（学时汇总）与 `wdhd`（报名记录）单路失败时的局部提示；两路全挂
+  /// 走 `_myDataError` 整页错误。
+  String? _myDataPartialHint;
+  bool _myDataSilentRunning = false;
+
   String get _wechatPageUrl => SecondClassroomPage.initialUrl;
 
   @override
@@ -185,6 +201,7 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
 
   Future<SecondClassroomAuthState> _ensureSecondClassroomAuth({
     bool force = false,
+    bool syncMyData = true,
   }) async {
     final ensurer =
         widget.authEnsurer ?? SecondClassroomAuth.instance.ensureSession;
@@ -195,7 +212,105 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
         _authChecked = true;
       });
     }
+    if (state == SecondClassroomAuthState.authenticated) {
+      if (syncMyData) {
+        unawaited(_syncMyData(silent: true));
+      }
+    } else if (mounted) {
+      setState(() {
+        _mySummary = null;
+        _myActivities = const [];
+        _myRecordsByActivityId = const {};
+        _myDataError = null;
+        _myDataPartialHint = null;
+      });
+    }
     return state;
+  }
+
+  Future<void> _syncMyData({bool silent = false}) async {
+    if (_authState != SecondClassroomAuthState.authenticated) {
+      final state = await _ensureSecondClassroomAuth(syncMyData: false);
+      if (state != SecondClassroomAuthState.authenticated) return;
+    }
+    // 静默刷新幂等但不可重入：报名/取消/下拉刷新会密集触发，重叠发起只会
+    // 互相覆盖同一份数据。
+    if (silent && _myDataSilentRunning) return;
+    if (silent) _myDataSilentRunning = true;
+    if (!silent && mounted) {
+      setState(() {
+        _myDataLoading = true;
+        _myDataError = null;
+        _myDataPartialHint = null;
+      });
+    }
+    try {
+      // `my`（学时汇总）与 `wdhd`（报名记录）独立容错：单路失败保留另一路
+      // 结果与既有状态，避免学时接口抖动把列表报名徽标整组清掉。
+      final results = await Future.wait<({Object? value, Object? error})>([
+        _isolateMyDataFailure(_service.fetchMySummary()),
+        _isolateMyDataFailure(_service.fetchMyActivities()),
+      ]);
+      if (!mounted) return;
+      final summaryResult = results[0];
+      final activitiesResult = results[1];
+      final summaryFailed = summaryResult.error != null;
+      final activitiesFailed = activitiesResult.error != null;
+      if (summaryFailed || activitiesFailed) {
+        final failure = summaryFailed ? summaryResult.error : null;
+        AppLogger.instance.ui(
+          LogLevel.warn,
+          summaryFailed && activitiesFailed
+              ? '第二课堂个人学时与已报名活动同步失败'
+              : summaryFailed
+              ? '第二课堂个人学时同步失败（报名记录正常）'
+              : '第二课堂已报名活动同步失败（学时汇总正常）',
+          error: failure ?? activitiesResult.error,
+        );
+      }
+      setState(() {
+        if (!summaryFailed) {
+          _mySummary = summaryResult.value as SecondClassroomMySummary;
+        }
+        if (!activitiesFailed) {
+          final records =
+              activitiesResult.value as List<SecondClassroomMyActivityRecord>;
+          _myActivities = records;
+          _myRecordsByActivityId = {
+            for (final record in records) record.activity.id: record,
+          };
+        }
+        if (summaryFailed && activitiesFailed) {
+          _myDataError = summaryResult.error.toString();
+          _myDataPartialHint = null;
+        } else if (summaryFailed) {
+          _myDataError = null;
+          _myDataPartialHint = '学时汇总刷新失败，已保留上次数据';
+        } else if (activitiesFailed) {
+          _myDataError = null;
+          _myDataPartialHint = '已报名活动刷新失败，已保留上次数据';
+        } else {
+          _myDataError = null;
+          _myDataPartialHint = null;
+        }
+      });
+    } finally {
+      if (silent) _myDataSilentRunning = false;
+      if (mounted && !silent) {
+        setState(() => _myDataLoading = false);
+      }
+    }
+  }
+
+  /// 把单路 future 的成败打包，避免 `Future.wait` 任一失败整组丢弃。
+  Future<({Object? value, Object? error})> _isolateMyDataFailure(
+    Future<Object> future,
+  ) async {
+    try {
+      return (value: await future, error: null);
+    } catch (error) {
+      return (value: null, error: error);
+    }
   }
 
   Future<void> _handleSecondClassroomLogin() async {
@@ -223,6 +338,11 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
   }
 
   Future<void> _reloadActivities() async {
+    // 下拉刷新活动列表时联动刷新「我的二课」：列表报名徽标以 `wdhd` 为准，
+    // 否则报名/取消后徽标要等到打开详情才更新。
+    if (_authState == SecondClassroomAuthState.authenticated) {
+      unawaited(_syncMyData(silent: true));
+    }
     await _syncActivitiesFromNetwork(showInitialLoading: _activities.isEmpty);
   }
 
@@ -404,10 +524,12 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
   }
 
   Future<void> _showActivityDetailSheet(
-    SecondClassroomActivityDetail detail,
+    SecondClassroomActivityDetail initialDetail,
   ) async {
-    var subscribed = _isActivitySubscribed(detail.activity);
+    var currentDetail = initialDetail;
+    var subscribed = _isActivitySubscribed(currentDetail.activity);
     var busy = false;
+    var enrolling = false;
     await AppFeedback.sheet<void>(
       context,
       scrollControlled: true,
@@ -417,21 +539,141 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
               .copyWith(splashFactory: InkRipple.splashFactory),
           child: StatefulBuilder(
             builder: (context, setSheetState) {
+              Future<void> refreshDetail() async {
+                final authState = await _ensureSecondClassroomAuth();
+                final refreshed = await _service.fetchActivityDetail(
+                  currentDetail.activity.id,
+                  authenticated:
+                      authState == SecondClassroomAuthState.authenticated,
+                );
+                if (!sheetContext.mounted) return;
+                setSheetState(() => currentDetail = refreshed);
+                unawaited(_syncMyData(silent: true));
+              }
+
               return _ActivityDetailSheet(
-                detail: detail,
-                imageUrl: _service.imageUrl(detail.activity.coverId),
+                detail: currentDetail,
+                imageUrl: _service.imageUrl(currentDetail.activity.coverId),
                 subscribed: subscribed,
                 busy: busy,
+                enrolling: enrolling,
+                onLogin: () async {
+                  setSheetState(() => enrolling = true);
+                  try {
+                    final loggedIn = await showUnifiedAuthLoginModal(
+                      sheetContext,
+                      title: '登录第二课堂',
+                      description: '登录统一认证后即可直接报名和查看状态',
+                    );
+                    if (!loggedIn || !sheetContext.mounted) return;
+                    final state = await _ensureSecondClassroomAuth(force: true);
+                    if (state != SecondClassroomAuthState.authenticated) {
+                      _showSnackBar('第二课堂会话建立失败，请稍后重试');
+                      return;
+                    }
+                    await refreshDetail();
+                  } finally {
+                    if (sheetContext.mounted) {
+                      setSheetState(() => enrolling = false);
+                    }
+                  }
+                },
+                onEnroll: () async {
+                  if (enrolling) return;
+                  if (currentDetail.requiresRegistrationForm == true) {
+                    await _openProtectedPortalWebView(
+                      title: '活动报名表',
+                      targetUrl: _service.activityWebUrl(
+                        currentDetail.activity.id,
+                      ),
+                      mobile: true,
+                    );
+                    if (sheetContext.mounted) {
+                      await refreshDetail();
+                    }
+                    return;
+                  }
+                  setSheetState(() => enrolling = true);
+                  try {
+                    final authState = await _ensureSecondClassroomAuth();
+                    if (authState != SecondClassroomAuthState.authenticated) {
+                      _showSnackBar('请先登录统一认证');
+                      return;
+                    }
+                    final result = await _service.enrollActivity(
+                      currentDetail.activity.id,
+                    );
+                    if (!sheetContext.mounted) return;
+                    if (result.needsLogin) {
+                      _showSnackBar('登录状态已失效，请重新登录');
+                      await _ensureSecondClassroomAuth(force: true);
+                      return;
+                    }
+                    await refreshDetail();
+                    if (!sheetContext.mounted) return;
+                    if (currentDetail.registrationState ==
+                        SecondClassroomRegistrationState.registered) {
+                      _showSnackBar('报名成功');
+                    } else {
+                      _showSnackBar(
+                        result.message.isEmpty ? '报名未完成' : result.message,
+                      );
+                    }
+                  } catch (error) {
+                    if (sheetContext.mounted) {
+                      _showSnackBar(error.toString());
+                    }
+                  } finally {
+                    if (sheetContext.mounted) {
+                      setSheetState(() => enrolling = false);
+                    }
+                  }
+                },
+                onCancelEnroll: () async {
+                  if (enrolling) return;
+                  final confirmed = await AppFeedback.confirm(
+                    sheetContext,
+                    title: '取消报名',
+                    message: '确定取消「${currentDetail.activity.title}」的报名吗？',
+                    confirmLabel: '确认取消',
+                  );
+                  if (!confirmed || !sheetContext.mounted) return;
+                  setSheetState(() => enrolling = true);
+                  try {
+                    final recordId =
+                        _myRecordsByActivityId[currentDetail.activity.id]
+                            ?.recordId;
+                    final result = await _service.cancelRegistration(
+                      currentDetail.activity.id,
+                      recordId: recordId,
+                    );
+                    if (!sheetContext.mounted) return;
+                    if (result.success) {
+                      await refreshDetail();
+                      if (sheetContext.mounted) _showSnackBar('已取消报名');
+                    } else {
+                      _showSnackBar(result.message);
+                    }
+                  } catch (error) {
+                    if (sheetContext.mounted) {
+                      _showSnackBar(error.toString());
+                    }
+                  } finally {
+                    if (sheetContext.mounted) {
+                      setSheetState(() => enrolling = false);
+                    }
+                  }
+                },
                 onOpenInWeChat: () {
                   _openInWeChat(
-                    _service.activityWebUrl(detail.activity.id),
+                    _service.activityWebUrl(currentDetail.activity.id),
                     successMessage: '已请求打开微信，若未直达请复制关键词到微信「搜一搜」搜索「青春嘉大」查看活动详情',
                   );
                 },
                 onToggleSubscription: () async {
                   setSheetState(() => busy = true);
                   final nextSubscribed = await _toggleSubscription(
-                    detail.activity,
+                    currentDetail.activity,
                   );
                   if (sheetContext.mounted) {
                     setSheetState(() {
@@ -445,6 +687,52 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
           ),
         );
       },
+    );
+  }
+
+  Future<void> _openProtectedPortalWebView({
+    String title = '社会实践与学分申请',
+    String? targetUrl,
+    bool mobile = false,
+  }) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => UnifiedAuthProtectedWebViewPage(
+          title: title,
+          url: targetUrl ?? _service.portalWebUrl(mobile: mobile),
+          serviceUrl: CasService.secondClassroom.serviceUrl,
+          loginDescription: '使用统一认证免登进入第二课堂网页端',
+          preserveSessionOnAuthBounce: true,
+          showWebViewBottomBackButton: true,
+          prepareAuthenticatedUrl: () async {
+            final state = await _ensureSecondClassroomAuth(force: true);
+            if (state == SecondClassroomAuthState.needsLogin) {
+              return Uri.https('newca.zjxu.edu.cn', '/cas/login', {
+                'service': CasService.secondClassroom.serviceUrl,
+              }).toString();
+            }
+            if (state != SecondClassroomAuthState.authenticated) {
+              throw const SecondClassroomServiceException('第二课堂统一认证未登录');
+            }
+            if (targetUrl == null && !mobile) {
+              final ticketEntry = await SecondClassroomAuth.instance
+                  .issueWebViewEntryUrl();
+              if (ticketEntry != null && ticketEntry.isNotEmpty) {
+                await UnifiedAuthService.instance.syncCookiesToWebViewForUrl(
+                  ticketEntry,
+                );
+                return ticketEntry;
+              }
+            }
+            final resolvedUrl =
+                targetUrl ?? _service.portalWebUrl(mobile: mobile);
+            await UnifiedAuthService.instance.syncCookiesToWebViewForUrl(
+              resolvedUrl,
+            );
+            return resolvedUrl;
+          },
+        ),
+      ),
     );
   }
 
@@ -569,6 +857,8 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
               tooltip: '更多操作',
               onSelected: (action) {
                 switch (action) {
+                  case _SecondClassroomAction.webPortal:
+                    unawaited(_openProtectedPortalWebView());
                   case _SecondClassroomAction.rules:
                     _openRuleManager();
                   case _SecondClassroomAction.wechat:
@@ -576,6 +866,10 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
                 }
               },
               itemBuilder: (context) => const [
+                PopupMenuItem(
+                  value: _SecondClassroomAction.webPortal,
+                  child: Text('社会实践与申请（网页端）'),
+                ),
                 PopupMenuItem(
                   value: _SecondClassroomAction.rules,
                   child: Text('关键词订阅规则'),
@@ -588,14 +882,100 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
             ),
           ],
         ),
-        body: _loading
-            ? const _LoadingSkeleton()
-            : _error != null && _activities.isEmpty
-            ? _ErrorState(message: _error!, onRetry: _loadInitial)
-            : RefreshIndicator(
-                onRefresh: _reloadActivities,
-                child: _buildActivityList(),
-              ),
+        body: Column(
+          children: [
+            _SecondClassroomTabBar(
+              selected: _activeTab,
+              myActivityCount: _myActivities.length,
+              onChanged: (tab) {
+                if (tab == _activeTab) return;
+                setState(() => _activeTab = tab);
+                if (tab == _SecondClassroomTab.mine &&
+                    _authState == SecondClassroomAuthState.authenticated &&
+                    _mySummary == null &&
+                    !_myDataLoading) {
+                  unawaited(_syncMyData());
+                }
+              },
+            ),
+            Expanded(
+              child: _activeTab == _SecondClassroomTab.mine
+                  ? _buildMyClassroomTab()
+                  : _loading
+                  ? const _LoadingSkeleton()
+                  : _error != null && _activities.isEmpty
+                  ? _ErrorState(message: _error!, onRetry: _loadInitial)
+                  : RefreshIndicator(
+                      onRefresh: _reloadActivities,
+                      child: _buildActivityList(),
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMyClassroomTab() {
+    if (_authState != SecondClassroomAuthState.authenticated) {
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.pageMargin,
+          AppSpacing.lg,
+          AppSpacing.pageMargin,
+          28,
+        ),
+        children: [
+          _SecondClassroomAuthBanner(
+            state: _authState,
+            onLogin: _handleSecondClassroomLogin,
+            onRetry: _retrySecondClassroomAuth,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          AppCard(
+            onTap: () => unawaited(_openProtectedPortalWebView()),
+            child: const Row(
+              children: [
+                Icon(Icons.open_in_browser_outlined),
+                SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('社会实践与学分申请（网页端）'),
+                      SizedBox(height: 2),
+                      Text('使用统一认证免登访问 PC 网页端'),
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right_rounded),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (_myDataLoading && _mySummary == null && _myActivities.isEmpty) {
+      return const _LoadingSkeleton();
+    }
+
+    if (_myDataError != null && _mySummary == null && _myActivities.isEmpty) {
+      return AppErrorView(
+        title: '我的二课加载失败',
+        message: _myDataError!,
+        onRetry: () => unawaited(_syncMyData()),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: () => _syncMyData(),
+      child: _MyClassroomView(
+        summary: _mySummary,
+        records: _myActivities,
+        partialFailureHint: _myDataPartialHint,
+        onOpenActivity: (record) => _openActivityDetail(record.activity),
+        onOpenWebPortal: () => unawaited(_openProtectedPortalWebView()),
       ),
     );
   }
@@ -697,6 +1077,7 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
         final activityIndex = index - 1;
         if (activityIndex < _activities.length) {
           final activity = _activities[activityIndex];
+          final myRecord = _myRecordsByActivityId[activity.id];
           return Padding(
             padding: const EdgeInsets.only(bottom: AppSpacing.md),
             child: _ActivityCard(
@@ -704,6 +1085,7 @@ class _SecondClassroomPageState extends State<SecondClassroomPage> {
               imageUrl: _service.imageUrl(activity.coverId),
               subscribed: _isActivitySubscribed(activity),
               loading: _detailLoadingId == activity.id,
+              registeredLabel: myRecord?.statusLabel,
               onTap: () => _openActivityDetail(activity),
               onSubscribe: () => _toggleSubscription(activity),
             ),
@@ -752,7 +1134,10 @@ class _SubscriptionActionButton extends StatelessWidget {
 }
 
 /// AppBar ⋮ 菜单里的动作。
-enum _SecondClassroomAction { rules, wechat }
+enum _SecondClassroomAction { webPortal, rules, wechat }
+
+/// 页面顶部二段切换。
+enum _SecondClassroomTab { discover, mine }
 
 /// 状态 chip 行里平铺的状态；「全部活动（含未开放）」收进筛选弹层。
 const _statusChipValues = [

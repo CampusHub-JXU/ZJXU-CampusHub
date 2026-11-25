@@ -22,6 +22,7 @@ import '../../core/update/apk_download_route.dart';
 import '../../core/update/apk_update_controller.dart';
 import '../../core/update/update_checker.dart';
 import '../../core/update/update_model.dart';
+import '../../core/update/update_progress_text.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_dropdown.dart';
 import '../../shared/widgets/app_feedback.dart';
@@ -254,30 +255,39 @@ class _SettingsPageState extends State<SettingsPage> {
         return ValueListenableBuilder<bool>(
           valueListenable: UpdateChecker.instance.isChecking,
           builder: (context, isChecking, _) {
-            return FutureBuilder<PackageInfo>(
-              future: SettingsPage._packageInfoFuture,
-              builder: (context, snapshot) {
-                final String? value;
-                if (release != null) {
-                  value = '新版本 v${release.version}';
-                } else if (snapshot.hasData) {
-                  value = 'v${snapshot.data!.version}';
-                } else {
-                  value = null;
-                }
-                return PlainListRow(
-                  title: '检查更新',
-                  value: value,
-                  emphasizeValue: release != null,
-                  trailing: isChecking
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : null,
-                  showChevron: false,
-                  onTap: isChecking ? null : () => _checkForUpdate(context),
+            return ValueListenableBuilder<ApkUpdateState>(
+              valueListenable: ApkUpdateController.instance.state,
+              builder: (context, updateState, _) {
+                return FutureBuilder<PackageInfo>(
+                  future: SettingsPage._packageInfoFuture,
+                  builder: (context, snapshot) {
+                    final String? value;
+                    if (release != null) {
+                      value = '新版本 v${release.version}';
+                    } else if (snapshot.hasData) {
+                      value = 'v${snapshot.data!.version}';
+                    } else {
+                      value = null;
+                    }
+                    return PlainListRow(
+                      title: '检查更新',
+                      // 后台下载 / 就绪的非阻塞状态提示：下载中给紧凑进度，
+                      // 就绪提示「已下载完成，点击安装」；行点击仍可重开弹窗
+                      // 查看详情 / 取消 / 安装。
+                      subtitle: describeManagedUpdateProgress(updateState),
+                      value: value,
+                      emphasizeValue: release != null,
+                      trailing: isChecking
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : null,
+                      showChevron: false,
+                      onTap: isChecking ? null : () => _checkForUpdate(context),
+                    );
+                  },
                 );
               },
             );

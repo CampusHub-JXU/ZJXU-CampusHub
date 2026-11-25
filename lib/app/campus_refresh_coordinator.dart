@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 
+import '../core/auth/academic_auth_guard.dart';
 import '../core/auth/auth_recovery_state_store.dart';
 import '../core/auth/automatic_login.dart';
+import '../core/auth/connect_mode_resolver.dart';
 import '../core/auth/unified_auth.dart';
 import '../core/auth/zhengfang_auth.dart';
 import '../core/async/run_isolated.dart';
@@ -67,6 +69,7 @@ class CampusRefreshCoordinator {
   }
 
   void setForeground(bool foreground) {
+    if (foreground) ConnectModeResolver.instance.invalidate();
     _foreground = foreground;
     AutomaticLoginService.instance.setForeground(foreground);
     _startTimer();
@@ -130,25 +133,39 @@ class CampusRefreshCoordinator {
             now.difference(_lastScheduleAttempt!) >=
                 GradesService.refreshWindow);
     await Future.wait([
-      if (owner != null && auth.isLoggedIn && GradesService.instance.isStale)
-        _isolate('成绩刷新', () async {
-          await GradesService.instance.fetchGrades(owner);
-        }),
-      if (owner != null && auth.isLoggedIn && ExamService.instance.isStale)
-        _isolate('考试刷新', () async {
-          await ExamService.instance.fetchExams(studentId: owner);
-        }),
-      if (scheduleDue)
-        _isolate('课表刷新', () async {
-          final revision = auth.sessionRevision;
-          final result = await ScheduleService.instance.loadScheduleSnapshot(
-            termContext: ScheduleService.instance.getCurrentTermContext(now),
-            forceRefresh: true,
-          );
-          if (result.didRefresh && auth.sessionRevision == revision) {
-            _lastScheduleAttempt = now;
-            _scheduleRevision = revision;
-          }
+      if (owner != null &&
+          auth.isLoggedIn &&
+          (scheduleDue ||
+              auth.mode == ZhengfangMode.webVpn ||
+              GradesService.instance.isStale ||
+              ExamService.instance.isStale))
+        _isolate('教务选路', () async {
+          await AcademicAuthGuard.acquireRoute();
+          if (!_canRefresh || auth.verifiedStudentId != owner) return;
+          await Future.wait([
+            if (GradesService.instance.isStale)
+              _isolate('成绩刷新', () async {
+                await GradesService.instance.fetchGrades(owner);
+              }),
+            if (ExamService.instance.isStale)
+              _isolate('考试刷新', () async {
+                await ExamService.instance.fetchExams(studentId: owner);
+              }),
+            if (scheduleDue)
+              _isolate('课表刷新', () async {
+                final revision = auth.sessionRevision;
+                final result = await ScheduleService.instance
+                    .loadScheduleSnapshot(
+                      termContext: ScheduleService.instance
+                          .getCurrentTermContext(now),
+                      forceRefresh: true,
+                    );
+                if (result.didRefresh && auth.sessionRevision == revision) {
+                  _lastScheduleAttempt = now;
+                  _scheduleRevision = revision;
+                }
+              }),
+          ]);
         }),
       if (UnifiedAuthService.instance.isLoggedIn &&
           CampusCardService.instance.isStale)

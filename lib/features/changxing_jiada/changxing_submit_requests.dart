@@ -1,4 +1,4 @@
-import 'changxing_jiada_exceptions.dart';
+import '../../core/changxing/changxing_exceptions.dart';
 
 /// 提交体里的时间统一为本地墙钟 `yyyy-MM-dd HH:mm:ss` 字符串。
 ///

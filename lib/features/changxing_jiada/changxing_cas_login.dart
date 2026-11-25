@@ -10,7 +10,7 @@ import '../../core/auth/unified_auth.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/network/dio_client.dart';
 import 'changxing_api_client.dart';
-import 'changxing_jiada_exceptions.dart';
+import '../../core/changxing/changxing_exceptions.dart';
 import 'changxing_jiada_token_binding.dart';
 import 'changxing_sso_urls.dart';
 

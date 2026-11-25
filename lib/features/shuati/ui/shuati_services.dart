@@ -13,6 +13,8 @@ import 'package:share_plus/share_plus.dart';
 
 import '../ai/shuati_ai_runner.dart';
 import '../ai/shuati_ai_service.dart';
+import '../migration/shuati_legacy_extractor.dart';
+import '../migration/shuati_legacy_migration_service.dart';
 import '../persistence/activity_repositories.dart';
 import '../persistence/shuati_store.dart';
 
@@ -90,6 +92,18 @@ class ShuatiServices {
   ShuatiAiService createAiService(ShuatiStore store) =>
       aiServiceFactory(store.aiExplanations);
 
+  /// 旧版 WebView 数据迁移服务的可注入点：默认用 headless WebView 真读；
+  /// 测试可注入假 extractor / prefs，或置 `null` 完全禁用自动迁移。
+  ShuatiLegacyMigrationService? Function(ShuatiStore store)
+  legacyMigrationFactory = (store) => ShuatiLegacyMigrationService(
+    store: store,
+    extractor: ShuatiLegacyHeadlessExtractor(),
+  );
+
+  /// 创建旧版迁移服务；`null` 表示迁移被禁用（测试默认）。
+  ShuatiLegacyMigrationService? createLegacyMigration(ShuatiStore store) =>
+      legacyMigrationFactory(store);
+
   /// 打开（或复用）默认数据库；打开失败时下次调用会重试。
   Future<ShuatiStore> store() => _store ??= _open();
 
@@ -107,10 +121,14 @@ class ShuatiServices {
     ShuatiStore store, {
     ShuatiFileIo? io,
     ShuatiAiService Function(AiExplanationRepository)? aiServiceFactory,
+    ShuatiLegacyMigrationService? Function(ShuatiStore store)?
+    legacyMigrationFactory,
   }) {
     _store = Future<ShuatiStore>.value(store);
     if (io != null) this.io = io;
     if (aiServiceFactory != null) this.aiServiceFactory = aiServiceFactory;
+    // 测试默认禁用自动迁移（widget 测试没有平台 WebView），显式注入才启用。
+    this.legacyMigrationFactory = legacyMigrationFactory ?? (_) => null;
   }
 
   @visibleForTesting
@@ -119,5 +137,9 @@ class ShuatiServices {
     io = const DefaultShuatiFileIo();
     aiServiceFactory = (explanations) =>
         ShuatiAiService(explanations, CoreAiShuatiRunner());
+    legacyMigrationFactory = (store) => ShuatiLegacyMigrationService(
+      store: store,
+      extractor: ShuatiLegacyHeadlessExtractor(),
+    );
   }
 }

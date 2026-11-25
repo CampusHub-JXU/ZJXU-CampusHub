@@ -19,7 +19,7 @@ class _SecondClassroomAuthBanner extends StatelessWidget {
     final (title, message, actionLabel, action) = switch (state) {
       SecondClassroomAuthState.needsLogin => (
         '登录后查看报名状态',
-        '活动浏览不需要登录；活动报名仍在微信中完成。',
+        '活动浏览不需要登录；登录后可直接在应用内报名并查看学时。',
         '登录统一认证',
         onLogin,
       ),
@@ -104,6 +104,10 @@ class _ActivityDetailSheet extends StatelessWidget {
     required this.imageUrl,
     required this.subscribed,
     required this.busy,
+    required this.enrolling,
+    required this.onLogin,
+    required this.onEnroll,
+    required this.onCancelEnroll,
     required this.onToggleSubscription,
     required this.onOpenInWeChat,
   });
@@ -112,6 +116,10 @@ class _ActivityDetailSheet extends StatelessWidget {
   final String imageUrl;
   final bool subscribed;
   final bool busy;
+  final bool enrolling;
+  final Future<void> Function() onLogin;
+  final Future<void> Function() onEnroll;
+  final Future<void> Function() onCancelEnroll;
   final Future<void> Function() onToggleSubscription;
   final VoidCallback onOpenInWeChat;
 
@@ -274,24 +282,48 @@ class _ActivityDetailSheet extends StatelessWidget {
             const SizedBox(height: 12),
             Row(
               children: [
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: busy ? null : onToggleSubscription,
-                    icon: busy
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Icon(
-                            subscribed
-                                ? Icons.notifications_off_outlined
-                                : Icons.notifications_active_outlined,
-                          ),
-                    label: Text(subscribed ? '取消开招提醒' : '订阅同名活动开招提醒'),
+                Expanded(child: _buildPrimaryAction(context)),
+                const SizedBox(width: 10),
+                Tooltip(
+                  message: subscribed ? '取消开招提醒' : '订阅同名活动开招提醒',
+                  child: Material(
+                    color: subscribed
+                        ? cs.primaryContainer
+                        : cs.surfaceContainerHighest,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.control),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      splashFactory: InkRipple.splashFactory,
+                      onTap: busy ? null : onToggleSubscription,
+                      child: SizedBox(
+                        width: 48,
+                        height: 48,
+                        child: busy
+                            ? const Center(
+                                child: SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                              )
+                            : Icon(
+                                subscribed
+                                    ? Icons.notifications_active_rounded
+                                    : Icons.notifications_active_outlined,
+                                size: 20,
+                                color: subscribed
+                                    ? cs.onPrimaryContainer
+                                    : cs.onSurfaceVariant,
+                              ),
+                      ),
+                    ),
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
                 Tooltip(
                   message: '微信版',
                   child: Material(
@@ -320,6 +352,75 @@ class _ActivityDetailSheet extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildPrimaryAction(BuildContext context) {
+    final activity = detail.activity;
+    final state = detail.registrationState;
+
+    if (state == SecondClassroomRegistrationState.unknown) {
+      return FilledButton.icon(
+        onPressed: enrolling ? null : onLogin,
+        icon: enrolling
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.login_rounded),
+        label: const Text('登录后报名'),
+      );
+    }
+
+    if (state == SecondClassroomRegistrationState.registered) {
+      if (activity.hasCheckedIn) {
+        return FilledButton.tonalIcon(
+          onPressed: null,
+          icon: const Icon(Icons.verified_outlined),
+          label: const Text('已报名并签到'),
+        );
+      }
+      return OutlinedButton.icon(
+        onPressed: enrolling ? null : onCancelEnroll,
+        icon: enrolling
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.event_busy_outlined),
+        label: const Text('取消报名'),
+      );
+    }
+
+    final needsForm = detail.requiresRegistrationForm == true;
+    final canEnroll = detail.isInRegistrationTime && !activity.isFull;
+    if (!canEnroll) {
+      final disabledLabel = activity.isFull
+          ? '已招满'
+          : activity.recruitmentLabel == '招募中'
+          ? '暂不可报名'
+          : activity.recruitmentLabel;
+      return FilledButton.icon(
+        onPressed: null,
+        icon: const Icon(Icons.block_outlined),
+        label: Text(disabledLabel),
+      );
+    }
+
+    return FilledButton.icon(
+      onPressed: enrolling ? null : onEnroll,
+      icon: enrolling
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : Icon(
+              needsForm ? Icons.assignment_outlined : Icons.how_to_reg_rounded,
+            ),
+      label: Text(needsForm ? '填表报名' : '立即报名'),
     );
   }
 }
@@ -756,6 +857,7 @@ class _ActivityCard extends StatelessWidget {
     required this.imageUrl,
     required this.subscribed,
     required this.loading,
+    this.registeredLabel,
     required this.onTap,
     required this.onSubscribe,
   });
@@ -764,6 +866,7 @@ class _ActivityCard extends StatelessWidget {
   final String imageUrl;
   final bool subscribed;
   final bool loading;
+  final String? registeredLabel;
   final VoidCallback onTap;
   final VoidCallback onSubscribe;
 
@@ -813,13 +916,30 @@ class _ActivityCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                if (subtitle.isNotEmpty) ...[
+                if (subtitle.isNotEmpty ||
+                    (registeredLabel != null &&
+                        registeredLabel!.isNotEmpty)) ...[
                   const SizedBox(height: 5),
-                  Text(
-                    subtitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: context.appText.meta,
+                  Row(
+                    children: [
+                      if (registeredLabel != null &&
+                          registeredLabel!.isNotEmpty) ...[
+                        AppStatusTag(
+                          registeredLabel!,
+                          tone: AppStatusTone.positive,
+                        ),
+                        if (subtitle.isNotEmpty) const SizedBox(width: 6),
+                      ],
+                      if (subtitle.isNotEmpty)
+                        Expanded(
+                          child: Text(
+                            subtitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: context.appText.meta,
+                          ),
+                        ),
+                    ],
                   ),
                 ],
                 const SizedBox(height: 9),
@@ -947,6 +1067,294 @@ class _EnrollmentBar extends StatelessWidget {
             valueColor: AlwaysStoppedAnimation(barColor),
           ),
         ],
+      ],
+    );
+  }
+}
+
+class _SecondClassroomTabBar extends StatelessWidget {
+  const _SecondClassroomTabBar({
+    required this.selected,
+    required this.myActivityCount,
+    required this.onChanged,
+  });
+
+  final _SecondClassroomTab selected;
+  final int myActivityCount;
+  final ValueChanged<_SecondClassroomTab> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final mineLabel = myActivityCount > 0 ? '我的二课 ($myActivityCount)' : '我的二课';
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.pageMargin,
+        AppSpacing.sm,
+        AppSpacing.pageMargin,
+        AppSpacing.xs,
+      ),
+      child: Container(
+        height: 40,
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(11),
+        ),
+        child: Row(
+          children: [
+            _buildSegment(
+              context,
+              label: '活动广场',
+              active: selected == _SecondClassroomTab.discover,
+              onTap: () => onChanged(_SecondClassroomTab.discover),
+            ),
+            _buildSegment(
+              context,
+              label: mineLabel,
+              active: selected == _SecondClassroomTab.mine,
+              onTap: () => onChanged(_SecondClassroomTab.mine),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSegment(
+    BuildContext context, {
+    required String label,
+    required bool active,
+    required VoidCallback onTap,
+  }) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    return Expanded(
+      child: Material(
+        color: active ? cs.surfaceContainerLowest : Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+        elevation: active ? 0.5 : 0,
+        shadowColor: Colors.black.withValues(alpha: 0.08),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: onTap,
+          child: Center(
+            child: Text(
+              label,
+              style: theme.textTheme.labelLarge?.copyWith(
+                fontSize: 13.5,
+                fontWeight: active ? FontWeight.w600 : FontWeight.w500,
+                color: active ? cs.onSurface : cs.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MyClassroomView extends StatelessWidget {
+  const _MyClassroomView({
+    required this.summary,
+    required this.records,
+    this.partialFailureHint,
+    required this.onOpenActivity,
+    required this.onOpenWebPortal,
+  });
+
+  final SecondClassroomMySummary? summary;
+  final List<SecondClassroomMyActivityRecord> records;
+
+  /// 学时 / 报名记录单路刷新失败的提示；null 表示两路都正常。
+  final String? partialFailureHint;
+  final ValueChanged<SecondClassroomMyActivityRecord> onOpenActivity;
+  final VoidCallback onOpenWebPortal;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final totalHours = summary?.totalHours ?? 0;
+    final requiredHours = summary?.requiredHours ?? 0;
+    final categories =
+        summary?.categories ?? const <SecondClassroomCreditCategory>[];
+
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.pageMargin,
+        AppSpacing.md,
+        AppSpacing.pageMargin,
+        28,
+      ),
+      children: [
+        if (partialFailureHint != null) ...[
+          AppBanner(
+            message: partialFailureHint!,
+            icon: Icons.sync_problem_outlined,
+            tone: AppBannerTone.error,
+          ),
+          const SizedBox(height: AppSpacing.md),
+        ],
+        AppCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text(
+                    _formatCreditHours(totalHours),
+                    style: theme.textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: cs.primary,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    requiredHours > 0
+                        ? '/ ${_formatCreditHours(requiredHours)} 学时'
+                        : '已修总学时',
+                    style: context.appText.secondary,
+                  ),
+                  const Spacer(),
+                  Text('已报名 ${records.length} 项', style: context.appText.meta),
+                ],
+              ),
+              if (summary != null &&
+                  (summary!.studentName.isNotEmpty ||
+                      summary!.collegeName.isNotEmpty)) ...[
+                const SizedBox(height: 6),
+                Text(
+                  [
+                    summary!.studentName,
+                    summary!.collegeName,
+                  ].where((s) => s.isNotEmpty).join(' · '),
+                  style: context.appText.meta,
+                ),
+              ],
+              if (categories.isNotEmpty) ...[
+                const SizedBox(height: AppSpacing.md),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final cat in categories)
+                      AppStatusTag(
+                        cat.requiredHours > 0
+                            ? '${cat.name} ${_formatCreditHours(cat.earned)}/${_formatCreditHours(cat.requiredHours)}'
+                            : '${cat.name} ${_formatCreditHours(cat.earned)}',
+                      ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: AppSpacing.md),
+        AppCard(
+          onTap: onOpenWebPortal,
+          child: Row(
+            children: [
+              Icon(Icons.public_rounded, color: cs.primary),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '社会实践与学分申请（网页端）',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text('免登进入 PC 网页端办理实践申报与认定申请', style: context.appText.meta),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded),
+            ],
+          ),
+        ),
+        const SizedBox(height: AppSpacing.lg),
+        PlainSectionHeader(
+          records.isEmpty ? '已报名活动' : '已报名活动 · ${records.length}',
+        ),
+        if (records.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 32),
+            child: AppEmptyView(
+              title: '暂无已报名活动',
+              message: '前往活动广场浏览并报名感兴趣的第二课堂活动',
+              icon: Icons.event_available_outlined,
+            ),
+          )
+        else
+          for (final record in records) ...[
+            AppCard(
+              onTap: () => onOpenActivity(record),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          record.activity.title.isEmpty
+                              ? '活动 #${record.activity.id}'
+                              : record.activity.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: context.appText.rowTitle,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      AppStatusTag(
+                        record.statusLabel,
+                        tone: AppStatusTone.positive,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      if (record.activity.creditHours > 0)
+                        AppStatusTag(
+                          '${_formatCreditHours(record.activity.creditHours)} 学时',
+                        ),
+                      if (record.hasCheckedIn)
+                        const AppStatusTag('已签到', tone: AppStatusTone.positive),
+                      if (record.hasCheckedOut)
+                        const AppStatusTag('已签退', tone: AppStatusTone.positive),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  _MetaLine(
+                    icon: Icons.schedule_outlined,
+                    text: _formatRange(
+                      record.activity.activityStartAt,
+                      record.activity.activityEndAt,
+                    ),
+                  ),
+                  if (record.activity.location.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    _MetaLine(
+                      icon: Icons.place_outlined,
+                      text: record.activity.location,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+          ],
       ],
     );
   }

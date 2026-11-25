@@ -59,8 +59,6 @@ class CurrentTermResolver {
   String? _persistedJson;
   bool _restored = false;
 
-  Dio get _dio => ZhengfangAuth.instance.academicDio;
-
   /// 已识别的当前学期（仅内存缓存，同步读取，不触发网络）。
   ///
   /// 只返回当前已登录账号自身、且身份修订号仍匹配的缓存值：
@@ -262,20 +260,37 @@ class CurrentTermResolver {
     }
 
     try {
-      final resp = await _dio.get<String>(
-        ZhengfangAuth.instance.buildPortalUrl(
-          '/kbcx/xskbcx_cxXskbcxIndex.html',
-        ),
-        queryParameters: {'gnmkdm': 'N2151', 'layout': 'default', 'su': owner},
-        options: Options(
-          responseType: ResponseType.plain,
-          validateStatus: (status) => status != null && status < 1000,
-          headers: {
-            'Referer': ZhengfangAuth.instance.academicServiceUrl,
-            'X-Requested-With': 'XMLHttpRequest',
-          },
-        ),
-      );
+      final route = await AcademicAuthGuard.acquireRoute(recoverSession: false);
+      if (!_isIdentityCurrent(owner: owner, revision: revision)) {
+        return const CurrentTermResolution();
+      }
+      final auth = ZhengfangAuth.instance;
+      final resp = await auth
+          .academicDioFor(route.mode)
+          .get<String>(
+            auth.buildPortalUrl(
+              '/kbcx/xskbcx_cxXskbcxIndex.html',
+              mode: route.mode,
+            ),
+            queryParameters: {
+              'gnmkdm': 'N2151',
+              'layout': 'default',
+              'su': owner,
+            },
+            options: Options(
+              responseType: ResponseType.plain,
+              followRedirects: false,
+              validateStatus: (status) => status != null && status < 1000,
+              headers: {
+                'Referer': auth.buildPortalUrl(
+                  '/xtgl/index_initMenu.html',
+                  mode: route.mode,
+                  queryParameters: {'jsdm': 'xs'},
+                ),
+                'X-Requested-With': 'XMLHttpRequest',
+              },
+            ),
+          );
 
       // await 边界：身份已变化时丢弃迟到响应，不落盘也不返回。
       if (!_isIdentityCurrent(owner: owner, revision: revision)) {
@@ -287,6 +302,9 @@ class CurrentTermResolver {
           '教务学期解析跳过（登录态失效，HTTP ${resp.statusCode ?? 0}）',
         );
         return const CurrentTermResolution(authExpired: true);
+      }
+      if (AcademicAuthGuard.responseRouteFailure(resp) != null) {
+        return const CurrentTermResolution();
       }
       final statusCode = resp.statusCode ?? 0;
       if (statusCode != 200) {

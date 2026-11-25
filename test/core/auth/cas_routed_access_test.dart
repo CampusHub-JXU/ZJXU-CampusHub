@@ -7,6 +7,7 @@ import 'package:jxu_campus_hub/core/auth/cas_routed_access.dart';
 import 'package:jxu_campus_hub/core/auth/connect_mode_resolver.dart';
 import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
+import 'package:jxu_campus_hub/core/network/route_failure.dart';
 
 import '../../helpers/test_setup.dart';
 
@@ -124,6 +125,47 @@ void main() {
         service: CasService.physicalTest,
       ),
       throwsA(isA<CasAuthExpiredException>()),
+    );
+  });
+
+  test('网关失败只重探一次，直连确认可用后返回直连路由', () async {
+    const target = 'http://jkjy.zjxu.edu.cn/weixin/main.jsp';
+    var probes = 0;
+    ConnectModeResolver.instance.directVerdictChecker = (_) async =>
+        ++probes == 1 ? RouteVerdict.webVpnRedirected : RouteVerdict.direct;
+    CasRoutedAccess.debugGatewayEnsurer = (_, _) async {
+      gatewayCalls++;
+      throw TimeoutException('mock gateway timeout');
+    };
+
+    final route = await CasRoutedAccess.prepare(
+      service: CasService.physicalTest,
+      targetUrl: target,
+    );
+    expect(route.mode, ZhengfangMode.direct);
+    expect(route.url(target), target);
+    expect(probes, 2);
+    expect(gatewayCalls, 1);
+  });
+
+  test('网关失败且直连仍被改道时保留网关错误', () async {
+    const target = 'http://jkjy.zjxu.edu.cn/weixin/main.jsp';
+    ConnectModeResolver.instance.directVerdictChecker = (_) async =>
+        RouteVerdict.webVpnRedirected;
+    CasRoutedAccess.debugGatewayEnsurer = (_, _) async =>
+        throw StateError('mock malformed redirect');
+    await expectLater(
+      CasRoutedAccess.prepare(
+        service: CasService.physicalTest,
+        targetUrl: target,
+      ),
+      throwsA(
+        isA<RouteFailure>().having(
+          (error) => error.reason,
+          'reason',
+          RouteFailureReason.webVpnGatewayFailed,
+        ),
+      ),
     );
   });
 }

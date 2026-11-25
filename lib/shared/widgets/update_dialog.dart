@@ -11,12 +11,23 @@ import '../../core/update/update_model.dart';
 import 'app_feedback.dart';
 import 'glass_dialog_route.dart';
 
+/// 点「更新」（或「重试」/「重新下载」）成功发起受管下载后是否自动关闭弹窗
+/// 转入后台：生产为 true（默认后台异步下载，不把用户卡在前台模态里）；
+/// 测试若需留在弹窗内观察状态投影可置 false。
+@visibleForTesting
+bool kUpdateDialogAutoCloseAfterStart = true;
+
 /// 应用内更新弹窗。
 ///
 /// 展示版本号、发布时间与更新说明，并在**受支持的 Android** 上提供受管
 /// 下载 / 安装流程：点「更新」后由原生 DownloadManager 在应用外下载，原生
 /// 在安装包校验通过且处于前台时自动调起系统安装确认；本弹窗只投影
 /// [ApkUpdateController] 的原生权威状态，**不**下载、不合成进度。
+///
+/// 下载发起成功后弹窗自动关闭（见 [kUpdateDialogAutoCloseAfterStart]），
+/// 前台轮询与停滞观察由 [ApkUpdateController] 统一持有：弹窗只负责初次
+/// 能力探测与状态投影，关闭弹窗不影响后台下载与轮询。用户可随时通过首页
+/// 更新入口或「设置 → 检查更新」重新打开本弹窗查看详情 / 取消 / 安装。
 ///
 /// 既有调用方 `showUpdateDialog(context, release)` 行为不变：非 Android /
 /// 缺少原生通道 / 版本未提供可信安装包资产时，降级为原有的外部浏览器
@@ -60,10 +71,7 @@ class _UpdateDialogContent extends StatefulWidget {
   State<_UpdateDialogContent> createState() => _UpdateDialogContentState();
 }
 
-class _UpdateDialogContentState extends State<_UpdateDialogContent>
-    with WidgetsBindingObserver {
-  static const Duration _pollInterval = Duration(seconds: 1);
-
+class _UpdateDialogContentState extends State<_UpdateDialogContent> {
   ApkUpdateController get _controller => widget.controller;
 
   /// 原生受管更新能力（非 Android / 缺少原生通道为 false）。
@@ -72,21 +80,10 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
   /// 首次能力探测 + 原生状态查询是否已完成（未完成前只显示版本信息）。
   bool _bootstrapped = false;
 
-  /// 应用是否在前台：后台时不轮询、不刷新，下载由原生继续。
-  bool _foreground = true;
-
   /// 有原生调用在途：期间禁用按钮，避免重复点击。
   bool _busy = false;
 
   bool _legacyLaunching = false;
-
-  Timer? _pollTimer;
-
-  /// 停滞观察器（无计划状态；只在轮询回调里观察进度并建议原生换源，不持有
-  /// 后台定时器，也不自己选线路）。
-  late final ApkDownloadStallWatcher _watcher = ApkDownloadStallWatcher(
-    controller: widget.controller,
-  );
 
   ApkUpdateState get _state => _controller.state.value;
 
@@ -138,36 +135,21 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     _controller.state.addListener(_onStateChanged);
     unawaited(_bootstrap());
   }
 
   @override
   void dispose() {
-    // 关闭弹窗 / 页面销毁只停止本弹窗的监听与轮询，**不**取消下载：
-    // 原生 DownloadManager 继续，重开弹窗再查询即可。
-    _pollTimer?.cancel();
-    _pollTimer = null;
+    // 关闭弹窗 / 页面销毁只停止本弹窗的监听，**不**取消下载、也不停止控制器的
+    // 前台轮询：原生 DownloadManager 继续，重开弹窗再查询即可。
     _controller.state.removeListener(_onStateChanged);
-    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    final foreground = state == AppLifecycleState.resumed;
-    if (foreground == _foreground) return;
-    _foreground = foreground;
-    if (foreground && _supported) {
-      // 回前台（含从「安装权限设置」返回）：查询一次原生真实状态。
-      unawaited(_controller.refreshActiveUpdate());
-    }
-    _syncPolling();
-  }
-
   Future<void> _bootstrap() async {
-    // 冷启动挂载：先做一次真实能力探测，再查询一次原生状态。
+    // 冷启动挂载：先做一次真实能力探测，再查询一次原生状态（控制器的轮询
+    // 可能已经在进行，这次查询只是尽快对齐投影，不会破坏幂等）。
     final supported = await _controller.isSupported();
     if (!mounted) return;
     _supported = supported;
@@ -176,48 +158,41 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent>
       if (!mounted) return;
     }
     setState(() => _bootstrapped = true);
-    _syncPolling();
   }
 
   void _onStateChanged() {
     if (!mounted) return;
     setState(() {});
-    _syncPolling();
-  }
-
-  /// 轮询只在「弹窗挂载 + 支持应用内更新 + 前台 + 状态处于活动阶段」时进行，
-  /// 慢节奏（~1s）地刷新原生真实状态；其余情况一律停表，不留下后台 Dart
-  /// 定时器。
-  void _syncPolling() {
-    final shouldPoll =
-        mounted && _supported && _foreground && _state.phase.isActive;
-    if (shouldPoll) {
-      _pollTimer ??= Timer.periodic(_pollInterval, (_) {
-        unawaited(_pollOnce());
-      });
-      return;
-    }
-    _pollTimer?.cancel();
-    _pollTimer = null;
-  }
-
-  /// 一次轮询：先刷新原生真实状态，再让停滞观察器据此判断是否需要建议换源。
-  Future<void> _pollOnce() async {
-    await _controller.refreshActiveUpdate();
-    if (!mounted) return;
-    await _watcher.onPolled();
   }
 
   // ── 原生调用 ──────────────────────────────────────────────────────────────
 
   /// 下载线路由「设置 → 更新下载线路」决定（默认自动），弹窗只在点击时读取，
   /// 自己不提供选线入口。
-  Future<void> _startDownload() => _run(() async {
-    final release = widget.release;
-    if (release == null) return;
-    final route = await ApkDownloadRoutePreference.load();
-    await _controller.startDownload(release, route: route);
-  });
+  ///
+  /// 成功发起下载后**自动关闭弹窗转入后台**：下载由原生执行，前台轮询与停滞
+  /// 观察由 [ApkUpdateController] 统一持有，不再要求用户停留在本弹窗。资产
+  /// 不可信（unavailable）不算发起成功，弹窗保持打开展示降级入口。
+  Future<void> _startDownload() async {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final navigator = Navigator.of(context);
+    var started = false;
+    await _run(() async {
+      final release = widget.release;
+      if (release == null) return;
+      final route = await ApkDownloadRoutePreference.load();
+      await _controller.startDownload(release, route: route);
+      final phase = _controller.state.value.phase;
+      started = phase != ApkUpdatePhase.unavailable;
+    });
+    if (!started || !kUpdateDialogAutoCloseAfterStart || !navigator.mounted) {
+      return;
+    }
+    navigator.pop();
+    if (messenger != null) {
+      AppFeedback.toastOn(messenger, '已转入后台下载，完成后将提示安装');
+    }
+  }
 
   Future<void> _cancelDownload() => _run(() async {
     await _controller.cancelActiveUpdate();

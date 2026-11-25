@@ -99,6 +99,7 @@ void main() {
       () => messenger.setMockMethodCallHandler(pathProviderChannel, null),
     );
     await resetTestEnvironment();
+    ConnectModeResolver.instance.directReachabilityChecker = () async => true;
     await CurrentTermResolver.instance.debugReset();
     DioClient.instance.debugCookieDirectoryPathProvider = (folderName) async =>
         'test/$folderName';

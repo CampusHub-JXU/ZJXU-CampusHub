@@ -33,7 +33,7 @@ void main() {
     addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
     await resetTestEnvironment();
     await DioClient.instance.ensureInitialized();
-    ConnectModeResolver.instance.directReachabilityChecker = () async => false;
+    ConnectModeResolver.instance.directReachabilityChecker = () async => true;
     ConnectModeResolver.instance.webVpnReachabilityChecker = () async => false;
     ZhengfangAuth.instance.debugSetSession(active: true, studentId: 'AUDIT_A');
     await CredentialStore.instance.saveZhengfangSession('AUDIT_A');

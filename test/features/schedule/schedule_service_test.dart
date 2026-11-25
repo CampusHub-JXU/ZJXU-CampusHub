@@ -40,7 +40,7 @@ void main() {
     AcademicAuthGuard.debugAutomaticLoginReceiptOverride = null;
     ScheduleService.debugBeforePersistWrite = null;
     ConnectModeResolver.instance.debugReset();
-    ConnectModeResolver.instance.directReachabilityChecker = () async => false;
+    ConnectModeResolver.instance.directReachabilityChecker = () async => true;
     ConnectModeResolver.instance.webVpnReachabilityChecker = () async => false;
     DioClient.instance.debugUseMemoryCookieStorage = true;
     DioClient.instance.debugCookieDirectoryPathProvider = (folderName) async =>

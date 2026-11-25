@@ -44,11 +44,30 @@ void main() {
   group('受管更新流程', () {
     late FakeApkUpdateTransport transport;
     late ApkUpdateController controller;
+    late bool foreground;
 
     setUp(() {
       SharedPreferences.setMockInitialValues(<String, Object>{});
       transport = FakeApkUpdateTransport();
-      controller = fakeApkUpdateController(transport);
+      foreground = true;
+      // 弹窗本身不再持有轮询：由控制器统一做前台轮询与停滞观察。本组打开
+      // 控制器轮询以验证端到端行为（前台状态经注入切换，与真实生命周期等价）。
+      controller = fakeApkUpdateController(
+        transport,
+        enablePolling: true,
+        foregroundProvider: () => foreground,
+      );
+      // 本组用例聚焦弹窗的状态投影，需要弹窗在发起下载后保持打开；
+      // 自动关闭转后台的行为在独立分组里验证。
+      kUpdateDialogAutoCloseAfterStart = false;
+    });
+
+    tearDown(() {
+      kUpdateDialogAutoCloseAfterStart = true;
+      foreground = true;
+      // 控制器持有跨弹窗的轮询定时器：用例收尾必须复位，避免 pending timer
+      // 泄漏到下一个用例。
+      controller.debugReset();
     });
 
     Future<void> open(WidgetTester tester, AppRelease release) async {
@@ -71,9 +90,11 @@ void main() {
       await tester.pump(); // 初始原生状态查询
     }
 
-    // 活动状态会启动 ~1s 轮询与不定进度动画：收尾时销毁弹窗以取消定时器，
-    // 避免遗留 pending timer。
+    // 活动状态会启动控制器的 ~1s 前台轮询与不定进度动画：收尾时销毁弹窗并复位
+    // 控制器（轮询归控制器持有，弹窗销毁不再停表），避免遗留 pending timer。
+    // postTest 的不变量校验先于本组 tearDown 执行，因此必须在用例体内复位。
     Future<void> disposeDialog(WidgetTester tester) async {
+      controller.debugReset();
       await tester.pumpWidget(const SizedBox());
       await tester.pump();
     }
@@ -716,7 +737,7 @@ void main() {
       await disposeDialog(tester);
     });
 
-    testWidgets('切到后台停止轮询，回前台再查询一次', (tester) async {
+    testWidgets('切到后台停止轮询，回前台再查询一次（轮询归控制器，弹窗无关）', (tester) async {
       transport.active = const ApkUpdateState(
         phase: ApkUpdatePhase.downloading,
         bytesDownloaded: 1024,
@@ -728,17 +749,61 @@ void main() {
       await open(tester, managedTestRelease());
       final afterOpen = transport.queryCalls;
 
+      foreground = false;
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
       await tester.pump(const Duration(seconds: 3));
       expect(transport.queryCalls, afterOpen, reason: '非前台不应继续轮询');
 
+      foreground = true;
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
       await tester.pump();
       expect(
         transport.queryCalls,
         greaterThan(afterOpen),
         reason: '回前台应查询一次原生状态',
       );
+      foreground = true;
+      await disposeDialog(tester);
+    });
+
+    testWidgets('关闭弹窗不停止控制器轮询：后台下载的进度仍在更新', (tester) async {
+      transport.active = const ApkUpdateState(
+        phase: ApkUpdatePhase.downloading,
+        bytesDownloaded: 1024,
+        totalBytes: 2048,
+        version: '0.3.0',
+        releaseTag: 'v0.3.0',
+        requestKey: 'k',
+      );
+      await open(tester, managedTestRelease());
+
+      await tester.tap(find.widgetWithText(TextButton, '关闭'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('正在下载安装包…'), findsNothing);
+
+      // 弹窗已关闭，但控制器仍在前台轮询原生状态（下载转入后台的前提）。
+      final beforeBackground = transport.queryCalls;
+      await tester.pump(const Duration(seconds: 2, milliseconds: 100));
+      expect(
+        transport.queryCalls,
+        greaterThan(beforeBackground),
+        reason: '关闭弹窗后控制器应继续前台轮询',
+      );
+
+      // 下载完成（终态）后轮询停止，不留下 pending timer。
+      transport.active = const ApkUpdateState(
+        phase: ApkUpdatePhase.canceled,
+        retired: true,
+        version: '0.3.0',
+        releaseTag: 'v0.3.0',
+        requestKey: 'k',
+      );
+      await tester.pump(const Duration(seconds: 2));
+      final atTerminal = transport.queryCalls;
+      await tester.pump(const Duration(seconds: 2));
+      expect(transport.queryCalls, atTerminal, reason: '非活动阶段轮询应停止');
       await disposeDialog(tester);
     });
 
@@ -772,6 +837,105 @@ void main() {
       expect(find.textContaining('该版本未提供可校验的安装包'), findsOneWidget);
       expect(find.widgetWithText(FilledButton, '更新'), findsNothing);
       await disposeDialog(tester);
+    });
+  });
+
+  group('点「更新」后自动转入后台（生产默认行为）', () {
+    late FakeApkUpdateTransport transport;
+    late ApkUpdateController controller;
+
+    setUp(() {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      transport = FakeApkUpdateTransport();
+      controller = fakeApkUpdateController(transport);
+      kUpdateDialogAutoCloseAfterStart = true;
+    });
+
+    tearDown(() {
+      controller.debugReset();
+    });
+
+    Future<void> open(WidgetTester tester, AppRelease release) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () =>
+                    showUpdateDialog(context, release, controller: controller),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+    }
+
+    testWidgets('发起下载成功后弹窗自动关闭并提示已转入后台', (tester) async {
+      transport.startResult = const ApkUpdateState(
+        phase: ApkUpdatePhase.enqueued,
+        version: '0.3.0',
+        releaseTag: 'v0.3.0',
+        requestKey: 'k',
+      );
+      await open(tester, managedTestRelease());
+      expect(find.widgetWithText(FilledButton, '更新'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(FilledButton, '更新'));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(transport.startCalls, 1);
+      expect(
+        find.text('已转入后台下载，完成后将提示安装'),
+        findsOneWidget,
+        reason: '应提示已转入后台下载',
+      );
+      expect(find.text('发现新版本 v0.3.0'), findsNothing, reason: '弹窗应已关闭');
+      expect(find.text('正在加入下载队列…'), findsNothing, reason: '用户不再被卡在前台模态里看进度');
+
+      await tester.pump(const Duration(seconds: 5)); // 让 toast 计时器与退出动画走完
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+
+    testWidgets('「重试」成功发起后同样自动关闭弹窗', (tester) async {
+      transport.active = const ApkUpdateState(
+        phase: ApkUpdatePhase.failed,
+        reason: ApkUpdateFailureReason.network,
+        version: '0.3.0',
+        releaseTag: 'v0.3.0',
+        requestKey: 'k',
+      );
+      await open(tester, managedTestRelease());
+      expect(find.widgetWithText(FilledButton, '重试'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(FilledButton, '重试'));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(transport.startCalls, 1);
+      expect(find.text('发现新版本 v0.3.0'), findsNothing);
+      expect(find.text('网络连接失败，请检查网络后重试'), findsNothing);
+
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+
+    testWidgets('资产不可信（发起失败）时弹窗保持打开', (tester) async {
+      await open(tester, managedTestRelease(canonicalAssetUrl: null));
+      // 无「更新」按钮可点（降级路径）：直接验证发起失败语义已在其它用例覆盖，
+      // 这里只确认降级弹窗本身不会因自动关闭逻辑意外消失。
+      expect(find.textContaining('该版本未提供可校验的安装包'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
     });
   });
 }

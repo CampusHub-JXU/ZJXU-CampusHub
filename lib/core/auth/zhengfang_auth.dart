@@ -15,6 +15,10 @@ import '../network/dio_client.dart';
 import '../network/network_settings.dart';
 import '../network/proxy_fallback.dart';
 import '../network/proxy_mode.dart';
+import '../network/route_failure.dart';
+import '../network/route_gate.dart';
+import 'cas_auth_broker.dart';
+import 'cas_routed_access.dart';
 import 'auth_failure.dart';
 import 'auth_operation_coordinator.dart';
 import 'auth_recovery_state_store.dart';
@@ -229,6 +233,8 @@ class ZhengfangAuth extends ChangeNotifier {
   /// WebVPN 模式必须复用统一认证 CookieJar，否则业务接口虽然请求了
   /// WebVPN URL，却不会携带网关 ticket。
   Dio get academicDio => _dio;
+
+  Dio academicDioFor(ZhengfangMode mode) => _dioFor(mode);
   PersistCookieJar get _cookieJar => DioClient.instance.zhengfangCookieJar;
   PersistCookieJar get _webVpnCookieJar =>
       DioClient.instance.unifiedAuthCookieJar;
@@ -284,9 +290,17 @@ class ZhengfangAuth extends ChangeNotifier {
   static const directAcademicServiceUrl =
       'https://jwzx.zjxu.edu.cn/jwglxt/xtgl/index_initMenu.html?jsdm=xs';
 
-  String buildPortalUrl(String path, {Map<String, dynamic>? queryParameters}) {
+  // Gateway setup is a prerequisite of the business gate and of automatic
+  // login. Its own queue keeps prerequisite calls from waiting on themselves.
+  static final _gatewayRoutes = RouteGate();
+
+  String buildPortalUrl(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+    ZhengfangMode? mode,
+  }) {
     final normalizedPath = path.startsWith('/') ? path : '/$path';
-    final uri = Uri.parse('$_baseUrl$normalizedPath');
+    final uri = Uri.parse('${_baseUrlFor(mode ?? _mode)}$normalizedPath');
     if (queryParameters == null || queryParameters.isEmpty) {
       return uri.toString();
     }
@@ -431,28 +445,49 @@ class ZhengfangAuth extends ChangeNotifier {
   }
 
   /// 测试 WebVPN 是否可达
-  static Future<bool> checkWebVpnReachable() async {
+  static Future<bool> checkWebVpnReachable() async =>
+      await probeWebVpnFailure() == null;
+
+  static Future<RouteFailureReason?> probeWebVpnFailure() async {
+    final token = CancelToken();
+    final dio = Dio(
+      BaseOptions(
+        connectTimeout: const Duration(seconds: 6),
+        receiveTimeout: const Duration(seconds: 6),
+        followRedirects: false,
+        validateStatus: (s) => s != null && s < 600,
+      ),
+    );
+    applyProxyModeToDio(
+      dio,
+      ignoreSystemProxy: NetworkSettings.instance.ignoreSystemProxy.value,
+    );
     try {
-      final dio = Dio(
-        BaseOptions(
-          connectTimeout: const Duration(seconds: 6),
-          receiveTimeout: const Duration(seconds: 6),
-          followRedirects: true,
-          validateStatus: (s) => s != null && s < 500,
-        ),
-      );
-      applyProxyModeToDio(
-        dio,
-        ignoreSystemProxy: NetworkSettings.instance.ignoreSystemProxy.value,
-      );
       final resp = await dio
-          .get<String>(webVpnGatewayLoginUrl)
-          .timeout(const Duration(seconds: 8));
-      AppLogger.instance.auth(LogLevel.info, 'WebVPN 连通性: ${resp.statusCode}');
-      return resp.statusCode != null && resp.statusCode! < 400;
+          .get<String>(webVpnGatewayLoginUrl, cancelToken: token)
+          .timeout(
+            const Duration(seconds: 8),
+            onTimeout: () {
+              token.cancel('WebVPN reachability probe timed out');
+              throw TimeoutException('WebVPN reachability probe timed out');
+            },
+          );
+      final uri = resp.realUri;
+      AppLogger.instance.auth(
+        LogLevel.info,
+        'WebVPN 连通性 status=${resp.statusCode} at ${uri.host}${uri.path}',
+      );
+      return (resp.statusCode ?? 0) < 400
+          ? null
+          : RouteFailureReason.webVpnGatewayFailed;
     } catch (e) {
-      AppLogger.instance.auth(LogLevel.warn, 'WebVPN 不可达: $e');
-      return false;
+      AppLogger.instance.auth(
+        LogLevel.warn,
+        'WebVPN 不可达 webvpn.zjxu.edu.cn: ${e is DioException ? e.type : e.runtimeType}',
+      );
+      return RouteFailureReason.connectionFailed;
+    } finally {
+      dio.close(force: true);
     }
   }
 

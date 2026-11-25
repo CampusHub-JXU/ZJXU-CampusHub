@@ -107,7 +107,14 @@ void main() {
     expect(find.text('正在下载安装包…'), findsOneWidget);
     expect(find.text('1.0 MB / 2.0 MB'), findsOneWidget);
 
-    // 销毁弹窗以取消轮询定时器。
+    // 轮询归控制器持有（弹窗销毁不再停表）：先在用例体内复位控制器取消
+
+    // 轮询定时器——postTest 的不变量校验先于 tearDown 执行，tearDown 里
+
+    // 复位来不及。
+
+    ApkUpdateController.instance.debugReset();
+
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
   });
@@ -145,6 +152,7 @@ void main() {
     expect(networkCalled, isFalse);
     expect(find.text('已有更新 v0.2.9'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, '安装更新'), findsOneWidget);
+    ApkUpdateController.instance.debugReset(); // 见上：先停控制器轮询再销毁树
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
   });
@@ -180,6 +188,7 @@ void main() {
     expect(networkCalled, isFalse);
     expect(find.text('已有更新 v0.2.9'), findsOneWidget);
     expect(find.text('正在清理上一次下载…'), findsOneWidget);
+    ApkUpdateController.instance.debugReset(); // 见上：先停控制器轮询再销毁树
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
   });

@@ -29,6 +29,7 @@ import 'core/theme/glass_refraction.dart';
 import 'core/notification/app_notification_service.dart';
 import 'core/notification/background_task_service.dart';
 import 'core/shortcut/app_shortcut_service.dart';
+import 'core/update/apk_update_controller.dart';
 import 'features/dorm_electricity/dorm_electricity_background.dart';
 import 'features/schedule/schedule_service.dart';
 import 'features/second_classroom/second_classroom_subscription_service.dart';
@@ -210,6 +211,10 @@ Future<void> main() async {
           automatic: true,
         ),
       );
+      // 应用内更新：冷启动引导前台轮询与停滞观察（控制器统一持有，独立于
+      // 更新弹窗）。首次查询恢复「后台已入队 / 已就绪」的受管下载投影，此后
+      // 仅在前台且状态活动时以 ~1s 节奏查询原生；失败静默降级，不影响启动。
+      unawaited(ApkUpdateController.instance.bootstrap());
       // 教务处通知：冷启动无条件重载磁盘状态（后台 isolate 写盘后的红点
       // 正确性不依赖后续 resumed 事件），并发起一次自动补查（claim 防抖）。
       unawaited(NoticeSyncStore.instance.reload());

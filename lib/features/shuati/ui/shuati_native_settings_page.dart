@@ -11,6 +11,7 @@ import '../../../shared/widgets/plain_list.dart';
 import '../backup/backup_exporter.dart';
 import '../backup/backup_importer.dart';
 import '../backup/backup_models.dart';
+import '../migration/shuati_legacy_migration_service.dart';
 import 'shuati_services.dart';
 
 class ShuatiNativeSettingsPage extends StatefulWidget {
@@ -24,6 +25,7 @@ class ShuatiNativeSettingsPage extends StatefulWidget {
 class _ShuatiNativeSettingsPageState extends State<ShuatiNativeSettingsPage> {
   bool _busy = false;
   ShuatiBackupImportReport? _report;
+  String? _reportTitle;
 
   String get _stamp {
     final d = DateTime.now();
@@ -77,8 +79,59 @@ class _ShuatiNativeSettingsPageState extends State<ShuatiNativeSettingsPage> {
       final store = await ShuatiServices.instance.store();
       final report = await ShuatiBackupImporter(store)
           .importBytes(file.bytes, mode: mode);
-      if (mounted) setState(() => _report = report);
+      if (mounted) {
+        setState(() {
+          _report = report;
+          _reportTitle = null;
+        });
+      }
     }, '恢复失败：文件不是有效的刷题助手备份');
+  }
+
+  /// 从旧版 WebView 自动迁移：只读旧数据、幂等合并，绝不删除本地或旧数据。
+  Future<void> _migrateLegacy() async {
+    final confirmed = await AppFeedback.confirm(
+      context,
+      title: '从旧版迁移数据？',
+      message:
+          '自动读取旧版刷题助手的题库、做题记录、收藏、错题与练习进度，'
+          '合并到当前版本（不覆盖已有内容，可重复执行）。旧版数据不会被删除。',
+      confirmLabel: '开始迁移',
+    );
+    if (!confirmed || !mounted) return;
+    await _guard(() async {
+      final store = await ShuatiServices.instance.store();
+      final migration = ShuatiServices.instance.createLegacyMigration(store);
+      if (migration == null) {
+        if (mounted) AppFeedback.toast(context, '当前环境不支持自动迁移');
+        return;
+      }
+      final outcome = await migration.migrateNow();
+      if (!mounted) return;
+      switch (outcome.status) {
+        case ShuatiLegacyMigrationStatus.migrated:
+          setState(() {
+            _report = outcome.report;
+            _reportTitle = '迁移结果';
+          });
+          final report = outcome.report!;
+          if (report.banks.added + report.questions.added > 0) {
+            AppFeedback.toast(
+              context,
+              '已迁移 ${report.banks.added} 个题库、'
+              '${report.questions.added} 道题目',
+            );
+          } else {
+            AppFeedback.toast(context, '迁移完成：没有新增内容（可能已迁移过）');
+          }
+        case ShuatiLegacyMigrationStatus.noLegacyData:
+          AppFeedback.toast(context, '未检测到旧版数据');
+        case ShuatiLegacyMigrationStatus.skipped:
+          AppFeedback.toast(context, '本次未执行迁移');
+        case ShuatiLegacyMigrationStatus.failed:
+          AppFeedback.toast(context, outcome.error ?? '迁移失败，请重试');
+      }
+    }, '迁移失败，请重试');
   }
 
   Future<void> _clear() async {
@@ -145,15 +198,20 @@ class _ShuatiNativeSettingsPageState extends State<ShuatiNativeSettingsPage> {
           ),
           if (report != null) ...[
             const SizedBox(height: AppSpacing.listGroupGap),
-            ShuatiBackupReportView(report: report),
+            ShuatiBackupReportView(report: report, title: _reportTitle),
           ],
           const SizedBox(height: AppSpacing.listGroupGap),
           const PlainSectionHeader('旧版迁移'),
           PlainListGroup(
             children: [
               PlainListRow(
-                title: '打开旧版刷题助手（导出旧数据）',
-                subtitle: '旧版数据在旧页面设置中导出 ZIP 后，再回到此处恢复',
+                title: '从旧版自动迁移',
+                subtitle: '读取旧版题库、记录与进度并合并到当前版本，不删除旧数据',
+                onTap: _busy ? null : _migrateLegacy,
+              ),
+              PlainListRow(
+                title: '打开旧版刷题助手（手动导出）',
+                subtitle: '自动迁移失败时，可在旧页面设置中导出 ZIP 后回到此处恢复',
                 onTap: _busy ? null : () => context.pushNamed('shuati-legacy'),
               ),
             ],
@@ -178,9 +236,12 @@ class _ShuatiNativeSettingsPageState extends State<ShuatiNativeSettingsPage> {
 
 /// 备份导入报告：各集合新增 / 重复 / 丢弃计数。
 class ShuatiBackupReportView extends StatelessWidget {
-  const ShuatiBackupReportView({super.key, required this.report});
+  const ShuatiBackupReportView({super.key, required this.report, this.title});
 
   final ShuatiBackupImportReport report;
+
+  /// 标题前缀（默认「恢复结果」；迁移场景传「迁移结果」）。
+  final String? title;
 
   static String _line(BackupCollectionCounts c) {
     final dropped = c.orphan + c.invalid;
@@ -194,7 +255,7 @@ class ShuatiBackupReportView extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        PlainSectionHeader('恢复结果（V${report.version}）'),
+        PlainSectionHeader('${title ?? '恢复结果'}（V${report.version}）'),
         PlainListGroup(
           children: [
             PlainListRow(title: '题库', value: _line(report.banks)),

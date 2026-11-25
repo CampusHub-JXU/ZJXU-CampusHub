@@ -9,6 +9,7 @@ import '../../core/academic/academic_exceptions.dart';
 import '../../core/auth/academic_auth_guard.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/network/dio_client.dart';
+import '../../core/network/route_failure.dart';
 import '../../core/semester/current_term_resolver.dart';
 import '../../core/semester/semester_calendar.dart';
 import '../../core/system_surface/campus_data_change_bus.dart';
@@ -89,11 +90,6 @@ class ScheduleService {
 
   /// 同 isolate 内整 map 持久写入的串行链，见 [_persistSnapshot]。
   Future<void> _persistWriteChain = Future<void>.value();
-
-  Dio get _dio => ZhengfangAuth.instance.academicDio;
-
-  String _academicUrl(String path) =>
-      ZhengfangAuth.instance.buildPortalUrl(path);
 
   int getCurrentWeek() {
     return SemesterCalendar.instance.weekForDate(DateTime.now());
@@ -379,7 +375,10 @@ class ScheduleService {
     }
 
     try {
+      final route = await AcademicAuthGuard.acquireRoute(recoverSession: false);
+      if (!_isIdentityCurrent(owner, revision)) return _identityChangedResult();
       final raw = await _postScheduleQuery(
+        mode: route.mode,
         studentId: studentId,
         year: context.academicYear,
         term: context.term,
@@ -492,42 +491,56 @@ class ScheduleService {
     required String studentId,
     required int year,
     required int term,
-  }) => AcademicAuthGuard.guardWithSession<dynamic>(
+  }) => AcademicAuthGuard.guardRoutedQuery<dynamic>(
+    owner: studentId,
     authExpiredException: const ScheduleAuthExpiredException(),
-    request: () =>
-        _postScheduleQuery(studentId: studentId, year: year, term: term),
+    request: (mode) => _postScheduleQuery(
+      mode: mode,
+      studentId: studentId,
+      year: year,
+      term: term,
+    ),
   );
 
   /// 每次调用都按当前模式重建 URL / Referer（guard 恢复可能切换直连/WebVPN）。
   Future<Response<dynamic>> _postScheduleQuery({
+    required ZhengfangMode mode,
     required String studentId,
     required int year,
     required int term,
   }) {
-    final referer = ZhengfangAuth.instance.buildPortalUrl(
+    final auth = ZhengfangAuth.instance;
+    final referer = auth.buildPortalUrl(
       '/kbcx/xskbcx_cxXskbcxIndex.html',
+      mode: mode,
       queryParameters: {
         'gnmkdm': 'N2151',
         'layout': 'default',
         'su': studentId,
       },
     );
-    return _dio.post<dynamic>(
-      _academicUrl('/kbcx/xskbcx_cxXsKb.html'),
-      queryParameters: {'gnmkdm': 'N2151', 'su': studentId},
-      data: 'xnm=$year&xqm=$term&kzlx=ck',
-      options: Options(
-        contentType: 'application/x-www-form-urlencoded',
-        validateStatus: (status) => status != null && status < 1000,
-        headers: {'Referer': referer, 'X-Requested-With': 'XMLHttpRequest'},
-      ),
-    );
+    return auth
+        .academicDioFor(mode)
+        .post<dynamic>(
+          auth.buildPortalUrl('/kbcx/xskbcx_cxXsKb.html', mode: mode),
+          queryParameters: {'gnmkdm': 'N2151', 'su': studentId},
+          data: 'xnm=$year&xqm=$term&kzlx=ck',
+          options: Options(
+            contentType: 'application/x-www-form-urlencoded',
+            followRedirects: false,
+            validateStatus: (status) => status != null && status < 1000,
+            headers: {'Referer': referer, 'X-Requested-With': 'XMLHttpRequest'},
+          ),
+        );
   }
 
   List<CourseEntry> _parseScheduleCourses(Response<dynamic> resp) {
     final statusCode = resp.statusCode ?? 0;
     if (AcademicAuthGuard.isAuthExpiredResponse(resp)) {
       throw const ScheduleAuthExpiredException();
+    }
+    if (AcademicAuthGuard.responseRouteFailure(resp) case final failure?) {
+      throw failure;
     }
     if (statusCode >= 400) {
       throw ScheduleRequestException('课表接口异常（状态码：$statusCode）');
@@ -574,28 +587,42 @@ class ScheduleService {
     if (!_isIdentityCurrent(studentId, revision)) {
       throw const ScheduleAuthExpiredException();
     }
-    final messages = <ScheduleChangeMessage>[];
-    messages.addAll(await _fetchInboxChangeMessages());
+    final auth = ZhengfangAuth.instance;
+    final route = await AcademicAuthGuard.acquireRoute(recoverSession: false);
+    if (!_isIdentityCurrent(studentId, revision)) {
+      throw const ScheduleAuthExpiredException();
+    }
+    final mode = route.mode;
+    final messages = <ScheduleChangeMessage>[
+      ...await _fetchInboxChangeMessages(mode),
+    ];
     // inbox 过期即停止：不再发 AreaThree（不再套 guard / OCR）。
     if (!_isIdentityCurrent(studentId, revision)) {
       throw const ScheduleAuthExpiredException();
     }
 
-    final referer = ZhengfangAuth.instance.academicServiceUrl;
-    final resp = await _dio.post<String>(
-      _academicUrl('/xtgl/index_cxAreaThree.html'),
-      queryParameters: {
-        'localeKey': 'zh_CN',
-        'gnmkdm': 'index',
-        'su': studentId,
-      },
-      options: Options(
-        responseType: ResponseType.plain,
-        contentType: 'application/x-www-form-urlencoded;charset=UTF-8',
-        validateStatus: (status) => status != null && status < 1000,
-        headers: {'Referer': referer, 'X-Requested-With': 'XMLHttpRequest'},
-      ),
+    final referer = auth.buildPortalUrl(
+      '/xtgl/index_initMenu.html',
+      mode: mode,
+      queryParameters: {'jsdm': 'xs'},
     );
+    final resp = await auth
+        .academicDioFor(mode)
+        .post<String>(
+          auth.buildPortalUrl('/xtgl/index_cxAreaThree.html', mode: mode),
+          queryParameters: {
+            'localeKey': 'zh_CN',
+            'gnmkdm': 'index',
+            'su': studentId,
+          },
+          options: Options(
+            responseType: ResponseType.plain,
+            followRedirects: false,
+            contentType: 'application/x-www-form-urlencoded;charset=UTF-8',
+            validateStatus: (status) => status != null && status < 1000,
+            headers: {'Referer': referer, 'X-Requested-With': 'XMLHttpRequest'},
+          ),
+        );
 
     if (!_isIdentityCurrent(studentId, revision)) {
       throw const ScheduleAuthExpiredException();
@@ -603,6 +630,9 @@ class ScheduleService {
     final statusCode = resp.statusCode ?? 0;
     if (AcademicAuthGuard.isAuthExpiredResponse(resp)) {
       throw const ScheduleAuthExpiredException();
+    }
+    if (AcademicAuthGuard.responseRouteFailure(resp) case final failure?) {
+      throw failure;
     }
     if (statusCode >= 400) {
       throw ScheduleRequestException('课表调停课接口异常（状态码：$statusCode）');
@@ -619,23 +649,35 @@ class ScheduleService {
     return parseScheduleChangeMessageEntries(messages);
   }
 
-  Future<List<ScheduleChangeMessage>> _fetchInboxChangeMessages() async {
-    await DioClient.instance.ensureInitialized();
-    final resp = await _dio.post<dynamic>(
-      _academicUrl('/xtgl/index_cxDbsy.html'),
-      queryParameters: {'flag': '1'},
-      options: Options(
-        validateStatus: (status) => status != null && status < 1000,
-        headers: {
-          'Referer': ZhengfangAuth.instance.academicServiceUrl,
-          'X-Requested-With': 'XMLHttpRequest',
-        },
-      ),
-    );
+  Future<List<ScheduleChangeMessage>> _fetchInboxChangeMessages(
+    ZhengfangMode mode,
+  ) async {
+    final auth = ZhengfangAuth.instance;
+    final resp = await auth
+        .academicDioFor(mode)
+        .post<dynamic>(
+          auth.buildPortalUrl('/xtgl/index_cxDbsy.html', mode: mode),
+          queryParameters: {'flag': '1'},
+          options: Options(
+            validateStatus: (status) => status != null && status < 1000,
+            followRedirects: false,
+            headers: {
+              'Referer': auth.buildPortalUrl(
+                '/xtgl/index_initMenu.html',
+                mode: mode,
+                queryParameters: {'jsdm': 'xs'},
+              ),
+              'X-Requested-With': 'XMLHttpRequest',
+            },
+          ),
+        );
 
     final statusCode = resp.statusCode ?? 0;
     if (AcademicAuthGuard.isAuthExpiredResponse(resp)) {
       throw const ScheduleAuthExpiredException();
+    }
+    if (AcademicAuthGuard.responseRouteFailure(resp) case final failure?) {
+      throw failure;
     }
     if (statusCode >= 400) {
       throw ScheduleRequestException('教学消息接口异常（状态码：$statusCode）');
@@ -909,6 +951,15 @@ class ScheduleService {
         if (!existingSnapshot.hasData) {
           return ScheduleLoadResult(
             message: error.message,
+            settledRevision: expectedRevision,
+          );
+        }
+        warnings.add('课表刷新失败，显示的是缓存数据');
+      } on RouteFailure catch (failure) {
+        if (!ownerStillCurrent()) return _identityChangedResult();
+        if (!existingSnapshot.hasData) {
+          return ScheduleLoadResult(
+            message: failure.reason.message,
             settledRevision: expectedRevision,
           );
         }

@@ -438,7 +438,7 @@ class AutomaticLoginService {
     required CancelToken token,
   }) async {
     final auth = ZhengfangAuth.instance;
-    final mode = await ConnectModeResolver.instance.resolve(
+    var mode = await ConnectModeResolver.instance.resolve(
       targetUrl: ZhengfangAuth.directAcademicServiceUrl,
     );
     token.throwIfCancelled();
@@ -450,25 +450,30 @@ class AutomaticLoginService {
     // 不改全局模式：模式只绑定到本次 challenge，提交成功后才由
     // ZhengfangAuth 收敛全局模式，避免打断用户正在进行的人工登录。
     if (mode == ZhengfangMode.webVpn) {
-      var ready = await auth.ensureWebVpnGatewaySession(
+      var gateway = await auth.ensureWebVpnGatewaySessionResult(
         syncWebViewCookies: false,
+        updateMode: false,
+        cancelToken: token,
       );
-      if (ready != true) {
+      if (gateway.ready == false) {
         await attemptWithReceipt(
           AuthRecoveryDomain.cas,
           expectedAccount: UnifiedAuthService.instance.currentAccount,
           cancelToken: token,
         );
         token.throwIfCancelled();
-        ready = await auth.ensureWebVpnGatewaySession(
+        gateway = await auth.ensureWebVpnGatewaySessionResult(
           syncWebViewCookies: false,
+          updateMode: false,
+          cancelToken: token,
         );
       }
-      if (ready != true) {
+      if (gateway.ready != true || gateway.selectedMode == null) {
         return const _AutomaticExchangeResult(
           failureKind: AuthFailureKind.networkUnavailable,
         );
       }
+      mode = gateway.selectedMode!;
     }
 
     var last = const _AutomaticExchangeResult();

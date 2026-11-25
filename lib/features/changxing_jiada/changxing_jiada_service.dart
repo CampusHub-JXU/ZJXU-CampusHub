@@ -5,13 +5,13 @@ import '../../core/auth/unified_auth.dart';
 import '../../core/network/dio_client.dart';
 import 'changxing_api_client.dart';
 import 'changxing_cas_login.dart';
-import 'changxing_jiada_exceptions.dart';
+import '../../core/changxing/changxing_exceptions.dart';
 import 'changxing_jiada_model.dart';
 import 'changxing_jiada_token_binding.dart';
 import 'changxing_sso_urls.dart';
 import 'changxing_submit_requests.dart' as submit;
 
-export 'changxing_jiada_exceptions.dart';
+export '../../core/changxing/changxing_exceptions.dart';
 
 /// 畅行嘉大服务门面：对外 API 与改造前一致。登录流程在
 /// `changxing_cas_login.dart`，选路 / 请求管线在 `changxing_api_client.dart`，

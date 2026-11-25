@@ -9,7 +9,11 @@ import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:jxu_campus_hub/features/shuati/ai/shuati_ai_models.dart';
 import 'package:jxu_campus_hub/features/shuati/ai/shuati_ai_service.dart';
+import 'package:jxu_campus_hub/features/shuati/backup/backup_importer.dart';
 import 'package:jxu_campus_hub/features/shuati/domain/shuati_models.dart';
+import 'package:jxu_campus_hub/features/shuati/migration/legacy_payload.dart';
+import 'package:jxu_campus_hub/features/shuati/migration/shuati_legacy_extractor.dart';
+import 'package:jxu_campus_hub/features/shuati/migration/shuati_legacy_migration_service.dart';
 import 'package:jxu_campus_hub/features/shuati/persistence/shuati_store.dart';
 import 'package:jxu_campus_hub/features/shuati/ui/shuati_native_home_page.dart';
 import 'package:jxu_campus_hub/features/shuati/ui/shuati_native_import_page.dart';
@@ -34,6 +38,73 @@ class _FakeIo implements ShuatiFileIo {
   @override
   Future<void> shareFile(String fileName, Uint8List bytes) async {}
 }
+
+/// 迁移测试用：返回固定提取结果的假 extractor。
+class _FakeLegacyExtractor implements ShuatiLegacyExtractor {
+  _FakeLegacyExtractor(this.extraction);
+
+  final ShuatiLegacyExtraction extraction;
+  int calls = 0;
+
+  @override
+  Future<ShuatiLegacyExtraction> extract() async {
+    calls++;
+    return extraction;
+  }
+}
+
+class _MemoryMigrationPrefs implements ShuatiMigrationPrefs {
+  final bools = <String, bool>{};
+  final ints = <String, int>{};
+
+  @override
+  Future<bool> getBool(String key) async => bools[key] ?? false;
+
+  @override
+  Future<int> getInt(String key) async => ints[key] ?? 0;
+
+  @override
+  Future<void> setBool(String key, bool value) async => bools[key] = value;
+
+  @override
+  Future<void> setInt(String key, int value) async => ints[key] = value;
+}
+
+ShuatiLegacyExtraction _legacyExtractionForUi() => ShuatiLegacyExtraction(
+  storeNames: const ['banks', 'questions', 'records'],
+  stores: {
+    'banks': [
+      {
+        'id': 'legacy-bank',
+        'name': '旧版迁移来的题库',
+        'createdAt': 1000,
+        'updatedAt': 2000,
+        'questionCount': 1,
+      },
+    ],
+    'questions': [
+      {
+        'id': 'lq1',
+        'bankId': 'legacy-bank',
+        'type': 'single',
+        'question': '旧版迁移题？',
+        'options': {'A': '甲', 'B': '乙'},
+        'answer': ['A'],
+      },
+    ],
+    'records': const [],
+  },
+);
+
+ShuatiLegacyMigrationService Function(ShuatiStore) _migrationFactory(
+  _FakeLegacyExtractor extractor,
+) =>
+    (store) => ShuatiLegacyMigrationService(
+      store: store,
+      extractor: extractor,
+      prefs: _MemoryMigrationPrefs(),
+      importerFactory: (s) => ShuatiBackupImporter(s, useIsolate: false),
+    );
 
 /// 依次返回排队响应的 LLM fake（widget 测试用，不触网络 / AI 配置）。
 class _FakeRunner implements ShuatiAiLlmRunner {
@@ -440,13 +511,57 @@ void main() {
 
       // 旧版迁移入口可达
       await tester.scrollUntilVisible(
-        find.text('打开旧版刷题助手（导出旧数据）'),
+        find.text('打开旧版刷题助手（手动导出）'),
         200,
         scrollable: find.byType(Scrollable).last,
       );
-      await tester.tap(find.text('打开旧版刷题助手（导出旧数据）'));
+      await tester.tap(find.text('打开旧版刷题助手（手动导出）'));
       await tester.pumpAndSettle();
       expect(legacyTapped, isTrue);
     },
   );
+
+  testWidgets('home auto-migrates legacy data on first open', (tester) async {
+    final store = await setUpStore(tester, io);
+    final extractor = _FakeLegacyExtractor(_legacyExtractionForUi());
+    ShuatiServices.instance.debugUse(
+      store,
+      io: io,
+      legacyMigrationFactory: _migrationFactory(extractor),
+    );
+
+    await pump(tester, const ShuatiNativeHomePage());
+    expect(extractor.calls, 1);
+    expect(find.text('旧版迁移来的题库'), findsOneWidget);
+
+    final banks = (await tester.runAsync(store.banks.getAllBanks))!;
+    expect(banks.map((b) => b.id), ['legacy-bank']);
+  });
+
+  testWidgets('settings manual migration merges and shows the report', (
+    tester,
+  ) async {
+    final store = await setUpStore(tester, io);
+    final extractor = _FakeLegacyExtractor(_legacyExtractionForUi());
+    ShuatiServices.instance.debugUse(
+      store,
+      io: io,
+      legacyMigrationFactory: _migrationFactory(extractor),
+    );
+    // 手动迁移即便库非空也应可用：先种一个本地题库。
+    await tester.runAsync(
+      () => seedBank(store, 'local-bank', [question('lq-local', 'local-bank')]),
+    );
+
+    await pump(tester, const ShuatiNativeSettingsPage());
+    await tester.tap(find.text('从旧版自动迁移'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('开始迁移'));
+    await tester.pump();
+    await settleWhileBusy(tester);
+
+    expect(find.textContaining('迁移结果'), findsOneWidget);
+    final banks = (await tester.runAsync(store.banks.getAllBanks))!;
+    expect(banks.map((b) => b.id), containsAll(['local-bank', 'legacy-bank']));
+  });
 }

@@ -18,6 +18,7 @@ class HomePrimaryStatusHero extends StatelessWidget {
     required this.envDateText,
     required this.envStatusText,
     this.canShowUpdateAction = false,
+    this.updateStatusText,
     required this.onOpenSchedule,
     required this.onNotificationTap,
     this.unreadNoticeCount = 0,
@@ -37,6 +38,10 @@ class HomePrimaryStatusHero extends StatelessWidget {
   /// （未开学时为空，「开学」语义由 Hero 倒计时唯一承担）。
   final String envStatusText;
   final bool canShowUpdateAction;
+
+  /// 后台下载 / 就绪的非阻塞状态提示（如「后台下载中 45%」「更新已就绪，点击
+  /// 安装」）；为 null 时 tooltip 保持「发现新版本」。
+  final String? updateStatusText;
 
   /// 打开课表回调；课程类 Hero 与未开学态主体块整体可点跳转课表，
   /// 可见的「查看课表」文字入口统一放在今日段落头。
@@ -303,7 +308,7 @@ class HomePrimaryStatusHero extends StatelessWidget {
       padding: EdgeInsets.zero,
       constraints: const BoxConstraints(),
       style: buttonStyle,
-      tooltip: '发现新版本',
+      tooltip: updateStatusText ?? '发现新版本',
     );
   }
 

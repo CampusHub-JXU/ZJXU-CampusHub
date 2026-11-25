@@ -4,10 +4,27 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/core/academic/academic_exceptions.dart';
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
-import 'package:jxu_campus_hub/features/changxing_jiada/changxing_jiada_exceptions.dart';
+import 'package:jxu_campus_hub/core/changxing/changxing_exceptions.dart';
+import 'package:jxu_campus_hub/core/network/route_failure.dart';
 import 'package:jxu_campus_hub/shared/widgets/network_error_toast.dart';
 
 void main() {
+  test('route failures use four distinct user messages', () {
+    final day = DateTime(2026, 11, 15, 10);
+    final messages = [
+      for (final reason in RouteFailureReason.values)
+        NetworkErrorToast.resolveMessage(
+          NetworkErrorToast.classify(RouteFailure(reason)),
+          now: day,
+        ),
+    ];
+    expect(messages, [
+      '网络连接失败，请检查网络',
+      '学校 WebVPN 暂时异常',
+      '当前网络被重定向，可能需要先登录 Wi-Fi',
+      '学校服务暂时不可用',
+    ]);
+  });
   group('NetworkErrorToast.classify', () {
     test('connection timeout → network', () {
       final err = DioException(

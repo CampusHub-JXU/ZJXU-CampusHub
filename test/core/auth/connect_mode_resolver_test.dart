@@ -230,7 +230,7 @@ void main() {
         location: 'https://newca.zjxu.edu.cn/cas/login?service=https%3A%2F%2Fmobilehall.zjxu.edu.cn%2Fykt',
         requestUri: Uri.parse('https://mobilehall.zjxu.edu.cn/ykt'),
       ),
-      isTrue,
+      RouteVerdict.direct,
     );
   });
 
@@ -241,7 +241,7 @@ void main() {
         location: 'https://webvpn.zjxu.edu.cn/login',
         requestUri: Uri.parse('https://mobilehall.zjxu.edu.cn/ykt'),
       ),
-      isFalse,
+      RouteVerdict.webVpnRedirected,
     );
   });
 
@@ -252,7 +252,7 @@ void main() {
         location: 'https://evil.example/phish',
         requestUri: Uri.parse('https://mobilehall.zjxu.edu.cn/ykt'),
       ),
-      isFalse,
+      RouteVerdict.unknownRedirect,
     );
   });
 
@@ -263,14 +263,14 @@ void main() {
         statusCode: 200,
         requestUri: uri,
       ),
-      isTrue,
+      RouteVerdict.direct,
     );
     expect(
       ConnectModeResolver.classifyDirectReachable(
         statusCode: 403,
         requestUri: uri,
       ),
-      isTrue,
+      RouteVerdict.direct,
     );
     expect(
       ConnectModeResolver.classifyDirectReachable(
@@ -278,7 +278,43 @@ void main() {
         location: '/home',
         requestUri: uri,
       ),
-      isTrue,
+      RouteVerdict.direct,
     );
   });
+
+  test(
+    'business observation supersedes a late probe for the same origin',
+    () async {
+      final resolver = ConnectModeResolver.instance;
+      final target = Uri.parse(ZhengfangAuth.directAcademicServiceUrl);
+      final release = Completer<RouteVerdict>();
+      resolver.directVerdictChecker = (_) => release.future;
+      final stale = resolver.resolve();
+      resolver.markWebVpnRedirected(target);
+
+      expect(await resolver.resolve(), ZhengfangMode.webVpn);
+      release.complete(RouteVerdict.direct);
+      expect(await stale, ZhengfangMode.direct);
+      expect(
+        await resolver.resolve(targetUrl: '$target'),
+        ZhengfangMode.webVpn,
+      );
+    },
+  );
+
+  test(
+    'unknown redirects are never cached, including when WebVPN is reachable',
+    () async {
+      final resolver = ConnectModeResolver.instance;
+      var probes = 0;
+      resolver.directVerdictChecker = (_) async {
+        probes++;
+        return RouteVerdict.unknownRedirect;
+      };
+      resolver.webVpnReachabilityChecker = () async => true;
+      expect(await resolver.resolve(), ZhengfangMode.webVpn);
+      expect(await resolver.resolve(), ZhengfangMode.webVpn);
+      expect(probes, 2);
+    },
+  );
 }

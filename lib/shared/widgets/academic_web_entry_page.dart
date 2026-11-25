@@ -39,7 +39,7 @@ enum AcademicEntryPageStatus {
 }
 
 /// 受信教务 H5 入口页面：用 [AcademicWebEntryPreparer] 做 headless 初始选路，
-/// 命中「已证实主框架连接失败」时只做**一次性**直连 → WebVPN 兜底。
+/// 命中「已证实主框架连接失败」时最多自动切换一次连接方式。
 ///
 /// 安全不变量（与 [AcademicWebEntryPreparer] 对齐，且更严格）：
 /// - 绝不修改全局 [ZhengfangAuth.mode]、绝不登出 / `markLoggedOut` /
@@ -132,6 +132,7 @@ class AcademicWebEntryPageState extends State<AcademicWebEntryPage> {
 
   /// 最近一次准备使用的选路；登录成功后按同一选路重试。
   bool _lastForceWebVpn = false;
+  bool _retryDirectAfterLogin = false;
 
   /// 页面生命周期内持有的「WebView 直连」租约（见 [WebViewDirectRoute]）。
   ///
@@ -221,7 +222,10 @@ class AcademicWebEntryPageState extends State<AcademicWebEntryPage> {
     }
   }
 
-  Future<void> _prepare({required bool forceWebVpn}) async {
+  Future<void> _prepare({
+    required bool forceWebVpn,
+    bool forceDirect = false,
+  }) async {
     final generation = ++_generation;
     final previous = _prepareToken;
     if (previous != null && !previous.isCancelled) {
@@ -230,6 +234,7 @@ class AcademicWebEntryPageState extends State<AcademicWebEntryPage> {
     final token = CancelToken();
     _prepareToken = token;
     _lastForceWebVpn = forceWebVpn;
+    _retryDirectAfterLogin = forceDirect;
     if (_status == AcademicEntryPageStatus.ready) {
       _entryCancelled = true;
     }
@@ -251,6 +256,8 @@ class AcademicWebEntryPageState extends State<AcademicWebEntryPage> {
       result = await _preparer.prepare(
         jsdm: widget.jsdm,
         forceWebVpn: forceWebVpn,
+        forceDirect: forceDirect,
+        allowReverseFallback: !_fallbackUsed,
         cancelToken: token,
       );
     } catch (error, stackTrace) {
@@ -261,27 +268,23 @@ class AcademicWebEntryPageState extends State<AcademicWebEntryPage> {
         stackTrace: stackTrace,
       );
       if (!mounted || generation != _generation || token.isCancelled) return;
-      _applyResult(
-        const AcademicWebEntryUnavailable('教务入口准备失败'),
-        forceWebVpn: forceWebVpn,
-      );
+      _applyResult(const AcademicWebEntryUnavailable('教务入口准备失败'));
       return;
     }
     if (!mounted || generation != _generation || token.isCancelled) return;
-    _applyResult(result, forceWebVpn: forceWebVpn);
+    _applyResult(result);
   }
 
-  void _applyResult(
-    AcademicWebEntryResult result, {
-    required bool forceWebVpn,
-  }) {
+  void _applyResult(AcademicWebEntryResult result) {
     switch (result) {
       case final AcademicWebEntryReady ready:
         _activateEntry(ready);
-      case AcademicWebEntryNeedsUnifiedLogin():
-        _showUnifiedRequired(forceWebVpn: forceWebVpn);
-      case AcademicWebEntryNeedsAcademicLogin():
-        _showAcademicRequired(forceWebVpn: forceWebVpn);
+      case AcademicWebEntryNeedsUnifiedLogin(:final fallbackMode):
+        _rememberFallback(fallbackMode);
+        _showUnifiedRequired(forceWebVpn: _lastForceWebVpn);
+      case AcademicWebEntryNeedsAcademicLogin(:final fallbackMode):
+        _rememberFallback(fallbackMode);
+        _showAcademicRequired(forceWebVpn: _lastForceWebVpn);
       case AcademicWebEntryUnavailable(:final message):
         _showError(message, retryable: true);
       case AcademicWebEntryDenied(:final message):
@@ -292,11 +295,19 @@ class AcademicWebEntryPageState extends State<AcademicWebEntryPage> {
     }
   }
 
+  void _rememberFallback(ZhengfangMode? mode) {
+    if (mode == null) return;
+    _fallbackUsed = true;
+    _lastForceWebVpn = mode == ZhengfangMode.webVpn;
+    _retryDirectAfterLogin = mode == ZhengfangMode.direct;
+  }
+
   void _activateEntry(AcademicWebEntryReady ready) {
     _generation++;
     _readyUrl = ready.url;
     _readyHeaders = ready.headers;
     _readyMode = ready.selectedMode;
+    _fallbackUsed |= ready.didFallback;
     _entryCancelled = false;
     _entryLoadSettled = false;
     _entryNavigationObserved = false;
@@ -367,7 +378,10 @@ class AcademicWebEntryPageState extends State<AcademicWebEntryPage> {
       _loginPromptInFlight = false;
     }
     if (!mounted || !loggedIn) return;
-    await _prepare(forceWebVpn: forceWebVpn);
+    await _prepare(
+      forceWebVpn: forceWebVpn,
+      forceDirect: _retryDirectAfterLogin,
+    );
   }
 
   Future<void> _presentAcademicLogin({required bool forceWebVpn}) async {
@@ -390,7 +404,10 @@ class AcademicWebEntryPageState extends State<AcademicWebEntryPage> {
       _loginPromptInFlight = false;
     }
     if (!mounted || !loggedIn) return;
-    await _prepare(forceWebVpn: forceWebVpn);
+    await _prepare(
+      forceWebVpn: forceWebVpn,
+      forceDirect: _retryDirectAfterLogin,
+    );
   }
 
   void _onManualUnifiedLogin() {
@@ -474,7 +491,9 @@ class AcademicWebEntryPageState extends State<AcademicWebEntryPage> {
   Future<void> _runFallback(int generation) async {
     _fallbackUsed = true;
     _fallbackInFlight = true;
-    _lastForceWebVpn = true;
+    final useWebVpn = _readyMode == ZhengfangMode.direct;
+    _lastForceWebVpn = useWebVpn;
+    _retryDirectAfterLogin = !useWebVpn;
     final token = CancelToken();
     _fallbackToken = token;
 
@@ -502,22 +521,21 @@ class AcademicWebEntryPageState extends State<AcademicWebEntryPage> {
     try {
       result = await _preparer.prepare(
         jsdm: widget.jsdm,
-        forceWebVpn: true,
+        forceWebVpn: useWebVpn,
+        forceDirect: !useWebVpn,
+        allowReverseFallback: false,
         cancelToken: token,
         totalBudget: fallbackBudget,
       );
     } catch (error, stackTrace) {
       AppLogger.instance.webview(
         LogLevel.warn,
-        '教务 H5 入口直连兜底 WebVPN 失败',
+        '教务 H5 入口切换连接失败',
         error: error,
         stackTrace: stackTrace,
       );
       if (!stillCurrent()) return;
-      _applyResult(
-        const AcademicWebEntryUnavailable('WebVPN 兜底准备失败'),
-        forceWebVpn: true,
-      );
+      _applyResult(const AcademicWebEntryUnavailable('教务入口切换连接失败'));
       return;
     } finally {
       if (identical(_fallbackToken, token)) _fallbackToken = null;
@@ -525,7 +543,7 @@ class AcademicWebEntryPageState extends State<AcademicWebEntryPage> {
     }
 
     if (!stillCurrent()) return;
-    _applyResult(result, forceWebVpn: true);
+    _applyResult(result);
   }
 
   Widget _scaffold(Widget body) {
@@ -544,6 +562,7 @@ class AcademicWebEntryPageState extends State<AcademicWebEntryPage> {
       case AcademicEntryPageStatus.preparing:
         return _scaffold(const Center(child: CircularProgressIndicator()));
       case AcademicEntryPageStatus.ready:
+        final generation = _generation;
         return WebViewPage(
           key: _webViewKey,
           title: widget.title,
@@ -552,7 +571,7 @@ class AcademicWebEntryPageState extends State<AcademicWebEntryPage> {
           onLoadStop: _handleLoadStop,
           onNavigationRequest: _handleNavigationRequest,
           onMainFrameLoadFailure: (failure) =>
-              _onMainFrameFailure(failure, _generation),
+              _onMainFrameFailure(failure, generation),
           onHomePressed: widget.onHomePressed,
         );
       case AcademicEntryPageStatus.needsUnifiedLogin:

@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 
 import '../config/app_config.dart';
 import '../logging/app_logger.dart';
@@ -17,8 +20,9 @@ import 'update_source.dart' show deviceAbiSuffix;
 /// 设计边界（原生显式状态机，契约见 `docs/in-app-update-state-machine.md`）：
 /// - 原生是**唯一权威**：入队、归属对账、换源、校验、安装、「是否已被安装」
 ///   与清理全部在原生；Dart 只按设置页偏好生成有序候选源、发命令、解码状态，
-///   以及由停滞观察器在弹窗打开时建议换源（[ApkDownloadStallWatcher]）。
-/// - Dart 侧**不**负责下载 / 进度 / 定时器，也**不**判定受管记录是否过期。
+///   并由 [ApkUpdateController] 在前台轮询时驱动停滞观察器建议换源
+///   （[ApkDownloadStallWatcher]）。
+/// - Dart 侧**不**负责下载 / 进度合成，也**不**判定受管记录是否过期。
 /// - 通道参数**只**含协议字段（版本 / tag / 文件名 / 摘要 / ABI / 请求 key /
 ///   带校验的候选源 URL），**绝不**传学号、账号、Cookie 或任意本地文件路径 /
 ///   下载 id。
@@ -990,21 +994,34 @@ class MethodChannelApkUpdateTransport implements ApkUpdateTransport {
 
 /// 应用内受管更新控制器（UI 的唯一 Dart 入口）。
 ///
-/// 只投影原生权威状态：不下载、不计时、不合成进度、**不判定受管记录是否过期**
+/// 只投影原生权威状态：不下载、不合成进度、**不判定受管记录是否过期**
 /// （版本是否已被安装由原生在每个入口统一处理）；`state` 为 [ValueListenable]
-/// 供 UI 监听。本阶段用 [refreshActiveUpdate] 轮询（由 UI 生命周期决定频率，
-/// 控制器不持有任何后台定时器）。
-class ApkUpdateController {
+/// 供 UI 监听。
+///
+/// 轮询与停滞观察归本控制器统一持有（而不是更新弹窗）：用户点「更新」后弹窗
+/// 即关闭，下载转入后台，必须由控制器在**应用前台且状态处于活动阶段**时以
+/// ~1s 节奏查询原生状态，并驱动 [ApkDownloadStallWatcher] 建议换源；应用退到
+/// 后台或状态不再活动时立即停表，不留下空转的 Dart 定时器。回前台（含从
+/// 「安装权限设置」返回）查询一次原生真实状态。测试可经构造参数关闭轮询
+/// （[enableLifecyclePolling]）或注入前台状态（[foregroundProvider]）。
+class ApkUpdateController with WidgetsBindingObserver {
   ApkUpdateController({
     ApkUpdateTransport? transport,
     String? Function()? deviceAbiProvider,
     TargetPlatform Function()? platformProvider,
+    bool enableLifecyclePolling = false,
+    this.foregroundProvider,
+    this.stallWatcherFactory,
+    this.pollInterval = const Duration(seconds: 1),
   }) : _transport = transport ?? defaultApkUpdateTransport,
        _deviceAbiProvider = deviceAbiProvider ?? deviceAbiSuffix,
-       _platformProvider = platformProvider ?? _defaultPlatform;
+       _platformProvider = platformProvider ?? _defaultPlatform,
+       _pollingEnabled = enableLifecyclePolling;
 
-  /// 应用级单例；测试用构造注入独立实例。
-  static final ApkUpdateController instance = ApkUpdateController();
+  /// 应用级单例（唯一启用生命周期轮询的默认实例）；测试用构造注入独立实例。
+  static final ApkUpdateController instance = ApkUpdateController(
+    enableLifecyclePolling: true,
+  );
 
   static TargetPlatform _defaultPlatform() => defaultTargetPlatform;
 
@@ -1012,12 +1029,100 @@ class ApkUpdateController {
   final String? Function() _deviceAbiProvider;
   final TargetPlatform Function() _platformProvider;
 
+  /// 是否持有前台轮询定时器：默认关闭（测试构造的独立实例不意外起表），
+  /// 应用级单例 [instance] 开启，由组合层（`main.dart`）在冷启动时引导一次。
+  final bool _pollingEnabled;
+
+  /// 前台状态注入点（测试）；缺省以应用生命周期回调为准，初始视为前台。
+  final bool Function()? foregroundProvider;
+
+  /// 停滞观察器工厂注入点（测试）；缺省用默认构造。
+  final ApkDownloadStallWatcher Function(ApkUpdateController controller)?
+  stallWatcherFactory;
+
+  /// 前台轮询节奏（默认 ~1s）；测试可注入更长间隔。
+  final Duration pollInterval;
+
+  /// 停滞观察器：与控制器同生命周期，惰性构造（注入点在工厂里可拿到本实例）。
+  late final ApkDownloadStallWatcher _stallWatcher =
+      (stallWatcherFactory ??
+      (controller) => ApkDownloadStallWatcher(controller: controller))(this);
+
   final ValueNotifier<ApkUpdateState> state = ValueNotifier<ApkUpdateState>(
     const ApkUpdateState.idle(),
   );
 
   bool _startInFlight = false;
   int _refreshEpoch = 0;
+
+  Timer? _pollTimer;
+  bool _observingLifecycle = false;
+
+  /// 轮询代际：[debugReset] 递增。在途轮询（timer 回调的 `_pollOnce`）跨 await
+  /// 后若代际已变，不得再应用查询结果或重建定时器——否则测试 / 复位的收尾
+  /// 会漏一个重新创建的后台定时器。
+  int _pollGeneration = 0;
+
+  /// 最近一次生命周期回调看到的前台状态；未收到任何回调前视为前台
+  /// （应用冷启动即前台），注入 [foregroundProvider] 时以注入值为准。
+  bool _foreground = true;
+
+  bool get _isForeground => foregroundProvider?.call() ?? _foreground;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _foreground = state == AppLifecycleState.resumed;
+    if (_foreground && _pollingEnabled) {
+      // 回前台（含从「安装权限设置」返回）：立即查询一次原生真实状态并驱动
+      // 停滞观察，不依赖弹窗是否打开。
+      unawaited(_pollOnce());
+    }
+    _syncPolling();
+  }
+
+  /// 首次需要轮询时才注册生命周期观察（惰性）：避免纯 Dart 单测在尚未初始化
+  /// WidgetsBinding 时构造控制器即崩溃；binding 不可用时轮询保持关闭。
+  void _ensureLifecycleObserver() {
+    if (_observingLifecycle) return;
+    final binding = WidgetsBinding.instance;
+    binding.addObserver(this);
+    _observingLifecycle = true;
+  }
+
+  /// 轮询只在「轮询启用 + 应用前台 + 状态处于活动阶段」时进行；其余情况一律
+  /// 停表。退后台只是停止 Dart 轮询，**不**取消下载——原生 DownloadManager
+  /// 继续，回前台再查询即可。
+  void _syncPolling() {
+    final shouldPoll =
+        _pollingEnabled && _isForeground && state.value.phase.isActive;
+    if (shouldPoll) {
+      _ensureLifecycleObserver();
+      _pollTimer ??= Timer.periodic(pollInterval, (_) {
+        unawaited(_pollOnce());
+      });
+      return;
+    }
+    _pollTimer?.cancel();
+    _pollTimer = null;
+  }
+
+  /// 一次轮询：先刷新原生真实状态，再让停滞观察器据此判断是否需要建议换源。
+  /// 跨 await 期间控制器被复位（[debugReset]）时整体作废，不再应用结果或
+  /// 重建定时器。
+  Future<void> _pollOnce() async {
+    final generation = _pollGeneration;
+    await refreshActiveUpdate();
+    if (generation != _pollGeneration) return;
+    await _stallWatcher.onPolled();
+  }
+
+  /// 组合层冷启动引导：查询一次原生状态（恢复后台已入队的下载投影），此后
+  /// 轮询完全由「前台 + 活动阶段」驱动，无需任何 UI 触发。
+  Future<void> bootstrap() async {
+    if (!_pollingEnabled) return;
+    _ensureLifecycleObserver();
+    await _pollOnce();
+  }
 
   /// 是否支持应用内受管更新：非 Android 直接 false，不触碰通道。
   Future<bool> isSupported() async {
@@ -1072,11 +1177,14 @@ class ApkUpdateController {
   }
 
   /// 查询原生当前受管状态（冷启动 / 回前台恢复 / 弹窗轮询）并原样应用；无任务
-  /// 为 idle。迟到的查询结果被 epoch 作废，绝不覆盖更新的状态。
+  /// 为 idle。迟到的查询结果被 epoch 作废，绝不覆盖更新的状态；跨 await 期间
+  /// 控制器被复位（[debugReset]）时结果整体丢弃，不得再重建轮询定时器。
   Future<void> refreshActiveUpdate() async {
     final epoch = ++_refreshEpoch;
+    final generation = _pollGeneration;
     final next = await _transport.queryActiveUpdate();
     if (epoch != _refreshEpoch) return;
+    if (generation != _pollGeneration) return;
     // 通道调用本身失败（transport 合成的 failed，不带 requestKey；原生给出的
     // 失败一定带 requestKey）不代表下载失败：活动中的任务保留上一状态，轮询
     // 继续，不让一次通道抖动把弹窗打成「更新失败」并停掉进度与换线观察。
@@ -1150,12 +1258,22 @@ class ApkUpdateController {
   void _apply(ApkUpdateState next) {
     if (state.value == next) return;
     state.value = next;
+    _syncPolling();
   }
 
   @visibleForTesting
   void debugReset() {
+    _pollTimer?.cancel();
+    _pollTimer = null;
+    _pollGeneration++;
     _startInFlight = false;
-    _refreshEpoch = 0;
+    // 测试每用例构造新实例：不复位移除的话，旧实例仍注册为生命周期观察者，
+    // 后续用例的生命周期事件会把已废弃控制器「复活」重建轮询定时器。
+    if (_observingLifecycle) {
+      WidgetsBinding.instance.removeObserver(this);
+      _observingLifecycle = false;
+    }
     state.value = const ApkUpdateState.idle();
+    _stallWatcher.reset();
   }
 }

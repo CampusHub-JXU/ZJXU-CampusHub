@@ -297,6 +297,56 @@ void main() {
     expect(find.widgetWithText(SnackBarAction, '复制关键词'), findsOneWidget);
   });
 
+  testWidgets(
+    'switches to My Classroom tab and supports manual enroll/cancel',
+    (tester) async {
+      final service = _FakeSecondClassroomService();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SecondClassroomPage(
+            service: service,
+            authEnsurer: _testAuth,
+            subscriptionService: _testSubscriptionService(),
+            cacheStore: _MemoryCacheStore(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 切换到「我的二课」tab
+      await tester.tap(find.text('我的二课'));
+      await tester.pumpAndSettle();
+      expect(find.text('已修总学时'), findsOneWidget);
+      expect(find.text('社会实践与学分申请（网页端）'), findsOneWidget);
+
+      // 切回「活动广场」打开详情并手动报名
+      await tester.tap(find.text('活动广场'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('榜样分享活动'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(find.widgetWithText(FilledButton, '立即报名'), findsOneWidget);
+      await tester.tap(find.widgetWithText(FilledButton, '立即报名'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(service.enrollCalls, [2485]);
+      expect(find.widgetWithText(OutlinedButton, '取消报名'), findsOneWidget);
+
+      // 点击「取消报名」并确认
+      await tester.tap(find.widgetWithText(OutlinedButton, '取消报名'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(find.text('确认取消'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(service.cancelCalls, [2485]);
+      expect(find.widgetWithText(FilledButton, '立即报名'), findsOneWidget);
+    },
+  );
+
   testWidgets('订阅弹层提供直达第二课堂通知渠道并如实说明限制', (tester) async {
     const notificationsChannel = MethodChannel(
       'dexterous.com/flutter/local_notifications',
@@ -391,6 +441,112 @@ void main() {
       );
     });
   }
+
+  testWidgets('wdhd failure keeps summary and shows partial hint', (
+    tester,
+  ) async {
+    final service = _FakeSecondClassroomService()
+      ..debugRegistered = true
+      ..myActivitiesError = const SecondClassroomServiceException('wdhd 挂了');
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SecondClassroomPage(
+          service: service,
+          authEnsurer: _testAuth,
+          subscriptionService: _testSubscriptionService(),
+          cacheStore: _MemoryCacheStore(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // wdhd 失败：学时汇总不受影响，但列表不得因搜索结果误判出报名徽标。
+    expect(find.text('审核通过'), findsNothing);
+    await tester.tap(find.text('我的二课'));
+    await tester.pumpAndSettle();
+    expect(find.text('已修总学时'), findsOneWidget);
+    expect(find.text('已报名活动刷新失败，已保留上次数据'), findsOneWidget);
+  });
+
+  testWidgets('my summary failure keeps enrolled activities list', (
+    tester,
+  ) async {
+    final service = _FakeSecondClassroomService()
+      ..debugRegistered = true
+      ..mySummaryError = const SecondClassroomServiceException('my 挂了');
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SecondClassroomPage(
+          service: service,
+          authEnsurer: _testAuth,
+          subscriptionService: _testSubscriptionService(),
+          cacheStore: _MemoryCacheStore(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // my 失败不影响 wdhd：活动广场的报名徽标照常展示。
+    expect(find.text('审核通过'), findsOneWidget);
+    // wdhd 同步成功时 tab 带计数（「我的二课 (1)」），用前缀匹配点击。
+    await tester.tap(
+      find.byWidgetPredicate(
+        (w) => w is Text && (w.data ?? '').startsWith('我的二课'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('榜样分享活动'), findsWidgets);
+    expect(find.text('学时汇总刷新失败，已保留上次数据'), findsOneWidget);
+    // 局部失败不是整页错误。
+    expect(find.text('我的二课加载失败'), findsNothing);
+  });
+
+  testWidgets('list badge follows wdhd not untrusted search sfbm', (
+    tester,
+  ) async {
+    final service = _FakeSecondClassroomService();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SecondClassroomPage(
+          service: service,
+          authEnsurer: _testAuth,
+          subscriptionService: _testSubscriptionService(),
+          cacheStore: _MemoryCacheStore(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 初始未报名（wdhd 为空）：即使 search 返回 sfbm:true 也不出徽标。
+    expect(find.text('审核通过'), findsNothing);
+    service.searchIsRegistered = true;
+    await tester.drag(
+      find.byType(RefreshIndicator).first,
+      const Offset(0, 300),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('审核通过'), findsNothing);
+
+    // 报名成功后下拉刷新活动列表：联动静默刷新 wdhd，徽标出现。
+    service.debugRegistered = true;
+    final callsBefore = service.fetchMyActivitiesCalls;
+    await tester.drag(
+      find.byType(RefreshIndicator).first,
+      const Offset(0, 300),
+    );
+    await tester.pumpAndSettle();
+    expect(service.fetchMyActivitiesCalls, greaterThan(callsBefore));
+    expect(find.text('审核通过'), findsOneWidget);
+
+    // 取消报名后再刷新：wdhd 变空，徽标消失（search 的 sfbm 不参与判断）。
+    service.debugRegistered = false;
+    await tester.drag(
+      find.byType(RefreshIndicator).first,
+      const Offset(0, 300),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('审核通过'), findsNothing);
+  });
 }
 
 SecondClassroomSubscriptionService _testSubscriptionService() {
@@ -405,6 +561,20 @@ SecondClassroomSubscriptionService _testSubscriptionService() {
 }
 
 class _FakeSecondClassroomService extends SecondClassroomService {
+  final List<int> enrollCalls = [];
+  final List<int> cancelCalls = [];
+  int fetchMyActivitiesCalls = 0;
+  Object? mySummaryError;
+  Object? myActivitiesError;
+  bool _registered = false;
+
+  /// 模拟 `mobile/search.sfbm` 的不可信取值（已报名活动也可能为 null，或
+  /// 会话游客态为 false）。徽标判定不得以它为准。
+  bool searchIsRegistered = false;
+
+  /// 测试钩子：直接置为已报名（等价于走一遍报名流程后的服务端状态）。
+  set debugRegistered(bool value) => _registered = value;
+
   @override
   Future<SecondClassroomCatalog> fetchCatalog() async {
     return const SecondClassroomCatalog(
@@ -424,7 +594,7 @@ class _FakeSecondClassroomService extends SecondClassroomService {
   ) async {
     queries.add(query);
     return SecondClassroomActivityPage(
-      items: [_activity],
+      items: [_activity.copyWith(isRegistered: searchIsRegistered)],
       pageIndex: query.page,
       pageSize: query.limit,
       totalPages: 1,
@@ -438,13 +608,77 @@ class _FakeSecondClassroomService extends SecondClassroomService {
     bool authenticated = false,
   }) async {
     return SecondClassroomActivityDetail(
-      activity: _activity,
+      activity: _activity.copyWith(isRegistered: _registered),
       signUpMode: '报名无需审核，人满即止',
       limitedCollege: '不限',
       limitedGrade: '不限',
       hasCredit: false,
       isFavorite: false,
       isInRegistrationTime: true,
+      registrationState: authenticated
+          ? (_registered
+                ? SecondClassroomRegistrationState.registered
+                : SecondClassroomRegistrationState.notRegistered)
+          : SecondClassroomRegistrationState.unknown,
+      registrationStatusLabel: _registered ? '审核通过' : '',
+      requiresRegistrationForm: false,
+    );
+  }
+
+  @override
+  Future<SecondClassroomMySummary> fetchMySummary() async {
+    final error = mySummaryError;
+    if (error != null) throw error;
+    return const SecondClassroomMySummary(
+      totalHours: 3.5,
+      requiredHours: 0,
+      categories: [SecondClassroomCreditCategory(name: '思想成长', earned: 3.5)],
+    );
+  }
+
+  @override
+  Future<List<SecondClassroomMyActivityRecord>> fetchMyActivities({
+    int page = 1,
+    int limit = 100,
+    int maxPages = 20,
+  }) async {
+    fetchMyActivitiesCalls++;
+    final error = myActivitiesError;
+    if (error != null) throw error;
+    if (!_registered) return const [];
+    return [
+      SecondClassroomMyActivityRecord(
+        recordId: 777,
+        activity: _activity.copyWith(isRegistered: true),
+        statusLabel: '审核通过',
+        hasCheckedIn: false,
+        hasCheckedOut: false,
+      ),
+    ];
+  }
+
+  @override
+  Future<SecondClassroomEnrollmentActionResult> enrollActivity(
+    int activityId,
+  ) async {
+    enrollCalls.add(activityId);
+    _registered = true;
+    return const SecondClassroomEnrollmentActionResult(
+      success: true,
+      message: '报名成功',
+    );
+  }
+
+  @override
+  Future<SecondClassroomEnrollmentActionResult> cancelRegistration(
+    int activityId, {
+    int? recordId,
+  }) async {
+    cancelCalls.add(activityId);
+    _registered = false;
+    return const SecondClassroomEnrollmentActionResult(
+      success: true,
+      message: '已取消报名',
     );
   }
 

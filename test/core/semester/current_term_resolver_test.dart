@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jxu_campus_hub/core/auth/connect_mode_resolver.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
@@ -165,6 +166,7 @@ jQuery("#xqm").val("12");
       );
 
       await resetTestEnvironment();
+      ConnectModeResolver.instance.directReachabilityChecker = () async => true;
       DioClient.instance.debugCookieDirectoryPathProvider = (
         folderName,
       ) async => 'test/$folderName';

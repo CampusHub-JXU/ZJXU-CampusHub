@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
@@ -181,6 +182,261 @@ void main() {
       ),
     );
   });
+
+  test('parses my summary and my activities payloads', () {
+    final summary = parseSecondClassroomMySummaryPayload({
+      'extend': {
+        'xs': {'xm': '张三', 'xymc': '信息科学与工程学院'},
+        'xsjg': [
+          {'flmc': '思想成长', 'yxxs': 4.5, 'yqxs': 6},
+          {'flmc': '志愿公益', 'yxxs': 2.0, 'yqxs': 4},
+        ],
+      },
+    });
+    expect(summary.studentName, '张三');
+    expect(summary.collegeName, '信息科学与工程学院');
+    expect(summary.totalHours, 6.5);
+    expect(summary.requiredHours, 10.0);
+    expect(summary.categories, hasLength(2));
+
+    final records = parseSecondClassroomMyActivitiesPayload({
+      'data': [
+        {
+          'id': 9001,
+          'shzt': {'label': '审核通过'},
+          'sfqd': true,
+          'sfqt': false,
+          'xs': 1.5,
+          'hdjl': {'id': 2895, 'mc': '生涯嘉年华', 'hddd': '体育馆', 'xs': 1.5},
+        },
+      ],
+    });
+    expect(records, hasLength(1));
+    expect(records.single.recordId, 9001);
+    expect(records.single.activity.id, 2895);
+    expect(records.single.statusLabel, '审核通过');
+    expect(records.single.hasCheckedIn, isTrue);
+    expect(records.single.hasCheckedOut, isFalse);
+  });
+
+  test('parses my activities page payload with pagination metadata', () {
+    final page = parseSecondClassroomMyActivitiesPagePayload({
+      'pageIndex': 1,
+      'pageSize': 2,
+      'totalPages': 3,
+      'count': 5,
+      'data': [
+        {
+          'id': 9001,
+          'shzt': {'label': '待审核'},
+          'hdjl': {'id': 2895, 'mc': '生涯嘉年华'},
+        },
+      ],
+    });
+
+    expect(page.items, hasLength(1));
+    expect(page.pageIndex, 1);
+    expect(page.totalPages, 3);
+    expect(page.count, 5);
+    expect(page.hasMore, isTrue);
+
+    final singlePage = parseSecondClassroomMyActivitiesPagePayload({
+      'data': [
+        {
+          'id': 1,
+          'hdjl': {'id': 10, 'mc': 'x'},
+        },
+      ],
+    });
+    expect(singlePage.totalPages, 0);
+    expect(singlePage.hasMore, isFalse);
+  });
+
+  test(
+    'parses my activities record check-in fields and extend.list layout',
+    () {
+      final page = parseSecondClassroomMyActivitiesPagePayload({
+        'extend': {
+          'totalPages': 1,
+          'list': [
+            {
+              'id': 9100,
+              'shzt': {'label': '审核通过'},
+              'sfqd': true,
+              'sfqt': true,
+              'bmsj': '2026-11-01T10:00:00+08:00',
+              'qdsj': '2026-11-05T08:55:00+08:00',
+              'qtsj': '2026-11-05T11:05:00+08:00',
+              'hdjl': {'id': 2895, 'mc': '生涯嘉年华'},
+            },
+          ],
+        },
+      });
+
+      expect(page.items.single.checkedInAt, isNotNull);
+      expect(page.items.single.checkedOutAt, isNotNull);
+      expect(page.items.single.enrolledAt, isNotNull);
+      expect(page.totalPages, 1);
+    },
+  );
+
+  test('fetchMyActivities pulls every page and dedupes by record id', () async {
+    Map<String, dynamic> myActivity(int recordId, int activityId) => {
+      'id': recordId,
+      'shzt': {'label': '审核通过'},
+      'hdjl': {'id': activityId, 'mc': '活动$activityId'},
+    };
+    final adapter = _FormPagingAdapter((data) {
+      final page = int.tryParse(data['page'] ?? '') ?? 1;
+      return switch (page) {
+        1 => {
+          'code': 0,
+          'pageIndex': 1,
+          'pageSize': 2,
+          'totalPages': 3,
+          'count': 5,
+          'data': [myActivity(1, 101), myActivity(2, 102)],
+        },
+        2 => {
+          'code': 0,
+          'pageIndex': 2,
+          'pageSize': 2,
+          'totalPages': 3,
+          'count': 5,
+          'data': [myActivity(3, 103), myActivity(4, 104)],
+        },
+        _ => {
+          'code': 0,
+          'pageIndex': 3,
+          'pageSize': 2,
+          'totalPages': 3,
+          'count': 5,
+          // 末页重复一条已见记录（如分页期间有人取消），不得产生重复。
+          'data': [myActivity(2, 102), myActivity(5, 105)],
+        },
+      };
+    });
+    final service = SecondClassroomService(
+      dio: Dio()..httpClientAdapter = adapter,
+    );
+
+    final records = await service.fetchMyActivities(limit: 2);
+
+    expect(adapter.requests.map((entry) => entry['page']), ['1', '2', '3']);
+    expect(records.map((record) => record.recordId), [1, 2, 3, 4, 5]);
+    expect(records.map((record) => record.activity.id).toSet(), hasLength(5));
+  });
+
+  test('fetchMyActivities caps pagination at maxPages', () async {
+    final adapter = _FormPagingAdapter((data) {
+      final page = int.tryParse(data['page'] ?? '') ?? 1;
+      return {
+        'code': 0,
+        'pageIndex': page,
+        'pageSize': 1,
+        'totalPages': 99,
+        'count': 99,
+        'data': [
+          {
+            'id': page,
+            'hdjl': {'id': 100 + page, 'mc': '活动$page'},
+          },
+        ],
+      };
+    });
+    final service = SecondClassroomService(
+      dio: Dio()..httpClientAdapter = adapter,
+    );
+
+    final records = await service.fetchMyActivities(limit: 1, maxPages: 3);
+
+    expect(adapter.requests, hasLength(3));
+    expect(records, hasLength(3));
+  });
+
+  test('fetchMyActivities does not paginate without metadata', () async {
+    final adapter = _FormPagingAdapter((data) {
+      return {
+        'code': 0,
+        'data': [
+          {
+            'id': 7,
+            'hdjl': {'id': 200, 'mc': '单页活动'},
+          },
+        ],
+      };
+    });
+    final service = SecondClassroomService(
+      dio: Dio()..httpClientAdapter = adapter,
+    );
+
+    final records = await service.fetchMyActivities();
+
+    expect(adapter.requests, hasLength(1));
+    expect(records.single.recordId, 7);
+  });
+
+  test('parses my summary payload with real zjf and sqbjfList structure', () {
+    final summary = parseSecondClassroomMySummaryPayload({
+      'code': 0,
+      'msg': 'success',
+      'extend': {
+        'zjf': 4.0,
+        'ljzjf': 4.0,
+        'xsjg': {'zjf': 4.0, 'ljzjf': 4.0},
+        'sqbjfList': [
+          {'mc': '思想成长', 'jf': 0.5, 'jfxz': 20},
+          {'mc': '技能特长', 'jf': 3, 'jfxz': 15},
+        ],
+      },
+    });
+    expect(summary.totalHours, 4.0);
+    expect(summary.categories, hasLength(2));
+    expect(summary.categories.first.name, '思想成长');
+    expect(summary.categories.first.earned, 0.5);
+    expect(summary.categories.first.requiredHours, 20);
+    expect(summary.categories.last.name, '技能特长');
+    expect(summary.categories.last.earned, 3.0);
+    expect(summary.categories.last.requiredHours, 15);
+  });
+}
+
+/// 记录 `wdhd` 的 form 请求体并按回调返回 JSON 响应，用于分页测试。
+class _FormPagingAdapter implements HttpClientAdapter {
+  _FormPagingAdapter(this._responder);
+
+  final Map<String, dynamic> Function(Map<String, String> data) _responder;
+  final requests = <Map<String, String>>[];
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    final bytes = await requestStream?.fold<List<int>>(
+      <int>[],
+      (all, chunk) => all..addAll(chunk),
+    );
+    final body = bytes == null ? '' : utf8.decode(bytes);
+    final data = <String, String>{
+      for (final pair in body.split('&').where((part) => part.isNotEmpty))
+        pair.split('=').first: Uri.decodeComponent(
+          pair.contains('=') ? pair.split('=').sublist(1).join('=') : '',
+        ),
+    };
+    requests.add(data);
+    return ResponseBody.fromString(
+      jsonEncode(_responder(data)),
+      200,
+      headers: const {
+        Headers.contentTypeHeader: ['application/json; charset=utf-8'],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
 }
 
 class _StaticResponseAdapter implements HttpClientAdapter {

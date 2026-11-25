@@ -27,23 +27,37 @@ Future<ZhengfangQueryResult> postZhengfangQuery({
 }) async {
   // 用 Object? 接收：302 改道 / 登录页等 HTML 响应体若按 Map 强转，会在
   // Dio 内部抛 TypeError（DioException.unknown），guard 就看不到状态码。
-  final guarded = await AcademicAuthGuard.guardWithSession<Object?>(
+  final auth = ZhengfangAuth.instance;
+  final guarded = await AcademicAuthGuard.guardRoutedQuery<Object?>(
+    owner: owner,
     authExpiredException: authExpiredException,
-    request: () => ZhengfangAuth.instance.academicDio.post<Object?>(
-      ZhengfangAuth.instance.buildPortalUrl(path),
-      queryParameters: {'doType': 'query', 'gnmkdm': gnmkdm, 'su': owner},
-      data: formBody,
-      options: Options(
-        contentType: 'application/x-www-form-urlencoded',
-        headers: {
-          'Referer': ZhengfangAuth.instance.academicServiceUrl,
-          'X-Requested-With': 'XMLHttpRequest',
-        },
-      ),
-    ),
+    request: (mode) => auth
+        .academicDioFor(mode)
+        .post<Object?>(
+          auth.buildPortalUrl(path, mode: mode),
+          queryParameters: {'doType': 'query', 'gnmkdm': gnmkdm, 'su': owner},
+          data: formBody,
+          options: Options(
+            contentType: 'application/x-www-form-urlencoded',
+            followRedirects: false,
+            validateStatus: (status) => status != null && status < 1000,
+            headers: {
+              'Referer': auth.buildPortalUrl(
+                '/xtgl/index_initMenu.html',
+                queryParameters: {'jsdm': 'xs'},
+                mode: mode,
+              ),
+              'X-Requested-With': 'XMLHttpRequest',
+            },
+          ),
+        ),
   );
   if (guarded.account != owner || guarded.epoch == null) {
     throw authExpiredException;
+  }
+  if (AcademicAuthGuard.responseRouteFailure(guarded.response)
+      case final failure?) {
+    throw failure;
   }
   final data = guarded.response.data;
   final items = data is Map ? data['items'] : null;

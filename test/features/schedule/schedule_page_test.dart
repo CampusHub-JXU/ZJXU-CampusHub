@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jxu_campus_hub/core/auth/connect_mode_resolver.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
@@ -22,6 +23,7 @@ void main() {
 
   setUp(() async {
     await resetTestEnvironment();
+    ConnectModeResolver.instance.directReachabilityChecker = () async => true;
     final today = DateTime.now();
     SemesterCalendar.instance.semesterStartDate.value = DateTime(
       today.year,

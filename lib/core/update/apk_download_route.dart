@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../logging/app_logger.dart';
@@ -244,8 +243,9 @@ class DownloadStallDetector {
 ///   Dart 只据 `state.canSwitch`（下载中、自动模式、还有未试的源）决定要不要建议；
 /// - `state.attempt` 变化（原生换源 / 重试开了新尝试）即重置检测器，计时从头开始；
 /// - 只在 `enqueued / downloading / paused` 观察，其余阶段不判定；
-/// - 无后台定时器：由弹窗的 ~1s 轮询驱动，弹窗关闭后不再观察，重开后从原生
-///   状态继续、停滞计时从头开始；
+/// - 无独立定时器：由 [ApkUpdateController] 的前台轮询驱动（应用前台且状态
+///   活动时 ~1s 一次），应用退到后台即停止观察，回前台后从原生状态继续、
+///   停滞计时从头开始；
 /// - 发出一次建议后立即重置检测器：原生若拒绝（或调用失败），要再满足一个完整
 ///   阈值窗口才会再次建议，不会每秒重复发送。
 class ApkDownloadStallWatcher {
@@ -315,8 +315,9 @@ class ApkDownloadStallWatcher {
     await _controller.switchSource(verdict);
   }
 
-  @visibleForTesting
-  void debugReset() {
+  /// 清空观察历史（归属代际与停滞计时从头开始）。由宿主
+  /// [ApkUpdateController] 在复位时调用。
+  void reset() {
     _attempt = null;
     _detector.reset();
   }

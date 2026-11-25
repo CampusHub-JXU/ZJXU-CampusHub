@@ -112,11 +112,23 @@ class FakeApkUpdateTransport implements ApkUpdateTransport {
 
 /// 用注入的替身构造控制器：固定为 Android + arm64-v8a，避免测试依赖宿主
 /// 平台探测。版本是否已被安装由原生判定，控制器不再读取已安装版本。
-ApkUpdateController fakeApkUpdateController(FakeApkUpdateTransport transport) {
+///
+/// 轮询默认关闭（[enablePolling]）：绝大多数用例手工驱动状态，不需要真实
+/// 定时器；需要验证控制器前台轮询时显式开启，并用 [foregroundProvider]
+/// 注入可控的前台状态。
+ApkUpdateController fakeApkUpdateController(
+  FakeApkUpdateTransport transport, {
+  bool enablePolling = false,
+  bool Function()? foregroundProvider,
+  Duration pollInterval = const Duration(seconds: 1),
+}) {
   return ApkUpdateController(
     transport: transport,
     deviceAbiProvider: () => 'arm64-v8a',
     platformProvider: () => TargetPlatform.android,
+    enableLifecyclePolling: enablePolling,
+    foregroundProvider: foregroundProvider,
+    pollInterval: pollInterval,
   );
 }
 

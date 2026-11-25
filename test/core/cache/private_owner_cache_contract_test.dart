@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:jxu_campus_hub/core/auth/auth_session_persistence.dart';
+import 'package:jxu_campus_hub/core/auth/connect_mode_resolver.dart';
 import 'package:jxu_campus_hub/core/auth/credential_store.dart';
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/core/cache/private_cache_store.dart';
@@ -259,6 +260,8 @@ void main() {
           () => messenger.setMockMethodCallHandler(pathProviderChannel, null),
         );
         await resetTestEnvironment();
+        ConnectModeResolver.instance.directReachabilityChecker = () async =>
+            true;
         await h.setUpEnvironment();
         DioClient.instance.debugCookieDirectoryPathProvider = (
           folderName,

@@ -9,8 +9,10 @@ import 'package:jxu_campus_hub/core/auth/academic_auth_guard.dart';
 import 'package:jxu_campus_hub/core/auth/auth_recovery_state_store.dart';
 import 'package:jxu_campus_hub/core/auth/auth_session_persistence.dart';
 import 'package:jxu_campus_hub/core/auth/automatic_login.dart';
+import 'package:jxu_campus_hub/core/auth/cas_routed_access.dart';
 import 'package:jxu_campus_hub/core/auth/connect_mode_resolver.dart';
 import 'package:jxu_campus_hub/core/auth/credential_store.dart';
+import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/core/network/dio_client.dart';
 import 'package:jxu_campus_hub/core/network/network_settings.dart';
@@ -95,6 +97,66 @@ void main() {
     resolver.directReachabilityChecker = () async => false;
     resolver.webVpnReachabilityChecker = () async => false;
   });
+
+  test(
+    'cold academic queries wait for one gateway and academic session check',
+    () async {
+      const student = '2025000001';
+      final auth = ZhengfangAuth.instance;
+      auth.debugSetSession(active: true, studentId: student);
+      final unified = UnifiedAuthService.instance;
+      unified.debugSetSession(active: true, account: student);
+      addTearDown(unified.debugReset);
+      ConnectModeResolver.instance.directVerdictChecker = (_) async =>
+          RouteVerdict.webVpnRedirected;
+      final gatewayStarted = Completer<void>();
+      final release = Completer<void>();
+      var gatewayCalls = 0;
+      CasRoutedAccess.debugGatewayEnsurer = (_, _) async {
+        gatewayCalls++;
+        gatewayStarted.complete();
+        await release.future;
+      };
+      addTearDown(() => CasRoutedAccess.debugGatewayEnsurer = null);
+      DioClient.instance.debugUseMemoryCookieStorage = true;
+      AuthSessionPersistence.instance.debugDisableFileLock = true;
+      await DioClient.instance.ensureInitialized();
+      final proxyMenu = Uri.parse(
+        auth.buildPortalUrl(
+          '/xtgl/index_initMenu.html',
+          mode: ZhengfangMode.webVpn,
+        ),
+      );
+      final adapter = MockHttpClientAdapter()
+        ..registerText(
+          'GET',
+          proxyMenu.path,
+          '<a href="/xtgl/index_initMenu.html">菜单</a>',
+        );
+      DioClient.instance.unifiedAuthDio.httpClientAdapter = adapter;
+      final sent = <ZhengfangMode>[];
+      Future<AcademicGuardedResponse<Map<String, dynamic>>> query() =>
+          AcademicAuthGuard.guardRoutedQuery(
+            owner: student,
+            authExpiredException: const AcademicAuthExpiredException(),
+            request: (mode) async {
+              sent.add(mode);
+              return _okResponse();
+            },
+          );
+
+      final first = query();
+      await gatewayStarted.future;
+      final second = query();
+      expect(auth.mode, ZhengfangMode.direct);
+      expect(sent, isEmpty);
+      release.complete();
+      await Future.wait([first, second]);
+      expect(sent, [ZhengfangMode.webVpn, ZhengfangMode.webVpn]);
+      expect(gatewayCalls, 1);
+      expect(adapter.requestLog, hasLength(1));
+    },
+  );
 
   tearDown(() {
     AcademicAuthGuard.debugAutomaticLoginOverride = null;

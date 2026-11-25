@@ -243,6 +243,34 @@ class SecondClassroomAuth {
     }
   }
 
+  /// 为 WebView 申请一次性 CAS ticket 入口 URL（不消费 ticket，交由 WebView 自行消费建立原生 SESSION）。
+  Future<String?> issueWebViewEntryUrl() async {
+    final route = authenticatedRoute ?? SecondClassroomRoute.direct;
+    final casUri = _buildCasLoginUri();
+    try {
+      final response = await _get(casUri, casUri.toString());
+      final status = response.statusCode ?? 0;
+      if (status >= 500) return null;
+      final redirect = SecondClassroomRoute.redirectTarget(response);
+      if ((redirect != null && SecondClassroomRoute.isLoginUrl(redirect)) ||
+          (status >= 200 &&
+              status < 300 &&
+              looksLikeUnifiedAuthLoginHtml(response.data ?? ''))) {
+        return null;
+      }
+      final redirectRoute = redirect == null
+          ? null
+          : SecondClassroomRoute.forUri(redirect);
+      if (redirect == null || redirectRoute == null) return null;
+      final target = redirectRoute == SecondClassroomRoute.direct
+          ? route.uriFor(redirect)
+          : redirect;
+      return target.toString();
+    } on DioException {
+      return null;
+    }
+  }
+
   /// 清直连业务 Cookie 和第二课堂路径下的代理 SESSION，保留共享网关 Cookie。
   Future<void> clearSession() async {
     _resetValidation();

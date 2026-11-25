@@ -2,10 +2,15 @@ part of 'zhengfang_auth.dart';
 
 /// 网关确保结果：ready 三态 + 本次选中的连接模式。
 class WebVpnGatewayEnsureResult {
-  const WebVpnGatewayEnsureResult({required this.ready, this.selectedMode});
+  const WebVpnGatewayEnsureResult({
+    required this.ready,
+    this.selectedMode,
+    this.failure,
+  });
 
   final bool? ready;
   final ZhengfangMode? selectedMode;
+  final RouteFailure? failure;
 }
 
 /// 受信教务入口业务会话探测结果（fail closed）。
@@ -24,6 +29,10 @@ enum AcademicEntrySessionStatus {
 
   /// 无法证明（未知状态 / 网络异常 / 跨域或不可识别的跳转 / 无成功签名的 200）。
   unknown,
+  routeMoved,
+  connectionFailed,
+  unknownRedirect,
+  schoolBackendError,
 }
 
 /// 严格模式同步 Cookie 失败（仅教务 H5 入口准备使用）。
@@ -81,9 +90,9 @@ AcademicEntrySessionStatus classifyAcademicEntryResponse({
   required String location,
   required String html,
 }) {
-  final resolvedLocation = location.isEmpty
-      ? requestUri.toString()
-      : requestUri.resolve(location).toString();
+  final redirect = Uri.tryParse(location);
+  if (redirect == null) return AcademicEntrySessionStatus.unknown;
+  final resolvedLocation = requestUri.resolveUri(redirect).toString();
 
   // 登录页判定统一走 login_page_detection.dart：统一认证 / WebVPN 网关登录
   // 属于统一认证问题，教务登录入口 / 验证码页才是需要教务登录；两者同时命中
@@ -389,19 +398,44 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
         ),
       );
 
-      return classifyAcademicEntryResponse(
+      final status = response.statusCode ?? 0;
+      final location = response.headers.value('location') ?? '';
+      final classified = classifyAcademicEntryResponse(
         mode: mode,
         requestUri: requestUri,
-        status: response.statusCode ?? 0,
-        location: response.headers.value('location') ?? '',
+        status: status,
+        location: location,
         html: response.data ?? '',
       );
+      if (classified != AcademicEntrySessionStatus.unknown) return classified;
+      if (status >= 500 && status < 600) {
+        return AcademicEntrySessionStatus.schoolBackendError;
+      }
+      if (status >= 300 && status < 400 && status != 304) {
+        if (ConnectModeResolver.isWebVpnRedirectForTarget(
+          requestUri,
+          location,
+        )) {
+          return AcademicEntrySessionStatus.routeMoved;
+        }
+        if (ConnectModeResolver.classifyDirectReachable(
+              statusCode: status,
+              location: location,
+              requestUri: requestUri,
+            ) ==
+            RouteVerdict.unknownRedirect) {
+          return AcademicEntrySessionStatus.unknownRedirect;
+        }
+      }
+      return classified;
     } on DioException catch (error) {
       AppLogger.instance.auth(
         LogLevel.warn,
         '教务受信入口会话探测失败（网络异常）: ${error.type} ${error.message}',
       );
-      return AcademicEntrySessionStatus.unknown;
+      return isRouteConnectionFailure(error)
+          ? AcademicEntrySessionStatus.connectionFailed
+          : AcademicEntrySessionStatus.unknown;
     } catch (error) {
       AppLogger.instance.auth(LogLevel.warn, '教务受信入口会话探测失败（未知异常）: $error');
       return AcademicEntrySessionStatus.unknown;
@@ -471,6 +505,7 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
     bool revokeOnInvalid = true,
     ZhengfangMode? mode,
     String caller = 'unspecified',
+    CancelToken? cancelToken,
   }) async {
     final effectiveMode = mode ?? _mode;
     if (!_sessionActive) return false;
@@ -491,6 +526,7 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
       final response = await _sendWithProxyFallback<String>(
         label: '教务会话校验',
         mode: effectiveMode,
+        cancelToken: cancelToken,
         request: (dio, token) => dio.get<String>(
           indexUrl,
           queryParameters: {'jsdm': 'xs'},
@@ -600,58 +636,89 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
     bool syncWebViewCookies = true,
     String? targetUrl,
     bool forceWebVpn = false,
+    bool updateMode = true,
+    bool allowReverseFallback = true,
+    CancelToken? cancelToken,
   }) async {
     await DioClient.instance.ensureInitialized();
-    // 绑定发起时 revision：网关探测期间切号/重登后，旧失效响应不得清掉新会话
-    // 的 WebVPN 标记。
     final revisionAtStart = _sessionRevision;
-
-    // FR-1: 不再无条件切换为 WebVPN。先探测连接模式：
-    // - 直连可达 → 切回直连模式，无需 WebVPN 网关会话，直接返回 true。
-    // - WebVPN 可达 → 切换 WebVPN 并建立网关会话。
-    // - 两者均不可达 → 返回 null，网络异常不代表会话失效。
-    //
-    // [forceWebVpn] 跳过「直连可达即返回」：部分目标（如 libapp）直连探测能
-    // 拿到 302，但 WebView 里直连会被服务端断开（net::ERR_CONNECTION_CLOSED），
-    // 这类入口必须走 WebVPN 代理。
-    var mode = await ConnectModeResolver.instance.resolve(targetUrl: targetUrl);
-    if (!forceWebVpn) {
-      if (mode == ZhengfangMode.direct) {
-        if (_mode != ZhengfangMode.direct) {
-          setMode(ZhengfangMode.direct);
-        }
-        return WebVpnGatewayEnsureResult(ready: true, selectedMode: mode);
-      }
-      if (mode != ZhengfangMode.webVpn) {
-        AppLogger.instance.auth(
-          LogLevel.warn,
-          'WebVPN 网关会话不可用：直连与 WebVPN 均不可达',
-        );
+    final unified = UnifiedAuthService.instance;
+    final unifiedRevision = unified.sessionRevision;
+    bool identityCurrent() =>
+        _sessionRevision == revisionAtStart &&
+        unified.sessionRevision == unifiedRevision;
+    final target = Uri.parse(
+      targetUrl ?? ZhengfangAuth.directAcademicServiceUrl,
+    );
+    try {
+      final lease = await ZhengfangAuth._gatewayRoutes.acquire(
+        target,
+        scope: ('zhengfang-gateway', updateMode),
+        sessionRevision: (revisionAtStart, unifiedRevision),
+        preferredMode: forceWebVpn ? ZhengfangMode.webVpn : null,
+        allowReverseFallback: allowReverseFallback,
+        cancelToken: cancelToken,
+        prepareWebVpn: (token, deadline) async {
+          if (!identityCurrent()) throw const CasAuthExpiredException();
+          if (updateMode) {
+            await _prepareWebVpnGateway(token, identityCurrent);
+          } else {
+            if (!unified.isLoggedIn) throw const CasAuthExpiredException();
+            await CasRoutedAccess.ensureGateway(token, deadline);
+          }
+        },
+      );
+      if (!identityCurrent()) {
         return const WebVpnGatewayEnsureResult(ready: null);
       }
-    }
-    mode = ZhengfangMode.webVpn;
-    // 全局模式只在网关会话确认建成后才切换：会话未激活 / 网络不确定 / 命中
-    // 登录页时保持发起前的模式，免得并发的直连请求被带到未建成的 WebVPN。
-
-    final unifiedAuthActive = await UnifiedAuthService.instance.validateSession(
-      serviceUrl: ZhengfangAuth.webVpnGatewayServiceUrl,
-      syncWebViewCookies: false,
-    );
-    if (unifiedAuthActive != true) {
-      if (unifiedAuthActive == false) {
-        _markWebVpnLoggedOutIfCurrent(revisionAtStart);
+      if (updateMode) setMode(lease.mode);
+      if (lease.mode == ZhengfangMode.webVpn) {
+        markWebVpnLoggedIn();
+        if (syncWebViewCookies) {
+          await syncCookiesToWebViewForMode(
+            lease.mode,
+            isIdentityCurrent: identityCurrent,
+          );
+        }
       }
-      return WebVpnGatewayEnsureResult(
-        ready: unifiedAuthActive,
-        selectedMode: mode,
+      if (!identityCurrent()) {
+        return const WebVpnGatewayEnsureResult(ready: null);
+      }
+      return WebVpnGatewayEnsureResult(ready: true, selectedMode: lease.mode);
+    } on CasAuthExpiredException {
+      if (!identityCurrent()) {
+        return const WebVpnGatewayEnsureResult(ready: null);
+      }
+      _markWebVpnLoggedOutIfCurrent(revisionAtStart);
+      return const WebVpnGatewayEnsureResult(
+        ready: false,
+        selectedMode: ZhengfangMode.webVpn,
       );
+    } on RouteFailure catch (failure) {
+      return WebVpnGatewayEnsureResult(ready: null, failure: failure);
     }
+  }
 
+  Future<void> _prepareWebVpnGateway(
+    CancelToken token,
+    bool Function() identityCurrent,
+  ) async {
     try {
+      final active = await UnifiedAuthService.instance.validateSession(
+        serviceUrl: ZhengfangAuth.webVpnGatewayServiceUrl,
+        syncWebViewCookies: false,
+      );
+      token.throwIfCancelled();
+      if (!identityCurrent()) throw const CasAuthExpiredException();
+      if (active == false) throw const CasAuthExpiredException();
+      if (active == null) {
+        throw RouteFailure(RouteFailureReason.webVpnGatewayFailed);
+      }
+
       final response = await _sendWithProxyFallback<String>(
         label: 'WebVPN 网关会话校验',
         mode: ZhengfangMode.webVpn,
+        cancelToken: token,
         request: (dio, token) => dio.get<String>(
           ZhengfangAuth.webVpnGatewayLoginUrl,
           cancelToken: token,
@@ -666,27 +733,25 @@ extension ZhengfangAuthWebVpnExtension on ZhengfangAuth {
 
       final html = response.data ?? '';
       final realUrl = response.realUri.toString();
+      if (response.statusCode == null || response.statusCode! >= 400) {
+        AppLogger.instance.auth(
+          LogLevel.warn,
+          'WebVPN 网关响应异常 status=${response.statusCode} '
+          'at ${response.realUri.host}${_locationPathForLog(realUrl)}',
+        );
+        throw RouteFailure(RouteFailureReason.webVpnGatewayFailed);
+      }
       if (_looksLikeWebVpnAuthResponse(realUrl, html)) {
         AppLogger.instance.auth(LogLevel.warn, 'WebVPN 网关会话恢复后仍命中登录页');
-        _markWebVpnLoggedOutIfCurrent(revisionAtStart);
-        return WebVpnGatewayEnsureResult(ready: false, selectedMode: mode);
+        throw const CasAuthExpiredException();
       }
-
-      if (_sessionRevision == revisionAtStart) setMode(ZhengfangMode.webVpn);
-      markWebVpnLoggedIn();
-      if (syncWebViewCookies) {
-        await syncWebVpnCookiesToWebView();
-      }
-      return WebVpnGatewayEnsureResult(ready: true, selectedMode: mode);
     } on DioException catch (e) {
+      if (CancelToken.isCancel(e)) rethrow;
       AppLogger.instance.auth(
         LogLevel.warn,
-        'WebVPN 网关会话校验失败（网络异常）: ${e.type} ${e.message}',
+        'WebVPN 网关会话校验失败（网络异常）: ${e.type} at ${e.requestOptions.uri.host}',
       );
-      return WebVpnGatewayEnsureResult(ready: null, selectedMode: mode);
-    } catch (e) {
-      AppLogger.instance.auth(LogLevel.warn, 'WebVPN 网关会话校验失败（未知异常）: $e');
-      return WebVpnGatewayEnsureResult(ready: null, selectedMode: mode);
+      throw RouteFailure(RouteFailureReason.webVpnGatewayFailed);
     }
   }
 

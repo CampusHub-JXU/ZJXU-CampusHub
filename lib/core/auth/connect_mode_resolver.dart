@@ -7,8 +7,11 @@ import 'package:flutter/foundation.dart';
 import '../logging/app_logger.dart';
 import '../network/network_settings.dart';
 import '../network/proxy_mode.dart';
+import '../network/route_failure.dart';
 import 'unified_auth.dart';
 import 'zhengfang_auth.dart';
+
+enum RouteVerdict { direct, webVpnRedirected, unreachable, unknownRedirect }
 
 /// 统一编排连接模式判定。
 ///
@@ -21,11 +24,11 @@ class ConnectModeResolver {
 
   static const _cacheTtl = Duration(seconds: 60);
   static const _probeTimeout = Duration(seconds: 4);
-  static const _defaultCacheKey = '';
   static const _webVpnHost = 'webvpn.zjxu.edu.cn';
 
-  final Map<String, _CachedMode> _cache = {};
-  final Map<String, Future<ZhengfangMode?>> _inflight = {};
+  final Map<String, (ZhengfangMode, DateTime)> _cache = {};
+  final Map<String, Future<ZhengfangMode>> _inflight = {};
+  final Map<String, int> _observations = {};
   int _generation = 0;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   bool _started = false;
@@ -41,6 +44,9 @@ class ConnectModeResolver {
   /// 目标直连探测钩子，测试可注入以免真实联网。
   @visibleForTesting
   Future<bool> Function(String targetUrl)? targetDirectReachabilityChecker;
+
+  @visibleForTesting
+  Future<RouteVerdict> Function(Uri target)? directVerdictChecker;
 
   /// 开始监听网络变化以失效缓存。在 App 启动时调用一次即可。
   void start() {
@@ -66,6 +72,41 @@ class ConnectModeResolver {
     _generation++;
     _cache.clear();
     _inflight.clear();
+    _observations.clear();
+  }
+
+  (int, int) routeVersion(Uri target) =>
+      (_generation, _observations[target.origin] ?? 0);
+
+  bool hasCachedMode(Uri target) {
+    final cached = _cache[target.origin];
+    return cached != null && DateTime.now().difference(cached.$2) < _cacheTtl;
+  }
+
+  /// 业务响应已经证实出口被改道，不再重复发一条直连探测。
+  void markWebVpnRedirected(Uri target) {
+    _recordObservedMode(target, ZhengfangMode.webVpn);
+  }
+
+  /// 调用方已在 WebVPN 失败后重新探测并证明直连可达。
+  void markDirectReachable(Uri target) {
+    _recordObservedMode(target, ZhengfangMode.direct);
+  }
+
+  void _recordObservedMode(Uri target, ZhengfangMode mode) {
+    final origin = target.origin;
+    final previous = _cache[origin];
+    if (previous == null ||
+        previous.$1 != mode ||
+        _inflight.containsKey(origin)) {
+      _observations.update(
+        origin,
+        (revision) => revision + 1,
+        ifAbsent: () => 1,
+      );
+    }
+    _cache[origin] = (mode, DateTime.now());
+    _inflight.remove(origin);
   }
 
   /// 按优先级解析当前应使用的连接模式。
@@ -81,26 +122,45 @@ class ConnectModeResolver {
     bool forceRefresh = false,
     String? targetUrl,
   }) async {
-    final key = _cacheKey(targetUrl);
-    if (!forceRefresh) {
-      final cached = _cache[key];
-      if (cached != null && DateTime.now().difference(cached.at) < _cacheTtl) {
-        return cached.mode;
-      }
+    try {
+      return await resolveOrThrow(
+        Uri.parse(
+          targetUrl?.trim().isNotEmpty == true
+              ? targetUrl!.trim()
+              : ZhengfangAuth.directAcademicServiceUrl,
+        ),
+        forceRefresh: forceRefresh,
+      );
+    } on RouteFailure {
+      return null;
+    } on FormatException {
+      return null;
     }
+  }
 
+  Future<ZhengfangMode> resolveOrThrow(
+    Uri target, {
+    bool forceRefresh = false,
+  }) async {
+    if ((target.scheme != 'http' && target.scheme != 'https') ||
+        target.host.isEmpty) {
+      throw RouteFailure(RouteFailureReason.connectionFailed);
+    }
+    final key = target.origin;
     final existing = _inflight[key];
     if (existing != null) return existing;
+    final cached = _cache[key];
+    if (!forceRefresh &&
+        cached != null &&
+        DateTime.now().difference(cached.$2) < _cacheTtl) {
+      return cached.$1;
+    }
 
-    final gen = _generation;
-    final future = _probe(targetUrl: targetUrl);
+    final version = routeVersion(target);
+    final future = _select(target, version);
     _inflight[key] = future;
     try {
-      final mode = await future;
-      if (gen == _generation && mode != null) {
-        _cache[key] = _CachedMode(mode, DateTime.now());
-      }
-      return mode;
+      return await future;
     } finally {
       if (identical(_inflight[key], future)) {
         _inflight.remove(key);
@@ -108,44 +168,62 @@ class ConnectModeResolver {
     }
   }
 
-  Future<ZhengfangMode?> _probe({String? targetUrl}) async {
-    final raw = targetUrl?.trim() ?? '';
-    if (raw.isEmpty) return _probeDefaultJwzx();
-    return _probeTarget(raw);
-  }
-
-  Future<ZhengfangMode?> _probeDefaultJwzx() async {
-    final direct =
-        await (directReachabilityChecker?.call() ??
-            ZhengfangAuth.checkDirectReachable());
-    if (direct) return ZhengfangMode.direct;
-
-    final webVpn =
-        await (webVpnReachabilityChecker?.call() ??
-            ZhengfangAuth.checkWebVpnReachable());
-    return webVpn ? ZhengfangMode.webVpn : null;
-  }
-
-  Future<ZhengfangMode?> _probeTarget(String targetUrl) async {
-    final direct =
-        await (targetDirectReachabilityChecker?.call(targetUrl) ??
-            _probeTargetDirect(targetUrl));
-    if (direct) return ZhengfangMode.direct;
-
-    final webVpn =
-        await (webVpnReachabilityChecker?.call() ??
-            ZhengfangAuth.checkWebVpnReachable());
-    return webVpn ? ZhengfangMode.webVpn : null;
-  }
-
-  Future<bool> _probeTargetDirect(String targetUrl) async {
-    final probeUrl = _probeUrl(targetUrl);
-    final requestUri = Uri.tryParse(probeUrl);
-    if (requestUri == null ||
-        !requestUri.hasScheme ||
-        requestUri.host.isEmpty) {
-      return false;
+  Future<ZhengfangMode> _select(Uri target, (int, int) version) async {
+    final verdict = await probeDirect(target);
+    final ZhengfangMode mode;
+    if (verdict == RouteVerdict.direct) {
+      mode = ZhengfangMode.direct;
+    } else {
+      if (verdict != RouteVerdict.webVpnRedirected) {
+        final hook = webVpnReachabilityChecker;
+        final failure = hook != null
+            ? (await hook() ? null : RouteFailureReason.connectionFailed)
+            : await ZhengfangAuth.probeWebVpnFailure();
+        if (failure != null) {
+          throw RouteFailure(
+            verdict == RouteVerdict.unknownRedirect
+                ? RouteFailureReason.unknownRedirect
+                : failure,
+          );
+        }
+      }
+      mode = ZhengfangMode.webVpn;
     }
+    if (routeVersion(target) == version &&
+        verdict != RouteVerdict.unknownRedirect) {
+      final lastMode = _cache[target.origin]?.$1;
+      if (lastMode != null && lastMode != mode) {
+        _observations.update(
+          target.origin,
+          (revision) => revision + 1,
+          ifAbsent: () => 1,
+        );
+      }
+      _cache[target.origin] = (mode, DateTime.now());
+    }
+    return mode;
+  }
+
+  /// Fresh direct probe for a reverse fallback. It bypasses the route cache.
+  Future<RouteVerdict> probeDirect(Uri target) async {
+    final verdictCheck = directVerdictChecker;
+    if (verdictCheck != null) return verdictCheck(target);
+    final academicCheck = directReachabilityChecker;
+    final targetCheck = targetDirectReachabilityChecker;
+    final academicTarget =
+        target.origin ==
+        Uri.parse(ZhengfangAuth.directAcademicServiceUrl).origin;
+    if (academicTarget && academicCheck != null) {
+      return await academicCheck()
+          ? RouteVerdict.direct
+          : RouteVerdict.unreachable;
+    }
+    if (targetCheck != null) {
+      return await targetCheck(target.toString())
+          ? RouteVerdict.direct
+          : RouteVerdict.unreachable;
+    }
+    final requestUri = target.removeFragment();
 
     final token = CancelToken();
     final dio = Dio(
@@ -165,7 +243,7 @@ class ConnectModeResolver {
 
     try {
       final response = await dio
-          .get<String>(probeUrl, cancelToken: token)
+          .get<String>(requestUri.toString(), cancelToken: token)
           .timeout(
             _probeTimeout,
             onTimeout: () {
@@ -176,7 +254,7 @@ class ConnectModeResolver {
             },
           );
       final location = response.headers.value('location') ?? '';
-      final reachable = classifyDirectReachable(
+      final verdict = classifyDirectReachable(
         statusCode: response.statusCode ?? 0,
         location: location,
         requestUri: requestUri,
@@ -185,21 +263,21 @@ class ConnectModeResolver {
       AppLogger.instance.auth(
         LogLevel.info,
         '目标直连探测 ${requestUri.origin}: '
-        '${reachable ? "可达" : "不可达"} (${response.statusCode}$redirectHost)',
+        '${verdict.name} (${response.statusCode}$redirectHost)',
       );
-      return reachable;
+      return verdict;
     } on DioException catch (e) {
       AppLogger.instance.auth(
         LogLevel.warn,
-        '目标直连探测失败 ${requestUri.origin}: ${e.type} ${e.message}',
+        '目标直连探测失败 ${requestUri.origin}: ${e.type}',
       );
-      return false;
+      return RouteVerdict.unreachable;
     } catch (e) {
       AppLogger.instance.auth(
         LogLevel.warn,
-        '目标直连探测失败 ${requestUri.origin}: $e',
+        '目标直连探测失败 ${requestUri.origin}: ${e.runtimeType}',
       );
-      return false;
+      return RouteVerdict.unreachable;
     } finally {
       if (!token.isCancelled) {
         token.cancel('connect-mode probe closed');
@@ -214,25 +292,55 @@ class ConnectModeResolver {
   /// - 跳到真实 CAS 登录页 → 可达（未登录）
   /// - 跳到 WebVPN → 不可达（应由 WebVPN 承接）
   /// - 跳到任意未知站点 → 不可达，防止 3xx 误判
-  @visibleForTesting
-  static bool classifyDirectReachable({
+  static RouteVerdict classifyDirectReachable({
     required int statusCode,
     String location = '',
     required Uri requestUri,
   }) {
-    if (statusCode >= 200 && statusCode < 300) return true;
-    if (statusCode == 304) return true;
-    if (statusCode >= 400 && statusCode < 600) return true;
-    if (statusCode < 300 || statusCode >= 400) return false;
+    if (statusCode >= 200 && statusCode < 300 ||
+        statusCode == 304 ||
+        statusCode >= 400 && statusCode < 600) {
+      return RouteVerdict.direct;
+    }
+    if (statusCode < 300 || statusCode >= 400) return RouteVerdict.unreachable;
 
     final rawLocation = location.trim();
-    if (rawLocation.isEmpty) return false;
+    final parsed = Uri.tryParse(rawLocation);
+    if (rawLocation.isEmpty || parsed == null) {
+      return RouteVerdict.unknownRedirect;
+    }
+    final resolved = requestUri.resolveUri(parsed);
+    if (resolved.host == _webVpnHost) return RouteVerdict.webVpnRedirected;
+    if (isUnifiedAuthLoginEntryUrl(resolved.toString()) ||
+        _isSameOrigin(requestUri, resolved)) {
+      return RouteVerdict.direct;
+    }
+    return RouteVerdict.unknownRedirect;
+  }
 
-    final resolved = requestUri.resolve(rawLocation);
-    if (isUnifiedAuthLoginEntryUrl(resolved.toString())) return true;
-    if (resolved.host.toLowerCase() == _webVpnHost) return false;
-    if (_isSameOrigin(requestUri, resolved)) return true;
-    return false;
+  /// A business response may change the route only for its own origin.
+  static bool isWebVpnRedirectForTarget(Uri request, String location) {
+    if (request.host.isEmpty ||
+        request.host == _webVpnHost ||
+        (request.scheme != 'http' && request.scheme != 'https')) {
+      return false;
+    }
+    final reference = Uri.tryParse(location.trim());
+    if (reference == null) return false;
+    final target = request.resolveUri(reference);
+    if (target.scheme != 'https' ||
+        target.host != _webVpnHost ||
+        target.port != 443 ||
+        target.userInfo.isNotEmpty) {
+      return false;
+    }
+    final expected = Uri.parse(
+      ZhengfangAuth.instance.buildWebVpnProxyUrl(request.origin),
+    );
+    if (expected.host != _webVpnHost) return false;
+    final prefix = expected.path.toLowerCase();
+    final path = target.path.toLowerCase();
+    return path == prefix || path.startsWith('$prefix/');
   }
 
   /// 日志用：只记跳转目标的 host，不记 path / query。畸形 Location 不抛异常，
@@ -251,27 +359,6 @@ class ConnectModeResolver {
         a.port == b.port;
   }
 
-  static String _cacheKey(String? targetUrl) {
-    final raw = targetUrl?.trim() ?? '';
-    if (raw.isEmpty) return _defaultCacheKey;
-    return _originKey(raw);
-  }
-
-  static String _originKey(String targetUrl) {
-    final uri = Uri.tryParse(targetUrl.trim());
-    if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
-      return targetUrl.trim();
-    }
-    return '${uri.scheme.toLowerCase()}://${uri.host.toLowerCase()}'
-        '${uri.hasPort ? ':${uri.port}' : ''}';
-  }
-
-  static String _probeUrl(String targetUrl) {
-    final uri = Uri.tryParse(targetUrl.trim());
-    if (uri == null) return targetUrl.trim();
-    return uri.replace(fragment: '').toString();
-  }
-
   @visibleForTesting
   void debugReset() {
     invalidate();
@@ -281,12 +368,6 @@ class ConnectModeResolver {
     directReachabilityChecker = null;
     webVpnReachabilityChecker = null;
     targetDirectReachabilityChecker = null;
+    directVerdictChecker = null;
   }
-}
-
-class _CachedMode {
-  const _CachedMode(this.mode, this.at);
-
-  final ZhengfangMode mode;
-  final DateTime at;
 }

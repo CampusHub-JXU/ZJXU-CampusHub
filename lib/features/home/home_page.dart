@@ -18,7 +18,9 @@ import '../../core/theme/app_typography.dart';
 import '../../core/theme/page_transition_activity.dart';
 import '../../core/theme/personalization_controller.dart';
 import '../../core/theme/widgets/app_wallpaper_backdrop.dart';
+import '../../core/update/apk_update_controller.dart';
 import '../../core/update/update_checker.dart';
+import '../../core/update/update_progress_text.dart';
 import '../../shared/widgets/app_icon_badge.dart';
 import '../../shared/widgets/app_surface_style.dart';
 import '../../shared/widgets/app_tile_surface.dart';
@@ -130,8 +132,32 @@ class _HomePageState extends State<HomePage> {
   bool get _isBootstrapReady =>
       _bootstrapController.phase.value.index >=
       AppBootstrapPhase.localStateReady.index;
+
+  /// 更新角标的阶段集合：仅在「有可见进度 / 就绪可装」时才需要持续投影；
+  /// 对账 / 清理等瞬态不单独表达（详情以弹窗为准）。
+  static const Set<ApkUpdatePhase> _updateStatusPhases = <ApkUpdatePhase>{
+    ApkUpdatePhase.enqueued,
+    ApkUpdatePhase.downloading,
+    ApkUpdatePhase.paused,
+    ApkUpdatePhase.verifying,
+    ApkUpdatePhase.readyToInstall,
+    ApkUpdatePhase.permissionRequired,
+  };
+
+  /// 后台下载 / 就绪状态（无新版本角标也要给出入口，否则转后台后无法重新
+  /// 打开弹窗取消或安装）。
+  ApkUpdateState get _updateState => ApkUpdateController.instance.state.value;
+
+  bool get _hasManagedUpdateInFlight =>
+      _updateStatusPhases.contains(_updateState.phase);
+
   bool get _canShowUpdateAction =>
-      UpdateChecker.instance.isUpdateEnabled && _hasAvailableUpdate;
+      (UpdateChecker.instance.isUpdateEnabled && _hasAvailableUpdate) ||
+      _hasManagedUpdateInFlight;
+
+  /// 角标 tooltip 的状态投影：下载中给紧凑进度，就绪给「已就绪」提示；
+  /// 其余情况保持「发现新版本」。
+  String? get _updateStatusText => describeManagedUpdateProgress(_updateState);
 
   @override
   void initState() {
@@ -146,6 +172,8 @@ class _HomePageState extends State<HomePage> {
     UpdateChecker.instance.availableRelease.addListener(
       _onAvailableReleaseChanged,
     );
+    // 后台下载进度 / 就绪状态驱动更新角标的可见性与 tooltip（非阻塞提示）。
+    ApkUpdateController.instance.state.addListener(_onUpdateStateChanged);
     NoticeSyncStore.instance.inboxHead.addListener(_onNoticeHeadChanged);
     _noticeHead = NoticeSyncStore.instance.inboxHead.value;
     CampusDataChangeBus.instance.revision.addListener(_onCampusDataChanged);
@@ -168,6 +196,7 @@ class _HomePageState extends State<HomePage> {
     UpdateChecker.instance.availableRelease.removeListener(
       _onAvailableReleaseChanged,
     );
+    ApkUpdateController.instance.state.removeListener(_onUpdateStateChanged);
     NoticeSyncStore.instance.inboxHead.removeListener(_onNoticeHeadChanged);
     CampusDataChangeBus.instance.revision.removeListener(_onCampusDataChanged);
     _scrollController.removeListener(_onScrollChanged);
@@ -185,6 +214,11 @@ class _HomePageState extends State<HomePage> {
       _hasAvailableUpdate =
           UpdateChecker.instance.availableRelease.value != null;
     });
+  }
+
+  void _onUpdateStateChanged() {
+    if (!mounted) return;
+    setState(() {});
   }
 
   void _onNoticeHeadChanged() {
@@ -552,7 +586,14 @@ class _HomePageState extends State<HomePage> {
 
   void _handleUpdateTap() {
     final release = UpdateChecker.instance.availableRelease.value;
-    if (release == null) return;
+    if (release == null) {
+      // 无缓存新版本但仍有受管下载在途 / 已就绪：重开受管弹窗，可查看进度、
+      // 取消或安装（与「设置 → 检查更新」的恢复路径一致）。
+      if (_updateState.phase.isActive) {
+        showManagedUpdateDialog(context);
+      }
+      return;
+    }
     showUpdateDialog(context, release);
   }
 
@@ -797,6 +838,7 @@ class _HomePageState extends State<HomePage> {
       envDateText: _formatEnvDate(now),
       envStatusText: presentation.weekLabel,
       canShowUpdateAction: _canShowUpdateAction,
+      updateStatusText: _updateStatusText,
       unreadNoticeCount: _noticeHead.unreadCount,
       onOpenSchedule: () async {
         await _pushFeatureRoute(context, 'schedule');

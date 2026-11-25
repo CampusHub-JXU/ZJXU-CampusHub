@@ -4,6 +4,8 @@ import 'package:dio/dio.dart';
 
 import '../logging/app_logger.dart';
 import '../network/dio_client.dart';
+import '../network/route_failure.dart';
+import '../network/route_gate.dart';
 import 'cas_auth_broker.dart';
 import 'cas_routed_access.dart';
 import 'connect_mode_resolver.dart';
@@ -21,11 +23,13 @@ class AcademicWebEntryReady extends AcademicWebEntryResult {
     required this.url,
     required Map<String, String> headers,
     required this.selectedMode,
+    this.didFallback = false,
   }) : headers = Map<String, String>.unmodifiable(headers);
 
   final String url;
   final Map<String, String> headers;
   final ZhengfangMode selectedMode;
+  final bool didFallback;
 
   bool get isWebVpn => selectedMode == ZhengfangMode.webVpn;
 
@@ -37,7 +41,9 @@ class AcademicWebEntryReady extends AcademicWebEntryResult {
 
 /// 教务（正方）账号会话不可用，需要用户完成教务登录。
 class AcademicWebEntryNeedsAcademicLogin extends AcademicWebEntryResult {
-  const AcademicWebEntryNeedsAcademicLogin();
+  const AcademicWebEntryNeedsAcademicLogin({this.fallbackMode});
+
+  final ZhengfangMode? fallbackMode;
 
   @override
   String toString() => 'AcademicWebEntryNeedsAcademicLogin()';
@@ -45,7 +51,9 @@ class AcademicWebEntryNeedsAcademicLogin extends AcademicWebEntryResult {
 
 /// 校外 WebVPN 网关需要统一认证（CAS）会话，需要用户先完成统一认证登录。
 class AcademicWebEntryNeedsUnifiedLogin extends AcademicWebEntryResult {
-  const AcademicWebEntryNeedsUnifiedLogin();
+  const AcademicWebEntryNeedsUnifiedLogin({this.fallbackMode});
+
+  final ZhengfangMode? fallbackMode;
 
   @override
   String toString() => 'AcademicWebEntryNeedsUnifiedLogin()';
@@ -147,7 +155,10 @@ class AcademicWebEntryPreparer {
     AcademicSessionProber? academicSessionProber,
     AcademicCookieSyncer? cookieSyncer,
     AcademicHeaderBuilder? headerBuilder,
-  }) : _modeResolver = modeResolver ?? _defaultModeResolver,
+  }) : _modeResolver = modeResolver,
+       _routeGate = modeResolver == null && gatewaySessionEnsurer == null
+           ? RouteGate.instance
+           : RouteGate(leaseTtl: Duration.zero),
        _gatewaySessionEnsurer =
            gatewaySessionEnsurer ?? _defaultGatewaySessionEnsurer,
        _academicSessionProber =
@@ -162,7 +173,8 @@ class AcademicWebEntryPreparer {
   static const Set<String> trustedJsdmValues = {'xs', 'query'};
   static const Duration defaultTotalBudget = Duration(seconds: 20);
 
-  final AcademicModeResolver _modeResolver;
+  final AcademicModeResolver? _modeResolver;
+  final RouteGate _routeGate;
   final AcademicGatewaySessionEnsurer _gatewaySessionEnsurer;
   final AcademicSessionProber _academicSessionProber;
   final AcademicCookieSyncer _cookieSyncer;
@@ -198,11 +210,13 @@ class AcademicWebEntryPreparer {
 
   /// 准备受信教务入口。
   ///
-  /// [forceWebVpn] 为 true 时跳过直连偏好（用于 WebView 已证实直连
-  /// `ERR_CONNECTION_CLOSED` 等场景），一律走 WebVPN。
+  /// WebView 首次载入失败可指定另一模式。指定 [forceDirect] 时先重探直连，
+  /// 指定 [forceWebVpn] 时直接准备网关。两种指定模式都消耗此次自动回退。
   Future<AcademicWebEntryResult> prepare({
     String jsdm = 'xs',
     bool forceWebVpn = false,
+    bool forceDirect = false,
+    bool allowReverseFallback = true,
     CancelToken? cancelToken,
     Duration totalBudget = defaultTotalBudget,
   }) async {
@@ -216,6 +230,8 @@ class AcademicWebEntryPreparer {
       return await _prepare(
         targetUrl: targetUrl,
         forceWebVpn: forceWebVpn,
+        forceDirect: forceDirect,
+        allowReverseFallback: allowReverseFallback,
         budget: budget,
       );
     } finally {
@@ -226,6 +242,8 @@ class AcademicWebEntryPreparer {
   Future<AcademicWebEntryResult> _prepare({
     required String targetUrl,
     required bool forceWebVpn,
+    required bool forceDirect,
+    required bool allowReverseFallback,
     required _EntryBudget budget,
   }) async {
     final zhengfang = ZhengfangAuth.instance;
@@ -276,100 +294,90 @@ class AcademicWebEntryPreparer {
     final initGuard = afterAwait();
     if (initGuard != null) return initGuard;
 
-    // 1) 选路：默认按目标 origin 判定，forceWebVpn 跳过直连偏好。
-    final ZhengfangMode selectedMode;
-    if (forceWebVpn) {
-      selectedMode = ZhengfangMode.webVpn;
-    } else {
-      ZhengfangMode? resolved;
+    final target = Uri.parse(targetUrl);
+    final resolver = _modeResolver;
+    var preferredMode = forceDirect
+        ? ZhengfangMode.direct
+        : forceWebVpn
+        ? ZhengfangMode.webVpn
+        : null;
+    var didFallback = forceDirect || forceWebVpn;
+    late ZhengfangMode selectedMode;
+    late String finalUrl;
+    while (true) {
       try {
-        resolved = await _modeResolver(targetUrl);
-      } catch (error, stackTrace) {
-        AppLogger.instance.auth(
-          LogLevel.warn,
-          '教务 H5 入口准备：连接模式判定失败',
-          error: error,
-          stackTrace: stackTrace,
+        final lease = await _routeGate.acquire(
+          target,
+          scope: 'academic-web-entry',
+          sessionRevision: (zfRevision, uaRevision),
+          preferredMode: preferredMode,
+          allowReverseFallback: allowReverseFallback && !didFallback,
+          cancelToken: budget.token,
+          deadline: budget.deadline,
+          resolveMode: resolver == null
+              ? null
+              : () async =>
+                    await resolver(targetUrl) ??
+                    (throw RouteFailure(RouteFailureReason.connectionFailed)),
+          prepareWebVpn: (token, deadline) async {
+            if (!identityCurrent() || !unified.isLoggedIn) {
+              throw const CasAuthExpiredException();
+            }
+            await _gatewaySessionEnsurer(token, deadline);
+          },
         );
-        return const AcademicWebEntryUnavailable('连接模式判定失败');
-      }
-      final modeGuard = afterAwait();
-      if (modeGuard != null) return modeGuard;
-      if (resolved == null) {
-        return const AcademicWebEntryUnavailable('直连与 WebVPN 均不可达');
-      }
-      selectedMode = resolved;
-    }
-
-    final String finalUrl;
-    if (selectedMode == ZhengfangMode.direct) {
-      // 直连无需 CAS 网关；只用当前内存中的教务 owner。
-      if (!zhengfang.isLoggedIn) {
-        return const AcademicWebEntryNeedsAcademicLogin();
-      }
-      final probe = await _probe(
-        mode: ZhengfangMode.direct,
-        requestUrl: targetUrl,
-        budget: budget,
-      );
-      final probeGuard = afterAwait();
-      if (probeGuard != null) return probeGuard;
-      final probeResult = _interpretProbe(probe);
-      if (probeResult != null) return probeResult;
-      finalUrl = targetUrl;
-    } else {
-      // 校外 WebVPN：网关需要统一认证 CAS，只用当前内存 owner，不冷恢复。
-      if (!unified.isLoggedIn) {
-        return const AcademicWebEntryNeedsUnifiedLogin();
-      }
-
-      try {
-        await _gatewaySessionEnsurer(budget.token, budget.deadline);
+        selectedMode = lease.mode;
+        didFallback |= lease.didFallback;
       } on CasAuthExpiredException {
-        final gatewayGuard = afterAwait();
-        if (gatewayGuard != null) return gatewayGuard;
-        return const AcademicWebEntryNeedsUnifiedLogin();
-      } on DioException catch (error) {
-        final gatewayGuard = afterAwait();
-        if (gatewayGuard != null) return gatewayGuard;
-        AppLogger.instance.auth(
-          LogLevel.warn,
-          '教务 H5 入口准备：WebVPN 网关会话失败 '
-          '${describeGatewayDioFailure(error)}',
-        );
-        return const AcademicWebEntryUnavailable('WebVPN 网关会话校验失败');
-      } catch (error, stackTrace) {
-        final gatewayGuard = afterAwait();
-        if (gatewayGuard != null) return gatewayGuard;
-        AppLogger.instance.auth(
-          LogLevel.warn,
-          '教务 H5 入口准备：WebVPN 网关会话异常',
-          error: error,
-          stackTrace: stackTrace,
-        );
-        return const AcademicWebEntryUnavailable('WebVPN 网关会话校验失败');
+        return afterAwait() ??
+            AcademicWebEntryNeedsUnifiedLogin(
+              fallbackMode: didFallback ? preferredMode : null,
+            );
+      } on RouteFailure catch (failure) {
+        return afterAwait() ??
+            AcademicWebEntryUnavailable(failure.reason.message);
+      } catch (error) {
+        return afterAwait() ?? const AcademicWebEntryUnavailable('连接模式判定失败');
       }
-      final gatewayGuard = afterAwait();
-      if (gatewayGuard != null) return gatewayGuard;
-
-      // 网关就绪不代表教务业务会话就绪：必须单独验证。
+      final routeGuard = afterAwait();
+      if (routeGuard != null) return routeGuard;
       if (!zhengfang.isLoggedIn) {
-        return const AcademicWebEntryNeedsAcademicLogin();
+        return AcademicWebEntryNeedsAcademicLogin(
+          fallbackMode: didFallback ? selectedMode : null,
+        );
       }
-      final proxyUrl = zhengfang.buildWebVpnProxyUrl(targetUrl);
-      if (Uri.tryParse(proxyUrl)?.host.toLowerCase() != 'webvpn.zjxu.edu.cn') {
+
+      finalUrl = selectedMode == ZhengfangMode.direct
+          ? targetUrl
+          : zhengfang.buildWebVpnProxyUrl(targetUrl);
+      if (selectedMode == ZhengfangMode.webVpn && finalUrl == targetUrl) {
         return const AcademicWebEntryUnavailable('目标无法构造 WebVPN 代理地址');
       }
       final probe = await _probe(
-        mode: ZhengfangMode.webVpn,
-        requestUrl: proxyUrl,
+        mode: selectedMode,
+        requestUrl: finalUrl,
         budget: budget,
       );
       final probeGuard = afterAwait();
       if (probeGuard != null) return probeGuard;
-      final probeResult = _interpretProbe(probe);
+      if (selectedMode == ZhengfangMode.direct &&
+          probe == AcademicEntrySessionStatus.routeMoved) {
+        ConnectModeResolver.instance.markWebVpnRedirected(target);
+      }
+      if (!didFallback &&
+          selectedMode == ZhengfangMode.direct &&
+          (probe == AcademicEntrySessionStatus.routeMoved ||
+              probe == AcademicEntrySessionStatus.connectionFailed)) {
+        didFallback = true;
+        preferredMode = ZhengfangMode.webVpn;
+        continue;
+      }
+      final probeResult = _interpretProbe(
+        probe,
+        didFallback ? selectedMode : null,
+      );
       if (probeResult != null) return probeResult;
-      finalUrl = proxyUrl;
+      break;
     }
 
     // 2) 按本次选中的 mode 同步 Cookie（不读 / 不写全局 mode）。
@@ -418,20 +426,37 @@ class AcademicWebEntryPreparer {
       url: finalUrl,
       headers: headers,
       selectedMode: selectedMode,
+      didFallback: didFallback,
     );
   }
 
   /// 把 fail-closed 探测结果映射为类型化准备结果；返回 null 表示可继续。
-  AcademicWebEntryResult? _interpretProbe(AcademicEntrySessionStatus probe) {
+  AcademicWebEntryResult? _interpretProbe(
+    AcademicEntrySessionStatus probe,
+    ZhengfangMode? fallbackMode,
+  ) {
     switch (probe) {
       case AcademicEntrySessionStatus.authenticated:
         return null;
       case AcademicEntrySessionStatus.academicLoginRequired:
-        return const AcademicWebEntryNeedsAcademicLogin();
+        return AcademicWebEntryNeedsAcademicLogin(fallbackMode: fallbackMode);
       case AcademicEntrySessionStatus.unifiedLoginRequired:
-        return const AcademicWebEntryNeedsUnifiedLogin();
+        return AcademicWebEntryNeedsUnifiedLogin(fallbackMode: fallbackMode);
       case AcademicEntrySessionStatus.unknown:
         return const AcademicWebEntryUnavailable('无法确认教务会话状态');
+      case AcademicEntrySessionStatus.routeMoved:
+      case AcademicEntrySessionStatus.connectionFailed:
+        return AcademicWebEntryUnavailable(
+          RouteFailureReason.connectionFailed.message,
+        );
+      case AcademicEntrySessionStatus.unknownRedirect:
+        return AcademicWebEntryUnavailable(
+          RouteFailureReason.unknownRedirect.message,
+        );
+      case AcademicEntrySessionStatus.schoolBackendError:
+        return AcademicWebEntryUnavailable(
+          RouteFailureReason.schoolBackendError.message,
+        );
     }
   }
 
@@ -455,21 +480,13 @@ class AcademicWebEntryPreparer {
 
   // ── 生产默认实现 ────────────────────────────────────────────────────────
 
-  static Future<ZhengfangMode?> _defaultModeResolver(String targetUrl) =>
-      ConnectModeResolver.instance.resolve(targetUrl: targetUrl);
-
   /// 复用 CAS broker 的真实重定向 / 回调链建立 WebVPN 网关会话；目标
   /// URL 是注册的 [CasService.webVpnGateway]，不是业务资源，也不伪造 ticket。
   static Future<void> _defaultGatewaySessionEnsurer(
     CancelToken token,
     DateTime deadline,
   ) async {
-    await CasAuthBroker.getResource(
-      CasService.webVpnGateway.serviceUrl,
-      cancelToken: token,
-      deadline: deadline,
-      needsLogin: webVpnGatewayResponseNeedsLogin,
-    );
+    await CasRoutedAccess.ensureGateway(token, deadline);
   }
 
   static Future<AcademicEntrySessionStatus> _defaultAcademicSessionProber(

@@ -50,6 +50,8 @@ class _FakePreparer extends AcademicWebEntryPreparer {
   Future<AcademicWebEntryResult> prepare({
     String jsdm = 'xs',
     bool forceWebVpn = false,
+    bool forceDirect = false,
+    bool allowReverseFallback = true,
     CancelToken? cancelToken,
     Duration totalBudget = AcademicWebEntryPreparer.defaultTotalBudget,
   }) {

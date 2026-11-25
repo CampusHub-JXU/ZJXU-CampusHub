@@ -489,6 +489,222 @@ DateTime? parseSecondClassroomDate(Object? value) {
   return DateTime.tryParse(text)?.toLocal();
 }
 
+/// `POST /dekt/mobile/wdhd` 单条我的活动记录。
+///
+/// 服务端 `id` 为报名记录 ID，活动本体在 `hdjl` 字段内。
+class SecondClassroomMyActivityRecord {
+  const SecondClassroomMyActivityRecord({
+    required this.recordId,
+    required this.activity,
+    required this.statusLabel,
+    required this.hasCheckedIn,
+    required this.hasCheckedOut,
+    this.enrolledAt,
+    this.checkedInAt,
+    this.checkedOutAt,
+  });
+
+  final int recordId;
+  final SecondClassroomActivity activity;
+  final String statusLabel;
+  final bool hasCheckedIn;
+  final bool hasCheckedOut;
+  final DateTime? enrolledAt;
+
+  /// 签到 / 签退时间；服务端缺失时为 null，不影响布尔标记。
+  final DateTime? checkedInAt;
+  final DateTime? checkedOutAt;
+
+  factory SecondClassroomMyActivityRecord.fromJson(Map<String, dynamic> json) {
+    final hdjl = _mapValue(json['hdjl']) ?? _mapValue(json['hd']) ?? json;
+    final parsedActivity = SecondClassroomActivity.fromDetailJson(hdjl);
+    final shzt = _mapValue(json['shzt']);
+    final statusLabel = shzt != null
+        ? asString(shzt['label'], trim: true)
+        : asString(json['shzt'], trim: true);
+    final checkedIn = json['sfqd'] == true;
+    final checkedOut = json['sfqt'] == true;
+    final recordCredit = asDouble(json['xs']);
+    final activity = parsedActivity.copyWith(
+      isRegistered: true,
+      hasCheckedIn: checkedIn,
+      hasRetaken: checkedOut,
+      creditHours: recordCredit > 0 ? recordCredit : parsedActivity.creditHours,
+    );
+    return SecondClassroomMyActivityRecord(
+      recordId: asInt(json['id']),
+      activity: activity,
+      statusLabel: statusLabel.isEmpty ? '已报名' : statusLabel,
+      hasCheckedIn: checkedIn,
+      hasCheckedOut: checkedOut,
+      enrolledAt: parseSecondClassroomDate(json['bmsj'] ?? json['cjsj']),
+      checkedInAt: parseSecondClassroomDate(json['qdsj']),
+      checkedOutAt: parseSecondClassroomDate(json['qtsj']),
+    );
+  }
+}
+
+/// `POST /dekt/mobile/wdhd` 的单页结果：记录列表 + 分页元信息。
+///
+/// 分页字段与 `mobile/search` 同构（`pageIndex` / `pageSize` / `totalPages` /
+/// `count`）；部分接口把列表嵌在 `extend.list`、分页元信息仍在顶层。
+class SecondClassroomMyActivitiesPage {
+  const SecondClassroomMyActivitiesPage({
+    required this.items,
+    required this.pageIndex,
+    required this.pageSize,
+    required this.totalPages,
+    required this.count,
+  });
+
+  final List<SecondClassroomMyActivityRecord> items;
+  final int pageIndex;
+  final int pageSize;
+  final int totalPages;
+  final int count;
+
+  /// 是否还有后续页；分页元信息缺失（totalPages <= 0）时视为单页。
+  bool get hasMore => totalPages > 0 && pageIndex < totalPages;
+}
+
+class SecondClassroomCreditCategory {
+  const SecondClassroomCreditCategory({
+    required this.name,
+    required this.earned,
+    this.requiredHours = 0,
+  });
+
+  final String name;
+  final double earned;
+  final double requiredHours;
+}
+
+class SecondClassroomMySummary {
+  const SecondClassroomMySummary({
+    required this.totalHours,
+    required this.requiredHours,
+    required this.categories,
+    this.studentName = '',
+    this.collegeName = '',
+  });
+
+  final double totalHours;
+  final double requiredHours;
+  final List<SecondClassroomCreditCategory> categories;
+  final String studentName;
+  final String collegeName;
+
+  factory SecondClassroomMySummary.fromExtend(Map<String, dynamic> extend) {
+    final xsjg = extend['xsjg'];
+    final categories = <SecondClassroomCreditCategory>[];
+    var totalHours = asDouble(
+      extend['zjf'] ??
+          extend['ljzjf'] ??
+          extend['zxs'] ??
+          extend['yxxs'] ??
+          extend['totalXs'],
+    );
+    var requiredHours = asDouble(extend['yqxs'] ?? extend['zxf']);
+    var studentName = '';
+    var collegeName = '';
+
+    void appendCategoryList(Object? rawList) {
+      if (rawList is! List) return;
+      for (final raw in rawList.whereType<Map>()) {
+        final item = Map<String, dynamic>.from(raw);
+        final name = asString(
+          item['flmc'] ?? item['mc'] ?? item['name'],
+          trim: true,
+        );
+        final earned = asDouble(
+          item['jf'] ??
+              item['yxxs'] ??
+              item['xs'] ??
+              item['hdxs'] ??
+              item['score'],
+        );
+        final req = asDouble(
+          item['jfxz'] ?? item['yqxs'] ?? item['zdxs'] ?? item['minXs'],
+        );
+        if (name.isNotEmpty) {
+          categories.add(
+            SecondClassroomCreditCategory(
+              name: name,
+              earned: earned,
+              requiredHours: req,
+            ),
+          );
+        }
+      }
+    }
+
+    appendCategoryList(extend['sqbjfList']);
+
+    final userMap = _mapValue(extend['xs']) ?? _mapValue(extend['student']);
+    if (userMap != null) {
+      studentName = asString(userMap['xm'] ?? userMap['name'], trim: true);
+      collegeName = asString(
+        userMap['xymc'] ?? userMap['xy'] ?? userMap['college'],
+        trim: true,
+      );
+    }
+
+    if (xsjg is List) {
+      if (categories.isEmpty) {
+        appendCategoryList(xsjg);
+      }
+      if (totalHours <= 0 && categories.isNotEmpty) {
+        totalHours = categories.fold<double>(0, (sum, c) => sum + c.earned);
+      }
+      if (requiredHours <= 0 && categories.isNotEmpty) {
+        requiredHours = categories.fold<double>(
+          0,
+          (sum, c) => sum + c.requiredHours,
+        );
+      }
+    } else if (xsjg is Map) {
+      final map = Map<String, dynamic>.from(xsjg);
+      if (categories.isEmpty) {
+        appendCategoryList(map['fljfList']);
+      }
+      if (totalHours <= 0) {
+        totalHours = asDouble(
+          map['zjf'] ?? map['ljzjf'] ?? map['zxs'] ?? map['yxxs'] ?? map['xs'],
+        );
+      }
+      if (requiredHours <= 0) {
+        requiredHours = asDouble(map['yqxs'] ?? map['zxf']);
+      }
+      if (studentName.isEmpty) {
+        studentName = asString(map['xm'] ?? map['name'], trim: true);
+      }
+      if (collegeName.isEmpty) {
+        collegeName = asString(map['xymc'] ?? map['xy'], trim: true);
+      }
+    }
+
+    return SecondClassroomMySummary(
+      totalHours: totalHours,
+      requiredHours: requiredHours,
+      categories: categories,
+      studentName: studentName,
+      collegeName: collegeName,
+    );
+  }
+}
+
+class SecondClassroomEnrollmentActionResult {
+  const SecondClassroomEnrollmentActionResult({
+    required this.success,
+    required this.message,
+    this.needsLogin = false,
+  });
+
+  final bool success;
+  final String message;
+  final bool needsLogin;
+}
+
 List<SecondClassroomFilterOption> _filterOptionsFromStoredJson(Object? value) {
   if (value is! List) return const <SecondClassroomFilterOption>[];
   return value

@@ -11,8 +11,10 @@ import 'package:jxu_campus_hub/core/auth/academic_auth_guard.dart';
 import 'package:jxu_campus_hub/core/auth/auth_recovery_state_store.dart';
 import 'package:jxu_campus_hub/core/auth/auth_session_persistence.dart';
 import 'package:jxu_campus_hub/core/auth/automatic_login.dart';
+import 'package:jxu_campus_hub/core/auth/cas_routed_access.dart';
 import 'package:jxu_campus_hub/core/auth/connect_mode_resolver.dart';
 import 'package:jxu_campus_hub/core/auth/credential_store.dart';
+import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
 import 'package:jxu_campus_hub/core/cache/private_cache_store.dart';
 import 'package:jxu_campus_hub/core/network/dio_client.dart';
@@ -70,6 +72,7 @@ void main() {
       () => messenger.setMockMethodCallHandler(pathProviderChannel, null),
     );
     await resetTestEnvironment();
+    ConnectModeResolver.instance.directReachabilityChecker = () async => true;
     DioClient.instance.debugCookieDirectoryPathProvider = (folderName) async =>
         'test/$folderName';
     await DioClient.instance.ensureInitialized();
@@ -276,6 +279,14 @@ void main() {
       'webvpn mode uses the authenticated cookie client and proxy URL',
       () async {
         await loginAcademic('20250001');
+        ConnectModeResolver.instance.directVerdictChecker = (_) async =>
+            RouteVerdict.webVpnRedirected;
+        UnifiedAuthService.instance.debugSetSession(
+          active: true,
+          account: '20250001',
+        );
+        CasRoutedAccess.debugGatewayEnsurer = (_, _) async {};
+        addTearDown(() => CasRoutedAccess.debugGatewayEnsurer = null);
         ZhengfangAuth.instance.setMode(ZhengfangMode.webVpn);
         final endpointPath = Uri.parse(
           ZhengfangAuth.instance.buildPortalUrl('/cjcx/cjcx_cxDgXscj.html'),

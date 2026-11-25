@@ -22,6 +22,7 @@ import '../../../shared/widgets/plain_list.dart';
 import '../backup/backup_exporter.dart';
 import '../domain/practice_stats.dart';
 import '../domain/shuati_models.dart';
+import '../persistence/shuati_store.dart';
 import 'shuati_services.dart';
 
 class _BankEntry {
@@ -66,9 +67,28 @@ class _ShuatiNativeHomePageState extends State<ShuatiNativeHomePage> {
     super.dispose();
   }
 
+  /// 首次进入（且原生库为空、未完成迁移）时自动从旧版 WebView 迁移；
+  /// 迁移有实际导入内容时提示题库 / 题目数。禁用（测试）或失败时静默走正常加载。
+  Future<void> _migrateLegacyIfNeeded(ShuatiStore store) async {
+    final migration = ShuatiServices.instance.createLegacyMigration(store);
+    if (migration == null) return;
+    final outcome = await migration.migrateIfNeeded();
+    if (!mounted || !outcome.migratedWithData) return;
+    final report = outcome.report;
+    if (report == null) return;
+    final total = report.banks.added + report.questions.added;
+    if (total == 0) return;
+    AppFeedback.toast(
+      context,
+      '已从旧版迁移 ${report.banks.added} 个题库、${report.questions.added} 道题目',
+    );
+  }
+
   Future<void> _load() async {
     try {
       final store = await ShuatiServices.instance.store();
+      await _migrateLegacyIfNeeded(store);
+      if (!mounted) return;
       final banks = await store.banks.getAllBanks();
       final records = await store.records.getAll();
       final lastSession = await store.sessions.load();
