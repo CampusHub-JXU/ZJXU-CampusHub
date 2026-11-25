@@ -4,15 +4,18 @@
 /// → `commitPreview` 落库 → 类型化报告与快捷开练。
 library;
 
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../../core/theme/app_design_tokens.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../shared/widgets/app_app_bar.dart';
+import '../../../shared/widgets/app_feedback.dart';
 import '../../../shared/widgets/plain_list.dart';
 import '../ai/shuati_ai_models.dart';
 import '../domain/shuati_models.dart';
+import '../import/ai_convert_prompt.dart';
 import '../import/import_models.dart';
 import '../import/import_service.dart';
 import '../persistence/shuati_store.dart';
@@ -182,6 +185,32 @@ class _ShuatiNativeImportPageState extends State<ShuatiNativeImportPage> {
     });
   }
 
+  Future<void> _copyAiPrompt() async {
+    try {
+      await Clipboard.setData(
+        const ClipboardData(text: kShuatiAiConvertPrompt),
+      );
+      if (!mounted) return;
+      AppFeedback.toast(context, '已复制 AI 转换提示词');
+    } on PlatformException {
+      if (!mounted) return;
+      AppFeedback.toast(context, '复制失败，请查看内容后手动复制');
+    }
+  }
+
+  Future<void> _showAiPromptSheet() {
+    return AppFeedback.sheet<void>(
+      context,
+      scrollControlled: true,
+      builder: (sheetContext) => _AiConvertPromptSheet(
+        onCopy: () {
+          Navigator.of(sheetContext).pop();
+          _copyAiPrompt();
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final report = _report;
@@ -262,6 +291,13 @@ class _ShuatiNativeImportPageState extends State<ShuatiNativeImportPage> {
         if (_busy && _step == 0) ...[
           const SizedBox(height: AppSpacing.md),
           const LinearProgressIndicator(),
+        ],
+        if (_step == 0 && _report == null) ...[
+          const SizedBox(height: AppSpacing.xl),
+          _AiConvertHelperSection(
+            onCopy: _copyAiPrompt,
+            onView: _showAiPromptSheet,
+          ),
         ],
       ],
     );
@@ -503,6 +539,131 @@ class ShuatiImportReportView extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+/// 外部 AI 题库转换辅助区：引导用户将原始题库交给外部 AI 生成标准 JSON。
+class _AiConvertHelperSection extends StatelessWidget {
+  const _AiConvertHelperSection({required this.onCopy, required this.onView});
+
+  final VoidCallback onCopy;
+  final VoidCallback onView;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = context.appText;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const PlainSectionHeader('外部 AI 题库转换'),
+        PlainListGroup(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: kPlainListRowInset,
+                vertical: AppSpacing.md,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '支持将 PDF / Word / 截图发给豆包工作、DeepSeek 等外部 AI，转为标准 .json 题库后再回来导入。',
+                    style: text.secondary,
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  Wrap(
+                    spacing: AppSpacing.sm,
+                    runSpacing: AppSpacing.xs,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: onCopy,
+                        icon: const Icon(Icons.content_copy_outlined, size: 18),
+                        label: const Text('一键复制提示词'),
+                      ),
+                      TextButton(onPressed: onView, child: const Text('查看内容')),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// 只读展示外部 AI 转换提示词全文的底部弹层。
+class _AiConvertPromptSheet extends StatelessWidget {
+  const _AiConvertPromptSheet({required this.onCopy});
+
+  final VoidCallback onCopy;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = context.appText;
+    final cs = Theme.of(context).colorScheme;
+    final maxHeight = MediaQuery.sizeOf(context).height * 0.82;
+    return SafeArea(
+      top: false,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxHeight),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.pageMargin,
+            0,
+            AppSpacing.pageMargin,
+            AppSpacing.lg,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('外部 AI 转换提示词', style: text.section),
+              const SizedBox(height: AppSpacing.xs),
+              Text('连同原始题库文件一并发送给豆包工作、DeepSeek 等 AI 助手。', style: text.meta),
+              const SizedBox(height: AppSpacing.md),
+              Flexible(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerHighest.withValues(alpha: 0.45),
+                    borderRadius: AppRadius.cardBorder,
+                  ),
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    child: SelectableText(
+                      kShuatiAiConvertPrompt,
+                      style: text.meta.copyWith(
+                        color: cs.onSurface,
+                        height: 1.55,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: onCopy,
+                      icon: const Icon(Icons.content_copy_outlined, size: 18),
+                      label: const Text('复制全部提示词'),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('关闭'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
