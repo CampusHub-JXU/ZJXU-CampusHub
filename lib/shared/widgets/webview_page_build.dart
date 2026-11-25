@@ -242,7 +242,7 @@ extension _WebViewPageBuildExtension on _WebViewPageState {
         children: [
           Icon(Icons.wifi_off, size: 64, color: cs.onSurfaceVariant),
           const SizedBox(height: 16),
-          const Text('页面加载失败'),
+          Text(appendMaintenanceHint('页面加载失败'), textAlign: TextAlign.center),
           const SizedBox(height: 12),
           FilledButton(onPressed: _reloadCurrentPage, child: const Text('重试')),
         ],

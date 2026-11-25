@@ -8,6 +8,7 @@ import '../../core/auth/academic_web_entry_preparer.dart';
 import '../../core/auth/unified_auth.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/logging/app_logger.dart';
+import '../../core/maintenance_window.dart';
 import '../../core/network/webview_direct_route.dart';
 import 'app_error_view.dart';
 import 'app_feedback.dart';
@@ -577,7 +578,9 @@ class AcademicWebEntryPageState extends State<AcademicWebEntryPage> {
       case AcademicEntryPageStatus.unavailable:
         return _scaffold(
           AppErrorView(
-            message: _errorMessage.isEmpty ? '暂时无法连接教务系统，请稍后重试' : _errorMessage,
+            message: appendMaintenanceHint(
+              _errorMessage.isEmpty ? '暂时无法连接教务系统，请稍后重试' : _errorMessage,
+            ),
             onRetry: _onManualRetry,
           ),
         );

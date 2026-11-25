@@ -5,6 +5,7 @@ import '../../core/academic/academic_exceptions.dart';
 import '../../core/auth/cas_auth_broker.dart';
 import '../../core/auth/unified_auth.dart';
 import '../../core/auth/zhengfang_auth.dart';
+import '../../core/maintenance_window.dart';
 import '../../features/changxing_jiada/changxing_jiada_exceptions.dart';
 
 /// 统一网络异常 Toast 提示（PRD FR-3）。
@@ -17,13 +18,19 @@ class NetworkErrorToast {
   static const _dedupeWindow = Duration(seconds: 5);
   static final Map<NetworkErrorKind, DateTime> _lastShownAt = {};
 
+  /// 测试用时间注入；为 null 时使用真实本地时间。
+  @visibleForTesting
+  static DateTime Function()? debugNow;
+
+  static DateTime _now() => debugNow?.call() ?? DateTime.now();
+
   /// 根据 [error] 分类并展示对应 Toast。
   ///
   /// 当 [BuildContext] 没有 [ScaffoldMessenger] 时静默跳过（如测试或未挂载场景）。
   static void show(BuildContext context, Object? error) {
     final kind = classify(error);
-    final message = _messageOf(kind);
-    final now = DateTime.now();
+    final now = _now();
+    final message = resolveMessage(kind, now: now);
     final last = _lastShownAt[kind];
     if (last != null && now.difference(last) < _dedupeWindow) return;
     _lastShownAt[kind] = now;
@@ -37,6 +44,16 @@ class NetworkErrorToast {
         behavior: SnackBarBehavior.floating,
       ),
     );
+  }
+
+  /// 解析 [kind] 对应的最终文案：维护时段内对请求失败类文案追加
+  /// 维护提示（见 [appendMaintenanceHint]），白天原样返回。
+  ///
+  /// `proxyConflict` 是用户本机环境冲突，与学校系统维护无关，不追加。
+  static String resolveMessage(NetworkErrorKind kind, {DateTime? now}) {
+    final message = _messageOf(kind);
+    if (kind == NetworkErrorKind.proxyConflict) return message;
+    return appendMaintenanceHint(message, now: now);
   }
 
   /// 将异常分类为 [NetworkErrorKind]，便于测试与复用。

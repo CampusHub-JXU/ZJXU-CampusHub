@@ -8,6 +8,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import '../../core/auth/cas_auth_broker.dart';
 import '../../core/auth/unified_auth.dart';
 import '../../core/logging/app_logger.dart';
+import '../../core/maintenance_window.dart';
 import 'auth_required_view.dart';
 import 'app_error_view.dart';
 import 'login_shell.dart';
@@ -535,7 +536,7 @@ class UnifiedAuthProtectedWebViewPageState
       if (_preparationFailed) {
         return _buildScaffold(
           AppErrorView(
-            message: '暂时无法连接服务，请切换网络后重试',
+            message: appendMaintenanceHint('暂时无法连接服务，请切换网络后重试'),
             onRetry: _resolveInitialAuthentication,
           ),
         );
