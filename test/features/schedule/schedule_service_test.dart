@@ -87,6 +87,305 @@ void main() {
     );
   }
 
+  group('实验附表同步', () {
+    const context = ScheduleTermContext(academicYear: 2025, term: 12);
+    const student = '20230001';
+    const mainPath = '/jwglxt/kbcx/xskbcx_cxXsKb.html';
+    const headers = {
+      Headers.contentTypeHeader: ['application/json'],
+    };
+
+    Future<ScheduleLoadResult> refresh(MockHttpClientAdapter adapter) async {
+      await DioClient.instance.ensureInitialized();
+      DioClient.instance.dio.httpClientAdapter = adapter;
+      return ScheduleService.instance.loadScheduleSnapshot(
+        studentId: student,
+        termContext: context,
+        forceRefresh: true,
+      );
+    }
+
+    test('同步多页：补漏、逐周去重，保留同名理论及其余周次', () async {
+      loginAs(student);
+      final pages = <int>[];
+      final adapter = MockHttpClientAdapter()
+        ..registerJson(
+          'POST',
+          mainPath,
+          _scheduleJson([
+            {..._courseJson('光学基础'), 'xslxbj': '◆', 'kch': 'COURSE1'},
+            {
+              ..._courseJson('光学基础'),
+              'xslxbj': '◇',
+              'kch': 'COURSE1',
+              'zcd': '1-5周(单)',
+              'cdmc': '未排地点',
+            },
+            {
+              ..._courseJson('界面工程'),
+              'xslxbj': '◇',
+              'kch': 'COURSE2',
+              'zcd': '3周',
+            },
+          ]),
+        )
+        ..register('POST', _labPath, (options) async {
+          expect(options.uri.queryParameters, {
+            'doType': 'query',
+            'gnmkdm': 'N2151',
+            'su': student,
+          });
+          final form = Uri.splitQueryString(options.data as String);
+          expect(form['xnm'], '2025');
+          expect(form['xqm'], '12');
+          expect(form['kzlx'], 'ck');
+          final page = int.parse(form['queryModel.currentPage']!);
+          pages.add(page);
+          final rows = page == 1
+              ? [
+                  _labRow(
+                    '1',
+                    'COURSE1',
+                    '光学基础',
+                    '光路调整',
+                    '星期一 [1-2节 3周] 光学室',
+                    '光学室//',
+                  ),
+                ]
+              : [
+                  _labRow(
+                    '2',
+                    'COURSE2',
+                    '界面工程',
+                    '基础布局',
+                    '星期一 [1-2节 3周] 计算机房',
+                    '计算机房/实验楼201/测试校区',
+                  ),
+                  _labRow('3', 'COURSE3', '嵌入式实践', '串口通信', '星期六 [8-9节 6周] 机房'),
+                ];
+          return ResponseBody.fromString(
+            jsonEncode(_labPage(page, 2, 3, rows)),
+            200,
+            headers: headers,
+          );
+        });
+      final result = await refresh(adapter);
+      expect(result.message, isNull);
+      expect(pages, [1, 2]);
+      final snapshot = result.snapshot!;
+      expect(snapshot.labScheduleSynced, isTrue);
+      final week3 = buildEffectiveWeekCourses(
+        courses: snapshot.courses,
+        week: 3,
+      );
+      expect(week3.where((c) => c.typeSymbol == '◆').single.courseName, '光学基础');
+      final physics = week3
+          .where((c) => c.courseName == '光学基础' && c.typeSymbol == '◇')
+          .single;
+      expect(
+        (physics.classroom, physics.labProject, physics.fromLabSchedule),
+        ('光学室', '光路调整', true),
+      );
+      final layout = week3.where((c) => c.courseName == '界面工程').single;
+      expect((layout.classroom, layout.campus), ('实验楼201', '测试校区'));
+      final remaining = snapshot.courses.singleWhere(
+        (c) =>
+            c.courseCode == 'COURSE1' &&
+            c.typeSymbol == '◇' &&
+            !c.fromLabSchedule,
+      );
+      expect(
+        [
+          for (var week = 1; week <= 5; week++)
+            if (remaining.isInWeek(week)) week,
+        ],
+        [1, 5],
+      );
+      final extra = snapshot.courses.singleWhere(
+        (c) => c.courseName == '嵌入式实践',
+      );
+      expect(
+        (extra.weekday, extra.startLesson, extra.endLesson, extra.isInWeek(6)),
+        (6, 8, 9, true),
+      );
+      final restored = ScheduleCacheSnapshot.fromJson(snapshot.toJson());
+      expect(restored.labScheduleSynced, isTrue);
+      expect(
+        restored.courses
+            .where((c) => c.fromLabSchedule)
+            .map((c) => c.labProject),
+        ['光路调整', '基础布局', '串口通信'],
+      );
+      expect(jsonEncode(snapshot.toJson()), isNot(contains('xmz_id')));
+    });
+
+    test('只有附表的学期仍显示课程；分页未取全保留完整缓存', () async {
+      loginAs(student);
+      final completeRow = _labRow(
+        '1',
+        'COURSE1',
+        '实验实训',
+        '完整结果',
+        '星期一 [1-2节 3周]',
+      );
+      final initial = await refresh(
+        MockHttpClientAdapter()
+          ..registerJson('POST', mainPath, _scheduleJson([]))
+          ..registerJson('POST', _labPath, _labPage(1, 1, 1, [completeRow])),
+      );
+      expect(initial.snapshot?.courses.single.labProject, '完整结果');
+      var pages = 0;
+      var recoveries = 0;
+      AcademicAuthGuard.debugAutomaticLoginOverride =
+          (domain, {expectedAccount}) async {
+            recoveries++;
+            return AutomaticLoginOutcome.manualRequired;
+          };
+      final partial = await refresh(
+        MockHttpClientAdapter()
+          ..registerJson('POST', mainPath, _scheduleJson([_courseJson('新的主表')]))
+          ..register('POST', _labPath, (_) async {
+            if (++pages == 1) {
+              return ResponseBody.fromString(
+                jsonEncode(
+                  _labPage(1, 2, 2, [
+                    {...completeRow, 'xmmc': '不完整结果'},
+                  ]),
+                ),
+                200,
+                headers: headers,
+              );
+            }
+            return ResponseBody.fromString(
+              '{"code":901}',
+              901,
+              headers: headers,
+            );
+          }),
+      );
+      expect(pages, 2);
+      expect(recoveries, 0);
+      expect(ZhengfangAuth.instance.isLoggedIn, isTrue);
+      expect(partial.requiresLogin, isFalse);
+      expect(partial.message, contains('实验课表未能完整更新'));
+      expect(partial.didRefresh, isFalse);
+      expect(partial.snapshot?.courses.single.labProject, '完整结果');
+      expect(
+        ScheduleService.instance
+            .preferredSnapshot(studentId: student, termContext: context)
+            ?.courses
+            .single
+            .labProject,
+        '完整结果',
+      );
+    });
+
+    test('确认附表为空仍正常同步；无完整缓存时附表错误只展示主表', () async {
+      loginAs(student);
+      final fallback = await refresh(
+        MockHttpClientAdapter()
+          ..registerJson('POST', mainPath, _scheduleJson([_courseJson('原主表')]))
+          ..registerJson(
+            'POST',
+            _labPath,
+            _labPage(1, 1, 2, [
+              _labRow('1', 'COURSE1', '不完整实验', '实验项目', '星期日 [8节 5周]'),
+            ]),
+          ),
+      );
+      expect(fallback.snapshot?.courses.single.courseName, '原主表');
+      expect(fallback.snapshot?.labScheduleSynced, isFalse);
+      expect(fallback.message, contains('实验课表未能完整更新'));
+      final empty = await refresh(
+        MockHttpClientAdapter()
+          ..registerJson('POST', mainPath, _scheduleJson([_courseJson('新主表')]))
+          ..registerJson('POST', _labPath, _labPage(0, 0, 0, [])),
+      );
+      expect(empty.message, isNull);
+      expect(empty.snapshot?.courses.single.courseName, '新主表');
+      expect(empty.snapshot?.labScheduleSynced, isTrue);
+    });
+
+    test('旧版缓存首次打开会补拉实验附表，无需手动刷新', () async {
+      loginAs(student);
+      final snapshot = ScheduleCacheSnapshot(
+        studentId: student,
+        termContext: context,
+        courses: [CourseEntry.fromJson(_courseJson('旧缓存课程'))],
+        scheduleUpdatedAt: DateTime.now(),
+      );
+      ScheduleService.instance.debugSetSnapshot(
+        ScheduleCacheSnapshot.fromJson(
+          snapshot.toJson()..remove('labScheduleSynced'),
+        ),
+      );
+      final adapter = MockHttpClientAdapter()
+        ..registerJson('POST', mainPath, _scheduleJson([_courseJson('主表课程')]))
+        ..registerJson(
+          'POST',
+          _labPath,
+          _labPage(1, 1, 1, [
+            _labRow('1', 'COURSE1', '选修实验', '状态机', '星期日 [8节 5周]'),
+          ]),
+        );
+      await DioClient.instance.ensureInitialized();
+      DioClient.instance.dio.httpClientAdapter = adapter;
+      final service = ScheduleService.instance;
+      final migrated = await service.loadScheduleSnapshot(
+        studentId: student,
+        termContext: context,
+      );
+      expect(migrated.didRefresh, isTrue);
+      expect(migrated.snapshot?.courses.map((c) => c.courseName), [
+        '主表课程',
+        '选修实验',
+      ]);
+      final cached = await service.loadScheduleSnapshot(
+        studentId: student,
+        termContext: context,
+      );
+      expect(cached.didRefresh, isFalse);
+      expect(adapter.requestLog, ['POST $mainPath', 'POST $_labPath']);
+    });
+
+    test('附表请求期间换号，迟到响应既不展示也不落盘', () async {
+      loginAs(student);
+      final inFlight = Completer<void>();
+      final response = Completer<ResponseBody>();
+      final adapter = MockHttpClientAdapter()
+        ..registerJson('POST', mainPath, _scheduleJson([_courseJson('原账户课表')]))
+        ..register('POST', _labPath, (_) {
+          inFlight.complete();
+          return response.future;
+        });
+      final pending = refresh(adapter);
+      await inFlight.future;
+      loginAs('20230002');
+      response.complete(
+        ResponseBody.fromString(
+          jsonEncode(
+            _labPage(1, 1, 1, [
+              _labRow('1', 'COURSE1', '原账户实验', '实验项目', '星期三 [8节 5周]'),
+            ]),
+          ),
+          200,
+          headers: headers,
+        ),
+      );
+      final result = await pending;
+      expect(result.snapshot, isNull);
+      expect(ZhengfangAuth.instance.verifiedStudentId, '20230002');
+      loginAs(student);
+      expect(
+        ScheduleService.instance.preferredSnapshot(
+          studentId: student,
+          termContext: context,
+        ),
+        isNull,
+      );
+    });
+  });
+
   group('ScheduleCacheSnapshot', () {
     test('round-trips course and change rule data', () {
       final snapshot = ScheduleCacheSnapshot(
@@ -1240,6 +1539,7 @@ void main() {
             },
           ],
         })
+        ..registerJson('POST', _labPath, _labPage(0, 0, 0, []))
         ..registerText(
           'POST',
           '/jwglxt/xtgl/index_cxDbsy.html',
@@ -2502,4 +2802,35 @@ Map<String, dynamic> _courseJson(
   'cdmc': classroom,
   'xqmc': '嘉兴校区',
   'xslxbj': '',
+};
+
+const _labPath = '/jwglxt/xssygl/sykbcx_cxSykbcxxsIndex.html';
+
+Map<String, dynamic> _labPage(
+  int page,
+  int pages,
+  int rows,
+  List<Map<String, dynamic>> items,
+) => {
+  'currentPage': '$page',
+  'totalPage': pages,
+  'totalResult': rows,
+  'items': items,
+};
+
+Map<String, dynamic> _labRow(
+  String id,
+  String code,
+  String course,
+  String project,
+  String slot, [
+  String site = '',
+]) => {
+  'xmz_id': id,
+  'kch': code,
+  'kcmc': course,
+  'xmmc': project,
+  'sksjdd': slot,
+  'dycdxq': site,
+  'jsxm': '测试教师',
 };

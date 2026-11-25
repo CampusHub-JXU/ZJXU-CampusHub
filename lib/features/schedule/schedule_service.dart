@@ -17,12 +17,14 @@ import '../../core/academic/schedule_cache_snapshot.dart';
 import '../../core/academic/schedule_change_rule.dart';
 import '../../core/academic/schedule_date_override.dart';
 import '../../core/academic/schedule_model.dart';
+import '../../core/academic/schedule_constants.dart';
 import '../../core/semester/schedule_term_context.dart';
 
 export '../../core/academic/schedule_change_rule.dart';
 
 part 'schedule_service_change_parser.dart';
 part 'schedule_service_helpers.dart';
+part 'schedule_service_lab.dart';
 
 class ScheduleRequestException extends AcademicRequestException {
   const ScheduleRequestException(super.message);
@@ -77,6 +79,7 @@ class ScheduleService {
 
   static final ScheduleService instance = ScheduleService._();
 
+  static const _labRefreshWarning = '实验课表未能完整更新，请稍后刷新';
   static const _cacheStorageKey = 'zjxu_schedule_cache_snapshots_v1';
   // Keep a conservative pre-semester window so advance notices are not hidden.
   // This affects display only; it does not prove a message's term or alter courses.
@@ -298,11 +301,16 @@ class ScheduleService {
         _snapshots[cacheKey] ??
         ScheduleCacheSnapshot.empty(studentId: studentId, termContext: context);
 
+    // 升级前的缓存没有附表状态，允许首次打开时刷新，不要求手动清缓存。
+    final shouldMigrateLabCache = cachedSnapshot.labScheduleSynced == null;
     final shouldRefreshChangeRules =
         allowChangeRules &&
         (forceRefresh ||
             cachedSnapshot.needsChangeRulesRefresh(DateTime.now()));
-    if (!forceRefresh && cachedSnapshot.hasData && !shouldRefreshChangeRules) {
+    if (!forceRefresh &&
+        !shouldMigrateLabCache &&
+        cachedSnapshot.hasData &&
+        !shouldRefreshChangeRules) {
       return ScheduleLoadResult(
         snapshot: _snapshotForDisplay(cachedSnapshot),
         usedCache: true,
@@ -310,7 +318,9 @@ class ScheduleService {
     }
 
     final shouldRefreshSchedule =
-        forceRefresh || cachedSnapshot.needsScheduleRefresh(DateTime.now());
+        forceRefresh ||
+        shouldMigrateLabCache ||
+        cachedSnapshot.needsScheduleRefresh(DateTime.now());
     final needsRefresh = shouldRefreshSchedule || shouldRefreshChangeRules;
 
     if (!needsRefresh) {
@@ -350,7 +360,7 @@ class ScheduleService {
   /// [AcademicAuthGuard.guardRequest]，因此不会触发第二次会话恢复 / 静默
   /// 自动登录（OCR）：
   /// - 优先使用经 owner + revision 核验、且展示态确有数据的本地缓存；
-  /// - 缓存无数据时才做至多一次不带 guard 的原始查询；
+  /// - 缓存无数据时才查一次主课表及有界分页附表，均不带 guard；
   /// - 原始查询命中认证失效 / 身份变化一律 fail closed：不展示、不落盘、
   ///   也**不**二次 `markLoggedOut`（当前学期主 POST 的 guard 已处理终态）。
   Future<ScheduleLoadResult> _loadPreviousTermFallback({
@@ -386,7 +396,16 @@ class ScheduleService {
       if (!_isIdentityCurrent(owner, revision) || owner != studentId) {
         return _identityChangedResult();
       }
-      final courses = _parseScheduleCourses(raw);
+      final main = _parseScheduleCourses(raw);
+      final labs = await _loadLabSchedule(
+        mode: route.mode,
+        studentId: studentId,
+        revision: revision,
+        year: context.academicYear,
+        term: context.term,
+      );
+      if (!_isIdentityCurrent(owner, revision)) return _identityChangedResult();
+      final courses = labs == null ? main : _mergeLabSchedule(main, labs);
       if (courses.isEmpty) {
         return const ScheduleLoadResult();
       }
@@ -394,6 +413,7 @@ class ScheduleService {
         studentId: studentId,
         termContext: context,
         courses: courses,
+        labScheduleSynced: labs != null,
         scheduleUpdatedAt: DateTime.now(),
       );
       final persisted = await _persistSnapshot(
@@ -404,6 +424,7 @@ class ScheduleService {
       if (!persisted) return _identityChangedResult();
       return ScheduleLoadResult(
         snapshot: _snapshotForDisplay(snapshot),
+        message: labs == null ? _labRefreshWarning : null,
         didRefresh: true,
         settledRevision: revision,
       );
@@ -436,7 +457,7 @@ class ScheduleService {
   ///
   /// 身份修订：只解析 guard 返回的、绑定已验证 account/revision 的响应。
   /// 自动恢复后的重试使用真实 receipt 证明所属会话；外部重登、换号或登出
-  /// 造成身份变化则拒绝迟到响应，不在 guard 之后追加查询 POST。
+  /// 造成身份变化则拒绝迟到响应。附表查询沿用已验证的身份和路线，不另起 guard。
   Future<List<CourseEntry>> fetchSchedule(
     String studentId,
     int year,
@@ -445,11 +466,8 @@ class ScheduleService {
     return (await _fetchScheduleForIdentity(studentId, year, term)).courses;
   }
 
-  Future<({List<CourseEntry> courses, int revision})> _fetchScheduleForIdentity(
-    String studentId,
-    int year,
-    int term,
-  ) async {
+  Future<({List<CourseEntry> courses, int revision, bool labComplete})>
+  _fetchScheduleForIdentity(String studentId, int year, int term) async {
     final identity = _currentIdentity();
     if (identity == null || identity.owner != studentId) {
       throw const ScheduleAuthExpiredException();
@@ -460,12 +478,22 @@ class ScheduleService {
       throw const ScheduleAuthExpiredException();
     }
 
+    late ZhengfangMode settledMode;
     AcademicGuardedResponse<dynamic> guarded;
     try {
-      guarded = await _guardedSchedulePost(
-        studentId: studentId,
-        year: year,
-        term: term,
+      guarded = await AcademicAuthGuard.guardRoutedQuery<dynamic>(
+        owner: studentId,
+        authExpiredException: const ScheduleAuthExpiredException(),
+        request: (mode) async {
+          final response = await _postScheduleQuery(
+            mode: mode,
+            studentId: studentId,
+            year: year,
+            term: term,
+          );
+          settledMode = mode;
+          return response;
+        },
       );
     } on AcademicAuthRecoveryPendingException {
       rethrow;
@@ -481,26 +509,23 @@ class ScheduleService {
         !_isIdentityCurrent(studentId, guarded.revision)) {
       throw const ScheduleAuthExpiredException();
     }
-    return (
-      courses: _parseScheduleCourses(guarded.response),
-      revision: guarded.revision,
-    );
-  }
-
-  Future<AcademicGuardedResponse<dynamic>> _guardedSchedulePost({
-    required String studentId,
-    required int year,
-    required int term,
-  }) => AcademicAuthGuard.guardRoutedQuery<dynamic>(
-    owner: studentId,
-    authExpiredException: const ScheduleAuthExpiredException(),
-    request: (mode) => _postScheduleQuery(
-      mode: mode,
+    final main = _parseScheduleCourses(guarded.response);
+    final labs = await _loadLabSchedule(
+      mode: settledMode,
       studentId: studentId,
+      revision: guarded.revision,
       year: year,
       term: term,
-    ),
-  );
+    );
+    if (!_isIdentityCurrent(studentId, guarded.revision)) {
+      throw const ScheduleAuthExpiredException();
+    }
+    return (
+      courses: labs == null ? main : _mergeLabSchedule(main, labs),
+      revision: guarded.revision,
+      labComplete: labs != null,
+    );
+  }
 
   /// 每次调用都按当前模式重建 URL / Referer（guard 恢复可能切换直连/WebVPN）。
   Future<Response<dynamic>> _postScheduleQuery({
@@ -510,15 +535,7 @@ class ScheduleService {
     required int term,
   }) {
     final auth = ZhengfangAuth.instance;
-    final referer = auth.buildPortalUrl(
-      '/kbcx/xskbcx_cxXskbcxIndex.html',
-      mode: mode,
-      queryParameters: {
-        'gnmkdm': 'N2151',
-        'layout': 'default',
-        'su': studentId,
-      },
-    );
+    final referer = _scheduleReferer(auth, mode, studentId);
     return auth
         .academicDioFor(mode)
         .post<dynamic>(
@@ -533,6 +550,16 @@ class ScheduleService {
           ),
         );
   }
+
+  String _scheduleReferer(
+    ZhengfangAuth auth,
+    ZhengfangMode mode,
+    String studentId,
+  ) => auth.buildPortalUrl(
+    '/kbcx/xskbcx_cxXskbcxIndex.html',
+    mode: mode,
+    queryParameters: {'gnmkdm': 'N2151', 'layout': 'default', 'su': studentId},
+  );
 
   List<CourseEntry> _parseScheduleCourses(Response<dynamic> resp) {
     final statusCode = resp.statusCode ?? 0;
@@ -931,11 +958,16 @@ class ScheduleService {
           return _identityChangedResult();
         }
         expectedRevision = settled.revision;
-        nextSnapshot = nextSnapshot.copyWith(
-          courses: settled.courses,
-          scheduleUpdatedAt: DateTime.now(),
-        );
-        didRefresh = true;
+        if (!settled.labComplete) warnings.add(_labRefreshWarning);
+        // 附表失败时不以部分数据覆盖已经取全的课表。
+        if (settled.labComplete || existingSnapshot.labScheduleSynced != true) {
+          nextSnapshot = nextSnapshot.copyWith(
+            courses: settled.courses,
+            scheduleUpdatedAt: DateTime.now(),
+            labScheduleSynced: settled.labComplete,
+          );
+          didRefresh = true;
+        }
       } on ScheduleAuthExpiredException catch (error) {
         // guard 内部终态已 markLoggedOut；此处不得二次标记，也绝不登出新账号。
         // 认证过期无法安全区分主动退出与安全 owner，保守隐藏旧课表。

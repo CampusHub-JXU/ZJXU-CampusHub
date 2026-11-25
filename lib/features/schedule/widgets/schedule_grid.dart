@@ -80,13 +80,16 @@ class ScheduleGrid extends StatefulWidget {
   static List<CourseEntry> mergeAdjacentCourses(List<CourseEntry> courses) {
     if (courses.length <= 1) return courses;
 
-    // Group by courseName (already filtered to same weekday by caller)
-    final groups = <String, List<CourseEntry>>{};
-    for (final c in courses) {
-      (groups[c.courseName] ??= []).add(c);
-    }
-
+    // 实验附表按项目给出明确的节次，不应与同名课或相邻项目拼接。
+    final groups = <(String, String), List<CourseEntry>>{};
     final merged = <CourseEntry>[];
+    for (final c in courses) {
+      if (c.fromLabSchedule) {
+        merged.add(c);
+      } else {
+        (groups[(c.courseName, c.typeSymbol)] ??= []).add(c);
+      }
+    }
     for (final group in groups.values) {
       if (group.length == 1) {
         merged.add(group.first);
@@ -115,6 +118,9 @@ class ScheduleGrid extends StatefulWidget {
                 : next.classroom,
             campus: current.campus,
             typeSymbol: current.typeSymbol,
+            courseCode: current.courseCode,
+            hasScheduleChange:
+                current.hasScheduleChange || next.hasScheduleChange,
           );
         } else {
           merged.add(current);
@@ -135,13 +141,15 @@ class ScheduleGrid extends StatefulWidget {
   ) {
     final currentKeys = <String>{};
     for (final c in currentWeekCourses) {
-      currentKeys.add('${c.courseName}|${c.startLesson}|${c.endLesson}');
+      currentKeys.add(
+        '${c.courseName}|${c.typeSymbol}|${c.startLesson}|${c.endLesson}',
+      );
     }
 
     final seen = <String>{};
     final deduped = otherCourses.where((course) {
       final key =
-          '${course.courseName}|${course.startLesson}|${course.endLesson}';
+          '${course.courseName}|${course.typeSymbol}|${course.startLesson}|${course.endLesson}';
       if (currentKeys.contains(key)) return false;
       return seen.add(key);
     }).toList();

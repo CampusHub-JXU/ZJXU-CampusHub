@@ -148,6 +148,13 @@ class ScheduleCourseCell extends StatelessWidget {
                     icon: Icons.calendar_view_week,
                     text: '周次：${course.weekRange}',
                   ),
+                  if (course.labProject.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    _DetailRow(
+                      icon: Icons.science_outlined,
+                      text: '实验项目：${course.labProject}',
+                    ),
+                  ],
                   if (override != null) ...[
                     const SizedBox(height: 12),
                     _DetailRow(
