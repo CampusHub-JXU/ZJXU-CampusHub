@@ -55,7 +55,7 @@ internal fun runContractTests() {
         "r2 missing apk suffix" to "https://download.fhfanshu.xyz/v1/app-release",
         "r2 non-apk" to "https://download.fhfanshu.xyz/v1/app-release.zip",
         "github missing apk suffix" to gh.removeSuffix(".apk"),
-        "github wrong owner" to gh.replace("FHfanshu", "someone"),
+        "github wrong owner" to gh.replace("CampusHub-JXU", "someone"),
         "github wrong repo" to gh.replace("ZJXU-CampusHub", "Other"),
         "github extra segment" to gh.replace("/v1.2.3/", "/x/v1.2.3/"),
         "github not release download" to gh.replace("/releases/download/", "/archive/"),
