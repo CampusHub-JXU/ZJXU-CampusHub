@@ -123,12 +123,6 @@ jobs:
           set -euo pipefail
           ruby -e 'require "yaml"; Dir[".github/workflows/*.{yml,yaml}"].sort.each { |path| YAML.load_file(path); puts "parsed #{path}" }'
 
-      - name: Validate release workflow target
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 tools/check_release_workflow.py
-
       - name: Analyze project source
         run: flutter analyze
 

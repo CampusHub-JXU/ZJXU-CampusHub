@@ -1,68 +1,68 @@
-# JXU-CampusHub
+# JXU CampusHub
 
-嘉兴大学校园应用， Vibecoding。
+嘉兴大学 CampusHub 是一个非官方校园服务聚合 App，把课表、成绩、考试、校园卡、电费、通知、第二课堂等常用校园功能放进同一个 Flutter 客户端。
 
-一个把课表、成绩、校园卡、服务大厅什么的一堆东西放到同一个 App 里的 Flutter 项目。
+> 本项目不是学校官方应用，仅供学习与交流使用。学校系统接口变化可能导致部分功能失效。
 
-## Quick Start
+## 数据与隐私
 
-### 1. 准备环境
+- 纯本地客户端：没有独立业务后端，也不通过第三方服务器代收或代存学号、密码。
+- 登录凭据和会话数据保存在用户自己的设备上；应用直接连接学校相关服务。
+- 仓库不包含签名密钥、发布凭据或真实学生数据。
+
+## 开发环境
 
 - Flutter 3.50.0
 - Dart 3.14.0
 - Java 17
 - Android Studio / Android SDK
 
-### 2. 获取代码
+## Quick Start
 
 ```bash
-git clone https://github.com/FHfanshu/JXU-CampusHub.git
-cd JXU-CampusHub
-```
-
-### 3. 安装依赖
-
-```bash
+git clone https://github.com/CampusHub-JXU/ZJXU-CampusHub.git
+cd ZJXU-CampusHub
 flutter pub get
-```
-
-### 4. 运行 App
-
-```bash
 flutter run
 ```
 
-## Build APK
+构建 APK：
 
 ```bash
 flutter build apk --release
 ```
 
-构建产物默认在 `build/app/outputs/flutter-apk/app-release.apk`。
+构建产物默认位于 `build/app/outputs/flutter-apk/app-release.apk`。
 
 ## 项目结构
 
 ```text
 lib/
   app/         # 应用入口、主题、路由
-  core/        # 认证、网络、日志、学期能力
+  core/        # 认证、网络、日志、更新、系统能力
   features/    # 业务模块
   shared/      # 共享组件
+android/       # Android 工程与原生通道
+packages/      # 本地 Flutter/Dart 包
 assets/        # 静态资源
-test/          # 测试
-android/       # Android 工程脚手架
+test/          # 单元与组件测试
+integration_test/ # 设备集成测试
+tools/         # 构建、诊断与测试辅助脚本
 ```
 
-## 说明
+## 贡献
 
-- 本项目为个人开发项目，非学校官方应用
-- 项目仅供学习与交流使用
+欢迎 Issue 和 Pull Request。提交前请至少运行：
 
-## 致谢
+```bash
+flutter pub get
+dart format --output=none --set-exit-if-changed lib test integration_test
+flutter analyze
+flutter test
+```
 
-- `学校 H5 基础设施开发者：为校园服务相关 H5 能力建设与流程梳理提供了重要参考`
-- `Claude Code`
-- `OpenCode`
-- `Codex`
-## 灵感来源
-- 电表app
+涉及学校认证、写操作、验证码、设备数据或发布链路的改动，请在 PR 中明确说明验证范围与风险。
+
+## License
+
+[GPL-3.0](LICENSE)

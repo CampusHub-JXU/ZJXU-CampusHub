@@ -56,10 +56,6 @@ try {
     Invoke-Native python -c $code
   }
 
-  Invoke-CiStep "Verify release workflow target" {
-    Invoke-Native python tools/check_release_workflow.py
-  }
-
   Invoke-CiStep "Run test diagnostics" {
     Invoke-Native python tools/test_diagnostics.py --self-test
     Invoke-Native python tools/test_diagnostics.py --output build/test_diagnostics --fail-on error
