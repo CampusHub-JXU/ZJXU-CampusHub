@@ -35,6 +35,7 @@ List<CourseEntry> buildEffectiveWeekCourses({
       .where((course) => course.isInWeek(week))
       .where(
         (course) =>
+            course.fromLabSchedule ||
             !applicableRules.any((rule) => rule.removesCourse(course, week)),
       )
       .where(
@@ -75,6 +76,9 @@ List<CourseEntry> buildEffectiveWeekCourses({
       course.endLesson,
       course.classroom,
       course.weekRange,
+      course.typeSymbol,
+      course.courseCode,
+      course.labProject,
     ].join('|');
     if (seen.add(signature)) {
       deduped.add(course);
@@ -115,6 +119,22 @@ CourseEntry? _buildSyntheticCourse({
   final targetLesson = rule.targetLesson;
   if (targetLesson == null || targetLesson.week != week) return null;
 
+  // 附表已排到通知目标槽时，无需再造一张相同的调课卡片。
+  final name = rule.courseName?.trim() ?? '';
+  final teacher = rule.teacherName?.trim() ?? '';
+  if (name.isNotEmpty &&
+      courses.any(
+        (course) =>
+            course.fromLabSchedule &&
+            course.isInWeek(week) &&
+            course.weekday == targetLesson.weekday &&
+            course.startLesson == targetLesson.startLesson &&
+            course.endLesson == targetLesson.endLesson &&
+            matchesCourseName(course.courseName, name) &&
+            (teacher.isEmpty || teacher == course.teacherName.trim()),
+      )) {
+    return null;
+  }
   final template = _findTemplateCourse(rule, courses);
   final courseName = (rule.courseName?.trim().isNotEmpty ?? false)
       ? rule.courseName!.trim()
@@ -161,6 +181,9 @@ CourseEntry _buildOverrideCourse({
     classroom: override.targetClassroom,
     campus: template?.campus ?? '',
     typeSymbol: template?.typeSymbol ?? '',
+    courseCode: template?.courseCode ?? '',
+    labProject: template?.labProject ?? '',
+    fromLabSchedule: template?.fromLabSchedule ?? false,
     hasScheduleChange: true,
   );
 }

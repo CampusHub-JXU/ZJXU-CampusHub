@@ -12,6 +12,9 @@ class CourseEntry {
     required this.campus,
     required this.typeSymbol,
     this.hasScheduleChange = false,
+    this.courseCode = '',
+    this.labProject = '',
+    this.fromLabSchedule = false,
   });
 
   final String courseName;
@@ -26,6 +29,11 @@ class CourseEntry {
 
   /// 正方课表的 jxbsftkbj=1，表示该教学班有调课记录。
   final bool hasScheduleChange;
+  final String courseCode;
+  final String labProject;
+
+  /// 来自实验附表的实际排课，而不是按通知推算出的排课。
+  final bool fromLabSchedule;
 
   /// 判断课程是否在指定周次（支持"单/双"周修饰符）
   bool isInWeek(int week) {
@@ -35,6 +43,14 @@ class CourseEntry {
       }
     }
     return false;
+  }
+
+  /// 去掉被实验附表补全的周次；没有剩余排课时返回 null。
+  String? weekRangeExcluding(Set<int> excluded) {
+    final weeks = _distanceWeeksFor(
+      weekRange,
+    ).toSet().difference(excluded).toList()..sort();
+    return weeks.isEmpty ? null : weeks.map((week) => '$week周').join(',');
   }
 
   /// 计算课程最近活跃周与 [week] 的距离
@@ -81,6 +97,9 @@ class CourseEntry {
       campus: json['campus'] as String? ?? json['xqmc'] as String? ?? '',
       typeSymbol:
           json['typeSymbol'] as String? ?? json['xslxbj'] as String? ?? '',
+      courseCode: (json['courseCode'] ?? json['kch'])?.toString().trim() ?? '',
+      labProject: json['labProject'] as String? ?? '',
+      fromLabSchedule: json['fromLabSchedule'] == true,
       hasScheduleChange:
           json['hasScheduleChange'] == true ||
           json['jxbsftkbj']?.toString() == '1',
@@ -98,6 +117,9 @@ class CourseEntry {
     'campus': campus,
     'typeSymbol': typeSymbol,
     'hasScheduleChange': hasScheduleChange,
+    if (courseCode.isNotEmpty) 'courseCode': courseCode,
+    if (labProject.isNotEmpty) 'labProject': labProject,
+    if (fromLabSchedule) 'fromLabSchedule': true,
   };
 }
 

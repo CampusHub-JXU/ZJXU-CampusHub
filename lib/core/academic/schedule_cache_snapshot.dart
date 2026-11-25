@@ -14,6 +14,7 @@ class ScheduleCacheSnapshot {
     this.changeRulesUpdatedAt,
     this.changeRulesCurrentScoped = false,
     this.changeRulesDateAware = true,
+    this.labScheduleSynced = false,
   });
 
   final String studentId;
@@ -32,6 +33,9 @@ class ScheduleCacheSnapshot {
 
   /// Missing in the pre-date schema; such snapshots must refresh once.
   final bool changeRulesDateAware;
+
+  /// 本学期实验附表已成功取全（包括确认为空）。null 是升级前的旧缓存。
+  final bool? labScheduleSynced;
 
   bool get hasData =>
       courses.isNotEmpty ||
@@ -77,6 +81,7 @@ class ScheduleCacheSnapshot {
     DateTime? changeRulesUpdatedAt,
     bool? changeRulesCurrentScoped,
     bool? changeRulesDateAware,
+    bool? labScheduleSynced,
     bool clearScheduleUpdatedAt = false,
     bool clearChangeRulesUpdatedAt = false,
   }) {
@@ -95,6 +100,7 @@ class ScheduleCacheSnapshot {
       changeRulesCurrentScoped:
           changeRulesCurrentScoped ?? this.changeRulesCurrentScoped,
       changeRulesDateAware: changeRulesDateAware ?? this.changeRulesDateAware,
+      labScheduleSynced: labScheduleSynced ?? this.labScheduleSynced,
     );
   }
 
@@ -110,6 +116,7 @@ class ScheduleCacheSnapshot {
     'changeRulesUpdatedAt': changeRulesUpdatedAt?.millisecondsSinceEpoch,
     'changeRulesCurrentScoped': changeRulesCurrentScoped,
     'changeRulesDateAware': changeRulesDateAware,
+    'labScheduleSynced': labScheduleSynced,
   };
 
   factory ScheduleCacheSnapshot.fromJson(Map<String, dynamic> json) {
@@ -139,6 +146,7 @@ class ScheduleCacheSnapshot {
       scheduleUpdatedAt: dateFromEpochMillis(json['scheduleUpdatedAt']),
       changeRulesUpdatedAt: dateFromEpochMillis(json['changeRulesUpdatedAt']),
       changeRulesCurrentScoped: json['changeRulesCurrentScoped'] == true,
+      labScheduleSynced: json['labScheduleSynced'] as bool?,
       changeRulesDateAware: json.containsKey('changeRulesDateAware')
           ? json['changeRulesDateAware'] == true
           : false,
