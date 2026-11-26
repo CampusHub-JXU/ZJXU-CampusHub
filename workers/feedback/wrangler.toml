@@ -1,6 +1,6 @@
 # CampusHub 反馈收集 Worker
-# 纯 ES Module JavaScript，无需 npm install / 构建步骤，
-# 直接 `wrangler dev` 本地联调或 `wrangler deploy` 部署。
+# 纯 ES Module JavaScript，无运行时依赖，
+# 直接 `cf dev` 本地联调或 `cf deploy` 部署。
 
 name = "jxuc-feedback-worker"
 main = "src/index.js"
@@ -10,22 +10,17 @@ compatibility_date = "2025-01-01"
 GITHUB_OWNER = "CampusHub-JXU"
 GITHUB_REPO = "ZJXU-CampusHub"
 
-# ── 密钥（不写入本文件，通过 wrangler secret 注入）──────────────
-#   wrangler secret put GITHUB_TOKEN
+# ── 密钥（不写入本文件，通过 cf workers secrets update 注入）────────
+#   cf workers secrets update GITHUB_TOKEN --worker jxuc-feedback-worker --text "<PAT>"
 #     GitHub Fine-grained PAT，仅授权 CampusHub-JXU/ZJXU-CampusHub，
 #     权限只需 Issues: Read and write。
 #
-# 可选：wrangler secret put FEEDBACK_CLIENT_KEY
+# 可选：cf workers secrets update FEEDBACK_CLIENT_KEY --worker jxuc-feedback-worker --text "<KEY>"
 #   设置后，客户端除 X-App-Client 头外还需携带匹配的 X-Client-Key；
 #   未设置时仅校验 X-App-Client: jxu-campushub。
 
 # ── 自定义域名 feedback.fhfanshu.xyz ────────────────────────────
-# 推荐在 Cloudflare Dashboard → Workers → 本 Worker → Settings
-#   → Triggers → Custom Domains 中绑定 feedback.fhfanshu.xyz
-#   （域名 DNS 已在 Cloudflare 托管时一键生效，自动签发证书）。
-# 若偏好 routes 写法，可取消下面注释，但会强绑定该域名，
-# 本地 wrangler dev 不受影响，deploy 时需账号拥有该 zone：
-#
-# routes = [
-#   { pattern = "feedback.fhfanshu.xyz/*", zone_name = "fhfanshu.xyz" }
-# ]
+# DNS 已在 Cloudflare 托管时，deploy 会自动创建自定义域名记录并签发证书。
+routes = [
+  { pattern = "feedback.fhfanshu.xyz", custom_domain = true }
+]

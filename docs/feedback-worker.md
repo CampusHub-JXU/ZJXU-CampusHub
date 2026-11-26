@@ -1,6 +1,6 @@
 # 反馈收集 Worker 部署文档（feedback.fhfanshu.xyz）
 
-CampusHub App 内反馈通过 Cloudflare Worker 中转，自动在 `CampusHub-JXU/ZJXU-CampusHub` 创建 GitHub Issue。Worker 代码位于 `workers/feedback/`，纯 ES Module JavaScript，无 npm 依赖、无构建步骤。
+CampusHub App 内反馈通过 Cloudflare Worker 中转，自动在 `CampusHub-JXU/ZJXU-CampusHub` 创建 GitHub Issue。Worker 代码位于 `workers/feedback/`，纯 ES Module JavaScript，无运行时依赖，使用 Cloudflare `cf` CLI（需 `1.0.0-rc.6` 及以上）配合 `cloudflare.config.ts` 部署。
 
 ## 一、接口契约
 
@@ -52,36 +52,27 @@ CampusHub App 内反馈通过 Cloudflare Worker 中转，自动在 `CampusHub-JX
 3. **Permissions** 仅勾选 Repository permissions → **Issues: Read and write**，其余全部 No access。
 4. 建议设置 1 年有效期并记下过期时间，生成后立即复制 token。
 
-### 2. 安装并登录 Wrangler
+### 2. 安装并登录 `cf` CLI
 
 ```powershell
-npm install -g wrangler
-wrangler login
+npm install -g cf@latest
+cf auth login
 ```
 
-### 3. 注入密钥并部署
+### 3. 安装构建依赖、部署并注入密钥
 
 ```powershell
 cd workers/feedback
-wrangler secret put GITHUB_TOKEN   # 粘贴 PAT
+npm install
+cf deploy
+cf workers secrets update GITHUB_TOKEN --worker jxuc-feedback-worker --type secret_text --text "<PAT>"
 # 可选：启用客户端密钥（启用后 App 需额外携带 X-Client-Key）
-# wrangler secret put FEEDBACK_CLIENT_KEY
-
-wrangler deploy
+# cf workers secrets update FEEDBACK_CLIENT_KEY --worker jxuc-feedback-worker --type secret_text --text "<KEY>"
 ```
 
-部署成功后会得到 `https://jxuc-feedback-worker.<账号子域>.workers.dev`。
+`cloudflare.config.ts` 已配置 `domains: ["feedback.fhfanshu.xyz"]`。当 `fhfanshu.xyz` 的 DNS 已托管在 Cloudflare 时，`cf deploy` 会自动创建自定义域名记录并签发证书，数分钟内生效。
 
-### 4. 绑定自定义域名 feedback.fhfanshu.xyz
-
-`fhfanshu.xyz` 的 DNS 已托管在 Cloudflare 时：
-
-1. Cloudflare Dashboard → Workers & Pages → `jxuc-feedback-worker` → **Settings → Triggers → Custom Domains** → Add Custom Domain。
-2. 填入 `feedback.fhfanshu.xyz`，确认后 Cloudflare 自动创建 DNS 记录并签发证书，数分钟内生效。
-
-也可以在 `wrangler.toml` 中改用 `routes` 绑定（文件内已附注释示例），推荐二选一，不要同时使用。
-
-### 5. 验证
+### 4. 验证
 
 ```powershell
 curl https://feedback.fhfanshu.xyz/health
@@ -100,14 +91,14 @@ curl -X POST https://feedback.fhfanshu.xyz/api/feedback `
 cd workers/feedback
 # 本地 dev 也需要 token 才会真正调 GitHub；可用 .dev.vars 文件（勿提交）：
 #   echo GITHUB_TOKEN=ghp_xxx > .dev.vars
-wrangler dev
+cf dev
 ```
 
-默认监听 `http://127.0.0.1:8787`，将 App 或 curl 指向该地址即可联调。`.dev.vars` 记得加入忽略列表（`workers/feedback/.gitignore` 可按需自行添加）。
+默认监听 `http://127.0.0.1:8787`，将 App 或 curl 指向该地址即可联调。`.dev.vars`、`node_modules/`、`.cloudflare/` 已加入 `workers/feedback/.gitignore`。
 
 ## 四、运维说明
 
-- **Token 轮换**：PAT 到期或泄露时重新执行 `wrangler secret put GITHUB_TOKEN`，无需重新部署。
-- **日志排查**：`wrangler tail` 实时查看日志；Worker 不会把 GitHub 响应原文或 token 返回给客户端。
+- **Token 轮换**：PAT 到期或泄露时重新执行 `cf workers secrets update GITHUB_TOKEN --worker jxuc-feedback-worker --type secret_text --text "<新PAT>"`，无需重新部署。
+- **日志排查**：可在 Cloudflare Dashboard → Workers → `jxuc-feedback-worker` → Logs 查看实时日志；Worker 不会把 GitHub 响应原文或 token 返回给客户端。
 - **限流调整**：修改 `src/index.js` 中的 `RATE_LIMIT_WINDOW_MS` / `RATE_LIMIT_MAX`。
-- **标签**：Issue 自动带 `from-app` 与 `bug`/`enhancement` 标签；若仓库尚无这两个标签，GitHub 会忽略不存在的标签（`from-app` 除外——不存在时创建会失败），建议预先在仓库创建 `from-app` 标签。
+- **标签**：Issue 自动带 `from-app` 与 `bug`/`enhancement` 标签；若仓库尚无 `from-app` 标签会导致创建失败，需预先在仓库创建 `from-app` 标签。
