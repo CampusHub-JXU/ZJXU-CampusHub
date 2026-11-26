@@ -131,6 +131,16 @@ class HeadlessEpay100Gateway implements Epay100Gateway {
   /// 启动完成身份绑定后发生了外部登录态变化：本次 startup 不得继续。
   bool _startupAuthChanged = false;
 
+  // Experimental background worker only. Foreground behaviour is unchanged.
+  Future<bool> Function()? backgroundUsageGuard;
+
+  Future<void> _checkBackgroundUsageGuard() async {
+    final guard = backgroundUsageGuard;
+    if (guard != null && !await guard()) {
+      throw const EpayGatewayException('后台用电采集已让位');
+    }
+  }
+
   HeadlessEpay100Gateway() {
     // 账号绑定：统一认证登出 / 切换账号即刻作废本会话，下次启动连同
     // epay token 与 client_uuid 一起定向清理（不动全局 Cookie），
@@ -366,7 +376,9 @@ class HeadlessEpay100Gateway implements Epay100Gateway {
     _OperationIdentity identity, {
     int depth = 0,
   }) async {
+    await _checkBackgroundUsageGuard();
     final controller = await _ensureReady();
+    await _checkBackgroundUsageGuard();
     // 会话就绪后固定操作身份（仅一次；入队时未登录的冷启动调用在
     // restoreSession 建立身份后采样，递归重试沿用同一 identity，不重采样）。
     _establishOperationIdentity(identity);
@@ -385,6 +397,10 @@ class HeadlessEpay100Gateway implements Epay100Gateway {
     // Android WebView 的 evaluateJavascript 不会等待 Promise：异步 IIFE 的
     // 返回值会被序列化成 {}（同步求值却正常）。脚本因此把结果落到
     // window.__jxuRpc，这里启动脚本后用同步求值轮询取回。
+    if (backgroundUsageGuard != null) {
+      await _checkBackgroundUsageGuard();
+      _ensureOperationSession(identity, method);
+    }
     debugRpcSendCount++;
     try {
       await controller
@@ -397,6 +413,7 @@ class HeadlessEpay100Gateway implements Epay100Gateway {
     var payload = '';
     final rpcDeadline = DateTime.now().add(_rpcTimeout);
     while (payload.isEmpty) {
+      if (backgroundUsageGuard != null) await _checkBackgroundUsageGuard();
       if (DateTime.now().isAfter(rpcDeadline)) {
         await _invalidateInternal();
         throw const EpayGatewayException('一卡通网关响应超时，请稍后重试');
@@ -426,6 +443,7 @@ class HeadlessEpay100Gateway implements Epay100Gateway {
     if (json is! Map<String, dynamic>) {
       throw const EpaySessionUnavailableException('一卡通网关返回无法识别');
     }
+    await _checkBackgroundUsageGuard();
     final action = classifyRpcError(
       method: method,
       json: json,
@@ -435,6 +453,9 @@ class HeadlessEpay100Gateway implements Epay100Gateway {
     AppLogger.instance.network(LogLevel.warn, action.logLine);
     final fail = action.exception;
     if (fail != null) throw fail;
+    if (backgroundUsageGuard != null) {
+      throw const EpaySessionUnavailableException('后台采集会话不可用');
+    }
     if ((json['code']?.toString() ?? '') == 'C900903') {
       _needsFullReset = true;
     }
@@ -583,6 +604,7 @@ class HeadlessEpay100Gateway implements Epay100Gateway {
   }
 
   Future<void> _start() async {
+    await _checkBackgroundUsageGuard();
     final generation = _generation;
     _startupAuthChanged = false;
     AppLogger.instance.network(LogLevel.info, '一卡通网关：启动隐藏 WebView 会话');
@@ -615,11 +637,16 @@ class HeadlessEpay100Gateway implements Epay100Gateway {
       }
       _boundAccount = auth.currentAccount;
 
-      final sessionStatus = await CasSession.ensure(
-        CasService.ydd.serviceUrl,
-        restoreFromStore: false,
-        syncWebViewCookies: false,
-      );
+      // Background may reuse an existing session, never validate via a path
+      // that could persistently revoke it or initiate credential recovery.
+      await _checkBackgroundUsageGuard();
+      final sessionStatus = backgroundUsageGuard != null
+          ? CasSessionStatus.unknown
+          : await CasSession.ensure(
+              CasService.ydd.serviceUrl,
+              restoreFromStore: false,
+              syncWebViewCookies: false,
+            );
       if (sessionStatus == CasSessionStatus.inactive) {
         throw const EpaySessionUnavailableException('统一认证已失效，请重新登录');
       }
@@ -633,7 +660,9 @@ class HeadlessEpay100Gateway implements Epay100Gateway {
         throw const EpayGatewayException('一卡通会话已被新会话取代，请重试');
       }
 
+      await _checkBackgroundUsageGuard();
       await auth.syncCookiesToWebView();
+      await _checkBackgroundUsageGuard();
       if (_startupAuthChanged) {
         throw const EpayGatewayException('一卡通会话已被新会话取代，请重试');
       }
@@ -689,7 +718,9 @@ class HeadlessEpay100Gateway implements Epay100Gateway {
     }
     _webview = webview;
     try {
+      await _checkBackgroundUsageGuard();
       await webview.run();
+      await _checkBackgroundUsageGuard();
     } catch (_) {
       await _disposeOwnedWebView(generation);
       throw const EpayGatewayException('一卡通会话启动失败，请重试');
@@ -712,6 +743,12 @@ class HeadlessEpay100Gateway implements Epay100Gateway {
       if (generation != _generation) return;
       checkingToken = true;
       try {
+        if (backgroundUsageGuard != null && !await backgroundUsageGuard!()) {
+          if (!ready.isCompleted) {
+            ready.completeError(const EpayGatewayException('后台用电采集已让位'));
+          }
+          return;
+        }
         final current = await controller.getUrl();
         final host = current?.host ?? '';
         if (host == 'newca.zjxu.edu.cn' &&
@@ -769,6 +806,7 @@ class HeadlessEpay100Gateway implements Epay100Gateway {
       (_) => unawaited(checkToken()),
     );
     try {
+      await _checkBackgroundUsageGuard();
       await controller.loadUrl(
         urlRequest: URLRequest(url: WebUri(rechargeUrl)),
       );

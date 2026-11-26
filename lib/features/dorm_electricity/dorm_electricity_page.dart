@@ -9,6 +9,8 @@ import '../../core/logging/app_logger.dart';
 import '../../core/notification/app_notification_service.dart';
 import '../../core/theme/app_design_tokens.dart';
 import 'dorm_electricity_service.dart';
+import 'dorm_usage_chart.dart';
+import 'dorm_usage_background.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_banner.dart';
 import '../../shared/widgets/app_empty_view.dart';
@@ -39,9 +41,132 @@ class DormElectricityPage extends StatefulWidget {
   State<DormElectricityPage> createState() => _DormElectricityPageState();
 }
 
-class _DormElectricityPageState extends State<DormElectricityPage> {
+class _DormElectricityPageState extends State<DormElectricityPage>
+    with WidgetsBindingObserver {
   final _service = DormElectricityService.instance;
   double? _electricity;
+  Timer? _usageTimer;
+  bool _usageMonitoring = false;
+  bool _usageBackgroundEnabled = false;
+  bool _usageBackgroundBusy = false;
+
+  Future<void> _setUsageBackground(bool enabled) async {
+    if (!mounted ||
+        _usageBackgroundBusy ||
+        !_hasConfig ||
+        _requiresUnifiedAuth) {
+      return;
+    }
+    final identity = _currentIdentity();
+    setState(() => _usageBackgroundBusy = true);
+    try {
+      final actual = await DormUsageBackground.instance.setEnabled(enabled);
+      if (mounted && _currentIdentity() == identity) {
+        setState(() => _usageBackgroundEnabled = actual);
+      }
+    } catch (_) {
+      if (mounted && _currentIdentity() == identity) {
+        setState(() => _usageBackgroundEnabled = false);
+        AppFeedback.toast(context, '后台采集设置失败');
+      }
+    } finally {
+      if (mounted && _currentIdentity() == identity) {
+        setState(() => _usageBackgroundBusy = false);
+      }
+    }
+  }
+
+  void _stopUsageMonitoring() {
+    _usageTimer?.cancel();
+    _usageTimer = null;
+    _usageMonitoring = false;
+  }
+
+  void _setUsageMonitoring(bool enabled) {
+    if (!mounted) return;
+    if (!enabled) {
+      setState(_stopUsageMonitoring);
+      return;
+    }
+    if (_usageMonitoring ||
+        !_hasConfig ||
+        _requiresUnifiedAuth ||
+        _currentIdentity().account == null ||
+        WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed ||
+        ModalRoute.of(context)?.isCurrent != true) {
+      return;
+    }
+    setState(() => _usageMonitoring = true);
+    _usageTimer = Timer.periodic(const Duration(minutes: 10), (_) {
+      unawaited(_pollUsage());
+    });
+    // Establish the first real measurement without waiting ten minutes.
+    unawaited(_pollUsage());
+  }
+
+  Future<void> _pollUsage() async {
+    if (!mounted || !_usageMonitoring) return;
+    if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed ||
+        ModalRoute.of(context)?.isCurrent != true ||
+        !_hasConfig ||
+        _requiresUnifiedAuth ||
+        _currentIdentity().account == null) {
+      setState(_stopUsageMonitoring);
+      return;
+    }
+    if (_loading || _refreshing) return;
+    final updated = _service.lastUpdated;
+    if (updated != null &&
+        DateTime.now().difference(updated) < const Duration(minutes: 10)) {
+      return;
+    }
+    if (!await DormUsageBackground.instance.tryAcquireAutoSamplingSlot()) {
+      return;
+    }
+    if (!mounted || !_usageMonitoring) return;
+    if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed ||
+        ModalRoute.of(context)?.isCurrent != true) {
+      setState(_stopUsageMonitoring);
+      return;
+    }
+    try {
+      await _refresh();
+      if (mounted &&
+          _usageMonitoring &&
+          (_error != null || !_hasConfig || _requiresUnifiedAuth)) {
+        setState(_stopUsageMonitoring);
+      }
+    } catch (error, stackTrace) {
+      if (mounted && _usageMonitoring) setState(_stopUsageMonitoring);
+      AppLogger.instance.storage(
+        LogLevel.warn,
+        '耗电监测暂停',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!mounted) return;
+    if (state != AppLifecycleState.resumed && _usageMonitoring) {
+      setState(_stopUsageMonitoring);
+    } else if (state == AppLifecycleState.resumed &&
+        DormUsageBackground.instance.available &&
+        _hasConfig &&
+        !_loading &&
+        !_refreshing &&
+        ModalRoute.of(context)?.isCurrent == true) {
+      // Import background samples without forcing a new network request.
+      final identity = _currentIdentity();
+      unawaited(
+        _service.refreshUsageHistory().then((_) {
+          if (mounted && _currentIdentity() == identity) setState(() {});
+        }),
+      );
+    }
+  }
 
   /// 后台加载在途（首帧之后的自动拉取 / 切换寝室）：只驱动状态行小
   /// spinner，绝不整页遮挡（见 design-guidelines 4.5）。
@@ -74,6 +199,7 @@ class _DormElectricityPageState extends State<DormElectricityPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _lastAuthIdentity = _currentIdentity();
     UnifiedAuthService.instance.addListener(_onAuthChanged);
     // 首帧同步读 bootstrap 已恢复的缓存（服务按 owner 过滤），网络只在后台补齐。
@@ -127,6 +253,9 @@ class _DormElectricityPageState extends State<DormElectricityPage> {
       return;
     }
     _lastAuthIdentity = identity;
+    _stopUsageMonitoring();
+    _usageBackgroundEnabled = false;
+    _usageBackgroundBusy = false;
     _identityGeneration++;
     _loadTicket++;
     _electricity = null;
@@ -155,6 +284,8 @@ class _DormElectricityPageState extends State<DormElectricityPage> {
 
   @override
   void dispose() {
+    _stopUsageMonitoring();
+    WidgetsBinding.instance.removeObserver(this);
     UnifiedAuthService.instance.removeListener(_onAuthChanged);
     super.dispose();
   }
@@ -205,6 +336,11 @@ class _DormElectricityPageState extends State<DormElectricityPage> {
     _electricity = value;
     _error = _service.lastError;
     _requiresUnifiedAuth = _service.requiresAuthentication;
+    await _service.refreshUsageHistory();
+    if (!_isCaptureCurrent(capture)) return;
+    final backgroundEnabled = await DormUsageBackground.instance.enabled();
+    if (!_isCaptureCurrent(capture)) return;
+    _usageBackgroundEnabled = backgroundEnabled;
 
     // 查询失败（网关不健康）时跳过低电量预警，避免紧跟着再发一整轮
     // RPC，把失败面翻倍。
@@ -274,6 +410,7 @@ class _DormElectricityPageState extends State<DormElectricityPage> {
 
   /// 进寝室设置；回来后寝室变了按「切换寝室」清旧读数拉新值，否则后台刷新。
   Future<void> _openSettings() async {
+    if (_usageMonitoring) setState(_stopUsageMonitoring);
     final before = (await _service.loadRoomConfig())?.roomId;
     if (!mounted) return;
     await context.pushNamed('dorm-electricity-settings');
@@ -284,6 +421,7 @@ class _DormElectricityPageState extends State<DormElectricityPage> {
   }
 
   Future<void> _openRecharge() async {
+    if (_usageMonitoring) setState(_stopUsageMonitoring);
     await CampusActionExecutor.instance.executeWechat(
       context,
       url: DormElectricityService.rechargeUrl,
@@ -364,8 +502,6 @@ class _DormElectricityPageState extends State<DormElectricityPage> {
     // 无读数或需登录时横幅承载原因；有读数的普通失败只走状态行 + SnackBar。
     final showBanner =
         _error != null && (value == null || _requiresUnifiedAuth);
-    final percent = (_chargeFraction * 100).round();
-
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(
@@ -394,13 +530,7 @@ class _DormElectricityPageState extends State<DormElectricityPage> {
                       trailing: _buildStatus(cs, value, skeleton),
                     ),
                     const SizedBox(height: AppSpacing.md),
-                    if (skeleton)
-                      const SkeletonBox(height: 6, radius: 3)
-                    else
-                      DetailLevelBar(
-                        fraction: _chargeFraction,
-                        color: _isLow(value) ? cs.error : cs.primary,
-                      ),
+                    if (skeleton) const SkeletonBox(height: 6, radius: 3),
                   ],
                 ),
               ),
@@ -409,7 +539,7 @@ class _DormElectricityPageState extends State<DormElectricityPage> {
                 updatedAt: _service.lastUpdated,
                 refreshing: busy,
                 failed: _error != null,
-                prefix: value == null ? null : '$percent% · 满电 100 度',
+                prefix: null,
                 loadingLabel: '正在获取电量…',
                 onRefresh: _refresh,
                 refreshTooltip: '刷新电量',
@@ -452,6 +582,24 @@ class _DormElectricityPageState extends State<DormElectricityPage> {
           ],
         ),
         const SizedBox(height: AppSpacing.lg),
+        if (_hasConfig) ...[
+          DormUsageChart(
+            points: _service.usagePoints,
+            remainingKwh: value,
+            currentIntervalValid: _service.usageCurrentIntervalValid,
+            monitoring: _usageMonitoring,
+            canMonitor: !busy && !_requiresUnifiedAuth,
+            refreshFailed: _error != null,
+            onMonitoringChanged: _setUsageMonitoring,
+            backgroundAvailable: DormUsageBackground.instance.available,
+            backgroundEnabled: _usageBackgroundEnabled,
+            onBackgroundChanged:
+                busy || _usageBackgroundBusy || _requiresUnifiedAuth
+                ? null
+                : (enabled) => unawaited(_setUsageBackground(enabled)),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+        ],
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
           child: Text(
@@ -488,12 +636,6 @@ class _DormElectricityPageState extends State<DormElectricityPage> {
         ),
       ],
     );
-  }
-
-  double get _chargeFraction {
-    final value = _electricity;
-    if (value == null) return 0;
-    return (value / 100).clamp(0.0, 1.0).toDouble();
   }
 
   // ── Error Banner ───────────────────────────────────────────────────────────

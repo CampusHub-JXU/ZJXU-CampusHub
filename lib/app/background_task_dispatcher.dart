@@ -15,6 +15,7 @@ import '../core/notice/notice_sync_service.dart';
 import '../core/notice/notice_sync_store.dart';
 import '../core/academic/schedule_model.dart';
 import '../features/dorm_electricity/dorm_electricity_background.dart';
+import '../features/dorm_electricity/dorm_usage_background.dart';
 import '../features/notice/notice_background.dart';
 import '../features/schedule/schedule_service.dart';
 import '../features/second_classroom/second_classroom_background.dart';
@@ -46,6 +47,9 @@ void appBackgroundTaskDispatcher() {
         );
         return false;
       }
+    }
+    if (task == dormUsageCollect) {
+      return DormUsageBackground.instance.run();
     }
     Future<bool> Function()? action;
     if (task == dormElectricityCheck) {
