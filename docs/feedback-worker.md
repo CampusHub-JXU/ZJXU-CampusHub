@@ -29,7 +29,7 @@ npx cf build
 npx cf auth login
 ```
 
-登录后先核对账号计划与目标 Worker，确认使用 Workers Free。`cloudflare.config.ts` 包含 Worker 名称 `jxuc-feedback-worker`、自定义域名 `feedback.fhfanshu.xyz`、目标仓库及 `PAUSE_SUBMISSIONS=false`，没有任何存储绑定或定时触发器。
+登录后先核对账号计划与目标 Worker，确认使用 Workers Free。`cloudflare.config.ts` 包含 Worker 名称 `jxuc-feedback-worker`、`workersDev: true`、目标仓库及 `PAUSE_SUBMISSIONS=true`，没有任何存储绑定或定时触发器。默认先部署为维护状态，避免在密钥尚未配置时接受提交。
 
 在 Cloudflare Dashboard → Worker → Settings → Variables and Secrets 配置 **Secret**：
 
@@ -40,19 +40,25 @@ npx cf auth login
 
 不要将 Secret 写入版本库、客户端或命令行历史。PAT 所属账号需要目标仓库写 Issue 的权限；如组织要求审批，先完成审批。仓库预先创建 `from-app`、`bug`、`enhancement` 标签。
 
-确认以上配置后部署：
+确认以上配置后部署（首次部署可先不配置 Secret，入口会保持维护状态）：
 
 ```powershell
 npm run deploy
 ```
 
-`wrangler.toml` 保留兼容配置，使用 Wrangler 时也需保持仓库、域名和暂停开关一致。现有域名继续使用；新环境可先使用平台默认域名，并同步 App 接口配置，无需为反馈新购域名。
+当前部署地址为 `https://jxuc-feedback-worker.campushub-jxu.workers.dev`。不绑定自定义域名，无需域名或 DNS 权限。`wrangler.toml` 保留兼容配置，使用 Wrangler 时也需保持仓库和暂停开关一致。
+
+维护者配置好 `GITHUB_TOKEN` 后，在两份配置中将 `PAUSE_SUBMISSIONS` 改为 `false` 并重新部署，再用一条明确标记为验收的反馈确认 Issue 创建成功。不要只在控制台改暂停开关，否则下次部署会恢复仓库里的值。令牌应由有目标仓库权限的维护者生成并直接填入 Cloudflare Secret，不经聊天、代码或构建参数传递。若使用其他账号部署，同步修改 App 的 `JXU_FEEDBACK_URL`，平台子域名以实际部署结果为准。
+
+2026-11-26 已完成 workers.dev 初次部署；当前 `PAUSE_SUBMISSIONS=true`，尚未配置 `GITHUB_TOKEN`，尚未进行真实 Issue 创建验收。旧 `feedback.fhfanshu.xyz` 服务属于其他账号，本次没有修改它。
+
+部署 API 已确认新 Worker 和 workers.dev 路由存在；本机访问该域名时出现 DNS／TLS 连接异常，HTTP 健康检查尚未通过。正式开放前应在校园 Wi-Fi、移动网络分别验证可达性。若 workers.dev 在目标网络不可用，可由已有域名的维护者绑定自定义域名并更新 App 接口，无需新购域名；不要把部署成功等同于学生网络已能访问。
 
 如果曾手动部署过旧 V2 方案，需要额外到平台停用旧 Cron、移除 Webhook，并核对旧 D1/R2 是否仍被使用；本仓库不会自动删除线上数据或资源。仅修改代码不会自动停止其他已部署版本或其他服务的费用。
 
 ## App 配置与本地验证
 
-默认接口：`https://feedback.fhfanshu.xyz/api/feedback`。可用 `--dart-define=JXU_FEEDBACK_URL=...` 覆盖。只接受 HTTPS；调试构建额外允许 `localhost`、`127.0.0.1`、Android 模拟器 `10.0.2.2` 的 HTTP 接口。
+默认接口：`https://jxuc-feedback-worker.campushub-jxu.workers.dev/api/feedback`。可用 `--dart-define=JXU_FEEDBACK_URL=...` 覆盖。只接受 HTTPS；调试构建额外允许 `localhost`、`127.0.0.1`、Android 模拟器 `10.0.2.2` 的 HTTP 接口。
 
 ```powershell
 npm test

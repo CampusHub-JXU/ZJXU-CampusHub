@@ -6,16 +6,14 @@ name = "jxuc-feedback-worker"
 main = "src/index.js"
 compatibility_date = "2025-01-01"
 
-# ── 自定义域名 feedback.fhfanshu.xyz ────────────────────────────
-# DNS 已在 Cloudflare 托管时，deploy 会自动创建自定义域名记录并签发证书。
-routes = [
-  { pattern = "feedback.fhfanshu.xyz", custom_domain = true }
-]
+# 使用平台提供的 workers.dev 地址，无需域名或 DNS 权限。
+workers_dev = true
 
 [vars]
 GITHUB_OWNER = "CampusHub-JXU"
 GITHUB_REPO = "ZJXU-CampusHub"
-PAUSE_SUBMISSIONS = "false"
+# 维护者配置 GITHUB_TOKEN 并验收后，改为 false 再部署。
+PAUSE_SUBMISSIONS = "true"
 
 # ── 密钥（不写入本文件，通过 cf workers secrets update 注入）────────
 #   在 Cloudflare Dashboard → Settings → Variables and Secrets 配置 GITHUB_TOKEN
