@@ -733,12 +733,17 @@ List<_ChangelogLine> _changelogLines(String raw) {
       continue;
     }
     if (line.startsWith('- ') || line.startsWith('* ')) {
-      line = line.substring(2).trim().replaceFirst(_commitPrefix, '');
+      line = line
+          .substring(2)
+          .trim()
+          .replaceFirst(_commitPrefix, '')
+          .replaceAll('**', '')
+          .replaceAll('`', '');
       if (line.isEmpty) continue;
       result.add(_ChangelogLine('· $line'));
       continue;
     }
-    result.add(_ChangelogLine(line.replaceAll('`', '')));
+    result.add(_ChangelogLine(line.replaceAll('**', '').replaceAll('`', '')));
   }
   return result;
 }
