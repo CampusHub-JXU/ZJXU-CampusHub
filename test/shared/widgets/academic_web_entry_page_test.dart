@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jxu_campus_hub/core/auth/academic_web_entry_preparer.dart';
 import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
+import 'package:jxu_campus_hub/core/maintenance_window.dart';
 import 'package:jxu_campus_hub/core/network/webview_direct_route.dart';
 import 'package:jxu_campus_hub/shared/widgets/app_error_view.dart';
 import 'package:jxu_campus_hub/shared/widgets/auth_required_view.dart';
@@ -176,6 +177,11 @@ void main() {
 
   setUp(() async {
     await resetTestEnvironment();
+    debugMaintenanceNowOverride = () => DateTime(2026, 11, 15, 10, 0);
+  });
+
+  tearDown(() {
+    debugMaintenanceNowOverride = null;
   });
 
   group('WebView 直连覆盖', () {

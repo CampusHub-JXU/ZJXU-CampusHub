@@ -12,6 +12,7 @@ import 'package:jxu_campus_hub/core/auth/cas_auth_broker.dart';
 import 'package:jxu_campus_hub/core/auth/connect_mode_resolver.dart';
 import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
+import 'package:jxu_campus_hub/core/maintenance_window.dart';
 import 'package:jxu_campus_hub/core/network/dio_client.dart';
 import 'package:jxu_campus_hub/features/library/library_login_help.dart';
 import 'package:jxu_campus_hub/features/library/library_page.dart';
@@ -99,9 +100,11 @@ void main() {
 
   setUp(() {
     LibraryPage.debugPrepareEntryOverride = null;
+    debugMaintenanceNowOverride = () => DateTime(2026, 11, 15, 10, 0);
   });
 
   tearDown(() {
+    debugMaintenanceNowOverride = null;
     LibraryPage.debugPrepareEntryOverride = null;
     CasAuthBroker.debugGetResourceOverride = null;
     UnifiedAuthService.instance.debugSyncCookiesToWebViewForUrlOverride = null;

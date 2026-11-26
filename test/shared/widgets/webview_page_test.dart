@@ -3,6 +3,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jxu_campus_hub/core/auth/cas_auth_broker.dart';
 import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
+import 'package:jxu_campus_hub/core/maintenance_window.dart';
 import 'package:jxu_campus_hub/shared/widgets/external_url_launcher.dart';
 import 'package:jxu_campus_hub/shared/widgets/unified_auth_protected_webview_page.dart';
 import 'package:jxu_campus_hub/shared/widgets/webview_page.dart';
@@ -15,7 +16,12 @@ void main() {
     InAppWebViewPlatform.instance = FakeInAppWebViewPlatform();
   });
 
+  setUp(() {
+    debugMaintenanceNowOverride = () => DateTime(2026, 11, 15, 10, 0);
+  });
+
   tearDown(() {
+    debugMaintenanceNowOverride = null;
     debugResetExternalUrlLauncher();
     UnifiedAuthService.instance.debugReset();
   });

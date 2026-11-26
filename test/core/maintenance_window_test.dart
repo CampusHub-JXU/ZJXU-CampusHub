@@ -91,4 +91,32 @@ void main() {
       expect(twice, once);
     });
   });
+
+  group('toChinaTime 与 debugMaintenanceNowOverride', () {
+    const base = '网络异常，请稍后重试';
+
+    tearDown(() => debugMaintenanceNowOverride = null);
+
+    test('UTC 时间正确换算为北京时间（UTC 16:00 → 北京 0:00 维护窗口内）', () {
+      final china = toChinaTime(DateTime.utc(2026, 11, 15, 16, 0));
+      expect(china.hour, 0);
+      expect(china.minute, 0);
+      expect(isInMaintenanceWindow(china), isTrue);
+    });
+
+    test('UTC 01:55 对应北京时间 09:55（在窗口外，不误判维护）', () {
+      final china = toChinaTime(DateTime.utc(2026, 11, 26, 1, 55));
+      expect(china.hour, 9);
+      expect(china.minute, 55);
+      expect(isInMaintenanceWindow(china), isFalse);
+    });
+
+    test('缺省时间走 debugMaintenanceNowOverride', () {
+      debugMaintenanceNowOverride = () => DateTime(2026, 11, 15, 23, 45);
+      expect(appendMaintenanceHint(base), '$base$maintenanceHint');
+
+      debugMaintenanceNowOverride = () => DateTime(2026, 11, 15, 10, 0);
+      expect(appendMaintenanceHint(base), base);
+    });
+  });
 }

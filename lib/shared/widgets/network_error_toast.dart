@@ -19,11 +19,11 @@ class NetworkErrorToast {
   static const _dedupeWindow = Duration(seconds: 5);
   static final Map<NetworkErrorKind, DateTime> _lastShownAt = {};
 
-  /// 测试用时间注入；为 null 时使用真实本地时间。
+  /// 测试用时间注入；为 null 时使用当前北京时间（[currentChinaTime]）。
   @visibleForTesting
   static DateTime Function()? debugNow;
 
-  static DateTime _now() => debugNow?.call() ?? DateTime.now();
+  static DateTime _now() => debugNow?.call() ?? currentChinaTime();
 
   /// 根据 [error] 分类并展示对应 Toast。
   ///

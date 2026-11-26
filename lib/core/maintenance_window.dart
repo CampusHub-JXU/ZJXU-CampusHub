@@ -16,7 +16,18 @@ const int maintenanceEndMinute = 0;
 /// 追加到错误文案后的维护提示后缀。
 const String maintenanceHint = '（学校系统夜间维护 23:30–6:00，可明早再试）';
 
-/// 判断 [now]（本地时间）是否处于维护时段 23:30 – 次日 6:00。
+/// 仅用于测试固定当前时间，避免受运行环境时区或夜间维护时段影响。
+DateTime Function()? debugMaintenanceNowOverride;
+
+/// 将 [utcOrLocal] 换算为东八区（北京时间）墙钟时间。
+DateTime toChinaTime(DateTime utcOrLocal) =>
+    utcOrLocal.toUtc().add(const Duration(hours: 8));
+
+/// 返回当前东八区（北京时间）墙钟时间；测试中可通过 [debugMaintenanceNowOverride] 覆写。
+DateTime currentChinaTime() =>
+    debugMaintenanceNowOverride?.call() ?? toChinaTime(DateTime.now());
+
+/// 判断 [now]（北京时间）是否处于维护时段 23:30 – 次日 6:00。
 ///
 /// 边界：23:30 整与 0:00–5:59 在窗口内；6:00 整与 23:29 在窗口外。
 bool isInMaintenanceWindow(DateTime now) {
@@ -30,9 +41,9 @@ bool isInMaintenanceWindow(DateTime now) {
 /// 若当前处于维护时段，在 [message] 末尾追加 [maintenanceHint]；
 /// 否则原样返回。已含提示的文案不重复追加。
 ///
-/// [now] 可注入便于测试，缺省取本地当前时间。
+/// [now] 可注入便于测试，缺省取当前北京时间（[currentChinaTime]）。
 String appendMaintenanceHint(String message, {DateTime? now}) {
-  final time = now ?? DateTime.now();
+  final time = now ?? currentChinaTime();
   if (!isInMaintenanceWindow(time)) return message;
   if (message.contains(maintenanceHint)) return message;
   return '$message$maintenanceHint';

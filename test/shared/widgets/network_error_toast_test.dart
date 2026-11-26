@@ -135,6 +135,7 @@ void main() {
     testWidgets('shows a snackbar once and dedupes within window', (
       tester,
     ) async {
+      NetworkErrorToast.debugNow = () => DateTime(2026, 11, 15, 10, 0);
       await tester.pumpWidget(
         MaterialApp(home: Scaffold(body: const SizedBox.shrink())),
       );

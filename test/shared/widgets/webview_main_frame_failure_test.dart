@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jxu_campus_hub/core/maintenance_window.dart';
 import 'package:jxu_campus_hub/shared/widgets/webview_page.dart';
 
 import '../../helpers/fake_inappwebview.dart';
@@ -91,6 +92,14 @@ void main() {
       cookieMode: FakeCookieManagerMode.acceptOnly,
       withController: true,
     );
+  });
+
+  setUp(() {
+    debugMaintenanceNowOverride = () => DateTime(2026, 11, 15, 10, 0);
+  });
+
+  tearDown(() {
+    debugMaintenanceNowOverride = null;
   });
 
   testWidgets(
