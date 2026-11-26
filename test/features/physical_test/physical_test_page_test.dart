@@ -155,6 +155,10 @@ void main() {
       expect(find.text('90'), findsOneWidget);
       expect(find.text('83'), findsOneWidget);
       expect(find.text('优秀'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.text('体测计算器')).dy,
+        greaterThan(tester.getBottomLeft(find.text('立定跳远')).dy),
+      );
 
       // 旧版 `总分 · 等级` / `结果 · 得分 · 等级` 单串拼接不得回归。
       expect(find.text('86.5 · 良好'), findsNothing);

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../core/auth/cas_auth_broker.dart';
@@ -17,6 +18,7 @@ import '../../shared/widgets/login_shell.dart';
 import '../../shared/widgets/plain_list.dart';
 import '../../shared/widgets/refresh_status_line.dart';
 import '../../shared/widgets/skeleton_box.dart';
+import 'physical_test_calculator_page.dart';
 import 'physical_test_model.dart';
 import 'physical_test_service.dart';
 
@@ -229,35 +231,58 @@ class _PhysicalTestPageState extends State<PhysicalTestPage> {
     }
 
     if (_authRequired) {
-      return AuthRequiredView(
-        title: '需要统一认证后继续',
-        message: '登录统一身份认证后可查看体测成绩',
-        buttonLabel: '登录统一认证',
-        icon: Icons.directions_run_outlined,
-        onAction: _presentLoginPrompt,
+      return _withCalculatorFooter(
+        AuthRequiredView(
+          title: '需要统一认证后继续',
+          message: '登录统一身份认证后可查看体测成绩',
+          buttonLabel: '登录统一认证',
+          icon: Icons.directions_run_outlined,
+          onAction: _presentLoginPrompt,
+        ),
       );
     }
 
     final error = _error;
     if (error != null) {
-      return AppErrorView(
-        message: error,
-        onRetry: () => _load(forceRefresh: true),
+      return _withCalculatorFooter(
+        AppErrorView(message: error, onRetry: () => _load(forceRefresh: true)),
       );
     }
 
     final records = _snapshot?.records ?? const <PhysicalTestRecord>[];
     if (records.isEmpty) {
-      return AppEmptyView(
-        title: '暂无体测成绩',
-        icon: Icons.directions_run_outlined,
-        message: _snapshot?.message,
-        actionLabel: '刷新',
-        onAction: () => _load(forceRefresh: true),
+      return _withCalculatorFooter(
+        AppEmptyView(
+          title: '暂无体测成绩',
+          icon: Icons.directions_run_outlined,
+          message: _snapshot?.message,
+          actionLabel: '刷新',
+          onAction: () => _load(forceRefresh: true),
+        ),
       );
     }
 
     return _buildRecords(records);
+  }
+
+  Widget _calculatorButton() => OutlinedButton.icon(
+    onPressed: () => context.pushNamed('physical-test-calculator'),
+    icon: const Icon(Icons.calculate_outlined),
+    label: const Text(PhysicalTestCalculatorPage.title),
+  );
+
+  Widget _withCalculatorFooter(Widget status) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(child: status),
+        SafeArea(
+          top: false,
+          minimum: const EdgeInsets.all(AppSpacing.pageMargin),
+          child: _calculatorButton(),
+        ),
+      ],
+    );
   }
 
   /// 有数据：无框主读数 + 历史学年选择器 + 选中学年的单列项目明细。
@@ -288,6 +313,8 @@ class _PhysicalTestPageState extends State<PhysicalTestPage> {
           ],
           const SizedBox(height: AppSpacing.lg),
           _buildItems(selected),
+          const SizedBox(height: AppSpacing.lg),
+          _calculatorButton(),
         ],
       ),
     );

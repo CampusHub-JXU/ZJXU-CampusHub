@@ -16,6 +16,7 @@ import '../features/campus_card/campus_card_payment_page.dart';
 import '../features/library/library_book_page.dart';
 import '../features/library/library_borrows_page.dart';
 import '../features/library/library_page.dart';
+import '../features/physical_test/physical_test_calculator_page.dart';
 import '../features/physical_test/physical_test_page.dart';
 import '../features/notice/notice_detail_page.dart';
 import '../features/sjjx_notice/sjjx_notice_list_page.dart';
@@ -234,6 +235,11 @@ final GoRouter appRouter = GoRouter(
       path: '/physical-test',
       name: 'physical-test',
       builder: (context, state) => const PhysicalTestPage(),
+    ),
+    _appRoute(
+      path: '/physical-test/calculator',
+      name: 'physical-test-calculator',
+      builder: (context, state) => const PhysicalTestCalculatorPage(),
     ),
     _appRoute(
       path: '/second-classroom',
