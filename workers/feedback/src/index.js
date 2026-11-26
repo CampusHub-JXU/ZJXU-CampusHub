@@ -5,11 +5,12 @@
  *   GET  /health        健康检查
  *   POST /api/feedback  接收 App 内反馈，自动创建 GitHub Issue
  *
- * 密钥（wrangler secret put 注入）：
+ * 密钥（通过 Cloudflare Dashboard 配置 Secret）：
  *   GITHUB_TOKEN          必填，Fine-grained PAT（Issues: Read and write）
  *   FEEDBACK_CLIENT_KEY   可选，设置后客户端需额外携带 X-Client-Key
  */
 
+import {readBytes} from './http.js';
 const APP_CLIENT_HEADER = 'jxu-campushub';
 const MAX_BODY_BYTES = 100 * 1024; // 100 KB
 
@@ -17,7 +18,11 @@ const MAX_BODY_BYTES = 100 * 1024; // 100 KB
 const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 const RATE_LIMIT_MAX = 5;
 
-const JSON_HEADERS = { 'Content-Type': 'application/json; charset=utf-8' };
+const JSON_HEADERS = {
+  'Content-Type': 'application/json; charset=utf-8',
+  'Cache-Control': 'no-store',
+  'X-Content-Type-Options': 'nosniff',
+};
 
 /** 统一 JSON 响应（附带宽松 CORS，便于本地/网页调试） */
 function json(data, status = 200) {
@@ -52,7 +57,9 @@ function handleOptions() {
 async function checkRateLimit(ip) {
   try {
     const window = Math.floor(Date.now() / RATE_LIMIT_WINDOW_MS);
-    const key = `https://ratelimit.internal/jxuc-feedback/${ip}/${window}`;
+    const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(ip));
+    const keyHash = Array.from(new Uint8Array(hash), b => b.toString(16).padStart(2, '0')).join('');
+    const key = `https://ratelimit.internal/jxuc-feedback/${keyHash}/${window}`;
     const cache = caches.default;
 
     let count = 0;
@@ -79,7 +86,7 @@ async function checkRateLimit(ip) {
   }
 }
 
-/** 字符串清洗：非字符串返回空串，trim + 截断到 maxLen */
+/** 字段长度先校验，此处清理首尾空白。 */
 function clean(value, maxLen) {
   if (typeof value !== 'string') return '';
   return value.trim().slice(0, maxLen);
@@ -89,8 +96,8 @@ function clean(value, maxLen) {
  * 校验并清洗反馈字段。
  * @returns {{ error?: string, value?: object }}
  */
-function validatePayload(body) {
-  if (!body || typeof body !== 'object') {
+export function validatePayload(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return { error: '请求体格式不正确' };
   }
 
@@ -99,6 +106,11 @@ function validatePayload(body) {
     return { error: '反馈类型不正确' };
   }
 
+  for (const [field, limit] of Object.entries({title:100, description:4000, campus:40, contact:80, appVersion:40, osInfo:120, buildMode:20, diagnostics:25000})) {
+    if (body[field] != null && (typeof body[field] !== 'string' || body[field].length > limit)) {
+      return {error: `${field} 格式或长度不符合要求（最多 ${limit} 字符）`};
+    }
+  }
   const title = clean(body.title, 100);
   if (title.length < 2) {
     return { error: '标题长度需在 2~100 字之间' };
@@ -126,16 +138,8 @@ function validatePayload(body) {
   };
 }
 
-/**
- * 转义诊断日志中连续的 3 个及以上反引号，
- * 防止其提前闭合 Markdown 代码块（此处使用 4 个反引号围栏）。
- */
-function sanitizeDiagnostics(text) {
-  return text.replace(/`{3,}/g, (m) => '`'.repeat(m.length) + ' ');
-}
-
 /** 构造 Issue 标题，避免与已有前缀重复 */
-function buildIssueTitle(type, title) {
+export function buildIssueTitle(type, title) {
   const prefix = type === 'bug' ? '[Bug] ' : '[建议] ';
   if (/^\[(bug|建议|feature)\]\s*/i.test(title)) {
     return title;
@@ -144,7 +148,7 @@ function buildIssueTitle(type, title) {
 }
 
 /** 构造结构化 Markdown Issue 正文 */
-function buildIssueBody(f) {
+export function buildIssueBody(f) {
   const lines = [
     `## 反馈类型`,
     '',
@@ -174,9 +178,9 @@ function buildIssueBody(f) {
     lines.push(
       '<details><summary>展开脱敏诊断日志</summary>',
       '',
-      '````',
-      sanitizeDiagnostics(f.diagnostics),
-      '````',
+      fenceFor(f.diagnostics),
+      f.diagnostics,
+      fenceFor(f.diagnostics),
       '',
       '</details>',
       '',
@@ -192,6 +196,7 @@ async function createGithubIssue(env, payload) {
   const url = `https://api.github.com/repos/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/issues`;
   const resp = await fetch(url, {
     method: 'POST',
+    signal: AbortSignal.timeout(15000),
     headers: {
       'Authorization': `Bearer ${env.GITHUB_TOKEN}`,
       'Accept': 'application/vnd.github+json',
@@ -208,12 +213,16 @@ async function createGithubIssue(env, payload) {
 
   if (!resp.ok) {
     // 仅记录状态码与摘要，不把 GitHub 响应原文（可能含内部信息）透给客户端
-    const text = await resp.text();
-    console.error('GitHub 创建 Issue 失败', resp.status, text.slice(0, 500));
+    console.error('GitHub 创建 Issue 失败', resp.status);
+    if (resp.status >= 500) throw new Error('GitHub result uncertain');
     return null;
   }
 
   const data = await resp.json();
+  if (!Number.isSafeInteger(data.number) || data.number <= 0 ||
+      data.html_url !== `https://github.com/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/issues/${data.number}`) {
+    throw new Error('GitHub result invalid');
+  }
   return { issueNumber: data.number, issueUrl: data.html_url };
 }
 
@@ -221,7 +230,7 @@ async function createGithubIssue(env, payload) {
 async function handleFeedback(request, env) {
   // 1. Content-Type 校验
   const contentType = request.headers.get('Content-Type') || '';
-  if (!contentType.toLowerCase().includes('application/json')) {
+  if (contentType.split(';')[0].trim().toLowerCase() !== 'application/json') {
     return json({ ok: false, error: 'Content-Type 必须为 application/json' }, 400);
   }
 
@@ -243,6 +252,7 @@ async function handleFeedback(request, env) {
 
   // 4. 轻量防刷：按 IP 固定窗口限流
   const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  if (env.PAUSE_SUBMISSIONS === 'true') return json({ok:false,error:'反馈通道维护中，请稍后重试'}, 503);
   const allowed = await checkRateLimit(ip);
   if (!allowed) {
     return json({ ok: false, error: '提交过于频繁，请稍后再试（10 分钟内最多提交 5 次）' }, 429);
@@ -251,12 +261,10 @@ async function handleFeedback(request, env) {
   // 5. 读取并解析请求体
   let rawBody;
   try {
-    rawBody = await request.text();
-  } catch {
+    rawBody = new TextDecoder('utf-8', {fatal:true}).decode(await readBytes(request, MAX_BODY_BYTES));
+  } catch (error) {
+    if (error.status === 413) return json({ok:false,error:error.message}, 413);
     return json({ ok: false, error: '请求体读取失败' }, 400);
-  }
-  if (rawBody.length > MAX_BODY_BYTES) {
-    return json({ ok: false, error: '请求体过大，请缩减内容后重试' }, 413);
   }
 
   let bodyJson;
@@ -273,15 +281,17 @@ async function handleFeedback(request, env) {
   }
 
   // 7. Token 缺失时直接 500（属于服务端配置问题）
-  if (!env.GITHUB_TOKEN) {
-    console.error('缺少 GITHUB_TOKEN，请通过 wrangler secret put 配置');
+  if (!env.GITHUB_TOKEN || !env.GITHUB_OWNER || !env.GITHUB_REPO) {
+    console.error('缺少反馈服务配置，请在 Cloudflare Dashboard 检查 Secret 和仓库配置');
     return json({ ok: false, error: '服务端未配置反馈通道，请稍后重试' }, 500);
   }
 
   // 8. 创建 GitHub Issue
-  const result = await createGithubIssue(env, value);
+  let result;
+  try { result = await createGithubIssue(env, value); }
+  catch { return json({ok:false,error:'无法确认 GitHub 是否已接收，请先检查仓库再重试'}, 502); }
   if (!result) {
-    return json({ ok: false, error: '反馈提交失败，请稍后重试' }, 502);
+    return json({ ok: false, error: 'GitHub 拒绝接收反馈，请复制文本备份并联系开发者' }, 502);
   }
 
   return json({ ok: true, issueNumber: result.issueNumber, issueUrl: result.issueUrl }, 201);
@@ -307,3 +317,7 @@ export default {
     return json({ ok: false, error: 'Not Found' }, 404);
   },
 };
+
+function fenceFor(text) {
+  return '`'.repeat(Math.max(3, ...Array.from(text.matchAll(/`+/g), m => m[0].length)) + 1);
+}

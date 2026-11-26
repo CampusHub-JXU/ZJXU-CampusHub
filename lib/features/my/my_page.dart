@@ -540,6 +540,12 @@ class _MyPageState extends State<MyPage> {
                         await _refreshAfterReturn();
                       },
                     ),
+                    const SizedBox(height: _tileGap),
+                    _MyTile(
+                      icon: Icons.feedback_outlined,
+                      title: '意见反馈',
+                      onTap: () => context.pushNamed('feedback'),
+                    ),
                     const Spacer(),
                     _buildFooter(context, cs),
                   ],

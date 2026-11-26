@@ -98,6 +98,10 @@ void main() {
     expect(adapter.lastBody?['campus'], '梁林校区');
     expect(adapter.lastBody?['appVersion'], 'v0.13.5+2066');
     expect(adapter.lastBody?['diagnostics'], 'line1\nline2');
+    expect(
+      adapter.lastOptions?.headers.keys.map((key) => key.toLowerCase()),
+      isNot(contains('cookie')),
+    );
   });
 
   test('submit maps server error message and 429 rate limit', () async {
@@ -147,4 +151,111 @@ void main() {
     expect(markdown, contains('v0.13.5+2066 · android 15 · release'));
     expect(markdown, isNot(contains('- 联系：')));
   });
+
+  test('unsafe endpoint fails before sending any feedback', () async {
+    final adapter = _StubAdapter((_, _) => throw StateError('must not send'));
+    for (final endpoint in [
+      'http://example.invalid/api/feedback',
+      'https://user:pass@example.invalid/api/feedback',
+      'https://example.invalid/api/feedback?token=secret',
+    ]) {
+      final service = FeedbackService(
+        dio: Dio()..httpClientAdapter = adapter,
+        endpointUrl: endpoint,
+      );
+      await expectLater(
+        service.submit(makeSubmission()),
+        throwsA(isA<FeedbackSubmitException>()),
+      );
+      expect(adapter.lastOptions, isNull);
+    }
+  });
+
+  test(
+    'invalid success URL is uncertain and never trusted as an Issue link',
+    () async {
+      final adapter = _StubAdapter(
+        (_, _) => ResponseBody.fromString(
+          jsonEncode({
+            'ok': true,
+            'issueNumber': 42,
+            'issueUrl': 'https://evil.example/issues/42',
+          }),
+          201,
+          headers: {
+            Headers.contentTypeHeader: ['application/json'],
+          },
+        ),
+      );
+      final service = FeedbackService(dio: Dio()..httpClientAdapter = adapter);
+      await expectLater(
+        service.submit(makeSubmission()),
+        throwsA(
+          isA<FeedbackSubmitException>().having(
+            (e) => e.message,
+            'message',
+            contains('先查看 GitHub'),
+          ),
+        ),
+      );
+    },
+  );
+
+  test(
+    'receive timeout sends once and explains that the Issue may already exist',
+    () async {
+      var calls = 0;
+      final adapter = _StubAdapter((options, _) {
+        calls++;
+        throw DioException(
+          requestOptions: options,
+          type: DioExceptionType.receiveTimeout,
+        );
+      });
+      final service = FeedbackService(dio: Dio()..httpClientAdapter = adapter);
+      await expectLater(
+        service.submit(makeSubmission()),
+        throwsA(
+          isA<FeedbackSubmitException>().having(
+            (e) => e.message,
+            'message',
+            contains('Issue 可能已创建'),
+          ),
+        ),
+      );
+      expect(calls, 1);
+    },
+  );
+
+  test('report defense removes persisted headers, credentials and tokens', () {
+    const raw =
+        'Cookie: session=secret; another=value\nAuthorization: Bearer abc.secret\n'
+        '{"password":"supersecret","username":"example-student"}\n'
+        '/login?ticket=ST-sensitive&tokenId=sensitive-token\n'
+        'github_pat_superSecret123 user@example.invalid 13812345678';
+    final result = redactFeedbackDiagnostics(raw);
+    for (final value in [
+      'session=secret',
+      'abc.secret',
+      'supersecret',
+      'example-student',
+      'ST-sensitive',
+      'sensitive-token',
+      'github_pat_superSecret123',
+      'user@example.invalid',
+      '13812345678',
+    ]) {
+      expect(result, isNot(contains(value)), reason: value);
+    }
+  });
+
+  test(
+    'fallback diagnostics use a fence longer than contained code fences',
+    () {
+      final text = FeedbackService().buildFallbackMarkdown(
+        makeSubmission(diagnostics: 'log\n``````\nend'),
+      );
+      expect(text, contains('```````\nlog\n``````\nend\n```````'));
+    },
+  );
 }

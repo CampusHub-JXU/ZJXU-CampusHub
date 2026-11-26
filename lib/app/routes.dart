@@ -34,6 +34,7 @@ import '../features/settings/settings_page.dart';
 import '../features/settings/ai_settings_page.dart';
 import '../features/settings/about_page.dart';
 import '../features/settings/feedback_page.dart';
+import '../features/settings/feedback_hub_page.dart';
 import '../features/settings/performance_diagnostics_page.dart';
 import '../features/settings/theme_material_page.dart';
 import '../features/settings/home_personalization_page.dart';
@@ -305,6 +306,11 @@ final GoRouter appRouter = GoRouter(
     _appRoute(
       path: '/feedback',
       name: 'feedback',
+      builder: (context, state) => const FeedbackHubPage(),
+    ),
+    _appRoute(
+      path: '/feedback/new',
+      name: 'feedback-new',
       builder: (context, state) => const FeedbackPage(),
     ),
     _appRoute(

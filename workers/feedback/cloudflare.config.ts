@@ -7,6 +7,7 @@ export default {
     env: {
       GITHUB_OWNER: { type: "text", value: "CampusHub-JXU" },
       GITHUB_REPO: { type: "text", value: "ZJXU-CampusHub" },
+      PAUSE_SUBMISSIONS: { type: "text", value: "false" },
     },
   },
 };
