@@ -235,18 +235,9 @@ class _PhysicalTestCalculatorPageState
                       _measurementField(
                         _endurance,
                         gender.enduranceEvent,
-                        (input) => parsePhysicalTestEndurance(input, gender),
-                        helper: gender == PhysicalTestGender.male
-                            ? '4.30 表示 4 分 30 秒，4 表示 4 分钟'
-                            : '可填写 4:32 或 272 秒',
-                        error: gender == PhysicalTestGender.male
-                            ? '请输入两位秒数，如 4.30，或一位分钟数，如 4'
-                            : '请输入有效的分:秒或总秒数',
-                        keyboardType: gender == PhysicalTestGender.male
-                            ? const TextInputType.numberWithOptions(
-                                decimal: true,
-                              )
-                            : TextInputType.datetime,
+                        parsePhysicalTestEndurance,
+                        helper: '4.30 表示 4 分 30 秒，4 表示 4 分钟',
+                        error: '请输入两位秒数，如 4.30，或一位分钟数，如 4',
                         inputAction: TextInputAction.done,
                       ),
                     ],

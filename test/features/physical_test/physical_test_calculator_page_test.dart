@@ -129,7 +129,12 @@ void main() {
     await _enter(tester, '1 分钟仰卧起坐（次）', '27');
     await _enter(tester, '800 米跑', '273');
     await _tap(tester, '计算成绩');
-    expect(find.text('70.10 / 100'), findsOneWidget);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.textContaining('请输入两位秒数'), findsOneWidget);
+
+    await _enter(tester, '800 米跑', '4.30');
+    await _tap(tester, '计算成绩');
+    expect(find.text('72.10 / 100'), findsOneWidget);
     expect(
       find.descendant(
         of: find.byType(AlertDialog),
@@ -138,6 +143,11 @@ void main() {
       findsOneWidget,
     );
     expect(tester.takeException(), isNull);
+    await _tap(tester, '完成');
+
+    await _enter(tester, '800 米跑', '4');
+    await _tap(tester, '计算成绩');
+    expect(find.text('74.50 / 100'), findsOneWidget);
     await _tap(tester, '完成');
     expect(find.byType(AlertDialog), findsNothing);
   });
