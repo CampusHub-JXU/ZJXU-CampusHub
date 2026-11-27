@@ -50,6 +50,24 @@ env:
   FLUTTER_VERSION: '3.50.0'
 
 jobs:
+  feedback-worker:
+    name: Feedback Worker Tests And Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: workers/feedback
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '26'
+          cache: npm
+          cache-dependency-path: workers/feedback/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npx cf build
+
   checks:
     name: Format, Analyze And Diagnostics
     runs-on: ubuntu-latest
@@ -256,7 +274,7 @@ jobs:
   flutter-test:
     name: Flutter Analyze And Test
     if: always()
-    needs: [checks, test, update-native-tests]
+    needs: [checks, test, update-native-tests, feedback-worker]
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -268,7 +286,7 @@ jobs:
           echo "checks: ${{ needs.checks.result }}"
           echo "test: ${{ needs.test.result }}"
           echo "update-native-tests: ${{ needs.update-native-tests.result }}"
-          [ "${{ needs.checks.result }}" = "success" ] && [ "${{ needs.test.result }}" = "success" ] && { [ "${{ needs.update-native-tests.result }}" = "success" ] || [ "${{ needs.update-native-tests.result }}" = "skipped" ]; }
+          [ "${{ needs.feedback-worker.result }}" = "success" ] && [ "${{ needs.checks.result }}" = "success" ] && [ "${{ needs.test.result }}" = "success" ] && { [ "${{ needs.update-native-tests.result }}" = "success" ] || [ "${{ needs.update-native-tests.result }}" = "skipped" ]; }
 
   # Production update-lifecycle Kotlin (state machine / store / manager) compiled
   # and run on the JVM against Android stubs; no Android SDK, emulator or Flutter.

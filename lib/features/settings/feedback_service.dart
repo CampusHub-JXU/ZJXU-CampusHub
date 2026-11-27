@@ -72,7 +72,7 @@ class FeedbackSubmission {
       'osInfo': environment.osInfo,
       'buildMode': environment.buildMode,
       if (diagnostics != null && diagnostics!.trim().isNotEmpty)
-        'diagnostics': diagnostics!.trim(),
+        'diagnostics': diagnostics!,
     };
   }
 }
@@ -120,6 +120,8 @@ class FeedbackService {
 
   static const String appClientHeaderValue = 'jxu-campushub';
   static const int maxDiagnosticsChars = 25000;
+  static const githubIssuesUrl =
+      'https://github.com/CampusHub-JXU/ZJXU-CampusHub/issues';
 
   final Dio _dio;
   final String _endpointUrl;
@@ -145,20 +147,22 @@ class FeedbackService {
         ? 'profile'
         : 'debug';
     return FeedbackEnvironment(
-      appVersion: appVersion,
-      osInfo: osInfo,
+      appVersion: appVersion.length > 40
+          ? appVersion.substring(0, 40)
+          : appVersion,
+      osInfo: osInfo.length > 120 ? osInfo.substring(0, 120) : osInfo,
       buildMode: buildMode,
     );
   }
 
   /// 生成脱敏诊断日志；超出传输上限时保留末尾最新部分。
   Future<String> collectDiagnostics(String appVersion) async {
-    final report = await AppLogger.instance.buildDiagnosticReport(
-      appVersion: appVersion,
+    final report = redactFeedbackDiagnostics(
+      await AppLogger.instance.buildDiagnosticReport(appVersion: appVersion),
     );
     if (report.length <= maxDiagnosticsChars) return report;
-    final tail = report.substring(report.length - maxDiagnosticsChars);
-    return '[...早期日志已截断，仅保留最近 $maxDiagnosticsChars 字符]\n$tail';
+    const prefix = '[...早期日志已截断]\n';
+    return '$prefix${report.substring(report.length - maxDiagnosticsChars + prefix.length)}';
   }
 
   /// 构造本地兜底 Markdown 文本（网络失败时供用户复制到群聊/邮件）。
@@ -179,17 +183,43 @@ class FeedbackService {
       ..writeln(submission.description.trim());
     if (submission.diagnostics != null &&
         submission.diagnostics!.trim().isNotEmpty) {
+      final fence =
+          '`' *
+          (RegExp(r'`+')
+                  .allMatches(submission.diagnostics!)
+                  .fold<int>(
+                    3,
+                    (length, match) =>
+                        match[0]!.length > length ? match[0]!.length : length,
+                  ) +
+              1);
       buffer
         ..writeln()
         ..writeln('### 诊断日志')
-        ..writeln('````')
+        ..writeln(fence)
         ..writeln(submission.diagnostics!.trim())
-        ..writeln('````');
+        ..writeln(fence);
     }
     return buffer.toString();
   }
 
   Future<FeedbackSubmitResult> submit(FeedbackSubmission submission) async {
+    final endpoint = Uri.tryParse(_endpointUrl);
+    if (endpoint == null ||
+        endpoint.host.isEmpty ||
+        endpoint.userInfo.isNotEmpty ||
+        endpoint.hasQuery ||
+        endpoint.hasFragment ||
+        (endpoint.scheme != 'https' &&
+            !(kDebugMode &&
+                endpoint.scheme == 'http' &&
+                const [
+                  'localhost',
+                  '127.0.0.1',
+                  '10.0.2.2',
+                ].contains(endpoint.host)))) {
+      throw const FeedbackSubmitException('反馈服务地址配置无效，请联系开发者');
+    }
     final headers = <String, dynamic>{
       'X-App-Client': appClientHeaderValue,
       if (_clientKey.isNotEmpty) 'X-Client-Key': _clientKey,
@@ -206,16 +236,21 @@ class FeedbackService {
         final ok = data['ok'] == true;
         final number = data['issueNumber'];
         final url = data['issueUrl'];
-        if (ok && number is int && url is String && url.isNotEmpty) {
+        if (ok &&
+            number is int &&
+            number > 0 &&
+            url is String &&
+            url == '$githubIssuesUrl/$number') {
           return FeedbackSubmitResult(issueNumber: number, issueUrl: url);
         }
       }
-      throw const FeedbackSubmitException('反馈服务返回格式异常，请稍后重试');
+      throw const FeedbackSubmitException('无法确认提交结果，请先查看 GitHub 反馈列表，避免重复提交');
     } on DioException catch (error) {
       final status = error.response?.statusCode;
       final responseData = error.response?.data;
-      final serverMessage = responseData is Map
-          ? responseData['error'] as String?
+      final serverMessage =
+          responseData is Map && responseData['error'] is String
+          ? responseData['error'] as String
           : null;
       if (serverMessage != null && serverMessage.trim().isNotEmpty) {
         throw FeedbackSubmitException(serverMessage.trim());
@@ -227,14 +262,53 @@ class FeedbackService {
         throw const FeedbackSubmitException('反馈内容不符合要求，请检查标题和描述');
       }
       if (status != null && status >= 500) {
-        throw const FeedbackSubmitException('反馈服务暂时不可用，可先复制内容到群里反馈');
+        throw const FeedbackSubmitException(
+          '反馈服务暂时不可用，请先查看 GitHub 确认是否已提交，也可复制文本备份',
+        );
       }
       if (error.type == DioExceptionType.connectionTimeout ||
           error.type == DioExceptionType.receiveTimeout ||
           error.type == DioExceptionType.sendTimeout) {
-        throw const FeedbackSubmitException('连接反馈服务超时，请检查网络或稍后重试');
+        throw const FeedbackSubmitException(
+          '请求超时，Issue 可能已创建，请先查看 GitHub 反馈列表，避免重复提交',
+        );
       }
-      throw const FeedbackSubmitException('网络请求失败，可先复制反馈内容到群里或邮箱');
+      throw const FeedbackSubmitException(
+        '无法确认提交结果，请先查看 GitHub 反馈列表，也可复制文本备份；请勿连续重试',
+      );
     }
   }
+}
+
+/// Defense in depth for reports containing persisted logs from earlier versions.
+/// Users still preview the report; free text is never claimed safe.
+String redactFeedbackDiagnostics(String report) {
+  var result = report.replaceAll(
+    RegExp(
+      r'(?:set-cookie|cookie|authorization|proxy-authorization)\s*[:=][^\r\n]*',
+      caseSensitive: false,
+    ),
+    '[敏感请求头已移除]',
+  );
+  result = result.replaceAll(
+    RegExp(
+      r'''(["']?(?:password|passwd|pwd|mm|token|access_token|refresh_token|tokenid|ticket|jsessionid|username|studentid|student_id|x-app-client|x-client-key)["']?\s*[:=]\s*["']?)[^\s&;,}"']+''',
+      caseSensitive: false,
+    ),
+    '[敏感参数已移除]',
+  );
+  result = result.replaceAll(
+    RegExp(r'Bearer\s+[A-Za-z0-9._~+/=-]+', caseSensitive: false),
+    'Bearer [REDACTED]',
+  );
+  result = result.replaceAll(
+    RegExp(r'\b(?:gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+)\b'),
+    '[REDACTED]',
+  );
+  result = result.replaceAll(
+    RegExp(r'\b[^\s@]+@[^\s@]+\.[^\s@]+\b'),
+    '[邮箱已移除]',
+  );
+  result = result.replaceAll(RegExp(r'\d{10,18}[\dXx]?'), '[号码已移除]');
+  return result;
 }

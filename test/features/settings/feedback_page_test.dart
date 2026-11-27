@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import '../../helpers/feedback_test_support.dart';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -59,7 +61,11 @@ void main() {
       endpointUrl: 'https://feedback.fhfanshu.xyz/api/feedback',
     );
 
-    await tester.pumpWidget(MaterialApp(home: FeedbackPage(service: service)));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FeedbackPage(service: service, store: MemoryFeedbackStore()),
+      ),
+    );
     await tester.pumpAndSettle();
 
     // 空标题拦截提示
@@ -81,6 +87,10 @@ void main() {
     );
     await tester.ensureVisible(submitFinder);
     await tester.tap(submitFinder);
+    await tester.pumpAndSettle();
+
+    expect(adapter.capturedBody, isNull);
+    await tester.tap(find.text('确认公开并提交'));
     await tester.pumpAndSettle();
 
     expect(adapter.capturedBody?['title'], '成绩页面加载慢');
@@ -116,7 +126,11 @@ void main() {
       dio: Dio()..httpClientAdapter = _SuccessAdapter(),
       endpointUrl: 'https://feedback.fhfanshu.xyz/api/feedback',
     );
-    await tester.pumpWidget(MaterialApp(home: FeedbackPage(service: service)));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FeedbackPage(service: service, store: MemoryFeedbackStore()),
+      ),
+    );
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('功能建议'));
