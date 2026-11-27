@@ -475,6 +475,13 @@ class _SettingsPageState extends State<SettingsPage> {
             PlainListRow(title: '重放新手引导', onTap: () => _replayWelcome(context)),
       ),
       _SettingsSearchEntry(
+        keywords: '问题反馈与建议 问题 反馈 建议 bug issue 报错 提意见',
+        builder: (context) => PlainListRow(
+          title: '问题反馈与建议',
+          onTap: () => context.pushNamed('feedback'),
+        ),
+      ),
+      _SettingsSearchEntry(
         keywords: '关于与诊断 关于 诊断 日志 反馈 开发者 版本',
         builder: (context) => PlainListRow(
           title: '关于与诊断',
@@ -589,6 +596,10 @@ class _SettingsPageState extends State<SettingsPage> {
                     PlainListRow(
                       title: '重放新手引导',
                       onTap: () => _replayWelcome(context),
+                    ),
+                    PlainListRow(
+                      title: '问题反馈与建议',
+                      onTap: () => context.pushNamed('feedback'),
                     ),
                     PlainListRow(
                       title: '关于与诊断',

@@ -33,6 +33,7 @@ import '../features/shuati/ui/shuati_native_wrong_page.dart';
 import '../features/settings/settings_page.dart';
 import '../features/settings/ai_settings_page.dart';
 import '../features/settings/about_page.dart';
+import '../features/settings/feedback_page.dart';
 import '../features/settings/performance_diagnostics_page.dart';
 import '../features/settings/theme_material_page.dart';
 import '../features/settings/home_personalization_page.dart';
@@ -300,6 +301,11 @@ final GoRouter appRouter = GoRouter(
       path: '/about',
       name: 'about',
       builder: (context, state) => const AboutPage(),
+    ),
+    _appRoute(
+      path: '/feedback',
+      name: 'feedback',
+      builder: (context, state) => const FeedbackPage(),
     ),
     _appRoute(
       path: '/performance-diagnostics',

@@ -26,6 +26,24 @@ abstract final class AppConfig {
   static const updateR2DownloadBaseUrl = 'https://download.fhfanshu.xyz';
   static const updateR2MirrorMarkerAssetName = 'r2-mirror.json';
 
+  /// 应用内问题反馈提交接口；支持编译期 `--dart-define=JXU_FEEDBACK_URL=...`
+  /// 覆盖，便于本地 `wrangler dev` 联调。
+  static const String defaultFeedbackEndpointUrl =
+      'https://feedback.fhfanshu.xyz/api/feedback';
+  static const String _feedbackEndpointDefine = String.fromEnvironment(
+    'JXU_FEEDBACK_URL',
+  );
+  static const String _feedbackClientKeyDefine = String.fromEnvironment(
+    'JXU_FEEDBACK_CLIENT_KEY',
+  );
+
+  static String get feedbackEndpointUrl {
+    final custom = _feedbackEndpointDefine.trim();
+    return custom.isNotEmpty ? custom : defaultFeedbackEndpointUrl;
+  }
+
+  static String get feedbackClientKey => _feedbackClientKeyDefine.trim();
+
   /// 调试端到端专用本地更新源（编译期定义 `JXU_UPDATE_TEST_ORIGIN`，值形如
   /// `http://10.0.2.2:8080`，经 `--dart-define` 传入）。release / profile 构建里编译期 `kDebugMode`
   /// 为 false，[updateTestOrigin] 恒为 null，分支不可达。
