@@ -4,9 +4,17 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../core/theme/app_design_tokens.dart';
+import '../../core/theme/app_typography.dart';
 import '../../shared/widgets/app_app_bar.dart';
+import '../../shared/widgets/app_banner.dart';
 import '../../shared/widgets/app_feedback.dart';
+import '../../shared/widgets/app_icon_badge.dart';
+import '../../shared/widgets/app_status_tag.dart';
 import '../../shared/widgets/external_url_launcher.dart';
+import '../../shared/widgets/plain_list.dart';
+import '../../shared/widgets/refresh_status_line.dart';
+import 'feedback_service.dart';
 import 'feedback_store.dart';
 
 class FeedbackHubPage extends StatefulWidget {
@@ -47,57 +55,115 @@ class _FeedbackHubPageState extends State<FeedbackHubPage> {
     }
   }
 
+  Future<void> _copyIssueUrl(String url) async {
+    try {
+      await Clipboard.setData(ClipboardData(text: url));
+      if (mounted) AppFeedback.toast(context, '已复制 Issue 链接');
+    } on PlatformException {
+      if (mounted) AppFeedback.toast(context, '复制失败，请重试');
+    }
+  }
+
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: const AppAppBar(title: Text('意见反馈')),
-    body: ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        const Text('无需 GitHub 账号即可提交。反馈公开发布到 GitHub Issue，回复和处理进度在 GitHub 查看。'),
-        const SizedBox(height: 12),
-        FilledButton.icon(
-          onPressed: () async {
-            await context.pushNamed('feedback-new');
-            await _load();
-          },
-          icon: const Icon(Icons.edit_outlined),
-          label: const Text('提交反馈'),
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final text = context.appText;
+    return Scaffold(
+      appBar: const AppAppBar(title: Text('意见反馈')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(
+          kPlainListGutter,
+          AppSpacing.sm,
+          kPlainListGutter,
+          AppSpacing.xl,
         ),
-        const SizedBox(height: 16),
-        Text('本机提交记录', style: Theme.of(context).textTheme.titleMedium),
-        const Text('仅保存提交成功的 Issue 链接。卸载、清除数据或换机后不会恢复。补充截图或评论需要登录 GitHub。'),
-        if (busy) const LinearProgressIndicator(),
-        if (error != null) Text(error!),
-        if (items.isEmpty && !busy)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 24),
-            child: Text('暂无提交记录'),
+        children: [
+          PlainListGroup(
+            children: [
+              PlainListRow(
+                leading: AppIconBadge(
+                  icon: Icons.edit_outlined,
+                  accentColor: cs.primary,
+                  size: AppIconBadgeSize.small,
+                ),
+                title: '提交新反馈',
+                onTap: () async {
+                  await context.pushNamed('feedback-new');
+                  await _load();
+                },
+              ),
+              PlainListRow(
+                leading: AppIconBadge(
+                  icon: Icons.open_in_new_rounded,
+                  accentColor: cs.secondary,
+                  size: AppIconBadgeSize.small,
+                ),
+                title: '查看 GitHub 反馈列表',
+                onTap: () => openInExternalBrowser(
+                  FeedbackService.githubIssuesUrl,
+                  logPrefix: '问题反馈',
+                ),
+              ),
+            ],
           ),
-        for (final item in items)
-          ListTile(
-            leading: const Icon(Icons.open_in_new),
-            title: Text(item['title'] as String),
-            subtitle: Text('#${item['number']} · 在 GitHub 查看回复与进度'),
-            onTap: () =>
-                openInExternalBrowser(item['url'] as String, logPrefix: '问题反馈'),
-            trailing: IconButton(
-              tooltip: '复制 Issue 链接',
-              icon: const Icon(Icons.copy_outlined),
-              onPressed: () async {
-                try {
-                  await Clipboard.setData(
-                    ClipboardData(text: item['url'] as String),
-                  );
-                  if (context.mounted) {
-                    AppFeedback.toast(context, '已复制 Issue 链接');
-                  }
-                } on PlatformException {
-                  if (context.mounted) AppFeedback.toast(context, '复制失败，请重试');
-                }
-              },
+          const SizedBox(height: kPlainListGroupGap),
+          const PlainSectionHeader('本机提交记录'),
+          if (busy)
+            const Padding(
+              padding: EdgeInsets.only(bottom: AppSpacing.sm),
+              child: RefreshStatusLine(
+                refreshing: true,
+                loadingLabel: '正在读取本机记录…',
+              ),
+            ),
+          if (error != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+              child: AppBanner(
+                message: error!,
+                icon: Icons.info_outline_rounded,
+                tone: AppBannerTone.neutral,
+              ),
+            ),
+          PlainListGroup(
+            children: [
+              if (items.isEmpty && !busy)
+                const PlainListRow(title: '暂无提交记录', showChevron: false)
+              else
+                for (final item in items)
+                  PlainListRow(
+                    title: item['title'] as String,
+                    subtitle: '#${item['number']}',
+                    onTap: () => openInExternalBrowser(
+                      item['url'] as String,
+                      logPrefix: '问题反馈',
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const AppStatusTag('已提交', tone: AppStatusTone.positive),
+                        const SizedBox(width: AppSpacing.xs),
+                        IconButton(
+                          tooltip: '复制 Issue 链接',
+                          visualDensity: VisualDensity.compact,
+                          icon: const Icon(Icons.copy_outlined, size: 18),
+                          onPressed: () => _copyIssueUrl(item['url'] as String),
+                        ),
+                      ],
+                    ),
+                  ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+            child: Text(
+              '仅保存提交成功的 Issue 链接；补充截图或评论需登录 GitHub。',
+              style: text.meta,
             ),
           ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 }

@@ -22,7 +22,7 @@ class DormUsageTotal {
 
 class DormUsageHistory {
   static const minimumInterval = Duration(minutes: 10);
-  static const maximumInterval = Duration(minutes: 30);
+  static const maximumInterval = Duration(hours: 3);
   static const retention = Duration(days: 31);
   static const maxPoints = 4500;
   ({double kwh, DateTime at})? _baseline;

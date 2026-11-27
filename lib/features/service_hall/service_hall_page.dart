@@ -1,12 +1,8 @@
-import 'dart:async';
-
 import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/actions/campus_action_executor.dart';
 import '../../core/auth/cas_auth_broker.dart';
 import '../../core/auth/protected_web_entry_preparer.dart';
-import '../../core/logging/app_logger.dart';
 import '../../shared/widgets/unified_auth_protected_webview_page.dart';
 
 class ServiceHallPage extends StatefulWidget {
@@ -47,33 +43,6 @@ class ServiceHallPage extends StatefulWidget {
 }
 
 class _ServiceHallPageState extends State<ServiceHallPage> {
-  bool _openingInWeChat = false;
-
-  // PRD 0.7.0 §27：移除进入即自动拉起微信，微信入口改为用户明确点击。
-  Future<void> _openInWeChat() async {
-    if (_openingInWeChat) return;
-    setState(() {
-      _openingInWeChat = true;
-    });
-
-    AppLogger.instance.webview(
-      LogLevel.info,
-      '服务大厅尝试在微信中打开: ${ServiceHallPage.homeUrl}',
-    );
-
-    await CampusActionExecutor.instance.executeWechat(
-      context,
-      url: ServiceHallPage.homeUrl,
-      title: '服务大厅',
-      successMessage: '已请求打开微信，若未直达请复制链接到微信中继续',
-    );
-    if (!mounted) return;
-
-    setState(() {
-      _openingInWeChat = false;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     return UnifiedAuthProtectedWebViewPage(
@@ -84,13 +53,6 @@ class _ServiceHallPageState extends State<ServiceHallPage> {
       loginDescription: ServiceHallPage.authLoginDescription,
       showWebViewBottomBackButton: true,
       onHomePressed: () => context.goNamed('home'),
-      appBarActions: [
-        IconButton(
-          tooltip: '在微信中打开',
-          icon: const Icon(Icons.open_in_new),
-          onPressed: _openingInWeChat ? null : () => unawaited(_openInWeChat()),
-        ),
-      ],
     );
   }
 }

@@ -441,10 +441,17 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
       ),
       _SettingsSearchEntry(
-        keywords: '桌面组件与后台 桌面 组件 小组件 快捷方式 后台 保活 通知',
+        keywords: '桌面组件 桌面 组件 小组件 快捷方式 课表 widget',
         builder: (context) => PlainListRow(
-          title: '桌面组件与后台',
+          title: '桌面组件',
           onTap: () => context.pushNamed('desktop-background'),
+        ),
+      ),
+      _SettingsSearchEntry(
+        keywords: '权限与后台 权限 后台 保活 通知 日历 闹钟 电池 自启动 快捷方式',
+        builder: (context) => PlainListRow(
+          title: '权限与后台',
+          onTap: () => context.pushNamed('permissions'),
         ),
       ),
       _SettingsSearchEntry(
@@ -473,13 +480,6 @@ class _SettingsPageState extends State<SettingsPage> {
         keywords: '重放新手引导 重放 新手 引导 欢迎 向导',
         builder: (context) =>
             PlainListRow(title: '重放新手引导', onTap: () => _replayWelcome(context)),
-      ),
-      _SettingsSearchEntry(
-        keywords: '问题反馈与建议 问题 反馈 建议 bug issue 报错 提意见',
-        builder: (context) => PlainListRow(
-          title: '问题反馈与建议',
-          onTap: () => context.pushNamed('feedback'),
-        ),
       ),
       _SettingsSearchEntry(
         keywords: '关于与诊断 关于 诊断 日志 反馈 开发者 版本',
@@ -575,8 +575,12 @@ class _SettingsPageState extends State<SettingsPage> {
                 _SettingsListGroup(
                   children: [
                     PlainListRow(
-                      title: '桌面组件与后台',
+                      title: '桌面组件',
                       onTap: () => context.pushNamed('desktop-background'),
+                    ),
+                    PlainListRow(
+                      title: '权限与后台',
+                      onTap: () => context.pushNamed('permissions'),
                     ),
                     PlainListRow(
                       title: 'AI 模型与接口',
@@ -596,10 +600,6 @@ class _SettingsPageState extends State<SettingsPage> {
                     PlainListRow(
                       title: '重放新手引导',
                       onTap: () => _replayWelcome(context),
-                    ),
-                    PlainListRow(
-                      title: '问题反馈与建议',
-                      onTap: () => context.pushNamed('feedback'),
                     ),
                     PlainListRow(
                       title: '关于与诊断',

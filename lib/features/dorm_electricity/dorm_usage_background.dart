@@ -19,12 +19,11 @@ import 'dorm_electricity_service.dart';
 
 const dormUsageCollect = 'dormUsageCollectV3_15m';
 
-/// Experimental: requires a deliberate test build and user opt-in. Never
-/// automatically recover credentials or bypass the school's authentication.
+/// Background opt-in sampling. Never automatically recover credentials or
+/// bypass the school's authentication.
 class DormUsageBackground {
   DormUsageBackground._();
   static final instance = DormUsageBackground._();
-  static const experimental = bool.fromEnvironment('DORM_USAGE_BACKGROUND');
   @visibleForTesting
   bool? debugAvailableOverride;
   @visibleForTesting
@@ -45,8 +44,8 @@ class DormUsageBackground {
   Future<void> Function()? debugRegisterTask;
 
   bool get available =>
-      debugAvailableOverride ?? (experimental && !kIsWeb && Platform.isAndroid);
-  static const interval = Duration(minutes: 15);
+      debugAvailableOverride ?? (!kIsWeb && Platform.isAndroid);
+  static const interval = Duration(hours: 1);
   static const minAttemptInterval = Duration(minutes: 10);
   late final _io = AtomicJsonFile(
     'dorm_usage_background_v3.json',
@@ -102,7 +101,7 @@ class DormUsageBackground {
   }
 
   /// Remove stale periodic work after logout, room/epoch changes, or an upgrade
-  /// to a build where the experimental worker is disabled. Recheck the stored
+  /// to a build where the background worker is disabled. Recheck the stored
   /// intent before cancelling so a concurrent re-enable is restored.
   Future<void> _cancelIfInactive({bool requireVerifiedAccount = false}) async {
     if (!available) {
@@ -546,6 +545,9 @@ class DormUsageBackground {
             if (rows.length > 3100) rows.removeRange(0, rows.length - 3100);
             d['samples'] = rows;
             await AtomicJsonFile.write(file, d);
+            // 同步更新电费缓存与时间戳，供 8h 低电预警与桌面小组件直接读取。
+            await p.setDouble(DormElectricityService.keyElectricity, value);
+            await p.setInt(DormElectricityService.keyElectricityUpdatedAt, at);
             return true;
           });
         },

@@ -145,4 +145,48 @@ void main() {
   previewTest('physical_test_multi_dark', _multiYear(), Brightness.dark);
   previewTest('physical_test_single_light', _singleYear(), Brightness.light);
   previewTest('physical_test_edge_light', _edge(), Brightness.light);
+
+  for (final (name, b) in [
+    ('physical_test_calc_light', Brightness.light),
+    ('physical_test_calc_dark', Brightness.dark),
+  ]) {
+    testWidgets('preview: $name', (tester) async {
+      if (!renderEnabled) return;
+      await resetTestEnvironment();
+      final fullSnapshot = PhysicalTestSnapshot(
+        records: [
+          PhysicalTestRecord(
+            academicYear: '2025-2026',
+            totalScore: '84.6',
+            grade: '良好',
+            items: const [
+              PhysicalTestItem(name: '身高', result: '176.0 厘米'),
+              PhysicalTestItem(name: '体重', result: '66.0 公斤'),
+              PhysicalTestItem(name: '肺活量', result: '4650 毫升'),
+              PhysicalTestItem(name: '50米跑', result: '7.1 秒'),
+              PhysicalTestItem(name: '坐体前屈', result: '18.5 厘米'),
+              PhysicalTestItem(name: '立定跳远', result: '248 厘米'),
+              PhysicalTestItem(name: '引体向上', result: '15 个'),
+              PhysicalTestItem(name: '1000米跑', result: '3.48 分钟'),
+            ],
+          ),
+        ],
+      );
+      await pumpPreviewScene(
+        tester,
+        (_) => PhysicalTestPage(snapshotFetcher: () async => fullSnapshot),
+        brightness: b,
+      );
+      await tester.tap(find.text('成绩计算'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('请选择年级'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('大三'));
+      await tester.pumpAndSettle();
+      await expectLater(
+        find.byType(MaterialApp),
+        matchesGoldenFile('$_goldenDir/$name.png'),
+      );
+    }, skip: !renderEnabled);
+  }
 }

@@ -28,7 +28,7 @@ void main() {
   });
 
   test('background schedule respects Android periodic minimum', () {
-    expect(DormUsageBackground.interval, const Duration(minutes: 15));
+    expect(DormUsageBackground.interval, const Duration(hours: 1));
     expect(DormUsageBackground.minAttemptInterval, const Duration(minutes: 10));
   });
   test('parse only matching room balance', () {
@@ -127,7 +127,11 @@ void main() {
     expect(requested?['L4_room_id'], room);
     expect(released, 1);
     await prefs.reload();
-    expect(prefs.getDouble(DormElectricityService.keyElectricity), 17.25);
+    expect(prefs.getDouble(DormElectricityService.keyElectricity), 409.38);
+    expect(
+      prefs.getInt(DormElectricityService.keyElectricityUpdatedAt),
+      isNotNull,
+    );
     final samples = await background.samplesFor(
       owner: 'account-A',
       area: area,

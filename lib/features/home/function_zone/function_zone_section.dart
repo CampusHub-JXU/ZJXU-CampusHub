@@ -411,7 +411,7 @@ class _FunctionZoneSectionState extends State<FunctionZoneSection> {
             child: _LargeFunctionTile(
               entry: primaryEntry,
               pinned: snapshot.isPinned(primaryEntry.id),
-              statsText: _resolveStats(primaryEntry) ?? primaryEntry.subtitle,
+              statsText: _resolveStats(primaryEntry),
               onTap: () => unawaited(_openEntry(primaryEntry)),
               onLongPress: () => unawaited(_togglePinned(primaryEntry)),
             ),
@@ -760,7 +760,7 @@ class _LargeFunctionTile extends StatelessWidget {
 
   final FeatureEntryDefinition entry;
   final bool pinned;
-  final String statsText;
+  final String? statsText;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
 
@@ -809,13 +809,15 @@ class _LargeFunctionTile extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: context.appText.rowTitleStrong.copyWith(height: 1.15),
               ),
-              const SizedBox(height: 3),
-              Text(
-                statsText,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: context.appText.meta.copyWith(height: 1.2),
-              ),
+              if (statsText != null) ...[
+                const SizedBox(height: 3),
+                Text(
+                  statsText!,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.appText.meta.copyWith(height: 1.2),
+                ),
+              ],
             ],
           ),
         ),

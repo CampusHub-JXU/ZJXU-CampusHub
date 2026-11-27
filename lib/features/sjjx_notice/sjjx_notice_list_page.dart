@@ -278,7 +278,7 @@ class _SjjxNoticeListPageState extends State<SjjxNoticeListPage> {
         const SizedBox(height: AppSpacing.md),
         for (var i = 0; i < 4; i++) ...[
           if (i > 0) const SizedBox(height: AppSpacing.sm),
-          const SkeletonBox(height: 68, radius: 16),
+          const SkeletonCard(lines: 2),
         ],
       ],
     );

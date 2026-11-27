@@ -1113,7 +1113,7 @@ class _TodayEmptyState extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     return Semantics(
       button: true,
-      label: '今天暂无课程与考试安排，浏览本周与全学期课程',
+      label: '今天暂无课程与考试安排',
       child: AppHardTileShell(
         radius: AppRadius.tile,
         child: AppTileSurface(
@@ -1130,24 +1130,11 @@ class _TodayEmptyState extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '今天暂无课程与考试安排',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: context.appText.rowTitle.copyWith(height: 1.25),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '浏览本周与全学期课程',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: context.appText.meta.copyWith(height: 1.25),
-                    ),
-                  ],
+                child: Text(
+                  '今天暂无课程与考试安排',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.appText.rowTitle.copyWith(height: 1.25),
                 ),
               ),
               const SizedBox(width: 8),

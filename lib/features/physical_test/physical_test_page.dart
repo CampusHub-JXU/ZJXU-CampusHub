@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../core/auth/cas_auth_broker.dart';
@@ -9,44 +8,64 @@ import '../../core/logging/app_logger.dart';
 import '../../core/theme/app_design_tokens.dart';
 import '../../core/theme/app_typography.dart';
 import '../../shared/widgets/app_app_bar.dart';
+import '../../shared/widgets/app_dropdown.dart';
 import '../../shared/widgets/app_empty_view.dart';
-import '../../shared/widgets/app_filter_chips.dart';
 import '../../shared/widgets/app_error_view.dart';
+import '../../shared/widgets/app_filter_chips.dart';
 import '../../shared/widgets/app_status_tag.dart';
 import '../../shared/widgets/auth_required_view.dart';
 import '../../shared/widgets/login_shell.dart';
 import '../../shared/widgets/plain_list.dart';
 import '../../shared/widgets/refresh_status_line.dart';
 import '../../shared/widgets/skeleton_box.dart';
-import 'physical_test_calculator_page.dart';
+import 'physical_test_calculator.dart';
+import 'physical_test_input.dart';
 import 'physical_test_model.dart';
 import 'physical_test_service.dart';
 
+part 'physical_test_calculator_view.dart';
+
 typedef PhysicalTestSnapshotFetcher = Future<PhysicalTestSnapshot> Function();
 
-/// 体测成绩原生页面。
+/// 体测页展示模式：「我的成绩」与「成绩计算」。
+enum PhysicalTestPageMode { scores, calculator }
+
+/// 体测成绩原生页面（成绩查询 + 离线体测计算器二合一）。
 ///
 /// 接入 [PhysicalTestService] 原生数据服务，只做表现层重排，不改登录 / 网络 /
 /// 解析口径 / 缓存与各类守卫：
-/// * 未登录：展示统一认证原生登录引导 [AuthRequiredView]，唤起登录弹窗 [showUnifiedAuthLoginModal]；
+/// * 顶部提供「我的成绩」|「成绩计算」模式切换器，「成绩计算」完全离线可用；
+/// * 未登录：在「我的成绩」模式展示统一认证原生登录引导 [AuthRequiredView]，
+///   唤起登录弹窗 [showUnifiedAuthLoginModal]；
 /// * 登录成功 / 账号切换：自动拉取对应账号体测成绩，登出立即清除历史成绩；
 /// * 有数据：第一屏单列「最新学年总分 + 等级」读数，历史学年用轻量年份选择器切换，
 ///   选中学年下方是单列项目明细（项目名在左、原始测量值在右、得分 / 评价为次级带标签信息）；
-/// * 无数据：中性空态 [AppEmptyView]；失败：错误态 [AppErrorView] 并支持重试；
+/// * 首次从「我的成绩」切换到「成绩计算」且计算器无输入时，自动提取选中记录中的测量值与性别；
 /// * 严禁挂载任何 WebView、CAS H5 页面或凭据快速填充。
 class PhysicalTestPage extends StatefulWidget {
-  const PhysicalTestPage({super.key, this.snapshotFetcher});
+  const PhysicalTestPage({
+    super.key,
+    this.snapshotFetcher,
+    this.initialMode = PhysicalTestPageMode.scores,
+  });
 
   static const titleText = '体测成绩';
 
   /// 测试注入；为空时走 [PhysicalTestService.fetchSnapshot]。
   final PhysicalTestSnapshotFetcher? snapshotFetcher;
 
+  /// 初始模式；兼容 `/physical-test/calculator` 直达「成绩计算」。
+  final PhysicalTestPageMode initialMode;
+
   @override
   State<PhysicalTestPage> createState() => _PhysicalTestPageState();
 }
 
 class _PhysicalTestPageState extends State<PhysicalTestPage> {
+  static const _maxContentWidth = 640.0;
+
+  late PhysicalTestPageMode _mode;
+
   bool _loading = true;
   bool _authRequired = false;
   String? _error;
@@ -60,9 +79,44 @@ class _PhysicalTestPageState extends State<PhysicalTestPage> {
   int _authEpoch = 0;
   int _loadId = 0;
 
+  // ── 成绩计算器状态 ──────────────────────────────────────────────────────────
+  PhysicalTestGrade? _grade;
+  PhysicalTestGender? _gender;
+
+  final _heightCtrl = TextEditingController();
+  final _weightCtrl = TextEditingController();
+  final _lungCtrl = TextEditingController();
+  final _sprintCtrl = TextEditingController();
+  final _reachCtrl = TextEditingController();
+  final _jumpCtrl = TextEditingController();
+  var _strengthCtrl = TextEditingController();
+  var _enduranceCtrl = TextEditingController();
+
+  double? _height;
+  double? _weight;
+  double? _lungCapacity;
+  double? _sprint;
+  double? _reach;
+  double? _longJump;
+  int? _strength;
+  double? _endurance;
+
+  bool _heightTouched = false;
+  bool _weightTouched = false;
+  bool _lungTouched = false;
+  bool _sprintTouched = false;
+  bool _reachTouched = false;
+  bool _jumpTouched = false;
+  bool _strengthTouched = false;
+  bool _enduranceTouched = false;
+
+  /// 是否已执行过「首次切入自动预填」或用户已手动编辑，防止后续来回切换覆盖输入。
+  bool _hasAutoPrefilledOnSwitch = false;
+
   @override
   void initState() {
     super.initState();
+    _mode = widget.initialMode;
     _currentAccount = UnifiedAuthService.instance.currentAccount;
     UnifiedAuthService.instance.addListener(_onAuthChanged);
     unawaited(_load());
@@ -71,6 +125,14 @@ class _PhysicalTestPageState extends State<PhysicalTestPage> {
   @override
   void dispose() {
     UnifiedAuthService.instance.removeListener(_onAuthChanged);
+    _heightCtrl.dispose();
+    _weightCtrl.dispose();
+    _lungCtrl.dispose();
+    _sprintCtrl.dispose();
+    _reachCtrl.dispose();
+    _jumpCtrl.dispose();
+    _strengthCtrl.dispose();
+    _enduranceCtrl.dispose();
     super.dispose();
   }
 
@@ -194,6 +256,13 @@ class _PhysicalTestPageState extends State<PhysicalTestPage> {
     return records[_selectedIndex].academicYear;
   }
 
+  PhysicalTestRecord? _selectedRecordOrNull() {
+    final records = _snapshot?.records;
+    if (records == null || records.isEmpty) return null;
+    final index = _selectedIndex.clamp(0, records.length - 1);
+    return records[index];
+  }
+
   /// 刷新后沿用用户选中的学年（按学年字符串匹配、取第一条）；
   /// 新快照里已没有该学年（或此前无选择）则回到最新学年。
   int _restoreSelectedIndex(
@@ -207,82 +276,109 @@ class _PhysicalTestPageState extends State<PhysicalTestPage> {
     return _latestRecordIndex(records);
   }
 
+  void _switchMode(PhysicalTestPageMode nextMode) {
+    if (_mode == nextMode) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() {
+      _mode = nextMode;
+      if (nextMode == PhysicalTestPageMode.calculator &&
+          !_hasAutoPrefilledOnSwitch &&
+          !_hasAnyCalculatorInput) {
+        final record = _selectedRecordOrNull();
+        if (record != null) {
+          final prefill = _PhysicalTestPrefill.fromRecord(record);
+          if (!prefill.isEmpty) {
+            _applyPrefill(prefill);
+            _hasAutoPrefilledOnSwitch = true;
+          }
+        }
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppAppBar(
         title: const Text(PhysicalTestPage.titleText),
         actions: [
-          if (!_loading && !_authRequired && _error == null)
-            IconButton(
-              icon: const Icon(Icons.refresh_rounded),
-              tooltip: '刷新',
-              onPressed: () => _load(forceRefresh: true),
-            ),
+          if (_mode == PhysicalTestPageMode.scores) ...[
+            if (!_loading && !_authRequired && _error == null)
+              IconButton(
+                icon: const Icon(Icons.refresh_rounded),
+                tooltip: '刷新',
+                onPressed: () => _load(forceRefresh: true),
+              ),
+          ] else
+            TextButton(onPressed: _resetCalculator, child: const Text('重置')),
         ],
       ),
-      body: _buildBody(),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.pageMargin,
+              AppSpacing.sm,
+              AppSpacing.pageMargin,
+              AppSpacing.xs,
+            ),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: _maxContentWidth),
+                child: _PhysicalTestModeSwitch(
+                  key: const Key('physical_test_mode_switch'),
+                  mode: _mode,
+                  onChanged: _switchMode,
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: _mode == PhysicalTestPageMode.scores
+                ? _buildScoresBody()
+                : _buildCalculatorBody(),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildBody() {
+  Widget _buildScoresBody() {
     if (_loading && _snapshot == null && !_authRequired && _error == null) {
       return _buildSkeleton();
     }
 
     if (_authRequired) {
-      return _withCalculatorFooter(
-        AuthRequiredView(
-          title: '需要统一认证后继续',
-          message: '登录统一身份认证后可查看体测成绩',
-          buttonLabel: '登录统一认证',
-          icon: Icons.directions_run_outlined,
-          onAction: _presentLoginPrompt,
-        ),
+      return AuthRequiredView(
+        title: '需要统一认证后继续',
+        message: '登录统一身份认证后可查看体测成绩',
+        buttonLabel: '登录统一认证',
+        icon: Icons.directions_run_outlined,
+        onAction: _presentLoginPrompt,
       );
     }
 
     final error = _error;
     if (error != null) {
-      return _withCalculatorFooter(
-        AppErrorView(message: error, onRetry: () => _load(forceRefresh: true)),
+      return AppErrorView(
+        message: error,
+        onRetry: () => _load(forceRefresh: true),
       );
     }
 
     final records = _snapshot?.records ?? const <PhysicalTestRecord>[];
     if (records.isEmpty) {
-      return _withCalculatorFooter(
-        AppEmptyView(
-          title: '暂无体测成绩',
-          icon: Icons.directions_run_outlined,
-          message: _snapshot?.message,
-          actionLabel: '刷新',
-          onAction: () => _load(forceRefresh: true),
-        ),
+      return AppEmptyView(
+        title: '暂无体测成绩',
+        icon: Icons.directions_run_outlined,
+        message: _snapshot?.message,
+        actionLabel: '刷新',
+        onAction: () => _load(forceRefresh: true),
       );
     }
 
     return _buildRecords(records);
-  }
-
-  Widget _calculatorButton() => OutlinedButton.icon(
-    onPressed: () => context.pushNamed('physical-test-calculator'),
-    icon: const Icon(Icons.calculate_outlined),
-    label: const Text(PhysicalTestCalculatorPage.title),
-  );
-
-  Widget _withCalculatorFooter(Widget status) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(child: status),
-        SafeArea(
-          top: false,
-          minimum: const EdgeInsets.all(AppSpacing.pageMargin),
-          child: _calculatorButton(),
-        ),
-      ],
-    );
   }
 
   /// 有数据：无框主读数 + 历史学年选择器 + 选中学年的单列项目明细。
@@ -297,6 +393,7 @@ class _PhysicalTestPageState extends State<PhysicalTestPage> {
     return RefreshIndicator(
       onRefresh: () => _load(forceRefresh: true),
       child: ListView(
+        key: const PageStorageKey('physical_test_scores_scroll'),
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(
           AppSpacing.pageMargin,
@@ -313,8 +410,6 @@ class _PhysicalTestPageState extends State<PhysicalTestPage> {
           ],
           const SizedBox(height: AppSpacing.lg),
           _buildItems(selected),
-          const SizedBox(height: AppSpacing.lg),
-          _calculatorButton(),
         ],
       ),
     );
@@ -542,7 +637,7 @@ class _PhysicalTestPageState extends State<PhysicalTestPage> {
     );
   }
 
-  /// 无缓存首次加载：一组骨架，替代整页 spinner。
+  /// 无缓存首次加载：一组结构化骨架卡片，替代整页空白/spinner。
   Widget _buildSkeleton() {
     return ListView(
       padding: const EdgeInsets.fromLTRB(
@@ -554,13 +649,23 @@ class _PhysicalTestPageState extends State<PhysicalTestPage> {
       children: const [
         RefreshStatusLine(refreshing: true, loadingLabel: '正在获取体测成绩…'),
         SizedBox(height: AppSpacing.md),
-        SkeletonBox(width: 120, height: 14),
+        SkeletonCard(lines: 2, showTrailing: true),
+        SizedBox(height: AppSpacing.md),
+        Row(
+          children: [
+            SkeletonBox(width: 82, height: 34, radius: 17),
+            SizedBox(width: AppSpacing.sm),
+            SkeletonBox(width: 82, height: 34, radius: 17),
+            SizedBox(width: AppSpacing.sm),
+            SkeletonBox(width: 82, height: 34, radius: 17),
+          ],
+        ),
+        SizedBox(height: AppSpacing.lg),
+        SkeletonCard(lines: 2, showTrailing: true),
         SizedBox(height: AppSpacing.sm),
-        SkeletonBox(height: 64, radius: 12),
-        SizedBox(height: AppSpacing.lg),
-        SkeletonBox(height: 44, radius: 22),
-        SizedBox(height: AppSpacing.lg),
-        SkeletonBox(height: 208, radius: 16),
+        SkeletonCard(lines: 2, showTrailing: true),
+        SizedBox(height: AppSpacing.sm),
+        SkeletonCard(lines: 2, showTrailing: true),
       ],
     );
   }

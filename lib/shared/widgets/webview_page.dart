@@ -121,6 +121,7 @@ class WebViewPage extends StatefulWidget {
 class _WebViewPageState extends State<WebViewPage> {
   double _progress = 0;
   bool _hasError = false;
+  bool _initialLoadCompleted = false;
   bool _hasShownEnvHint = false;
   bool _hasFallbackToHome = false;
   bool _allowRoutePop = false;
@@ -239,13 +240,41 @@ class _WebViewPageState extends State<WebViewPage> {
 
   DateTime? _lastBackPressedAt;
 
+  Future<int?> _resolveBackStepOffset(InAppWebViewController controller) async {
+    try {
+      final history = await controller.getCopyBackForwardList();
+      final items = history?.list;
+      final currentIndex = history?.currentIndex;
+      if (items != null && currentIndex != null && items.isNotEmpty) {
+        final urls = items
+            .map((item) => item.url?.toString() ?? '')
+            .toList(growable: false);
+        final offset = resolveWebViewBackStepOffset(urls, currentIndex);
+        AppLogger.instance.webview(
+          LogLevel.info,
+          'WebView history idx=$currentIndex offset=$offset urls=${urls.map(scrubSensitiveUrl).toList()}',
+        );
+        return offset;
+      }
+    } on MissingPluginException {
+      // Fallback to canGoBack below when platform channel is unavailable.
+    } on UnimplementedError {
+      // Fallback to canGoBack below in test fakes.
+    } catch (_) {
+      // Fallback to canGoBack below.
+    }
+
+    final canGoBack = await controller.canGoBack();
+    return canGoBack ? -1 : null;
+  }
+
   Future<bool> _goBackInWebViewIfPossible() async {
     final controller = _controller;
     if (controller == null || _hasError) return false;
 
     try {
-      final canGoBack = await controller.canGoBack();
-      if (!canGoBack) {
+      final stepOffset = await _resolveBackStepOffset(controller);
+      if (stepOffset == null) {
         if (_canGoBackInWebView && mounted) {
           setState(() => _canGoBackInWebView = false);
         } else {
@@ -253,7 +282,11 @@ class _WebViewPageState extends State<WebViewPage> {
         }
         return false;
       }
-      await controller.goBack();
+      if (stepOffset == -1) {
+        await controller.goBack();
+      } else {
+        await controller.goBackOrForward(steps: stepOffset);
+      }
       unawaited(_refreshWebViewBackState(controller));
       return true;
     } catch (error) {
@@ -313,7 +346,7 @@ class _WebViewPageState extends State<WebViewPage> {
     }
 
     try {
-      final canGoBack = await activeController.canGoBack();
+      final canGoBack = await _resolveBackStepOffset(activeController) != null;
       if (!mounted) {
         _canGoBackInWebView = canGoBack;
         return;
@@ -613,8 +646,8 @@ class _WebViewPageState extends State<WebViewPage> {
                       ),
                     if (showCloseButton)
                       IconButton(
-                        icon: const Icon(Icons.close),
-                        tooltip: '关闭',
+                        icon: const Icon(Icons.home_outlined),
+                        tooltip: '回到首页',
                         onPressed: _popRoute,
                       ),
                   ],
@@ -715,6 +748,9 @@ class _WebViewPageState extends State<WebViewPage> {
                         supportMultipleWindows: false,
                         useWideViewPort: true,
                         loadWithOverviewMode: true,
+                        transparentBackground: true,
+                        algorithmicDarkeningAllowed:
+                            Theme.of(context).brightness == Brightness.dark,
                         userAgent: widget.emulateWeChatEnvironment
                             ? buildEmbeddedWeChatUserAgent(
                                 Theme.of(context).platform,
@@ -808,6 +844,11 @@ class _WebViewPageState extends State<WebViewPage> {
 
                         await _inspectLoadedPage(controller);
                         await _refreshWebViewBackState(controller);
+                        if (!_initialLoadCompleted &&
+                            !isWebViewAuthRedirectHistoryUrl(_currentUrl) &&
+                            mounted) {
+                          setState(() => _initialLoadCompleted = true);
+                        }
 
                         final callback = widget.onLoadStop;
                         if (callback != null) {
@@ -901,7 +942,40 @@ class _WebViewPageState extends State<WebViewPage> {
                         unawaited(_handleMainFrameLoadFailure(request, error));
                       },
                     ),
-                  if (_progress < 1 && !_hasError)
+                  if (!_initialLoadCompleted && !_hasError)
+                    Positioned.fill(
+                      child: ColoredBox(
+                        color: Theme.of(context).colorScheme.surface,
+                        child: Center(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 240),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  '正在加载${widget.title}...',
+                                  style: Theme.of(context).textTheme.bodyMedium
+                                      ?.copyWith(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurfaceVariant,
+                                      ),
+                                ),
+                                const SizedBox(height: 14),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: LinearProgressIndicator(
+                                    value: _progress > 0.05 ? _progress : 0.08,
+                                    minHeight: 4,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (_progress < 1 && !_hasError && _initialLoadCompleted)
                     LinearProgressIndicator(value: _progress),
                 ],
               ),

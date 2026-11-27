@@ -81,7 +81,7 @@ void main() {
 
     expect(find.byType(WelcomePage), findsOneWidget);
     // 首屏标题随引导页改版更新；断言首屏真实文案而非历史占位文案。
-    expect(find.text('连接校园身份'), findsOneWidget);
+    expect(find.text('欢迎使用嘉兴大学'), findsOneWidget);
 
     await tester.tap(find.text('跳过'));
     await tester.pumpAndSettle();

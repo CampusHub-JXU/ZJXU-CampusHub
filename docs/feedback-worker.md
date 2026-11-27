@@ -46,7 +46,7 @@ npx cf auth login
 npm run deploy
 ```
 
-当前部署地址为 `https://jxuc-feedback-worker.campushub-jxu.workers.dev`。不绑定自定义域名，无需域名或 DNS 权限。`wrangler.toml` 保留兼容配置，使用 Wrangler 时也需保持仓库和暂停开关一致。
+当前正式接口地址为 `https://feedback.fhfanshu.xyz`（自定义域名，绕开 `workers.dev` 国内直连阻断）。`wrangler.toml` 保留兼容配置，使用 Wrangler 时也需保持仓库和暂停开关一致。
 
 维护者配置好 `GITHUB_TOKEN` 后，在两份配置中将 `PAUSE_SUBMISSIONS` 改为 `false` 并重新部署，再用一条明确标记为验收的反馈确认 Issue 创建成功。不要只在控制台改暂停开关，否则下次部署会恢复仓库里的值。令牌应由有目标仓库权限的维护者生成并直接填入 Cloudflare Secret，不经聊天、代码或构建参数传递。若使用其他账号部署，同步修改 App 的 `JXU_FEEDBACK_URL`，平台子域名以实际部署结果为准。
 
@@ -58,7 +58,7 @@ npm run deploy
 
 ## App 配置与本地验证
 
-默认接口：`https://jxuc-feedback-worker.campushub-jxu.workers.dev/api/feedback`。可用 `--dart-define=JXU_FEEDBACK_URL=...` 覆盖。只接受 HTTPS；调试构建额外允许 `localhost`、`127.0.0.1`、Android 模拟器 `10.0.2.2` 的 HTTP 接口。
+默认接口：`https://feedback.fhfanshu.xyz/api/feedback`。可用 `--dart-define=JXU_FEEDBACK_URL=...` 覆盖。只接受 HTTPS；调试构建额外允许 `localhost`、`127.0.0.1`、Android 模拟器 `10.0.2.2` 的 HTTP 接口。
 
 ```powershell
 npm test

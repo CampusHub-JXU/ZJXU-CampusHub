@@ -89,10 +89,10 @@ void main() {
       // All tiles (and the search field) are wrapped in AppTileSurface
       expect(find.byType(AppTileSurface), findsNWidgets(_defaultSurfaceCount));
 
-      // Rank 0 (课表) is a wide tile showing title and subtitle; the entry
+      // Rank 0 (课表) is a wide tile without static subtitle; the entry
       // itself also stays in its category.
       expect(find.text('课表'), findsNWidgets(2));
-      expect(find.text('查看本学期课程、周次与调课提醒'), findsOneWidget);
+      expect(find.text('查看本学期课程、周次与调课提醒'), findsNothing);
 
       // Standard entries are present (default 常用 shortcuts appear twice)
       expect(find.text('成绩'), findsNWidgets(2));
@@ -119,10 +119,10 @@ void main() {
       await tester.pump();
 
       // Library should now have a pin icon and be at the top as a wide tile
-      // with its subtitle, while its own tile stays in the category.
+      // without static subtitle, while its own tile stays in the category.
       expect(find.byIcon(Icons.push_pin_rounded), findsWidgets);
       expect(find.text('图书馆'), findsNWidgets(2));
-      expect(find.text('馆藏检索、借阅与电子资源入口'), findsOneWidget);
+      expect(find.text('馆藏检索、借阅与电子资源入口'), findsNothing);
     },
   );
 
@@ -442,8 +442,8 @@ void main() {
     );
     await tester.pump();
 
-    // 访问过的体测成为常用首位宽磁贴（显示副标题），本体仍在分类里。
-    expect(find.text('体质测试成绩与预约（WebVPN 访问）'), findsOneWidget);
+    // 访问过的体测成为常用首位宽磁贴（不再展示静态副标题），本体仍在分类里。
+    expect(find.text('体质测试成绩与预约（WebVPN 访问）'), findsNothing);
     expect(find.text('体测成绩'), findsNWidgets(2));
   });
 

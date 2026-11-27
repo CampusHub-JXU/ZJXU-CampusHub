@@ -158,6 +158,13 @@ class CasRoutedAccess {
         cancelToken: cancelToken,
         deadline: deadline,
         needsLogin: webVpnGatewayResponseNeedsLogin,
+        // WebVPN 登录页可能带着上一跳未登录资源的重定向记忆（如
+        // `/http/.../weixin/login.jsp?ticket=...`）；CAS 换票完成并下发网关
+        // Cookie 后若继续跟随该跳转，会重放已失效的 ticket 导致业务端 500。
+        // 只要网关已放行到 `/http/` 或 `/https/` 代理路径，网关会话即已就绪。
+        stopAtRedirect: (next) =>
+            next.host == 'webvpn.zjxu.edu.cn' &&
+            (next.path.startsWith('/http/') || next.path.startsWith('/https/')),
       );
     } on CasAuthExpiredException {
       rethrow;

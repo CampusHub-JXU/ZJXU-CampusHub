@@ -186,3 +186,64 @@ String? buildEmbeddedWeChatUserAgent(TargetPlatform platform) {
       return null;
   }
 }
+
+/// 判断 WebView 历史条目是否为认证/SSO 中转页（如服务大厅 `ssoLogin.html`、CAS 等）。
+///
+/// 这类页面会在加载后自动向前跳转，若允许用户后退到它们，会立刻再次自动
+/// 前进，造成「点返回退不出页面」的死循环。
+bool isWebViewAuthRedirectHistoryUrl(String currentUrl) {
+  if (isSsoIntermediateLandingUrl(currentUrl) ||
+      isWebViewCasLoginEntryUrl(currentUrl)) {
+    return true;
+  }
+
+  final raw = currentUrl.trim();
+  if (raw.isEmpty) return false;
+
+  final uri = Uri.tryParse(raw);
+  if (uri == null) return false;
+
+  final host = uri.host.toLowerCase();
+  final path = uri.path.toLowerCase();
+
+  if (host == 'newca.zjxu.edu.cn' && path.startsWith('/casclient/')) {
+    return true;
+  }
+  if (host == _serviceHallHost && path.endsWith('/ssologin.html')) {
+    return true;
+  }
+  final fragment = uri.fragment.trim();
+  final isEmptyOrRootHash = fragment.isEmpty || fragment == '/';
+  if (host == _serviceHallHost &&
+      path == _serviceHallPath.toLowerCase() &&
+      isEmptyOrRootHash) {
+    return true;
+  }
+  if (host == 'webvpn.zjxu.edu.cn' &&
+      (path.contains('/casclient/') ||
+          path.contains('/mportal/start/ssologin.html') ||
+          (path.contains('/mportal/start/index.html') && isEmptyOrRootHash))) {
+    return true;
+  }
+  return false;
+}
+
+/// 从 [currentIndex] 向前查找第一个非认证中转页的 WebView 历史条目步数（负数）。
+///
+/// 返回 `null` 表示前面没有可退回的真实业务页面（全是 SSO/登录中转页或已是栈底）。
+int? resolveWebViewBackStepOffset(List<String> historyUrls, int currentIndex) {
+  if (currentIndex <= 0 || currentIndex >= historyUrls.length) {
+    return null;
+  }
+  final currentUrl = historyUrls[currentIndex].trim();
+  final currentIsServiceHallHome = isServiceHallHomeUrl(currentUrl);
+  for (var index = currentIndex - 1; index >= 0; index--) {
+    final candidate = historyUrls[index].trim();
+    if (candidate == currentUrl) continue;
+    if (currentIsServiceHallHome && isServiceHallHomeUrl(candidate)) continue;
+    if (!isWebViewAuthRedirectHistoryUrl(candidate)) {
+      return index - currentIndex;
+    }
+  }
+  return null;
+}

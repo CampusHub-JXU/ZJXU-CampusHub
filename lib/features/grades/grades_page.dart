@@ -749,7 +749,7 @@ class _GradesPageState extends State<GradesPage>
         const SizedBox(height: 16),
         for (var i = 0; i < 3; i++) ...[
           if (i > 0) const SizedBox(height: 8),
-          const SkeletonBox(height: 64, radius: 16),
+          const SkeletonCard(lines: 2, showTrailing: true),
         ],
       ],
     );

@@ -45,8 +45,6 @@ class _DormElectricityPageState extends State<DormElectricityPage>
     with WidgetsBindingObserver {
   final _service = DormElectricityService.instance;
   double? _electricity;
-  Timer? _usageTimer;
-  bool _usageMonitoring = false;
   bool _usageBackgroundEnabled = false;
   bool _usageBackgroundBusy = false;
 
@@ -76,83 +74,10 @@ class _DormElectricityPageState extends State<DormElectricityPage>
     }
   }
 
-  void _stopUsageMonitoring() {
-    _usageTimer?.cancel();
-    _usageTimer = null;
-    _usageMonitoring = false;
-  }
-
-  void _setUsageMonitoring(bool enabled) {
-    if (!mounted) return;
-    if (!enabled) {
-      setState(_stopUsageMonitoring);
-      return;
-    }
-    if (_usageMonitoring ||
-        !_hasConfig ||
-        _requiresUnifiedAuth ||
-        _currentIdentity().account == null ||
-        WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed ||
-        ModalRoute.of(context)?.isCurrent != true) {
-      return;
-    }
-    setState(() => _usageMonitoring = true);
-    _usageTimer = Timer.periodic(const Duration(minutes: 10), (_) {
-      unawaited(_pollUsage());
-    });
-    // Establish the first real measurement without waiting ten minutes.
-    unawaited(_pollUsage());
-  }
-
-  Future<void> _pollUsage() async {
-    if (!mounted || !_usageMonitoring) return;
-    if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed ||
-        ModalRoute.of(context)?.isCurrent != true ||
-        !_hasConfig ||
-        _requiresUnifiedAuth ||
-        _currentIdentity().account == null) {
-      setState(_stopUsageMonitoring);
-      return;
-    }
-    if (_loading || _refreshing) return;
-    final updated = _service.lastUpdated;
-    if (updated != null &&
-        DateTime.now().difference(updated) < const Duration(minutes: 10)) {
-      return;
-    }
-    if (!await DormUsageBackground.instance.tryAcquireAutoSamplingSlot()) {
-      return;
-    }
-    if (!mounted || !_usageMonitoring) return;
-    if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed ||
-        ModalRoute.of(context)?.isCurrent != true) {
-      setState(_stopUsageMonitoring);
-      return;
-    }
-    try {
-      await _refresh();
-      if (mounted &&
-          _usageMonitoring &&
-          (_error != null || !_hasConfig || _requiresUnifiedAuth)) {
-        setState(_stopUsageMonitoring);
-      }
-    } catch (error, stackTrace) {
-      if (mounted && _usageMonitoring) setState(_stopUsageMonitoring);
-      AppLogger.instance.storage(
-        LogLevel.warn,
-        '耗电监测暂停',
-        error: error,
-        stackTrace: stackTrace,
-      );
-    }
-  }
-
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (!mounted) return;
-    if (state != AppLifecycleState.resumed && _usageMonitoring) {
-      setState(_stopUsageMonitoring);
-    } else if (state == AppLifecycleState.resumed &&
+    if (state == AppLifecycleState.resumed &&
         DormUsageBackground.instance.available &&
         _hasConfig &&
         !_loading &&
@@ -253,7 +178,6 @@ class _DormElectricityPageState extends State<DormElectricityPage>
       return;
     }
     _lastAuthIdentity = identity;
-    _stopUsageMonitoring();
     _usageBackgroundEnabled = false;
     _usageBackgroundBusy = false;
     _identityGeneration++;
@@ -284,7 +208,6 @@ class _DormElectricityPageState extends State<DormElectricityPage>
 
   @override
   void dispose() {
-    _stopUsageMonitoring();
     WidgetsBinding.instance.removeObserver(this);
     UnifiedAuthService.instance.removeListener(_onAuthChanged);
     super.dispose();
@@ -410,7 +333,6 @@ class _DormElectricityPageState extends State<DormElectricityPage>
 
   /// 进寝室设置；回来后寝室变了按「切换寝室」清旧读数拉新值，否则后台刷新。
   Future<void> _openSettings() async {
-    if (_usageMonitoring) setState(_stopUsageMonitoring);
     final before = (await _service.loadRoomConfig())?.roomId;
     if (!mounted) return;
     await context.pushNamed('dorm-electricity-settings');
@@ -421,7 +343,6 @@ class _DormElectricityPageState extends State<DormElectricityPage>
   }
 
   Future<void> _openRecharge() async {
-    if (_usageMonitoring) setState(_stopUsageMonitoring);
     await CampusActionExecutor.instance.executeWechat(
       context,
       url: DormElectricityService.rechargeUrl,
@@ -530,7 +451,13 @@ class _DormElectricityPageState extends State<DormElectricityPage>
                       trailing: _buildStatus(cs, value, skeleton),
                     ),
                     const SizedBox(height: AppSpacing.md),
-                    if (skeleton) const SkeletonBox(height: 6, radius: 3),
+                    if (skeleton)
+                      const SkeletonBox(height: 6, radius: 3)
+                    else
+                      DetailLevelBar(
+                        fraction: value == null ? 0 : value / 100,
+                        color: _isLow(value) ? cs.error : cs.primary,
+                      ),
                   ],
                 ),
               ),
@@ -581,16 +508,13 @@ class _DormElectricityPageState extends State<DormElectricityPage>
             ),
           ],
         ),
-        const SizedBox(height: AppSpacing.lg),
-        if (_hasConfig) ...[
+        const SizedBox(height: AppSpacing.xl),
+        if (_hasConfig)
           DormUsageChart(
             points: _service.usagePoints,
             remainingKwh: value,
             currentIntervalValid: _service.usageCurrentIntervalValid,
-            monitoring: _usageMonitoring,
-            canMonitor: !busy && !_requiresUnifiedAuth,
             refreshFailed: _error != null,
-            onMonitoringChanged: _setUsageMonitoring,
             backgroundAvailable: DormUsageBackground.instance.available,
             backgroundEnabled: _usageBackgroundEnabled,
             onBackgroundChanged:
@@ -598,15 +522,6 @@ class _DormElectricityPageState extends State<DormElectricityPage>
                 ? null
                 : (enabled) => unawaited(_setUsageBackground(enabled)),
           ),
-          const SizedBox(height: AppSpacing.lg),
-        ],
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-          child: Text(
-            '下拉可立即刷新；电量 30 分钟内有效，离开页面也会在后台补齐。',
-            style: context.appText.meta.copyWith(height: 1.4),
-          ),
-        ),
       ],
     );
   }

@@ -525,7 +525,23 @@ class UnifiedAuthProtectedWebViewPageState
   @override
   Widget build(BuildContext context) {
     if (!_authResolved) {
-      return _buildScaffold(const Center(child: CircularProgressIndicator()));
+      return _buildScaffold(
+        Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              Text(
+                '正在连接${widget.title}...',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
     // prepare/预热可能把 CAS 登录页当成可加载目标；命中时绝不挂 WebView。

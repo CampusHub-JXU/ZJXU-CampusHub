@@ -48,10 +48,10 @@ void appBackgroundTaskDispatcher() {
         return false;
       }
     }
-    if (task == dormUsageCollect) {
-      return DormUsageBackground.instance.run();
-    }
     Future<bool> Function()? action;
+    if (task == dormUsageCollect) {
+      action = DormUsageBackground.instance.run;
+    }
     if (task == dormElectricityCheck) {
       action = DormElectricityBackground.instance.executeBackgroundCheck;
     }

@@ -1,11 +1,9 @@
 import 'package:material_ui/material_ui.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jxu_campus_hub/core/auth/cas_auth_broker.dart';
 import 'package:jxu_campus_hub/core/auth/unified_auth.dart';
-import 'package:jxu_campus_hub/core/wechat/wechat_launcher.dart';
 import 'package:jxu_campus_hub/features/service_hall/service_hall_page.dart';
 
 import '../../helpers/fake_inappwebview.dart';
@@ -18,9 +16,6 @@ void main() {
   });
 
   tearDown(() {
-    WechatLauncher.instance.setGatewayForTesting(null);
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(SystemChannels.platform, null);
     UnifiedAuthService.instance.debugReset();
     CasAuthBroker.debugGetResourceOverride = null;
     ServiceHallPage.debugPrepareEntryOverride = null;
@@ -40,7 +35,7 @@ void main() {
     expect(ServiceHallPage.authLoginDescription, contains('统一认证'));
   });
 
-  testWidgets('wechat launch failure offers copy of exact home url', (
+  testWidgets('does not render open in wechat button in app bar', (
     tester,
   ) async {
     UnifiedAuthService.instance.debugSetSession(
@@ -50,81 +45,16 @@ void main() {
     UnifiedAuthService.instance.debugSessionMetadataLoader = () async =>
         '2024001';
     UnifiedAuthService.instance.debugSessionValidator = (_) async => true;
-    // 入口准备在测试环境中不能走真实网关/CAS 网络。
     ServiceHallPage.debugPrepareEntryOverride = () async =>
         ServiceHallPage.homeUrl;
     UnifiedAuthService.instance.debugSyncCookiesToWebViewForUrlOverride = (
       _,
     ) async {};
-    WechatLauncher.instance.setGatewayForTesting(
-      _FakeWechatGateway(
-        openUrlResult: const WechatLaunchResult(
-          status: WechatLaunchStatus.launchFailed,
-          sanitizedUrl: '',
-        ),
-      ),
-    );
-    final clipboard = <String>[];
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
-          if (call.method == 'Clipboard.setData') {
-            clipboard.add((call.arguments as Map)['text'] as String);
-          }
-          return null;
-        });
 
     await tester.pumpWidget(const MaterialApp(home: ServiceHallPage()));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    // PRD 0.7.0 §27：不再进入即自动拉起微信，改由用户明确点击。
-    await tester.tap(find.byTooltip('在微信中打开'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-
-    expect(find.text('无法拉起微信，请复制链接后到微信中打开'), findsOneWidget);
-    expect(find.textContaining('已安装微信'), findsNothing);
-    expect(find.textContaining('已跳转到微信'), findsNothing);
-    expect(find.textContaining('已打开微信'), findsNothing);
-    expect(find.widgetWithText(SnackBarAction, '复制链接'), findsOneWidget);
-
-    await tester.ensureVisible(find.widgetWithText(SnackBarAction, '复制链接'));
-    await tester.tap(find.widgetWithText(SnackBarAction, '复制链接'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-
-    expect(clipboard, [ServiceHallPage.homeUrl]);
-    expect(find.text('链接已复制'), findsOneWidget);
+    expect(find.byTooltip('在微信中打开'), findsNothing);
   });
-}
-
-/// 记录式 WechatGateway 替身：openUrl / openApp 结果可配置。
-class _FakeWechatGateway implements WechatGateway {
-  _FakeWechatGateway({
-    this.openUrlResult = const WechatLaunchResult(
-      status: WechatLaunchStatus.launched,
-      sanitizedUrl: '',
-    ),
-  });
-
-  WechatLaunchResult openUrlResult;
-  WechatLaunchResult openAppResult = const WechatLaunchResult(
-    status: WechatLaunchStatus.launched,
-    sanitizedUrl: '',
-  );
-
-  final urls = <String>[];
-  int openAppCalls = 0;
-
-  @override
-  Future<WechatLaunchResult> openUrl(String sanitizedUrl) async {
-    urls.add(sanitizedUrl);
-    return openUrlResult;
-  }
-
-  @override
-  Future<WechatLaunchResult> openApp() async {
-    openAppCalls++;
-    return openAppResult;
-  }
 }

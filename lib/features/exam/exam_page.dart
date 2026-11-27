@@ -436,7 +436,7 @@ class _ExamPageState extends State<ExamPage> {
       '${exam.examDate!.month}/${exam.examDate!.day} '
       '${exam.weekdayLabel} ${exam.timeRange}';
 
-  /// 无缓存首次加载：状态行 + 3 条骨架行，替代整页 spinner。
+  /// 无缓存首次加载：状态行 + 3 条结构化骨架卡片，替代整页 spinner。
   Widget _buildSkeleton() {
     return ListView(
       padding: const EdgeInsets.fromLTRB(
@@ -450,7 +450,7 @@ class _ExamPageState extends State<ExamPage> {
         const SizedBox(height: AppSpacing.lg),
         for (var i = 0; i < 3; i++) ...[
           if (i > 0) const SizedBox(height: AppSpacing.sm),
-          const SkeletonBox(height: 88, radius: 16),
+          const SkeletonCard(lines: 3, showTrailing: true),
         ],
       ],
     );

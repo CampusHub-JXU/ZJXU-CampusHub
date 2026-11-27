@@ -155,9 +155,18 @@ void main() {
       expect(find.text('90'), findsOneWidget);
       expect(find.text('83'), findsOneWidget);
       expect(find.text('优秀'), findsOneWidget);
+      expect(find.text('体测计算器'), findsNothing);
       expect(
-        tester.getTopLeft(find.text('体测计算器')).dy,
-        greaterThan(tester.getBottomLeft(find.text('立定跳远')).dy),
+        tester
+            .getBottomLeft(find.byKey(const Key('physical_test_mode_switch')))
+            .dy,
+        lessThanOrEqualTo(
+          tester
+              .getTopLeft(
+                find.byKey(const Key('physical_test_primary_readout')),
+              )
+              .dy,
+        ),
       );
 
       // 旧版 `总分 · 等级` / `结果 · 得分 · 等级` 单串拼接不得回归。
@@ -706,4 +715,238 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text('1000 米跑'), findsOneWidget);
   });
+
+  // ── 二合一模式切换与智能预填 ───────────────────────────────────────────────
+
+  testWidgets(
+    'hides legacy calculator footer button and switches modes cleanly',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PhysicalTestPage(
+            snapshotFetcher: () async => _snapshotWithRecords(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('physical_test_mode_switch')),
+        findsOneWidget,
+      );
+      expect(find.text('我的成绩'), findsOneWidget);
+      expect(find.text('成绩计算'), findsOneWidget);
+      expect(find.text('体测计算器'), findsNothing);
+      expect(find.byType(OutlinedButton), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'prefills male measurements and gender on first switch to calculator',
+    (tester) async {
+      final snapshot = PhysicalTestSnapshot(
+        records: [
+          _record(
+            academicYear: '2025-2026',
+            totalScore: '71.4',
+            grade: '及格',
+            items: const [
+              PhysicalTestItem(name: '身高', result: '179.2 厘米'),
+              PhysicalTestItem(name: '体重', result: '68.9 公斤'),
+              PhysicalTestItem(name: '肺活量', result: '3911 毫升'),
+              PhysicalTestItem(name: '50米跑', result: '8.3 秒'),
+              PhysicalTestItem(name: '立定跳远', result: '218.0 厘米'),
+              PhysicalTestItem(name: '坐体前屈', result: '15.6 厘米'),
+              PhysicalTestItem(name: '引体向上', result: '0 个'),
+              PhysicalTestItem(name: '1000米跑', result: '3.56 分钟'),
+            ],
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PhysicalTestPage(snapshotFetcher: () async => snapshot),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('成绩计算'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('男生'), findsOneWidget);
+      expect(find.text('请选择年级'), findsOneWidget);
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const Key('physical_test_input_height')),
+            )
+            .controller!
+            .text,
+        '179.2',
+      );
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const Key('physical_test_input_weight')),
+            )
+            .controller!
+            .text,
+        '68.9',
+      );
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const Key('physical_test_input_lung')),
+            )
+            .controller!
+            .text,
+        '3911',
+      );
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const Key('physical_test_input_sprint')),
+            )
+            .controller!
+            .text,
+        '8.3',
+      );
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const Key('physical_test_input_jump')),
+            )
+            .controller!
+            .text,
+        '218.0',
+      );
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const Key('physical_test_input_reach')),
+            )
+            .controller!
+            .text,
+        '15.6',
+      );
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const Key('physical_test_input_strength')),
+            )
+            .controller!
+            .text,
+        '0',
+      );
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const Key('physical_test_input_endurance')),
+            )
+            .controller!
+            .text,
+        '3.56',
+      );
+
+      // 选定年级后即刻算出总分与等级，不再停留在「待完善」。
+      await tester.tap(find.text('请选择年级'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('大一'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('待完善'), findsNothing);
+      expect(find.text('--'), findsNothing);
+
+      // 点击重置清空输入并显示「带入成绩」，点「带入成绩」可再次导入。
+      await tester.tap(find.text('重置'));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const Key('physical_test_input_height')),
+            )
+            .controller!
+            .text,
+        isEmpty,
+      );
+      expect(find.text('带入成绩'), findsOneWidget);
+
+      await tester.tap(find.text('带入成绩'));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const Key('physical_test_input_height')),
+            )
+            .controller!
+            .text,
+        '179.2',
+      );
+    },
+  );
+
+  testWidgets(
+    'prefills female measurements and formats 800m decimal minute to colon',
+    (tester) async {
+      final snapshot = PhysicalTestSnapshot(
+        records: [
+          _record(
+            academicYear: '2025-2026',
+            totalScore: '82.0',
+            grade: '良好',
+            items: const [
+              PhysicalTestItem(name: '身高', result: '165.0 厘米'),
+              PhysicalTestItem(name: '体重', result: '52.0 公斤'),
+              PhysicalTestItem(name: '肺活量', result: '3100 毫升'),
+              PhysicalTestItem(name: '50米跑', result: '8.5 秒'),
+              PhysicalTestItem(name: '坐位体前屈', result: '18.0 厘米'),
+              PhysicalTestItem(name: '立定跳远', result: '1.85 米'),
+              PhysicalTestItem(name: '1分钟仰卧起坐', result: '42 个'),
+              PhysicalTestItem(name: '800米跑', result: '3.56 分钟'),
+            ],
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PhysicalTestPage(snapshotFetcher: () async => snapshot),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('成绩计算'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('女生'), findsOneWidget);
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const Key('physical_test_input_jump')),
+            )
+            .controller!
+            .text,
+        '185',
+      );
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const Key('physical_test_input_strength')),
+            )
+            .controller!
+            .text,
+        '42',
+      );
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const Key('physical_test_input_endurance')),
+            )
+            .controller!
+            .text,
+        '3:56',
+      );
+    },
+  );
 }

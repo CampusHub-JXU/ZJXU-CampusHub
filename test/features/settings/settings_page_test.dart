@@ -81,7 +81,8 @@ void main() {
     await scrollSettingsTo(tester, find.text('写入系统日历'));
     expect(find.text('开学日'), findsOneWidget);
     expect(find.text('写入系统日历'), findsOneWidget);
-    expect(find.text('桌面组件与后台'), findsOneWidget);
+    expect(find.text('桌面组件'), findsOneWidget);
+    expect(find.text('权限与后台'), findsOneWidget);
 
     await scrollSettingsTo(tester, find.text('AI 模型与接口'));
     expect(find.text('AI 模型与接口'), findsOneWidget);
@@ -456,7 +457,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(WelcomePage), findsOneWidget);
-    expect(find.text('连接校园身份'), findsOneWidget);
+    expect(find.text('欢迎使用嘉兴大学'), findsOneWidget);
 
     await tester.tap(find.text('跳过'));
     await tester.pumpAndSettle();

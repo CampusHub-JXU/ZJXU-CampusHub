@@ -379,6 +379,51 @@ void main() {
     });
   });
 
+  group('isWebViewAuthRedirectHistoryUrl & resolveWebViewBackStepOffset', () {
+    test('detects service hall ssoLogin and SSO redirect history items', () {
+      expect(
+        isWebViewAuthRedirectHistoryUrl(
+          'https://mobilehall.zjxu.edu.cn/mportal/start/ssoLogin.html?username=123&services=%2Fbusiness%2Fydd%2Fportal%2Fhome',
+        ),
+        isTrue,
+      );
+      expect(
+        isWebViewAuthRedirectHistoryUrl(
+          'https://webvpn.zjxu.edu.cn/https/77726476706e69737468656265737421fdf8529e2e206e446b1cc7a99c406d3693/mportal/start/ssoLogin.html?username=123',
+        ),
+        isTrue,
+      );
+      expect(
+        isWebViewAuthRedirectHistoryUrl(
+          'https://mobilehall.zjxu.edu.cn/mportal/start/index.html#/business/ydd/portal/home',
+        ),
+        isFalse,
+      );
+    });
+
+    test('returns null when only auth redirect pages precede current page', () {
+      expect(
+        resolveWebViewBackStepOffset([
+          'https://mobilehall.zjxu.edu.cn/mportal/start/ssoLogin.html?username=123',
+          'https://mobilehall.zjxu.edu.cn/mportal/start/index.html#/business/ydd/portal/home',
+        ], 1),
+        isNull,
+      );
+    });
+
+    test('skips auth redirect pages to land on previous real page', () {
+      expect(
+        resolveWebViewBackStepOffset([
+          'https://mobilehall.zjxu.edu.cn/mportal/start/ssoLogin.html?username=123',
+          'https://mobilehall.zjxu.edu.cn/mportal/start/index.html#/business/ydd/portal/home',
+          'https://newca.zjxu.edu.cn/casClient/login/ydd',
+          'https://mobilehall.zjxu.edu.cn/mportal/start/index.html#/business/ydd/wfw/id=1',
+        ], 3),
+        -2,
+      );
+    });
+  });
+
   group('selectLoadedWebViewUrl', () {
     test('prefers controller url over reported url', () {
       expect(

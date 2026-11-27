@@ -43,25 +43,26 @@ void main() {
     final h = DormUsageHistory();
     h.record(40, at(0));
     h.record(39.9, at(10));
-    h.record(39, at(45));
+    h.record(39, at(200));
     expect(h.points.length, 1);
     expect(h.hasCurrentInterval, isFalse);
-    expect(h.record(38.9, at(44)), isFalse);
-    expect(h.record(double.nan, at(46)), isFalse);
-    h.record(38.8, at(55));
+    expect(h.record(38.9, at(199)), isFalse);
+    expect(h.record(double.nan, at(201)), isFalse);
+    h.record(38.8, at(210));
     expect(h.points.length, 2);
   });
   test('observed totals account for gaps and prorate boundaries', () {
     final h = DormUsageHistory();
     h.record(40, at(0));
     h.record(39.8, at(20));
-    h.record(39, at(60));
-    h.record(38.8, at(80));
+    h.record(39.6, at(40));
+    h.record(39, at(260));
+    h.record(38.8, at(280));
     final t = DormUsageHistory.total(h.points, at(10), at(70));
-    expect(t.coverage, const Duration(minutes: 20));
-    expect(t.kwh, closeTo(.2, .001));
+    expect(t.coverage, const Duration(minutes: 30));
+    expect(t.kwh, closeTo(.3, .001));
     expect(
-      DormUsageHistory.total(h.points, at(21), at(59)).coverage,
+      DormUsageHistory.total(h.points, at(41), at(259)).coverage,
       Duration.zero,
     );
   });

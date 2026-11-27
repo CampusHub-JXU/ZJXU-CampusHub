@@ -16,7 +16,6 @@ import '../features/campus_card/campus_card_payment_page.dart';
 import '../features/library/library_book_page.dart';
 import '../features/library/library_borrows_page.dart';
 import '../features/library/library_page.dart';
-import '../features/physical_test/physical_test_calculator_page.dart';
 import '../features/physical_test/physical_test_page.dart';
 import '../features/notice/notice_detail_page.dart';
 import '../features/sjjx_notice/sjjx_notice_list_page.dart';
@@ -41,6 +40,7 @@ import '../features/settings/theme_material_page.dart';
 import '../features/settings/home_personalization_page.dart';
 import '../features/settings/background_editor_page.dart';
 import '../features/settings/desktop_background_page.dart';
+import '../features/settings/permissions_page.dart';
 import '../features/welcome/welcome_page.dart';
 import '../features/home/home_surface_scene.dart';
 import '../features/home/models/example_campus_snapshot.dart';
@@ -241,7 +241,8 @@ final GoRouter appRouter = GoRouter(
     _appRoute(
       path: '/physical-test/calculator',
       name: 'physical-test-calculator',
-      builder: (context, state) => const PhysicalTestCalculatorPage(),
+      builder: (context, state) =>
+          const PhysicalTestPage(initialMode: PhysicalTestPageMode.calculator),
     ),
     _appRoute(
       path: '/second-classroom',
@@ -303,6 +304,11 @@ final GoRouter appRouter = GoRouter(
       path: '/desktop-background',
       name: 'desktop-background',
       builder: (context, state) => const DesktopBackgroundPage(),
+    ),
+    _appRoute(
+      path: '/settings/permissions',
+      name: 'permissions',
+      builder: (context, state) => const PermissionsSettingsPage(),
     ),
     _appRoute(
       path: '/about',

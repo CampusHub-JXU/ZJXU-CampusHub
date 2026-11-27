@@ -4,20 +4,17 @@ import 'dart:typed_data';
 import 'package:material_ui/material_ui.dart';
 
 import '../../core/actions/campus_action_ids.dart';
-import '../../core/notification/app_notification_service.dart';
 import '../../core/shortcut/app_shortcut_service.dart';
 import '../../core/system_surface/campus_widget_bridge.dart';
-import '../../core/system_surface/system_settings_launcher.dart';
 import '../../core/system_surface/widget_refresh_state.dart';
 import '../../shared/widgets/app_app_bar.dart';
 import '../../shared/widgets/app_feedback.dart';
 import '../../shared/widgets/plain_list.dart';
 
-/// 设置 → 桌面与后台（PRD §42，契约 `docs/desktop-widget-v2.md` §6）。
+/// 设置 → 桌面组件（PRD §42，契约 `docs/desktop-widget-v2.md` §6）。
 ///
-/// 状态驱动：每行只显示标题 + 真实状态（未满足的项用强调色）。
-/// 状态全部只读查询，**打开设置页不代表已授权**；从系统设置返回（resumed）时重新查询。
-/// 不提供误导性的「一键全部开启」。
+/// 展示桌面小组件预览与放置数量、最近同步/刷新记录，以及今日课表桌面快捷方式。
+/// 从桌面返回（resumed）时重新查询真实放置数量与同步状态。
 class DesktopBackgroundPage extends StatefulWidget {
   const DesktopBackgroundPage({super.key, this.now, this.refreshRecordLoader});
 
@@ -34,14 +31,10 @@ class _DesktopBackgroundPageState extends State<DesktopBackgroundPage>
     with WidgetsBindingObserver {
   bool _loading = true;
   CampusWidgetStatus _widgets = CampusWidgetStatus.unknown;
-  SystemBackgroundStatus _system = SystemBackgroundStatus.unknown;
   WidgetRefreshRecord? _refresh;
 
   /// 原生渲染的各尺寸组件预览 PNG；通道缺失 / 渲染失败时对应项缺省。
   Map<CampusWidgetSize, Uint8List> _previews = const {};
-
-  /// 通知权限真实查询结果；null = 查询失败，状态未知（不谎称已开启）。
-  bool? _notificationsEnabled;
 
   /// 只采用最新一轮查询的结果，防止慢的旧查询覆盖新状态。
   int _generation = 0;
@@ -61,7 +54,7 @@ class _DesktopBackgroundPageState extends State<DesktopBackgroundPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // 从系统设置 / 桌面返回后重新查询真实状态，不沿用旧值。
+    // 从桌面返回后重新查询真实放置状态，不沿用旧值。
     if (state == AppLifecycleState.resumed) unawaited(_refreshStatus());
   }
 
@@ -69,19 +62,13 @@ class _DesktopBackgroundPageState extends State<DesktopBackgroundPage>
     final generation = ++_generation;
     final results = await Future.wait<Object?>([
       CampusWidgetBridge.instance.getStatus(),
-      SystemSettingsLauncher.instance.getStatus(),
       (widget.refreshRecordLoader ?? WidgetRefreshState.instance.load)()
           .catchError((_) => null),
-      _queryNotifications(),
     ]);
     if (!mounted || generation != _generation) return;
-    final system = results[1]! as SystemBackgroundStatus;
     setState(() {
       _widgets = results[0]! as CampusWidgetStatus;
-      _system = system;
-      _refresh = results[2] as WidgetRefreshRecord?;
-      _notificationsEnabled =
-          results[3] as bool? ?? system.notificationsEnabled;
+      _refresh = results[1] as WidgetRefreshRecord?;
       _loading = false;
     });
     unawaited(_loadPreviews());
@@ -110,23 +97,12 @@ class _DesktopBackgroundPageState extends State<DesktopBackgroundPage>
     setState(() => _previews = previews);
   }
 
-  Future<bool?> _queryNotifications() async {
-    try {
-      return await AppNotificationService.instance.areNotificationsEnabled();
-    } catch (_) {
-      return null;
-    }
-  }
-
   DateTime _now() => widget.now?.call() ?? DateTime.now();
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppAppBar(
-        title: const Text('桌面与后台'),
-        leading: const BackButton(),
-      ),
+      appBar: AppAppBar(title: const Text('桌面组件'), leading: const BackButton()),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
           kPlainListGutter,
@@ -145,16 +121,8 @@ class _DesktopBackgroundPageState extends State<DesktopBackgroundPage>
                 title: '今日课表快捷方式',
                 onTap: () => _addShortcut(context),
               ),
-              PlainListRow(
-                title: '桌面快捷方式权限',
-                subtitle: '部分系统默认禁止创建，需手动允许',
-                onTap: () => _openShortcutSettings(context),
-              ),
             ],
           ),
-          const SizedBox(height: kPlainListGroupGap),
-          const PlainSectionHeader('后台运行'),
-          PlainListGroup(children: _backgroundRows(context)),
         ],
       ),
     );
@@ -219,75 +187,6 @@ class _DesktopBackgroundPageState extends State<DesktopBackgroundPage>
     return '${at.month}月${at.day}日 ${two(at.hour)}:${two(at.minute)}';
   }
 
-  // ------------------------------------------------------------ 后台运行
-
-  List<Widget> _backgroundRows(BuildContext context) {
-    final system = _system;
-    final exact = system.exactAlarmsAllowed;
-    final exactNotApplicable = system.available && exact == null;
-    final battery = system.ignoringBatteryOptimizations;
-    return [
-      PlainListRow(
-        title: '通知',
-        value: _loading
-            ? '检查中…'
-            : switch (_notificationsEnabled) {
-                true => '已开启',
-                false => '未开启',
-                null => '未知',
-              },
-        emphasizeValue: !_loading && _notificationsEnabled == false,
-        onTap: () => _openNotificationSettings(context),
-      ),
-      PlainListRow(
-        title: '精确闹钟',
-        value: _loading
-            ? '检查中…'
-            : !system.available
-            ? '未知'
-            : switch (exact) {
-                true => '已允许',
-                false => '未允许',
-                null => '无需设置',
-              },
-        emphasizeValue: !_loading && exact == false,
-        onTap: exactNotApplicable
-            ? null
-            : () => _openSystemSettings(
-                context,
-                SystemSettingsTarget.exactAlarms,
-              ),
-      ),
-      PlainListRow(
-        title: '电池优化',
-        value: _loading
-            ? '检查中…'
-            : switch (battery) {
-                true => '无限制',
-                false => '受系统限制',
-                null => system.available ? '无需设置' : '未知',
-              },
-        emphasizeValue: !_loading && battery == false,
-        onTap: () => _openSystemSettings(
-          context,
-          SystemSettingsTarget.batteryOptimization,
-        ),
-      ),
-      if (system.isXiaomiFamily)
-        PlainListRow(
-          title: '自启动',
-          value: '无法检测',
-          onTap: () =>
-              _openSystemSettings(context, SystemSettingsTarget.autostart),
-        ),
-      PlainListRow(
-        title: '系统应用信息',
-        onTap: () =>
-            _openSystemSettings(context, SystemSettingsTarget.appDetails),
-      ),
-    ];
-  }
-
   // ------------------------------------------------------------- 动作
 
   /// 请求把组件固定到桌面。放到哪一页 / 哪个空位由桌面决定，App 无法控制，
@@ -326,52 +225,6 @@ class _DesktopBackgroundPageState extends State<DesktopBackgroundPage>
         .openShortcutPermissionSettings();
     if (!context.mounted) return;
     if (!opened) _toast(context, '未能打开系统设置，请手动前往系统应用管理');
-  }
-
-  Future<void> _openNotificationSettings(BuildContext context) async {
-    final result = await SystemSettingsLauncher.instance.open(
-      SystemSettingsTarget.notifications,
-    );
-    if (!context.mounted) return;
-    // 命中目标页不提示，返回页面时由生命周期回调刷新真实状态。
-    final message = switch (result) {
-      SystemSettingsOpenResult.target => null,
-      SystemSettingsOpenResult.appDetails => '未能直达通知设置，已打开应用详情页，请在「通知」中手动开启',
-      SystemSettingsOpenResult.settings => '未能直达通知设置，已打开系统设置首页，请在「通知管理」中手动开启',
-      SystemSettingsOpenResult.unavailable => '未能打开系统设置，请手动前往系统「应用管理」调整',
-    };
-    if (message != null) _toast(context, message);
-  }
-
-  /// 跳转系统设置页；命中目标页不打扰，降级 / 失败时明确说明实际打开的页面。
-  Future<void> _openSystemSettings(
-    BuildContext context,
-    SystemSettingsTarget target,
-  ) async {
-    final result = await SystemSettingsLauncher.instance.open(target);
-    if (!context.mounted) return;
-    final message = _systemSettingsFallbackMessage(target, result);
-    if (message != null) _toast(context, message);
-  }
-
-  /// 打开设置页失败 / 降级时的提示；命中目标页返回 null。
-  ///
-  /// 打开成功不代表权限已授予，这里只反馈真实打开的页面。
-  static String? _systemSettingsFallbackMessage(
-    SystemSettingsTarget target,
-    SystemSettingsOpenResult result,
-  ) {
-    // 应用详情页本身是「系统应用信息」行的目标页，请求它时按成功处理。
-    if (result == SystemSettingsOpenResult.appDetails &&
-        target == SystemSettingsTarget.appDetails) {
-      return null;
-    }
-    return switch (result) {
-      SystemSettingsOpenResult.target => null,
-      SystemSettingsOpenResult.appDetails => '未能直达该设置项，已打开应用详情页，请在系统中手动查找',
-      SystemSettingsOpenResult.settings => '未能直达该设置项，已打开系统设置首页，请手动查找',
-      SystemSettingsOpenResult.unavailable => '未能打开系统设置，请手动前往系统「应用管理」调整',
-    };
   }
 }
 

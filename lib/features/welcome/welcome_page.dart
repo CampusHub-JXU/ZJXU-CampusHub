@@ -3,19 +3,27 @@ import 'dart:async';
 import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/auth/unified_auth.dart';
+import '../../core/auth/zhengfang_auth.dart';
+import '../../core/calendar/calendar_sync_channel.dart';
+import '../../core/notification/app_notification_service.dart';
+import '../../core/system_surface/campus_widget_bridge.dart';
+import '../../core/system_surface/system_settings_launcher.dart';
 import '../../core/theme/app_design_tokens.dart';
 import '../../core/theme/app_typography.dart';
+import '../../shared/widgets/app_feedback.dart';
 import '../../shared/widgets/app_icon_badge.dart';
 import '../../shared/widgets/app_state_view_transition.dart';
+import '../../shared/widgets/plain_list.dart';
 
 /// 新手欢迎向导的「已完成」持久化标记。
 ///
-/// 首启一次、跳过或翻完即置 true；不并入 `AppPreferencesStore`（它只承载
-/// 主题偏好，见 onboarding 任务决策）。测试环境经
+/// 首启一次、跳过或点「开始使用」即置 true；不并入 `AppPreferencesStore`
+/// （它只承载主题偏好，见 onboarding 任务决策）。测试环境经
 /// `SharedPreferences.setMockInitialValues({})` 统一复位。
 const String welcomeCompletedPrefsKey = 'welcome_completed';
 
-/// 欢迎向导内动作落点：拿到当前全屏路由所在的导航栈，由调用方决定去向
+/// 欢迎引导内动作落点：拿到当前全屏路由所在的导航栈，由调用方决定去向
 /// （首启与「设置 → 重放」共用同一组目标，见 `app.dart` 默认注入）。
 typedef WelcomeAction = void Function(NavigatorState navigator);
 
@@ -36,7 +44,7 @@ class WelcomeFlow {
     return prefs.getBool(welcomeCompletedPrefsKey) != true;
   }
 
-  /// 写入完成标记；跳过、翻完与系统返回都算「完成」。
+  /// 写入完成标记；跳过、点「开始使用」与系统返回都算「完成」。
   static Future<void> markCompleted() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(welcomeCompletedPrefsKey, true);
@@ -48,8 +56,7 @@ class WelcomeFlow {
   /// 持有 WelcomePage 与动作落点），本入口保留给需要当前导航栈的调用方；
   /// 首启见 [showOnNavigator]，直接把根导航传进来，避免依赖 overlay 内建
   /// 上下文。[onLoginShortcut] / [onNotificationsShortcut] /
-  /// [onCalendarShortcut] / [onAiShortcut] 是各页主动作的落点。
-  /// 不传则该页主动作按钮不显示。
+  /// [onCalendarShortcut] / [onAiShortcut] 为可选的外部跳转落点。
   static Future<void> show(
     BuildContext context, {
     WelcomeAction? onLoginShortcut,
@@ -100,36 +107,11 @@ class WelcomeFlow {
   }
 }
 
-/// 一页引导内容的描述。
-class _WelcomeSlide {
-  const _WelcomeSlide({
-    required this.icon,
-    required this.title,
-    required this.body,
-    required this.accent,
-    this.actionLabel,
-    this.action,
-  });
-
-  final IconData icon;
-  final String title;
-  final String body;
-  final Color accent;
-
-  /// 本页主动作按钮文案；null 表示纯说明页（末页）。
-  final String? actionLabel;
-
-  /// 主动作落点；null 时按钮不显示。执行后向导自行关闭，由调用方导航。
-  final WelcomeAction? action;
-}
-
-/// 新手欢迎向导：5 页横滑 + 页码指示器 + 跳过/下一步/动作/开始。
+/// 单页清单式迎新页：核心权限就地授权 + 桌面组件添加 + 账号/AI 快捷入口。
 ///
-/// 主线是「登录 → 通知 → 日历同步 → AI 配置」四步设置 + 完成页；每个动作页给一个
-/// 主动作（先关向导再去目标页），也可「下一步」先浏览完再自行前往。
-///
-/// 视觉遵循内容层排版：无框、左中轴居中、字号与字重定层级；装饰只留给
-/// 顶部品牌行的微弱径向光晕，不进入正文层。
+/// 使用独立 [ScaffoldMessenger] 包裹内部 [Scaffold]，避免根
+/// `ScaffoldMessenger` 把启动代理提示 SnackBar 复制一份到本全屏页，同时让本页
+/// 自己的 `AppFeedback.toastOn` 正常展示。
 class WelcomePage extends StatefulWidget {
   const WelcomePage({
     super.key,
@@ -137,104 +119,188 @@ class WelcomePage extends StatefulWidget {
     this.onNotificationsShortcut,
     this.onCalendarShortcut,
     this.onAiShortcut,
+    this.checkNotificationsEnabled,
+    this.requestNotificationPermission,
+    this.calendarChannel,
+    this.readBackgroundStatus,
+    this.openSystemSettings,
+    this.requestWidgetPin,
+    this.isCampusLoggedIn,
+    this.isAcademicLoggedIn,
   });
 
-  /// 第 1 页「去登录」动作：执行后关闭向导，由调用方导航到「我的」页。
+  /// 「校园账号登录」行点击落点：关闭迎新页后导航到「我的」页。
   final WelcomeAction? onLoginShortcut;
 
-  /// 第 2 页「去开启」动作：通常导航到「桌面与后台」设置页（通知/闹钟/电池）。
+  /// 保留参数以兼容既有路由/调用方；当前页优先就地请求通知权限与系统设置。
   final WelcomeAction? onNotificationsShortcut;
 
-  /// 第 3 页「去设置」动作：通常导航到设置页「课表与后台」分区（日历同步开关）。
+  /// 保留参数以兼容既有路由/调用方；当前页优先就地请求日历读写权限。
   final WelcomeAction? onCalendarShortcut;
 
-  /// 第 4 页「去配置」动作：导航到「AI 模型与接口」设置页。
+  /// 「AI 助手配置」行点击落点：关闭迎新页后导航到 AI 设置页。
   final WelcomeAction? onAiShortcut;
+
+  /// 测试/注入用：查询系统通知权限是否开启。
+  final Future<bool> Function()? checkNotificationsEnabled;
+
+  /// 测试/注入用：就地请求系统通知权限。
+  final Future<bool> Function()? requestNotificationPermission;
+
+  /// 测试/注入用：日历同步通道（默认 [defaultCalendarSyncChannel]）。
+  final CalendarSyncChannel? calendarChannel;
+
+  /// 测试/注入用：查询后台运行与电池优化状态。
+  final Future<SystemBackgroundStatus> Function()? readBackgroundStatus;
+
+  /// 测试/注入用：打开系统设置页。
+  final Future<SystemSettingsOpenResult> Function(SystemSettingsTarget target)?
+  openSystemSettings;
+
+  /// 测试/注入用：请求固定桌面课表组件。
+  final Future<CampusWidgetPinResult> Function(CampusWidgetSize size)?
+  requestWidgetPin;
+
+  /// 测试/注入用：统一认证登录态。
+  final bool Function()? isCampusLoggedIn;
+
+  /// 测试/注入用：教务系统登录态。
+  final bool Function()? isAcademicLoggedIn;
 
   @override
   State<WelcomePage> createState() => _WelcomePageState();
 }
 
-class _WelcomePageState extends State<WelcomePage> {
-  late final PageController _pageController;
-  int _page = 0;
+class _WelcomePageState extends State<WelcomePage> with WidgetsBindingObserver {
+  final GlobalKey<ScaffoldMessengerState> _messengerKey =
+      GlobalKey<ScaffoldMessengerState>();
 
-  List<_WelcomeSlide> _slides = const [];
+  bool _loading = true;
+  bool _notificationsEnabled = false;
+  bool _calendarGranted = false;
+  bool? _batteryIgnoring;
+  bool _campusLoggedIn = false;
+  bool _academicLoggedIn = false;
+
+  bool _notificationBusy = false;
+  bool _calendarBusy = false;
+  bool _widgetBusy = false;
+
+  int _refreshGeneration = 0;
 
   @override
   void initState() {
     super.initState();
-    _pageController = PageController();
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final cs = Theme.of(context).colorScheme;
-    _slides = [
-      _WelcomeSlide(
-        icon: Icons.badge_outlined,
-        title: '连接校园身份',
-        body: '课表、成绩、考试要登录教务系统；\n一卡通、宿舍电费要登录统一认证。\n在「我的」页一次登录两个账号。',
-        accent: cs.primary,
-        actionLabel: '去登录',
-        action: widget.onLoginShortcut,
-      ),
-      _WelcomeSlide(
-        icon: Icons.notifications_outlined,
-        title: '打开通知提醒',
-        body: '课前提醒、公告与后台刷新都靠通知。\n权限是系统给的，现在就去开。',
-        accent: cs.secondary,
-        actionLabel: '去开启',
-        action: widget.onNotificationsShortcut,
-      ),
-      _WelcomeSlide(
-        icon: Icons.calendar_month_outlined,
-        title: '同步课程到日历',
-        body: '把课表写进系统日历，课前自动提醒。\n需先登录教务系统，在设置里开启。',
-        accent: cs.tertiary,
-        actionLabel: '去设置',
-        action: widget.onCalendarShortcut,
-      ),
-      _WelcomeSlide(
-        icon: Icons.auto_awesome_outlined,
-        title: '配置 AI 助手',
-        body: '填好 API 密钥后，刷题可用 AI 解析和追问。\n未配置也能导出学业数据给外部 AI。',
-        accent: cs.tertiary,
-        actionLabel: '去配置',
-        action: widget.onAiShortcut,
-      ),
-      _WelcomeSlide(
-        icon: Icons.check_circle_outline,
-        title: '准备好了',
-        body: '首页会列出今天的课、余额和电量。\n这份引导可随时在「设置」里重放。',
-        accent: cs.primary,
-      ),
-    ];
+    WidgetsBinding.instance.addObserver(this);
+    if (widget.isCampusLoggedIn == null) {
+      UnifiedAuthService.instance.addListener(_onAuthChanged);
+    }
+    if (widget.isAcademicLoggedIn == null) {
+      ZhengfangAuth.instance.addListener(_onAuthChanged);
+    }
+    _syncAccountStatus(notify: false);
+    unawaited(_refreshStatus());
   }
 
   @override
   void dispose() {
-    _pageController.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    if (widget.isCampusLoggedIn == null) {
+      UnifiedAuthService.instance.removeListener(_onAuthChanged);
+    }
+    if (widget.isAcademicLoggedIn == null) {
+      ZhengfangAuth.instance.removeListener(_onAuthChanged);
+    }
     super.dispose();
   }
 
-  bool get _isLastPage => _page == _slides.length - 1;
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 从系统权限或电池优化设置返回后立即重查真实状态。
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_refreshStatus());
+    }
+  }
+
+  void _onAuthChanged() {
+    if (!mounted) return;
+    _syncAccountStatus(notify: true);
+  }
+
+  void _syncAccountStatus({required bool notify}) {
+    final campus =
+        widget.isCampusLoggedIn?.call() ??
+        UnifiedAuthService.instance.isLoggedIn;
+    final academic =
+        widget.isAcademicLoggedIn?.call() ?? ZhengfangAuth.instance.isLoggedIn;
+    if (!notify) {
+      _campusLoggedIn = campus;
+      _academicLoggedIn = academic;
+      return;
+    }
+    if (_campusLoggedIn == campus && _academicLoggedIn == academic) return;
+    setState(() {
+      _campusLoggedIn = campus;
+      _academicLoggedIn = academic;
+    });
+  }
+
+  CalendarSyncChannel get _calendarChannel =>
+      widget.calendarChannel ?? defaultCalendarSyncChannel;
+
+  Future<T> _safeCall<T>(Future<T> Function() action, T fallback) async {
+    try {
+      return await action();
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  Future<bool> _queryNotificationsEnabled() {
+    final checker =
+        widget.checkNotificationsEnabled ??
+        AppNotificationService.instance.areNotificationsEnabled;
+    return _safeCall(checker, false);
+  }
+
+  Future<bool> _queryCalendarPermission() {
+    return _safeCall(_calendarChannel.checkPermissions, false);
+  }
+
+  Future<bool?> _queryBatteryIgnoring() async {
+    final reader =
+        widget.readBackgroundStatus ??
+        SystemSettingsLauncher.instance.getStatus;
+    final status = await _safeCall(reader, SystemBackgroundStatus.unknown);
+    if (!status.available) return null;
+    return status.ignoringBatteryOptimizations;
+  }
+
+  Future<void> _refreshStatus() async {
+    final generation = ++_refreshGeneration;
+    final results = await Future.wait<Object?>([
+      _queryNotificationsEnabled(),
+      _queryCalendarPermission(),
+      _queryBatteryIgnoring(),
+    ]);
+    if (!mounted || generation != _refreshGeneration) return;
+    setState(() {
+      _notificationsEnabled = results[0]! as bool;
+      _calendarGranted = results[1]! as bool;
+      _batteryIgnoring = results[2] as bool?;
+      _campusLoggedIn =
+          widget.isCampusLoggedIn?.call() ??
+          UnifiedAuthService.instance.isLoggedIn;
+      _academicLoggedIn =
+          widget.isAcademicLoggedIn?.call() ??
+          ZhengfangAuth.instance.isLoggedIn;
+      _loading = false;
+    });
+  }
 
   Future<bool> _finish() => Navigator.of(context).maybePop();
 
-  void _next() {
-    if (_isLastPage) {
-      _finish();
-      return;
-    }
-    _pageController.nextPage(
-      duration: AppMotion.page,
-      curve: AppMotion.emphasized,
-    );
-  }
-
-  /// 主动作：先关闭向导，再在原导航栈上打开目标页。
+  /// 先关闭迎新页，再在原导航栈上打开外部目标页。
   Future<void> _runAction(WelcomeAction action) async {
     final navigator = Navigator.of(context);
     await _finish();
@@ -242,175 +308,432 @@ class _WelcomePageState extends State<WelcomePage> {
     action(navigator);
   }
 
+  void _showToast(
+    String message, {
+    String? actionLabel,
+    VoidCallback? onAction,
+  }) {
+    final messenger = _messengerKey.currentState;
+    if (messenger == null) return;
+    AppFeedback.toastOn(
+      messenger,
+      message,
+      actionLabel: actionLabel,
+      onAction: onAction,
+    );
+  }
+
+  Future<void> _openSettingsWithFallback(
+    SystemSettingsTarget target, {
+    required String targetName,
+  }) async {
+    final opener =
+        widget.openSystemSettings ??
+        (t) => SystemSettingsLauncher.instance.open(t);
+    final result = await _safeCall(
+      () => opener(target),
+      SystemSettingsOpenResult.unavailable,
+    );
+    if (!mounted) return;
+    if (result == SystemSettingsOpenResult.target ||
+        (result == SystemSettingsOpenResult.appDetails &&
+            target == SystemSettingsTarget.appDetails)) {
+      return;
+    }
+    final message = switch (result) {
+      SystemSettingsOpenResult.target => null,
+      SystemSettingsOpenResult.appDetails => '未能直达$targetName，已打开应用详情页，请手动调整',
+      SystemSettingsOpenResult.settings => '未能直达$targetName，已打开系统设置首页，请手动查找',
+      SystemSettingsOpenResult.unavailable => '未能打开系统设置，请手动前往系统「应用管理」调整',
+    };
+    if (message != null) _showToast(message);
+  }
+
+  Future<void> _handleNotificationsTap() async {
+    if (_notificationBusy) return;
+    if (_notificationsEnabled) {
+      await _openSettingsWithFallback(
+        SystemSettingsTarget.notifications,
+        targetName: '通知设置',
+      );
+      return;
+    }
+    _notificationBusy = true;
+    try {
+      final requester =
+          widget.requestNotificationPermission ??
+          AppNotificationService.instance.requestPermission;
+      final requested = await _safeCall(requester, false);
+      final enabledNow = await _queryNotificationsEnabled();
+      final granted = requested || enabledNow;
+      if (!mounted) return;
+      setState(() => _notificationsEnabled = granted);
+      if (!granted) {
+        await _openSettingsWithFallback(
+          SystemSettingsTarget.notifications,
+          targetName: '通知设置',
+        );
+      }
+    } finally {
+      _notificationBusy = false;
+    }
+  }
+
+  Future<void> _handleCalendarTap() async {
+    if (_calendarBusy) return;
+    if (_calendarGranted) {
+      _showToast('日历同步权限已允许');
+      return;
+    }
+    _calendarBusy = true;
+    try {
+      final requested = await _safeCall(
+        _calendarChannel.requestPermissions,
+        false,
+      );
+      final checked = await _queryCalendarPermission();
+      final granted = requested || checked;
+      if (!mounted) return;
+      setState(() => _calendarGranted = granted);
+      if (!granted) {
+        _showToast(
+          '未获得日历权限，可前往系统应用设置手动开启',
+          actionLabel: '去设置',
+          onAction: () => unawaited(
+            _openSettingsWithFallback(
+              SystemSettingsTarget.appDetails,
+              targetName: '应用详情页',
+            ),
+          ),
+        );
+      }
+    } finally {
+      _calendarBusy = false;
+    }
+  }
+
+  Future<void> _handleBatteryTap() => _openSettingsWithFallback(
+    SystemSettingsTarget.batteryOptimization,
+    targetName: '电池优化设置',
+  );
+
+  Future<void> _handlePinWidgetTap() async {
+    if (_widgetBusy) return;
+    _widgetBusy = true;
+    try {
+      final requester =
+          widget.requestWidgetPin ?? CampusWidgetBridge.instance.requestPin;
+      final result = await _safeCall(
+        () => requester(CampusWidgetSize.medium),
+        CampusWidgetPinResult.error,
+      );
+      if (!mounted) return;
+      final message = switch (result) {
+        CampusWidgetPinResult.requested => '已请求添加，请在桌面确认',
+        CampusWidgetPinResult.unsupported => '不支持一键添加，请长按桌面手动添加',
+        CampusWidgetPinResult.rejected =>
+          '桌面拒绝了添加请求；请在权限设置中允许「桌面快捷方式」或长按桌面手动添加',
+        CampusWidgetPinResult.error => '添加失败，请长按桌面手动添加',
+      };
+      _showToast(message);
+    } finally {
+      _widgetBusy = false;
+    }
+  }
+
+  bool get _allAccountsLoggedIn => _campusLoggedIn && _academicLoggedIn;
+
+  String get _accountStatusValue {
+    if (_allAccountsLoggedIn) return '已登录';
+    if (_campusLoggedIn || _academicLoggedIn) return '部分登录';
+    return '未登录';
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final text = context.appText;
-    final media = MediaQuery.of(context);
-    final slide = _slides.isEmpty ? null : _slides[_page];
-    final action = slide?.action;
 
-    // 刻意不用 Scaffold：根 ScaffoldMessenger 会向「每一个」Scaffold 派发
-    // SnackBar，全屏页若自持 Scaffold 会把启动代理提示复制一份进来。
-    return Material(
-      color: cs.surface,
-      child: Stack(
-        children: [
-          // 微弱径向光晕：外壳层的氛围装饰，只落在底色上。
-          Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  center: const Alignment(0.6, -0.7),
-                  radius: 0.9,
-                  colors: [
-                    cs.primary.withValues(alpha: 0.10),
-                    cs.surface.withValues(alpha: 0),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.listGutter,
-              ),
-              child: Column(
-                children: [
-                  // 顶行：左侧产品署名，右侧跳过。
-                  SizedBox(
-                    height: 52,
-                    child: Row(
-                      children: [
-                        Text('CampusHub', style: text.label),
-                        const Spacer(),
-                        _isLastPage
-                            ? const SizedBox(width: 48)
-                            : TextButton(
-                                onPressed: _finish,
-                                child: const Text('跳过'),
-                              ),
+    return ScaffoldMessenger(
+      key: _messengerKey,
+      child: Scaffold(
+        backgroundColor: cs.surface,
+        body: Stack(
+          children: [
+            // 微弱径向光晕：外壳层的克制氛围，只落在底色上。
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: RadialGradient(
+                      center: const Alignment(0.6, -0.7),
+                      radius: 0.9,
+                      colors: [
+                        cs.primary.withValues(alpha: 0.08),
+                        cs.surface.withValues(alpha: 0),
                       ],
                     ),
                   ),
-                  Expanded(
-                    child: PageView.builder(
-                      controller: _pageController,
-                      itemCount: _slides.length,
-                      onPageChanged: (index) => setState(() => _page = index),
-                      itemBuilder: (context, index) {
-                        final slide = _slides[index];
-                        // 一次性入场（淡入 + 微上浮），换页不重播。
-                        return AppStateViewTransition(
-                          child: _SlideBody(slide: slide),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.lg),
-                  _Dots(count: _slides.length, current: _page),
-                  const SizedBox(height: AppSpacing.lg),
-                  if (_isLastPage)
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton(
-                        onPressed: _finish,
-                        child: const Text('开始使用'),
-                      ),
-                    )
-                  else if (action != null) ...[
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton(
-                        onPressed: () => _runAction(action),
-                        child: Text(slide!.actionLabel!),
-                      ),
-                    ),
-                    SizedBox(
-                      width: double.infinity,
-                      child: TextButton(
-                        onPressed: _next,
-                        child: const Text('下一步'),
-                      ),
-                    ),
-                  ] else
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton(
-                        onPressed: _next,
-                        child: const Text('下一步'),
-                      ),
-                    ),
-                  SizedBox(height: media.padding.bottom + AppSpacing.sm),
-                ],
+                ),
               ),
             ),
-          ),
-        ],
+            SafeArea(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 560),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // 顶部栏：仅保留右上角「跳过」，不设死高度以适配大字号缩放。
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          AppSpacing.listGutter,
+                          AppSpacing.xs,
+                          AppSpacing.md,
+                          0,
+                        ),
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(minHeight: 48),
+                          child: Row(
+                            children: [
+                              const Spacer(),
+                              TextButton(
+                                onPressed: _finish,
+                                child: const Text('跳过'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: AppStateViewTransition(
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.fromLTRB(
+                              AppSpacing.listGutter,
+                              AppSpacing.sm,
+                              AppSpacing.listGutter,
+                              AppSpacing.xl,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                AppIconBadge(
+                                  icon: Icons.school_outlined,
+                                  accentColor: cs.primary,
+                                  size: AppIconBadgeSize.large,
+                                ),
+                                const SizedBox(height: AppSpacing.md),
+                                Semantics(
+                                  header: true,
+                                  child: Wrap(
+                                    crossAxisAlignment: WrapCrossAlignment.end,
+                                    spacing: AppSpacing.sm,
+                                    runSpacing: AppSpacing.xs,
+                                    children: [
+                                      Text('欢迎使用嘉兴大学', style: text.title),
+                                      Padding(
+                                        padding: const EdgeInsets.only(
+                                          bottom: 3,
+                                        ),
+                                        child: Text(
+                                          'CampusHub',
+                                          style: text.label.copyWith(
+                                            color: cs.onSurfaceVariant,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: AppSpacing.sm),
+                                Text(
+                                  '按需完成基础授权与配置，即可顺畅使用课表、提醒与桌面组件',
+                                  style: text.body.copyWith(
+                                    color: cs.onSurfaceVariant,
+                                  ),
+                                ),
+                                const SizedBox(height: AppSpacing.xl),
+                                const PlainSectionHeader('核心权限'),
+                                PlainListGroup(
+                                  children: [
+                                    PlainListRow(
+                                      leading: AppIconBadge(
+                                        icon: _notificationsEnabled
+                                            ? Icons
+                                                  .notifications_active_outlined
+                                            : Icons.notifications_outlined,
+                                        accentColor: _notificationsEnabled
+                                            ? cs.secondary
+                                            : cs.primary,
+                                        semantic: _notificationsEnabled,
+                                        size: AppIconBadgeSize.small,
+                                      ),
+                                      title: '通知提醒',
+                                      subtitle: '接收课前提醒、成绩与校务公告',
+                                      value: _loading
+                                          ? '检查中…'
+                                          : (_notificationsEnabled
+                                                ? '已开启'
+                                                : '未开启'),
+                                      valueKey: const Key(
+                                        'welcome_notification_status',
+                                      ),
+                                      emphasizeValue:
+                                          !_loading && !_notificationsEnabled,
+                                      onTap: _handleNotificationsTap,
+                                    ),
+                                    PlainListRow(
+                                      leading: AppIconBadge(
+                                        icon: _calendarGranted
+                                            ? Icons.event_available_outlined
+                                            : Icons.calendar_month_outlined,
+                                        accentColor: _calendarGranted
+                                            ? cs.secondary
+                                            : cs.primary,
+                                        semantic: _calendarGranted,
+                                        size: AppIconBadgeSize.small,
+                                      ),
+                                      title: '日历同步权限',
+                                      subtitle: '把课表写入系统日历并自动提醒',
+                                      value: _loading
+                                          ? '检查中…'
+                                          : (_calendarGranted ? '已允许' : '未开启'),
+                                      valueKey: const Key(
+                                        'welcome_calendar_status',
+                                      ),
+                                      emphasizeValue:
+                                          !_loading && !_calendarGranted,
+                                      onTap: _handleCalendarTap,
+                                    ),
+                                    PlainListRow(
+                                      leading: AppIconBadge(
+                                        icon: _batteryIgnoring == true
+                                            ? Icons.verified_user_outlined
+                                            : Icons.battery_saver_outlined,
+                                        accentColor: _batteryIgnoring == true
+                                            ? cs.secondary
+                                            : cs.primary,
+                                        semantic: _batteryIgnoring == true,
+                                        size: AppIconBadgeSize.small,
+                                      ),
+                                      title: '后台保活',
+                                      subtitle: '允许应用在后台更新课表与桌面组件',
+                                      value: _loading
+                                          ? '检查中…'
+                                          : switch (_batteryIgnoring) {
+                                              true => '无限制',
+                                              false => '受系统限制',
+                                              null => '未知',
+                                            },
+                                      valueKey: const Key(
+                                        'welcome_battery_status',
+                                      ),
+                                      emphasizeValue:
+                                          !_loading &&
+                                          _batteryIgnoring == false,
+                                      onTap: _handleBatteryTap,
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: AppSpacing.listGroupGap),
+                                const PlainSectionHeader('桌面组件与快捷功能'),
+                                PlainListGroup(
+                                  children: [
+                                    PlainListRow(
+                                      leading: AppIconBadge(
+                                        icon: Icons.widgets_outlined,
+                                        accentColor: cs.primary,
+                                        size: AppIconBadgeSize.small,
+                                      ),
+                                      title: '添加桌面课表组件',
+                                      subtitle: '在桌面直接查看今日课表与下一节课',
+                                      onTap: _handlePinWidgetTap,
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: AppSpacing.listGroupGap),
+                                const PlainSectionHeader('账号与进阶'),
+                                PlainListGroup(
+                                  children: [
+                                    PlainListRow(
+                                      leading: AppIconBadge(
+                                        icon: _allAccountsLoggedIn
+                                            ? Icons.verified_outlined
+                                            : Icons.badge_outlined,
+                                        accentColor: _allAccountsLoggedIn
+                                            ? cs.secondary
+                                            : cs.primary,
+                                        semantic: _allAccountsLoggedIn,
+                                        size: AppIconBadgeSize.small,
+                                      ),
+                                      title: '校园账号登录',
+                                      subtitle: '去「我的」页登录教务与统一认证',
+                                      value: _accountStatusValue,
+                                      valueKey: const Key(
+                                        'welcome_account_status',
+                                      ),
+                                      emphasizeValue: !_allAccountsLoggedIn,
+                                      onTap: widget.onLoginShortcut == null
+                                          ? null
+                                          : () => _runAction(
+                                              widget.onLoginShortcut!,
+                                            ),
+                                    ),
+                                    PlainListRow(
+                                      leading: AppIconBadge(
+                                        icon: Icons.auto_awesome_outlined,
+                                        accentColor: cs.tertiary,
+                                        size: AppIconBadgeSize.small,
+                                      ),
+                                      title: 'AI 助手配置',
+                                      subtitle: '课表问答与成绩解读（可选）',
+                                      onTap: widget.onAiShortcut == null
+                                          ? null
+                                          : () => _runAction(
+                                              widget.onAiShortcut!,
+                                            ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: cs.surface,
+                          border: Border(
+                            top: BorderSide(
+                              color: cs.outlineVariant.withValues(alpha: 0.35),
+                              width: 0.5,
+                            ),
+                          ),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(
+                            AppSpacing.listGutter,
+                            AppSpacing.md,
+                            AppSpacing.listGutter,
+                            AppSpacing.lg,
+                          ),
+                          child: SizedBox(
+                            width: double.infinity,
+                            child: FilledButton(
+                              onPressed: _finish,
+                              child: const Text('开始使用'),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
-    );
-  }
-}
-
-/// 单页内容：图标徽标 + 大标题 + 说明，居中布局。
-class _SlideBody extends StatelessWidget {
-  const _SlideBody({required this.slide});
-
-  final _WelcomeSlide slide;
-
-  @override
-  Widget build(BuildContext context) {
-    final text = context.appText;
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        AppIconBadge(
-          icon: slide.icon,
-          accentColor: slide.accent,
-          size: AppIconBadgeSize.large,
-        ),
-        const SizedBox(height: AppSpacing.xl),
-        Text(slide.title, textAlign: TextAlign.center, style: text.title),
-        const SizedBox(height: AppSpacing.md),
-        Text(
-          slide.body,
-          textAlign: TextAlign.center,
-          style: text.body.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// 页码指示器：圆点集合，当前页拉长成短胶囊。
-class _Dots extends StatelessWidget {
-  const _Dots({required this.count, required this.current});
-
-  final int count;
-  final int current;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(count, (index) {
-        final active = index == current;
-        return AnimatedContainer(
-          duration: AppMotion.switchFade,
-          curve: AppMotion.standard,
-          margin: const EdgeInsets.symmetric(horizontal: 3),
-          width: active ? 18 : 6,
-          height: 6,
-          decoration: BoxDecoration(
-            color: active ? cs.primary : cs.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(3),
-          ),
-        );
-      }),
     );
   }
 }

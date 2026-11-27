@@ -413,17 +413,6 @@ class _AboutPageState extends State<AboutPage> {
                 ),
             ],
           ),
-          const SizedBox(height: kPlainListGroupGap),
-          const PlainSectionHeader('反馈'),
-          PlainListGroup(
-            children: [
-              PlainListRow(
-                title: '问题反馈与建议',
-                subtitle: '免登录提交 Bug 或改进建议',
-                onTap: () => context.pushNamed('feedback'),
-              ),
-            ],
-          ),
           if (_debugToolsUnlocked) ...[
             const SizedBox(height: kPlainListGroupGap),
             const PlainSectionHeader('调试'),

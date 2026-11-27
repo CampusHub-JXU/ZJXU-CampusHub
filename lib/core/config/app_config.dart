@@ -29,7 +29,7 @@ abstract final class AppConfig {
   /// 应用内问题反馈提交接口；支持编译期 `--dart-define=JXU_FEEDBACK_URL=...`
   /// 覆盖，便于本地 `wrangler dev` 联调。
   static const String defaultFeedbackEndpointUrl =
-      'https://jxuc-feedback-worker.campushub-jxu.workers.dev/api/feedback';
+      'https://feedback.fhfanshu.xyz/api/feedback';
   static const String _feedbackEndpointDefine = String.fromEnvironment(
     'JXU_FEEDBACK_URL',
   );
