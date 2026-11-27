@@ -10,6 +10,8 @@ import '../../core/cache/cached_resource.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/system_surface/campus_data_change_bus.dart';
 import 'dorm_electricity_models.dart';
+import 'dorm_usage_history.dart';
+import 'dorm_usage_background.dart';
 import 'dorm_electricity_private_writes.dart';
 import '../../core/epay100/epay100_gateway.dart';
 
@@ -104,6 +106,136 @@ class DormElectricityService {
   double? _cachedElectricity;
   DateTime? _lastUpdated;
 
+  static const _usageKey = 'dorm_usage_history_v2';
+  final _usageHistory = DormUsageHistory();
+  ({
+    String owner,
+    int revision,
+    String area,
+    String building,
+    String floor,
+    String room,
+  })?
+  _usageScope;
+  ({
+    String owner,
+    int revision,
+    DormRoomConfig config,
+    double value,
+    DateTime at,
+    int generation,
+  })?
+  _usageObservation;
+
+  List<DormUsagePoint> get usagePoints {
+    final scope = _usageScope;
+    if (scope == null || !_isCurrentIdentity(scope.owner, scope.revision)) {
+      return const [];
+    }
+    return _usageHistory.points;
+  }
+
+  bool get usageCurrentIntervalValid =>
+      usagePoints.isNotEmpty && _usageHistory.hasCurrentInterval;
+
+  void _clearUsageHistory() {
+    _usageScope = null;
+    _usageObservation = null;
+    _usageHistory.clear();
+  }
+
+  // Foreground history has a single writer; the worker has a separate mailbox.
+  Future<void> refreshUsageHistory() async {
+    final owner = _currentOwner;
+    if (owner == null) return;
+    final revision = UnifiedAuthService.instance.sessionRevision;
+    try {
+      await _serializedPrivateMutation(() async {
+        final prefs = await _ensurePrefs();
+        if (!_isCurrentIdentity(owner, revision)) return;
+        final area = prefs.getString(keyAreaId);
+        final building = prefs.getString(keyBuildingId);
+        final floor = prefs.getString(keyFloorId);
+        final room = prefs.getString(keyRoomId);
+        if (prefs.getString(roomOwnerKey) != owner ||
+            area == null ||
+            building == null ||
+            floor == null ||
+            room == null) {
+          _clearUsageHistory();
+          return;
+        }
+        final scope = (
+          owner: owner,
+          revision: revision,
+          area: area,
+          building: building,
+          floor: floor,
+          room: room,
+        );
+        final storageScope = jsonEncode([owner, area, building, floor, room]);
+        bool stillOwned() =>
+            _isCurrentIdentity(owner, revision) &&
+            prefs.getString(roomOwnerKey) == owner &&
+            prefs.getString(keyAreaId) == area &&
+            prefs.getString(keyBuildingId) == building &&
+            prefs.getString(keyFloorId) == floor &&
+            prefs.getString(keyRoomId) == room;
+        if (_usageScope != scope) {
+          _usageHistory.restore(
+            prefs.getString(_usageKey),
+            storageScope,
+            DateTime.now(),
+          );
+          _usageScope = scope;
+        }
+        final observations = await DormUsageBackground.instance.samplesFor(
+          owner: owner,
+          area: area,
+          building: building,
+          floor: floor,
+          room: room,
+        );
+        if (!stillOwned() || _usageScope != scope) return;
+        final merged = [...observations];
+        final sample = _usageObservation;
+        if (sample != null &&
+            sample.owner == owner &&
+            sample.revision == revision &&
+            sample.generation == _cacheGeneration &&
+            sample.config.areaId == area &&
+            sample.config.buildingId == building &&
+            sample.config.floorId == floor &&
+            sample.config.roomId == room) {
+          merged.add((kwh: sample.value, at: sample.at));
+        }
+        merged.sort((a, b) => a.at.compareTo(b.at));
+        var changed = false;
+        for (final observation in merged) {
+          if (_usageHistory.record(observation.kwh, observation.at)) {
+            changed = true;
+          }
+        }
+        if (!changed || !stillOwned()) return;
+        await _guardedPrivateWrite(
+          operation: 'persistUsageHistory',
+          key: _usageKey,
+          verify: stillOwned,
+          write: () =>
+              prefs.setString(_usageKey, _usageHistory.encode(storageScope)),
+          rollback: () => prefs.remove(_usageKey),
+        );
+      });
+    } catch (error, stackTrace) {
+      AppLogger.instance.storage(
+        LogLevel.warn,
+        '用电历史保存失败',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+  }
+
   /// 内存缓存当前归属的统一认证账号；null 表示不可展示（未登录 / 未采纳）。
   String? _cachedOwner;
 
@@ -174,6 +306,7 @@ class DormElectricityService {
   }
 
   void _clearMemoryCache() {
+    _clearUsageHistory();
     _cachedElectricity = null;
     _lastUpdated = null;
     _cachedOwner = null;
@@ -358,8 +491,18 @@ class DormElectricityService {
         throw const DormServiceException('登录状态已变化，请重新登录后再保存');
       }
       final previousOwner = prefs.getString(roomOwnerKey);
+      final usageRoomChanged =
+          previousOwner != owner ||
+          prefs.getString(keyAreaId) != config.areaId ||
+          prefs.getString(keyBuildingId) != config.buildingId ||
+          prefs.getString(keyFloorId) != config.floorId ||
+          prefs.getString(keyRoomId) != config.roomId;
       // 先失效 owner 标记：半写入配置绝不被采纳。
       await write(roomOwnerKey, () => prefs.remove(roomOwnerKey));
+      if (usageRoomChanged) {
+        await write(_usageKey, () => prefs.remove(_usageKey));
+        await DormUsageBackground.instance.resetRoom();
+      }
       // 余额必须和房间配置绑定；保存后强制下一次查询新房间，绝不能回退到
       // 上一个寝室的缓存值。
       await write(keyElectricity, () => prefs.remove(keyElectricity));
@@ -428,6 +571,7 @@ class DormElectricityService {
         keyFloorId,
         keyRoomId,
         roomOwnerKey,
+        _usageKey,
         keyElectricity,
         keyElectricityUpdatedAt,
         keyAlertEnabled,
@@ -436,6 +580,7 @@ class DormElectricityService {
       ]) {
         await prefs.remove(key);
       }
+      await DormUsageBackground.instance.resetRoom();
       cleared = true;
     });
     if (!cleared || _currentOwner != owner) return;
@@ -742,6 +887,7 @@ class DormElectricityService {
         return null;
       }
 
+      final usageGeneration = _cacheGeneration;
       final body = await _call('app.electric.getRoomBalance', {
         'adapter_id': defaultAdapterId,
         'L1_area_id': config.areaId,
@@ -766,12 +912,25 @@ class DormElectricityService {
         return cachedElectricity;
       }
       if (!_isCurrentIdentity(owner, revision)) return null;
+      final canRecordUsage = usageGeneration == _cacheGeneration;
+      final measuredAt = DateTime.now();
       _cachedElectricity = value;
-      _lastUpdated = DateTime.now();
+      _lastUpdated = measuredAt;
       _cachedOwner = owner;
-      _cacheGeneration++;
+      final resultGeneration = ++_cacheGeneration;
       await _persistCache(owner: owner, revision: revision);
       if (!_isCurrentIdentity(owner, revision)) return null;
+      // A room/cache change during RPC or persistence invalidates this sample.
+      if (canRecordUsage && resultGeneration == _cacheGeneration) {
+        _usageObservation = (
+          owner: owner,
+          revision: revision,
+          config: config,
+          value: value,
+          at: measuredAt,
+          generation: resultGeneration,
+        );
+      }
       CampusDataChangeBus.instance.notifyChanged();
       _lastError = null;
       _requiresAuthentication = false;
@@ -960,6 +1119,7 @@ class DormElectricityService {
 
   @visibleForTesting
   void debugReset() {
+    _clearUsageHistory();
     gateway = Epay100Gateway.instance;
     _prefs = null;
     _cacheRestored = false;

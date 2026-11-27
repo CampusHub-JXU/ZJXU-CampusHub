@@ -375,7 +375,7 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('读数无框：状态行带百分比，低电提醒 / 寝室瓦片与 ⋮ 都能进寝室设置', (tester) async {
+  testWidgets('读数显示原始余额，低电提醒 / 寝室瓦片与 ⋮ 都能进寝室设置', (tester) async {
     const config = DormRoomConfig(
       areaId: '3',
       buildingId: '114',
@@ -407,7 +407,8 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 900));
 
-    expect(find.textContaining('67% · 满电 100 度'), findsOneWidget);
+    expect(find.text('66.60'), findsOneWidget);
+    expect(find.textContaining('满电 100 度'), findsNothing);
     expect(find.text('微信'), findsOneWidget);
     expect(find.text('未开启'), findsOneWidget);
     // AppBar 只剩 ⋮：原「选择寝室」直达图标已并入第三格瓦片。

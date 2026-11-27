@@ -26,6 +26,7 @@ import 'package:jxu_campus_hub/core/update/update_service.dart';
 import 'package:jxu_campus_hub/features/campus_card/campus_card_service.dart';
 import 'package:jxu_campus_hub/features/changxing_jiada/changxing_jiada_service.dart';
 import 'package:jxu_campus_hub/features/dorm_electricity/dorm_electricity_service.dart';
+import 'package:jxu_campus_hub/features/dorm_electricity/dorm_usage_background.dart';
 import 'package:jxu_campus_hub/core/epay100/epay100_gateway.dart';
 import 'package:jxu_campus_hub/features/grades/progress/academic_progress_service.dart';
 import 'package:jxu_campus_hub/features/exam/exam_service.dart';
@@ -48,6 +49,7 @@ Future<void> resetTestEnvironment() async {
   );
 
   GlassStyleController.instance.debugReset();
+  DormUsageBackground.instance.debugReset();
   LiquidGlass.debugReset();
   PersonalizationController.instance.debugReset();
   AppPreferencesController.instance.debugReset();
