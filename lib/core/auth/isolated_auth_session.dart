@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:cookie_jar/cookie_jar.dart';
+import 'package:crypto/crypto.dart' show sha256;
 import 'package:dio/dio.dart';
 
 import '../network/cookie_interceptor.dart';
@@ -37,6 +40,61 @@ class IsolatedAuthSession {
   final Dio _dio;
   final Dio _template;
   final HttpClientAdapter? _fallbackAdapter;
+
+  /// Only the digest and cookie names may leave this isolated session.
+  String get cookieFingerprint {
+    final digest = sha256.convert(utf8.encode(_cookieState())).toString();
+    return 'c${digest.substring(0, 8)}x${digest.substring(8, 16)}';
+  }
+
+  List<String> get cookieNames {
+    final names = <String>{};
+    for (final hosts in [_jar.hostCookies, _jar.domainCookies]) {
+      for (final paths in hosts.values) {
+        for (final cookies in paths.values) {
+          names.addAll(cookies.keys);
+        }
+      }
+    }
+    return names.toList()..sort();
+  }
+
+  int get cookieResponseCount => _jar.responses.length;
+
+  List<String> setCookieNamesSince(int responseCount) {
+    final names = <String>{};
+    final start = responseCount < 0 ? 0 : responseCount;
+    for (final (_, cookies) in _jar.responses.skip(start)) {
+      names.addAll(cookies.map((entry) => entry.cookie.name));
+    }
+    return names.toList()..sort();
+  }
+
+  Object cookieStateSnapshot() => _CookieStateSnapshot(cookieFingerprint);
+
+  bool cookieStateChangedSince(Object snapshot) =>
+      snapshot is _CookieStateSnapshot &&
+      snapshot._fingerprint != cookieFingerprint;
+
+  String _cookieState() {
+    final entries = <String>[];
+    for (final (scope, hosts) in [
+      ('host', _jar.hostCookies),
+      ('domain', _jar.domainCookies),
+    ]) {
+      for (final host in hosts.entries) {
+        for (final path in host.value.entries) {
+          for (final cookie in path.value.entries) {
+            entries.add(
+              '$scope|${host.key}|${path.key}|${cookie.key}|${cookie.value.cookie}',
+            );
+          }
+        }
+      }
+    }
+    entries.sort();
+    return entries.join('\n');
+  }
 
   /// 从 [sourceJar] 为 [seedUris] 快照 cookie，构造独立会话。
   ///
@@ -141,6 +199,12 @@ class IsolatedAuthSession {
       ]);
     }
   }
+}
+
+class _CookieStateSnapshot {
+  const _CookieStateSnapshot(this._fingerprint);
+
+  final String _fingerprint;
 }
 
 class _TransactionCookieJar extends DefaultCookieJar {

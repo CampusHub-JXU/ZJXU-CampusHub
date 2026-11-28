@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io' as io;
+import 'dart:math' as math;
 
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:crypto/crypto.dart' show sha256;
@@ -102,6 +103,7 @@ class _ZhengfangChallengeContext {
     required this.timestampMs,
     required this.session,
     required this.expectedEpoch,
+    required this.trace,
     this.indicatesLoggedIn = false,
   });
 
@@ -119,9 +121,179 @@ class _ZhengfangChallengeContext {
   /// **不得**在提交时重新读取当前 epoch。
   final int expectedEpoch;
 
+  final _AcademicAuthTrace trace;
+
   /// 登录入口直接跳首页（已有网络会话，未绑定身份）。只属于本事务，
   /// 不再是跨事务共享的全局标志。
   final bool indicatesLoggedIn;
+}
+
+/// One sanitized trace spans all requests in a single academic captcha transaction.
+class _AcademicAuthTrace {
+  _AcademicAuthTrace({
+    required this.mode,
+    required this.sessionRevision,
+    required this.accountRevision,
+  }) : traceId = _fingerprint(
+         '${DateTime.now().microsecondsSinceEpoch}:'
+             '${math.Random.secure().nextInt(1 << 32)}',
+         't',
+       );
+
+  final ZhengfangMode mode;
+  final int sessionRevision;
+  final int accountRevision;
+  final String traceId;
+
+  int _requestSequence = 0;
+  int get requestSequence => _requestSequence;
+  String _challengeFingerprint = 'pending';
+  String _csrfFingerprint = 'none';
+  bool? _csrfPresent;
+
+  int beginRequest() => ++_requestSequence;
+
+  void bindChallenge(String challengeId) {
+    _challengeFingerprint = _fingerprint(challengeId, 'c');
+  }
+
+  void bindCsrf(String csrfToken) {
+    _csrfPresent = csrfToken.isNotEmpty;
+    _csrfFingerprint = csrfToken.isEmpty
+        ? 'none'
+        : _fingerprint(csrfToken, 's');
+  }
+
+  Future<Response<T>> send<T>({
+    required IsolatedAuthSession session,
+    required String stage,
+    required String label,
+    required Future<Response<T>> Function(Dio dio, CancelToken token) request,
+    required String Function(Response<T> response) classify,
+    CancelToken? cancelToken,
+    int? attemptGeneration,
+  }) async {
+    final sequence = beginRequest();
+    final cookieSnapshot = session.cookieStateSnapshot();
+    final responseCountAtStart = session.cookieResponseCount;
+    final stopwatch = Stopwatch()..start();
+    try {
+      final response = await session.send<T>(
+        label: label,
+        cancelToken: cancelToken,
+        request: request,
+      );
+      stopwatch.stop();
+      _record(
+        stage: stage,
+        session: session,
+        sequence: sequence,
+        cookieSnapshot: cookieSnapshot,
+        responseCountAtStart: responseCountAtStart,
+        status: response.statusCode,
+        location: response.headers.value('location'),
+        durationMs: stopwatch.elapsedMilliseconds,
+        classification: classify(response),
+        attemptGeneration: attemptGeneration,
+      );
+      return response;
+    } on Object catch (error) {
+      stopwatch.stop();
+      final response = error is DioException ? error.response : null;
+      _record(
+        stage: stage,
+        session: session,
+        sequence: sequence,
+        cookieSnapshot: cookieSnapshot,
+        responseCountAtStart: responseCountAtStart,
+        status: response?.statusCode,
+        location: response?.headers.value('location'),
+        durationMs: stopwatch.elapsedMilliseconds,
+        classification: error is DioException
+            ? AuthFailureClassifier.fromTransport(error).name
+            : 'exception',
+        attemptGeneration: attemptGeneration,
+        cancellationReason: error is DioException && CancelToken.isCancel(error)
+            ? 'cancel_token'
+            : 'none',
+        level: LogLevel.warn,
+      );
+      rethrow;
+    }
+  }
+
+  void recordEvent({
+    required String stage,
+    required IsolatedAuthSession session,
+    required String classification,
+    int? attemptGeneration,
+    String cancellationReason = 'none',
+    String commitResult = 'not_applicable',
+    LogLevel level = LogLevel.info,
+  }) {
+    _record(
+      stage: stage,
+      session: session,
+      sequence: requestSequence,
+      cookieSnapshot: session.cookieStateSnapshot(),
+      responseCountAtStart: session.cookieResponseCount,
+      classification: classification,
+      attemptGeneration: attemptGeneration,
+      cancellationReason: cancellationReason,
+      commitResult: commitResult,
+      level: level,
+    );
+  }
+
+  void _record({
+    required String stage,
+    required IsolatedAuthSession session,
+    required int sequence,
+    required Object cookieSnapshot,
+    required int responseCountAtStart,
+    int? status,
+    String? location,
+    int? durationMs,
+    required String classification,
+    int? attemptGeneration,
+    String cancellationReason = 'none',
+    String commitResult = 'not_applicable',
+    LogLevel level = LogLevel.info,
+  }) {
+    AppLogger.instance.auth(
+      level,
+      'academic_login_trace traceId=$traceId '
+      'buildMode=${_buildMode()} authMode=${mode.name} requestStage=$stage '
+      'requestSequence=$sequence attemptGeneration=${attemptGeneration ?? 'none'} '
+      'sessionRevision=$sessionRevision accountRevision=$accountRevision '
+      'challengeId=$_challengeFingerprint csrfPresent=${_csrfPresent == true} '
+      'csrfFingerprint=$_csrfFingerprint '
+      'cookieFingerprint=${session.cookieFingerprint} '
+      'cookieChanged=${session.cookieStateChangedSince(cookieSnapshot)} '
+      'cookieNames=${_safeNames(session.cookieNames)} '
+      'setCookieNames=${_safeNames(session.setCookieNamesSince(responseCountAtStart))} '
+      'httpStatus=${status ?? 'none'} redirectTarget=${_locationPathForLog(location ?? '')} '
+      'requestDurationMs=${durationMs ?? 0} responseClassification=$classification '
+      'cancellationReason=$cancellationReason commitResult=$commitResult',
+    );
+  }
+
+  static String _fingerprint(String value, String prefix) {
+    final digest = sha256.convert(utf8.encode(value)).toString();
+    return '$prefix${digest.substring(0, 8)}x${digest.substring(8, 16)}';
+  }
+
+  static String _buildMode() => kReleaseMode
+      ? 'release'
+      : kProfileMode
+      ? 'profile'
+      : 'debug';
+
+  static String _safeNames(List<String> names) => names.isEmpty
+      ? 'none'
+      : names
+            .map((name) => name.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_'))
+            .join(',');
 }
 
 class ZhengfangAuth extends ChangeNotifier {

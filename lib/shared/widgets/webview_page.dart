@@ -252,7 +252,8 @@ class _WebViewPageState extends State<WebViewPage> {
         final offset = resolveWebViewBackStepOffset(urls, currentIndex);
         AppLogger.instance.webview(
           LogLevel.info,
-          'WebView history idx=$currentIndex offset=$offset urls=${urls.map(scrubSensitiveUrl).toList()}',
+          'WebView history idx=$currentIndex offset=$offset '
+          'urls=${urls.map(urlLocationForLog).toList()}',
         );
         return offset;
       }
@@ -292,7 +293,8 @@ class _WebViewPageState extends State<WebViewPage> {
     } catch (error) {
       AppLogger.instance.webview(
         LogLevel.warn,
-        'WebView 返回上一页失败：$_currentUrl :: $error',
+        'WebView 返回上一页失败：${urlLocationForLog(_currentUrl)} '
+        'error=${error.runtimeType}',
       );
       return false;
     }
@@ -428,7 +430,7 @@ class _WebViewPageState extends State<WebViewPage> {
       _hasShownEnvHint = true;
       AppLogger.instance.webview(
         LogLevel.info,
-        'WebView 环境提示：$_currentUrl 需要钉钉环境',
+        'WebView 环境提示：${urlLocationForLog(_currentUrl)} 需要钉钉环境',
       );
       _showHint('当前页面依赖钉钉环境，部分功能可能受限');
       return;
@@ -445,7 +447,8 @@ class _WebViewPageState extends State<WebViewPage> {
       }
       AppLogger.instance.webview(
         isErrorLevel ? LogLevel.error : LogLevel.warn,
-        'WebView console [${consoleMessage.messageLevel}] $_currentUrl :: $message',
+        'WebView console [${consoleMessage.messageLevel}] '
+        'url=${urlLocationForLog(_currentUrl)} messageLength=${message.length}',
       );
       return;
     }
@@ -453,12 +456,13 @@ class _WebViewPageState extends State<WebViewPage> {
     if (_webViewConsoleLoggingEnabled) {
       AppLogger.instance.webview(
         LogLevel.debug,
-        'WebView console [${consoleMessage.messageLevel}] $_currentUrl :: $message',
+        'WebView console [${consoleMessage.messageLevel}] '
+        'url=${urlLocationForLog(_currentUrl)} messageLength=${message.length}',
       );
     }
   }
 
-  /// 处理连接层主框架加载失败：记录原始诊断（description 只进日志），把不可变
+  /// 处理连接层主框架加载失败：记录脱敏诊断，把不可变
   /// 事实透出给可选回调，并按回调结果决定是否走默认错误页。
   ///
   /// 回调前捕获本地加载代际；回调 await 结束后若已 dispose 或被新的加载取代，
@@ -476,7 +480,8 @@ class _WebViewPageState extends State<WebViewPage> {
 
     AppLogger.instance.webview(
       LogLevel.error,
-      'WebView 加载失败: code=${error.type} desc=${error.description} url=${failure.url}',
+      'WebView 加载失败: code=${error.type} '
+      'url=${urlLocationForLog(failure.url)}',
     );
 
     final callback = widget.onMainFrameLoadFailure;
@@ -489,8 +494,9 @@ class _WebViewPageState extends State<WebViewPage> {
         // 回调异常视为未接管：保留默认错误页；日志脱敏，不写 URL token。
         AppLogger.instance.webview(
           LogLevel.warn,
-          'WebView 主框架加载失败回调异常：${scrubSensitiveUrl(failure.url)}',
-          error: callbackError,
+          'WebView 主框架加载失败回调异常：'
+          '${urlLocationForLog(failure.url)} '
+          'error=${callbackError.runtimeType}',
           stackTrace: stackTrace,
         );
         handled = false;
@@ -526,7 +532,7 @@ class _WebViewPageState extends State<WebViewPage> {
     AppLogger.instance.webview(
       enqueued ? LogLevel.info : LogLevel.warn,
       'WebView 附件下载${enqueued ? '已交给系统' : '入队失败'}: '
-      '${scrubSensitiveUrl(url)}',
+      '${urlLocationForLog(url)}',
     );
 
     if (!mounted) return;
@@ -539,7 +545,10 @@ class _WebViewPageState extends State<WebViewPage> {
       if (snapshot == null) return;
 
       _logWebViewLifecycle(
-        'WebView load stop: url=$_currentUrl readyState=${snapshot.readyState} title=${snapshot.title.isEmpty ? '[empty]' : snapshot.title} textLength=${snapshot.textLength} childCount=${snapshot.childCount}',
+        'WebView load stop: url=${urlLocationForLog(_currentUrl)} '
+        'readyState=${snapshot.readyState} '
+        'title=${snapshot.title.isEmpty ? '[empty]' : '[present]'} '
+        'textLength=${snapshot.textLength} childCount=${snapshot.childCount}',
       );
 
       final isBlankLike = _isBlankLikeSnapshot(snapshot);
@@ -556,7 +565,7 @@ class _WebViewPageState extends State<WebViewPage> {
 
       AppLogger.instance.webview(
         LogLevel.error,
-        'WebView 疑似白屏：url=$_currentUrl',
+        'WebView 疑似白屏：url=${urlLocationForLog(_currentUrl)}',
       );
 
       final uri = Uri.tryParse(_currentUrl);
@@ -570,7 +579,10 @@ class _WebViewPageState extends State<WebViewPage> {
         _fallbackToServiceHallHome(controller, '服务大厅入口未渲染，已尝试切换到首页');
       }
     } catch (error) {
-      _logWebViewLifecycle('WebView 页面快照失败：$_currentUrl :: $error');
+      _logWebViewLifecycle(
+        'WebView 页面快照失败：${urlLocationForLog(_currentUrl)} '
+        'error=${error.runtimeType}',
+      );
     }
   }
 
@@ -814,7 +826,7 @@ class _WebViewPageState extends State<WebViewPage> {
                         _loadGeneration++;
                         _trackCurrentUrl(url);
                         _logWebViewLifecycle(
-                          'WebView load start: $_currentUrl',
+                          'WebView load start: ${urlLocationForLog(_currentUrl)}',
                         );
                         if (!mounted) return;
                         setState(() {
@@ -859,8 +871,9 @@ class _WebViewPageState extends State<WebViewPage> {
                           } catch (error, stackTrace) {
                             AppLogger.instance.webview(
                               LogLevel.warn,
-                              'WebView load-stop 回调失败：$_currentUrl',
-                              error: error,
+                              'WebView load-stop 回调失败：'
+                              '${urlLocationForLog(_currentUrl)} '
+                              'error=${error.runtimeType}',
                               stackTrace: stackTrace,
                             );
                           }
@@ -882,6 +895,22 @@ class _WebViewPageState extends State<WebViewPage> {
                           if (policy != null) return policy;
                         }
 
+                        final upgradedAcademicUri =
+                            upgradeTrustedAcademicHttpUri(uri);
+                        if (upgradedAcademicUri != null) {
+                          AppLogger.instance.webview(
+                            LogLevel.info,
+                            'WebView 将受信教务 HTTP 导航升级为 HTTPS: '
+                            '${urlLocationForLog(upgradedAcademicUri.toString())}',
+                          );
+                          await controller.loadUrl(
+                            urlRequest: URLRequest(
+                              url: WebUri(upgradedAcademicUri.toString()),
+                            ),
+                          );
+                          return NavigationActionPolicy.CANCEL;
+                        }
+
                         final scheme = uri.scheme.toLowerCase();
                         if (scheme == 'http' || scheme == 'https') {
                           return NavigationActionPolicy.ALLOW;
@@ -894,7 +923,8 @@ class _WebViewPageState extends State<WebViewPage> {
 
                         AppLogger.instance.webview(
                           LogLevel.warn,
-                          'WebView 拦截非安全或未知 Scheme 跳转: $scheme (url: ${scrubSensitiveUrl(uri.toString())})',
+                          'WebView 拦截非安全或未知 Scheme 跳转: $scheme '
+                          '(url: ${urlLocationForLog(uri.toString())})',
                         );
                         return NavigationActionPolicy.CANCEL;
                       },
@@ -909,7 +939,8 @@ class _WebViewPageState extends State<WebViewPage> {
 
                         if (_isDeniedWeChatSdkRequest(uri)) {
                           _logWebViewLifecycle(
-                            'WebView 拦截被 WebVPN 拒绝的微信 SDK，返回兼容 stub: $uri',
+                            'WebView 拦截被 WebVPN 拒绝的微信 SDK，返回兼容 stub: '
+                            '${urlLocationForLog(uri.toString())}',
                           );
                           return _buildWeChatSdkStubResponse();
                         }
@@ -925,7 +956,9 @@ class _WebViewPageState extends State<WebViewPage> {
 
                         AppLogger.instance.webview(
                           LogLevel.error,
-                          'WebView HTTP 错误: ${response.statusCode} ${response.reasonPhrase ?? ''} url=${request.url}',
+                          'WebView HTTP 错误: ${response.statusCode} '
+                          '${response.reasonPhrase ?? ''} '
+                          'url=${urlLocationForLog(request.url.toString())}',
                         );
 
                         if (!mounted) return;

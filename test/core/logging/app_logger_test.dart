@@ -1,4 +1,4 @@
-﻿import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:jxu_campus_hub/core/logging/app_logger.dart';
@@ -25,7 +25,7 @@ void main() {
     expect(entry.message, isNot(contains('2025000123')));
   });
 
-  test('scrubs CAS ticket and tokenId query values', () {
+  test('scrubs all query values, including CAS ticket and tokenId', () {
     AppLogger.instance.log(
       LogLevel.info,
       LogCategory.auth,
@@ -35,9 +35,37 @@ void main() {
 
     final message = AppLogger.instance.entries.single.message;
     expect(message, contains('ticket=[REDACTED]'));
-    expect(message, contains('tokenId=[REDACTED]&x=1'));
+    expect(message, contains('tokenId=[REDACTED]&x=[REDACTED]'));
     expect(message, isNot(contains('9f8e7d6c5b4a')));
     expect(message, isNot(contains('zzz')));
+  });
+
+  test('scrubs WebVPN token and nested SSO query values', () {
+    const token = 'one-time-webvpn-token-4c3b2a1f';
+    AppLogger.instance.log(
+      LogLevel.info,
+      LogCategory.network,
+      '302 GET https://webvpn.zjxu.edu.cn/login?cas_login=true&ticket=ST-1-abc '
+      '→ /wengine-vpn-token-login?token=$token',
+      force: true,
+    );
+    AppLogger.instance.log(
+      LogLevel.info,
+      LogCategory.network,
+      'GET https://newca.zjxu.edu.cn/cas/login?service='
+      'https%3A%2F%2Fportal.example%2Fcallback%3Fstate%3Done-time-state',
+      force: true,
+    );
+
+    final text = AppLogger.instance.entries
+        .map((entry) => entry.message)
+        .join('\n');
+    expect(text, contains('cas_login=[REDACTED]'));
+    expect(text, contains('ticket=[REDACTED]'));
+    expect(text, contains('token=[REDACTED]'));
+    expect(text, contains('service=[REDACTED]'));
+    expect(text, isNot(contains(token)));
+    expect(text, isNot(contains('one-time-state')));
   });
 
   test('formats entries with app prefix for filtering', () {

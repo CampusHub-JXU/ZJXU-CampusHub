@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:jxu_campus_hub/core/auth/zhengfang_auth.dart';
+import 'package:jxu_campus_hub/core/logging/app_logger.dart';
 import 'package:jxu_campus_hub/core/network/dio_client.dart';
 import 'package:jxu_campus_hub/core/network/network_settings.dart';
 
@@ -97,9 +98,14 @@ void main() {
       expect(auth.extractLoginFailureMessage(html), '用户名或密码错误');
     });
 
-    test('returns captcha fallback when html mentions 验证码', () {
-      const html = '<html><body>验证码输入错误</body></html>';
-      expect(auth.extractLoginFailureMessage(html), '验证码错误或已过期，请刷新后重试');
+    test('ordinary login form prompts keep the generic failure message', () {
+      const html =
+          '<html><body>'
+          '<input name="yhm" placeholder="用户名">'
+          '<input name="mm" type="password" placeholder="密码">'
+          '<input name="yzm" placeholder="请输入验证码">'
+          '</body></html>';
+      expect(auth.extractLoginFailureMessage(html), '登录失败，请检查用户名、密码和验证码');
     });
 
     test('prefers tips content over generic captcha fallback', () {
@@ -125,6 +131,11 @@ void main() {
 
   group('login flow regression', () {
     test('does not logout before submitting the login form', () async {
+      final traceIdPattern = RegExp(r'traceId=(t[a-f0-9]{8}x[a-f0-9]{8})');
+      final existingTraceIds = AppLogger.instance.authTrail
+          .map((entry) => traceIdPattern.firstMatch(entry.message)?.group(1))
+          .whereType<String>()
+          .toSet();
       await DioClient.instance.ensureInitialized();
       auth.setMode(ZhengfangMode.direct);
 
@@ -148,6 +159,54 @@ void main() {
           'GET /jwglxt/xtgl/index_initMenu.html',
         ]),
       );
+
+      final traceLines = AppLogger.instance.authTrail
+          .map((entry) => entry.message)
+          .where((message) => message.startsWith('academic_login_trace '))
+          .where((message) {
+            final traceId = traceIdPattern.firstMatch(message)?.group(1);
+            return traceId != null && !existingTraceIds.contains(traceId);
+          })
+          .toList();
+      final stages = traceLines
+          .map(
+            (line) =>
+                RegExp(r'requestStage=([^ ]+)').firstMatch(line)?.group(1),
+          )
+          .whereType<String>()
+          .toSet();
+      expect(
+        stages,
+        containsAll({
+          'login_page',
+          'login_page_parse',
+          'captcha',
+          'challenge_armed',
+          'challenge_consumed',
+          'public_key',
+          'login_submit',
+          'session_verify',
+          'session_verify_result',
+          'session_commit',
+          'login_result',
+        }),
+      );
+      final traceIds = traceLines
+          .map((line) => traceIdPattern.firstMatch(line)?.group(1))
+          .whereType<String>()
+          .toSet();
+      expect(traceIds, hasLength(1));
+      final traceText = traceLines.join('\n');
+      expect(traceText, contains('buildMode=debug'));
+      expect(traceText, contains('authMode=direct'));
+      expect(traceText, contains('cookieFingerprint='));
+      expect(traceText, contains('csrfFingerprint='));
+      expect(traceText, contains('setCookieNames='));
+      expect(traceText, contains('requestDurationMs='));
+      expect(traceText, isNot(contains('2024001')));
+      expect(traceText, isNot(contains('password123')));
+      expect(traceText, isNot(contains('2468')));
+      expect(traceText, isNot(contains('csrf-token-123')));
     });
 
     test('surfaces captcha failure from login response html', () async {
