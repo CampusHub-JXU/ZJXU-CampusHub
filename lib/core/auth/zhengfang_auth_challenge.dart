@@ -46,6 +46,11 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
     final store = _challengeStore(automatic: automatic);
     final revisionAtStart = _sessionRevision;
     final accountAtStart = currentStudentId;
+    final trace = _AcademicAuthTrace(
+      mode: txMode,
+      sessionRevision: revisionAtStart,
+      accountRevision: revisionAtStart,
+    );
     // prepare 时固定持久 epoch：提交必须用它做条件提交。
     final expectedEpoch = await AuthSessionPersistence.instance.readEpoch(
       CredentialSessionDomain.academic,
@@ -60,10 +65,16 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
       seedUris: _challengeSeedUris(txMode),
       template: _dioFor(txMode),
     );
+    trace.recordEvent(
+      stage: 'transaction_start',
+      session: session,
+      classification: 'started',
+    );
 
     var context = await _buildChallengeContext(
       session,
       txMode,
+      trace: trace,
       expectedEpoch: expectedEpoch,
       revisionAtStart: revisionAtStart,
       accountAtStart: accountAtStart,
@@ -88,6 +99,7 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
       context = await _buildChallengeContext(
         session,
         txMode,
+        trace: trace,
         expectedEpoch: expectedEpoch,
         revisionAtStart: revisionAtStart,
         accountAtStart: accountAtStart,
@@ -106,6 +118,7 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
     final bytes = await _fetchChallengeCaptcha(
       session,
       txMode,
+      trace: trace,
       cancelToken: cancelToken,
     );
     cancelToken.throwIfCancelled();
@@ -113,12 +126,19 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
       throw CaptchaException('登录上下文已过期，请重试');
     }
 
-    return store.arm(
+    final challenge = store.arm(
       domain: CaptchaChallengeDomain.zhengfang,
       accountRevision: _sessionRevision,
       bytes: bytes,
       context: context,
     );
+    trace.bindChallenge(challenge.id);
+    trace.recordEvent(
+      stage: 'challenge_armed',
+      session: session,
+      classification: 'armed',
+    );
+    return challenge;
   }
 
   /// 提交一次 challenge。单次提交；id 不匹配 / 过期 / 身份变化 / 本通道被
@@ -164,6 +184,13 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
         !_recoveryTicketMatchesInput(recoveryTicket, username)) {
       return _staleLoginFailure('自动票据与账号不符');
     }
+    attempt.context.trace.bindChallenge(attempt.challenge.id);
+    attempt.context.trace.recordEvent(
+      stage: 'challenge_consumed',
+      session: attempt.context.session,
+      classification: 'submit_started',
+      attemptGeneration: attempt.generation,
+    );
     return _performLogin(
       context: attempt.context,
       username: username,
@@ -263,15 +290,25 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
   Future<_ZhengfangChallengeContext> _buildChallengeContext(
     IsolatedAuthSession session,
     ZhengfangMode mode, {
+    required _AcademicAuthTrace trace,
     required int expectedEpoch,
     required int revisionAtStart,
     required String? accountAtStart,
     CancelToken? cancelToken,
   }) async {
     final loginPageUrl = _loginPageUrlFor(mode);
-    final pageResp = await session.send<String>(
+    final pageResp = await trace.send<String>(
+      session: session,
+      stage: 'login_page',
       label: '教务登录页上下文',
       cancelToken: cancelToken,
+      classify: (response) {
+        final status = response.statusCode ?? 0;
+        final location = response.headers.value('location') ?? '';
+        if (isZhengfangGatewayLoginUrl(location)) return 'gateway_login';
+        if (isLoginSuccess(status, location, '')) return 'existing_session';
+        return status == 200 ? 'page_received' : 'http_$status';
+      },
       request: (dio, token) => dio.get<String>(
         '${_baseUrlFor(mode)}/xtgl/login_slogin.html',
         cancelToken: token,
@@ -304,12 +341,19 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
         timestampMs: DateTime.now().millisecondsSinceEpoch,
         session: session,
         expectedEpoch: expectedEpoch,
+        trace: trace,
         indicatesLoggedIn: true,
       );
     }
 
     final pageHtml = pageResp.data ?? '';
     final csrfToken = extractCsrfFromHtml(pageHtml);
+    trace.bindCsrf(csrfToken);
+    trace.recordEvent(
+      stage: 'login_page_parse',
+      session: session,
+      classification: csrfToken.isEmpty ? 'csrf_missing' : 'csrf_present',
+    );
 
     if (csrfToken.isEmpty) {
       AppLogger.instance.auth(LogLevel.warn, 'CSRF Token 为空，可能连接异常');
@@ -323,18 +367,34 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
       timestampMs: DateTime.now().millisecondsSinceEpoch,
       session: session,
       expectedEpoch: expectedEpoch,
+      trace: trace,
     );
   }
 
   Future<Uint8List> _fetchChallengeCaptcha(
     IsolatedAuthSession session,
     ZhengfangMode mode, {
+    required _AcademicAuthTrace trace,
     CancelToken? cancelToken,
   }) async {
     final ts = DateTime.now().millisecondsSinceEpoch;
-    final resp = await session.send<List<int>>(
+    final resp = await trace.send<List<int>>(
+      session: session,
+      stage: 'captcha',
       label: '教务验证码',
       cancelToken: cancelToken,
+      classify: (response) {
+        final location = response.headers.value('location') ?? '';
+        if (isZhengfangGatewayLoginUrl(location)) return 'gateway_login';
+        final contentType = response.headers.value('content-type') ?? '';
+        if (contentType.contains('text/html')) return 'html_response';
+        final bytes = response.data;
+        if (bytes == null || bytes.isEmpty) return 'empty_response';
+        if (!ZhengfangAuth._isValidImage(Uint8List.fromList(bytes))) {
+          return 'invalid_image';
+        }
+        return 'image_received';
+      },
       request: (dio, token) => dio.get<List<int>>(
         '${_baseUrlFor(mode)}/kaptcha',
         queryParameters: {'time': ts},
@@ -409,6 +469,13 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
           AppLogger.instance.auth(LogLevel.info, '检测到教务有效会话且身份一致，跳过登录请求');
           return LoginSuccess();
         }
+        context.trace.recordEvent(
+          stage: 'login_preflight',
+          session: context.session,
+          classification: 'csrf_missing',
+          attemptGeneration: attemptGeneration,
+          level: LogLevel.warn,
+        );
         return LoginFailure(
           '初始化登录参数失败，请刷新验证码后重试',
           kind: AuthFailureKind.protocolChanged,
@@ -416,9 +483,25 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
       }
 
       final ts = context.timestampMs;
-      final keyResp = await context.session.send<Map<String, dynamic>>(
+      final keyResp = await context.trace.send<Map<String, dynamic>>(
+        session: context.session,
+        stage: 'public_key',
         label: '教务登录公钥',
         cancelToken: cancelToken,
+        attemptGeneration: attemptGeneration,
+        classify: (response) {
+          final location = response.headers.value('location') ?? '';
+          if (isZhengfangGatewayLoginUrl(location)) return 'gateway_login';
+          final data = response.data;
+          final modulus = data?['modulus'] as String?;
+          final exponent = data?['exponent'] as String?;
+          return modulus != null &&
+                  modulus.isNotEmpty &&
+                  exponent != null &&
+                  exponent.isNotEmpty
+              ? 'key_received'
+              : 'key_missing';
+        },
         request: (dio, token) => dio.get<Map<String, dynamic>>(
           '${context.baseUrl}/xtgl/login_getPublicKey.html',
           queryParameters: {'time': ts},
@@ -450,9 +533,25 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
       }
 
       final encryptedPwd = _encryptPassword(password, modulus, exponent);
-      final loginResp = await context.session.send<String>(
+      final loginResp = await context.trace.send<String>(
+        session: context.session,
+        stage: 'login_submit',
         label: '教务登录',
         cancelToken: cancelToken,
+        attemptGeneration: attemptGeneration,
+        classify: (response) {
+          final location = response.headers.value('location') ?? '';
+          final html = response.data ?? '';
+          if (isZhengfangGatewayLoginUrl(location)) return 'gateway_expired';
+          if (isLoginSuccess(response.statusCode, location, html)) {
+            return 'login_success_candidate';
+          }
+          final kind = AuthFailureClassifier.fromLoginHtml(html);
+          if (kind != AuthFailureKind.unknown) return kind.name;
+          return response.statusCode == 200
+              ? 'login_page_unclassified'
+              : 'http_${response.statusCode ?? 'unknown'}';
+        },
         request: (dio, token) => dio.post<String>(
           '${context.baseUrl}/xtgl/login_slogin.html',
           queryParameters: {'time': ts},
@@ -501,6 +600,7 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
         final verdict = await _verifyPostLoginSession(
           context,
           cancelToken: cancelToken,
+          attemptGeneration: attemptGeneration,
         );
         cancelToken.throwIfCancelled();
         if (isStale()) {
@@ -527,12 +627,33 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
         // 条件提交：epoch 校验通过才合并 cookie + 写 envelope；使用 prepare 时
         // 固定的 context.expectedEpoch，绝不重新读取当前 epoch。
         // 自动恢复路径（recoveryTicket != null）唯一走 typed ticket commit。
-        final result = await _commitChallengeSession(
-          context,
-          username,
-          context.expectedEpoch,
-          recoveryTicket: recoveryTicket,
-        );
+        final SessionCommitResult? result;
+        try {
+          result = await _commitChallengeSession(
+            context,
+            username,
+            context.expectedEpoch,
+            recoveryTicket: recoveryTicket,
+          );
+          context.trace.recordEvent(
+            stage: 'session_commit',
+            session: context.session,
+            classification: result == null ? 'commit_not_current' : 'committed',
+            attemptGeneration: attemptGeneration,
+            commitResult: result == null ? 'rejected' : 'committed',
+            level: result == null ? LogLevel.warn : LogLevel.info,
+          );
+        } catch (_) {
+          context.trace.recordEvent(
+            stage: 'session_commit',
+            session: context.session,
+            classification: 'commit_error',
+            attemptGeneration: attemptGeneration,
+            commitResult: 'failed',
+            level: LogLevel.error,
+          );
+          rethrow;
+        }
         if (result == null) {
           // 别的提交（logout 或更新的登录）已胜出：绝不全局 revoke。
           return _staleLoginFailure('条件提交未胜出');
@@ -561,6 +682,13 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
           LogLevel.info,
           '教务系统登录成功 [${mode == ZhengfangMode.direct ? "直连" : "WebVPN"}]',
         );
+        context.trace.recordEvent(
+          stage: 'login_result',
+          session: context.session,
+          classification: 'verified_or_unconfirmed',
+          attemptGeneration: attemptGeneration,
+          commitResult: 'committed',
+        );
         _notifyAuthListeners();
         return LoginSuccess(receipt: result);
       }
@@ -568,6 +696,13 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
       final msg = extractLoginFailureMessage(html);
       final kind = AuthFailureClassifier.classify(html: html);
 
+      context.trace.recordEvent(
+        stage: 'login_result',
+        session: context.session,
+        classification: kind.name,
+        attemptGeneration: attemptGeneration,
+        level: LogLevel.warn,
+      );
       AppLogger.instance.auth(LogLevel.warn, '教务系统登录失败: $msg');
       return LoginFailure(msg, kind: kind);
     } on DioException catch (e) {
@@ -576,18 +711,36 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
       }
       if (CancelToken.isCancel(e)) {
         // 被人工登录接管 / 调用方取消：不是网络故障，不记 ERROR。
+        context.trace.recordEvent(
+          stage: 'login_cancelled',
+          session: context.session,
+          classification: 'cancelled',
+          attemptGeneration: attemptGeneration,
+          cancellationReason: 'cancel_token',
+        );
         AppLogger.instance.auth(LogLevel.info, '教务登录已取消（被人工登录接管）');
         return LoginFailure('登录已取消', kind: AuthFailureKind.staleOperation);
       }
-      AppLogger.instance.auth(
-        LogLevel.error,
-        '教务系统登录网络异常: ${e.type} ${e.message}',
+      AppLogger.instance.auth(LogLevel.error, '教务系统登录传输异常: ${e.type.name}');
+      context.trace.recordEvent(
+        stage: 'login_result',
+        session: context.session,
+        classification: AuthFailureClassifier.fromTransport(e).name,
+        attemptGeneration: attemptGeneration,
+        level: LogLevel.warn,
       );
       return LoginFailure(
         '网络错误：${e.message}',
         kind: AuthFailureClassifier.fromTransport(e),
       );
     } catch (e) {
+      context.trace.recordEvent(
+        stage: 'login_result',
+        session: context.session,
+        classification: 'unconfirmed',
+        attemptGeneration: attemptGeneration,
+        level: LogLevel.warn,
+      );
       return LoginFailure('登录异常：$e');
     }
   }
@@ -600,13 +753,24 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
   Future<_PostLoginVerdict> _verifyPostLoginSession(
     _ZhengfangChallengeContext context, {
     CancelToken? cancelToken,
+    int? attemptGeneration,
   }) async {
     const caller = 'post_login_verify';
     final requestUrl = '${context.baseUrl}/xtgl/index_initMenu.html';
     try {
-      final response = await context.session.send<String>(
+      final response = await context.trace.send<String>(
+        session: context.session,
+        stage: 'session_verify',
         label: '教务登录后会话校验',
         cancelToken: cancelToken,
+        attemptGeneration: attemptGeneration,
+        classify: (response) => classifyAcademicEntryResponse(
+          mode: context.mode,
+          requestUri: response.requestOptions.uri,
+          status: response.statusCode ?? 0,
+          location: response.headers.value('location') ?? '',
+          html: response.data ?? '',
+        ).name,
         request: (dio, token) => dio.get<String>(
           requestUrl,
           queryParameters: {'jsdm': 'xs'},
@@ -666,9 +830,25 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
             ? LogLevel.info
             : LogLevel.warn,
       );
+      context.trace.recordEvent(
+        stage: 'session_verify_result',
+        session: context.session,
+        classification: verdict.name,
+        attemptGeneration: attemptGeneration,
+        level: verdict == _PostLoginVerdict.verified
+            ? LogLevel.info
+            : LogLevel.warn,
+      );
       return verdict;
     } on DioException catch (e) {
       if (CancelToken.isCancel(e)) rethrow;
+      context.trace.recordEvent(
+        stage: 'session_verify_result',
+        session: context.session,
+        classification: 'networkError',
+        attemptGeneration: attemptGeneration,
+        level: LogLevel.warn,
+      );
       _logAcademicSessionProbe(
         caller: caller,
         reason: e.type.name,
@@ -678,6 +858,13 @@ extension ZhengfangAuthChallengeExtension on ZhengfangAuth {
       );
       return _PostLoginVerdict.networkError;
     } catch (_) {
+      context.trace.recordEvent(
+        stage: 'session_verify_result',
+        session: context.session,
+        classification: 'networkError',
+        attemptGeneration: attemptGeneration,
+        level: LogLevel.warn,
+      );
       _logAcademicSessionProbe(
         caller: caller,
         reason: 'exception',

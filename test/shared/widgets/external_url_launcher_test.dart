@@ -52,6 +52,65 @@ void main() {
     });
   });
 
+  group('upgradeTrustedAcademicHttpUri', () {
+    test(
+      'upgrades only the academic host and preserves query and fragment',
+      () {
+        final upgraded = upgradeTrustedAcademicHttpUri(
+          Uri.parse(
+            'http://jwzx.zjxu.edu.cn/jwglxt/xtgl/index_initMenu.html?jsdm=xs&menu=score#term',
+          ),
+        );
+        expect(
+          upgraded.toString(),
+          'https://jwzx.zjxu.edu.cn/jwglxt/xtgl/index_initMenu.html?jsdm=xs&menu=score#term',
+        );
+      },
+    );
+
+    test('preserves percent-encoded deep-link query without re-encoding', () {
+      final upgraded = upgradeTrustedAcademicHttpUri(
+        Uri.parse(
+          'http://jwzx.zjxu.edu.cn/jwglxt/entry?service=https%3A%2F%2Fmobilehall.zjxu.edu.cn%2Fhome%3Fx%3D1',
+        ),
+      );
+      expect(
+        upgraded.toString(),
+        'https://jwzx.zjxu.edu.cn/jwglxt/entry?service=https%3A%2F%2Fmobilehall.zjxu.edu.cn%2Fhome%3Fx%3D1',
+      );
+    });
+
+    test(
+      'rejects other hosts, paths, credentials, nonstandard ports and https',
+      () {
+        for (final raw in <String>[
+          'http://jwzx.zjxu.edu.cn.evil.test/jwglxt/index.html',
+          'http://jwzx.zjxu.edu.cn/other/page',
+          'http://user@jwzx.zjxu.edu.cn/jwglxt/page',
+          'http://jwzx.zjxu.edu.cn:8080/jwglxt/page',
+          'https://jwzx.zjxu.edu.cn/jwglxt/page',
+        ]) {
+          expect(
+            upgradeTrustedAcademicHttpUri(Uri.parse(raw)),
+            isNull,
+            reason: raw,
+          );
+        }
+      },
+    );
+  });
+
+  group('urlLocationForLog', () {
+    test('omits userinfo, query values and fragment', () {
+      expect(
+        urlLocationForLog(
+          'https://user:pw@jwzx.zjxu.edu.cn/jwglxt/page?ticket=secret#token',
+        ),
+        'https://jwzx.zjxu.edu.cn/jwglxt/page',
+      );
+    });
+  });
+
   group('isSensitiveAuthIntermediateUrl', () {
     test('detects CAS ST ticket and OAuth token intermediate URLs', () {
       expect(

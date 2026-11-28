@@ -127,6 +127,9 @@ class AppLogger {
   static final RegExp _usernamePattern = RegExp(r'username=[^\s&;]+');
   static final RegExp _sysDatePattern = RegExp(r'sysDate=[^\s&;]+');
   static final RegExp _verifyPattern = RegExp(r'verify=[^\s&;]+');
+  static final RegExp _queryParameterPattern = RegExp(
+    r'([?&][^=\s&#]+)=([^&#\s]*)',
+  );
   static final RegExp _phonePattern = RegExp(r'1[3-9]\d{9}');
 
   final ListQueue<LogEntry> _buffer = ListQueue<LogEntry>(_bufferCapacity);
@@ -572,6 +575,12 @@ class AppLogger {
     result = result.replaceAll(_mmPattern, 'mm=[REDACTED]');
     result = result.replaceAll(_phonePattern, '[REDACTED]');
     result = result.replaceAll(_studentIdPattern, '[REDACTED]');
+    // Vendor-specific query keys can carry one-time CAS/WebVPN credentials.
+    // Preserve keys for diagnosis, but never export query values.
+    result = result.replaceAllMapped(
+      _queryParameterPattern,
+      (match) => '${match.group(1)}=[REDACTED]',
+    );
     return result;
   }
 

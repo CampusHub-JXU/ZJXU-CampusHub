@@ -68,6 +68,13 @@ extension ZhengfangAuthDirectExtension on ZhengfangAuth {
     if (cancelToken?.isCancelled ?? false) {
       return LoginFailure('登录已取消', kind: AuthFailureKind.staleOperation);
     }
+    attempt.context.trace.bindChallenge(attempt.challenge.id);
+    attempt.context.trace.recordEvent(
+      stage: 'challenge_consumed',
+      session: attempt.context.session,
+      classification: 'submit_started',
+      attemptGeneration: attempt.generation,
+    );
     return _performLogin(
       context: attempt.context,
       username: username,
@@ -431,8 +438,14 @@ extension ZhengfangAuthDirectExtension on ZhengfangAuth {
       if (message.isNotEmpty) return message;
     }
 
-    if (html.contains('验证码')) return '验证码错误或已过期，请刷新后重试';
-    if (html.contains('用户名') || html.contains('密码')) return '用户名或密码错误';
+    switch (AuthFailureClassifier.fromLoginHtml(html)) {
+      case AuthFailureKind.captchaRejected:
+        return '验证码错误或已过期，请刷新后重试';
+      case AuthFailureKind.invalidCredentials:
+        return '用户名或密码错误';
+      default:
+        break;
+    }
     return '登录失败，请检查用户名、密码和验证码';
   }
 
